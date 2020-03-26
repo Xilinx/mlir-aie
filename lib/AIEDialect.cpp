@@ -2,6 +2,7 @@
 #include "AIEDialect.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/DenseSet.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 
 using namespace mlir;
 
@@ -107,11 +108,19 @@ static ParseResult parseSwitchboxOp(OpAsmParser &parser, OperationState &result)
   types.push_back(iType);
 
 
-  // Parse location
-  SmallVector<OpAsmParser::OperandType, 4> operands;
-  if(parser.parseOperandList(operands, 2,
-                             OpAsmParser::Delimiter::Paren) ||
-     parser.resolveOperands(operands, iType, result.operands))
+  if (parser.parseLParen())
+    return failure();
+
+  IntegerAttr colAttr;
+  if (parser.parseAttribute(colAttr, parser.getBuilder().getIntegerType(32), "col", result.attributes))
+    return failure();
+  if (parser.parseComma())
+    return failure();
+
+  IntegerAttr rowAttr;
+  if (parser.parseAttribute(rowAttr, parser.getBuilder().getIntegerType(32), "row", result.attributes))
+    return failure();
+  if (parser.parseRParen())
     return failure();
 
   // Parse the connections.
@@ -131,32 +140,26 @@ static void print(OpAsmPrinter &p, xilinx::aie::SwitchboxOp op) {
   Region &body = op.connections();
   p << xilinx::aie::SwitchboxOp::getOperationName();
   p << '(';
-  p << op.arg0() << ", " << op.arg1();
-  // for (unsigned i = 0, e = body.front().getArguments().size(); i < e; ++i) {
-  //   if (i > 0)
-  //     p << ", ";
-
-  //   p.printOperand(body.front().getArgument(i));
-  //   p.printOptionalAttrDict(::mlir::impl::getArgAttrs(op, i));
-  // }
+  p << op.col() << ", " << op.row();
   p << ')';
 
   p.printRegion(body,
                 /*printEntryBlockArgs=*/false,
                 /*printBlockTerminators=*/false);
-  p.printOptionalAttrDict(op.getAttrs());
+  //  p.printOptionalAttrDict(op.getAttrs());
 
 }
 
 static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
-  // Verify that the entry of each child region does not have arguments.
   Region &body = op.connections();
-  DenseSet<xilinx::aie::MasterPortEnum> destset;
+  DenseSet<xilinx::aie::Port> destset;
   for (auto &ops : body.front()) {
     if(auto connectOp = dyn_cast<xilinx::aie::ConnectOp>(ops)) {
-      xilinx::aie::MasterPortEnum dest = connectOp.destPort();
+      xilinx::aie::Port dest = std::make_pair(connectOp.destBundle(),
+                                              connectOp.destIndex());
       if(destset.count(dest)) {
-        return connectOp.emitOpError("targets same destination ") << MasterConvertToString(dest) << " as another connect operation";
+        return connectOp.emitOpError("targets same destination ") <<
+          stringifyWireBundle(dest.first) << dest.second << " as another connect operation";
       } else {
         destset.insert(dest);
       }
@@ -175,6 +178,11 @@ namespace xilinx {
 #define GET_OP_CLASSES
 #include "AIE.cpp.inc"
 
+    // void CoreOp::build(Builder *odsBuilder, OperationState &odsState, Type resultType0, int col, int row) {
+    //   odsState.addOperands(colValue);
+    //   odsState.addOperands(rowValue);
+    //   odsState.addTypes(resultType0);
+    // }
 
   //#include "ATenOpInterfaces.cpp.inc"
 

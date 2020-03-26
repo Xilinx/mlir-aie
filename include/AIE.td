@@ -13,6 +13,19 @@ include "mlir/IR/OpBase.td"
 def aie_Dialect : Dialect {
   let name = "aie";
 }
+
+def ME: I32EnumAttrCase<"ME", 0>;
+def DMA: I32EnumAttrCase<"DMA", 1>;
+def FIFO: I32EnumAttrCase<"FIFO", 2>;
+def South: I32EnumAttrCase<"South", 3>;
+def West: I32EnumAttrCase<"West", 4>;
+def North: I32EnumAttrCase<"North", 5>;
+def East: I32EnumAttrCase<"East", 6>;
+
+def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
+							[ME, DMA, FIFO, South, West, North, East]> {
+  let cppNamespace = "xilinx::aie";
+}
 // 0 ME0
 // 1 ME1
 // 2 DMA0
@@ -84,8 +97,6 @@ def MasterPortEnum: I32EnumAttr<"MasterPortEnum", "AIE Switchbox Master Port",
 									North0, North1, North2, North3, North4, North5,
 									East0, East1, East2, East3]> {
   let cppNamespace = "xilinx::aie";
-  let stringToSymbolFnName = "MasterConvertToEnum";
-  let symbolToStringFnName = "MasterConvertToString";
 }
 def SlavePortEnum: I32EnumAttr<"SlavePortEnum", "AIE Switchbox Slave Port",
 								   [ME0, ME1, DMA0, DMA1, TileCtrl, FIFO0, FIFO1,
@@ -94,8 +105,6 @@ def SlavePortEnum: I32EnumAttr<"SlavePortEnum", "AIE Switchbox Slave Port",
 									SNorth0, SNorth1, SNorth2, SNorth3,
 									East0, East1, East2, East3, CoreTrace, MemTrace]> {
   let cppNamespace = "xilinx::aie";
-  let stringToSymbolFnName = "SlaveConvertToEnum";
-  let symbolToStringFnName = "SlaveConvertToString";
 }
 
 // def StatisticsOpInterface : OpInterface<"StatisticsOpInterface"> {
@@ -131,8 +140,8 @@ def Port : TypeConstraint<Index.predicate, "port">;
 def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
                               Results<(outs AnyType)> {
   let arguments = (
-    ins Index:$arg0,
-        Index:$arg1
+    ins I32Attr:$col,
+        I32Attr:$row
   );
 
   let summary = "Declare a switch";
@@ -148,8 +157,8 @@ def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
 def aie_CoreOp: aie_Op<"core", []>,
                               Results<(outs Index)> {
   let arguments = (
-    ins Index:$arg0,
-        Index:$arg1
+    ins I32Attr:$col,
+        I32Attr:$row
   );
 
   let summary = "Declare a core";
@@ -157,46 +166,58 @@ def aie_CoreOp: aie_Op<"core", []>,
 		A core
   }];
   let assemblyFormat = [{
-	`(` $arg0 `,` $arg1 `)` attr-dict
+	`(` $col `,` $row `)` attr-dict
   }];
+  // let builders = [
+  //   OpBuilder<"Builder *builder, OperationState &result, "
+  //             "Type resultType, int col, int row">
+  // ];
 }
 
 def aie_ConnectOp: aie_Op<"connect", [HasParent<"SwitchboxOp">]> {
 	 let arguments = (
-	 ins SlavePortEnum:$sourcePort,
-		  MasterPortEnum:$destPort
+	 ins WireBundle:$sourceBundle,
+		  I32Attr:$sourceChannel,
+		  WireBundle:$destBundle,
+		  I32Attr:$destChannel
 	 );
   let summary = "connection inside a switch";
   let description = [{
 		A connection inside a switchbox.
   }];
   let assemblyFormat = [{
-	`<` $sourcePort `,` $destPort `>` attr-dict
+	`<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int sourceIndex() { return sourceChannel().getZExtValue(); }
+	 int destIndex() { return destChannel().getZExtValue(); }
   }];
 }
 
 def aie_WireOp: aie_Op<"wire", []> {
 	 let arguments = (
 	 ins Index:$source,
-		  MasterPortEnum:$sourcePort,
+		  WireBundle:$sourceBundle,
 		  Index:$dest,
-		  SlavePortEnum:$destPort
+		  WireBundle:$destBundle
 	 );
   let summary = "wire between switches";
   let description = [{
 		A wire between switches.
   }];
   let assemblyFormat = [{
-	`(` $source `:` $sourcePort `,` $dest `:` $destPort `)` attr-dict
+	`(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
 }
 
 def aie_FlowOp: aie_Op<"flow", []> {
 	 let arguments = (
 	 ins Index:$source,
-		  MasterPortEnum:$sourcePort,
+		  WireBundle:$sourceBundle,
+		  I32Attr:$sourceChannel,
 		  Index:$dest,
-		  SlavePortEnum:$destPort
+		  WireBundle:$destBundle,
+		  I32Attr:$destChannel
 	 );
   let summary = "logical flow between cores";
   let description = [{
@@ -204,7 +225,11 @@ def aie_FlowOp: aie_Op<"flow", []> {
   replaced by SwitchboxOp and WireOp.
   }];
   let assemblyFormat = [{
-	`(` $source `:` $sourcePort `,` $dest `:` $destPort `)` attr-dict
+	`(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int sourceIndex() { return sourceChannel().getZExtValue(); }
+	 int destIndex() { return destChannel().getZExtValue(); }
   }];
 }
 

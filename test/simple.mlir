@@ -1,7 +1,7 @@
 module {
 %c2 = constant 2 : index
   %c3 = constant 3 : index
-%1 = "aie.switchbox"(%c2, %c3) ({
+%1 = "aie.switchbox"() ({
    "aie.connect"() {sourcePort=0:i32,destPort=0:i32}: () -> ()
 	"aie.connect"() {sourcePort=1:i32,destPort=1:i32}: () -> ()
 	"aie.connect"() {sourcePort=2:i32,destPort=2:i32}: () -> ()
@@ -29,7 +29,7 @@ module {
    "aie.connect"() {sourcePort=24:i32,destPort=24:i32}: () -> ()
 
 	"aie.endswitch"() : () -> ()
-	}) : (index, index) -> index
+	}) {col =1:i32, row = 1:i32}: () -> index
 	%3 = "aie.core"(%c2, %c3) : (index, index) -> index
 		%4 = "aie.core"(%c3, %c2) : (index, index) -> index
 %2 = "aie.switchbox"(%c3, %c2) ({

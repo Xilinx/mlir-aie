@@ -28,6 +28,7 @@ namespace xilinx {
 namespace aie {
 
 void registerAIEFindFlowsPass();
+void registerAIECreateFlowsPass();
 
 // The Dialect
 class AIEDialect : public mlir::Dialect {
@@ -93,7 +94,9 @@ public:
 #define GET_OP_CLASSES
 #include "AIE.h.inc"
 
-}
-}
+  typedef std::pair<WireBundle, int> Port;
+
+} // aie
+} // xilinx
 
 #endif
