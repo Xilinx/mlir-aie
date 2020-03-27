@@ -153,6 +153,8 @@ static void print(OpAsmPrinter &p, xilinx::aie::SwitchboxOp op) {
 static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
   Region &body = op.connections();
   DenseSet<xilinx::aie::Port> destset;
+  assert(op.getOperation()->getNumRegions());
+  assert(!body.empty());
   for (auto &ops : body.front()) {
     if(auto connectOp = dyn_cast<xilinx::aie::ConnectOp>(ops)) {
       xilinx::aie::Port dest = std::make_pair(connectOp.destBundle(),
