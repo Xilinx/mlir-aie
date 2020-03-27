@@ -17,3 +17,5 @@ target_link_libraries(AIE
   MLIRPass
   MLIRTransformUtils
   )
+
+add_subdirectory(Targets)

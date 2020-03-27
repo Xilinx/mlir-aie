@@ -6,6 +6,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Translation.h"
 #include "AIEDialect.h"
 
 using namespace mlir;
@@ -108,9 +109,9 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     int col, row;
     col = switchboxOp.col().getZExtValue();
     row = switchboxOp.row().getZExtValue();
-    llvm::dbgs() << "Route: " << stringifyWireBundle(inBundle) << ":"
-                 << inIndex << "->" << stringifyWireBundle(outBundle)
-                 << "@(" << col << "," << row << ")\n";
+    // llvm::dbgs() << "Route: " << stringifyWireBundle(inBundle) << ":"
+    //              << inIndex << "->" << stringifyWireBundle(outBundle)
+    //              << "@(" << col << "," << row << ")\n";
     rewriter.setInsertionPoint(switchboxOp.connections().front().getTerminator());
     int outIndex = 0;
     // Find an index that is bigger than any existing index.
@@ -289,3 +290,25 @@ void xilinx::aie::registerAIECreateFlowsPass() {
       "aie-create-flows",
       "Extract flows from a placed and routed design");
 }
+
+static TranslateFromMLIRRegistration
+    registration("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
+        // XAieTile_StrmConnectCct(&(TileInst[col+i][row]),
+        //                         XAIETILE_STRSW_SPORT_TRACE((&(TileInst[col+i][row])), 1),
+        //                         XAIETILE_STRSW_MPORT_NORTH((&(TileInst[col+i][row])), 0), XAIE_ENABLE);
+        for(auto switchboxOp : module.getOps<SwitchboxOp>()) {
+          Region &r = switchboxOp.connections();
+          Block &b = r.front();
+          output << "{auto inst = &(TileInst["
+                     << switchboxOp.col().getZExtValue() << "]["
+                     << switchboxOp.row().getZExtValue() << "])};\n";
+          for (auto connectOp : b.getOps<ConnectOp>()) {
+            output << "XAieTile_StrmConnectCct(inst,\n";
+            output << "XAIETILE_STRSW_SPORT_" << stringifyWireBundle(connectOp.sourceBundle()) << "(inst, " << connectOp.sourceIndex() << "),\n";
+            output << "XAIETILE_STRSW_MPORT_" << stringifyWireBundle(connectOp.destBundle()) << "(inst, " << connectOp.destIndex() << "),\n";
+            output << "XAIE_ENABLE);";
+          }
+          output << "}\n";
+        }
+        return success();
+      });

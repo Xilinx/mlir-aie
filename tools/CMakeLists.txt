@@ -40,3 +40,20 @@ set(LIBS
   LLVMAsmParser
   )
 target_link_libraries(aie-opt ${LIBS})
+
+
+add_executable(aie-translate aie-translate.cpp)
+llvm_update_compile_flags(aie-translate)
+
+set(LIBS
+  ${dialect_libs}
+  MLIRParser
+  MLIRPass
+  MLIRSPIRV
+  MLIRTranslation
+  MLIRSupport
+)
+
+add_dependencies(aie-translate AIETargets)
+whole_archive_link(aie-translate AIETargets)
+target_link_libraries(aie-translate PRIVATE MLIRIR MLIRTranslateClParser ${LIBS} LLVMSupport)
