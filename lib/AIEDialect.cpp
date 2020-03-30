@@ -173,6 +173,80 @@ static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
 
   return success();
 }
+
+static ParseResult parseShimSwitchboxOp(OpAsmParser &parser, OperationState &result) {
+  // Create the regions for 'then'.
+  result.regions.reserve(1);
+  Region *connections = result.addRegion();
+
+  auto &builder = parser.getBuilder();
+  result.types.push_back(builder.getIndexType());
+  OpAsmParser::OperandType cond;
+  Type iType = builder.getIndexType();
+  SmallVector<Type, 4> types;
+  types.push_back(iType);
+  types.push_back(iType);
+
+
+  if (parser.parseLParen())
+    return failure();
+
+  IntegerAttr colAttr;
+  if (parser.parseAttribute(colAttr, parser.getBuilder().getIntegerType(32), "col", result.attributes))
+    return failure();
+  if (parser.parseRParen())
+    return failure();
+
+  // Parse the connections.
+  if (parser.parseRegion(*connections, /*arguments=*/{}, /*argTypes=*/{}))
+    return failure();
+  // // Parse the optional attribute list.
+  // if (parser.parseOptionalAttrDict(result.attributes))
+  //   return failure();
+  xilinx::aie::ShimSwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
+
+  return success();
+}
+
+static void print(OpAsmPrinter &p, xilinx::aie::ShimSwitchboxOp op) {
+  bool printBlockTerminators = false;
+
+  Region &body = op.connections();
+  p << xilinx::aie::ShimSwitchboxOp::getOperationName();
+  p << '(';
+  p << op.col();
+  p << ')';
+
+  p.printRegion(body,
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+  //  p.printOptionalAttrDict(op.getAttrs());
+
+}
+
+static LogicalResult verify(xilinx::aie::ShimSwitchboxOp op) {
+  Region &body = op.connections();
+  DenseSet<xilinx::aie::Port> destset;
+  assert(op.getOperation()->getNumRegions());
+  assert(!body.empty());
+  for (auto &ops : body.front()) {
+    if(auto connectOp = dyn_cast<xilinx::aie::ConnectOp>(ops)) {
+      xilinx::aie::Port dest = std::make_pair(connectOp.destBundle(),
+                                              connectOp.destIndex());
+      if(destset.count(dest)) {
+        return connectOp.emitOpError("targets same destination ") <<
+          stringifyWireBundle(dest.first) << dest.second << " as another connect operation";
+      } else {
+        destset.insert(dest);
+      }
+    } else if(auto endswitchOp = dyn_cast<xilinx::aie::EndswitchOp>(ops)) {
+    } else {
+      return ops.emitOpError("cannot be contained in a Switchbox op");
+    }
+  }
+
+  return success();
+}
 #include "AIEEnums.cpp.inc"
 
 namespace xilinx {

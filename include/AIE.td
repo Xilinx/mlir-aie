@@ -154,6 +154,34 @@ def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
   let verifier = [{ return ::verify(*this); }];
 }
 
+def aie_ShimSwitchboxOp: aie_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
+                              Results<(outs AnyType)> {
+  let arguments = (
+    ins I32Attr:$col
+  );
+
+  let summary = "Declare a switch in the PL shim";
+  let description = [{
+		A switch in the Shim.
+AXI-Stream Master Ports AXI-Stream Slave Ports
+6 Ports to North (ME Tile) 4 Ports from North (ME Tile)
+4 Ports to West 4 Ports from West
+4 Ports to East 4 Ports from East
+6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
+2 Ports to FIFOs 2 Ports from FIFOs
+1 Port for control packet for ME Shim
+register access
+1 Port for response to access for ME Shim
+registers
+1 Port for trace packet from ME Shim
+
+  }];
+  let regions = (region AnyRegion:$connections);
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parseShimSwitchboxOp(parser, result); }];
+  let verifier = [{ return ::verify(*this); }];
+}
+
 def aie_CoreOp: aie_Op<"core", []>,
                               Results<(outs Index)> {
   let arguments = (
@@ -174,7 +202,46 @@ def aie_CoreOp: aie_Op<"core", []>,
   // ];
 }
 
-def aie_ConnectOp: aie_Op<"connect", [HasParent<"SwitchboxOp">]> {
+def aie_PLIOOp: aie_Op<"plio", []>,
+                              Results<(outs Index)> {
+  let arguments = (
+    ins I32Attr:$col
+	 );
+
+  let summary = "Declare an interface to the PL";
+  let description = [{
+		An interface to the PL.
+  }];
+  let assemblyFormat = [{
+	`(` $col `)` attr-dict
+  }];
+  // let builders = [
+  //   OpBuilder<"Builder *builder, OperationState &result, "
+  //             "Type resultType, int col, int row">
+  // ];
+}
+
+def aie_ShimDMAOp: aie_Op<"shimDMA", []>,
+                              Results<(outs Index)> {
+  let arguments = (
+    ins I32Attr:$col,
+        I32Attr:$row
+  );
+
+  let summary = "Declare a ShimDMA";
+  let description = [{
+		A DMA in the PL-AIE Shim.
+  }];
+  let assemblyFormat = [{
+	`(` $col `,` $row `)` attr-dict
+  }];
+  // let builders = [
+  //   OpBuilder<"Builder *builder, OperationState &result, "
+  //             "Type resultType, int col, int row">
+  // ];
+}
+
+def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 	 let arguments = (
 	 ins WireBundle:$sourceBundle,
 		  I32Attr:$sourceChannel,
@@ -233,7 +300,10 @@ def aie_FlowOp: aie_Op<"flow", []> {
   }];
 }
 
-def aie_EndswitchOp: aie_Op<"endswitch", [Terminator, HasParent<"SwitchboxOp">]> {
+def aie_EndswitchOp: aie_Op<"endswitch", [Terminator
+													  /*,Or<[HasParent<"SwitchboxOp">,
+														  HasParent<"ShimSwitchboxOp">]>*/
+							]> {
   let summary = "end of a switch";
   let description = [{
 		Terminator for switchbox

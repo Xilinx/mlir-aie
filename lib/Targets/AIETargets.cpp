@@ -32,5 +32,19 @@ static TranslateFromMLIRRegistration
           }
           output << "}\n";
         }
+        for(auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
+          Region &r = switchboxOp.connections();
+          Block &b = r.front();
+          output << "{auto inst = &(TileInst["
+                     << switchboxOp.col().getZExtValue() << "]["
+                     << "?" << "]);\n";
+          for (auto connectOp : b.getOps<ConnectOp>()) {
+            output << "  XAieTile_StrmConnectCct(inst,\n";
+            output << "\tXAIETILE_STRSW_SPORT_" << stringifyWireBundle(connectOp.sourceBundle()).upper() << "(inst, " << connectOp.sourceIndex() << "),\n";
+            output << "\tXAIETILE_STRSW_MPORT_" << stringifyWireBundle(connectOp.destBundle()).upper() << "(inst, " << connectOp.destIndex() << "),\n";
+            output << "\tXAIE_ENABLE);\n";
+          }
+          output << "}\n";
+        }
         return success();
       });

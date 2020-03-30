@@ -20,6 +20,8 @@ class CoreAnalysis {
   int maxcol, maxrow;
   DenseMap<std::pair<int, int>, CoreOp> coordToCore;
   DenseMap<std::pair<int, int>, SwitchboxOp> coordToSwitchbox;
+  DenseMap<int, ShimSwitchboxOp> coordToShimSwitchbox;
+  DenseMap<int, PLIOOp> coordToPLIO;
 public:
   int getMaxCol() {
     return maxcol;
@@ -68,6 +70,8 @@ public:
     }
   }
   SwitchboxOp getSwitchbox(OpBuilder &builder, int col, int row) {
+    assert(col >= 0);
+    assert(row >= 0);
     if(coordToSwitchbox.count(std::make_pair(col, row))) {
       return coordToSwitchbox[std::make_pair(col, row)];
     } else {
@@ -86,6 +90,38 @@ public:
       return switchboxOp;
     }
   }
+  ShimSwitchboxOp getShimSwitchbox(OpBuilder &builder, int col) {
+    assert(col >= 0);
+    if(coordToShimSwitchbox.count(col)) {
+      return coordToShimSwitchbox[col];
+    } else {
+      IntegerType i32 = builder.getIntegerType(32);
+      ShimSwitchboxOp switchboxOp =
+        builder.create<ShimSwitchboxOp>(builder.getUnknownLoc(),
+                                    builder.getIndexType(),
+                                    IntegerAttr::get(i32, (int)col));
+      switchboxOp.ensureTerminator(switchboxOp.connections(),
+                                   builder,
+                                   builder.getUnknownLoc());
+      coordToShimSwitchbox[col] = switchboxOp;
+      maxcol = std::max(maxcol, col);
+      return switchboxOp;
+    }
+  }
+  PLIOOp getPLIO(OpBuilder &builder, int col) {
+    if(coordToPLIO.count(col)) {
+      return coordToPLIO[col];
+    } else {
+      IntegerType i32 = builder.getIntegerType(32);
+      PLIOOp op =
+        builder.create<PLIOOp>(builder.getUnknownLoc(),
+                               builder.getIndexType(),
+                               IntegerAttr::get(i32, (int)col));
+      coordToPLIO[col] = op;
+      maxcol = std::max(maxcol, col);
+      return op;
+    }
+  }
 };
 
 struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
@@ -102,21 +138,20 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
   }
 
   int addConnection(ConversionPatternRewriter &rewriter,
-                    SwitchboxOp switchboxOp,
+                    Region &r,
                     WireBundle inBundle,
                     int inIndex,
                     WireBundle outBundle) const {
-    int col, row;
-    col = switchboxOp.col().getZExtValue();
-    row = switchboxOp.row().getZExtValue();
+    // int col, row;
+    // col = switchboxOp.col().getZExtValue();
+    // row = switchboxOp.row().getZExtValue();
     // llvm::dbgs() << "Route: " << stringifyWireBundle(inBundle) << ":"
     //              << inIndex << "->" << stringifyWireBundle(outBundle)
     //              << "@(" << col << "," << row << ")\n";
-    rewriter.setInsertionPoint(switchboxOp.connections().front().getTerminator());
     int outIndex = 0;
     // Find an index that is bigger than any existing index.
-    Region &r = switchboxOp.connections();
     Block &b = r.front();
+    rewriter.setInsertionPoint(b.getTerminator());
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if(connectOp.destBundle() == outBundle &&
          connectOp.destIndex() >= outIndex) {
@@ -143,19 +178,28 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     //                                            Op->getAttrs());
     //    newOp->setOperands(Op->getOperands());
     //newOp->setAttr("HasSwitchbox", BoolAttr::get(true, rewriter.getContext()));
-    CoreOp source = dyn_cast_or_null<CoreOp>(op.source().getDefiningOp());
     WireBundle sourceBundle = op.sourceBundle();
     int sourceIndex = op.sourceIndex();
-    CoreOp dest = dyn_cast_or_null<CoreOp>(op.dest().getDefiningOp());
     WireBundle destBundle = op.destBundle();
     int destIndex = op.destIndex();
 
     int col, row;
-    col = source.col().getZExtValue();
-    row = source.row().getZExtValue();
+    if(CoreOp source = dyn_cast_or_null<CoreOp>(op.source().getDefiningOp())) {
+      col = source.col().getZExtValue();
+      row = source.row().getZExtValue();
+    } else if(PLIOOp source = dyn_cast_or_null<PLIOOp>(op.source().getDefiningOp())) {
+      col = source.col().getZExtValue();
+      row = -2;
+    } else llvm_unreachable("Unimplemented case");
+
     int destcol, destrow;
-    destcol = dest.col().getZExtValue();
-    destrow = dest.row().getZExtValue();
+    if(CoreOp dest = dyn_cast_or_null<CoreOp>(op.dest().getDefiningOp())) {
+      destcol = dest.col().getZExtValue();
+      destrow = dest.row().getZExtValue();
+    } else if(PLIOOp dest = dyn_cast_or_null<PLIOOp>(op.dest().getDefiningOp())) {
+      destcol = dest.col().getZExtValue();
+      destrow = -2;
+    } else llvm_unreachable("Unimplemented case");
 
     WireBundle bundle = sourceBundle;
     int index = sourceIndex;
@@ -164,7 +208,6 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     int done = false;
     while(!done) {
       // Create a connection inside this switchbox.
-      SwitchboxOp swOp = analysis.getSwitchbox(rewriter, nextcol, nextrow);
       WireBundle outBundle;
       if(col > destcol) {
         outBundle = WireBundle::West;
@@ -188,7 +231,15 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
         outBundle = destBundle;
         done = true;
       }
-      index = addConnection(rewriter, swOp, bundle, index, outBundle);
+      if(nextrow < 0) {
+        ShimSwitchboxOp swOp = analysis.getShimSwitchbox(rewriter, nextcol);
+        Region &r = swOp.connections();
+        index = addConnection(rewriter, r, bundle, index, outBundle);
+      } else {
+        SwitchboxOp swOp = analysis.getSwitchbox(rewriter, nextcol, nextrow);
+        Region &r = swOp.connections();
+        index = addConnection(rewriter, r, bundle, index, outBundle);
+      }
       if(done) break;
       col = nextcol;
       row = nextrow;
@@ -232,19 +283,25 @@ struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
     OpBuilder builder(m.getBody()->getTerminator());
 
     // Populate cores and switchboxes.
-    for(int col = 1; col <= analysis.getMaxCol(); col++) {
-      for(int row = 1; row <= analysis.getMaxRow(); row++) {
+    for(int col = 0; col <= analysis.getMaxCol(); col++) {
+      for(int row = 0; row <= analysis.getMaxRow(); row++) {
         analysis.getCore(builder, col, row);
       }
     }
-    for(int col = 1; col <= analysis.getMaxCol(); col++) {
-      for(int row = 1; row <= analysis.getMaxRow(); row++) {
+    for(int col = 0; col <= analysis.getMaxCol(); col++) {
+      for(int row = 0; row <= analysis.getMaxRow(); row++) {
         analysis.getSwitchbox(builder, col, row);
       }
     }
+    for(int col = 0; col <= analysis.getMaxCol(); col++) {
+      analysis.getShimSwitchbox(builder, col);
+    }
+    for(int col = 0; col <= analysis.getMaxCol(); col++) {
+      analysis.getPLIO(builder, col);
+    }
     // Populate wires betweeh switchboxes and cores.
-    for(int col = 1; col <= analysis.getMaxCol(); col++) {
-      for(int row = 1; row <= analysis.getMaxRow(); row++) {
+    for(int col = 0; col <= analysis.getMaxCol(); col++) {
+      for(int row = 0; row <= analysis.getMaxRow(); row++) {
         auto core = analysis.getCore(builder, col, row);
         auto sw = analysis.getSwitchbox(builder, col, row);
         WireOp switchboxOp =
@@ -253,7 +310,7 @@ struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
                                  IntegerAttr::get(i32, (int)WireBundle::ME),
                                  sw,
                                  IntegerAttr::get(i32, (int)WireBundle::ME));
-        if(col > 1) {
+        if(col > 0) {
           auto westsw = analysis.getSwitchbox(builder, col-1, row);
           WireOp switchboxOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
@@ -262,13 +319,37 @@ struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
                                    sw,
                                    IntegerAttr::get(i32, (int)WireBundle::West));
         }
-        if(row > 1) {
+        if(row > 0) {
           auto southsw = analysis.getSwitchbox(builder, col, row-1);
           WireOp switchboxOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
                                    southsw,
                                    IntegerAttr::get(i32, (int)WireBundle::North),
                                    sw,
+                                   IntegerAttr::get(i32, (int)WireBundle::South));
+        } else if(row == 0) {
+          auto southsw = analysis.getShimSwitchbox(builder, col);
+          WireOp switchboxOp =
+            builder.create<WireOp>(builder.getUnknownLoc(),
+                                   southsw,
+                                   IntegerAttr::get(i32, (int)WireBundle::North),
+                                   sw,
+                                   IntegerAttr::get(i32, (int)WireBundle::South));
+          if(col > 0) {
+            auto westsw = analysis.getShimSwitchbox(builder, col-1);
+            WireOp switchboxOp =
+              builder.create<WireOp>(builder.getUnknownLoc(),
+                                     westsw,
+                                     IntegerAttr::get(i32, (int)WireBundle::East),
+                                     southsw,
+                                     IntegerAttr::get(i32, (int)WireBundle::West));
+          }
+          auto plio = analysis.getPLIO(builder, col);
+          WireOp PLIOOp =
+            builder.create<WireOp>(builder.getUnknownLoc(),
+                                   plio,
+                                   IntegerAttr::get(i32, (int)WireBundle::North),
+                                   southsw,
                                    IntegerAttr::get(i32, (int)WireBundle::South));
         }
       }
