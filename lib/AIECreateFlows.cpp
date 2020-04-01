@@ -304,12 +304,18 @@ struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
       for(int row = 0; row <= analysis.getMaxRow(); row++) {
         auto core = analysis.getCore(builder, col, row);
         auto sw = analysis.getSwitchbox(builder, col, row);
-        WireOp switchboxOp =
+        WireOp meWireOp =
           builder.create<WireOp>(builder.getUnknownLoc(),
                                  core,
                                  IntegerAttr::get(i32, (int)WireBundle::ME),
                                  sw,
                                  IntegerAttr::get(i32, (int)WireBundle::ME));
+        WireOp dmaWireOp =
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                 core,
+                                 IntegerAttr::get(i32, (int)WireBundle::DMA),
+                                 sw,
+                                 IntegerAttr::get(i32, (int)WireBundle::DMA));
         if(col > 0) {
           auto westsw = analysis.getSwitchbox(builder, col-1, row);
           WireOp switchboxOp =
@@ -371,25 +377,3 @@ void xilinx::aie::registerAIECreateFlowsPass() {
       "aie-create-flows",
       "Extract flows from a placed and routed design");
 }
-
-static TranslateFromMLIRRegistration
-    registration("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
-        // XAieTile_StrmConnectCct(&(TileInst[col+i][row]),
-        //                         XAIETILE_STRSW_SPORT_TRACE((&(TileInst[col+i][row])), 1),
-        //                         XAIETILE_STRSW_MPORT_NORTH((&(TileInst[col+i][row])), 0), XAIE_ENABLE);
-        for(auto switchboxOp : module.getOps<SwitchboxOp>()) {
-          Region &r = switchboxOp.connections();
-          Block &b = r.front();
-          output << "{auto inst = &(TileInst["
-                     << switchboxOp.col().getZExtValue() << "]["
-                     << switchboxOp.row().getZExtValue() << "])};\n";
-          for (auto connectOp : b.getOps<ConnectOp>()) {
-            output << "XAieTile_StrmConnectCct(inst,\n";
-            output << "XAIETILE_STRSW_SPORT_" << stringifyWireBundle(connectOp.sourceBundle()) << "(inst, " << connectOp.sourceIndex() << "),\n";
-            output << "XAIETILE_STRSW_MPORT_" << stringifyWireBundle(connectOp.destBundle()) << "(inst, " << connectOp.destIndex() << "),\n";
-            output << "XAIE_ENABLE);";
-          }
-          output << "}\n";
-        }
-        return success();
-      });

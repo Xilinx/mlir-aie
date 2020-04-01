@@ -21,30 +21,44 @@ static TranslateFromMLIRRegistration
         for(auto switchboxOp : module.getOps<SwitchboxOp>()) {
           Region &r = switchboxOp.connections();
           Block &b = r.front();
-          output << "{auto inst = &(TileInst["
-                     << switchboxOp.col().getZExtValue() << "]["
-                     << switchboxOp.row().getZExtValue() << "]);\n";
+          bool isEmpty = b.getOps<ConnectOp>().empty();
+          int col = switchboxOp.col().getZExtValue();
+          int row = switchboxOp.row().getZExtValue();
+          if(!isEmpty) {
+            output << "// Core Stream Switch column " << col << " row " << row << "\n";
+            output << "{XAieGbl_Tile inst = &(TileInst["
+                     << col << "][" << row + 1 << "])};\n";
+          }
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "  XAieTile_StrmConnectCct(inst,\n";
             output << "\tXAIETILE_STRSW_SPORT_" << stringifyWireBundle(connectOp.sourceBundle()).upper() << "(inst, " << connectOp.sourceIndex() << "),\n";
             output << "\tXAIETILE_STRSW_MPORT_" << stringifyWireBundle(connectOp.destBundle()).upper() << "(inst, " << connectOp.destIndex() << "),\n";
             output << "\tXAIE_ENABLE);\n";
           }
-          output << "}\n";
+          if(!isEmpty) {
+            output << "}\n";
+          }
         }
         for(auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
           Region &r = switchboxOp.connections();
           Block &b = r.front();
-          output << "{auto inst = &(TileInst["
-                     << switchboxOp.col().getZExtValue() << "]["
-                     << "?" << "]);\n";
+          bool isEmpty = b.getOps<ConnectOp>().empty();
+          int col = switchboxOp.col().getZExtValue();
+          if(!isEmpty) {
+            output << "// Shim Switch column " << col << "\n";
+            output << "{XAieGbl_Tile inst = &(TileInst["
+                   << col << "]["
+                   << "0" << "]);\n";
+          }
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "  XAieTile_StrmConnectCct(inst,\n";
             output << "\tXAIETILE_STRSW_SPORT_" << stringifyWireBundle(connectOp.sourceBundle()).upper() << "(inst, " << connectOp.sourceIndex() << "),\n";
             output << "\tXAIETILE_STRSW_MPORT_" << stringifyWireBundle(connectOp.destBundle()).upper() << "(inst, " << connectOp.destIndex() << "),\n";
             output << "\tXAIE_ENABLE);\n";
           }
-          output << "}\n";
+          if(!isEmpty) {
+            output << "}\n";
+          }
         }
         return success();
       });
