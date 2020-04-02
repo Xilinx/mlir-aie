@@ -26,7 +26,7 @@ static TranslateFromMLIRRegistration
           int row = switchboxOp.row().getZExtValue();
           if(!isEmpty) {
             output << "// Core Stream Switch column " << col << " row " << row << "\n";
-            output << "{XAieGbl_Tile inst = &(TileInst["
+            output << "{XAieGbl_Tile *inst = &(TileInst["
                      << col << "][" << row + 1 << "]);\n";
           }
           for (auto connectOp : b.getOps<ConnectOp>()) {
@@ -46,7 +46,7 @@ static TranslateFromMLIRRegistration
           int col = switchboxOp.col().getZExtValue();
           if(!isEmpty) {
             output << "// Shim Switch column " << col << "\n";
-            output << "{XAieGbl_Tile inst = &(TileInst["
+            output << "{XAieGbl_Tile *inst = &(TileInst["
                    << col << "]["
                    << "0" << "]);\n";
           }
