@@ -284,25 +284,41 @@ namespace xilinx {
   //#include "ATenOpInterfaces.cpp.inc"
 
     int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
-  switch(bundle) {
-  case WireBundle::ME: return 2;
-  case WireBundle::DMA: return 2;
-  case WireBundle::North: return 4;
-  case WireBundle::West: return 4;
-  case WireBundle::South: return 6;
-  case WireBundle::East: return 4;
-  }
-}
-int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
-  switch(bundle) {
-  case WireBundle::ME: return 2;
-  case WireBundle::DMA: return 2;
-  case WireBundle::North: return 6;
-  case WireBundle::West: return 4;
-  case WireBundle::South: return 4;
-  case WireBundle::East: return 4;
-  }
-}
+      switch(bundle) {
+      case WireBundle::ME: return 2;
+      case WireBundle::DMA: return 2;
+      case WireBundle::North: return 4;
+      case WireBundle::West: return 4;
+      case WireBundle::South: return 6;
+      case WireBundle::East: return 4;
+      default: return 0;
+      }
+    }
+    int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
+      switch(bundle) {
+      case WireBundle::ME: return 2;
+      case WireBundle::DMA: return 2;
+      case WireBundle::North: return 6;
+      case WireBundle::West: return 4;
+      case WireBundle::South: return 4;
+      case WireBundle::East: return 4;
+      default: return 0;
+      }
+    }
+    int CoreOp::getNumSourceConnections(WireBundle bundle) {
+      switch(bundle) {
+      case WireBundle::ME: return 2;
+      case WireBundle::DMA: return 2;
+      default: return 0;
+      }
+    }
+    int CoreOp::getNumDestConnections(WireBundle bundle) {
+      switch(bundle) {
+      case WireBundle::ME: return 2;
+      case WireBundle::DMA: return 2;
+      default: return 0;
+      }
+    }
 
   } // namespace aie
 } // namespace xilinx

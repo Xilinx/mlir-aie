@@ -203,8 +203,10 @@ def aie_CoreOp: aie_Op<"core", []>,
 	`(` $col `,` $row `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int colIndex() { return col().getZExtValue(); }
-	 int rowIndex() { return row().getZExtValue(); }
+   int getNumSourceConnections(WireBundle bundle);
+	int getNumDestConnections(WireBundle bundle);
+   int colIndex() { return col().getZExtValue(); }
+	int rowIndex() { return row().getZExtValue(); }
   }];
   // let builders = [
   //   OpBuilder<"Builder *builder, OperationState &result, "

@@ -71,7 +71,7 @@ std::pair<WireBundle, int> getBundleForEnum(MasterPortEnum master) {
   }
 }
 
-typedef llvm::Optional<std::pair<Operation *, Port>> PortConnection;
+typedef std::pair<Operation *, Port> PortConnection;
 
 class ConnectivityAnalysis {
   ModuleOp &module;
@@ -80,7 +80,7 @@ public:
   ConnectivityAnalysis(ModuleOp &m) : module(m) {}
 
 private:
-  PortConnection
+  llvm::Optional<PortConnection>
   getConnectionThroughWire(Operation *op,
                            Port masterPort) const {
     for (auto wireOp : module.getOps<WireOp>()) {
@@ -98,64 +98,63 @@ private:
                                         masterPort.second);
         return std::make_pair(other, otherPort);
       }
-      // if(wireOp.dest().getDefiningOp() == op &&
-      //    wireOp.destPort() == masterPort) {
-      //   Operation *other = wireOp.source().getDefiningOp();
-      //   SlavePortEnum otherPort = wireOp.sourcePort();
-      //   return std::make_pair(other, otherPort);
-      // }
     }
     return None;
   }
 
-  llvm::Optional<Port>
-  getConnectionThroughSwitchbox(SwitchboxOp op,
-                                Port sourcePort) const {
+  std::vector<Port>
+  getConnectionsThroughSwitchbox(SwitchboxOp op,
+                                 Port sourcePort) const {
     Region &r = op.connections();
     Block &b = r.front();
+    std::vector<Port> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if(connectOp.sourceBundle() == sourcePort.first &&
          connectOp.sourceIndex() == sourcePort.second) {
-        return std::make_pair(connectOp.destBundle(),
-                              connectOp.destIndex());
+        portSet.push_back(std::make_pair(connectOp.destBundle(),
+                                         connectOp.destIndex()));
       }
     }
-    return llvm::None;
+    return portSet;
   }
 
 public:
-  PortConnection
-  getConnectedCore(CoreOp coreOp,
-                   Port port) const {
-    Operation *next = coreOp.getOperation();
-    llvm::Optional<Port> nextPort = port;
-
-    PortConnection t = getConnectionThroughWire(next, nextPort.getValue());
+  // Get the cores connected to the given core, starting from the given
+  // output port of the core.  This is 1:N relationship because each
+  // switchbox can broadcast.
+  std::vector<PortConnection>
+  getConnectedCores(CoreOp coreOp,
+                    Port port) const {
+    // The accumulated result;
+    std::vector<PortConnection> connectedCores;
+    // A worklist of PortConnections to visit.  These are all input ports of
+    // some object (likely either a CoreOp or a SwitchboxOp).
+    std::vector<PortConnection> worklist;
+    // Start the worklist by traversing from the core to its connected
+    // switchbox.
+    auto t = getConnectionThroughWire(coreOp.getOperation(), port);
     assert(t.hasValue());
+    worklist.push_back(t.getValue());
 
-    bool valid = false;
-    while(true) {
-      Operation *other = t.getValue().first;
-      Port otherPort = t.getValue().second;
+    while(!worklist.empty()) {
+      PortConnection t = worklist.back();
+      worklist.pop_back();
+      Operation *other = t.first;
+      Port otherPort = t.second;
       if(auto coreOp = dyn_cast_or_null<CoreOp>(other)) {
-        break;
+        // If we got to a core, then add it to the result.
+        connectedCores.push_back(t);
       } else if(auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
-        nextPort = getConnectionThroughSwitchbox(switchOp, otherPort);
-        next = switchOp;
+        std::vector<Port> nextPorts = getConnectionsThroughSwitchbox(switchOp, otherPort);
+        for(auto &nextPort: nextPorts) {
+          auto nextConnection =
+            getConnectionThroughWire(switchOp, nextPort);
+          assert(nextConnection.hasValue());
+          worklist.push_back(nextConnection.getValue());
+        }
       }
-      if(!nextPort.hasValue()) {
-        break;
-      }
-      t = getConnectionThroughWire(next, nextPort.getValue());
-      assert(t.hasValue());
-      // other = t.getValue().first;
-      // otherPort = t.getValue().second;
     }
-    if(auto destCoreOp = dyn_cast_or_null<CoreOp>(t.getValue().first)) {
-      return t;
-    } else {
-      return None;
-    }
+    return connectedCores;
   }
 };
 
@@ -176,103 +175,41 @@ struct StartFlow : public OpConversionPattern<aie::CoreOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Operation *newOp = rewriter.clone(*Op);
-    // Operation *newOp = rewriter.create<CoreOp>(Op->getLoc(),
-    //                                            Op->getResultTypes(),
-    //                                            Op->getOperands(),
-    //                                            Op->getAttrs());
-    //    newOp->setOperands(Op->getOperands());
     newOp->setAttr("HasFlow", BoolAttr::get(true, rewriter.getContext()));
-    //rewriter.eraseOp(Op);
     rewriter.replaceOp(Op, newOp->getOpResults());
 
     rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
-    // Corresponds to ME0 and ME1
-    for(int i = 0; i < 2; i++) {
-      PortConnection t = analysis.getConnectedCore(op,
-                                                   std::make_pair(WireBundle(0), i));
-      if(t.hasValue()) {
-        Operation *destOp = t.getValue().first;
-        Port destPort = t.getValue().second;
-        IntegerType i32 = IntegerType::get(32, rewriter.getContext());
-        Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
-                                                    newOp->getResult(0),
-                                                    IntegerAttr::get(i32, (int)WireBundle(0)),
-                                                    IntegerAttr::get(i32, i),
-                                                    destOp->getResult(0),
-                                                    IntegerAttr::get(i32, (int)destPort.first),
-                                                    IntegerAttr::get(i32, (int)destPort.second));
 
+    std::vector<WireBundle> bundles = {WireBundle::ME, WireBundle::DMA};
+    for(WireBundle bundle: bundles) {
+      for(int i = 0; i < op.getNumSourceConnections(bundle); i++) {
+        std::vector<PortConnection> cores =
+          analysis.getConnectedCores(op,
+                                     std::make_pair(bundle, i));
+        for(PortConnection &c: cores) {
+          Operation *destOp = c.first;
+          Port destPort = c.second;
+          IntegerType i32 = IntegerType::get(32, rewriter.getContext());
+          Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
+                                                      newOp->getResult(0),
+                                                      IntegerAttr::get(i32, (int) bundle),
+                                                      IntegerAttr::get(i32, i),
+                                                      destOp->getResult(0),
+                                                      IntegerAttr::get(i32, (int)destPort.first),
+                                                      IntegerAttr::get(i32, (int)destPort.second));
+        }
       }
     }
-    // Corresponds to DMA0 and DMA1
-    auto bundle = WireBundle::DMA;
-    for(int i = 0; i < 2; i++) {
-      PortConnection t = analysis.getConnectedCore(op,
-                                                   std::make_pair(bundle, i));
-      if(t.hasValue()) {
-        Operation *destOp = t.getValue().first;
-        Port destPort = t.getValue().second;
-        IntegerType i32 = IntegerType::get(32, rewriter.getContext());
-        Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
-                                                    newOp->getResult(0),
-                                                    IntegerAttr::get(i32, (int) bundle),
-                                                    IntegerAttr::get(i32, i),
-                                                    destOp->getResult(0),
-                                                    IntegerAttr::get(i32, (int)destPort.first),
-                                                    IntegerAttr::get(i32, (int)destPort.second));
-
-      }
-    }
-    // updateRootInPlace(op, [&] {
-    //   });
   }
 };
 
 
 struct AIEFindFlowsPass : public ModulePass<AIEFindFlowsPass> {
   void runOnModule() override {
-    //    OwningRewritePatternList patterns;
-    // populateWithGenerated(&getContext(), &patterns);
-
-    // RewritePatternMatcher matcher(patterns);
-    // matcher.matchAndRewrite(getOperation(), *this);
-    //    applyPatternsGreedily(getModule(), patterns);
-    // ConversionTarget target(getContext());
-    // target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
-    // (void)applyPartialConversion(getModule(), target, patterns);
 
     ModuleOp m = getModule();
     ConnectivityAnalysis analysis(m);
 
-    for (auto coreOp : m.getOps<CoreOp>()) {
-      // PortConnection t = analysis.getConnectedCore(coreOp, MasterPortEnum(0));
-      // //      coreOp.dump();
-      // if(t.hasValue()) {
-      //   coreOp.getOperation()->print(llvm::dbgs());
-      //   llvm::dbgs() << " -> \n";
-      //   t.getValue().first->print(llvm::dbgs());
-      //   llvm::dbgs() << "\n";
-      // }
-        // while(nextPort.hasValue()) {
-      // for (auto wireOp : m.getOps<WireOp>()) {
-      //   if(wireOp.source() == coreOp) {
-      //     auto other = wireOp.dest();
-      //     if(auto switchOp = cast<SwitchboxOp>(other.getDefiningOp())) {
-      //       nextPort = getConnectionThroughSwitchbox(switchOp, wireOp.destPort());
-      //       next = switchOp;
-      //     }
-      //   }
-      //   if(wireOp.dest() == coreOp) {
-      //     wireOp.dump();
-      //   }
-      // }
-    }
-
-    // Region &r = m.getRegion(0);
-    // Block &b = r.getBlock(0);
-    // for(auto &op : b) {
-    //   op.dump();
-    // }
     ConversionTarget target(getContext());
     target.addLegalOp<FlowOp>();
     target.addDynamicallyLegalOp<CoreOp>([](CoreOp op) { return (bool)op.getOperation()->getAttrOfType<BoolAttr>("HasFlow"); });
