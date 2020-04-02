@@ -27,7 +27,7 @@ static TranslateFromMLIRRegistration
           if(!isEmpty) {
             output << "// Core Stream Switch column " << col << " row " << row << "\n";
             output << "{XAieGbl_Tile inst = &(TileInst["
-                     << col << "][" << row + 1 << "])};\n";
+                     << col << "][" << row + 1 << "]);\n";
           }
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "  XAieTile_StrmConnectCct(inst,\n";
