@@ -41,8 +41,8 @@ public:
     maxrow = 0;
     for (auto coreOp : module.getOps<CoreOp>()) {
       int col, row;
-      col = coreOp.col().getZExtValue();
-      row = coreOp.row().getZExtValue();
+      col = coreOp.colIndex();
+      row = coreOp.rowIndex();
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
       assert(coordToCore.count(std::make_pair(col, row)) == 0);
@@ -50,8 +50,8 @@ public:
     }
     for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
       int col, row;
-      col = switchboxOp.col().getZExtValue();
-      row = switchboxOp.row().getZExtValue();
+      col = switchboxOp.colIndex();
+      row = switchboxOp.rowIndex();
       assert(coordToSwitchbox.count(std::make_pair(col, row)) == 0);
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
     }
@@ -183,19 +183,19 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
 
     int col, row;
     if(CoreOp source = dyn_cast_or_null<CoreOp>(op.source().getDefiningOp())) {
-      col = source.col().getZExtValue();
-      row = source.row().getZExtValue();
+      col = source.colIndex();
+      row = source.rowIndex();
     } else if(PLIOOp source = dyn_cast_or_null<PLIOOp>(op.source().getDefiningOp())) {
-      col = source.col().getZExtValue();
+      col = source.colIndex();
       row = -2;
     } else llvm_unreachable("Unimplemented case");
 
     int destcol, destrow;
     if(CoreOp dest = dyn_cast_or_null<CoreOp>(op.dest().getDefiningOp())) {
-      destcol = dest.col().getZExtValue();
-      destrow = dest.row().getZExtValue();
+      destcol = dest.colIndex();
+      destrow = dest.rowIndex();
     } else if(PLIOOp dest = dyn_cast_or_null<PLIOOp>(op.dest().getDefiningOp())) {
-      destcol = dest.col().getZExtValue();
+      destcol = dest.colIndex();
       destrow = -2;
     } else llvm_unreachable("Unimplemented case");
 
@@ -240,8 +240,8 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
       } else {
         SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
         int col, row;
-        col = swOp.col().getZExtValue();
-        row = swOp.row().getZExtValue();
+        col = swOp.colIndex();
+        row = swOp.rowIndex();
         Region &r = swOp.connections();
         int outIndex = addConnection(rewriter, r, bundle, index, outBundle);
         if(debugRoute)

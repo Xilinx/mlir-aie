@@ -155,6 +155,8 @@ def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
   let extraClassDeclaration = [{
    int getNumSourceConnections(WireBundle bundle);
 	int getNumDestConnections(WireBundle bundle);
+	int colIndex() { return col().getZExtValue(); }
+	int rowIndex() { return row().getZExtValue(); }
   }];
 }
 
@@ -200,6 +202,10 @@ def aie_CoreOp: aie_Op<"core", []>,
   let assemblyFormat = [{
 	`(` $col `,` $row `)` attr-dict
   }];
+  let extraClassDeclaration = [{
+    int colIndex() { return col().getZExtValue(); }
+	 int rowIndex() { return row().getZExtValue(); }
+  }];
   // let builders = [
   //   OpBuilder<"Builder *builder, OperationState &result, "
   //             "Type resultType, int col, int row">
@@ -219,6 +225,9 @@ def aie_PLIOOp: aie_Op<"plio", []>,
   let assemblyFormat = [{
 	`(` $col `)` attr-dict
   }];
+  let extraClassDeclaration = [{
+    int colIndex() { return col().getZExtValue(); }
+  }];
   // let builders = [
   //   OpBuilder<"Builder *builder, OperationState &result, "
   //             "Type resultType, int col, int row">
@@ -228,8 +237,7 @@ def aie_PLIOOp: aie_Op<"plio", []>,
 def aie_ShimDMAOp: aie_Op<"shimDMA", []>,
                               Results<(outs Index)> {
   let arguments = (
-    ins I32Attr:$col,
-        I32Attr:$row
+    ins I32Attr:$col
   );
 
   let summary = "Declare a ShimDMA";
@@ -237,7 +245,10 @@ def aie_ShimDMAOp: aie_Op<"shimDMA", []>,
 		A DMA in the PL-AIE Shim.
   }];
   let assemblyFormat = [{
-	`(` $col `,` $row `)` attr-dict
+	`(` $col `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int colIndex() { return col().getZExtValue(); }
   }];
   // let builders = [
   //   OpBuilder<"Builder *builder, OperationState &result, "
