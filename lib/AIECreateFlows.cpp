@@ -141,29 +141,32 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     return matchSuccess();
   }
 
-  int addConnection(ConversionPatternRewriter &rewriter,
-                    Region &r,
-                    WireBundle inBundle,
-                    int inIndex,
-                    WireBundle outBundle) const {
-    int outIndex = 0;
-    // Find an index that is bigger than any existing index.
+  void addConnection(ConversionPatternRewriter &rewriter,
+                     Region &r,
+                     WireBundle inBundle,
+                     int inIndex,
+                     WireBundle outBundle,
+                     int &outIndex) const {
     Block &b = r.front();
     rewriter.setInsertionPoint(b.getTerminator());
-    for (auto connectOp : b.getOps<ConnectOp>()) {
-      if(connectOp.destBundle() == outBundle &&
-         connectOp.destIndex() >= outIndex) {
-        outIndex = connectOp.destIndex()+1;
+    if(outIndex == -1) {
+      // Find an index that is bigger than any existing index.
+      outIndex = 0;
+      for (auto connectOp : b.getOps<ConnectOp>()) {
+        if(connectOp.destBundle() == outBundle &&
+           connectOp.destIndex() >= outIndex) {
+          outIndex = connectOp.destIndex()+1;
+        }
       }
     }
 
+    // This might fail if an outIndex was exactly specified.
     ConnectOp connectOp =
       rewriter.template create<ConnectOp>(rewriter.getUnknownLoc(),
                                           inBundle,
                                           APInt(32, inIndex),
                                           outBundle,
                                           APInt(32, outIndex));
-    return outIndex;
   }
   void rewrite(aie::FlowOp op, ArrayRef<Value > operands,
                   ConversionPatternRewriter &rewriter) const override {
@@ -211,6 +214,7 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     while(!done) {
       // Create a connection inside this switchbox.
       WireBundle outBundle;
+      int outIndex = -1; // pick connection.
       if(row > destrow) {
         outBundle = WireBundle::South;
         nextBundle = WireBundle::North;
@@ -231,29 +235,30 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
         assert(row == destrow && col == destcol);
         // done, so connect to the correct target bundle.
         outBundle = destBundle;
+        outIndex = destIndex;
         done = true;
       }
       if(nextrow < 0) {
         ShimSwitchboxOp swOp = analysis.getShimSwitchbox(rewriter, col);
         Region &r = swOp.connections();
-        index = addConnection(rewriter, r, bundle, index, outBundle);
+        addConnection(rewriter, r, bundle, index, outBundle, outIndex);
       } else {
         SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
         int col, row;
         col = swOp.colIndex();
         row = swOp.rowIndex();
         Region &r = swOp.connections();
-        int outIndex = addConnection(rewriter, r, bundle, index, outBundle);
+        addConnection(rewriter, r, bundle, index, outBundle, outIndex);
         if(debugRoute)
           llvm::dbgs() << "Route@(" << col << "," << row << "): " << stringifyWireBundle(bundle) << ":"
                        << index << "->" << stringifyWireBundle(outBundle) << ":" << outIndex
                        << "\n";
-        index = outIndex;
       }
       if(done) break;
       col = nextcol;
       row = nextrow;
       bundle = nextBundle;
+      index = outIndex;
     }
 
     rewriter.eraseOp(Op);
