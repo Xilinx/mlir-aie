@@ -152,6 +152,10 @@ def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parseSwitchboxOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
+  let extraClassDeclaration = [{
+   int getNumSourceConnections(WireBundle bundle);
+	int getNumDestConnections(WireBundle bundle);
+  }];
 }
 
 def aie_ShimSwitchboxOp: aie_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,

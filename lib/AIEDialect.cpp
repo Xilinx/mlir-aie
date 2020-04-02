@@ -150,6 +150,7 @@ static void print(OpAsmPrinter &p, xilinx::aie::SwitchboxOp op) {
 
 }
 
+
 static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
   Region &body = op.connections();
   DenseSet<xilinx::aie::Port> destset;
@@ -164,6 +165,26 @@ static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
           stringifyWireBundle(dest.first) << dest.second << " as another connect operation";
       } else {
         destset.insert(dest);
+      }
+      if(connectOp.sourceIndex() < 0) {
+        connectOp.emitOpError("source index cannot be less than zero");
+      }
+      if(connectOp.sourceIndex() >=
+         op.getNumSourceConnections(connectOp.sourceBundle())) {
+        connectOp.emitOpError("source index for source bundle ") <<
+          stringifyWireBundle(connectOp.sourceBundle()) <<
+          " must be less than " <<
+          op.getNumSourceConnections(connectOp.sourceBundle());
+      }
+      if(connectOp.destIndex() < 0) {
+        connectOp.emitOpError("dest index cannot be less than zero");
+      }
+      if(connectOp.destIndex() >=
+         op.getNumDestConnections(connectOp.destBundle())) {
+        connectOp.emitOpError("dest index for dest bundle ") <<
+          stringifyWireBundle(connectOp.destBundle()) <<
+          " must be less than " <<
+          op.getNumDestConnections(connectOp.destBundle());
       }
     } else if(auto endswitchOp = dyn_cast<xilinx::aie::EndswitchOp>(ops)) {
     } else {
@@ -261,6 +282,27 @@ namespace xilinx {
     // }
 
   //#include "ATenOpInterfaces.cpp.inc"
+
+    int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
+  switch(bundle) {
+  case WireBundle::ME: return 2;
+  case WireBundle::DMA: return 2;
+  case WireBundle::North: return 4;
+  case WireBundle::West: return 4;
+  case WireBundle::South: return 6;
+  case WireBundle::East: return 4;
+  }
+}
+int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
+  switch(bundle) {
+  case WireBundle::ME: return 2;
+  case WireBundle::DMA: return 2;
+  case WireBundle::North: return 6;
+  case WireBundle::West: return 4;
+  case WireBundle::South: return 4;
+  case WireBundle::East: return 4;
+  }
+}
 
   } // namespace aie
 } // namespace xilinx
