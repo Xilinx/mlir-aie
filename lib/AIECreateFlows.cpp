@@ -13,6 +13,10 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::aie;
 
+static llvm::cl::opt<bool> debugRoute("debug-route",
+                                      llvm::cl::desc("Enable Debugging of routing process"),
+                                      llvm::cl::init(false));
+
 typedef llvm::Optional<std::pair<Operation *, Port>> PortConnection;
 
 class CoreAnalysis {
@@ -142,12 +146,6 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
                     WireBundle inBundle,
                     int inIndex,
                     WireBundle outBundle) const {
-    // int col, row;
-    // col = switchboxOp.col().getZExtValue();
-    // row = switchboxOp.row().getZExtValue();
-    // llvm::dbgs() << "Route: " << stringifyWireBundle(inBundle) << ":"
-    //              << inIndex << "->" << stringifyWireBundle(outBundle)
-    //              << "@(" << col << "," << row << ")\n";
     int outIndex = 0;
     // Find an index that is bigger than any existing index.
     Block &b = r.front();
@@ -201,6 +199,10 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
       destrow = -2;
     } else llvm_unreachable("Unimplemented case");
 
+    if(debugRoute)
+      llvm::dbgs() << "Route: " << col << "," << row << "->"
+                   << destcol << "," << destrow << "\n";
+
     WireBundle bundle = sourceBundle;
     int index = sourceIndex;
     int nextcol = col, nextrow = row;
@@ -232,13 +234,21 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
         done = true;
       }
       if(nextrow < 0) {
-        ShimSwitchboxOp swOp = analysis.getShimSwitchbox(rewriter, nextcol);
+        ShimSwitchboxOp swOp = analysis.getShimSwitchbox(rewriter, col);
         Region &r = swOp.connections();
         index = addConnection(rewriter, r, bundle, index, outBundle);
       } else {
-        SwitchboxOp swOp = analysis.getSwitchbox(rewriter, nextcol, nextrow);
+        SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
+        int col, row;
+        col = swOp.col().getZExtValue();
+        row = swOp.row().getZExtValue();
         Region &r = swOp.connections();
-        index = addConnection(rewriter, r, bundle, index, outBundle);
+        int outIndex = addConnection(rewriter, r, bundle, index, outBundle);
+        if(debugRoute)
+          llvm::dbgs() << "Route@(" << col << "," << row << "): " << stringifyWireBundle(bundle) << ":"
+                       << index << "->" << stringifyWireBundle(outBundle) << ":" << outIndex
+                       << "\n";
+        index = outIndex;
       }
       if(done) break;
       col = nextcol;

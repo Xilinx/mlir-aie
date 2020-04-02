@@ -204,6 +204,25 @@ struct StartFlow : public OpConversionPattern<aie::CoreOp> {
 
       }
     }
+    // Corresponds to DMA0 and DMA1
+    auto bundle = WireBundle::DMA;
+    for(int i = 0; i < 2; i++) {
+      PortConnection t = analysis.getConnectedCore(op,
+                                                   std::make_pair(bundle, i));
+      if(t.hasValue()) {
+        Operation *destOp = t.getValue().first;
+        Port destPort = t.getValue().second;
+        IntegerType i32 = IntegerType::get(32, rewriter.getContext());
+        Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
+                                                    newOp->getResult(0),
+                                                    IntegerAttr::get(i32, (int) bundle),
+                                                    IntegerAttr::get(i32, i),
+                                                    destOp->getResult(0),
+                                                    IntegerAttr::get(i32, (int)destPort.first),
+                                                    IntegerAttr::get(i32, (int)destPort.second));
+
+      }
+    }
     // updateRootInPlace(op, [&] {
     //   });
   }
