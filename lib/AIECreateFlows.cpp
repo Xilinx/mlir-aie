@@ -211,15 +211,7 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     while(!done) {
       // Create a connection inside this switchbox.
       WireBundle outBundle;
-      if(col > destcol) {
-        outBundle = WireBundle::West;
-        nextBundle = WireBundle::East;
-        nextcol = col-1;
-      } else if(col < destcol) {
-        outBundle = WireBundle::East;
-        nextBundle = WireBundle::West;
-        nextcol = col+1;
-      } else if(row > destrow) {
+      if(row > destrow) {
         outBundle = WireBundle::South;
         nextBundle = WireBundle::North;
         nextrow = row-1;
@@ -227,6 +219,14 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
         outBundle = WireBundle::North;
         nextBundle = WireBundle::South;
         nextrow = row+1;
+      } else if(col > destcol) {
+        outBundle = WireBundle::West;
+        nextBundle = WireBundle::East;
+        nextcol = col-1;
+      } else if(col < destcol) {
+        outBundle = WireBundle::East;
+        nextBundle = WireBundle::West;
+        nextcol = col+1;
       } else {
         assert(row == destrow && col == destcol);
         // done, so connect to the correct target bundle.
