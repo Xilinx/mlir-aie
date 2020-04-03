@@ -5,7 +5,16 @@
 // packetrules(east:1) {
 // rule(10000|getRow(), %1);
 // }
+// for(i: 1:8)
+// for(j: 1:50) {
+//   out[i][j] = aie.core()
+//   }
+//   flow(out[i][4], out[i][6])
+//   }
 module {
+
+
+
   %20 = aie.core(2, 0)
   %21 = aie.core(2, 1)
   %22 = aie.core(2, 2)

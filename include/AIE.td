@@ -158,6 +158,14 @@ def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
 	int colIndex() { return col().getZExtValue(); }
 	int rowIndex() { return row().getZExtValue(); }
   }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Type resultType, int col, int row", [{
+				  build(builder, result, resultType,
+				  builder->getI32IntegerAttr(col),
+				  builder->getI32IntegerAttr(row));
+				  }]>
+				  ];
 }
 
 def aie_ShimSwitchboxOp: aie_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
@@ -186,6 +194,13 @@ registers
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parseShimSwitchboxOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Type resultType, int col", [{
+				  build(builder, result, resultType,
+				  builder->getI32IntegerAttr(col));
+				  }]>
+				  ];
 }
 
 def aie_CoreOp: aie_Op<"core", []>,
@@ -208,10 +223,14 @@ def aie_CoreOp: aie_Op<"core", []>,
    int colIndex() { return col().getZExtValue(); }
 	int rowIndex() { return row().getZExtValue(); }
   }];
-  // let builders = [
-  //   OpBuilder<"Builder *builder, OperationState &result, "
-  //             "Type resultType, int col, int row">
-  // ];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Type resultType, int col, int row", [{
+				  build(builder, result, resultType,
+				  builder->getI32IntegerAttr(col),
+				  builder->getI32IntegerAttr(row));
+				  }]>
+				  ];
 }
 
 def aie_PLIOOp: aie_Op<"plio", []>,
@@ -276,6 +295,18 @@ def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
     int sourceIndex() { return sourceChannel().getZExtValue(); }
 	 int destIndex() { return destChannel().getZExtValue(); }
   }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "WireBundle sourceBundle, int sourceChannel, "
+				  "WireBundle destBundle, int destChannel", [{
+				  build(builder, result,
+				  sourceBundle,
+				  APInt(32, sourceChannel),
+				  destBundle,
+				  APInt(32, destChannel));
+				  }]
+				  >
+				  ];
 }
 
 def aie_WireOp: aie_Op<"wire", []> {
@@ -292,6 +323,18 @@ def aie_WireOp: aie_Op<"wire", []> {
   let assemblyFormat = [{
 	`(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Value source, int sourceBundle, "
+				  "Value dest, int destBundle", [{
+				  build(builder, result,
+				  source,
+				  builder->getI32IntegerAttr((int)sourceBundle),
+				  dest,
+				  builder->getI32IntegerAttr((int)destBundle));
+				  }]>
+				  ];
+
 }
 
 def aie_FlowOp: aie_Op<"flow", []> {

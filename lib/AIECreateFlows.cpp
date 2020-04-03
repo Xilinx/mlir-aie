@@ -64,9 +64,7 @@ public:
       IntegerType i32 = builder.getIntegerType(32);
       CoreOp coreOp =
         builder.create<CoreOp>(builder.getUnknownLoc(),
-                               builder.getIndexType(),
-                               IntegerAttr::get(i32, (int)col),
-                               IntegerAttr::get(i32, (int)row));
+                               builder.getIndexType(), col, row);
       coordToCore[std::make_pair(col, row)] = coreOp;
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
@@ -83,8 +81,7 @@ public:
       SwitchboxOp switchboxOp =
         builder.create<SwitchboxOp>(builder.getUnknownLoc(),
                                     builder.getIndexType(),
-                                    IntegerAttr::get(i32, (int)col),
-                                    IntegerAttr::get(i32, (int)row));
+                                    col, row);
       switchboxOp.ensureTerminator(switchboxOp.connections(),
                                    builder,
                                    builder.getUnknownLoc());
@@ -164,9 +161,9 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     ConnectOp connectOp =
       rewriter.template create<ConnectOp>(rewriter.getUnknownLoc(),
                                           inBundle,
-                                          APInt(32, inIndex),
+                                          inIndex,
                                           outBundle,
-                                          APInt(32, outIndex));
+                                          outIndex);
   }
   void rewrite(aie::FlowOp op, ArrayRef<Value > operands,
                   ConversionPatternRewriter &rewriter) const override {
@@ -262,28 +259,6 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     }
 
     rewriter.eraseOp(Op);
-    //rewriter.replaceOp(Op, newOp->getOpResults());
-
-    //rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
-    // // Corresponds to ME0 and ME1
-    // for(int i = 0; i < 2; i++) {
-    //   PortConnection t = analysis.getConnectedCore(op,
-    //                                                std::make_pair(WireBundle(0), i));
-    //   if(t.hasValue()) {
-    //     Operation *destOp = t.getValue().first;
-    //     Port destPort = t.getValue().second;
-    //     IntegerType i32 = IntegerType::get(32, rewriter.getContext());
-    //     Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
-    //                                                 newOp->getResult(0),
-    //                                                 IntegerAttr::get(i32, (int)WireBundle(0)),
-    //                                                 IntegerAttr::get(i32, i),
-    //                                                 destOp->getResult(0),
-    //                                                 IntegerAttr::get(i32, (int)destPort.first),
-    //                                                 IntegerAttr::get(i32, (int)destPort.second));
-    //   }
-    // }
-    // updateRootInPlace(op, [&] {
-    //   });
   }
 };
 
@@ -322,56 +297,56 @@ struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
         WireOp meWireOp =
           builder.create<WireOp>(builder.getUnknownLoc(),
                                  core,
-                                 IntegerAttr::get(i32, (int)WireBundle::ME),
+                                 WireBundle::ME,
                                  sw,
-                                 IntegerAttr::get(i32, (int)WireBundle::ME));
+                                 WireBundle::ME);
         WireOp dmaWireOp =
           builder.create<WireOp>(builder.getUnknownLoc(),
                                  core,
-                                 IntegerAttr::get(i32, (int)WireBundle::DMA),
+                                 WireBundle::DMA,
                                  sw,
-                                 IntegerAttr::get(i32, (int)WireBundle::DMA));
+                                 WireBundle::DMA);
         if(col > 0) {
           auto westsw = analysis.getSwitchbox(builder, col-1, row);
           WireOp switchboxOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
                                    westsw,
-                                   IntegerAttr::get(i32, (int)WireBundle::East),
+                                   WireBundle::East,
                                    sw,
-                                   IntegerAttr::get(i32, (int)WireBundle::West));
+                                   WireBundle::West);
         }
         if(row > 0) {
           auto southsw = analysis.getSwitchbox(builder, col, row-1);
           WireOp switchboxOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
                                    southsw,
-                                   IntegerAttr::get(i32, (int)WireBundle::North),
+                                   WireBundle::North,
                                    sw,
-                                   IntegerAttr::get(i32, (int)WireBundle::South));
+                                   WireBundle::South);
         } else if(row == 0) {
           auto southsw = analysis.getShimSwitchbox(builder, col);
           WireOp switchboxOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
                                    southsw,
-                                   IntegerAttr::get(i32, (int)WireBundle::North),
+                                   WireBundle::North,
                                    sw,
-                                   IntegerAttr::get(i32, (int)WireBundle::South));
+                                   WireBundle::South);
           if(col > 0) {
             auto westsw = analysis.getShimSwitchbox(builder, col-1);
             WireOp switchboxOp =
               builder.create<WireOp>(builder.getUnknownLoc(),
                                      westsw,
-                                     IntegerAttr::get(i32, (int)WireBundle::East),
+                                     WireBundle::East,
                                      southsw,
-                                     IntegerAttr::get(i32, (int)WireBundle::West));
+                                     WireBundle::West);
           }
           auto plio = analysis.getPLIO(builder, col);
           WireOp PLIOOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
                                    plio,
-                                   IntegerAttr::get(i32, (int)WireBundle::North),
+                                   WireBundle::North,
                                    southsw,
-                                   IntegerAttr::get(i32, (int)WireBundle::South));
+                                   WireBundle::South);
         }
       }
     }
