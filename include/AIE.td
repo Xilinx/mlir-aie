@@ -309,6 +309,39 @@ def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 				  ];
 }
 
+// def aie_ArbiterOp: aie_Op<"arbiter", [/*HasParent<"SwitchboxOp">,*/
+// 												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
+// 	 let arguments = (ins );
+//   let regions = (region AnyRegion:$region);
+//   let summary = "Arbiter";
+//   let description = [{
+//   An Arbiter
+//   }];
+//   let printer = [{ return ::print(p, *this); }];
+//   let parser = [{ return ::parseArbiterOp(parser, result); }];
+//   // let assemblyFormat = [{
+//   // 	`(` $sourceBundle `:` $sourceChannel `)` attr-dict
+//   // }];
+// }
+def aie_MasterSetOp: aie_Op<"masterset", [HasParent<"SwitchboxOp">]>,
+                              Results<(outs Index)> {
+	 let arguments = (
+		  ins I32Attr:$arbiter,
+		  WireBundle:$destBundle,
+		  I32Attr:$destChannel
+	 );
+  let summary = "Packet switched input connection";
+  let description = [{
+		A Packet switched connection inside a switchbox.
+  }];
+  let assemblyFormat = [{
+	`(` $arbiter `,` $destBundle `:` $destChannel `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int arbiterIndex() { return arbiter().getZExtValue(); }
+	 int destIndex() { return destChannel().getZExtValue(); }
+  }];
+}
 def aie_WireOp: aie_Op<"wire", []> {
 	 let arguments = (
 	 ins Index:$source,
@@ -359,6 +392,119 @@ def aie_FlowOp: aie_Op<"flow", []> {
 	 int destIndex() { return destChannel().getZExtValue(); }
   }];
 }
+def aie_PacketRulesOp: aie_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
+												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
+	 let arguments = (
+	 ins WireBundle:$sourceBundle,
+		  I32Attr:$sourceChannel
+	 );
+  let regions = (region AnyRegion:$rules);
+  let summary = "Packet switched input connection";
+  let description = [{
+		A Packet switched connection inside a switchbox.
+  }];
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parsePacketRulesOp(parser, result); }];
+  // let assemblyFormat = [{
+  // 	`(` $sourceBundle `:` $sourceChannel `)` attr-dict
+  // }];
+  let extraClassDeclaration = [{
+    int sourceIndex() { return sourceChannel().getZExtValue(); }
+  }];
+}
+def aie_PacketRuleOp: aie_Op<"rule", [HasParent<"PacketRulesOp">]> {
+	 let arguments = (
+		  ins I8Attr:$mask,
+		  I8Attr:$value,
+		  Index:$masterset
+	 );
+  let summary = "Packet switched input connection";
+  let description = [{
+		A Packet switched connection inside a switchbox.
+  }];
+  let extraClassDeclaration = [{
+    int maskInt() { return mask().getZExtValue(); }
+	 int valueInt() { return value().getZExtValue(); }
+  }];
+  let assemblyFormat = [{
+		`(` $mask `,` $value `,` $masterset `)` attr-dict
+  }];
+}
+def aie_PacketFlowOp: aie_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
+												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
+	 let arguments = (
+	 ins I8Attr:$ID
+	 );
+  let regions = (region AnyRegion:$ports);
+  let summary = "Packet switched flow";
+  let description = [{
+		A logical packet switched flow between cores.  During place and
+	 route, this is replaced by MasterSets and PacketRules inside
+	 switchboxes.
+}];
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parsePacketFlowOp(parser, result); }];
+  // let assemblyFormat = [{
+  // 	`(` $sourceBundle `:` $sourceChannel `)` attr-dict
+  // }];
+  let extraClassDeclaration = [{
+    int IDInt() { return ID().getZExtValue(); }
+  }];
+}
+def aie_PacketSourceOp: aie_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
+	 let arguments = (
+	 ins Index:$core,
+	     WireBundle:$bundle,
+		  I32Attr:$channel
+	 );
+  let summary = "A sourceport";
+  let description = [{
+     A port which is the source of a flow.
+  }];
+  let assemblyFormat = [{
+	`<` $core `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel().getZExtValue(); }
+  }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Value core, WireBundle bundle, int channel", [{
+				  build(builder, result,
+				  core,
+				  bundle,
+				  APInt(32, channel));
+				  }]
+				  >
+				  ];
+}
+def aie_PacketDestOp: aie_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
+	 let arguments = (
+	 ins Index:$core,
+	     WireBundle:$bundle,
+		  I32Attr:$channel
+	 );
+  let summary = "A destination port";
+  let description = [{
+     A port which is the destination  of a flow.
+  }];
+  let assemblyFormat = [{
+	`<` $core `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel().getZExtValue(); }
+  }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Value core, WireBundle bundle, int channel", [{
+				  build(builder, result,
+				  core,
+				  bundle,
+				  APInt(32, channel));
+				  }]
+				  >
+				  ];
+}
 
 def aie_EndswitchOp: aie_Op<"endswitch", [Terminator
 													  /*,Or<[HasParent<"SwitchboxOp">,
@@ -367,5 +513,15 @@ def aie_EndswitchOp: aie_Op<"endswitch", [Terminator
   let summary = "end of a switch";
   let description = [{
 		Terminator for switchbox
+  }];
+}
+
+def aie_EndarbiterOp: aie_Op<"endarbiter", [Terminator
+													  /*,Or<[HasParent<"SwitchboxOp">,
+														  HasParent<"ShimSwitchboxOp">]>*/
+							]> {
+  let summary = "end of a arbiter";
+  let description = [{
+		Terminator for arbiterbox
   }];
 }

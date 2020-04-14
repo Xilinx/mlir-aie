@@ -14,7 +14,6 @@
 module {
 
 
-
   %20 = aie.core(2, 0)
   %21 = aie.core(2, 1)
   %22 = aie.core(2, 2)
