@@ -21,7 +21,8 @@ static TranslateFromMLIRRegistration
         for(auto switchboxOp : module.getOps<SwitchboxOp>()) {
           Region &r = switchboxOp.connections();
           Block &b = r.front();
-          bool isEmpty = b.getOps<ConnectOp>().empty();
+          bool isEmpty = b.getOps<ConnectOp>().empty() &&
+            b.getOps<MasterSetOp>().empty();
           int col = switchboxOp.col().getZExtValue();
           int row = switchboxOp.row().getZExtValue();
           if(!isEmpty) {
@@ -55,7 +56,6 @@ static TranslateFromMLIRRegistration
           }
           for (auto connectOp : b.getOps<PacketRulesOp>()) {
             int slot = 0;
-            output << "PacketRules:\n";
             Block &block = connectOp.rules().front();
             for (auto slotOp : block.getOps<PacketRuleOp>()) {
               Operation *op = slotOp.masterset().getDefiningOp();
