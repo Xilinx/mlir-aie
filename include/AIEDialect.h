@@ -90,11 +90,11 @@ public:
 
 //#include "AIEOpInterfaces.h.inc"
 
+  typedef std::pair<WireBundle, int> Port;
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "AIE.h.inc"
-
-  typedef std::pair<WireBundle, int> Port;
 
 } // aie
 } // xilinx

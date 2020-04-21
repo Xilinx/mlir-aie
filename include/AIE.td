@@ -12,6 +12,16 @@ include "mlir/IR/OpBase.td"
 
 def aie_Dialect : Dialect {
   let name = "aie";
+  let description = [{
+
+This is a dialect for describing netlists of AIE components in a
+Versal device.  It focuses on representing logical stream connections
+between cores and DMAs, along with the implementation of those logical
+connections in the various switch components.  In the dialect, a
+switch is referred to as 'switchbox' to avoid confusion with the
+'switch' keyword in C/C++.
+
+  }];
 }
 
 def ME: I32EnumAttrCase<"ME", 0>;
@@ -213,6 +223,7 @@ def aie_CoreOp: aie_Op<"core", []>,
   let summary = "Declare a core";
   let description = [{
 		A core
+		<a>coreop</a>
   }];
   let assemblyFormat = [{
 	`(` $col `,` $row `)` attr-dict
@@ -284,9 +295,14 @@ def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 		  WireBundle:$destBundle,
 		  I32Attr:$destChannel
 	 );
-  let summary = "connection inside a switch";
+  let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
-		A connection inside a switchbox.
+    The "aie.connect" operation represents a programmed circuit-switched connection in a stream switch.  It associates a source bundle and source channel with a destination bundle and a destination channel.  The "aie.connect" operation must exist within an "aie.switchbox" or "aie.shimswitchbox" operation.  All of the "aie.connect" operations in a switchbox must have a different destination.  All of the "aie.connect" operations must also have a destination which is different from all of the "aie.masterset" operations in the same switchbox.
+    Example:
+
+    %7 = aie.switchbox(1, 1) {
+      aie.connect<"West" : 0, "ME" : 1>
+    }
   }];
   let assemblyFormat = [{
 	`<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
@@ -294,6 +310,8 @@ def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel().getZExtValue(); }
 	 int destIndex() { return destChannel().getZExtValue(); }
+	 Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
+	 Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, "
@@ -309,20 +327,49 @@ def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 				  ];
 }
 
-// def aie_ArbiterOp: aie_Op<"arbiter", [/*HasParent<"SwitchboxOp">,*/
-// 												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
-// 	 let arguments = (ins );
-//   let regions = (region AnyRegion:$region);
-//   let summary = "Arbiter";
-//   let description = [{
-//   An Arbiter
-//   }];
-//   let printer = [{ return ::print(p, *this); }];
-//   let parser = [{ return ::parseArbiterOp(parser, result); }];
-//   // let assemblyFormat = [{
-//   // 	`(` $sourceBundle `:` $sourceChannel `)` attr-dict
-//   // }];
-// }
+def aie_FlowOp: aie_Op<"flow", []> {
+	 let arguments = (
+	 ins Index:$source,
+		  WireBundle:$sourceBundle,
+		  I32Attr:$sourceChannel,
+		  Index:$dest,
+		  WireBundle:$destBundle,
+		  I32Attr:$destChannel
+	 );
+  let summary = "A logical circuit-switched connection between cores";
+  let description = [{
+  The "aie.flow" operation represents a circuit switched connection between two endpoints, usually "aie.core" operations.  During routing, this is
+  replaced by "aie.connect" operations which represent the programmed connections inside a switchbox, along with "aie.wire" operations which represent physical connections between switchboxes and other components.
+
+Example:
+    %00 = aie.core(0, 0)
+    %11 = aie.core(1, 1)
+    %01 = aie.core(0, 1)
+    aie.flow(%00, "DMA" : 0, %11, "ME" : 1)
+
+  }];
+  let assemblyFormat = [{
+	`(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int sourceIndex() { return sourceChannel().getZExtValue(); }
+	 int destIndex() { return destChannel().getZExtValue(); }
+  }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "Value source, int sourceBundle, int sourceChannel,"
+				  "Value dest, int destBundle, int destChannel", [{
+				  build(builder, result,
+				  source,
+				  builder->getI32IntegerAttr(sourceBundle),
+				  builder->getI32IntegerAttr(sourceChannel),
+				  dest,
+				  builder->getI32IntegerAttr(destBundle),
+				  builder->getI32IntegerAttr(destChannel));
+				  }]>
+				  ];
+}
+
 def aie_MasterSetOp: aie_Op<"masterset", [HasParent<"SwitchboxOp">]>,
                               Results<(outs Index)> {
 	 let arguments = (
@@ -340,8 +387,10 @@ def aie_MasterSetOp: aie_Op<"masterset", [HasParent<"SwitchboxOp">]>,
   let extraClassDeclaration = [{
     int arbiterIndex() { return arbiter().getZExtValue(); }
 	 int destIndex() { return destChannel().getZExtValue(); }
+	 Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
 }
+
 def aie_WireOp: aie_Op<"wire", []> {
 	 let arguments = (
 	 ins Index:$source,
@@ -349,9 +398,10 @@ def aie_WireOp: aie_Op<"wire", []> {
 		  Index:$dest,
 		  WireBundle:$destBundle
 	 );
-  let summary = "wire between switches";
+  let summary = "A bundle of physical wires between components";
   let description = [{
-		A wire between switches.
+
+		The "aie.wire" operation represents a physical set of connections between components in a Versal device.  Typically, these components are switches, represented by an "aie.switchbox" operation, and cores, represented by an [aie.core](#aiecore-aiecoreop) operation.
   }];
   let assemblyFormat = [{
 	`(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
@@ -367,31 +417,8 @@ def aie_WireOp: aie_Op<"wire", []> {
 				  builder->getI32IntegerAttr((int)destBundle));
 				  }]>
 				  ];
-
 }
 
-def aie_FlowOp: aie_Op<"flow", []> {
-	 let arguments = (
-	 ins Index:$source,
-		  WireBundle:$sourceBundle,
-		  I32Attr:$sourceChannel,
-		  Index:$dest,
-		  WireBundle:$destBundle,
-		  I32Attr:$destChannel
-	 );
-  let summary = "logical flow between cores";
-  let description = [{
-  A logical flow between cores.  During place and route, this is
-  replaced by SwitchboxOp and WireOp.
-  }];
-  let assemblyFormat = [{
-	`(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
-  }];
-  let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel().getZExtValue(); }
-	 int destIndex() { return destChannel().getZExtValue(); }
-  }];
-}
 def aie_PacketRulesOp: aie_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
 												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
 	 let arguments = (
@@ -410,7 +437,8 @@ def aie_PacketRulesOp: aie_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
   // }];
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel().getZExtValue(); }
-  }];
+	 Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
+}];
 }
 def aie_PacketRuleOp: aie_Op<"rule", [HasParent<"PacketRulesOp">]> {
 	 let arguments = (
@@ -425,7 +453,14 @@ def aie_PacketRuleOp: aie_Op<"rule", [HasParent<"PacketRulesOp">]> {
   let extraClassDeclaration = [{
     int maskInt() { return mask().getZExtValue(); }
 	 int valueInt() { return value().getZExtValue(); }
-  }];
+	 MasterSetOp &masterSetOp() {
+	   // FIXME: Verify this..
+		Operation *op = masterset().getDefiningOp();
+		assert(op);
+	   auto masterSetOp = dyn_cast_or_null<MasterSetOp>(op);
+		//	assert(masterSetOp);
+    }
+}];
   let assemblyFormat = [{
 		`(` $mask `,` $value `,` $masterset `)` attr-dict
   }];
@@ -450,6 +485,14 @@ def aie_PacketFlowOp: aie_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
   let extraClassDeclaration = [{
     int IDInt() { return ID().getZExtValue(); }
   }];
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &result, "
+              "int ID", [{
+				  build(builder, result,
+				  APInt(8, ID));
+				  }]
+				  >
+				  ];
 }
 def aie_PacketSourceOp: aie_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
 	 let arguments = (

@@ -71,7 +71,10 @@ std::pair<WireBundle, int> getBundleForEnum(MasterPortEnum master) {
   }
 }
 
+typedef std::pair<int, int> MaskValue;
 typedef std::pair<Operation *, Port> PortConnection;
+typedef std::pair<Port, MaskValue> PortMaskValue;
+typedef std::pair<PortConnection, MaskValue> PacketConnection;
 
 class ConnectivityAnalysis {
   ModuleOp &module;
@@ -102,17 +105,28 @@ private:
     return None;
   }
 
-  std::vector<Port>
+  std::vector<PortMaskValue>
   getConnectionsThroughSwitchbox(SwitchboxOp op,
-                                 Port sourcePort) const {
+                                       Port sourcePort) const {
     Region &r = op.connections();
     Block &b = r.front();
-    std::vector<Port> portSet;
+    std::vector<PortMaskValue> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if(connectOp.sourceBundle() == sourcePort.first &&
-         connectOp.sourceIndex() == sourcePort.second) {
-        portSet.push_back(std::make_pair(connectOp.destBundle(),
-                                         connectOp.destIndex()));
+      if(connectOp.sourcePort() == sourcePort) {
+        MaskValue maskValue = std::make_pair(0, 0);
+        portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
+        //llvm::dbgs() << "To:" << stringifyWireBundle(connectOp.destPort().first) << " " << connectOp.destPort().second << "\n";
+      }
+    }
+    for (auto connectOp : b.getOps<PacketRulesOp>()) {
+      if(connectOp.sourcePort() == sourcePort) {
+        // llvm::dbgs() << stringifyWireBundle(connectOp.sourcePort().first) << " " << (int)sourcePort.first << "\n";
+        for (auto ruleOp : connectOp.rules().front().getOps<PacketRuleOp>()) {
+          MasterSetOp masterSetOp = dyn_cast_or_null<MasterSetOp>(ruleOp.masterset().getDefiningOp());
+          // llvm::dbgs() << "To:" << stringifyWireBundle(masterSetOp.destPort().first) << " " << masterSetOp.destPort().second << "\n";
+          MaskValue maskValue = std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
+          portSet.push_back(std::make_pair(masterSetOp.destPort(), maskValue));
+        }
       }
     }
     return portSet;
@@ -122,35 +136,58 @@ public:
   // Get the cores connected to the given core, starting from the given
   // output port of the core.  This is 1:N relationship because each
   // switchbox can broadcast.
-  std::vector<PortConnection>
+  std::vector<PacketConnection>
   getConnectedCores(CoreOp coreOp,
                     Port port) const {
     // The accumulated result;
-    std::vector<PortConnection> connectedCores;
+    std::vector<PacketConnection> connectedCores;
     // A worklist of PortConnections to visit.  These are all input ports of
     // some object (likely either a CoreOp or a SwitchboxOp).
-    std::vector<PortConnection> worklist;
+    std::vector<PacketConnection> worklist;
     // Start the worklist by traversing from the core to its connected
     // switchbox.
     auto t = getConnectionThroughWire(coreOp.getOperation(), port);
     assert(t.hasValue());
-    worklist.push_back(t.getValue());
+    worklist.push_back(std::make_pair(t.getValue(),
+                                      std::make_pair(0, 0)));
 
     while(!worklist.empty()) {
-      PortConnection t = worklist.back();
+      PacketConnection t = worklist.back();
       worklist.pop_back();
-      Operation *other = t.first;
-      Port otherPort = t.second;
+      PortConnection portConnection = t.first;
+      MaskValue maskValue = t.second;
+      Operation *other = portConnection.first;
+      Port otherPort = portConnection.second;
       if(auto coreOp = dyn_cast_or_null<CoreOp>(other)) {
         // If we got to a core, then add it to the result.
         connectedCores.push_back(t);
       } else if(auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
-        std::vector<Port> nextPorts = getConnectionsThroughSwitchbox(switchOp, otherPort);
-        for(auto &nextPort: nextPorts) {
+        std::vector<PortMaskValue> nextPortMaskValues = getConnectionsThroughSwitchbox(switchOp, otherPort);
+        bool matched = false;
+        for(auto &nextPortMaskValue: nextPortMaskValues) {
+          Port nextPort = nextPortMaskValue.first;
+          MaskValue nextMaskValue = nextPortMaskValue.second;
+          int maskConflicts = nextMaskValue.first & maskValue.first;
+          if((maskConflicts & nextMaskValue.second) !=
+             (maskConflicts & maskValue.second)) {
+            // Incoming packets cannot match this rule. Skip it.
+            continue;
+          }
+          matched = true;
+          MaskValue newMaskValue =
+            std::make_pair(maskValue.first | nextMaskValue.first,
+                           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
           auto nextConnection =
             getConnectionThroughWire(switchOp, nextPort);
           assert(nextConnection.hasValue());
-          worklist.push_back(nextConnection.getValue());
+          worklist.push_back(std::make_pair(nextConnection.getValue(),
+                                            newMaskValue));
+        }
+        if(nextPortMaskValues.size() > 0 && !matched) {
+          // No rule matched some incoming packet.  This is likely a
+          // configuration error.
+          llvm::dbgs() << "No rule matched incoming packet here: ";
+          other->dump();
         }
       }
     }
@@ -183,20 +220,41 @@ struct StartFlow : public OpConversionPattern<aie::CoreOp> {
     std::vector<WireBundle> bundles = {WireBundle::ME, WireBundle::DMA};
     for(WireBundle bundle: bundles) {
       for(int i = 0; i < op.getNumSourceConnections(bundle); i++) {
-        std::vector<PortConnection> cores =
+        std::vector<PacketConnection> cores =
           analysis.getConnectedCores(op,
                                      std::make_pair(bundle, i));
-        for(PortConnection &c: cores) {
-          Operation *destOp = c.first;
-          Port destPort = c.second;
+        for(PacketConnection &c: cores) {
+          PortConnection portConnection = c.first;
+          MaskValue maskValue = c.second;
+          Operation *destOp = portConnection.first;
+          Port destPort = portConnection.second;
           IntegerType i32 = IntegerType::get(32, rewriter.getContext());
-          Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
-                                                      newOp->getResult(0),
-                                                      IntegerAttr::get(i32, (int) bundle),
-                                                      IntegerAttr::get(i32, i),
-                                                      destOp->getResult(0),
-                                                      IntegerAttr::get(i32, (int)destPort.first),
-                                                      IntegerAttr::get(i32, (int)destPort.second));
+          if(maskValue.first == 0) {
+            Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
+                                                        newOp->getResult(0),
+                                                        (int)bundle,
+                                                        (int)i,
+                                                        destOp->getResult(0),
+                                                        (int)destPort.first,
+                                                        (int)destPort.second);
+          } else {
+            PacketFlowOp flowOp = rewriter.create<PacketFlowOp>(Op->getLoc(),
+                                                       maskValue.second);
+            flowOp.ensureTerminator(flowOp.ports(),
+                                    rewriter,
+                                    Op->getLoc());
+            OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+            rewriter.setInsertionPoint(flowOp.ports().front().getTerminator());
+            Operation *packetSourceOp = rewriter.create<PacketSourceOp>(Op->getLoc(),
+                                                            newOp->getResult(0),
+                                                                 bundle,
+                                                                 (int)i);
+            Operation *packetDestOp = rewriter.create<PacketDestOp>(Op->getLoc(),
+                                                        destOp->getResult(0),
+                                                        destPort.first,
+                                                        (int)destPort.second);
+            rewriter.restoreInsertionPoint(ip);
+          }
         }
       }
     }
@@ -212,6 +270,9 @@ struct AIEFindFlowsPass : public ModulePass<AIEFindFlowsPass> {
 
     ConversionTarget target(getContext());
     target.addLegalOp<FlowOp>();
+    target.addLegalOp<PacketFlowOp>();
+    target.addLegalOp<PacketSourceOp>();
+    target.addLegalOp<PacketDestOp>();
     target.addDynamicallyLegalOp<CoreOp>([](CoreOp op) { return (bool)op.getOperation()->getAttrOfType<BoolAttr>("HasFlow"); });
     //   target.addDynamicallyLegalDialect<AIEDialect>();
 
