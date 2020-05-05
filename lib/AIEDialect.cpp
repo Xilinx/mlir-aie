@@ -7,7 +7,7 @@
 using namespace mlir;
 
 namespace xilinx {
-namespace aie {
+namespace AIE {
 
   //namespace detail {
 
@@ -83,7 +83,7 @@ namespace aie {
 //   os << ">";
 // }
 
-AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("aie", ctx) {
+AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx) {
   //addTypes<AIEListType>();
   addOperations<
 #define GET_OP_LIST
@@ -91,7 +91,7 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("aie", ctx) {
     >();
 }
 
-} // namespace aie
+} // namespace AIE
 } // namespace xilinx
 
 // static ParseResult parseArbiterOp(OpAsmParser &parser, OperationState &result) {
@@ -112,7 +112,7 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("aie", ctx) {
 //   // // Parse the optional attribute list.
 //   // if (parser.parseOptionalAttrDict(result.attributes))
 //   //   return failure();
-//   xilinx::aie::ArbiterOp::ensureTerminator(*mastersets, parser.getBuilder(), result.location);
+//   xilinx::AIE::ArbiterOp::ensureTerminator(*mastersets, parser.getBuilder(), result.location);
 
 //   return success();
 // }
@@ -135,7 +135,7 @@ static ParseResult parsePacketRulesOp(OpAsmParser &parser, OperationState &resul
                               "sourceBundle", attrStorage))
       return failure();
 
-    auto attrOptional = xilinx::aie::symbolizeWireBundle(attrVal.getValue());
+    auto attrOptional = xilinx::AIE::symbolizeWireBundle(attrVal.getValue());
     if (!attrOptional)
       return parser.emitError(loc, "invalid ")
              << "sourceBundle attribute specification: " << attrVal;
@@ -158,7 +158,7 @@ static ParseResult parsePacketRulesOp(OpAsmParser &parser, OperationState &resul
   // // Parse the optional attribute list.
   // if (parser.parseOptionalAttrDict(result.attributes))
   //   return failure();
-  xilinx::aie::PacketRulesOp::ensureTerminator(*rules, parser.getBuilder(), result.location);
+  xilinx::AIE::PacketRulesOp::ensureTerminator(*rules, parser.getBuilder(), result.location);
 
   return success();
 }
@@ -198,16 +198,16 @@ static ParseResult parseSwitchboxOp(OpAsmParser &parser, OperationState &result)
   // // Parse the optional attribute list.
   // if (parser.parseOptionalAttrDict(result.attributes))
   //   return failure();
-  xilinx::aie::SwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
+  xilinx::AIE::SwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
 
   return success();
 }
 
-// static void print(OpAsmPrinter &p, xilinx::aie::ArbiterOp op) {
+// static void print(OpAsmPrinter &p, xilinx::AIE::ArbiterOp op) {
 //   bool printBlockTerminators = false;
 
 //   Region &body = op.region();
-//   p << xilinx::aie::ArbiterOp::getOperationName();
+//   p << xilinx::AIE::ArbiterOp::getOperationName();
 //   p << '(';
 //   p << ')';
 
@@ -217,11 +217,11 @@ static ParseResult parseSwitchboxOp(OpAsmParser &parser, OperationState &result)
 //   //  p.printOptionalAttrDict(op.getAttrs());
 
 // }
-static void print(OpAsmPrinter &p, xilinx::aie::PacketRulesOp op) {
+static void print(OpAsmPrinter &p, xilinx::AIE::PacketRulesOp op) {
   bool printBlockTerminators = false;
 
   Region &body = op.rules();
-  p << xilinx::aie::PacketRulesOp::getOperationName();
+  p << xilinx::AIE::PacketRulesOp::getOperationName();
   p << '(';
   p << "\"" << stringifyWireBundle(op.sourceBundle()) << "\"";
   p << " " << ":";
@@ -235,11 +235,11 @@ static void print(OpAsmPrinter &p, xilinx::aie::PacketRulesOp op) {
   //  p.printOptionalAttrDict(op.getAttrs());
 
 }
-static void print(OpAsmPrinter &p, xilinx::aie::SwitchboxOp op) {
+static void print(OpAsmPrinter &p, xilinx::AIE::SwitchboxOp op) {
   bool printBlockTerminators = false;
 
   Region &body = op.connections();
-  p << xilinx::aie::SwitchboxOp::getOperationName();
+  p << xilinx::AIE::SwitchboxOp::getOperationName();
   p << '(';
   p << op.col() << ", " << op.row();
   p << ')';
@@ -252,19 +252,19 @@ static void print(OpAsmPrinter &p, xilinx::aie::SwitchboxOp op) {
 }
 
 
-static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
+static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
   Region &body = op.connections();
-  DenseSet<xilinx::aie::Port> sourceset;
-  DenseSet<xilinx::aie::Port> destset;
+  DenseSet<xilinx::AIE::Port> sourceset;
+  DenseSet<xilinx::AIE::Port> destset;
   assert(op.getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front()) {
-    if(auto connectOp = dyn_cast<xilinx::aie::ConnectOp>(ops)) {
-      xilinx::aie::Port source = std::make_pair(connectOp.sourceBundle(),
+    if(auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
+      xilinx::AIE::Port source = std::make_pair(connectOp.sourceBundle(),
                                                 connectOp.sourceIndex());
       sourceset.insert(source);
 
-      xilinx::aie::Port dest = std::make_pair(connectOp.destBundle(),
+      xilinx::AIE::Port dest = std::make_pair(connectOp.destBundle(),
                                               connectOp.destIndex());
       if(destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ") <<
@@ -293,8 +293,8 @@ static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
           " must be less than " <<
           op.getNumDestConnections(connectOp.destBundle());
       }
-    } else if(auto connectOp = dyn_cast<xilinx::aie::MasterSetOp>(ops)) {
-      xilinx::aie::Port dest = std::make_pair(connectOp.destBundle(),
+    } else if(auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
+      xilinx::AIE::Port dest = std::make_pair(connectOp.destBundle(),
                                               connectOp.destIndex());
       if(destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ") <<
@@ -313,8 +313,8 @@ static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
           " must be less than " <<
           op.getNumDestConnections(connectOp.destBundle());
       }
-    } else if(auto connectOp = dyn_cast<xilinx::aie::PacketRulesOp>(ops)) {
-      xilinx::aie::Port source = std::make_pair(connectOp.sourceBundle(),
+    } else if(auto connectOp = dyn_cast<xilinx::AIE::PacketRulesOp>(ops)) {
+      xilinx::AIE::Port source = std::make_pair(connectOp.sourceBundle(),
                                                 connectOp.sourceIndex());
       if(sourceset.count(source)) {
         return connectOp.emitOpError("packet switched source ") <<
@@ -323,7 +323,7 @@ static LogicalResult verify(xilinx::aie::SwitchboxOp op) {
       } else {
         sourceset.insert(source);
       }
-    } else if(auto endswitchOp = dyn_cast<xilinx::aie::EndswitchOp>(ops)) {
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -361,16 +361,16 @@ static ParseResult parseShimSwitchboxOp(OpAsmParser &parser, OperationState &res
   // // Parse the optional attribute list.
   // if (parser.parseOptionalAttrDict(result.attributes))
   //   return failure();
-  xilinx::aie::ShimSwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
+  xilinx::AIE::ShimSwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
 
   return success();
 }
 
-static void print(OpAsmPrinter &p, xilinx::aie::ShimSwitchboxOp op) {
+static void print(OpAsmPrinter &p, xilinx::AIE::ShimSwitchboxOp op) {
   bool printBlockTerminators = false;
 
   Region &body = op.connections();
-  p << xilinx::aie::ShimSwitchboxOp::getOperationName();
+  p << xilinx::AIE::ShimSwitchboxOp::getOperationName();
   p << '(';
   p << op.col();
   p << ')';
@@ -382,14 +382,14 @@ static void print(OpAsmPrinter &p, xilinx::aie::ShimSwitchboxOp op) {
 
 }
 
-static LogicalResult verify(xilinx::aie::ShimSwitchboxOp op) {
+static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
   Region &body = op.connections();
-  DenseSet<xilinx::aie::Port> destset;
+  DenseSet<xilinx::AIE::Port> destset;
   assert(op.getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front()) {
-    if(auto connectOp = dyn_cast<xilinx::aie::ConnectOp>(ops)) {
-      xilinx::aie::Port dest = std::make_pair(connectOp.destBundle(),
+    if(auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
+      xilinx::AIE::Port dest = std::make_pair(connectOp.destBundle(),
                                               connectOp.destIndex());
       if(destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ") <<
@@ -397,7 +397,7 @@ static LogicalResult verify(xilinx::aie::ShimSwitchboxOp op) {
       } else {
         destset.insert(dest);
       }
-    } else if(auto endswitchOp = dyn_cast<xilinx::aie::EndswitchOp>(ops)) {
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -431,16 +431,16 @@ static ParseResult parsePacketFlowOp(OpAsmParser &parser, OperationState &result
   // // Parse the optional attribute list.
   // if (parser.parseOptionalAttrDict(result.attributes))
   //   return failure();
-  xilinx::aie::PacketFlowOp::ensureTerminator(*ports, parser.getBuilder(), result.location);
+  xilinx::AIE::PacketFlowOp::ensureTerminator(*ports, parser.getBuilder(), result.location);
 
   return success();
 }
 
-static void print(OpAsmPrinter &p, xilinx::aie::PacketFlowOp op) {
+static void print(OpAsmPrinter &p, xilinx::AIE::PacketFlowOp op) {
   bool printBlockTerminators = false;
 
   Region &body = op.ports();
-  p << xilinx::aie::PacketFlowOp::getOperationName();
+  p << xilinx::AIE::PacketFlowOp::getOperationName();
   p << '(' << op.ID() << ')';
 
   p.printRegion(body,
@@ -450,15 +450,15 @@ static void print(OpAsmPrinter &p, xilinx::aie::PacketFlowOp op) {
 
 }
 
-static LogicalResult verify(xilinx::aie::PacketFlowOp op) {
+static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
   Region &body = op.ports();
-  //DenseSet<xilinx::aie::Port> destset;
+  //DenseSet<xilinx::AIE::Port> destset;
   assert(op.getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front()) {
-    if(auto Op = dyn_cast<xilinx::aie::PacketSourceOp>(ops)) {
-    } else if(auto Op = dyn_cast<xilinx::aie::PacketDestOp>(ops)) {
-    } else if(auto endswitchOp = dyn_cast<xilinx::aie::EndswitchOp>(ops)) {
+    if(auto Op = dyn_cast<xilinx::AIE::PacketSourceOp>(ops)) {
+    } else if(auto Op = dyn_cast<xilinx::AIE::PacketDestOp>(ops)) {
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a PacketFlow op");
     }
@@ -470,7 +470,7 @@ static LogicalResult verify(xilinx::aie::PacketFlowOp op) {
 #include "AIEEnums.cpp.inc"
 
 namespace xilinx {
-  namespace aie {
+  namespace AIE {
 #define GET_OP_CLASSES
 #include "AIE.cpp.inc"
 
@@ -519,5 +519,5 @@ namespace xilinx {
       }
     }
 
-  } // namespace aie
+  } // namespace AIE
 } // namespace xilinx

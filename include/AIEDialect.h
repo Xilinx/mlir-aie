@@ -25,7 +25,7 @@ using namespace mlir;
 #include "AIEEnums.h.inc"
 
 namespace xilinx {
-namespace aie {
+namespace AIE {
 
 void registerAIEFindFlowsPass();
 void registerAIECreateFlowsPass();
@@ -34,7 +34,7 @@ void registerAIECreateFlowsPass();
 class AIEDialect : public mlir::Dialect {
 public:
   explicit AIEDialect(mlir::MLIRContext *ctx);
-  static StringRef getDialectNamespace() { return "aie"; }
+  static StringRef getDialectNamespace() { return "AIE"; }
 
 
   // /// Parse a type registered to this dialect. Overridding this method is
@@ -96,7 +96,7 @@ public:
 #define GET_OP_CLASSES
 #include "AIE.h.inc"
 
-} // aie
+} // AIE
 } // xilinx
 
 #endif

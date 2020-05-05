@@ -19,9 +19,6 @@ set(LIBS
   MLIROptLib
   MLIRParser
   MLIRPass
-  MLIRQuantizerFxpMathConfig
-  MLIRQuantizerSupport
-  MLIRQuantizerTransforms
   MLIRSPIRV
   MLIRSPIRVTestPasses
   MLIRSPIRVTransforms

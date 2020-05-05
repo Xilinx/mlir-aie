@@ -11,7 +11,7 @@
 
 using namespace mlir;
 using namespace xilinx;
-using namespace xilinx::aie;
+using namespace xilinx::AIE;
 
 static llvm::cl::opt<bool> debugRoute("debug-route",
                                       llvm::cl::desc("Enable Debugging of routing process"),
@@ -125,8 +125,8 @@ public:
   }
 };
 
-struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
-  using OpConversionPattern<aie::FlowOp>::OpConversionPattern;
+struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
+  using OpConversionPattern<AIE::FlowOp>::OpConversionPattern;
   CoreAnalysis &analysis;
   ModuleOp &module;
   RouteFlows(MLIRContext *context, ModuleOp &m, CoreAnalysis &a,
@@ -134,8 +134,8 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
     : OpConversionPattern<FlowOp>(context, benefit),
     module(m), analysis(a) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    return matchSuccess();
+  LogicalResult match(Operation *op) const override {
+    return success();
   }
 
   void addConnection(ConversionPatternRewriter &rewriter,
@@ -165,7 +165,7 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
                                           outBundle,
                                           outIndex);
   }
-  void rewrite(aie::FlowOp op, ArrayRef<Value > operands,
+  void rewrite(AIE::FlowOp op, ArrayRef<Value > operands,
                   ConversionPatternRewriter &rewriter) const override {
 
     Operation *Op = op.getOperation();
@@ -263,10 +263,11 @@ struct RouteFlows : public OpConversionPattern<aie::FlowOp> {
 };
 
 
-struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
-  void runOnModule() override {
+struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
+                                                   OperationPass<ModuleOp>> {
+  void runOnOperation() override {
 
-    ModuleOp m = getModule();
+    ModuleOp m = getOperation();
     CoreAnalysis analysis(m);
     IntegerType i32 = IntegerType::get(32, m.getContext());
 
@@ -362,7 +363,7 @@ struct AIECreateSwitchboxPass : public ModulePass<AIECreateSwitchboxPass> {
   }
 };
 
-void xilinx::aie::registerAIECreateFlowsPass() {
+void xilinx::AIE::registerAIECreateFlowsPass() {
     PassRegistration<AIECreateSwitchboxPass>(
       "aie-create-flows",
       "Extract flows from a placed and routed design");

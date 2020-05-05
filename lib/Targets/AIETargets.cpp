@@ -11,7 +11,7 @@
 
 using namespace mlir;
 using namespace xilinx;
-using namespace xilinx::aie;
+using namespace xilinx::AIE;
 
 static TranslateFromMLIRRegistration
     registration("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {

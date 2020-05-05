@@ -9,7 +9,7 @@
 
 using namespace mlir;
 using namespace xilinx;
-using namespace xilinx::aie;
+using namespace xilinx::AIE;
 
 std::pair<WireBundle, int> getBundleForEnum(SlavePortEnum slave) {
   switch(slave) {
@@ -195,8 +195,8 @@ public:
   }
 };
 
-struct StartFlow : public OpConversionPattern<aie::CoreOp> {
-  using OpConversionPattern<aie::CoreOp>::OpConversionPattern;
+struct StartFlow : public OpConversionPattern<AIE::CoreOp> {
+  using OpConversionPattern<AIE::CoreOp>::OpConversionPattern;
   ConnectivityAnalysis analysis;
   ModuleOp &module;
   StartFlow(MLIRContext *context, ModuleOp &m, ConnectivityAnalysis a,
@@ -204,11 +204,11 @@ struct StartFlow : public OpConversionPattern<aie::CoreOp> {
       : OpConversionPattern<CoreOp>(context, benefit),
     module(m), analysis(a) {}
 
-  PatternMatchResult match(Operation *op) const override {
-    return matchSuccess();
+  LogicalResult match(Operation *op) const override {
+    return success();
   }
 
-  void rewrite(aie::CoreOp op, ArrayRef<Value > operands,
+  void rewrite(AIE::CoreOp op, ArrayRef<Value > operands,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Operation *newOp = rewriter.clone(*Op);
@@ -262,10 +262,11 @@ struct StartFlow : public OpConversionPattern<aie::CoreOp> {
 };
 
 
-struct AIEFindFlowsPass : public ModulePass<AIEFindFlowsPass> {
-  void runOnModule() override {
+struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
+                                             OperationPass<ModuleOp>> {
+  void runOnOperation() override {
 
-    ModuleOp m = getModule();
+    ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
 
     ConversionTarget target(getContext());
@@ -284,7 +285,7 @@ struct AIEFindFlowsPass : public ModulePass<AIEFindFlowsPass> {
   }
 };
 
-void xilinx::aie::registerAIEFindFlowsPass() {
+void xilinx::AIE::registerAIEFindFlowsPass() {
     PassRegistration<AIEFindFlowsPass>(
       "aie-find-flows",
       "Extract flows from a placed and routed design");

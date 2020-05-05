@@ -14,10 +14,10 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/Translation.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/ToolUtilities.h"
-#include "mlir/Support/TranslateClParser.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -49,7 +49,7 @@ static llvm::cl::opt<bool> verifyDiagnostics(
 
 int main(int argc, char **argv) {
   registerAllDialects();
-  registerDialect<xilinx::aie::AIEDialect>();
+  registerDialect<xilinx::AIE::AIEDialect>();
   llvm::InitLLVM y(argc, argv);
 
   // Add flags for all the registered translations.

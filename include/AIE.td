@@ -10,8 +10,8 @@ include "mlir/IR/OpBase.td"
 #endif
 
 
-def aie_Dialect : Dialect {
-  let name = "aie";
+def AIE_Dialect : Dialect {
+  let name = "AIE";
   let description = [{
 
 This is a dialect for describing netlists of AIE components in a
@@ -34,7 +34,7 @@ def East: I32EnumAttrCase<"East", 6>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 							[ME, DMA, FIFO, South, West, North, East]> {
-  let cppNamespace = "xilinx::aie";
+  let cppNamespace = "xilinx::AIE";
 }
 // 0 ME0
 // 1 ME1
@@ -106,7 +106,7 @@ def MasterPortEnum: I32EnumAttr<"MasterPortEnum", "AIE Switchbox Master Port",
 									West0, West1, West2, West3,
 									North0, North1, North2, North3, North4, North5,
 									East0, East1, East2, East3]> {
-  let cppNamespace = "xilinx::aie";
+  let cppNamespace = "xilinx::AIE";
 }
 def SlavePortEnum: I32EnumAttr<"SlavePortEnum", "AIE Switchbox Slave Port",
 								   [ME0, ME1, DMA0, DMA1, TileCtrl, FIFO0, FIFO1,
@@ -114,7 +114,7 @@ def SlavePortEnum: I32EnumAttr<"SlavePortEnum", "AIE Switchbox Slave Port",
 									SWest0, SWest1, SWest2, SWest3,
 									SNorth0, SNorth1, SNorth2, SNorth3,
 									East0, East1, East2, East3, CoreTrace, MemTrace]> {
-  let cppNamespace = "xilinx::aie";
+  let cppNamespace = "xilinx::AIE";
 }
 
 // def StatisticsOpInterface : OpInterface<"StatisticsOpInterface"> {
@@ -131,8 +131,8 @@ def SlavePortEnum: I32EnumAttr<"SlavePortEnum", "AIE Switchbox Slave Port",
 //   ];
 // }
 
-class aie_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<aie_Dialect, mnemonic, traits>;
+class AIE_Op<string mnemonic, list<OpTrait> traits = []> :
+    Op<AIE_Dialect, mnemonic, traits>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
@@ -147,7 +147,7 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
 
 def Port : TypeConstraint<Index.predicate, "port">;
 
-def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
+def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
                               Results<(outs AnyType)> {
   let arguments = (
     ins I32Attr:$col,
@@ -178,7 +178,7 @@ def aie_SwitchboxOp: aie_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
 				  ];
 }
 
-def aie_ShimSwitchboxOp: aie_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
+def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
                               Results<(outs AnyType)> {
   let arguments = (
     ins I32Attr:$col
@@ -213,7 +213,7 @@ registers
 				  ];
 }
 
-def aie_CoreOp: aie_Op<"core", []>,
+def AIE_CoreOp: AIE_Op<"core", []>,
                               Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col,
@@ -244,7 +244,7 @@ def aie_CoreOp: aie_Op<"core", []>,
 				  ];
 }
 
-def aie_PLIOOp: aie_Op<"plio", []>,
+def AIE_PLIOOp: AIE_Op<"plio", []>,
                               Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
@@ -266,7 +266,7 @@ def aie_PLIOOp: aie_Op<"plio", []>,
   // ];
 }
 
-def aie_ShimDMAOp: aie_Op<"shimDMA", []>,
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>,
                               Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
@@ -288,7 +288,7 @@ def aie_ShimDMAOp: aie_Op<"shimDMA", []>,
   // ];
 }
 
-def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
+def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 	 let arguments = (
 	 ins WireBundle:$sourceBundle,
 		  I32Attr:$sourceChannel,
@@ -327,7 +327,7 @@ def aie_ConnectOp: aie_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 				  ];
 }
 
-def aie_FlowOp: aie_Op<"flow", []> {
+def AIE_FlowOp: AIE_Op<"flow", []> {
 	 let arguments = (
 	 ins Index:$source,
 		  WireBundle:$sourceBundle,
@@ -370,7 +370,7 @@ Example:
 				  ];
 }
 
-def aie_MasterSetOp: aie_Op<"masterset", [HasParent<"SwitchboxOp">]>,
+def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>,
                               Results<(outs Index)> {
 	 let arguments = (
 		  ins I32Attr:$arbiter,
@@ -391,7 +391,7 @@ def aie_MasterSetOp: aie_Op<"masterset", [HasParent<"SwitchboxOp">]>,
   }];
 }
 
-def aie_WireOp: aie_Op<"wire", []> {
+def AIE_WireOp: AIE_Op<"wire", []> {
 	 let arguments = (
 	 ins Index:$source,
 		  WireBundle:$sourceBundle,
@@ -419,7 +419,7 @@ def aie_WireOp: aie_Op<"wire", []> {
 				  ];
 }
 
-def aie_PacketRulesOp: aie_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
+def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
 												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
 	 let arguments = (
 	 ins WireBundle:$sourceBundle,
@@ -440,7 +440,7 @@ def aie_PacketRulesOp: aie_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
 	 Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
 }];
 }
-def aie_PacketRuleOp: aie_Op<"rule", [HasParent<"PacketRulesOp">]> {
+def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 	 let arguments = (
 		  ins I8Attr:$mask,
 		  I8Attr:$value,
@@ -465,7 +465,7 @@ def aie_PacketRuleOp: aie_Op<"rule", [HasParent<"PacketRulesOp">]> {
 		`(` $mask `,` $value `,` $masterset `)` attr-dict
   }];
 }
-def aie_PacketFlowOp: aie_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
+def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
 												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
 	 let arguments = (
 	 ins I8Attr:$ID
@@ -494,7 +494,7 @@ def aie_PacketFlowOp: aie_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
 				  >
 				  ];
 }
-def aie_PacketSourceOp: aie_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
+def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
 	 let arguments = (
 	 ins Index:$core,
 	     WireBundle:$bundle,
@@ -521,7 +521,7 @@ def aie_PacketSourceOp: aie_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
 				  >
 				  ];
 }
-def aie_PacketDestOp: aie_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
+def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
 	 let arguments = (
 	 ins Index:$core,
 	     WireBundle:$bundle,
@@ -549,7 +549,7 @@ def aie_PacketDestOp: aie_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
 				  ];
 }
 
-def aie_EndswitchOp: aie_Op<"endswitch", [Terminator
+def AIE_EndswitchOp: AIE_Op<"endswitch", [Terminator
 													  /*,Or<[HasParent<"SwitchboxOp">,
 														  HasParent<"ShimSwitchboxOp">]>*/
 							]> {
@@ -559,7 +559,7 @@ def aie_EndswitchOp: aie_Op<"endswitch", [Terminator
   }];
 }
 
-def aie_EndarbiterOp: aie_Op<"endarbiter", [Terminator
+def AIE_EndarbiterOp: AIE_Op<"endarbiter", [Terminator
 													  /*,Or<[HasParent<"SwitchboxOp">,
 														  HasParent<"ShimSwitchboxOp">]>*/
 							]> {

@@ -1,6 +1,6 @@
 // (c) Copyright 2019 Xilinx Inc. All Rights Reserved.
 
-#include "mlir/Analysis/Passes.h"
+//#include "mlir/Analysis/Passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/IR/Dialect.h"
@@ -53,9 +53,9 @@ static cl::opt<bool>
 int main(int argc, char **argv) {
   registerAllDialects();
   registerAllPasses();
-  registerDialect<xilinx::aie::AIEDialect>();
-  xilinx::aie::registerAIEFindFlowsPass();
-  xilinx::aie::registerAIECreateFlowsPass();
+  registerDialect<xilinx::AIE::AIEDialect>();
+  xilinx::AIE::registerAIEFindFlowsPass();
+  xilinx::AIE::registerAIECreateFlowsPass();
   InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.
@@ -89,5 +89,6 @@ int main(int argc, char **argv) {
   }
 
   return failed(MlirOptMain(output->os(), std::move(file), passPipeline,
-                            splitInputFile, verifyDiagnostics, verifyPasses));
+                            splitInputFile, verifyDiagnostics, verifyPasses,
+                            false));
 }
