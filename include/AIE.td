@@ -169,11 +169,11 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
 	int rowIndex() { return row().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Type resultType, int col, int row", [{
 				  build(builder, result, resultType,
-				  builder->getI32IntegerAttr(col),
-				  builder->getI32IntegerAttr(row));
+				  builder.getI32IntegerAttr(col),
+				  builder.getI32IntegerAttr(row));
 				  }]>
 				  ];
 }
@@ -205,10 +205,10 @@ registers
   let parser = [{ return ::parseShimSwitchboxOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Type resultType, int col", [{
 				  build(builder, result, resultType,
-				  builder->getI32IntegerAttr(col));
+				  builder.getI32IntegerAttr(col));
 				  }]>
 				  ];
 }
@@ -235,11 +235,11 @@ def AIE_CoreOp: AIE_Op<"core", []>,
 	int rowIndex() { return row().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Type resultType, int col, int row", [{
 				  build(builder, result, resultType,
-				  builder->getI32IntegerAttr(col),
-				  builder->getI32IntegerAttr(row));
+				  builder.getI32IntegerAttr(col),
+				  builder.getI32IntegerAttr(row));
 				  }]>
 				  ];
 }
@@ -261,7 +261,7 @@ def AIE_PLIOOp: AIE_Op<"plio", []>,
     int colIndex() { return col().getZExtValue(); }
   }];
   // let builders = [
-  //   OpBuilder<"Builder *builder, OperationState &result, "
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
   //             "Type resultType, int col, int row">
   // ];
 }
@@ -283,7 +283,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>,
     int colIndex() { return col().getZExtValue(); }
   }];
   // let builders = [
-  //   OpBuilder<"Builder *builder, OperationState &result, "
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
   //             "Type resultType, int col, int row">
   // ];
 }
@@ -314,7 +314,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
 	 Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "WireBundle sourceBundle, int sourceChannel, "
 				  "WireBundle destBundle, int destChannel", [{
 				  build(builder, result,
@@ -356,16 +356,16 @@ Example:
 	 int destIndex() { return destChannel().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value source, int sourceBundle, int sourceChannel,"
 				  "Value dest, int destBundle, int destChannel", [{
 				  build(builder, result,
 				  source,
-				  builder->getI32IntegerAttr(sourceBundle),
-				  builder->getI32IntegerAttr(sourceChannel),
+				  builder.getI32IntegerAttr(sourceBundle),
+				  builder.getI32IntegerAttr(sourceChannel),
 				  dest,
-				  builder->getI32IntegerAttr(destBundle),
-				  builder->getI32IntegerAttr(destChannel));
+				  builder.getI32IntegerAttr(destBundle),
+				  builder.getI32IntegerAttr(destChannel));
 				  }]>
 				  ];
 }
@@ -407,14 +407,14 @@ def AIE_WireOp: AIE_Op<"wire", []> {
 	`(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value source, int sourceBundle, "
 				  "Value dest, int destBundle", [{
 				  build(builder, result,
 				  source,
-				  builder->getI32IntegerAttr((int)sourceBundle),
+				  builder.getI32IntegerAttr((int)sourceBundle),
 				  dest,
-				  builder->getI32IntegerAttr((int)destBundle));
+				  builder.getI32IntegerAttr((int)destBundle));
 				  }]>
 				  ];
 }
@@ -486,7 +486,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
     int IDInt() { return ID().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "int ID", [{
 				  build(builder, result,
 				  APInt(8, ID));
@@ -511,7 +511,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return channel().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value core, WireBundle bundle, int channel", [{
 				  build(builder, result,
 				  core,
@@ -538,7 +538,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return channel().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value core, WireBundle bundle, int channel", [{
 				  build(builder, result,
 				  core,

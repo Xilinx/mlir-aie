@@ -11,29 +11,7 @@ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 set(LIBS
   ${dialect_libs}
   ${conversion_libs}
-  MLIRLoopOpsTransforms
-  MLIRLoopAnalysis
-  MLIRAnalysis
-  MLIRDialect
-  MLIREDSC
-  MLIROptLib
-  MLIRParser
-  MLIRPass
-  MLIRSPIRV
-  MLIRSPIRVTestPasses
-  MLIRSPIRVTransforms
-  MLIRTransforms
-  MLIRTransformUtils
-  MLIRTestDialect
-  MLIRTestIR
-  MLIRTestPass
-  MLIRTestTransforms
-  MLIRSupport
-  MLIRIR
   MLIROptLib
   AIE
-  LLVMSupport
-  LLVMCore
-  LLVMAsmParser
   )
 target_link_libraries(aie-opt PRIVATE ${LIBS})

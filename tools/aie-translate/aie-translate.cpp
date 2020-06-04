@@ -49,7 +49,11 @@ static llvm::cl::opt<bool> verifyDiagnostics(
 
 int main(int argc, char **argv) {
   registerAllDialects();
+  //  registerAllTranslations();
+
   registerDialect<xilinx::AIE::AIEDialect>();
+  xilinx::AIE::registerAIETranslations();
+
   llvm::InitLLVM y(argc, argv);
 
   // Add flags for all the registered translations.

@@ -129,7 +129,7 @@ static ParseResult parsePacketRulesOp(OpAsmParser &parser, OperationState &resul
     return failure();
   {
     StringAttr attrVal;
-    SmallVector<NamedAttribute, 1> attrStorage;
+    NamedAttrList attrStorage;
     auto loc = parser.getCurrentLocation();
     if (parser.parseAttribute(attrVal, parser.getBuilder().getNoneType(),
                               "sourceBundle", attrStorage))

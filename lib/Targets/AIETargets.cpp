@@ -13,7 +13,10 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-static TranslateFromMLIRRegistration
+namespace xilinx {
+namespace AIE {
+void registerAIETranslations() {
+  TranslateFromMLIRRegistration
     registration("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
         // XAieTile_StrmConnectCct(&(TileInst[col+i][row]),
         //                         XAIETILE_STRSW_SPORT_TRACE((&(TileInst[col+i][row])), 1),
@@ -103,3 +106,6 @@ static TranslateFromMLIRRegistration
         }
         return success();
       });
+}
+}
+}

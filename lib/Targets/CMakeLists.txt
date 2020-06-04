@@ -4,13 +4,14 @@ add_mlir_library(AIETargets
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
+  LINK_COMPONENTS
+  Core
+  IRReader
+  Support
+  TransformUtils
   )
 target_link_libraries(AIETargets
   PUBLIC
   AIE
-  LLVMCore
-  LLVMIRReader
-  LLVMSupport
-  LLVMTransformUtils
   MLIRTranslation
 )

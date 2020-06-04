@@ -27,6 +27,7 @@ using namespace mlir;
 namespace xilinx {
 namespace AIE {
 
+void registerAIETranslations();
 void registerAIEFindFlowsPass();
 void registerAIECreateFlowsPass();
 

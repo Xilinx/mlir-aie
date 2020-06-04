@@ -5,6 +5,8 @@
 # mlir_tablegen(AIEEnums.cpp.inc -gen-enum-defs)
 # add_public_tablegen_target(MLIRAIEIncGen)
 add_mlir_dialect(AIE AIE)
+add_mlir_doc(AIE -gen-dialect-doc AIEDialect Dialects/)
+
 set(LLVM_TARGET_DEFINITIONS AIE.td)
 mlir_tablegen(AIEEnums.h.inc -gen-enum-decls)
 mlir_tablegen(AIEEnums.cpp.inc -gen-enum-defs)
