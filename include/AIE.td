@@ -9,6 +9,9 @@ include "mlir/IR/OpBase.td"
 #define AIE_OPS
 #endif
 
+include "mlir/IR/SymbolInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def AIE_Dialect : Dialect {
   let name = "AIE";
@@ -33,9 +36,11 @@ def North: I32EnumAttrCase<"North", 5>;
 def East: I32EnumAttrCase<"East", 6>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-							[ME, DMA, FIFO, South, West, North, East]> {
+  [ME, DMA, FIFO, South, West, North, East]> {
+
   let cppNamespace = "xilinx::AIE";
 }
+
 // 0 ME0
 // 1 ME1
 // 2 DMA0
@@ -101,19 +106,19 @@ def SNorth2: I32EnumAttrCase<"North2", 19>;
 def SNorth3: I32EnumAttrCase<"North3", 20>;
 
 def MasterPortEnum: I32EnumAttr<"MasterPortEnum", "AIE Switchbox Master Port",
-                           [ME0, ME1, DMA0, DMA1, TileCtrl, FIFO0, FIFO1,
-									South0, South1, South2, South3,
-									West0, West1, West2, West3,
-									North0, North1, North2, North3, North4, North5,
-									East0, East1, East2, East3]> {
+                                [ME0, ME1, DMA0, DMA1, TileCtrl, FIFO0, FIFO1,
+                                 South0, South1, South2, South3,
+                                 West0, West1, West2, West3,
+                                 North0, North1, North2, North3, North4, North5,
+                                 East0, East1, East2, East3]> {
   let cppNamespace = "xilinx::AIE";
 }
 def SlavePortEnum: I32EnumAttr<"SlavePortEnum", "AIE Switchbox Slave Port",
-								   [ME0, ME1, DMA0, DMA1, TileCtrl, FIFO0, FIFO1,
-									South0, South1, South2, South3, SSouth4, SSouth5,
-									SWest0, SWest1, SWest2, SWest3,
-									SNorth0, SNorth1, SNorth2, SNorth3,
-									East0, East1, East2, East3, CoreTrace, MemTrace]> {
+                               [ME0, ME1, DMA0, DMA1, TileCtrl, FIFO0, FIFO1,
+                                South0, South1, South2, South3, SSouth4, SSouth5,
+                                SWest0, SWest1, SWest2, SWest3,
+                                SNorth0, SNorth1, SNorth2, SNorth3,
+                                East0, East1, East2, East3, CoreTrace, MemTrace]> {
   let cppNamespace = "xilinx::AIE";
 }
 
@@ -137,18 +142,18 @@ class AIE_Op<string mnemonic, list<OpTrait> traits = []> :
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
                                            AnyTensor.predicate]>,
-                                       "scalar-or-tensor">;
+                                          "scalar-or-tensor">;
 
 def AnyScalar : TypeConstraint<Or<[Index.predicate,
-											  AnySignlessInteger.predicate,
+                                   AnySignlessInteger.predicate,
                                    AnyFloat.predicate]>,
-                                 "scalar">;
+                                  "scalar">;
 
 
 def Port : TypeConstraint<Index.predicate, "port">;
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
-                              Results<(outs AnyType)> {
+                     Results<(outs AnyType)> {
   let arguments = (
     ins I32Attr:$col,
         I32Attr:$row
@@ -156,37 +161,38 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
 
   let summary = "Declare a switch";
   let description = [{
-		A switch
+    A switch
   }];
   let regions = (region AnyRegion:$connections);
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parseSwitchboxOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
-   int getNumSourceConnections(WireBundle bundle);
-	int getNumDestConnections(WireBundle bundle);
-	int colIndex() { return col().getZExtValue(); }
-	int rowIndex() { return row().getZExtValue(); }
+    int getNumSourceConnections(WireBundle bundle);
+    int getNumDestConnections(WireBundle bundle);
+    int colIndex() { return col().getZExtValue(); }
+    int rowIndex() { return row().getZExtValue(); }
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
+    OpBuilder<"OpBuilder &builder, OperationState &result, "
               "Type resultType, int col, int row", [{
-				  build(builder, result, resultType,
-				  builder.getI32IntegerAttr(col),
-				  builder.getI32IntegerAttr(row));
-				  }]>
-				  ];
+              build(builder, result, resultType,
+                    builder.getI32IntegerAttr(col),
+                    builder.getI32IntegerAttr(row));
+              }]>
+  ];
 }
 
 def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
-                              Results<(outs AnyType)> {
+                         Results<(outs AnyType)> {
   let arguments = (
     ins I32Attr:$col
   );
 
   let summary = "Declare a switch in the PL shim";
   let description = [{
-		A switch in the Shim.
+
+    A switch in the Shim.
 AXI-Stream Master Ports AXI-Stream Slave Ports
 6 Ports to North (ME Tile) 4 Ports from North (ME Tile)
 4 Ports to West 4 Ports from West
@@ -205,16 +211,15 @@ registers
   let parser = [{ return ::parseShimSwitchboxOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
+    OpBuilder<"OpBuilder &builder, OperationState &result, "
               "Type resultType, int col", [{
-				  build(builder, result, resultType,
-				  builder.getI32IntegerAttr(col));
-				  }]>
-				  ];
+              build(builder, result, resultType,
+                    builder.getI32IntegerAttr(col));
+              }]>
+  ];
 }
 
-def AIE_CoreOp: AIE_Op<"core", []>,
-                              Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col,
         I32Attr:$row
@@ -222,40 +227,38 @@ def AIE_CoreOp: AIE_Op<"core", []>,
 
   let summary = "Declare a core";
   let description = [{
-		A core
-		<a>coreop</a>
+    A core
   }];
   let assemblyFormat = [{
-	`(` $col `,` $row `)` attr-dict
+    `(` $col `,` $row `)` attr-dict
   }];
   let extraClassDeclaration = [{
-   int getNumSourceConnections(WireBundle bundle);
-	int getNumDestConnections(WireBundle bundle);
-   int colIndex() { return col().getZExtValue(); }
-	int rowIndex() { return row().getZExtValue(); }
+    int getNumSourceConnections(WireBundle bundle);
+    int getNumDestConnections(WireBundle bundle);
+    int colIndex() { return col().getZExtValue(); }
+    int rowIndex() { return row().getZExtValue(); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Type resultType, int col, int row", [{
-				  build(builder, result, resultType,
-				  builder.getI32IntegerAttr(col),
-				  builder.getI32IntegerAttr(row));
-				  }]>
-				  ];
+              build(builder, result, resultType,
+                    builder.getI32IntegerAttr(col),
+                    builder.getI32IntegerAttr(row));
+              }]>
+  ];
 }
 
-def AIE_PLIOOp: AIE_Op<"plio", []>,
-                              Results<(outs Index)> {
+def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
-	 );
+  );
 
   let summary = "Declare an interface to the PL";
   let description = [{
-		An interface to the PL.
+    An interface to the PL.
   }];
   let assemblyFormat = [{
-	`(` $col `)` attr-dict
+    `(` $col `)` attr-dict
   }];
   let extraClassDeclaration = [{
     int colIndex() { return col().getZExtValue(); }
@@ -266,18 +269,17 @@ def AIE_PLIOOp: AIE_Op<"plio", []>,
   // ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>,
-                              Results<(outs Index)> {
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>, Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
   );
 
   let summary = "Declare a ShimDMA";
   let description = [{
-		A DMA in the PL-AIE Shim.
+    A DMA in the PL-AIE Shim.
   }];
   let assemblyFormat = [{
-	`(` $col `)` attr-dict
+    `(` $col `)` attr-dict
   }];
   let extraClassDeclaration = [{
     int colIndex() { return col().getZExtValue(); }
@@ -289,12 +291,12 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>,
 }
 
 def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
-	 let arguments = (
-	 ins WireBundle:$sourceBundle,
-		  I32Attr:$sourceChannel,
-		  WireBundle:$destBundle,
-		  I32Attr:$destChannel
-	 );
+  let arguments = (
+    ins WireBundle:$sourceBundle,
+        I32Attr:$sourceChannel,
+        WireBundle:$destBundle,
+        I32Attr:$destChannel
+  );
   let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
     The "aie.connect" operation represents a programmed circuit-switched connection in a stream switch.  It associates a source bundle and source channel with a destination bundle and a destination channel.  The "aie.connect" operation must exist within an "aie.switchbox" or "aie.shimswitchbox" operation.  All of the "aie.connect" operations in a switchbox must have a different destination.  All of the "aie.connect" operations must also have a destination which is different from all of the "aie.masterset" operations in the same switchbox.
@@ -305,37 +307,37 @@ def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
     }
   }];
   let assemblyFormat = [{
-	`<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
+    `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
   }];
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel().getZExtValue(); }
-	 int destIndex() { return destChannel().getZExtValue(); }
-	 Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
-	 Port destPort() { return std::make_pair(destBundle(), destIndex()); }
+    int destIndex() { return destChannel().getZExtValue(); }
+    Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
+    Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "WireBundle sourceBundle, int sourceChannel, "
-				  "WireBundle destBundle, int destChannel", [{
-				  build(builder, result,
-				  sourceBundle,
-				  APInt(32, sourceChannel),
-				  destBundle,
-				  APInt(32, destChannel));
-				  }]
-				  >
-				  ];
+              "WireBundle destBundle, int destChannel", [{
+              build(builder, result,
+                    sourceBundle,
+                    APInt(32, sourceChannel),
+                    destBundle,
+                    APInt(32, destChannel));
+              }]
+    >
+  ];
 }
 
 def AIE_FlowOp: AIE_Op<"flow", []> {
-	 let arguments = (
-	 ins Index:$source,
-		  WireBundle:$sourceBundle,
-		  I32Attr:$sourceChannel,
-		  Index:$dest,
-		  WireBundle:$destBundle,
-		  I32Attr:$destChannel
-	 );
+  let arguments = (
+    ins Index:$source,
+        WireBundle:$sourceBundle,
+        I32Attr:$sourceChannel,
+        Index:$dest,
+        WireBundle:$destBundle,
+        I32Attr:$destChannel
+  );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
   The "aie.flow" operation represents a circuit switched connection between two endpoints, usually "aie.core" operations.  During routing, this is
@@ -349,86 +351,84 @@ Example:
 
   }];
   let assemblyFormat = [{
-	`(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+    `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel().getZExtValue(); }
-	 int destIndex() { return destChannel().getZExtValue(); }
+    int destIndex() { return destChannel().getZExtValue(); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value source, int sourceBundle, int sourceChannel,"
-				  "Value dest, int destBundle, int destChannel", [{
-				  build(builder, result,
-				  source,
-				  builder.getI32IntegerAttr(sourceBundle),
-				  builder.getI32IntegerAttr(sourceChannel),
-				  dest,
-				  builder.getI32IntegerAttr(destBundle),
-				  builder.getI32IntegerAttr(destChannel));
-				  }]>
-				  ];
+              "Value dest, int destBundle, int destChannel", [{
+              build(builder, result,
+                    source,
+                    builder.getI32IntegerAttr(sourceBundle),
+                    builder.getI32IntegerAttr(sourceChannel),
+                    dest,
+                    builder.getI32IntegerAttr(destBundle),
+                    builder.getI32IntegerAttr(destChannel));
+              }]>
+  ];
 }
 
-def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>,
-                              Results<(outs Index)> {
-	 let arguments = (
-		  ins I32Attr:$arbiter,
-		  WireBundle:$destBundle,
-		  I32Attr:$destChannel
-	 );
+def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
+  let arguments = (
+    ins I32Attr:$arbiter,
+        WireBundle:$destBundle,
+        I32Attr:$destChannel
+  );
   let summary = "Packet switched input connection";
   let description = [{
-		A Packet switched connection inside a switchbox.
+    A Packet switched connection inside a switchbox.
   }];
   let assemblyFormat = [{
-	`(` $arbiter `,` $destBundle `:` $destChannel `)` attr-dict
+    `(` $arbiter `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
     int arbiterIndex() { return arbiter().getZExtValue(); }
-	 int destIndex() { return destChannel().getZExtValue(); }
-	 Port destPort() { return std::make_pair(destBundle(), destIndex()); }
+    int destIndex() { return destChannel().getZExtValue(); }
+    Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
 }
 
 def AIE_WireOp: AIE_Op<"wire", []> {
-	 let arguments = (
-	 ins Index:$source,
-		  WireBundle:$sourceBundle,
-		  Index:$dest,
-		  WireBundle:$destBundle
-	 );
+  let arguments = (
+    ins Index:$source,
+        WireBundle:$sourceBundle,
+        Index:$dest,
+        WireBundle:$destBundle
+  );
   let summary = "A bundle of physical wires between components";
   let description = [{
-
-		The "aie.wire" operation represents a physical set of connections between components in a Versal device.  Typically, these components are switches, represented by an "aie.switchbox" operation, and cores, represented by an [aie.core](#aiecore-aiecoreop) operation.
+    The "aie.wire" operation represents a physical set of connections between components in a Versal device.  Typically, these components are switches, represented by an "aie.switchbox" operation, and cores, represented by an [aie.core](#aiecore-aiecoreop) operation.
   }];
   let assemblyFormat = [{
-	`(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
+    `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value source, int sourceBundle, "
-				  "Value dest, int destBundle", [{
-				  build(builder, result,
-				  source,
-				  builder.getI32IntegerAttr((int)sourceBundle),
-				  dest,
-				  builder.getI32IntegerAttr((int)destBundle));
-				  }]>
-				  ];
+              "Value dest, int destBundle", [{
+              build(builder, result,
+                    source,
+                    builder.getI32IntegerAttr((int)sourceBundle),
+                    dest,
+                    builder.getI32IntegerAttr((int)destBundle));
+              }]>
+  ];
 }
 
 def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
-												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
-	 let arguments = (
-	 ins WireBundle:$sourceBundle,
-		  I32Attr:$sourceChannel
-	 );
+                                              SingleBlockImplicitTerminator<"EndswitchOp">]> {
+  let arguments = (
+    ins WireBundle:$sourceBundle,
+        I32Attr:$sourceChannel
+  );
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched input connection";
   let description = [{
-		A Packet switched connection inside a switchbox.
+    A Packet switched connection inside a switchbox.
   }];
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parsePacketRulesOp(parser, result); }];
@@ -437,46 +437,46 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
   // }];
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel().getZExtValue(); }
-	 Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
-}];
+    Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
+  }];
 }
 def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
-	 let arguments = (
-		  ins I8Attr:$mask,
-		  I8Attr:$value,
-		  Index:$masterset
-	 );
+  let arguments = (
+    ins I8Attr:$mask,
+        I8Attr:$value,
+        Index:$masterset
+  );
   let summary = "Packet switched input connection";
   let description = [{
-		A Packet switched connection inside a switchbox.
+    A Packet switched connection inside a switchbox.
   }];
   let extraClassDeclaration = [{
     int maskInt() { return mask().getZExtValue(); }
-	 int valueInt() { return value().getZExtValue(); }
-	 MasterSetOp &masterSetOp() {
-	   // FIXME: Verify this..
-		Operation *op = masterset().getDefiningOp();
-		assert(op);
-	   auto masterSetOp = dyn_cast_or_null<MasterSetOp>(op);
-		//	assert(masterSetOp);
+    int valueInt() { return value().getZExtValue(); }
+    MasterSetOp &masterSetOp() {
+      // FIXME: Verify this..
+      Operation *op = masterset().getDefiningOp();
+      assert(op);
+      auto masterSetOp = dyn_cast_or_null<MasterSetOp>(op);
+      //assert(masterSetOp);
     }
-}];
+  }];
   let assemblyFormat = [{
-		`(` $mask `,` $value `,` $masterset `)` attr-dict
+    `(` $mask `,` $value `,` $masterset `)` attr-dict
   }];
 }
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
-												  SingleBlockImplicitTerminator<"EndswitchOp">]> {
-	 let arguments = (
-	 ins I8Attr:$ID
-	 );
+                                             SingleBlockImplicitTerminator<"EndswitchOp">]> {
+  let arguments = (
+    ins I8Attr:$ID
+  );
   let regions = (region AnyRegion:$ports);
   let summary = "Packet switched flow";
   let description = [{
-		A logical packet switched flow between cores.  During place and
-	 route, this is replaced by MasterSets and PacketRules inside
-	 switchboxes.
-}];
+    A logical packet switched flow between cores.  During place and
+    route, this is replaced by MasterSets and PacketRules inside
+    switchboxes.
+  }];
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parsePacketFlowOp(parser, result); }];
   // let assemblyFormat = [{
@@ -488,24 +488,24 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "int ID", [{
-				  build(builder, result,
-				  APInt(8, ID));
-				  }]
-				  >
-				  ];
+              build(builder, result,
+                    APInt(8, ID));
+              }]>
+  ];
 }
+
 def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
-	 let arguments = (
-	 ins Index:$core,
-	     WireBundle:$bundle,
-		  I32Attr:$channel
-	 );
+  let arguments = (
+    ins Index:$core,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
   let summary = "A sourceport";
   let description = [{
      A port which is the source of a flow.
   }];
   let assemblyFormat = [{
-	`<` $core `,` $bundle `:` $channel `>` attr-dict
+    `<` $core `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return channel().getZExtValue(); }
@@ -513,26 +513,26 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value core, WireBundle bundle, int channel", [{
-				  build(builder, result,
-				  core,
-				  bundle,
-				  APInt(32, channel));
-				  }]
-				  >
-				  ];
+              build(builder, result,
+                    core,
+                    bundle,
+                    APInt(32, channel));
+              }]>
+  ];
 }
+
 def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
-	 let arguments = (
-	 ins Index:$core,
-	     WireBundle:$bundle,
-		  I32Attr:$channel
-	 );
+  let arguments = (
+    ins Index:$core,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
   let summary = "A destination port";
   let description = [{
      A port which is the destination  of a flow.
   }];
   let assemblyFormat = [{
-	`<` $core `,` $bundle `:` $channel `>` attr-dict
+    `<` $core `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return channel().getZExtValue(); }
@@ -540,31 +540,266 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
               "Value core, WireBundle bundle, int channel", [{
-				  build(builder, result,
-				  core,
-				  bundle,
-				  APInt(32, channel));
-				  }]
-				  >
-				  ];
+              build(builder, result,
+                    core,
+                    bundle,
+                    APInt(32, channel));
+              }]>
+  ];
 }
 
 def AIE_EndswitchOp: AIE_Op<"endswitch", [Terminator
-													  /*,Or<[HasParent<"SwitchboxOp">,
-														  HasParent<"ShimSwitchboxOp">]>*/
-							]> {
+                                          /*,Or<[HasParent<"SwitchboxOp">,
+                                                 HasParent<"ShimSwitchboxOp">]>*/
+                                         ]> {
   let summary = "end of a switch";
   let description = [{
-		Terminator for switchbox
+    Terminator for switchbox
   }];
 }
 
 def AIE_EndarbiterOp: AIE_Op<"endarbiter", [Terminator
-													  /*,Or<[HasParent<"SwitchboxOp">,
-														  HasParent<"ShimSwitchboxOp">]>*/
-							]> {
+                                            /*,Or<[HasParent<"SwitchboxOp">,
+                                                   HasParent<"ShimSwitchboxOp">]>*/
+                                           ]> {
   let summary = "end of a arbiter";
   let description = [{
-		Terminator for arbiterbox
+    Terminator for arbiterbox
+  }];
+}
+
+def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
+def S2MM1:  I32EnumAttrCase<"S2MM1", 1>;
+def MM2S0:  I32EnumAttrCase<"MM2S0", 2>;
+def MM2S1:  I32EnumAttrCase<"MM2S1", 3>;
+
+def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
+  [S2MM0, S2MM1, MM2S0, MM2S1]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def AIE_DMAOp: AIE_Op<"dma", [HasParent<"MemOp">]> {
+  let summary = "Declare a dma op";
+  let description = [{
+    Declare a dma op
+  }];
+
+  let arguments = (
+    ins AnyMemRef:$buffer,
+        DMAChan:$dmaChan,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$acqValue,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$relValue
+  );
+
+  let assemblyFormat = [{
+    `(` $buffer `:` type($buffer) `,` $dmaChan `,` $lockID `,` $acqValue `,` $relValue `)` attr-dict 
+  }];
+
+  let extraClassDeclaration = [{
+    int getLockID() { return lockID().getZExtValue(); }
+    int getDMAChannel() { return static_cast<int32_t>(dmaChan()); }
+    int getAcquireLockValue() { return acqValue().getZExtValue(); }
+    int getReleaseLockValue() { return relValue().getZExtValue(); }
+  }];
+}
+
+def AIE_MemOp: AIE_Op<"mem", [SingleBlockImplicitTerminator<"EndMemOp">]>,
+                     Results<(outs Index)> {
+
+  let summary = "Declare a memory op";
+  let description = [{
+    Declare a memory op
+  }];
+
+  let arguments = (
+    ins I32Attr:$col,
+        I32Attr:$row
+  );
+
+  let regions = (region AnyRegion:$body);
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parseMemOp(parser, result); }];
+  let verifier = [{ return ::verify(*this); }];
+  let extraClassDeclaration = [{
+    int colIndex() { return col().getZExtValue(); }
+    int rowIndex() { return row().getZExtValue(); }
+  }];
+}
+
+def AIE_EndMemOp: AIE_Op<"endMem", [Terminator]> {
+  let summary = "end of a MemOp";
+  let description = [{
+    Terminator for MemOp
+  }];
+}
+
+def AIE_CoreModuleOp: AIE_Op<"coreModule", [SingleBlockImplicitTerminator<"EndCoreModuleOp">]>,
+                     Results<(outs Index)> {
+  let summary = "A core module op";
+  let description = [{
+    A core module op"
+  }];
+
+  let arguments = (
+    ins Variadic<AnyType>:$operands
+  );
+
+  let regions = (region AnyRegion:$body);
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parseCoreModuleOp(parser, result); }];
+  let verifier = [{ return ::verify(*this); }];
+}
+
+def AIE_EndCoreModuleOp: AIE_Op<"endCoreModule", [Terminator]> {
+  let summary = "end of a coreModuleOp";
+  let description = [{
+    Terminator for coreModuleOp
+  }];
+}
+
+def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
+
+  let summary = "Declare a physical lock";
+  let description = [{
+    Declare a physical lock
+  }];
+
+  let arguments = (
+    ins Index:$mem,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
+  );
+
+  let assemblyFormat = [{
+    `(` $mem `,` $lockID `)` attr-dict
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    int getLockID() { return lockID().getZExtValue(); }
+  }];
+}
+
+def Acquire: I32EnumAttrCase<"Acquire", 0>;
+def Release: I32EnumAttrCase<"Release", 1>;
+
+def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
+  [Acquire, Release]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def AIE_UseLockOp: AIE_Op<"useLock", []> {
+  let summary = "acquire/release lock op";
+  let description = [{
+    acquire/release lock op
+  }];
+
+  let arguments = (
+    ins Index:$lock,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
+        LockAction:$action,
+        I32Attr:$timeout
+  );
+
+  let assemblyFormat = [{
+    `(` $lock `,` $action `,` $value `,` $timeout `)` attr-dict
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    bool acquire() { return (action() == LockAction::Acquire); }
+    bool release() { return (action() == LockAction::Release); }
+    int getLockValue() { return value().getZExtValue(); }
+    int getTimeout() { return timeout().getZExtValue(); }
+  }];
+}
+
+def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
+  let summary = "Declare a buffer";
+  let description = [{
+    Declare a buffer
+  }];
+
+  let arguments = (
+    ins Index:$mem,
+        Confined<I32Attr, [IntMinValue<0>]>:$bufferID
+  );
+
+  let results = (outs AnyMemRef:$buffer);
+
+  let assemblyFormat = [{
+    `(` $mem `,` $bufferID `)` attr-dict `:`  type($buffer)
+  }];
+
+ let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    int getBufferID() { return bufferID().getZExtValue(); }
+  }];
+}
+
+def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
+  let summary = "Declare a token (a logical lock)";
+  let description = [{
+    Declare a token (a logical lock)
+  }];
+
+  let arguments = (
+    ins I32Attr:$value
+  );
+
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    int getTokenValue() { return value().getZExtValue(); }
+  }];
+}
+
+def AIE_UseTokenOp: AIE_Op<"useToken", []> {
+    let summary = "acquire/release a logical lock";
+    let description = [{
+      acquire/release a logical lock
+    }];
+
+    let arguments = (
+      ins FlatSymbolRefAttr:$tokenName,
+          I32Attr:$value,
+          LockAction:$action
+    );
+
+    let assemblyFormat = [{
+      $tokenName `(` $action `,` $value `)` attr-dict
+    }];
+
+    let extraClassDeclaration = [{
+      bool acquire() { return (action() == LockAction::Acquire); }
+      bool release() { return (action() == LockAction::Release); }
+      int getTokenValue() { return value().getZExtValue(); }
+    }];
+}
+
+def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
+  let summary = "A memcpy op";
+  let description = [{
+    A memcpy op
+  }];
+  let arguments = (
+    ins FlatSymbolRefAttr:$tokenName,
+        I32Attr:$acqValue,
+        I32Attr:$relValue,
+        Index:$srcCore,
+        AnyMemRef:$srcBuf,
+        Index:$dstCore,
+        AnyMemRef:$dstBuf
+  );
+
+  let assemblyFormat = [{
+    $tokenName `(` $acqValue `,` $relValue `)` `(` $srcCore `:` $srcBuf `,` $dstCore `:` $dstBuf `)` attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
   }];
 }
