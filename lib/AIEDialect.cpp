@@ -467,6 +467,259 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
   return success();
 }
 
+// MemOp
+static ParseResult parseMemOp(OpAsmParser &parser, OperationState &result) {
+  result.regions.reserve(1);
+  Region *body = result.addRegion();
+
+  auto &builder = parser.getBuilder();
+  result.types.push_back(builder.getIndexType());
+
+  if (parser.parseLParen())
+    return failure();
+
+  IntegerAttr colAttr;
+  if (parser.parseAttribute(colAttr, parser.getBuilder().getIntegerType(32), "col", result.attributes))
+    return failure();
+  if (parser.parseComma())
+    return failure();
+
+  IntegerAttr rowAttr;
+  if (parser.parseAttribute(rowAttr, parser.getBuilder().getIntegerType(32), "row", result.attributes))
+    return failure();
+
+  if (parser.parseRParen())
+    return failure();
+
+  if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
+    return failure();
+  xilinx::AIE::MemOp::ensureTerminator(*body, parser.getBuilder(), result.location);
+
+  return success();
+}
+
+static void print(OpAsmPrinter &p, xilinx::AIE::MemOp op) {
+  p << xilinx::AIE::MemOp::getOperationName();
+
+  p << "(";
+  p.printAttributeWithoutType(op.colAttr());
+  p << ",";
+  p << " ";
+  p.printAttributeWithoutType(op.rowAttr());
+  p << ")";
+
+  Region &body = op.body();
+
+  p.printRegion(body,
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+}
+
+static LogicalResult verify(xilinx::AIE::MemOp op) {
+  Region &body = op.body();
+  assert(op.getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
+  assert(!body.empty() && "MemOp should have non-empty body");
+
+  for (auto &bodyOp : body.getOps()) {
+    if(auto dmaOp = dyn_cast<xilinx::AIE::DMAOp>(bodyOp)) {
+    } else if (auto allocOp = dyn_cast<AllocOp>(bodyOp)) {
+      if (!allocOp.getAttr("id"))
+        op.emitOpError() << "allocOp in MemOp region should have an id attribute\n";
+    } else if (auto endMemOp = dyn_cast<xilinx::AIE::EndMemOp>(bodyOp) ) {
+    } else {
+      op.emitOpError() << "Unknown op in MemOp region: " << bodyOp << '\n';
+    }
+  }
+
+  return success();
+}
+
+// CoreModuleOp
+static ParseResult parseCoreModuleOp(OpAsmParser &parser, OperationState &result) {
+  result.regions.reserve(1);
+  Region *body = result.addRegion();
+
+  auto &builder = parser.getBuilder();
+  result.types.push_back(builder.getIndexType());
+
+  SmallVector<OpAsmParser::OperandType, 4> operandsOperands;
+  llvm::SMLoc operandsOperandsLoc = parser.getCurrentLocation();
+  (void)operandsOperandsLoc;
+  SmallVector<Type, 1> operandsTypes;
+
+  if (parser.parseLParen())
+    return failure();
+
+  if (parser.parseOperandList(operandsOperands))
+    return failure();
+
+  if (parser.parseRParen())
+    return failure();
+
+  for (unsigned i = 0; i < operandsOperands.size(); i++) {
+    operandsTypes.push_back(builder.getIndexType());
+  }
+
+  if (parser.resolveOperands(operandsOperands, operandsTypes, operandsOperandsLoc, result.operands))
+    return failure();
+
+  if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
+    return failure();
+  xilinx::AIE::CoreModuleOp::ensureTerminator(*body, parser.getBuilder(), result.location);
+
+  return success();
+}
+
+static void print(OpAsmPrinter &p, xilinx::AIE::CoreModuleOp op) {
+  p << xilinx::AIE::CoreModuleOp::getOperationName();
+
+  p << "(";
+  p << op.operands();
+  p << ")";
+
+  Region &body = op.body();
+
+  p.printRegion(body,
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+}
+
+static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
+}
+
+static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
+}
+
+static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
+}
+
+static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
+}
+
+static bool isItself(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow));
+}
+
+static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
+  bool IsEvenRow = ((coreRow % 2) == 0);
+
+  bool IsMemWest = (isWest(coreCol, coreRow, memCol, memRow)   && !IsEvenRow) ||
+                   (isItself(coreCol, coreRow, memCol, memRow) &&  IsEvenRow);
+
+  bool IsMemEast = (isEast(coreCol, coreRow, memCol, memRow)   &&  IsEvenRow) ||
+                   (isItself(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
+
+  bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
+  bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);
+
+  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
+}
+
+static LogicalResult verify(xilinx::AIE::CoreModuleOp op) {
+  Region &body = op.body();
+  assert(op.getOperation()->getNumRegions() == 1 && "CoreModule has zero region!");
+  assert(!body.empty() && "CoreModule should have non-empty body");
+
+  SmallVector<xilinx::AIE::CoreOp, 4> cores;
+  SmallVector<xilinx::AIE::MemOp, 4> mems;
+  SmallVector<xilinx::AIE::SwitchboxOp, 4> switchboxes;
+
+  for (auto operand : op.operands()) {
+    if (xilinx::AIE::CoreOp core =
+            dyn_cast_or_null<xilinx::AIE::CoreOp>(operand.getDefiningOp())) {
+      cores.push_back(core);
+    } else if (xilinx::AIE::MemOp mem =
+                   dyn_cast_or_null<xilinx::AIE::MemOp>(operand.getDefiningOp())) {
+      mems.push_back(mem);
+    } else if (xilinx::AIE::SwitchboxOp switchbox =
+                   dyn_cast_or_null<xilinx::AIE::SwitchboxOp>(operand.getDefiningOp())) {
+      switchboxes.push_back(switchbox);
+    } else {
+      op.emitOpError() << "Unsupported operand type!"
+                          "An operand of a CoreModuleOp can only be"
+                          "CoreOp, MemOp, or SwitchboxOp\n";
+    }
+  }
+
+  if (cores.size() < 1 || cores.size() > 3) {
+    op.emitOpError() << "A CoreModuleOp must have at least one CoreOp and at most three CoreOps\n";
+  }
+
+  if (mems.size() > 4) {
+    op.emitOpError() << "A CoreModuleOp can only have at most four memory modules\n";
+  }
+
+  if (switchboxes.size() > 1) {
+    op.emitOpError() << "A CoreModuleOp can only have at most one switchbox\n";
+  }
+
+  // the first CoreOp in the operands is the runnable core of the CoreModuleOp
+  // (i.e., the code in the op region is executed on the core)
+  int coreCol = cores.front().colIndex();
+  int coreRow = cores.front().rowIndex();
+
+  // Check switchbox
+  for (auto sb : switchboxes) {
+    if ((coreCol != sb.colIndex()) || (coreRow != sb.rowIndex())) {
+      op.emitOpError() << "core and switchbox (col, row) indices mismatches: "
+                       << "switchbox(" << sb.colIndex() << "," << sb.rowIndex() << ")"
+                       << "and "
+                       << "core(" << coreCol << "," << coreRow << ")";
+    }
+  }
+
+  // Check memory affinity
+  for (auto mem : mems) {
+    int memCol = mem.colIndex();
+    int memRow = mem.rowIndex();
+    if (!isLegalMemAffinity(coreCol, coreRow, memCol, memRow)) {
+      op.emitOpError() << "Illegal memory affinity of a coreOp with a MemOp! "
+                       << "mem(" << memCol << "," << memRow << ")"
+                       << "and "
+                       << "core(" << coreCol << "," << coreRow << ")";
+    }
+  }
+
+  // Check core cascading
+  for (unsigned i = 1; i < cores.size(); i++) {
+    xilinx::AIE::CoreOp nextCore = cores[i];
+    bool IsCoreWest = isWest(coreCol, coreRow, nextCore.colIndex(), nextCore.rowIndex());
+    bool IsCoreEast = isEast(coreCol, coreRow, nextCore.colIndex(), nextCore.rowIndex());
+    if (!(IsCoreWest || IsCoreEast))
+      op.emitOpError() << "Illegal core cascading!\n";
+  }
+
+  return success();
+}
+
+static LogicalResult verify(xilinx::AIE::LockOp op) {
+  xilinx::AIE::MemOp memOp = dyn_cast_or_null<xilinx::AIE::MemOp>(op.mem().getDefiningOp());
+  if (!memOp)
+    op.emitOpError() << "Expected MemOp!\n";
+
+  return success();
+}
+
+static LogicalResult verify(xilinx::AIE::UseLockOp op) {
+  xilinx::AIE::LockOp lockOp = dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
+  if (!lockOp)
+    op.emitOpError() << "Expected LockOp!\n";
+
+  return success();
+}
+
+static LogicalResult verify(xilinx::AIE::BufferOp op) {
+  xilinx::AIE::MemOp memOp = dyn_cast_or_null<xilinx::AIE::MemOp>(op.mem().getDefiningOp());
+  if (!memOp)
+    op.emitOpError() << "Expected MemOp!\n";
+
+  return success();
+}
+
 #include "AIEEnums.cpp.inc"
 
 namespace xilinx {
