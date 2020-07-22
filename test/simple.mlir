@@ -1,3 +1,7 @@
+// RUN: aie-opt %s | FileCheck %s
+// CHECK-LABEL: module {
+// CHECK:       }
+
 module {
   %00 = AIE.core(0, 0)
   %11 = AIE.core(1, 1)

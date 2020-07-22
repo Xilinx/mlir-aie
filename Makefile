@@ -11,4 +11,4 @@ build: ${BUILD_DIR}/.dir
 	echo `pwd`; ./config.sh ${BUILD_DIR} .; cd ${BUILD_DIR}; ninja
 
 test:
-	cd ${BUILD_DIR}; ninja check-all
+	cd ${BUILD_DIR}; ninja check-aie

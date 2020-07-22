@@ -1,3 +1,6 @@
+// RUN: aie-opt %s | FileCheck %s
+// CHECK-LABEL: module {
+// CHECK:       }
 
 // arbiter() {
 // %1 = masterset(north:1, east:2);

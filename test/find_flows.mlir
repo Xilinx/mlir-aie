@@ -1,4 +1,6 @@
-
+// RUN: aie-opt %s | FileCheck %s
+// CHECK-LABEL: module {
+// CHECK:       }
 
 module {
   %0 = AIE.switchbox(2, 3) {

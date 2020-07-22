@@ -1,3 +1,4 @@
+// RUN: aie-opt %s | FileCheck %s
 
 // Goal of AIE dialect modeling: ensure the legality of Lock + DMA + Memory accesses
 // and StreamSwitch connectivity
@@ -6,6 +7,9 @@
 // The physical netlist will get translated to XAIE* calls (from the ARM host) to configure
 // the AIE array (Core, StreamSwitch, Lock, DMMA setups)
 // and the code in the CoreModule region will get translated to AIE core instrinsics
+
+// CHECK-LABEL: module @example0 {
+// CHECK:       }
 
 module @example0 {
 
@@ -56,15 +60,7 @@ module @example0 {
     AIE.connect<"South":0, "DMA": 0>
   }
 
-  %m32 = AIE.mem(3, 2) {}
-  %m34 = AIE.mem(3, 4) {}
-  %m23 = AIE.mem(2, 3) {}
-  %m43 = AIE.mem(4, 3) {}
-
-  %c23 = AIE.core(2, 3)
-  %c43 = AIE.core(4, 3)
-  %c53 = AIE.core(5, 3)
-  AIE.coreModule(%c33, %m33, %s33, %m32, %m34) {
+  AIE.coreModule(%c33, %m33, %s33) {
     %l0 = AIE.lock(%m33, 0)
     %buf = AIE.buffer(%m33, 0) : memref<256xi32>
 

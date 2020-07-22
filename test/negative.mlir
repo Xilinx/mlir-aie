@@ -1,3 +1,7 @@
+// RUN: aie-opt %s | FileCheck %s
+// CHECK-LABEL: module {
+// CHECK:       }
+
 module {
 %c2 = constant 2 : index
   %c3 = constant 3 : index
