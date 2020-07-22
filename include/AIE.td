@@ -582,7 +582,7 @@ def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
 def AIE_DMAOp: AIE_Op<"dma", [HasParent<"MemOp">]> {
   let summary = "Declare a dma op";
   let description = [{
-    Declare a dma op
+    TODO
   }];
 
   let arguments = (
@@ -610,7 +610,7 @@ def AIE_MemOp: AIE_Op<"mem", [SingleBlockImplicitTerminator<"EndMemOp">]>,
 
   let summary = "Declare a memory op";
   let description = [{
-    Declare a memory op
+    TODO
   }];
 
   let arguments = (
@@ -626,6 +626,14 @@ def AIE_MemOp: AIE_Op<"mem", [SingleBlockImplicitTerminator<"EndMemOp">]>,
     int colIndex() { return col().getZExtValue(); }
     int rowIndex() { return row().getZExtValue(); }
   }];
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Type resultType, int col, int row", [{
+              build(builder, result, resultType,
+                    builder.getI32IntegerAttr(col),
+                    builder.getI32IntegerAttr(row));
+              }]>
+  ];
 }
 
 def AIE_EndMemOp: AIE_Op<"endMem", [Terminator]> {
@@ -639,7 +647,7 @@ def AIE_CoreModuleOp: AIE_Op<"coreModule", [SingleBlockImplicitTerminator<"EndCo
                      Results<(outs Index)> {
   let summary = "A core module op";
   let description = [{
-    A core module op"
+    TODO
   }];
 
   let arguments = (
@@ -650,6 +658,13 @@ def AIE_CoreModuleOp: AIE_Op<"coreModule", [SingleBlockImplicitTerminator<"EndCo
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parseCoreModuleOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "ValueRange operands", [{
+              build(builder, result, builder.getIndexType(), operands);
+              }]>
+  ];
 }
 
 def AIE_EndCoreModuleOp: AIE_Op<"endCoreModule", [Terminator]> {
@@ -659,11 +674,11 @@ def AIE_EndCoreModuleOp: AIE_Op<"endCoreModule", [Terminator]> {
   }];
 }
 
-def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
+def AIE_LockOp: AIE_Op<"lock", [HasParent<"CoreModuleOp">]>, Results<(outs Index)> {
 
   let summary = "Declare a physical lock";
   let description = [{
-    Declare a physical lock
+    TODO
   }];
 
   let arguments = (
@@ -694,7 +709,7 @@ def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
 def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    acquire/release lock op
+    TODO
   }];
 
   let arguments = (
@@ -718,10 +733,10 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", [HasParent<"CoreModuleOp">]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
-    Declare a buffer
+    TODO
   }];
 
   let arguments = (
@@ -735,17 +750,26 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
     `(` $mem `,` $bufferID `)` attr-dict `:`  type($buffer)
   }];
 
- let verifier = [{ return ::verify(*this); }];
+  let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
     int getBufferID() { return bufferID().getZExtValue(); }
   }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Type resultType, Value mem, int bufferID", [{
+              build(builder, result, resultType,
+                    mem,
+                    builder.getI32IntegerAttr(bufferID));
+              }]>
+  ];
 }
 
 def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
   let summary = "Declare a token (a logical lock)";
   let description = [{
-    Declare a token (a logical lock)
+    TODO
   }];
 
   let arguments = (
@@ -762,32 +786,32 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
 }
 
 def AIE_UseTokenOp: AIE_Op<"useToken", []> {
-    let summary = "acquire/release a logical lock";
-    let description = [{
-      acquire/release a logical lock
-    }];
+  let summary = "acquire/release a logical lock";
+  let description = [{
+    TODO
+  }];
 
-    let arguments = (
-      ins FlatSymbolRefAttr:$tokenName,
-          I32Attr:$value,
-          LockAction:$action
-    );
+  let arguments = (
+    ins FlatSymbolRefAttr:$tokenName,
+        I32Attr:$value,
+        LockAction:$action
+  );
 
-    let assemblyFormat = [{
-      $tokenName `(` $action `,` $value `)` attr-dict
-    }];
+  let assemblyFormat = [{
+    $tokenName `(` $action `,` $value `)` attr-dict
+  }];
 
-    let extraClassDeclaration = [{
-      bool acquire() { return (action() == LockAction::Acquire); }
-      bool release() { return (action() == LockAction::Release); }
-      int getTokenValue() { return value().getZExtValue(); }
-    }];
+  let extraClassDeclaration = [{
+    bool acquire() { return (action() == LockAction::Acquire); }
+    bool release() { return (action() == LockAction::Release); }
+    int getTokenValue() { return value().getZExtValue(); }
+  }];
 }
 
 def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
   let summary = "A memcpy op";
   let description = [{
-    A memcpy op
+    TODO
   }];
   let arguments = (
     ins FlatSymbolRefAttr:$tokenName,
@@ -801,5 +825,10 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
 
   let assemblyFormat = [{
     $tokenName `(` $acqValue `,` $relValue `)` `(` $srcCore `:` $srcBuf `,` $dstCore `:` $dstBuf `)` attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
+  }];
+
+  let extraClassDeclaration = [{
+    int getAcquireTokenValue() { return acqValue().getZExtValue(); }
+    int getReleaseTokenValue() { return relValue().getZExtValue(); }
   }];
 }

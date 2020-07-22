@@ -30,6 +30,7 @@ namespace AIE {
 void registerAIETranslations();
 void registerAIEFindFlowsPass();
 void registerAIECreateFlowsPass();
+void registerAIECreateCoreModulePass();
 
 // The Dialect
 class AIEDialect : public mlir::Dialect {
