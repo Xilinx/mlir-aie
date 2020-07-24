@@ -568,6 +568,16 @@ def AIE_EndarbiterOp: AIE_Op<"endarbiter", [Terminator
   }];
 }
 
+def AIE_EndOp: AIE_Op<"end", [Terminator]> {
+  let summary = "end op";
+  let description = [{
+    Terminator for AIE Ops that have multi-block region
+  }];
+  let assemblyFormat = [{
+    attr-dict
+  }];
+}
+
 def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
 def S2MM1:  I32EnumAttrCase<"S2MM1", 1>;
 def MM2S0:  I32EnumAttrCase<"MM2S0", 2>;
@@ -579,7 +589,7 @@ def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIE_DMAOp: AIE_Op<"dma", [HasParent<"MemOp">]> {
+def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   let summary = "Declare a dma op";
   let description = [{
     TODO
@@ -587,25 +597,65 @@ def AIE_DMAOp: AIE_Op<"dma", [HasParent<"MemOp">]> {
 
   let arguments = (
     ins AnyMemRef:$buffer,
-        DMAChan:$dmaChan,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$acqValue,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$relValue
+        I32Attr:$offset,
+        I32Attr:$len,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
   );
 
   let assemblyFormat = [{
-    `(` $buffer `:` type($buffer) `,` $dmaChan `,` $lockID `,` $acqValue `,` $relValue `)` attr-dict 
+    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    int getLockID() { return lockID().getZExtValue(); }
-    int getDMAChannel() { return static_cast<int32_t>(dmaChan()); }
-    int getAcquireLockValue() { return acqValue().getZExtValue(); }
-    int getReleaseLockValue() { return relValue().getZExtValue(); }
+    int getOffsetValue() { return offset().getZExtValue(); }
+    int getLenValue() { return len().getZExtValue(); }
+    bool isA() { return (AB().getZExtValue() == 0); }
+    bool isB() { return (AB().getZExtValue() == 1); }
   }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Value buffer, int offset, int len, int AB", [{
+              build(builder, result,
+                    buffer,
+                    builder.getI32IntegerAttr(offset),
+                    builder.getI32IntegerAttr(len),
+                    builder.getI32IntegerAttr(AB));
+              }]>
+  ];
 }
 
-def AIE_MemOp: AIE_Op<"mem", [SingleBlockImplicitTerminator<"EndMemOp">]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
+                     Results<(outs I1:$valid)> {
+
+  let summary = "An op to start DMA";
+  let description = [{
+  }];
+
+  let arguments = (
+    ins DMAChan:$dmaChan
+  );
+
+  let assemblyFormat = [{
+    `(` $dmaChan `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    bool isSend() { return ((static_cast<int32_t>(dmaChan()) == 2) ||
+                            (static_cast<int32_t>(dmaChan()) == 3)); }
+    bool isRecv() { return ((static_cast<int32_t>(dmaChan()) == 1) ||
+                            (static_cast<int32_t>(dmaChan()) == 2)); }
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "DMAChan channel", [{
+              build(builder, result, builder.getIntegerType(1), channel);
+              }]>
+  ];
+}
+
+def AIE_MemOp: AIE_Op<"mem", []>,
                      Results<(outs Index)> {
 
   let summary = "Declare a memory op";
@@ -636,14 +686,7 @@ def AIE_MemOp: AIE_Op<"mem", [SingleBlockImplicitTerminator<"EndMemOp">]>,
   ];
 }
 
-def AIE_EndMemOp: AIE_Op<"endMem", [Terminator]> {
-  let summary = "end of a MemOp";
-  let description = [{
-    Terminator for MemOp
-  }];
-}
-
-def AIE_CoreModuleOp: AIE_Op<"coreModule", [SingleBlockImplicitTerminator<"EndCoreModuleOp">]>,
+def AIE_CoreModuleOp: AIE_Op<"coreModule", []>,
                      Results<(outs Index)> {
   let summary = "A core module op";
   let description = [{
@@ -665,13 +708,6 @@ def AIE_CoreModuleOp: AIE_Op<"coreModule", [SingleBlockImplicitTerminator<"EndCo
               build(builder, result, builder.getIndexType(), operands);
               }]>
   ];
-}
-
-def AIE_EndCoreModuleOp: AIE_Op<"endCoreModule", [Terminator]> {
-  let summary = "end of a coreModuleOp";
-  let description = [{
-    Terminator for coreModuleOp
-  }];
 }
 
 def AIE_LockOp: AIE_Op<"lock", [HasParent<"CoreModuleOp">]>, Results<(outs Index)> {
@@ -806,6 +842,13 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
     bool release() { return (action() == LockAction::Release); }
     int getTokenValue() { return value().getZExtValue(); }
   }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "StringRef tokenName, int value, LockAction action", [{
+              build(builder, result, tokenName, APInt(32, value), action);
+              }]>
+  ];
 }
 
 def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
@@ -819,16 +862,27 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
         I32Attr:$relValue,
         Index:$srcCore,
         AnyMemRef:$srcBuf,
+        I32Attr:$srcOffset,
+        I32Attr:$srcLen,
         Index:$dstCore,
-        AnyMemRef:$dstBuf
+        AnyMemRef:$dstBuf,
+        I32Attr:$dstOffset,
+        I32Attr:$dstLen
   );
 
   let assemblyFormat = [{
-    $tokenName `(` $acqValue `,` $relValue `)` `(` $srcCore `:` $srcBuf `,` $dstCore `:` $dstBuf `)` attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
+    $tokenName `(` $acqValue `,` $relValue `)` `(`
+      $srcCore `:` `<` $srcBuf `,` $srcOffset `,` $srcLen `>` `,`
+      $dstCore `:` `<` $dstBuf `,` $dstOffset `,` $dstLen `>` `)`
+        attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
   }];
 
   let extraClassDeclaration = [{
     int getAcquireTokenValue() { return acqValue().getZExtValue(); }
     int getReleaseTokenValue() { return relValue().getZExtValue(); }
+    int getSrcOffsetValue() { return srcOffset().getZExtValue(); }
+    int getDstOffsetValue() { return dstOffset().getZExtValue(); }
+    int getSrcLenValue() { return srcLen().getZExtValue(); }
+    int getDstLenValue() { return dstLen().getZExtValue(); }
   }];
 }

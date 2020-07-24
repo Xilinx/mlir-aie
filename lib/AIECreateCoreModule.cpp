@@ -15,6 +15,83 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
+  using OpConversionPattern<MemcpyOp>::OpConversionPattern;
+  ModuleOp &module;
+  DenseMap<std::pair<int, int>, CoreOp> &cores;
+  DenseMap<std::pair<int, int>, MemOp> &mems;
+  DenseMap<Value, Value> &buffers;
+
+  LowerAIEMemcpy(MLIRContext *context, ModuleOp &m,
+    DenseMap<std::pair<int, int>, CoreOp> &cores,
+    DenseMap<std::pair<int, int>, MemOp> &mems,
+    DenseMap<Value, Value> &buffers,
+    PatternBenefit benefit = 1) :
+    OpConversionPattern<MemcpyOp>(context, benefit),
+      module(m),
+      cores(cores),
+      mems(mems),
+      buffers(buffers) {}
+
+  void createDMABlocksAndOps(MemOp &mem,
+    StringRef tokenName, int acquireTknVal, int releaseTknVal,
+    Value buf, int offset, int len,
+    DMAChan dmaChannel,
+    ConversionPatternRewriter &rewriter) const {
+
+    Region &r = mem.body();
+    Block &entryBlock = r.front();
+    Block &endBlock = r.back();
+    Block *dmaBlock = rewriter.createBlock(&endBlock);
+    Block *bdBlock = rewriter.createBlock(&endBlock);
+
+    Operation *termOp = entryBlock.getTerminator();
+    rewriter.setInsertionPoint(termOp);
+    DMAStartOp dmaStart= rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel);
+    rewriter.replaceOpWithNewOp<BranchOp>(termOp, dmaBlock);
+
+    rewriter.setInsertionPointToStart(dmaBlock);
+    rewriter.create<CondBranchOp>(rewriter.getUnknownLoc(), dmaStart, bdBlock, &endBlock);
+
+    rewriter.setInsertionPointToStart(bdBlock);
+    rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName, acquireTknVal, LockAction::Acquire);
+    rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len, 0); // A
+    rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName, releaseTknVal, LockAction::Release);
+    rewriter.create<BranchOp>(rewriter.getUnknownLoc(), &endBlock);
+  }
+
+  LogicalResult matchAndRewrite(MemcpyOp op, ArrayRef<Value> operands,
+                                ConversionPatternRewriter &rewriter) const override {
+    Operation *Op = op.getOperation();
+    CoreOp srcCore = dyn_cast<CoreOp>(op.srcCore().getDefiningOp());
+    CoreOp dstCore = dyn_cast<CoreOp>(op.dstCore().getDefiningOp());
+    Value origSrcBuf = op.srcBuf();
+    Value origDstBuf = op.dstBuf();
+
+    StringRef tokenName = op.tokenName();
+    int acquireTknVal = op.getAcquireTokenValue();
+    int releaseTknVal = op.getReleaseTokenValue();
+    int srcOffset = op.getSrcOffsetValue();
+    int dstOffset = op.getDstOffsetValue();
+    int srcLen = op.getSrcLenValue();
+    int dstLen = op.getDstLenValue();
+
+    MemOp srcMem = mems[std::make_pair(srcCore.colIndex(), srcCore.rowIndex())];
+    MemOp dstMem = mems[std::make_pair(dstCore.colIndex(), dstCore.rowIndex())];
+
+    Value srcBuf = buffers[origSrcBuf];
+    Value dstBuf = buffers[origDstBuf];
+
+    createDMABlocksAndOps(srcMem, tokenName, acquireTknVal, releaseTknVal,
+                          srcBuf, srcOffset, srcLen, DMAChan::MM2S0, rewriter);
+    createDMABlocksAndOps(dstMem, tokenName, acquireTknVal, releaseTknVal,
+                          dstBuf, dstOffset, dstLen, DMAChan::S2MM0, rewriter);
+
+    rewriter.eraseOp(Op);
+    return success();
+  }
+};
+
 struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
   using OpConversionPattern<FuncOp>::OpConversionPattern;
   ModuleOp &module;
@@ -65,6 +142,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
 
     DenseMap<std::pair<int, int>, CoreOp> cores;
     DenseMap<std::pair<int, int>, MemOp> mems;
+    DenseMap<Value, Value> buffers;
     DenseMap<FuncOp, std::pair<int, int>> funcs;
 
     for (auto core : m.getOps<CoreOp>()) {
@@ -97,8 +175,11 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
         builder.setInsertionPointToStart(m.getBody());
         MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(), builder.getIndexType(),
                                           colIndex, rowIndex);
-        mem.ensureTerminator(mem.body(), builder, builder.getUnknownLoc());
-        builder.setInsertionPointToStart(&mem.body().front());
+        Region &r = mem.body();
+        Block *entryBlock = builder.createBlock(&r);
+        Block *endBlock = builder.createBlock(&r);
+
+        builder.setInsertionPointToStart(entryBlock);
         unsigned bufferID = 0;
         for (auto operand : callOperands) {
           MemRefType t = nullptr;
@@ -115,9 +196,15 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
           auto allocOp = builder.create<AllocOp>(builder.getUnknownLoc(), t);
           allocOp.setAttr("id", builder.getI32IntegerAttr(bufferID));
           coreModuleBufTypes.push_back(std::make_pair(t, bufferID));
+          if (operand.getType().isa<MemRefType>())
+            buffers[operand] = allocOp;
           bufferID++;
         }
+        builder.create<BranchOp>(builder.getUnknownLoc(), endBlock);
 
+        // block terminator
+        builder.setInsertionPointToStart(endBlock);
+        builder.create<EndOp>(builder.getUnknownLoc());
         mems[std::make_pair(colIndex, rowIndex)] = mem;
       }
 
@@ -133,10 +220,9 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
 
           builder.setInsertionPoint(callOp);
           CoreModuleOp coreModule = builder.create<CoreModuleOp>(builder.getUnknownLoc(), operands);
-          coreModule.ensureTerminator(coreModule.body(), builder, builder.getUnknownLoc());
           Region &r = coreModule.body();
-          Block &b = r.front();
-          builder.setInsertionPointToStart(&b);
+          builder.createBlock(&r);
+          builder.setInsertionPointToStart(&r.back());
 
           // Mapping between function arguments (FuncOp) and AIE buffers (CoreModuleOp)
           // We will create one buffer for each function argument
@@ -168,12 +254,24 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
 
             builder.clone(childOp, mapper);
           }
+          // block terminator
+          builder.create<EndOp>(builder.getUnknownLoc());
+
         }
       }
     }
 
+
     ConversionTarget target(getContext());
     OwningRewritePatternList patterns;
+    target.addLegalOp<DMAStartOp>();
+    target.addLegalOp<DMABDOp>();
+    target.addLegalOp<UseTokenOp>();
+    target.addLegalOp<EndOp>();
+    target.addLegalOp<BranchOp>();
+    target.addLegalOp<CondBranchOp>();
+
+    patterns.insert<LowerAIEMemcpy>(m.getContext(), m, cores, mems, buffers);
 
     // Remove standard CallOps and FuncOps that are bound to AIE CoreModuleOps
     patterns.insert<RemoveAIECalls>(m.getContext(), m);

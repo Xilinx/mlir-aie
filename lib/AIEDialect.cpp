@@ -493,7 +493,6 @@ static ParseResult parseMemOp(OpAsmParser &parser, OperationState &result) {
 
   if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
     return failure();
-  xilinx::AIE::MemOp::ensureTerminator(*body, parser.getBuilder(), result.location);
 
   return success();
 }
@@ -521,13 +520,9 @@ static LogicalResult verify(xilinx::AIE::MemOp op) {
   assert(!body.empty() && "MemOp should have non-empty body");
 
   for (auto &bodyOp : body.getOps()) {
-    if(auto dmaOp = dyn_cast<xilinx::AIE::DMAOp>(bodyOp)) {
-    } else if (auto allocOp = dyn_cast<AllocOp>(bodyOp)) {
+    if (auto allocOp = dyn_cast<AllocOp>(bodyOp)) {
       if (!allocOp.getAttr("id"))
         op.emitOpError() << "allocOp in MemOp region should have an id attribute\n";
-    } else if (auto endMemOp = dyn_cast<xilinx::AIE::EndMemOp>(bodyOp) ) {
-    } else {
-      op.emitOpError() << "Unknown op in MemOp region: " << bodyOp << '\n';
     }
   }
 
@@ -565,7 +560,6 @@ static ParseResult parseCoreModuleOp(OpAsmParser &parser, OperationState &result
 
   if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
     return failure();
-  xilinx::AIE::CoreModuleOp::ensureTerminator(*body, parser.getBuilder(), result.location);
 
   return success();
 }
