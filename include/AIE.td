@@ -686,6 +686,18 @@ def AIE_MemOp: AIE_Op<"mem", []>,
   ];
 }
 
+def AIE_TerminatorOp: AIE_Op<"terminator", [Terminator]> {
+  let summary = "A multi-successor terminator op";
+  let description = [{
+    TODO
+  }];
+
+  let successors = (successor VariadicSuccessor<AnySuccessor>:$dests);
+  let assemblyFormat = [{
+    `(` $dests `)` attr-dict
+  }];
+}
+
 def AIE_CoreModuleOp: AIE_Op<"coreModule", []>,
                      Results<(outs Index)> {
   let summary = "A core module op";

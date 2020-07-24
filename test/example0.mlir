@@ -32,7 +32,7 @@ module @example0 {
 
     %dmaSt0 = AIE.dmaStart("MM2S0")
     %dmaSt1 = AIE.dmaStart("MM2S1")
-    br ^end
+    AIE.terminator(^dma0, ^dma1, ^end)
     ^dma0:
       cond_br %dmaSt0, ^bd0, ^end
     ^bd0:
@@ -56,7 +56,7 @@ module @example0 {
     %l0 = AIE.lock<0>()
 
     %dmaSt = AIE.dmaStart("S2MM0")
-    br ^end
+    AIE.terminator(^dma0, ^end)
     ^dma0:
       cond_br %dmaSt, ^bd0, ^end
     ^bd0:
@@ -73,7 +73,7 @@ module @example0 {
     %l0 = AIE.lock<0>()
 
     %dmaSt = AIE.dmaStart("S2MM0")
-    br ^end
+    AIE.terminator(^dma0, ^end)
     ^dma0:
       cond_br %dmaSt, ^bd0, ^end
     ^bd0:
@@ -103,7 +103,7 @@ module @example0 {
     AIE.connect<"South":0, "DMA": 0>
   }
 
-  AIE.coreModule(%c33, %m33, %s33) {
+  AIE.coreModule(%c33, %m33) {
     %l0 = AIE.lock<0>(%m33)
     %buf = AIE.buffer(%m33, 0) : memref<256xi32>
 
@@ -113,7 +113,7 @@ module @example0 {
     AIE.end
   }
 
-  AIE.coreModule(%c42, %m42, %s42) {
+  AIE.coreModule(%c42, %m42) {
     %l0 = AIE.lock<0>(%m42)
     %buf = AIE.buffer(%m42, 0) : memref<256xi32>
 
@@ -123,7 +123,7 @@ module @example0 {
     AIE.end
   }
 
-  AIE.coreModule(%c44, %m44, %s44) {
+  AIE.coreModule(%c44, %m44) {
     %l0 = AIE.lock<0>(%m44)
     %buf = AIE.buffer(%m44, 0) : memref<256xi32>
 

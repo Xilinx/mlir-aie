@@ -4,7 +4,7 @@
 // CHECK:         %[[mem33:.*]] = AIE.mem(3, 3) {
 // CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
 // CHECK:           %[[dmaSt:.*]] = AIE.dmaStart("S2MM0")
-// CHECK:           ^[[dma0:.*]]:  // no predecessors
+// CHECK:           ^[[dma0:.*]]:  // pred: ^bb0
 // CHECK:             cond_br %[[dmaSt]], ^[[bd0:.*]], ^[[end:.*]]
 // CHECK:           ^[[bd0]]:  // pred: ^[[dma0]]
 // CHECK:             AIE.useToken @token0("Acquire", 3)
@@ -18,14 +18,14 @@
 // CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
 // CHECK:           %[[dmaSt0:.*]] = AIE.dmaStart("S2MM0")
 // CHECK:           %[[dmaSt1:.*]] = AIE.dmaStart("MM2S0")
-// CHECK:           ^[[dma0:.*]]:  // no predecessors
+// CHECK:           ^[[dma0:.*]]:  // pred: ^bb0
 // CHECK:             cond_br %[[dmaSt0]], ^[[bd0:.*]], ^[[end:.*]]
 // CHECK:           ^[[bd0]]:  // pred: ^[[dma0]]
 // CHECK:             AIE.useToken @token0("Acquire", 1)
 // CHECK:             AIE.dmaBd(<%[[buf]] : memref<256xi32>, 0, 256>, 0)
 // CHECK:             AIE.useToken @token0("Release", 2)
 // CHECK:             br ^[[end]]
-// CHECK:           ^[[dma1:.*]]:  // no predecessors
+// CHECK:           ^[[dma1:.*]]:  // pred: ^bb0
 // CHECK:             cond_br %[[dmaSt1]], ^[[bd1:.*]], ^[[end]]
 // CHECK:           ^[[bd1]]:  // pred: ^[[dma1]]
 // CHECK:             AIE.useToken @token0("Acquire", 3)
@@ -38,7 +38,7 @@
 // CHECK:         %[[mem11:.*]] = AIE.mem(1, 1) {
 // CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
 // CHECK:           %[[dmaS:.*]] = AIE.dmaStart("MM2S0")
-// CHECK:           ^[[dma0:.*]]:  // no predecessors
+// CHECK:           ^[[dma0:.*]]:  // pred: ^bb0
 // CHECK:             cond_br %13, ^[[bd0:.*]], ^[[end:.*]]
 // CHECK:           ^[[bd0]]:  // pred: ^[[dma0]]
 // CHECK:             AIE.useToken @token0("Acquire", 1)

@@ -46,15 +46,32 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     Block *bdBlock = rewriter.createBlock(&endBlock);
 
     Operation *termOp = entryBlock.getTerminator();
-    rewriter.setInsertionPoint(termOp);
+    TerminatorOp oldTerm = dyn_cast<TerminatorOp>(termOp);
+
+    // Retrieve current successor dma Blocks, and add new successor Block
+    SmallVector<Block *, 4> succBlocks(oldTerm.dests());
+    succBlocks.push_back(dmaBlock);
+
+    rewriter.setInsertionPoint(oldTerm);
     DMAStartOp dmaStart= rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel);
 
+    // Replace old terminator with new terminator that includes new dma Block as a successor
+    rewriter.setInsertionPointToEnd(&entryBlock);
+    TerminatorOp newTerm = rewriter.create<TerminatorOp>(rewriter.getUnknownLoc(), succBlocks);
+    rewriter.eraseOp(termOp);
+
+    // Setup dma Block
+    // It should contain a conditional branch op that points to a bd Block.
+    // The bd Block is the start block description of the DMA transfer
     rewriter.setInsertionPointToStart(dmaBlock);
     rewriter.create<CondBranchOp>(rewriter.getUnknownLoc(), dmaStart, bdBlock, &endBlock);
 
+    // Setup bd Block
+    // It should contain locking operations (lock or token) as well as DMABD op for specifying
+    // DMA Block description (which buffer type (A/B), transfer length/address, etc.)
     rewriter.setInsertionPointToStart(bdBlock);
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName, acquireTknVal, LockAction::Acquire);
-    rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len, 0); // A
+    rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len, 0); // A type for now
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName, releaseTknVal, LockAction::Release);
     rewriter.create<BranchOp>(rewriter.getUnknownLoc(), &endBlock);
   }
@@ -199,8 +216,10 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
             buffers[operand] = allocOp;
           bufferID++;
         }
-        builder.create<BranchOp>(builder.getUnknownLoc(), endBlock);
-
+        //builder.create<BranchOp>(builder.getUnknownLoc(), endBlock);
+        SmallVector<Block *, 4> succBlocks;
+        succBlocks.push_back(endBlock);
+        builder.create<TerminatorOp>(builder.getUnknownLoc(), succBlocks);
         // block terminator
         builder.setInsertionPointToStart(endBlock);
         builder.create<EndOp>(builder.getUnknownLoc());
@@ -266,6 +285,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
     target.addLegalOp<AIE::EndOp>();
+    target.addLegalOp<AIE::TerminatorOp>();
     target.addLegalOp<BranchOp>();
     target.addLegalOp<CondBranchOp>();
 
