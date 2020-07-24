@@ -48,7 +48,6 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     Operation *termOp = entryBlock.getTerminator();
     rewriter.setInsertionPoint(termOp);
     DMAStartOp dmaStart= rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel);
-    rewriter.replaceOpWithNewOp<BranchOp>(termOp, dmaBlock);
 
     rewriter.setInsertionPointToStart(dmaBlock);
     rewriter.create<CondBranchOp>(rewriter.getUnknownLoc(), dmaStart, bdBlock, &endBlock);
@@ -261,13 +260,12 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
       }
     }
 
-
     ConversionTarget target(getContext());
     OwningRewritePatternList patterns;
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
-    target.addLegalOp<EndOp>();
+    target.addLegalOp<AIE::EndOp>();
     target.addLegalOp<BranchOp>();
     target.addLegalOp<CondBranchOp>();
 

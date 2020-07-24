@@ -691,10 +691,12 @@ static LogicalResult verify(xilinx::AIE::CoreModuleOp op) {
 }
 
 static LogicalResult verify(xilinx::AIE::LockOp op) {
-  xilinx::AIE::MemOp memOp = dyn_cast_or_null<xilinx::AIE::MemOp>(op.mem().getDefiningOp());
-  if (!memOp)
-    op.emitOpError() << "Expected MemOp!\n";
-
+  Optional<Value> mem = op.mem();
+  if (Value value = op.mem()) {
+    xilinx::AIE::MemOp memOp = dyn_cast_or_null<xilinx::AIE::MemOp>(op.mem().getDefiningOp());
+    if (!memOp)
+      op.emitOpError() << "Expected MemOp!\n";
+  }
   return success();
 }
 

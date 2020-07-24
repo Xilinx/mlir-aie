@@ -67,6 +67,6 @@ module @example1 {
   call @task2(%buf2) { aie.x = 4, aie.y = 4 } : (memref<256xi32>) -> ()
   call @task3() : () -> ()
 
-  AIE.memcpy @token0(1, 2) (%c33 : %buf0, %c42 : %buf1) : (memref<256xi32>, memref<256xi32>)
-  AIE.memcpy @token1(1, 2) (%c33 : %buf0, %c44 : %buf2) : (memref<256xi32>, memref<256xi32>)
+  AIE.memcpy @token0(1, 2) (%c33 : <%buf0, 0, 256>, %c42 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
+  AIE.memcpy @token1(1, 2) (%c33 : <%buf0, 0, 256>, %c44 : <%buf2, 0, 256>) : (memref<256xi32>, memref<256xi32>)
 }

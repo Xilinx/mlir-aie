@@ -27,19 +27,62 @@ module @example0 {
 
   %m33 = AIE.mem(3, 3) {
     %buf = alloc() { id=0, bank=1 } : memref<256xi32> 
-    AIE.dma(%buf : memref<256xi32>, "MM2S0", 0, 1, 0)
-    AIE.dma(%buf : memref<256xi32>, "MM2S1", 1, 1, 0)
-    //%0 = constant 1 : index
+    %l0 = AIE.lock<0>()
+    %l1 = AIE.lock<1>()
+
+    %dmaSt0 = AIE.dmaStart("MM2S0")
+    %dmaSt1 = AIE.dmaStart("MM2S1")
+    br ^end
+    ^dma0:
+      cond_br %dmaSt0, ^bd0, ^end
+    ^bd0:
+      AIE.useLock(%l0, "Acquire", 1, 0)
+      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.useLock(%l0, "Release", 0, 0)
+      br ^end
+    ^dma1:
+      cond_br %dmaSt1, ^bd1, ^end
+    ^bd1:
+      AIE.useLock(%l1, "Acquire", 0, 0)
+      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.useLock(%l1, "Release", 1, 0)
+      br ^end
+    ^end:
+      AIE.end
   }
 
   %m42 = AIE.mem(4, 2) {
     %buf = alloc() { id=0, bank=0 } : memref<256xi32> 
-    AIE.dma(%buf : memref<256xi32>, "S2MM0", 0, 0, 1)
+    %l0 = AIE.lock<0>()
+
+    %dmaSt = AIE.dmaStart("S2MM0")
+    br ^end
+    ^dma0:
+      cond_br %dmaSt, ^bd0, ^end
+    ^bd0:
+      AIE.useLock(%l0, "Acquire", 1, 0)
+      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.useLock(%l0, "Release", 0, 0)
+      br ^end
+    ^end:
+      AIE.end
   }
 
   %m44 = AIE.mem(4, 4) {
     %buf = alloc() { id=0, bank=0 } : memref<256xi32> 
-    AIE.dma(%buf : memref<256xi32>, "S2MM0", 0, 0, 1)
+    %l0 = AIE.lock<0>()
+
+    %dmaSt = AIE.dmaStart("S2MM0")
+    br ^end
+    ^dma0:
+      cond_br %dmaSt, ^bd0, ^end
+    ^bd0:
+      AIE.useLock(%l0, "Acquire", 1, 0)
+      AIE.dmaBd(<%buf : memref<256xi32>, 0, 256>, 0)
+      AIE.useLock(%l0, "Release", 0, 0)
+      br ^end
+    ^end:
+      AIE.end
   }
 
   %s33 = AIE.switchbox(3, 3) {
@@ -61,29 +104,32 @@ module @example0 {
   }
 
   AIE.coreModule(%c33, %m33, %s33) {
-    %l0 = AIE.lock(%m33, 0)
+    %l0 = AIE.lock<0>(%m33)
     %buf = AIE.buffer(%m33, 0) : memref<256xi32>
 
     AIE.useLock(%l0, "Acquire", 0, 0)
     // code
     AIE.useLock(%l0, "Release", 1, 0)
+    AIE.end
   }
 
   AIE.coreModule(%c42, %m42, %s42) {
-    %l0 = AIE.lock(%m42, 0)
+    %l0 = AIE.lock<0>(%m42)
     %buf = AIE.buffer(%m42, 0) : memref<256xi32>
 
     AIE.useLock(%l0, "Acquire", 1, 0)
     // code
     AIE.useLock(%l0, "Release", 0, 0)
+    AIE.end
   }
 
   AIE.coreModule(%c44, %m44, %s44) {
-    %l0 = AIE.lock(%m44, 0)
+    %l0 = AIE.lock<0>(%m44)
     %buf = AIE.buffer(%m44, 0) : memref<256xi32>
 
     AIE.useLock(%l0, "Acquire", 1, 0)
     // code
     AIE.useLock(%l0, "Release", 0, 0)
+    AIE.end
   }
 }

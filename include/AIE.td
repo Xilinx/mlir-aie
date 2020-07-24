@@ -710,7 +710,7 @@ def AIE_CoreModuleOp: AIE_Op<"coreModule", []>,
   ];
 }
 
-def AIE_LockOp: AIE_Op<"lock", [HasParent<"CoreModuleOp">]>, Results<(outs Index)> {
+def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
 
   let summary = "Declare a physical lock";
   let description = [{
@@ -718,12 +718,12 @@ def AIE_LockOp: AIE_Op<"lock", [HasParent<"CoreModuleOp">]>, Results<(outs Index
   }];
 
   let arguments = (
-    ins Index:$mem,
+    ins Optional<Index>:$mem,
         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
   );
 
   let assemblyFormat = [{
-    `(` $mem `,` $lockID `)` attr-dict
+    `<` $lockID `>` `(` $mem `)` attr-dict
   }];
 
   let verifier = [{ return ::verify(*this); }];
