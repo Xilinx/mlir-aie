@@ -180,6 +180,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
       int colIndex = callOp.getAttrOfType<IntegerAttr>("aie.x").getInt();
       int rowIndex = callOp.getAttrOfType<IntegerAttr>("aie.y").getInt();
 
+      // create CoreOp
       if (!cores[std::make_pair(colIndex, rowIndex)]) {
         builder.setInsertionPointToStart(m.getBody());
         CoreOp core = builder.create<CoreOp>(builder.getUnknownLoc(), builder.getIndexType(),
@@ -187,6 +188,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
         cores[std::make_pair(colIndex, rowIndex)] = core;
       }
 
+      // create MemOp with buffer allocation
       if (!mems[std::make_pair(colIndex, rowIndex)]) {
         builder.setInsertionPointToStart(m.getBody());
         MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(), builder.getIndexType(),
@@ -216,7 +218,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
             buffers[operand] = allocOp;
           bufferID++;
         }
-        //builder.create<BranchOp>(builder.getUnknownLoc(), endBlock);
+
         SmallVector<Block *, 4> succBlocks;
         succBlocks.push_back(endBlock);
         builder.create<TerminatorOp>(builder.getUnknownLoc(), succBlocks);
@@ -226,6 +228,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
         mems[std::make_pair(colIndex, rowIndex)] = mem;
       }
 
+      // create CoreModuleOp with buffer reference
       if (CallOpInterface call = dyn_cast<CallOpInterface>(callOp.getOperation())) {
         Operation *callable = call.resolveCallable();
         if (FuncOp func = dyn_cast<FuncOp>(callable)) {
@@ -279,12 +282,32 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
       }
     }
 
+    // Setup FlowOps
+    // Since memcpy moves data from one memory module to another, we use WireBundle::DMA
+    // for both the source and the destination
+    // In addition, we only have two DMA ports per each direction (MM2S/S2MM), and in a
+    // circuit-switch mode, dest port/channel sharing is not possible. Therefore, we will generate error
+    // if the number of logical flows (streams) targeting the same destination (S2MM) is more than 2
+    DenseMap<Value, int> destChannel;
+    for (auto op : m.getOps<MemcpyOp>()) {
+      builder.setInsertionPoint(op);
+      CoreOp srcCore = dyn_cast<CoreOp>(op.srcCore().getDefiningOp());
+      CoreOp dstCore = dyn_cast<CoreOp>(op.dstCore().getDefiningOp());
+      // TODO: perhaps a better approach is to not assert here, but rather have a subsequent pass
+      // that legally relocates the ports
+      assert(destChannel[op.dstCore()] <= 2 &&
+             "Could not allocate more than two dest. channel when creating FlowOp");
+      // WireBundle[1] = DMA
+      builder.create<FlowOp>(builder.getUnknownLoc(), srcCore, 1, 0, dstCore, 1, destChannel[op.dstCore()]);
+      destChannel[op.dstCore()]++;
+    }
+
+
     ConversionTarget target(getContext());
     OwningRewritePatternList patterns;
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
-    target.addLegalOp<AIE::EndOp>();
     target.addLegalOp<AIE::TerminatorOp>();
     target.addLegalOp<BranchOp>();
     target.addLegalOp<CondBranchOp>();

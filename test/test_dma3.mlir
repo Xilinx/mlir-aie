@@ -1,7 +1,7 @@
 // RUN: aie-opt --aie-create-coremodule %s | FileCheck %s
 
 // CHECK-LABEL: module @test_dma3 {
-// CHECK:         %[[mem33:.*]] = AIE.mem(3, 3) {
+// CHECK:         %[[m33:.*]] = AIE.mem(3, 3) {
 // CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
 // CHECK:           %[[dmaSt:.*]] = AIE.dmaStart("S2MM0")
 // CHECK:           ^[[dma0:.*]]:  // pred: ^bb0
@@ -14,7 +14,7 @@
 // CHECK:           ^[[end]]:  // 3 preds: ^bb0, ^[[dma0]], ^[[bd0]]
 // CHECK:             AIE.end
 // CHECK:         }
-// CHECK:         %[[mem22:.*]] = AIE.mem(2, 2) {
+// CHECK:         %[[m22:.*]] = AIE.mem(2, 2) {
 // CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
 // CHECK:           %[[dmaSt0:.*]] = AIE.dmaStart("S2MM0")
 // CHECK:           %[[dmaSt1:.*]] = AIE.dmaStart("MM2S0")
@@ -35,7 +35,7 @@
 // CHECK:           ^[[end]]:  // 5 preds: ^bb0, ^[[dma0]], ^[[bd0]], ^[[dma1]], ^[[bd1]]
 // CHECK:             AIE.end
 // CHECK:         }
-// CHECK:         %[[mem11:.*]] = AIE.mem(1, 1) {
+// CHECK:         %[[m11:.*]] = AIE.mem(1, 1) {
 // CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
 // CHECK:           %[[dmaS:.*]] = AIE.dmaStart("MM2S0")
 // CHECK:           ^[[dma0:.*]]:  // pred: ^bb0
@@ -48,25 +48,27 @@
 // CHECK:           ^[[end]]:  // 3 preds: ^bb0, ^[[dma0]], ^[[bd0]]
 // CHECK:             AIE.end
 // CHECK:         }
-// CHECK:         %[[core11:.*]] = AIE.core(1, 1)
-// CHECK:         %[[core22:.*]] = AIE.core(2, 2)
-// CHECK:         %[[core33:.*]] = AIE.core(3, 3)
+// CHECK:         %[[c11:.*]] = AIE.core(1, 1)
+// CHECK:         %[[c22:.*]] = AIE.core(2, 2)
+// CHECK:         %[[c33:.*]] = AIE.core(3, 3)
 // CHECK:         %[[buf0:.*]] = alloc() : memref<256xi32>
 // CHECK:         %[[buf1:.*]] = alloc() : memref<256xi32>
 // CHECK:         %[[buf2:.*]] = alloc() : memref<256xi32>
 // CHECK:         AIE.token(0) {sym_name = "token0"}
-// CHECK:         %[[cm11:.*]] = AIE.coreModule(%[[core11]], %[[mem11]]) {
-// CHECK:           %[[buf:.*]] = AIE.buffer(%[[mem11]], 0) : memref<256xi32>
+// CHECK:         %[[cm11:.*]] = AIE.coreModule(%[[c11]], %[[m11]]) {
+// CHECK:           %[[buf:.*]] = AIE.buffer(%[[m11]], 0) : memref<256xi32>
 // CHECK:           AIE.useToken @token0("Acquire", 0)
 // CHECK:           AIE.useToken @token0("Release", 1)
 // CHECK:         }
-// CHECK:         %[[cm22:.*]] = AIE.coreModule(%[[core22]], %[[mem22]]) {
-// CHECK:           %[[buf:.*]] = AIE.buffer(%[[mem22]], 0) : memref<256xi32>
+// CHECK:         AIE.flow(%[[c11]], "DMA" : 0, %[[c22]], "DMA" : 0)
+// CHECK:         %[[cm22:.*]] = AIE.coreModule(%[[c22]], %[[m22]]) {
+// CHECK:           %[[buf:.*]] = AIE.buffer(%[[m22]], 0) : memref<256xi32>
 // CHECK:           AIE.useToken @token0("Acquire", 2)
 // CHECK:           AIE.useToken @token0("Release", 3)
 // CHECK:         }
-// CHECK:         %[[cm33:.*]] = AIE.coreModule(%[[core33]], %[[mem33]]) {
-// CHECK:           %[[buf:.*]] = AIE.buffer(%[[mem33]], 0) : memref<256xi32>
+// CHECK:         AIE.flow(%[[c22]], "DMA" : 0, %[[c33]], "DMA" : 0)
+// CHECK:         %[[cm33:.*]] = AIE.coreModule(%[[c33]], %[[m33]]) {
+// CHECK:           %[[buf:.*]] = AIE.buffer(%[[m33]], 0) : memref<256xi32>
 // CHECK:           AIE.useToken @token0("Acquire", 4)
 // CHECK:           AIE.useToken @token0("Release", 5)
 // CHECK:         }

@@ -29,14 +29,15 @@
 // CHECK:         }
 // CHECK:         %[[c11:.*]] = AIE.core(1, 1)
 // CHECK:         %[[c22:.*]] = AIE.core(2, 2)
-// CHECK:         %[[c33:.*]] = alloc() : memref<256xi32>
-// CHECK:         %[[buf:.*]] = alloc() : memref<256xi32>
+// CHECK:         %[[buf0:.*]] = alloc() : memref<256xi32>
+// CHECK:         %[[buf1:.*]] = alloc() : memref<256xi32>
 // CHECK:         AIE.token(0) {sym_name = "token0"}
 // CHECK:         %[[cm11:.*]] = AIE.coreModule(%[[c11]], %[[m11]]) {
 // CHECK:           %[[buf:.*]] = AIE.buffer(%[[m11]], 0) : memref<256xi32>
 // CHECK:           AIE.useToken @token0("Acquire", 0)
 // CHECK:           AIE.useToken @token0("Release", 1)
 // CHECK:         }
+// CHECK:         AIE.flow(%[[c11]], "DMA" : 0, %[[c22]], "DMA" : 0)
 // CHECK:         %[[cm22:.*]] = AIE.coreModule(%[[c22]], %[[m22]]) {
 // CHECK:           %[[buf:.*]] = AIE.buffer(%[[m22]], 0) : memref<256xi32>
 // CHECK:           AIE.useToken @token0("Acquire", 2)

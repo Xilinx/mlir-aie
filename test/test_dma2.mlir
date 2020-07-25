@@ -68,6 +68,8 @@
 // CHECK:           AIE.useToken @token1("Acquire", 0)
 // CHECK:           AIE.useToken @token1("Release", 1)
 // CHECK:         }
+// CHECK:         AIE.flow(%[[c11]], "DMA" : 0, %[[c33]], "DMA" : 0)
+// CHECK:         AIE.flow(%[[c22]], "DMA" : 0, %[[c33]], "DMA" : 1)
 // CHECK:         %[[cm33:.*]] = AIE.coreModule(%[[c33]], %[[m33]]) {
 // CHECK:           %[[buf0:.*]] = AIE.buffer(%[[m33]], 0) : memref<256xi32>
 // CHECK:           %[[buf1:.*]] = AIE.buffer(%[[m33]], 1) : memref<256xi32>
