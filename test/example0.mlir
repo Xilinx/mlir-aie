@@ -20,9 +20,11 @@ module @example0 {
   // (2, 3) (3, 3) (4, 3) (5, 3)
   // (2, 2) (3, 2) (4, 2) (5, 2)
 
+  %c23 = AIE.core(2, 3)
   %c33 = AIE.core(3, 3)
   %c34 = AIE.core(4, 3)
   %c42 = AIE.core(4, 2)
+  %c43 = AIE.core(4, 3)
   %c44 = AIE.core(4, 4)
 
   %m33 = AIE.mem(3, 3) {
@@ -103,19 +105,24 @@ module @example0 {
     AIE.connect<"South":0, "DMA": 0>
   }
 
-  AIE.coreModule(%c33, %m33) {
-    %l0 = AIE.lock<0>(%m33)
-    %buf = AIE.buffer(%m33, 0) : memref<256xi32>
+  AIE.coreModule<%c33, %m33, %s33, %c23, %c43>(%core, %mem0, %sb, %core0, %core1) {
+    %l0 = AIE.lock<0>(%mem0)
+    %buf = AIE.buffer(%mem0, 0) : memref<256xi32>
 
     AIE.useLock(%l0, "Acquire", 0, 0)
     // code
+    %val0 = constant 16 : i32
+    AIE.putStream(%sb, 0, %val0 : i32)
+    %val1 = AIE.getStream(%sb, 0) : i128
+    %val2 = constant 1 : i384
+    AIE.putCascade(%core0, %val2: i384)
     AIE.useLock(%l0, "Release", 1, 0)
     AIE.end
   }
 
-  AIE.coreModule(%c42, %m42) {
-    %l0 = AIE.lock<0>(%m42)
-    %buf = AIE.buffer(%m42, 0) : memref<256xi32>
+  AIE.coreModule<%c42, %m42>(%core, %mem0) {
+    %l0 = AIE.lock<0>(%mem0)
+    %buf = AIE.buffer(%mem0, 0) : memref<256xi32>
 
     AIE.useLock(%l0, "Acquire", 1, 0)
     // code
@@ -123,9 +130,9 @@ module @example0 {
     AIE.end
   }
 
-  AIE.coreModule(%c44, %m44) {
-    %l0 = AIE.lock<0>(%m44)
-    %buf = AIE.buffer(%m44, 0) : memref<256xi32>
+  AIE.coreModule<%c44, %m44>(%core, %mem0) {
+    %l0 = AIE.lock<0>(%mem0)
+    %buf = AIE.buffer(%mem0, 0) : memref<256xi32>
 
     AIE.useLock(%l0, "Acquire", 1, 0)
     // code

@@ -655,7 +655,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
   ];
 }
 
-def AIE_MemOp: AIE_Op<"mem", []>,
+def AIE_MemOp: AIE_Op<"mem", [IsolatedFromAbove]>,
                      Results<(outs Index)> {
 
   let summary = "Declare a memory op";
@@ -698,8 +698,7 @@ def AIE_TerminatorOp: AIE_Op<"terminator", [Terminator]> {
   }];
 }
 
-def AIE_CoreModuleOp: AIE_Op<"coreModule", []>,
-                     Results<(outs Index)> {
+def AIE_CoreModuleOp: AIE_Op<"coreModule", [IsolatedFromAbove]> {
   let summary = "A core module op";
   let description = [{
     TODO
@@ -713,13 +712,26 @@ def AIE_CoreModuleOp: AIE_Op<"coreModule", []>,
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parseCoreModuleOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
-
+  let skipDefaultBuilders = 1;
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "ValueRange operands", [{
-              build(builder, result, builder.getIndexType(), operands);
-              }]>
+    OpBuilder<"OpBuilder &builder, OperationState &result, ValueRange operands">
   ];
+  let extraClassDeclaration = [{
+    ArrayRef<Operation *> getCores();
+    ArrayRef<Operation *> getMems();
+    ArrayRef<Operation *> getSwitchboxes();
+
+    Operation *getMainCore();  // get its core
+    Operation *getWestCore();  // get neighboring core on the West
+    Operation *getEastCore();  // get neighboring core on the East
+    Operation *getWestMem();   // get memory module on the West (is itself if on even rows)
+    Operation *getEastMem();   // get memory module on the East (is itself if on odd rows)
+    Operation *getSouthMem();  // get memory module on the South
+    Operation *getNorthMem();  // get memory module on the North
+    Operation *getSwitchbox(); // get its switchbox
+
+    bool isMainMemWest(); // is its MemModule WestMem (applies for AIE cores on even rows)?
+  }];
 }
 
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
@@ -896,5 +908,87 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
     int getDstOffsetValue() { return dstOffset().getZExtValue(); }
     int getSrcLenValue() { return srcLen().getZExtValue(); }
     int getDstLenValue() { return dstLen().getZExtValue(); }
+  }];
+}
+
+def AIE_GetStreamOp: AIE_Op<"getStream", []>,
+                 Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
+  let summary = "An op to read from a stream channel/port of a switchbox";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins  Index:$switchbox,
+         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel
+  );
+  let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
+  let verifier = [{ return ::verify(*this); }];
+
+  let assemblyFormat = [{
+    `(` $switchbox `,` $channel `)` attr-dict `:` type($streamValue)
+  }];
+  let extraClassDeclaration = [{
+    bool isWideStream() { return streamValue().getType().isInteger(128); }
+    bool isFloatStream() { return streamValue().getType().isa<FloatType>(); }
+    int getChannelValue() { return channel().getZExtValue(); }
+  }];
+}
+
+def AIE_PutStreamOp: AIE_Op<"putStream", []> {
+  let summary = "An op to write to a stream channel/port of a switchbox";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$switchbox,
+        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel,
+        AnyTypeOf<[F32, I32, I<128>]>:$streamValue
+  );
+  let verifier = [{ return ::verify(*this); }];
+
+  let assemblyFormat = [{
+    `(` $switchbox `,` $channel `,` $streamValue `:` type($streamValue) `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    bool isWideStream() { return streamValue().getType().isInteger(128); }
+    bool isFloatStream() { return streamValue().getType().isa<FloatType>(); }
+    int getChannelValue() { return channel().getZExtValue(); }
+  }];
+}
+
+def AIE_GetCascadeOp: AIE_Op<"getCascade", []>,
+                      Results<(outs AnyI<384>)> {
+  let summary = "An op to read from a cascading stream from a neighboring core";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$core
+  );
+  let results = (outs AnyI<384>:$cascadeValue);
+  let verifier = [{ return ::verify(*this); }];
+
+  let assemblyFormat = [{
+    `(` $core `)` attr-dict `:` type($cascadeValue)
+  }];
+}
+
+def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
+  let summary = "An op to write to a cascading stream from a neighboring core";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$core,
+        AnyI<384>:$cascadeValue
+  );
+  let verifier = [{ return ::verify(*this); }];
+
+  let assemblyFormat = [{
+    `(` $core `,` $cascadeValue `:` type($cascadeValue) `)` attr-dict
   }];
 }

@@ -1,19 +1,24 @@
 // RUN: aie-opt --aie-create-coremodule %s | FileCheck %s
 
 // CHECK-LABEL: module @test_coremodule0 {
-// CHECK:         %[[mem11:.*]] = AIE.mem(1, 1) {
-// CHECK:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
-// CHECK:         }
-// CHECK:         %[[core11:.*]] = AIE.core(1, 1)
-// CHECK:         %[[buf:.*]] = alloc() : memref<256xi32>
-// CHECK:         func @host_task() {
-// CHECK:           return
-// CHECK:         }
-// CHECK:         %[[cm11:.*]] = AIE.coreModule(%[[core11]], %[[mem11]]) {
-// CHECK:           %[[buf:.*]] = AIE.buffer(%[[mem11]], 0) : memref<256xi32>
-// CHECK:         }
-// CHECK:         call @host_task() : () -> ()
-// CHECK:       }
+// CHECK-NEXT:         %[[mem11:.*]] = AIE.mem(1, 1) {
+// CHECK-NEXT:           %[[buf:.*]] = alloc() {id = 0 : i32} : memref<256xi32>
+// CHECK-NEXT:           AIE.terminator(^bb1)
+// CHECK-NEXT:         ^bb1:
+// CHECK-NEXT:           AIE.end
+// CHECK-NEXT:         }
+// CHECK-NEXT:         %[[core11:.*]] = AIE.core(1, 1)
+// CHECK-NEXT:         %[[buf:.*]] = alloc() : memref<256xi32>
+// CHECK-NEXT:         func @host_task() {
+// CHECK-NEXT:           return
+// CHECK-NEXT:         }
+// CHECK-NEXT:         AIE.coreModule<%[[core11]], %[[mem11]]> {
+// CHECK-NEXT:         ^bb0(%[[core:.*]]: index, %[[mem_w:.*]]: index):  // no predecessors
+// CHECK-NEXT:           %[[buf:.*]] = AIE.buffer(%[[mem_w]], 0) : memref<256xi32>
+// CHECK-NEXT:           AIE.end
+// CHECK-NEXT:         }
+// CHECK-NEXT:         call @host_task() : () -> ()
+// CHECK-NEXT:       }
 
 // Lowering Std::FuncOp and Std::CallOp with (aie.x, aie.y) attributes to AIE::CoreModuleOp
 // Basic test

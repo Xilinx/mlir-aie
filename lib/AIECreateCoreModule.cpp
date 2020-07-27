@@ -219,9 +219,7 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
           bufferID++;
         }
 
-        SmallVector<Block *, 4> succBlocks;
-        succBlocks.push_back(endBlock);
-        builder.create<TerminatorOp>(builder.getUnknownLoc(), succBlocks);
+        builder.create<TerminatorOp>(builder.getUnknownLoc(), ArrayRef<Block *>(endBlock));
         // block terminator
         builder.setInsertionPointToStart(endBlock);
         builder.create<EndOp>(builder.getUnknownLoc());
@@ -242,7 +240,6 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
           builder.setInsertionPoint(callOp);
           CoreModuleOp coreModule = builder.create<CoreModuleOp>(builder.getUnknownLoc(), operands);
           Region &r = coreModule.body();
-          builder.createBlock(&r);
           builder.setInsertionPointToStart(&r.back());
 
           // Mapping between function arguments (FuncOp) and AIE buffers (CoreModuleOp)
@@ -252,8 +249,17 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
           for (auto pair : coreModuleBufTypes) {
             MemRefType t = pair.first;
             int bufID = pair.second;
+            Value memOperand = mems[std::make_pair(colIndex, rowIndex)];
+            int operandNo;
+            for (int i = 0; i < coreModule.getNumOperands(); i++) {
+              if (memOperand == coreModule.getOperands()[i]) {
+                operandNo = i;
+                break;
+              }
+            }
+            Value memArg = r.front().getArgument(operandNo);
             BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t,
-                                                    mems[std::make_pair(colIndex, rowIndex)],
+                                                    memArg,
                                                     bufID);
             Value arg = func.getArgument(bufID);
             if (arg.getType().isIntOrFloat()) {
@@ -277,7 +283,6 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
           }
           // block terminator
           builder.create<EndOp>(builder.getUnknownLoc());
-
         }
       }
     }

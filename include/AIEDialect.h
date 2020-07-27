@@ -94,6 +94,41 @@ public:
 
   typedef std::pair<WireBundle, int> Port;
 
+static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
+}
+
+static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
+}
+
+static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
+}
+
+static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
+}
+
+static bool isItself(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow));
+}
+
+static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
+  bool IsEvenRow = ((coreRow % 2) == 0);
+
+  bool IsMemWest = (isWest(coreCol, coreRow, memCol, memRow)   && !IsEvenRow) ||
+                   (isItself(coreCol, coreRow, memCol, memRow) &&  IsEvenRow);
+
+  bool IsMemEast = (isEast(coreCol, coreRow, memCol, memRow)   &&  IsEvenRow) ||
+                   (isItself(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
+
+  bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
+  bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);
+
+  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
+}
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "AIE.h.inc"
