@@ -133,20 +133,20 @@ private:
   }
 
 public:
-  // Get the cores connected to the given core, starting from the given
-  // output port of the core.  This is 1:N relationship because each
+  // Get the tiles connected to the given tile, starting from the given
+  // output port of the tile.  This is 1:N relationship because each
   // switchbox can broadcast.
   std::vector<PacketConnection>
-  getConnectedCores(CoreOp coreOp,
+  getConnectedTiles(TileOp tileOp,
                     Port port) const {
     // The accumulated result;
-    std::vector<PacketConnection> connectedCores;
+    std::vector<PacketConnection> connectedTiles;
     // A worklist of PortConnections to visit.  These are all input ports of
-    // some object (likely either a CoreOp or a SwitchboxOp).
+    // some object (likely either a TileOp or a SwitchboxOp).
     std::vector<PacketConnection> worklist;
-    // Start the worklist by traversing from the core to its connected
+    // Start the worklist by traversing from the tile to its connected
     // switchbox.
-    auto t = getConnectionThroughWire(coreOp.getOperation(), port);
+    auto t = getConnectionThroughWire(tileOp.getOperation(), port);
     assert(t.hasValue());
     worklist.push_back(std::make_pair(t.getValue(),
                                       std::make_pair(0, 0)));
@@ -158,9 +158,9 @@ public:
       MaskValue maskValue = t.second;
       Operation *other = portConnection.first;
       Port otherPort = portConnection.second;
-      if(auto coreOp = dyn_cast_or_null<CoreOp>(other)) {
-        // If we got to a core, then add it to the result.
-        connectedCores.push_back(t);
+      if(auto tileOp = dyn_cast_or_null<TileOp>(other)) {
+        // If we got to a tile, then add it to the result.
+        connectedTiles.push_back(t);
       } else if(auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues = getConnectionsThroughSwitchbox(switchOp, otherPort);
         bool matched = false;
@@ -191,24 +191,24 @@ public:
         }
       }
     }
-    return connectedCores;
+    return connectedTiles;
   }
 };
 
-struct StartFlow : public OpConversionPattern<AIE::CoreOp> {
-  using OpConversionPattern<AIE::CoreOp>::OpConversionPattern;
+struct StartFlow : public OpConversionPattern<AIE::TileOp> {
+  using OpConversionPattern<AIE::TileOp>::OpConversionPattern;
   ConnectivityAnalysis analysis;
   ModuleOp &module;
   StartFlow(MLIRContext *context, ModuleOp &m, ConnectivityAnalysis a,
             PatternBenefit benefit = 1)
-      : OpConversionPattern<CoreOp>(context, benefit),
+      : OpConversionPattern<TileOp>(context, benefit),
     module(m), analysis(a) {}
 
   LogicalResult match(Operation *op) const override {
     return success();
   }
 
-  void rewrite(AIE::CoreOp op, ArrayRef<Value > operands,
+  void rewrite(AIE::TileOp op, ArrayRef<Value > operands,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Operation *newOp = rewriter.clone(*Op);
@@ -220,10 +220,10 @@ struct StartFlow : public OpConversionPattern<AIE::CoreOp> {
     std::vector<WireBundle> bundles = {WireBundle::ME, WireBundle::DMA};
     for(WireBundle bundle: bundles) {
       for(int i = 0; i < op.getNumSourceConnections(bundle); i++) {
-        std::vector<PacketConnection> cores =
-          analysis.getConnectedCores(op,
+        std::vector<PacketConnection> tiles =
+          analysis.getConnectedTiles(op,
                                      std::make_pair(bundle, i));
-        for(PacketConnection &c: cores) {
+        for(PacketConnection &c: tiles) {
           PortConnection portConnection = c.first;
           MaskValue maskValue = c.second;
           Operation *destOp = portConnection.first;
@@ -274,7 +274,7 @@ struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
     target.addLegalOp<PacketFlowOp>();
     target.addLegalOp<PacketSourceOp>();
     target.addLegalOp<PacketDestOp>();
-    target.addDynamicallyLegalOp<CoreOp>([](CoreOp op) { return (bool)op.getOperation()->getAttrOfType<BoolAttr>("HasFlow"); });
+    target.addDynamicallyLegalOp<TileOp>([](TileOp op) { return (bool)op.getOperation()->getAttrOfType<BoolAttr>("HasFlow"); });
     //   target.addDynamicallyLegalDialect<AIEDialect>();
 
     OwningRewritePatternList patterns;

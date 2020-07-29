@@ -19,10 +19,10 @@ static llvm::cl::opt<bool> debugRoute("debug-route",
 
 typedef llvm::Optional<std::pair<Operation *, Port>> PortConnection;
 
-class CoreAnalysis {
+class TileAnalysis {
   ModuleOp &module;
   int maxcol, maxrow;
-  DenseMap<std::pair<int, int>, CoreOp> coordToCore;
+  DenseMap<std::pair<int, int>, TileOp> coordToTile;
   DenseMap<std::pair<int, int>, SwitchboxOp> coordToSwitchbox;
   DenseMap<int, ShimSwitchboxOp> coordToShimSwitchbox;
   DenseMap<int, PLIOOp> coordToPLIO;
@@ -36,17 +36,17 @@ public:
   int getConstantInt(Value val) {
     return 0;
   }
-  CoreAnalysis(ModuleOp &m) : module(m) {
+  TileAnalysis(ModuleOp &m) : module(m) {
     maxcol = 0;
     maxrow = 0;
-    for (auto coreOp : module.getOps<CoreOp>()) {
+    for (auto tileOp : module.getOps<TileOp>()) {
       int col, row;
-      col = coreOp.colIndex();
-      row = coreOp.rowIndex();
+      col = tileOp.colIndex();
+      row = tileOp.rowIndex();
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
-      assert(coordToCore.count(std::make_pair(col, row)) == 0);
-      coordToCore[std::make_pair(col, row)] = coreOp;
+      assert(coordToTile.count(std::make_pair(col, row)) == 0);
+      coordToTile[std::make_pair(col, row)] = tileOp;
     }
     for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
       int col, row;
@@ -57,18 +57,17 @@ public:
     }
   }
 
-  CoreOp getCore(OpBuilder &builder, int col, int row) {
-    if(coordToCore.count(std::make_pair(col, row))) {
-      return coordToCore[std::make_pair(col, row)];
+  TileOp getTile(OpBuilder &builder, int col, int row) {
+    if(coordToTile.count(std::make_pair(col, row))) {
+      return coordToTile[std::make_pair(col, row)];
     } else {
       IntegerType i32 = builder.getIntegerType(32);
-      CoreOp coreOp =
-        builder.create<CoreOp>(builder.getUnknownLoc(),
-                               builder.getIndexType(), col, row);
-      coordToCore[std::make_pair(col, row)] = coreOp;
+      TileOp tileOp =
+        builder.create<TileOp>(builder.getUnknownLoc(), col, row);
+      coordToTile[std::make_pair(col, row)] = tileOp;
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
-      return coreOp;
+      return tileOp;
     }
   }
   SwitchboxOp getSwitchbox(OpBuilder &builder, int col, int row) {
@@ -127,9 +126,9 @@ public:
 
 struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
   using OpConversionPattern<AIE::FlowOp>::OpConversionPattern;
-  CoreAnalysis &analysis;
+  TileAnalysis &analysis;
   ModuleOp &module;
-  RouteFlows(MLIRContext *context, ModuleOp &m, CoreAnalysis &a,
+  RouteFlows(MLIRContext *context, ModuleOp &m, TileAnalysis &a,
              PatternBenefit benefit = 1)
     : OpConversionPattern<FlowOp>(context, benefit),
     module(m), analysis(a) {}
@@ -182,7 +181,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     int destIndex = op.destIndex();
 
     int col, row;
-    if(CoreOp source = dyn_cast_or_null<CoreOp>(op.source().getDefiningOp())) {
+    if(TileOp source = dyn_cast_or_null<TileOp>(op.source().getDefiningOp())) {
       col = source.colIndex();
       row = source.rowIndex();
     } else if(PLIOOp source = dyn_cast_or_null<PLIOOp>(op.source().getDefiningOp())) {
@@ -191,7 +190,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     } else llvm_unreachable("Unimplemented case");
 
     int destcol, destrow;
-    if(CoreOp dest = dyn_cast_or_null<CoreOp>(op.dest().getDefiningOp())) {
+    if(TileOp dest = dyn_cast_or_null<TileOp>(op.dest().getDefiningOp())) {
       destcol = dest.colIndex();
       destrow = dest.rowIndex();
     } else if(PLIOOp dest = dyn_cast_or_null<PLIOOp>(op.dest().getDefiningOp())) {
@@ -268,15 +267,15 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    CoreAnalysis analysis(m);
+    TileAnalysis analysis(m);
     IntegerType i32 = IntegerType::get(32, m.getContext());
 
     OpBuilder builder(m.getBody()->getTerminator());
 
-    // Populate cores and switchboxes.
+    // Populate tiles and switchboxes.
     for(int col = 0; col <= analysis.getMaxCol(); col++) {
       for(int row = 0; row <= analysis.getMaxRow(); row++) {
-        analysis.getCore(builder, col, row);
+        analysis.getTile(builder, col, row);
       }
     }
     for(int col = 0; col <= analysis.getMaxCol(); col++) {
@@ -290,20 +289,20 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
     for(int col = 0; col <= analysis.getMaxCol(); col++) {
       analysis.getPLIO(builder, col);
     }
-    // Populate wires betweeh switchboxes and cores.
+    // Populate wires betweeh switchboxes and tiles.
     for(int col = 0; col <= analysis.getMaxCol(); col++) {
       for(int row = 0; row <= analysis.getMaxRow(); row++) {
-        auto core = analysis.getCore(builder, col, row);
+        auto tile = analysis.getTile(builder, col, row);
         auto sw = analysis.getSwitchbox(builder, col, row);
         WireOp meWireOp =
           builder.create<WireOp>(builder.getUnknownLoc(),
-                                 core,
+                                 tile,
                                  WireBundle::ME,
                                  sw,
                                  WireBundle::ME);
         WireOp dmaWireOp =
           builder.create<WireOp>(builder.getUnknownLoc(),
-                                 core,
+                                 tile,
                                  WireBundle::DMA,
                                  sw,
                                  WireBundle::DMA);

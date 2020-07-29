@@ -18,18 +18,15 @@ using namespace xilinx::AIE;
 struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   using OpConversionPattern<MemcpyOp>::OpConversionPattern;
   ModuleOp &module;
-  DenseMap<std::pair<int, int>, CoreOp> &cores;
-  DenseMap<std::pair<int, int>, MemOp> &mems;
+  DenseMap<Operation *, MemOp> &mems;
   DenseMap<Value, Value> &buffers;
 
   LowerAIEMemcpy(MLIRContext *context, ModuleOp &m,
-    DenseMap<std::pair<int, int>, CoreOp> &cores,
-    DenseMap<std::pair<int, int>, MemOp> &mems,
+    DenseMap<Operation *, MemOp> &mems,
     DenseMap<Value, Value> &buffers,
     PatternBenefit benefit = 1) :
     OpConversionPattern<MemcpyOp>(context, benefit),
       module(m),
-      cores(cores),
       mems(mems),
       buffers(buffers) {}
 
@@ -79,8 +76,6 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   LogicalResult matchAndRewrite(MemcpyOp op, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    CoreOp srcCore = dyn_cast<CoreOp>(op.srcCore().getDefiningOp());
-    CoreOp dstCore = dyn_cast<CoreOp>(op.dstCore().getDefiningOp());
     Value origSrcBuf = op.srcBuf();
     Value origDstBuf = op.dstBuf();
 
@@ -92,8 +87,8 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     int srcLen = op.getSrcLenValue();
     int dstLen = op.getDstLenValue();
 
-    MemOp srcMem = mems[std::make_pair(srcCore.colIndex(), srcCore.rowIndex())];
-    MemOp dstMem = mems[std::make_pair(dstCore.colIndex(), dstCore.rowIndex())];
+    MemOp srcMem = mems[op.srcTile().getDefiningOp()];
+    MemOp dstMem = mems[op.dstTile().getDefiningOp()];
 
     Value srcBuf = buffers[origSrcBuf];
     Value dstBuf = buffers[origDstBuf];
@@ -148,7 +143,7 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
   }
 };
 
-struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
+struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
   OperationPass<ModuleOp>> {
 
   void runOnOperation() override {
@@ -156,50 +151,46 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
     ModuleOp m = getOperation();
     OpBuilder builder(m.getBody()->getTerminator());
 
-    DenseMap<std::pair<int, int>, CoreOp> cores;
-    DenseMap<std::pair<int, int>, MemOp> mems;
+    DenseMap<std::pair<int, int>, Operation *> tiles;
+    DenseMap<Operation *, CoreOp> cores;
+    DenseMap<Operation *, MemOp> mems;
     DenseMap<Value, Value> buffers;
     DenseMap<FuncOp, std::pair<int, int>> funcs;
 
-    for (auto core : m.getOps<CoreOp>()) {
-      int colIndex = core.colIndex();
-      int rowIndex = core.rowIndex();
-      cores[std::make_pair(colIndex, rowIndex)] = core;
+    // Collect existing TileOps
+    for (auto tile : m.getOps<TileOp>()) {
+      int colIndex = tile.colIndex();
+      int rowIndex = tile.rowIndex();
+      tiles[std::make_pair(colIndex, rowIndex)] = tile;
     }
 
     // Bind FuncOp to an AIE core based on attributes of the CallOp
-    // A CoreModuleOp will be created for the core, and the FuncOp body is cloned
-    // to the CoreModuleOp region
+    // A CoreOp will be created for the core, and the FuncOp body is cloned
+    // to the CoreOp region
     for (auto callOp : m.getOps<CallOp>()) {
       if (!callOp.getAttr("aie.x") || !callOp.getAttr("aie.y"))
         continue;
 
       SmallVector<Value, 4> callOperands(callOp.getArgOperands());
-      SmallVector<std::pair<MemRefType, int>, 4> coreModuleBufTypes;
+      SmallVector<std::pair<MemRefType, int>, 4> coreBufTypes;
 
       int colIndex = callOp.getAttrOfType<IntegerAttr>("aie.x").getInt();
       int rowIndex = callOp.getAttrOfType<IntegerAttr>("aie.y").getInt();
 
-      // create CoreOp
-      if (!cores[std::make_pair(colIndex, rowIndex)]) {
+      // get or create TileOp
+      if (!tiles[std::make_pair(colIndex, rowIndex)]) {
         builder.setInsertionPointToStart(m.getBody());
-        CoreOp core = builder.create<CoreOp>(builder.getUnknownLoc(), builder.getIndexType(),
-                                             colIndex, rowIndex);
-        cores[std::make_pair(colIndex, rowIndex)] = core;
+        TileOp tile = builder.create<TileOp>(builder.getUnknownLoc(), colIndex, rowIndex);
+        tiles[std::make_pair(colIndex, rowIndex)] = tile;
       }
+      Operation *tileOp = tiles[std::make_pair(colIndex, rowIndex)];
+      TileOp tile = dyn_cast<TileOp>(tileOp);
+      builder.setInsertionPointAfter(tile);
 
-      // create MemOp with buffer allocation
-      if (!mems[std::make_pair(colIndex, rowIndex)]) {
-        builder.setInsertionPointToStart(m.getBody());
-        MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(), builder.getIndexType(),
-                                          colIndex, rowIndex);
-        Region &r = mem.body();
-        Block *entryBlock = builder.createBlock(&r);
-        Block *endBlock = builder.createBlock(&r);
-
-        builder.setInsertionPointToStart(entryBlock);
-        unsigned bufferID = 0;
-        for (auto operand : callOperands) {
+      // create MemOp
+      if (!mems[tileOp]) {
+        for (unsigned i = 0; i < callOperands.size(); i++) {
+          Value operand = callOperands[i];
           MemRefType t = nullptr;
           if (operand.getType().isa<MemRefType>()) {
             t = operand.getType().cast<MemRefType>();
@@ -210,58 +201,57 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
           }
 
           assert(t && "Unsupported type!");
-
-          auto allocOp = builder.create<AllocOp>(builder.getUnknownLoc(), t);
-          allocOp.setAttr("id", builder.getI32IntegerAttr(bufferID));
-          coreModuleBufTypes.push_back(std::make_pair(t, bufferID));
-          if (operand.getType().isa<MemRefType>())
-            buffers[operand] = allocOp;
-          bufferID++;
+          coreBufTypes.push_back(std::make_pair(t, i));
+          BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t, tile);
+          buffers[callOperands[i]] = buf;
         }
 
+        MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(), builder.getIndexType(), tile);
+        Region &r = mem.body();
+        Block *entryBlock = builder.createBlock(&r);
+        Block *endBlock = builder.createBlock(&r);
+
+        builder.setInsertionPointToStart(entryBlock);
         builder.create<TerminatorOp>(builder.getUnknownLoc(), ArrayRef<Block *>(endBlock));
         // block terminator
         builder.setInsertionPointToStart(endBlock);
         builder.create<EndOp>(builder.getUnknownLoc());
-        mems[std::make_pair(colIndex, rowIndex)] = mem;
+        mems[tileOp] = mem;
       }
 
-      // create CoreModuleOp with buffer reference
+      // create CoreOp with buffer reference
       if (CallOpInterface call = dyn_cast<CallOpInterface>(callOp.getOperation())) {
         Operation *callable = call.resolveCallable();
         if (FuncOp func = dyn_cast<FuncOp>(callable)) {
           funcs[func] = std::make_pair(colIndex, rowIndex);
 
           BlockAndValueMapping mapper;
-          SmallVector<Value, 4> operands;
-          operands.push_back(cores[std::make_pair(colIndex, rowIndex)]);
-          operands.push_back(mems[std::make_pair(colIndex, rowIndex)]);
 
           builder.setInsertionPoint(callOp);
-          CoreModuleOp coreModule = builder.create<CoreModuleOp>(builder.getUnknownLoc(), operands);
-          Region &r = coreModule.body();
-          builder.setInsertionPointToStart(&r.back());
 
-          // Mapping between function arguments (FuncOp) and AIE buffers (CoreModuleOp)
+          CoreOp core;
+          Block *currentBlock;
+          
+          if (!cores[tileOp]) {
+            core = builder.create<CoreOp>(builder.getUnknownLoc(), builder.getIndexType(), tile);
+            Region &r = core.body();
+            currentBlock = builder.createBlock(&r);
+            builder.setInsertionPointToStart(currentBlock);
+          } else {
+            core = cores[tileOp];
+            currentBlock = &core.body().back();
+            builder.setInsertionPoint(currentBlock->getTerminator());
+          }
+
+          // Mapping between function arguments (FuncOp) and AIE buffers (CoreOp)
           // We will create one buffer for each function argument
           // If the function argument's type is a scalar, we promote it to a one-element memref,
           // and do a load to the buffer at index 0
-          for (auto pair : coreModuleBufTypes) {
+          for (auto pair : coreBufTypes) {
             MemRefType t = pair.first;
-            int bufID = pair.second;
-            Value memOperand = mems[std::make_pair(colIndex, rowIndex)];
-            int operandNo;
-            for (int i = 0; i < coreModule.getNumOperands(); i++) {
-              if (memOperand == coreModule.getOperands()[i]) {
-                operandNo = i;
-                break;
-              }
-            }
-            Value memArg = r.front().getArgument(operandNo);
-            BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t,
-                                                    memArg,
-                                                    bufID);
-            Value arg = func.getArgument(bufID);
+            int operandID = pair.second;
+            Value arg = func.getArgument(operandID);
+            Value buf = buffers[callOperands[operandID]];
             if (arg.getType().isIntOrFloat()) {
               assert(t.getShape().size() == 1 && "Expected MemRefType of shape 1");
               assert(t.getShape()[0] == 1 && "Expected MemRefType of single element");
@@ -269,11 +259,12 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
               Value zero = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
               auto loadOp = builder.create<LoadOp>(builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
-            } else
+            } else {
               mapper.map(arg, buf);
+            }
           }
 
-          // Clone ops from the original function to CoreModuleOp's body
+          // Clone ops from the original function to CoreOp's body
           for (auto &childOp : func.getCallableRegion()->getOps()) {
             // skip ReturnOp since it lives only within a funcOp
             if (auto returnOp = dyn_cast<ReturnOp>(childOp))
@@ -281,11 +272,16 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
 
             builder.clone(childOp, mapper);
           }
-          // block terminator
-          builder.create<EndOp>(builder.getUnknownLoc());
+          if (!cores[tileOp]) {
+            // block terminator
+            builder.create<EndOp>(builder.getUnknownLoc());
+            cores[tileOp] = core;
+          }
         }
       }
     }
+
+
 
     // Setup FlowOps
     // Since memcpy moves data from one memory module to another, we use WireBundle::DMA
@@ -296,15 +292,15 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
     DenseMap<Value, int> destChannel;
     for (auto op : m.getOps<MemcpyOp>()) {
       builder.setInsertionPoint(op);
-      CoreOp srcCore = dyn_cast<CoreOp>(op.srcCore().getDefiningOp());
-      CoreOp dstCore = dyn_cast<CoreOp>(op.dstCore().getDefiningOp());
+      TileOp srcTile = dyn_cast<TileOp>(op.srcTile().getDefiningOp());
+      TileOp dstTile = dyn_cast<TileOp>(op.dstTile().getDefiningOp());
       // TODO: perhaps a better approach is to not assert here, but rather have a subsequent pass
       // that legally relocates the ports
-      assert(destChannel[op.dstCore()] <= 2 &&
+      assert(destChannel[op.dstTile()] <= 2 &&
              "Could not allocate more than two dest. channel when creating FlowOp");
       // WireBundle[1] = DMA
-      builder.create<FlowOp>(builder.getUnknownLoc(), srcCore, 1, 0, dstCore, 1, destChannel[op.dstCore()]);
-      destChannel[op.dstCore()]++;
+      builder.create<FlowOp>(builder.getUnknownLoc(), srcTile, 1, 0, dstTile, 1, destChannel[op.dstTile()]);
+      destChannel[op.dstTile()]++;
     }
 
 
@@ -317,9 +313,9 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
     target.addLegalOp<BranchOp>();
     target.addLegalOp<CondBranchOp>();
 
-    patterns.insert<LowerAIEMemcpy>(m.getContext(), m, cores, mems, buffers);
+    patterns.insert<LowerAIEMemcpy>(m.getContext(), m, mems, buffers);
 
-    // Remove standard CallOps and FuncOps that are bound to AIE CoreModuleOps
+    // Remove standard CallOps and FuncOps that are bound to AIE CoreOps
     patterns.insert<RemoveAIECalls>(m.getContext(), m);
     patterns.insert<RemoveAIEFuncs>(m.getContext(), m, funcs);
 
@@ -328,8 +324,8 @@ struct AIECreateCoreModulePass : public PassWrapper<AIECreateCoreModulePass,
   }
 };
 
-void xilinx::AIE::registerAIECreateCoreModulePass() {
-    PassRegistration<AIECreateCoreModulePass>(
-      "aie-create-coremodule",
-      "Lower FuncOp from Standard dialect to CoreModuleOp of AIE dialect");
+void xilinx::AIE::registerAIECreateCoresPass() {
+    PassRegistration<AIECreateCoresPass>(
+      "aie-create-cores",
+      "Create CoreOp, MemOp, and FlowOp of AIE dialect");
 }

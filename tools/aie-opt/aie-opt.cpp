@@ -56,7 +56,8 @@ int main(int argc, char **argv) {
   registerDialect<xilinx::AIE::AIEDialect>();
   xilinx::AIE::registerAIEFindFlowsPass();
   xilinx::AIE::registerAIECreateFlowsPass();
-  xilinx::AIE::registerAIECreateCoreModulePass();
+  xilinx::AIE::registerAIECreateCoresPass();
+  xilinx::AIE::registerAIECreateLocksPass();
   InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.

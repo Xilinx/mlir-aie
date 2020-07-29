@@ -221,29 +221,28 @@ registers
 
 def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
   let arguments = (
-    ins I32Attr:$col,
-        I32Attr:$row
+    ins Index:$tile
   );
 
   let summary = "Declare a core";
   let description = [{
     A core
   }];
-  let assemblyFormat = [{
-    `(` $col `,` $row `)` attr-dict
-  }];
+
+  let regions = (region AnyRegion:$body);
+  let printer = [{ return ::print(p, *this); }];
+  let parser = [{ return ::parseCoreOp(parser, result); }];
+  let verifier = [{ return ::verify(*this); }];
+
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
-    int colIndex() { return col().getZExtValue(); }
-    int rowIndex() { return row().getZExtValue(); }
+    int colIndex();
+    int rowIndex();
+    bool isMemWest() { return ((rowIndex() % 2) == 0); };
   }];
+
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Type resultType, int col, int row", [{
-              build(builder, result, resultType,
-                    builder.getI32IntegerAttr(col),
-                    builder.getI32IntegerAttr(row));
+    OpBuilder<"OpBuilder & builder, OperationState &result, Value tile", [{
+              build(builder, result, builder.getIndexType(), tile);
               }]>
   ];
 }
@@ -578,6 +577,39 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   }];
 }
 
+def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
+  let arguments = (
+    ins I32Attr:$col,
+        I32Attr:$row
+  );
+
+  let summary = "Declare an AIE tile";
+  let description = [{
+    An AIE tile
+  }];
+
+  let extraClassDeclaration = [{
+    int getNumSourceConnections(WireBundle bundle);
+    int getNumDestConnections(WireBundle bundle);
+    int colIndex() { return col().getZExtValue(); }
+    int rowIndex() { return row().getZExtValue(); }
+    bool isMemWest() { return ((rowIndex() % 2) == 0); };
+  }];
+
+  let assemblyFormat = [{
+    `(` $col `,` $row `)` attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "int col, int row", [{
+              build(builder, result, builder.getIndexType(),
+                    builder.getI32IntegerAttr(col),
+                    builder.getI32IntegerAttr(row));
+              }]>
+  ];
+}
+
 def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
 def S2MM1:  I32EnumAttrCase<"S2MM1", 1>;
 def MM2S0:  I32EnumAttrCase<"MM2S0", 2>;
@@ -655,7 +687,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
   ];
 }
 
-def AIE_MemOp: AIE_Op<"mem", [IsolatedFromAbove]>,
+def AIE_MemOp: AIE_Op<"mem", []>,
                      Results<(outs Index)> {
 
   let summary = "Declare a memory op";
@@ -664,8 +696,7 @@ def AIE_MemOp: AIE_Op<"mem", [IsolatedFromAbove]>,
   }];
 
   let arguments = (
-    ins I32Attr:$col,
-        I32Attr:$row
+    ins Index:$tile
   );
 
   let regions = (region AnyRegion:$body);
@@ -673,15 +704,13 @@ def AIE_MemOp: AIE_Op<"mem", [IsolatedFromAbove]>,
   let parser = [{ return ::parseMemOp(parser, result); }];
   let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
-    int colIndex() { return col().getZExtValue(); }
-    int rowIndex() { return row().getZExtValue(); }
+    int colIndex();
+    int rowIndex();
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Type resultType, int col, int row", [{
-              build(builder, result, resultType,
-                    builder.getI32IntegerAttr(col),
-                    builder.getI32IntegerAttr(row));
+              "Value tile", [{
+              build(builder, result, builder.getIndexType(), tile);
               }]>
   ];
 }
@@ -698,42 +727,6 @@ def AIE_TerminatorOp: AIE_Op<"terminator", [Terminator]> {
   }];
 }
 
-def AIE_CoreModuleOp: AIE_Op<"coreModule", [IsolatedFromAbove]> {
-  let summary = "A core module op";
-  let description = [{
-    TODO
-  }];
-
-  let arguments = (
-    ins Variadic<AnyType>:$operands
-  );
-
-  let regions = (region AnyRegion:$body);
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parseCoreModuleOp(parser, result); }];
-  let verifier = [{ return ::verify(*this); }];
-  let skipDefaultBuilders = 1;
-  let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, ValueRange operands">
-  ];
-  let extraClassDeclaration = [{
-    ArrayRef<Operation *> getCores();
-    ArrayRef<Operation *> getMems();
-    ArrayRef<Operation *> getSwitchboxes();
-
-    Operation *getMainCore();  // get its core
-    Operation *getWestCore();  // get neighboring core on the West
-    Operation *getEastCore();  // get neighboring core on the East
-    Operation *getWestMem();   // get memory module on the West (is itself if on even rows)
-    Operation *getEastMem();   // get memory module on the East (is itself if on odd rows)
-    Operation *getSouthMem();  // get memory module on the South
-    Operation *getNorthMem();  // get memory module on the North
-    Operation *getSwitchbox(); // get its switchbox
-
-    bool isMainMemWest(); // is its MemModule WestMem (applies for AIE cores on even rows)?
-  }];
-}
-
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
 
   let summary = "Declare a physical lock";
@@ -742,19 +735,26 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   }];
 
   let arguments = (
-    ins Optional<Index>:$mem,
+    ins Index:$tile,
         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
   );
 
   let assemblyFormat = [{
-    `<` $lockID `>` `(` $mem `)` attr-dict
+    `(` $tile `,` $lockID `)` attr-dict
   }];
-
-  let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
     int getLockID() { return lockID().getZExtValue(); }
   }];
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Value tile, int lockID", [{
+              build(builder, result,
+                    builder.getIndexType(),
+                    tile,
+                    builder.getI32IntegerAttr(lockID));
+              }]>
+  ];
 }
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
@@ -791,39 +791,29 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     int getLockValue() { return value().getZExtValue(); }
     int getTimeout() { return timeout().getZExtValue(); }
   }];
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Value lock, int value, LockAction action, int timeout", [{
+              build(builder, result, lock, APInt(32, value), action, APInt(32, timeout));
+              }]>
+  ];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", [HasParent<"CoreModuleOp">]>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     TODO
   }];
 
   let arguments = (
-    ins Index:$mem,
-        Confined<I32Attr, [IntMinValue<0>]>:$bufferID
+    ins Index:$tile
   );
 
   let results = (outs AnyMemRef:$buffer);
 
   let assemblyFormat = [{
-    `(` $mem `,` $bufferID `)` attr-dict `:`  type($buffer)
+    `(` $tile `)` attr-dict `:`  type($buffer)
   }];
-
-  let verifier = [{ return ::verify(*this); }];
-
-  let extraClassDeclaration = [{
-    int getBufferID() { return bufferID().getZExtValue(); }
-  }];
-
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Type resultType, Value mem, int bufferID", [{
-              build(builder, result, resultType,
-                    mem,
-                    builder.getI32IntegerAttr(bufferID));
-              }]>
-  ];
 }
 
 def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
@@ -884,11 +874,11 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
     ins FlatSymbolRefAttr:$tokenName,
         I32Attr:$acqValue,
         I32Attr:$relValue,
-        Index:$srcCore,
+        Index:$srcTile,
         AnyMemRef:$srcBuf,
         I32Attr:$srcOffset,
         I32Attr:$srcLen,
-        Index:$dstCore,
+        Index:$dstTile,
         AnyMemRef:$dstBuf,
         I32Attr:$dstOffset,
         I32Attr:$dstLen
@@ -896,8 +886,8 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
 
   let assemblyFormat = [{
     $tokenName `(` $acqValue `,` $relValue `)` `(`
-      $srcCore `:` `<` $srcBuf `,` $srcOffset `,` $srcLen `>` `,`
-      $dstCore `:` `<` $dstBuf `,` $dstOffset `,` $dstLen `>` `)`
+      $srcTile `:` `<` $srcBuf `,` $srcOffset `,` $srcLen `>` `,`
+      $dstTile `:` `<` $dstBuf `,` $dstOffset `,` $dstLen `>` `)`
         attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
   }];
 
@@ -919,14 +909,12 @@ def AIE_GetStreamOp: AIE_Op<"getStream", []>,
   }];
 
   let arguments = (
-    ins  Index:$switchbox,
-         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel
+    ins Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel
   );
   let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
-  let verifier = [{ return ::verify(*this); }];
 
   let assemblyFormat = [{
-    `(` $switchbox `,` $channel `)` attr-dict `:` type($streamValue)
+    `(` $channel `)` attr-dict `:` type($streamValue)
   }];
   let extraClassDeclaration = [{
     bool isWideStream() { return streamValue().getType().isInteger(128); }
@@ -942,14 +930,12 @@ def AIE_PutStreamOp: AIE_Op<"putStream", []> {
   }];
 
   let arguments = (
-    ins Index:$switchbox,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel,
+    ins Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel,
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
-  let verifier = [{ return ::verify(*this); }];
 
   let assemblyFormat = [{
-    `(` $switchbox `,` $channel `,` $streamValue `:` type($streamValue) `)` attr-dict
+    `(` $channel `,` $streamValue `:` type($streamValue) `)` attr-dict
   }];
   let extraClassDeclaration = [{
     bool isWideStream() { return streamValue().getType().isInteger(128); }
@@ -965,14 +951,10 @@ def AIE_GetCascadeOp: AIE_Op<"getCascade", []>,
     TODO
   }];
 
-  let arguments = (
-    ins Index:$core
-  );
   let results = (outs AnyI<384>:$cascadeValue);
-  let verifier = [{ return ::verify(*this); }];
 
   let assemblyFormat = [{
-    `(` $core `)` attr-dict `:` type($cascadeValue)
+    attr-dict `:` type($cascadeValue)
   }];
 }
 
@@ -983,12 +965,10 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
   }];
 
   let arguments = (
-    ins Index:$core,
-        AnyI<384>:$cascadeValue
+    ins AnyI<384>:$cascadeValue
   );
-  let verifier = [{ return ::verify(*this); }];
 
   let assemblyFormat = [{
-    `(` $core `,` $cascadeValue `:` type($cascadeValue) `)` attr-dict
+    `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
   }];
 }
