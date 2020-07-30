@@ -8,6 +8,7 @@ configure_lit_site_cfg(
 set(TEST_DEPENDS
   FileCheck count not
   aie-opt
+  aie-translate
   )
 
 add_lit_testsuite(check-aie "Running the aie regression tests"

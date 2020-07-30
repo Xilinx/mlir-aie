@@ -54,7 +54,8 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
 tools = [
-    'aie-opt'
+    'aie-opt',
+    'aie-translate'
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
