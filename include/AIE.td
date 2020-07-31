@@ -677,6 +677,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
                             (static_cast<int32_t>(dmaChan()) == 3)); }
     bool isRecv() { return ((static_cast<int32_t>(dmaChan()) == 1) ||
                             (static_cast<int32_t>(dmaChan()) == 2)); }
+    int maxSizeInBytes() { return 32768; }
   }];
 
   let builders = [

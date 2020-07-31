@@ -93,26 +93,46 @@ public:
 
 //#include "AIEOpInterfaces.h.inc"
 
-  typedef std::pair<WireBundle, int> Port;
+typedef std::pair<WireBundle, int> Port;
+
+static bool isItself(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow));
+}
 
 static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol + 1) && (srcRow == dstRow));
+}
+
+static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) {
+  bool IsEvenRow = ((srcRow % 2) == 0);
+  return (IsEvenRow  && isItself(srcCol, srcRow, dstCol, dstRow)) ||
+         (!IsEvenRow && isWest(srcCol, srcRow, dstCol, dstRow));
 }
 
 static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol - 1) && (srcRow == dstRow));
 }
 
+static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
+  bool IsEvenRow = ((srcRow % 2) == 0);
+  return (!IsEvenRow && isItself(srcCol, srcRow, dstCol, dstRow)) ||
+         (IsEvenRow  && isEast(srcCol, srcRow, dstCol, dstRow));
+}
+
 static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol) && (srcRow == dstRow - 1));
+}
+
+static bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return isNorth(srcCol, srcRow, dstCol, dstRow);
 }
 
 static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol) && (srcRow == dstRow + 1));
 }
 
-static bool isItself(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow));
+static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return isSouth(srcCol, srcRow, dstCol, dstRow);
 }
 
 static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {

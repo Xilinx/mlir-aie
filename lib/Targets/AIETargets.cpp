@@ -9,6 +9,7 @@
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Translation.h"
 #include "AIEDialect.h"
+#include "AIENetlistAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -33,10 +34,80 @@ StringRef tileDMAInstStr(int col, int row) {
 
 void registerAIETranslations() {
   TranslateFromMLIRRegistration
-    registration("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
+    registrationMMap("aie-generate-mmap", [](ModuleOp module, raw_ostream &output) {
+      DenseMap<std::pair<int, int>, Operation *> tiles;
+      DenseMap<Operation *, CoreOp> cores;
+      DenseMap<Operation *, MemOp> mems;
+      DenseMap<std::pair<Operation *, int>, LockOp> locks;
+      DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+      DenseMap<Operation *, SwitchboxOp> switchboxes;
+
+      NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+      NL.collectTiles(tiles);
+      NL.collectBuffers(buffers);
+
+      for (auto tile : tiles) {
+        Operation *srcTileOp = tile.second;
+        std::pair<int, int> srcCoord = NL.getCoord(srcTileOp);
+        int srcCol = srcCoord.first;
+        int srcRow = srcCoord.second;
+
+        output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
+        output << "// Memory map: name base_address num_bytes\n";
+
+        for (auto map : buffers) {
+          Operation *dstTileOp = map.first;
+          std::pair<int, int> dstCoord = NL.getCoord(dstTileOp);
+          int dstCol = dstCoord.first;
+          int dstRow = dstCoord.second;
+
+          int cardinalMemOffset = 0;
+
+          if (isMemSouth(srcCol, srcRow, dstCol, dstRow))
+            cardinalMemOffset = 0x00020000;
+          else if (isMemWest(srcCol, srcRow, dstCol ,dstRow))
+            cardinalMemOffset = 0x00028000;
+          else if (isMemNorth(srcCol, srcRow, dstCol, dstRow))
+            cardinalMemOffset = 0x00030000;
+          else if (isMemEast(srcCol, srcRow, dstCol, dstRow))
+            cardinalMemOffset = 0x00038000;
+
+          if (cardinalMemOffset == 0)
+            continue;
+
+          for (auto buf : map.second) {
+            auto symbolAttr = buf.getOperation()->getAttrOfType<StringAttr>(
+                                SymbolTable::getSymbolAttrName());
+            StringRef bufName = std::string(symbolAttr.getValue());
+            int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+            MemRefType t = buf.getType().cast<MemRefType>();
+            int numBytes = t.getSizeInBits() / 8;
+            output << "_symbol " <<
+                      bufName << " " <<
+                      "0x" << llvm::utohexstr(cardinalMemOffset + bufferBaseAddr) << " " <<
+                      numBytes << '\n';
+          }
+        }
+      }
+      return success();
+    });
+
+  TranslateFromMLIRRegistration
+    registrationXAIE("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
         StringRef enable  = "XAIE_ENABLE";
         StringRef disable = "XAIE_DISABLE";
         StringRef resetDisable = "XAIE_RESETDISABLE";
+
+        DenseMap<std::pair<int, int>, Operation *> tiles;
+        DenseMap<Operation *, CoreOp> cores;
+        DenseMap<Operation *, MemOp> mems;
+        DenseMap<std::pair<Operation *, int>, LockOp> locks;
+        DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+        DenseMap<Operation *, SwitchboxOp> switchboxes;
+
+        NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+        NL.collectTiles(tiles);
+        NL.collectBuffers(buffers);
 
         // Core configuration
         // Activate a core tile
@@ -100,13 +171,13 @@ void registerAIETranslations() {
               foundBd = true;
               len = op.getLenValue();
               if (op.isA()) {
-                //BaseAddrA = getBaseAddr(op.buf());
+                BaseAddrA = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
                 offsetA = op.getOffsetValue();
                 bufA = "XAIEDMA_TILE_BD_ADDRA";
                 hasA = true;
               }
               if (op.isB()) {
-                //BaseAddrB = getBaseAddr(op.buf());
+                BaseAddrB = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
                 offsetB = op.getOffsetValue();
                 bufB = "XAIEDMA_TILE_BD_ADDRB";
                 hasB = true;
@@ -152,8 +223,8 @@ void registerAIETranslations() {
               output << "XAieDma_TileBdSetAdrLenMod(" <<
                         tileDMAInstStr(col, row + 1) << ", " <<
                         bdNum << ", " <<
-                        (BaseAddrA + offsetA) << ", " <<
-                        (BaseAddrB + offsetB) << ", " <<
+                        "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
+                        "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
                         len << ", " <<
                         AbMode << ", " <<
                         FifoMode << ");\n";
@@ -199,8 +270,6 @@ void registerAIETranslations() {
                       enable << ");\n";
           }
         }
-
-
 
         // Lock configuration
         // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal, u32 TimeOut);
