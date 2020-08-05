@@ -155,8 +155,7 @@ def Port : TypeConstraint<Index.predicate, "port">;
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
                      Results<(outs AnyType)> {
   let arguments = (
-    ins I32Attr:$col,
-        I32Attr:$row
+    ins Index:$tile
   );
 
   let summary = "Declare a switch";
@@ -170,15 +169,13 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);
-    int colIndex() { return col().getZExtValue(); }
-    int rowIndex() { return row().getZExtValue(); }
+    int colIndex();
+    int rowIndex();
   }];
   let builders = [
     OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "Type resultType, int col, int row", [{
-              build(builder, result, resultType,
-                    builder.getI32IntegerAttr(col),
-                    builder.getI32IntegerAttr(row));
+              "Value tile", [{
+              build(builder, result, builder.getIndexType(), tile);
               }]>
   ];
 }
@@ -675,9 +672,17 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
   let extraClassDeclaration = [{
     bool isSend() { return ((static_cast<int32_t>(dmaChan()) == 2) ||
                             (static_cast<int32_t>(dmaChan()) == 3)); }
-    bool isRecv() { return ((static_cast<int32_t>(dmaChan()) == 1) ||
-                            (static_cast<int32_t>(dmaChan()) == 2)); }
-    int maxSizeInBytes() { return 32768; }
+    bool isRecv() { return ((static_cast<int32_t>(dmaChan()) == 0) ||
+                            (static_cast<int32_t>(dmaChan()) == 1)); }
+    int getSendChannelIndex() {
+      return static_cast<int32_t>(dmaChan()) - 2;
+    }
+    int getRecvChannelIndex() {
+      return static_cast<int32_t>(dmaChan()) - 0;
+    }
+    int getChannelNum() {
+      return static_cast<int32_t>(dmaChan());
+    }
   }];
 
   let builders = [
@@ -707,6 +712,7 @@ def AIE_MemOp: AIE_Op<"mem", []>,
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
+    int maxSizeInBytes() { return 32768; }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -972,4 +978,50 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
   let assemblyFormat = [{
     `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
   }];
+}
+
+// Fairly high-level logical ops: ComputeOp, MemoryOp, NetOp
+
+def AIE_ComputeOp: AIE_Op<"compute", []>, Results<(outs Index)> {
+  let summary = "A logical representation of a compute task";
+  let description = [{
+    TODO
+  }];
+
+  let assemblyFormat = [{
+    `(` `)` attr-dict
+  }];
+}
+
+def AIE_MemoryOp: AIE_Op<"memory", []>, Results<(outs Index)> {
+  let summary = "A logical representation of a memory buffer accessed by compute tasks";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Optional<AnyMemRef>:$buffer
+  );
+
+  let assemblyFormat = [{
+    `(` $buffer type($buffer) `)` attr-dict
+  }];
+}
+
+def AIE_NetOp: AIE_Op<"net", []> {
+  let summary = "A logical directional connection of logical blocks "
+                "(compute->compute, memory->compute, or compute->memory)";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$source,
+        Index:$dest
+  );
+
+  let assemblyFormat = [{
+    `(` $source `,` $dest `)` attr-dict
+  }];
+
 }

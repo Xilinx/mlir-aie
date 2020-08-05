@@ -80,7 +80,7 @@ public:
       SwitchboxOp switchboxOp =
         builder.create<SwitchboxOp>(builder.getUnknownLoc(),
                                     builder.getIndexType(),
-                                    col, row);
+                                    coordToTile[std::make_pair(col, row)]);
       switchboxOp.ensureTerminator(switchboxOp.connections(),
                                    builder,
                                    builder.getUnknownLoc());

@@ -83,21 +83,16 @@ module @example0 {
       AIE.end
   }
 
-  %s33 = AIE.switchbox(3, 3) {
+  %s33 = AIE.switchbox(%t33) {
     AIE.connect<"DMA": 0, "East": 0>
     AIE.connect<"DMA": 1, "East": 1>
   }
 
-  %s34 = AIE.switchbox(4, 3) {
-    AIE.connect<"West": 0, "South": 0>
-    AIE.connect<"West": 1, "North": 0>
-  }
-
-  %s42 = AIE.switchbox(4, 2) {
+  %s42 = AIE.switchbox(%t42) {
     AIE.connect<"North": 0, "DMA": 0>
   }
 
-  %s44 = AIE.switchbox(4, 4) {
+  %s44 = AIE.switchbox(%t44) {
     AIE.connect<"South":0, "DMA": 0>
   }
 

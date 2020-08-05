@@ -167,7 +167,7 @@ Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1, Operat
     bool IsW = isWest(col1, row1, col2, row2);
     bool IsN = isNorth(col1, row1, col2, row2);
     bool IsE = isEast(col1, row1, col2, row2);
-    bool IsItself = isItself(col1, row1, col2, row2);
+    bool IsInternal = isInternal(col1, row1, col2, row2);
     bool IsEvenRow = ((row1 % 2) == 0);
 
     if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))

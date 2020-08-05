@@ -58,6 +58,8 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIECreateFlowsPass();
   xilinx::AIE::registerAIECreateCoresPass();
   xilinx::AIE::registerAIECreateLocksPass();
+  xilinx::AIE::registerAIEBufferMergePass();
+
   InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.

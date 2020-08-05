@@ -314,8 +314,8 @@ void registerAIETranslations() {
           Block &b = r.front();
           bool isEmpty = b.getOps<ConnectOp>().empty() &&
             b.getOps<MasterSetOp>().empty();
-          int col = switchboxOp.col().getZExtValue();
-          int row = switchboxOp.row().getZExtValue();
+          int col = switchboxOp.colIndex();
+          int row = switchboxOp.rowIndex();
           if(!isEmpty) {
             output << "// Core Stream Switch column " << col << " row " << row << "\n";
           }

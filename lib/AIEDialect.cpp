@@ -169,26 +169,19 @@ static ParseResult parseSwitchboxOp(OpAsmParser &parser, OperationState &result)
 
   auto &builder = parser.getBuilder();
   result.types.push_back(builder.getIndexType());
-  OpAsmParser::OperandType cond;
-  Type iType = builder.getIndexType();
-  SmallVector<Type, 4> types;
-  types.push_back(iType);
-  types.push_back(iType);
 
+  OpAsmParser::OperandType tileOperand;
 
   if (parser.parseLParen())
     return failure();
 
-  IntegerAttr colAttr;
-  if (parser.parseAttribute(colAttr, parser.getBuilder().getIntegerType(32), "col", result.attributes))
-    return failure();
-  if (parser.parseComma())
+  if (parser.parseOperand(tileOperand))
     return failure();
 
-  IntegerAttr rowAttr;
-  if (parser.parseAttribute(rowAttr, parser.getBuilder().getIntegerType(32), "row", result.attributes))
-    return failure();
   if (parser.parseRParen())
+    return failure();
+
+  if (parser.resolveOperands(tileOperand, builder.getIndexType(), result.operands))
     return failure();
 
   // Parse the connections.
@@ -240,7 +233,7 @@ static void print(OpAsmPrinter &p, xilinx::AIE::SwitchboxOp op) {
   Region &body = op.connections();
   p << xilinx::AIE::SwitchboxOp::getOperationName();
   p << '(';
-  p << op.col() << ", " << op.row();
+  p << op.tile();
   p << ')';
 
   p.printRegion(body,
@@ -595,6 +588,20 @@ int xilinx::AIE::MemOp::colIndex() {
 }
 
 int xilinx::AIE::MemOp::rowIndex() {
+  Operation *Op = tile().getDefiningOp();
+  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
+
+  return tile.rowIndex();
+}
+
+int xilinx::AIE::SwitchboxOp::colIndex() {
+  Operation *Op = tile().getDefiningOp();
+  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
+
+  return tile.colIndex();
+}
+
+int xilinx::AIE::SwitchboxOp::rowIndex() {
   Operation *Op = tile().getDefiningOp();
   xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
 

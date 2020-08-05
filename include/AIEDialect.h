@@ -32,6 +32,7 @@ void registerAIEFindFlowsPass();
 void registerAIECreateFlowsPass();
 void registerAIECreateCoresPass();
 void registerAIECreateLocksPass();
+void registerAIEBufferMergePass();
 
 // The Dialect
 class AIEDialect : public mlir::Dialect {
@@ -95,7 +96,7 @@ public:
 
 typedef std::pair<WireBundle, int> Port;
 
-static bool isItself(int srcCol, int srcRow, int dstCol, int dstRow) {
+static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol) && (srcRow == dstRow));
 }
 
@@ -105,7 +106,7 @@ static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
 
 static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) {
   bool IsEvenRow = ((srcRow % 2) == 0);
-  return (IsEvenRow  && isItself(srcCol, srcRow, dstCol, dstRow)) ||
+  return (IsEvenRow  && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
          (!IsEvenRow && isWest(srcCol, srcRow, dstCol, dstRow));
 }
 
@@ -115,7 +116,7 @@ static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
 
 static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
   bool IsEvenRow = ((srcRow % 2) == 0);
-  return (!IsEvenRow && isItself(srcCol, srcRow, dstCol, dstRow)) ||
+  return (!IsEvenRow && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
          (IsEvenRow  && isEast(srcCol, srcRow, dstCol, dstRow));
 }
 
@@ -139,10 +140,10 @@ static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow)
   bool IsEvenRow = ((coreRow % 2) == 0);
 
   bool IsMemWest = (isWest(coreCol, coreRow, memCol, memRow)   && !IsEvenRow) ||
-                   (isItself(coreCol, coreRow, memCol, memRow) &&  IsEvenRow);
+                   (isInternal(coreCol, coreRow, memCol, memRow) &&  IsEvenRow);
 
   bool IsMemEast = (isEast(coreCol, coreRow, memCol, memRow)   &&  IsEvenRow) ||
-                   (isItself(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
+                   (isInternal(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
 
   bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
   bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);

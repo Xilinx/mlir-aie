@@ -1,10 +1,12 @@
 add_mlir_dialect_library(AIE
   AIEDialect.cpp
+  AIETokenAnalysis.cpp
+  AIENetlistAnalysis.cpp
   AIEFindFlows.cpp
   AIECreateFlows.cpp
   AIECreateCores.cpp
-  AIETokenAnalysis.cpp
   AIECreateLocks.cpp
+  AIEBufferMerge.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

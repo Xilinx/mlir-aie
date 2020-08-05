@@ -7,19 +7,19 @@ module {
   %1 = AIE.tile(1, 1)
   %2 = AIE.tile(0, 1)
   %3 = AIE.tile(1, 0)
-  %4 = AIE.switchbox(0, 0) {
+  %4 = AIE.switchbox(%0) {
     AIE.connect<"DMA" : 0, "North" : 0>
   }
-  %5 = AIE.switchbox(0, 1) {
+  %5 = AIE.switchbox(%2) {
     // AIE.connect<"South" : 0, "East" : 0>
     %m1 = AIE.masterset(1, "East" : 0 )
     AIE.packetrules("South" : 0) {
       AIE.rule(0x1F, 0x10, %m1)
     }
   }
-  %6 = AIE.switchbox(1, 0) {
+  %6 = AIE.switchbox(%3) {
   }
-  %7 = AIE.switchbox(1, 1) {
+  %7 = AIE.switchbox(%1) {
     AIE.connect<"West" : 0, "ME" : 1>
   }
   %8 = AIE.shimswitchbox(0) {
