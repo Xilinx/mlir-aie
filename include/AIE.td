@@ -916,17 +916,16 @@ def AIE_GetStreamOp: AIE_Op<"getStream", []>,
   }];
 
   let arguments = (
-    ins Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel
+    ins AnyI<1>:$channel
   );
   let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
 
   let assemblyFormat = [{
-    `(` $channel `)` attr-dict `:` type($streamValue)
+    `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
   }];
   let extraClassDeclaration = [{
     bool isWideStream() { return streamValue().getType().isInteger(128); }
     bool isFloatStream() { return streamValue().getType().isa<FloatType>(); }
-    int getChannelValue() { return channel().getZExtValue(); }
   }];
 }
 
@@ -937,17 +936,16 @@ def AIE_PutStreamOp: AIE_Op<"putStream", []> {
   }];
 
   let arguments = (
-    ins Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channel,
+    ins AnyI<1>:$channel,
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
 
   let assemblyFormat = [{
-    `(` $channel `,` $streamValue `:` type($streamValue) `)` attr-dict
+    `(` $streamValue `:` type($streamValue) `,` $channel `:` type($channel) `)` attr-dict
   }];
   let extraClassDeclaration = [{
     bool isWideStream() { return streamValue().getType().isInteger(128); }
     bool isFloatStream() { return streamValue().getType().isa<FloatType>(); }
-    int getChannelValue() { return channel().getZExtValue(); }
   }];
 }
 

@@ -62,11 +62,8 @@ struct AIEPutStreamLowering : public OpConversionPattern<PutStreamOp> {
     auto putMSFunc = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName);
     assert(putMSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    Value channelValue = rewriter.create<LLVM::ConstantOp>(
-      rewriter.getUnknownLoc(), LLVMType::getInt32Ty(converter.getDialect()),
-      rewriter.getI32IntegerAttr(op.getChannelValue()));
-    args.push_back(channelValue);
     args.push_back(op.streamValue());
+    args.push_back(op.channel());
     auto putMSCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -98,10 +95,7 @@ struct AIEGetStreamLowering : public OpConversionPattern<GetStreamOp> {
     auto getSSFunc = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName);
     assert(getSSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    Value channelValue = rewriter.create<LLVM::ConstantOp>(
-      rewriter.getUnknownLoc(), LLVMType::getInt32Ty(converter.getDialect()),
-      rewriter.getI32IntegerAttr(op.getChannelValue()));
-    args.push_back(channelValue);
+    args.push_back(op.channel());
     auto getSSCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
     return success();
@@ -150,8 +144,7 @@ struct AIEGetCascadeLowering : public OpConversionPattern<GetCascadeOp> {
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName);
     assert(getSCDFunc && "Could not find the intrinsic function!");
-    SmallVector<Value, 2> args;
-    auto getSCDCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), getSCDFunc, args);
+    auto getSCDCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), getSCDFunc, ValueRange({}));
     rewriter.replaceOp(op, getSCDCall.getResult(0));
     return success();
   }
@@ -217,8 +210,7 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPointAfter(childOp);
 
       if (EndOp end = dyn_cast<EndOp>(childOp)) {
-        SmallVector<Value, 2> args;
-        auto llvmReturn = rewriter.create<LLVM::ReturnOp>(rewriter.getUnknownLoc(), args);
+        auto llvmReturn = rewriter.create<LLVM::ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
         rewriter.eraseOp(childOp);
       } else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
         LockOp lock = dyn_cast<LockOp>(useLock.lock().getDefiningOp());
@@ -384,10 +376,9 @@ struct AIECoreToLLVMPass : public PassWrapper<AIECoreToLLVMPass, OperationPass<M
         callArgTypes, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.get.scd() -> !llvm.i384
-    callArgTypes.clear();
     auto getSCDFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.scd",
         LLVMType::getFunctionTy(LLVMType::getIntNTy(converter.getDialect(), 384),
-        callArgTypes, /*isVarArg=*/false));
+        {}, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.lock.acquire.reg(%lock_id: !llvm.i32, %lock_val: !llvm.i32) ->()
     callArgTypes.clear();
