@@ -961,7 +961,7 @@ def AIE_GetCascadeOp: AIE_Op<"getCascade", []>,
   let results = (outs AnyI<384>:$cascadeValue);
 
   let assemblyFormat = [{
-    attr-dict `:` type($cascadeValue)
+    `(` `)` attr-dict `:` type($cascadeValue)
   }];
 }
 

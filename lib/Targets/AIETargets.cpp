@@ -1,5 +1,6 @@
 // (c) Copyright 2019 Xilinx Inc. All Rights Reserved.
 
+#include "mlir/Transforms/Passes.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -8,6 +9,11 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Translation.h"
+#include "mlir/Target/LLVMIR.h"
+
+#include "llvm/IR/Module.h"
+#include "llvm/Support/TargetSelect.h"
+
 #include "AIEDialect.h"
 #include "AIENetlistAnalysis.h"
 
@@ -33,6 +39,18 @@ StringRef tileDMAInstStr(int col, int row) {
 }
 
 void registerAIETranslations() {
+  TranslateFromMLIRRegistration
+    registrationLLVM("aie-generate-llvmir", [](ModuleOp module, raw_ostream &output) {
+      auto llvmModule = mlir::translateModuleToLLVMIR(module);
+      if (!llvmModule) {
+        llvm::errs() << "Failed to emit LLVM IR\n";
+        return failure();
+      }
+
+      output << *llvmModule;
+      return success();
+    });
+
   TranslateFromMLIRRegistration
     registrationMMap("aie-generate-mmap", [](ModuleOp module, raw_ostream &output) {
       DenseMap<std::pair<int, int>, Operation *> tiles;

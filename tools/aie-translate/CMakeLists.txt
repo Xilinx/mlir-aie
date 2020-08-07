@@ -23,4 +23,5 @@ target_link_libraries(aie-translate
   MLIRPass
   MLIRTranslation
   MLIRSupport
+  MLIRTargetLLVMIR
   )

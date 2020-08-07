@@ -59,6 +59,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIECreateCoresPass();
   xilinx::AIE::registerAIECreateLocksPass();
   xilinx::AIE::registerAIEBufferMergePass();
+  xilinx::AIE::registerAIECoreToLLVMPass();
 
   InitLLVM y(argc, argv);
 
