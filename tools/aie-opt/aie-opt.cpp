@@ -60,6 +60,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIECreateLocksPass();
   xilinx::AIE::registerAIEBufferMergePass();
   xilinx::AIE::registerAIECoreToLLVMPass();
+  xilinx::AIE::registerAIEHerdRoutingPass();
 
   InitLLVM y(argc, argv);
 

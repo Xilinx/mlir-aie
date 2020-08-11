@@ -1023,3 +1023,143 @@ def AIE_NetOp: AIE_Op<"net", []> {
   }];
 
 }
+
+def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
+  let summary = "Declare a herd which is a bundle of core organized in a rectangular shape";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins I32Attr:$width,
+        I32Attr:$height
+  );
+
+  let extraClassDeclaration = [{
+    int getHerdWidth()   { return width().getZExtValue(); }
+    int getHerdHeight()  { return height().getZExtValue(); }
+    int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
+  }];
+
+  let assemblyFormat = [{
+    `[` $width `]` `[` $height `]` attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "int width, int height", [{
+              build(builder, result, builder.getIndexType(),
+                    builder.getI32IntegerAttr(width),
+                    builder.getI32IntegerAttr(height));
+              }]>
+  ];
+}
+
+def AIE_PlaceOp: AIE_Op<"place", []> {
+  let summary = "A place operation that specifies the relative placement (XY) of one herd to another";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$sourceHerd,
+        Index:$destHerd,
+        I32Attr:$distX,
+        I32Attr:$distY
+  );
+
+  let assemblyFormat = [{
+    `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    int getDistXValue() { return distX().getZExtValue(); }
+    int getDistYValue() { return distY().getZExtValue(); }
+  }];
+}
+
+def AIE_RouteOp: AIE_Op<"route", []> {
+  let summary = "A route operation that routes one herd to another";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$sourceHerds,
+        WireBundle:$sourceBundle,
+        I32Attr:$sourceChannel,
+
+        Index:$destHerds,
+        WireBundle:$destBundle,
+        I32Attr:$destChannel
+  );
+
+  let assemblyFormat = [{
+    `(` `<` $sourceHerds `,` $sourceBundle `:` $sourceChannel `>` `,`
+        `<` $destHerds   `,` $destBundle   `:` $destChannel   `>` `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    int getSourceChannelValue()  { return sourceChannel().getZExtValue(); }
+    int getDestChannelValue()  { return destChannel().getZExtValue(); }
+  }];
+}
+
+def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
+  let summary = "An iter operation";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins I32Attr:$start,
+        I32Attr:$end,
+        I32Attr:$stride
+  );
+
+  let assemblyFormat = [{
+    `(` $start `,` $end `,` $stride `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    int getStartValue()  { return start().getZExtValue(); }
+    int getEndValue()    { return end().getZExtValue(); }
+    int getStrideValue() { return stride().getZExtValue(); }
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "int start, int end, int stride", [{
+              build(builder, result, builder.getIndexType(),
+                    builder.getI32IntegerAttr(start),
+                    builder.getI32IntegerAttr(end),
+                    builder.getI32IntegerAttr(stride));
+              }]>
+  ];
+}
+
+def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
+  let summary = "A select operation";
+  let description = [{
+    TODO
+  }];
+
+  let arguments = (
+    ins Index:$startHerd,
+        Index:$iterX,
+        Index:$iterY
+  );
+
+  let assemblyFormat = [{
+    `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Value startHerd, Value iterX, Value iterY", [{
+              build(builder, result, builder.getIndexType(),
+                    startHerd, iterX, iterY);
+              }]>
+  ];
+}
+

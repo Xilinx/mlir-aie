@@ -24,14 +24,14 @@ using namespace xilinx::AIE;
 namespace xilinx {
 namespace AIE {
 
-StringRef tileInstStr(int col, int row) {
+StringRef tileInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "&(TileInst" << "[" << col << "][" << row << "])";
   return str;
 }
 
-StringRef tileDMAInstStr(int col, int row) {
+StringRef tileDMAInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "&(TileDMAInst" << "[" << col << "][" << row << "])";
@@ -134,7 +134,7 @@ void registerAIETranslations() {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
           output << "XAieTile_CoreControl("
-                 << tileInstStr(col, row + 1) << ", "
+                 << tileInstStr(std::to_string(col), std::to_string(row + 1)) << ", "
                  << enable  << ", "
                  << disable <<
                  ");\n";
@@ -160,12 +160,12 @@ void registerAIETranslations() {
           int col = memOp.colIndex();
           int row = memOp.rowIndex();
           output << "XAieDma_TileInitialize(" <<
-                    tileInstStr(col, row + 1) << ", " <<
-                    tileDMAInstStr(col, row + 1) << ");\n";
+                    tileInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                    tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ");\n";
           output << "XAieDma_TileBdClearAll(" <<
-                    tileDMAInstStr(col, row + 1) << ");\n";
+                    tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ");\n";
           output << "XAieDma_TileChResetAll(" <<
-                    tileDMAInstStr(col, row + 1) << ");\n";
+                    tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ");\n";
 
           int bdNum = 0;
           DenseMap<Block *, int> blockMap;
@@ -217,7 +217,7 @@ void registerAIETranslations() {
             if (foundBd) {
               if (hasA) {
                 output << "XAieDma_TileBdSetLock(" <<
-                          tileDMAInstStr(col, row + 1) << ", " <<
+                          tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                           bdNum << ", " <<
                           bufA << ", " <<
                           lockID << ", " <<
@@ -228,7 +228,7 @@ void registerAIETranslations() {
               }
               if (hasB) {
                 output << "XAieDma_TileBdSetLock(" <<
-                          tileDMAInstStr(col, row + 1) << ", " <<
+                          tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                           bdNum << ", " <<
                           bufB << ", " <<
                           lockID << ", " <<
@@ -239,7 +239,7 @@ void registerAIETranslations() {
               }
 
               output << "XAieDma_TileBdSetAdrLenMod(" <<
-                        tileDMAInstStr(col, row + 1) << ", " <<
+                        tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                         bdNum << ", " <<
                         "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
                         "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
@@ -260,14 +260,14 @@ void registerAIETranslations() {
             Block *block = map.first;
             int bdNum = map.second;
             output << "XAieDma_TileBdWrite(" <<
-                      tileDMAInstStr(col, row + 1) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                       bdNum << ");\n";
             Block *nextBlock = block->getSuccessors()[0]; // should have only one successor block
             if (nextBlock == endBlock)
               continue;
             int nextBdNum = blockMap[nextBlock];
             output << "XAieDma_TileBdSetNext(" <<
-                      tileDMAInstStr(col, row + 1) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                       bdNum << ", " <<
                       nextBdNum << ");\n";
           }
@@ -278,11 +278,11 @@ void registerAIETranslations() {
             int bdNum = blockMap[firstBd];
 
             output << "XAieDma_TileSetStartBd(" <<
-                      tileDMAInstStr(col, row + 1) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                       "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
                       bdNum << ");\n";
             output << "XAieDma_TileChControl(" <<
-                      tileDMAInstStr(col, row + 1) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                       "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
                       resetDisable << ", " <<
                       enable << ");\n";
@@ -302,13 +302,13 @@ void registerAIETranslations() {
           int lockID = lock.getLockID();
           if (op.acquire()) {
             output << "XAieTile_LockAcquire(" <<
-                      tileDMAInstStr(col, row + 1) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                       lockID << ", " <<
                       lockVal << ", " <<
                       timeOut << ");\n";
           } else if (op.release()) {
             output << "XAieTile_LockRelease(" <<
-                      tileDMAInstStr(col, row + 1) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
                       lockID << ", " <<
                       lockVal << ", " <<
                       timeOut << ");\n";
@@ -332,28 +332,61 @@ void registerAIETranslations() {
           Block &b = r.front();
           bool isEmpty = b.getOps<ConnectOp>().empty() &&
             b.getOps<MasterSetOp>().empty();
-          int col = switchboxOp.colIndex();
-          int row = switchboxOp.rowIndex();
-          if(!isEmpty) {
-            output << "// Core Stream Switch column " << col << " row " << row << "\n";
+          bool isParam = false;
+
+          if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
+            int col = switchboxOp.colIndex();
+            int row = switchboxOp.rowIndex();
+            if (!isEmpty) {
+              output << "// Core Stream Switch column " << col << " row " << row << "\n";
+            }
+
+            output << "x = " << col << ";\n";
+            output << "y = " << row << ";\n";
+          } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(switchboxOp.tile().getDefiningOp())) {
+            // parameterize streamswitch's configuration
+            isParam = true;
+            HerdOp sourceHerd = dyn_cast<HerdOp>(sel.startHerd().getDefiningOp());
+            auto symbolAttr = sourceHerd.getOperation()->getAttrOfType<StringAttr>(
+                                SymbolTable::getSymbolAttrName());
+            std::string sourceHerdName(symbolAttr.getValue());
+
+            IterOp iterX     = dyn_cast<IterOp>(sel.iterX().getDefiningOp());
+            IterOp iterY     = dyn_cast<IterOp>(sel.iterY().getDefiningOp());
+            int startXValue  = iterX.getStartValue();
+            int endXValue    = iterX.getEndValue();
+            int strideXValue = iterX.getStrideValue();
+            int startYValue  = iterY.getStartValue();
+            int endYValue    = iterY.getEndValue();
+            int strideYValue = iterY.getStrideValue();
+
+            std::string startX(sourceHerdName + "_X + " + std::to_string(startXValue));
+            std::string endX  (sourceHerdName + "_X + " + std::to_string(endXValue));
+            std::string startY(sourceHerdName + "_Y + " + std::to_string(startYValue));
+            std::string endY  (sourceHerdName + "_Y + " + std::to_string(endYValue));
+
+            output << "for (x = " << startX << "; x < " << endX << "; x += " << strideXValue << ") {\n";
+            output << "for (y = " << startY << "; y < " << endY << "; y += " << strideYValue << ") {\n";
           }
+
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "XAieTile_StrmConnectCct(" <<
-                      tileInstStr(col, row + 1) << ",\n";
+                      tileInstStr("x", "y + 1") << ",\n";
             output << "\tXAIETILE_STRSW_SPORT_" <<
                       stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                       "(" <<
-                      tileInstStr(col, row + 1) << ", " <<
+                      tileInstStr("x", "y + 1") << ", " <<
                       connectOp.sourceIndex() <<
                       "),\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr(col, row + 1) << ", " <<
+                      tileInstStr("x", "y + 1") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t" << enable << ");\n";
           }
+
           std::vector<int> mselForArbiter;
           DenseMap<Operation *, int> mselForMasterSet;
           for (auto connectOp : b.getOps<MasterSetOp>()) {
@@ -363,21 +396,21 @@ void registerAIETranslations() {
             int msel = mselForArbiter[arbiter]++;
             mselForMasterSet[connectOp.getOperation()] = msel;
             output << "  XAieTile_StrmConfigMstr(" <<
-                      tileInstStr(col, row + 1) << ",\n";
+                      tileInstStr("x", "y + 1") << ",\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr(col, row + 1) << ", " <<
+                      tileInstStr("x", "y + 1") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t" << enable << ",\n";
             output << "\t" << enable << ",\n";
             output << "\tXAIETILE_STRSW_MPORT_CFGPKT(" <<
-                      tileInstStr(col, row + 1) << ",\n";
+                      tileInstStr("x", "y + 1") << ",\n";
             output << "\t\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr(col, row + 1) << ", " <<
+                      tileInstStr("x", "y + 1") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t\t" << disable << " /*drop_header*/,\n";
@@ -391,21 +424,21 @@ void registerAIETranslations() {
               Operation *op = slotOp.masterset().getDefiningOp();
               MasterSetOp masterSetOp = dyn_cast<MasterSetOp>(op);
               output << "XAieTile_StrmConfigSlvSlot(" <<
-                        tileInstStr(col, row + 1) << ",\n";
+                        tileInstStr("x", "y + 1") << ",\n";
               output << "\tXAIETILE_STRSW_SPORT_" <<
                         stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                         "(" <<
-                        tileInstStr(col, row + 1) << ", " <<
+                        tileInstStr("x", "y + 1") << ", " <<
                         connectOp.sourceIndex() <<
                         "),\n";
               output << "\t" << slot << "/*slot*/,\n";
               output << "\t" << enable << ")\n";
               output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" <<
-                        tileInstStr(col, row + 1) << ",\n";
+                        tileInstStr("x", "y + 1") << ",\n";
               output << "\t\tXAIETILE_STRSW_SPORT_" <<
                         stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                         "(" <<
-                        tileInstStr(col, row + 1) << ", " <<
+                        tileInstStr("x", "y + 1") << ", " <<
                         connectOp.sourceIndex() <<
                         "),\n";
               output << "\t\t" << slot << "/*slot*/,\n";
@@ -416,6 +449,11 @@ void registerAIETranslations() {
               output << "\t\t" << masterSetOp.arbiter() << "/*arbiter*/);\n";
               slot++;
             }
+          }
+
+          if (isParam) {
+            output << "}\n";
+            output << "}\n";
           }
         }
         for(auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
@@ -428,17 +466,17 @@ void registerAIETranslations() {
           }
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "XAieTile_StrmConnectCct(" <<
-                      tileInstStr(col, 0) << ",\n";
+                      tileInstStr(std::to_string(col), "0") << ",\n";
             output << "\tXAIETILE_STRSW_SPORT_" <<
                       stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                       "(" <<
-                      tileInstStr(col, 0) << ", " <<
+                      tileInstStr(std::to_string(col), "0") << ", " <<
                       connectOp.sourceIndex() <<
                       "),\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr(col, 0) << ", " <<
+                      tileInstStr(std::to_string(col), "0") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t" << enable << ");\n";

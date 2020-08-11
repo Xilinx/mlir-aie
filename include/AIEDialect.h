@@ -34,6 +34,7 @@ void registerAIECreateCoresPass();
 void registerAIECreateLocksPass();
 void registerAIEBufferMergePass();
 void registerAIECoreToLLVMPass();
+void registerAIEHerdRoutingPass();
 
 // The Dialect
 class AIEDialect : public mlir::Dialect {
