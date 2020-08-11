@@ -37,6 +37,7 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 
 int getAvailableDestChannel(
   SmallVector<ConnectTy, 8> &connects,
+  PortTy sourcePort,
   WireBundle destBundle) {
 
   if (connects.size() == 0)
@@ -55,6 +56,14 @@ int getAvailableDestChannel(
 
   int availableChannel = -1;
 
+  // look for existing connect
+  for (int i = 0; i < numChannels; i++) {
+    PortTy port = std::make_pair(destBundle, i);
+    if (std::find(connects.begin(), connects.end(), std::make_pair(sourcePort, port)) != connects.end())
+      return i;
+  }
+
+  // if not, look for available destination port
   for (int i = 0; i < numChannels; i++) {
     PortTy port = std::make_pair(destBundle, i);
     SmallVector<PortTy, 8> ports;
@@ -122,7 +131,7 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
     for (unsigned i = 0; i < moves.size(); i++) {
       WireBundle move = moves[i];
       curChannel = getAvailableDestChannel(
-                     switchboxes[std::make_pair(herdOp, curCoord)], move);
+                     switchboxes[std::make_pair(herdOp, curCoord)], lastPort, move);
       if (curChannel == -1)
         continue;
 
@@ -164,7 +173,11 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
                       "[" << stringifyWireBundle(curBundle) << " : " << curChannel << "]\n";
 
       PortTy curPort = std::make_pair(curBundle, curChannel);
-      switchboxes[std::make_pair(herdOp, curCoord)].push_back(std::make_pair(lastPort, curPort));
+      ConnectTy connect = std::make_pair(lastPort, curPort);
+      if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
+                    switchboxes[std::make_pair(herdOp, curCoord)].end(),
+                    connect) == switchboxes[std::make_pair(herdOp, curCoord)].end())
+        switchboxes[std::make_pair(herdOp, curCoord)].push_back(connect);
       lastPort = std::make_pair(lastBundle, curChannel);
     }
   }
