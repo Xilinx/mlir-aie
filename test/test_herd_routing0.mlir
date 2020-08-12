@@ -65,6 +65,6 @@ module @test_herd_routing0 {
 
   %2 = AIE.select(%0, %i0, %i0)
   %3 = AIE.select(%1, %i0, %i0)
-  AIE.place(%0, %1, 3, 3) // herd t[0][0] and herd s[0][0] are spaced by 0-horizontally and 1-vertically
+  AIE.place(%0, %1, 3, 3) // herd t[0][0] and herd s[0][0] are spaced by 3-horizontally and 3-vertically
   AIE.route(<%2, "DMA": 0>, <%3, "DMA": 0>)
 }

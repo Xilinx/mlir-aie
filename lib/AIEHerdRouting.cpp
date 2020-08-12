@@ -182,6 +182,10 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
     }
   }
 
+  llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
+  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : " << lastPort.second << "], "
+                  "[" << stringifyWireBundle(destBundle) << " : " << destChannel << "]\n";
+
   switchboxes[std::make_pair(herdOp, std::make_pair(xCur, yCur))].push_back(
     std::make_pair(lastPort, std::make_pair(destBundle, destChannel)));
 }
@@ -212,6 +216,8 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
       distances[std::make_pair(sourceHerd, destHerd)] = std::make_pair(distX, distY);
     }
 
+    // FIXME: multiple route ops with different sourceHerds does not seem to be aware of
+    // the routes done before
     for (auto routeOp : m.getOps<RouteOp>()) {
       routeOps.push_back(routeOp);
 
@@ -250,7 +256,7 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
       int distX = distance.first;
       int distY = distance.second;
       int xStride, yStride;
-
+      // FIXME: this looks like it can be improved further ...
       for (int xSrc = sourceStartX; xSrc < sourceEndX; xSrc += sourceStrideX) {
         for (int ySrc = sourceStartY; ySrc < sourceEndY; ySrc += sourceStrideY) {
           for (int xDst = destStartX; xDst < destEndX; xDst += destStrideX) {
@@ -262,7 +268,7 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
               int y1 = yDst;
               if (destIterX == sourceIterX)
                 x1 = x0;
-              if (destIterY == sourceIterY)
+              if (destIterY == sourceIterX)
                 y1 = x0;
               if (destIterX == sourceIterY)
                 x1 = y0;
