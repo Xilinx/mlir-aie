@@ -387,15 +387,17 @@ void registerAIETranslations() {
             output << "\t" << enable << ");\n";
           }
 
-          std::vector<int> mselForArbiter;
-          DenseMap<Operation *, int> mselForMasterSet;
           for (auto connectOp : b.getOps<MasterSetOp>()) {
-            int arbiter = connectOp.arbiterIndex();
-            if(arbiter >= mselForArbiter.size())
-              mselForArbiter.resize(arbiter + 1);
-            int msel = mselForArbiter[arbiter]++;
-            mselForMasterSet[connectOp.getOperation()] = msel;
-            output << "  XAieTile_StrmConfigMstr(" <<
+            int mask = 0;
+            int arbiter = -1;
+            for (auto val : connectOp.amsels()) {
+              AMSelOp amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+              arbiter = amsel.arbiterIndex();
+              int msel = amsel.getMselValue();
+              mask |= (1 << msel);
+            }
+
+            output << "XAieTile_StrmConfigMstr(" <<
                       tileInstStr("x", "y + 1") << ",\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
@@ -403,8 +405,8 @@ void registerAIETranslations() {
                       tileInstStr("x", "y + 1") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
-            output << "\t" << enable << ",\n";
-            output << "\t" << enable << ",\n";
+            output << "\t" << enable << ",\n"; // port enable
+            output << "\t" << enable << ",\n"; // packet enable
             output << "\tXAIETILE_STRSW_MPORT_CFGPKT(" <<
                       tileInstStr("x", "y + 1") << ",\n";
             output << "\t\tXAIETILE_STRSW_MPORT_" <<
@@ -414,15 +416,17 @@ void registerAIETranslations() {
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t\t" << disable << " /*drop_header*/,\n";
-            output << "\t\t" << msel << "/*msel*/,\n";
-            output << "\t\t" << connectOp.arbiter() << "/*arbiter*/);\n";
+            output << "\t\t" << "0x" << llvm::utohexstr(mask) << "/*mask*/,\n"; // FIXME: compute mask for msel
+            output << "\t\t" <<  arbiter << "/*arbiter*/));\n";
           }
+
           for (auto connectOp : b.getOps<PacketRulesOp>()) {
             int slot = 0;
             Block &block = connectOp.rules().front();
             for (auto slotOp : block.getOps<PacketRuleOp>()) {
-              Operation *op = slotOp.masterset().getDefiningOp();
-              MasterSetOp masterSetOp = dyn_cast<MasterSetOp>(op);
+              AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.amsel().getDefiningOp());
+              int arbiter = amselOp.arbiterIndex();
+              int msel    = amselOp.getMselValue();
               output << "XAieTile_StrmConfigSlvSlot(" <<
                         tileInstStr("x", "y + 1") << ",\n";
               output << "\tXAIETILE_STRSW_SPORT_" <<
@@ -432,7 +436,7 @@ void registerAIETranslations() {
                         connectOp.sourceIndex() <<
                         "),\n";
               output << "\t" << slot << "/*slot*/,\n";
-              output << "\t" << enable << ")\n";
+              output << "\t" << enable << ",\n";
               output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" <<
                         tileInstStr("x", "y + 1") << ",\n";
               output << "\t\tXAIETILE_STRSW_SPORT_" <<
@@ -442,11 +446,11 @@ void registerAIETranslations() {
                         connectOp.sourceIndex() <<
                         "),\n";
               output << "\t\t" << slot << "/*slot*/,\n";
-              output << "\t\t" << slotOp.valueInt() << "/*ID value*/,\n";
-              output << "\t\t" << slotOp.maskInt() << "/*mask*/,\n";
+              output << "\t\t" << "0x" << llvm::utohexstr(slotOp.valueInt()) << "/*ID value*/,\n";
+              output << "\t\t" << "0x" << llvm::utohexstr(slotOp.maskInt()) << "/*mask*/,\n";
               output << "\t\t" << enable << ",\n";
-              output << "\t\t" << mselForMasterSet[op] << "/*msel*/,\n";
-              output << "\t\t" << masterSetOp.arbiter() << "/*arbiter*/);\n";
+              output << "\t\t" << msel << "/*msel*/,\n";
+              output << "\t\t" << arbiter << "/*arbiter*/));\n";
               slot++;
             }
           }

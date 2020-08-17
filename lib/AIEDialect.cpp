@@ -305,6 +305,14 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
           " must be less than " <<
           op.getNumDestConnections(connectOp.destBundle());
       }
+
+      int arbiter = -1;
+      for (auto val : connectOp.amsels()) {
+        auto amsel = dyn_cast<xilinx::AIE::AMSelOp>(val.getDefiningOp());
+        if ((arbiter != -1) && (arbiter != amsel.arbiterIndex()))
+          connectOp.emitOpError("a master port can only be tied to one arbiter");
+        arbiter = amsel.arbiterIndex();
+      }
     } else if(auto connectOp = dyn_cast<xilinx::AIE::PacketRulesOp>(ops)) {
       xilinx::AIE::Port source = std::make_pair(connectOp.sourceBundle(),
                                                 connectOp.sourceIndex());
@@ -315,6 +323,7 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
       } else {
         sourceset.insert(source);
       }
+    } else if (auto amselOp = dyn_cast<xilinx::AIE::AMSelOp>(ops)) {
     } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");

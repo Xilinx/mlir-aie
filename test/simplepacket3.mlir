@@ -12,18 +12,20 @@ module {
   }
   %5 = AIE.switchbox(%2) {
     // AIE.connect<"South" : 0, "East" : 0>
-    %m1 = AIE.masterset(1, "East" : 0 )
+    %a1_0 = AIE.amsel<1>(0)
+    %m1 = AIE.masterset("East" : 0, %a1_0 )
     AIE.packetrules("South" : 0) {
-      AIE.rule(0x1F, 0x10, %m1)
+      AIE.rule(0x1F, 0x10, %a1_0)
     }
   }
   %6 = AIE.switchbox(%3) {
     AIE.connect<"North" : 0, "ME" : 1>
   }
   %7 = AIE.switchbox(%1) {
-    %m1 = AIE.masterset(1, "South" : 0 )
+    %a1_0 = AIE.amsel<1>(0)
+    %m1 = AIE.masterset("South" : 0, %a1_0 )
     AIE.packetrules("West" : 0) {
-      AIE.rule(0x10, 0x0, %m1)
+      AIE.rule(0x10, 0x0, %a1_0)
     }
   }
   %8 = AIE.shimswitchbox(0) {

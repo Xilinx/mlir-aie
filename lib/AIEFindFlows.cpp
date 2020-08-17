@@ -118,17 +118,17 @@ private:
         //llvm::dbgs() << "To:" << stringifyWireBundle(connectOp.destPort().first) << " " << connectOp.destPort().second << "\n";
       }
     }
-    for (auto connectOp : b.getOps<PacketRulesOp>()) {
-      if(connectOp.sourcePort() == sourcePort) {
-        // llvm::dbgs() << stringifyWireBundle(connectOp.sourcePort().first) << " " << (int)sourcePort.first << "\n";
-        for (auto ruleOp : connectOp.rules().front().getOps<PacketRuleOp>()) {
-          MasterSetOp masterSetOp = dyn_cast_or_null<MasterSetOp>(ruleOp.masterset().getDefiningOp());
-          // llvm::dbgs() << "To:" << stringifyWireBundle(masterSetOp.destPort().first) << " " << masterSetOp.destPort().second << "\n";
-          MaskValue maskValue = std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
-          portSet.push_back(std::make_pair(masterSetOp.destPort(), maskValue));
-        }
-      }
-    }
+//    for (auto connectOp : b.getOps<PacketRulesOp>()) {
+//      if(connectOp.sourcePort() == sourcePort) {
+//        // llvm::dbgs() << stringifyWireBundle(connectOp.sourcePort().first) << " " << (int)sourcePort.first << "\n";
+//        for (auto ruleOp : connectOp.rules().front().getOps<PacketRuleOp>()) {
+//          MasterSetOp masterSetOp = dyn_cast_or_null<MasterSetOp>(ruleOp.masterset().getDefiningOp());
+//          // llvm::dbgs() << "To:" << stringifyWireBundle(masterSetOp.destPort().first) << " " << masterSetOp.destPort().second << "\n";
+//          MaskValue maskValue = std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
+//          portSet.push_back(std::make_pair(masterSetOp.destPort(), maskValue));
+//        }
+//      }
+//    }
     return portSet;
   }
 

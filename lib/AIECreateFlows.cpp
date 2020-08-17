@@ -79,7 +79,6 @@ public:
       IntegerType i32 = builder.getIntegerType(32);
       SwitchboxOp switchboxOp =
         builder.create<SwitchboxOp>(builder.getUnknownLoc(),
-                                    builder.getIndexType(),
                                     coordToTile[std::make_pair(col, row)]);
       switchboxOp.ensureTerminator(switchboxOp.connections(),
                                    builder,

@@ -370,22 +370,48 @@ Example:
 
 def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
   let arguments = (
-    ins I32Attr:$arbiter,
-        WireBundle:$destBundle,
-        I32Attr:$destChannel
+    ins WireBundle:$destBundle,
+        I32Attr:$destChannel,
+        Variadic<Index>:$amsels
   );
   let summary = "Packet switched input connection";
   let description = [{
     A Packet switched connection inside a switchbox.
   }];
   let assemblyFormat = [{
-    `(` $arbiter `,` $destBundle `:` $destChannel `)` attr-dict
+    `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int arbiterIndex() { return arbiter().getZExtValue(); }
     int destIndex() { return destChannel().getZExtValue(); }
     Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
+}
+
+def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
+  let arguments = (
+    ins Confined<I8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
+        Confined<I8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
+  );
+  let summary = "Declare an arbiter of a switchbox with a master select value (arbiter + msel)";
+  let description = [{
+    TODO
+  }];
+  let assemblyFormat = [{
+    `<` $arbiterID `>` `(` $msel `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int arbiterIndex() { return arbiterID().getZExtValue(); }
+    int getMselValue() { return msel().getZExtValue(); }
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "int arbiterID, int msel", [{
+              build(builder, result, builder.getIndexType(),
+                    builder.getI8IntegerAttr(arbiterID),
+                    builder.getI8IntegerAttr(msel));
+              }]>
+  ];
 }
 
 def AIE_WireOp: AIE_Op<"wire", []> {
@@ -435,12 +461,22 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
     int sourceIndex() { return sourceChannel().getZExtValue(); }
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
   }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "WireBundle sourceBundle, int sourceChannel", [{
+              build(builder, result,
+                    sourceBundle,
+                    APInt(32, sourceChannel));
+              }]>
+  ];
 }
+
 def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   let arguments = (
     ins I8Attr:$mask,
         I8Attr:$value,
-        Index:$masterset
+        Index:$amsel
   );
   let summary = "Packet switched input connection";
   let description = [{
@@ -449,18 +485,21 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   let extraClassDeclaration = [{
     int maskInt() { return mask().getZExtValue(); }
     int valueInt() { return value().getZExtValue(); }
-    MasterSetOp &masterSetOp() {
-      // FIXME: Verify this..
-      Operation *op = masterset().getDefiningOp();
-      assert(op);
-      auto masterSetOp = dyn_cast_or_null<MasterSetOp>(op);
-      //assert(masterSetOp);
-    }
   }];
   let assemblyFormat = [{
-    `(` $mask `,` $value `,` $masterset `)` attr-dict
+    `(` $mask `,` $value `,` $amsel `)` attr-dict
   }];
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "int mask, int value, Value amsel", [{
+              build(builder, result,
+                    builder.getI8IntegerAttr(mask),
+                    builder.getI8IntegerAttr(value),
+                    amsel);
+              }]>
+  ];
 }
+
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
                                              SingleBlockImplicitTerminator<"EndswitchOp">]> {
   let arguments = (
@@ -469,7 +508,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
   let regions = (region AnyRegion:$ports);
   let summary = "Packet switched flow";
   let description = [{
-    A logical packet switched flow between cores.  During place and
+    A logical packet switched flow between tiles.  During place and
     route, this is replaced by MasterSets and PacketRules inside
     switchboxes.
   }];
@@ -492,7 +531,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
 
 def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let arguments = (
-    ins Index:$core,
+    ins Index:$tile,
         WireBundle:$bundle,
         I32Attr:$channel
   );
@@ -501,16 +540,16 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
      A port which is the source of a flow.
   }];
   let assemblyFormat = [{
-    `<` $core `,` $bundle `:` $channel `>` attr-dict
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return channel().getZExtValue(); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value core, WireBundle bundle, int channel", [{
+              "Value tile, WireBundle bundle, int channel", [{
               build(builder, result,
-                    core,
+                    tile,
                     bundle,
                     APInt(32, channel));
               }]>
@@ -519,7 +558,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
 
 def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let arguments = (
-    ins Index:$core,
+    ins Index:$tile,
         WireBundle:$bundle,
         I32Attr:$channel
   );
@@ -528,16 +567,16 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
      A port which is the destination  of a flow.
   }];
   let assemblyFormat = [{
-    `<` $core `,` $bundle `:` $channel `>` attr-dict
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return channel().getZExtValue(); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value core, WireBundle bundle, int channel", [{
+              "Value tile, WireBundle bundle, int channel", [{
               build(builder, result,
-                    core,
+                    tile,
                     bundle,
                     APInt(32, channel));
               }]>
@@ -551,16 +590,6 @@ def AIE_EndswitchOp: AIE_Op<"endswitch", [Terminator
   let summary = "end of a switch";
   let description = [{
     Terminator for switchbox
-  }];
-}
-
-def AIE_EndarbiterOp: AIE_Op<"endarbiter", [Terminator
-                                            /*,Or<[HasParent<"SwitchboxOp">,
-                                                   HasParent<"ShimSwitchboxOp">]>*/
-                                           ]> {
-  let summary = "end of a arbiter";
-  let description = [{
-    Terminator for arbiterbox
   }];
 }
 
