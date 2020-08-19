@@ -324,46 +324,46 @@ struct AIECoreToLLVMPass : public PassWrapper<AIECoreToLLVMPass, OperationPass<M
 
     SmallVector<LLVMType, 2> callArgTypes;
 
-    // llvm.func @llvm.aie.put.ms(%channel: !llvm.i32, %stream_val: !llvm.i32) -> ()
+    // llvm.func @llvm.aie.put.ms(%stream_val: !llvm.i32, %channel: !llvm.i1) -> ()
     callArgTypes.push_back(LLVMType::getInt32Ty(converter.getDialect()));
-    callArgTypes.push_back(LLVMType::getInt32Ty(converter.getDialect()));
+    callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 1));
     auto putMSFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.ms",
         LLVMType::getFunctionTy(LLVMType::getVoidTy(converter.getDialect()),
         callArgTypes, /*isVarArg=*/false));
 
-    // llvm.func @llvm.aie.put.mws(%channel: !llvm.i32, %stream_val: !llvm.i128) -> ()
+    // llvm.func @llvm.aie.put.mws(%stream_val: !llvm.i128, %channel: !llvm.i1) -> ()
     callArgTypes.clear();
-    callArgTypes.push_back(LLVMType::getInt32Ty(converter.getDialect()));
     callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 128));
+    callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 1));
     auto putWMSFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
         LLVMType::getFunctionTy(LLVMType::getVoidTy(converter.getDialect()),
         callArgTypes, /*isVarArg=*/false));
 
-    // llvm.func @llvm.aie.put.mfs(%channel: !llvm.i32, %stream_val: !llvm.float) -> ()
+    // llvm.func @llvm.aie.put.mfs(%stream_val: !llvm.float, %channel: !llvm.i1) -> ()
     callArgTypes.clear();
-    callArgTypes.push_back(LLVMType::getInt32Ty(converter.getDialect()));
     callArgTypes.push_back(LLVMType::getFloatTy(converter.getDialect()));
+    callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 1));
     auto putFMFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.fms",
         LLVMType::getFunctionTy(LLVMType::getVoidTy(converter.getDialect()),
         callArgTypes, /*isVarArg=*/false));
 
-    // llvm.func @llvm.aie.get.ss(%channel: !llvm.i32) -> !llvm.i32
+    // llvm.func @llvm.aie.get.ss(%channel: !llvm.i1) -> !llvm.i32
     callArgTypes.clear();
-    callArgTypes.push_back(LLVMType::getInt32Ty(converter.getDialect()));
+    callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 1));
     auto getSSFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.ss",
         LLVMType::getFunctionTy(LLVMType::getInt32Ty(converter.getDialect()),
         callArgTypes, /*isVarArg=*/false));
 
-    // llvm.func @llvm.aie.get.wss(%channel: !llvm.i32) -> !llvm.i128
+    // llvm.func @llvm.aie.get.wss(%channel: !llvm.i1) -> !llvm.i128
     callArgTypes.clear();
-    callArgTypes.push_back(LLVMType::getInt32Ty(converter.getDialect()));
+    callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 1));
     auto getWSSFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.wss",
         LLVMType::getFunctionTy(LLVMType::getIntNTy(converter.getDialect(), 128),
         callArgTypes, /*isVarArg=*/false));
 
-    // llvm.func @llvm.aie.get.fss(%channel: !llvm.i32) -> !llvm.float
+    // llvm.func @llvm.aie.get.fss(%channel: !llvm.i1) -> !llvm.float
     callArgTypes.clear();
-    callArgTypes.push_back(LLVMType::getFloatTy(converter.getDialect()));
+    callArgTypes.push_back(LLVMType::getIntNTy(converter.getDialect(), 1));
     auto getFSSFunc = builder.create<LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.fss",
         LLVMType::getFunctionTy(LLVMType::getFloatTy(converter.getDialect()),
         callArgTypes, /*isVarArg=*/false));
