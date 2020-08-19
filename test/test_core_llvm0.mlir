@@ -1,38 +1,37 @@
 // RUN: aie-opt --aie-llvm-lowering %s | FileCheck %s
 
-// CHECK-LABEL: module @test_core_llvm0 {
-// CHECK-NEXT:   llvm.func @llvm.aie.put.ms(!llvm.i32, !llvm.i32)
-// CHECK-NEXT:   llvm.func @llvm.aie.put.wms(!llvm.i32, !llvm.i128)
-// CHECK-NEXT:   llvm.func @llvm.aie.put.fms(!llvm.i32, !llvm.float)
-// CHECK-NEXT:   llvm.func @llvm.aie.get.ss(!llvm.i32) -> !llvm.i32
-// CHECK-NEXT:   llvm.func @llvm.aie.get.wss(!llvm.i32) -> !llvm.i128
-// CHECK-NEXT:   llvm.func @llvm.aie.get.fss(!llvm.float) -> !llvm.float
-// CHECK-NEXT:   llvm.func @llvm.aie.put.mcd(!llvm.i384)
-// CHECK-NEXT:   llvm.func @llvm.aie.get.scd() -> !llvm.i384
-// CHECK-NEXT:   llvm.func @llvm.aie.lock.acquire.reg(!llvm.i32, !llvm.i32)
-// CHECK-NEXT:   llvm.func @llvm.aie.lock.release.reg(!llvm.i32, !llvm.i32)
-// CHECK-NEXT:   llvm.func @core11() {
-// CHECK-NEXT:     %0 = llvm.mlir.constant(false) : !llvm.i1
-// CHECK-NEXT:     %1 = llvm.mlir.constant(true) : !llvm.i1
-// CHECK-NEXT:     %2 = llvm.mlir.constant(16 : i32) : !llvm.i32
-// CHECK-NEXT:     %3 = llvm.mlir.constant(32 : i128) : !llvm.i128
-// CHECK-NEXT:     llvm.call @llvm.aie.put.ms(%2, %0) : (!llvm.i32, !llvm.i1) -> ()
-// CHECK-NEXT:     llvm.call @llvm.aie.put.wms(%3, %1) : (!llvm.i128, !llvm.i1) -> ()
-// CHECK-NEXT:     %4 = llvm.mlir.constant(64 : i384) : !llvm.i384
-// CHECK-NEXT:     llvm.call @llvm.aie.put.mcd(%4) : (!llvm.i384) -> ()
-// CHECK-NEXT:     llvm.return
-// CHECK-NEXT:   }
-// CHECK-NEXT:   llvm.func @core21() {
-// CHECK-NEXT:     %0 = llvm.mlir.constant(false) : !llvm.i1
-// CHECK-NEXT:     %1 = llvm.mlir.constant(true) : !llvm.i1
-// CHECK-NEXT:     %2 = llvm.call @llvm.aie.get.ss(%0) : (!llvm.i1) -> !llvm.i32
-// CHECK-NEXT:     %3 = llvm.call @llvm.aie.get.ss(%1) : (!llvm.i1) -> !llvm.i32
-// CHECK-NEXT:     %4 = llvm.add %2, %3 : !llvm.i32
-// CHECK-NEXT:     %5 = llvm.call @llvm.aie.get.scd() : () -> !llvm.i384
-// CHECK-NEXT:     llvm.return
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
-
+//CHECK-LABEL: module @test_core_llvm0 {
+//CHECK:   llvm.func @llvm.aie.put.ms(!llvm.i32, !llvm.i1)
+//CHECK:   llvm.func @llvm.aie.put.wms(!llvm.i128, !llvm.i1)
+//CHECK:   llvm.func @llvm.aie.put.fms(!llvm.float, !llvm.i1)
+//CHECK:   llvm.func @llvm.aie.get.ss(!llvm.i1) -> !llvm.i32
+//CHECK:   llvm.func @llvm.aie.get.wss(!llvm.i1) -> !llvm.i128
+//CHECK:   llvm.func @llvm.aie.get.fss(!llvm.i1) -> !llvm.float
+//CHECK:   llvm.func @llvm.aie.put.mcd(!llvm.i384)
+//CHECK:   llvm.func @llvm.aie.get.scd() -> !llvm.i384
+//CHECK:   llvm.func @llvm.aie.lock.acquire.reg(!llvm.i32, !llvm.i32)
+//CHECK:   llvm.func @llvm.aie.lock.release.reg(!llvm.i32, !llvm.i32)
+//CHECK:   llvm.func @core11() {
+//CHECK:     %0 = llvm.mlir.constant(false) : !llvm.i1
+//CHECK:     %1 = llvm.mlir.constant(true) : !llvm.i1
+//CHECK:     %2 = llvm.mlir.constant(16 : i32) : !llvm.i32
+//CHECK:     %3 = llvm.mlir.constant(32 : i128) : !llvm.i128
+//CHECK:     llvm.call @llvm.aie.put.ms(%2, %0) : (!llvm.i32, !llvm.i1) -> ()
+//CHECK:     llvm.call @llvm.aie.put.wms(%3, %1) : (!llvm.i128, !llvm.i1) -> ()
+//CHECK:     %4 = llvm.mlir.constant(64 : i384) : !llvm.i384
+//CHECK:     llvm.call @llvm.aie.put.mcd(%4) : (!llvm.i384) -> ()
+//CHECK:     llvm.return
+//CHECK:   }
+//CHECK:   llvm.func @core21() {
+//CHECK:     %0 = llvm.mlir.constant(false) : !llvm.i1
+//CHECK:     %1 = llvm.mlir.constant(true) : !llvm.i1
+//CHECK:     %2 = llvm.call @llvm.aie.get.ss(%0) : (!llvm.i1) -> !llvm.i32
+//CHECK:     %3 = llvm.call @llvm.aie.get.ss(%1) : (!llvm.i1) -> !llvm.i32
+//CHECK:     %4 = llvm.add %2, %3 : !llvm.i32
+//CHECK:     %5 = llvm.call @llvm.aie.get.scd() : () -> !llvm.i384
+//CHECK:     llvm.return
+//CHECK:   }
+//CHECK: }
 
 // Test LLVM lowering to some AIE scalar intrinsic functions (streams, cascades)
 // Each core's region is lowered to LLVM Dialect
