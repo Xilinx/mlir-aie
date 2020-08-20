@@ -13,8 +13,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-typedef std::pair<WireBundle, int> PortTy;
-typedef std::pair<PortTy, PortTy> ConnectTy;
+typedef std::pair<Port, Port> ConnectTy;
 
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
@@ -37,7 +36,7 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 
 int getAvailableDestChannel(
   SmallVector<ConnectTy, 8> &connects,
-  PortTy sourcePort,
+  Port sourcePort,
   WireBundle destBundle) {
 
   if (connects.size() == 0)
@@ -58,15 +57,15 @@ int getAvailableDestChannel(
 
   // look for existing connect
   for (int i = 0; i < numChannels; i++) {
-    PortTy port = std::make_pair(destBundle, i);
+    Port port = std::make_pair(destBundle, i);
     if (std::find(connects.begin(), connects.end(), std::make_pair(sourcePort, port)) != connects.end())
       return i;
   }
 
   // if not, look for available destination port
   for (int i = 0; i < numChannels; i++) {
-    PortTy port = std::make_pair(destBundle, i);
-    SmallVector<PortTy, 8> ports;
+    Port port = std::make_pair(destBundle, i);
+    SmallVector<Port, 8> ports;
     for (auto connect : connects)
       ports.push_back(connect.second);
 
@@ -92,7 +91,7 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
   int curChannel;
   int xLast, yLast;
   WireBundle lastBundle;
-  PortTy lastPort = std::make_pair(sourceBundle, sourceChannel);
+  Port lastPort = std::make_pair(sourceBundle, sourceChannel);
 
   int xDest = xSrc + dX;
   int yDest = ySrc + dY;
@@ -172,7 +171,7 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
       llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : " << lastPort.second << "], "
                       "[" << stringifyWireBundle(curBundle) << " : " << curChannel << "]\n";
 
-      PortTy curPort = std::make_pair(curBundle, curChannel);
+      Port curPort = std::make_pair(curBundle, curChannel);
       ConnectTy connect = std::make_pair(lastPort, curPort);
       if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
                     switchboxes[std::make_pair(herdOp, curCoord)].end(),
@@ -313,8 +312,8 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
       builder.setInsertionPoint(b.getTerminator());
 
       for (auto connect : connects) {
-        PortTy sourcePort = connect.first;
-        PortTy destPort = connect.second;
+        Port sourcePort = connect.first;
+        Port destPort = connect.second;
         WireBundle sourceBundle = sourcePort.first;
         int sourceChannel = sourcePort.second;
         WireBundle destBundle = destPort.first;

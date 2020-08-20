@@ -149,10 +149,56 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                    AnyFloat.predicate]>,
                                   "scalar">;
 
+def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
+  let arguments = (
+    ins I32Attr:$col,
+        I32Attr:$row
+  );
 
-def Port : TypeConstraint<Index.predicate, "port">;
+  let summary = "Declare an AIE tile";
+  let description = [{
+    This operation creates an AIE tile in the AIE array. We specify what the column and the row of the tile.
 
-def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
+    A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
+    memory buffer (BufferOp), and lock (LockOp).
+
+    A tile is a logical abstraction. We use a tile to establish an ownership of a hardware entity
+    to it.
+  }];
+
+  let extraClassDeclaration = [{
+    int getNumSourceConnections(WireBundle bundle);
+    int getNumDestConnections(WireBundle bundle);
+    int colIndex() { return col().getZExtValue(); }
+    int rowIndex() { return row().getZExtValue(); }
+    bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
+  }];
+
+  let assemblyFormat = [{
+    `(` $col `,` $row `)` attr-dict
+  }];
+
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "int col, int row", [{
+              build(builder, result, builder.getIndexType(),
+                    builder.getI32IntegerAttr(col),
+                    builder.getI32IntegerAttr(row));
+              }]>
+  ];
+}
+
+def AIE_EndOp: AIE_Op<"end", [Terminator]> {
+  let summary = "end op";
+  let description = [{
+    A generic terminator operation for AIE ops' regions.
+  }];
+  let assemblyFormat = [{
+    attr-dict
+  }];
+}
+
+def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndOp">]>,
                      Results<(outs AnyType)> {
   let arguments = (
     ins Index:$tile
@@ -160,7 +206,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
 
   let summary = "Declare a switch";
   let description = [{
-    A switch
+    This operation creates a stream switch that belongs to a tile.
   }];
   let regions = (region AnyRegion:$connections);
   let printer = [{ return ::print(p, *this); }];
@@ -180,7 +226,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"Endswit
   ];
 }
 
-def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndswitchOp">]>,
+def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs AnyType)> {
   let arguments = (
     ins I32Attr:$col
@@ -221,9 +267,11 @@ def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
     ins Index:$tile
   );
 
-  let summary = "Declare a core";
+  let summary = "Declare a core module";
   let description = [{
-    A core
+    This operation creates a Core module that belongs to a tile.
+    The region of a CoreOp contains code that gets run on the AIE core.
+    Therefore, all the operations inside this region will get lowered into LLVM Dialect.
   }];
 
   let regions = (region AnyRegion:$body);
@@ -368,25 +416,6 @@ Example:
   ];
 }
 
-def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
-  let arguments = (
-    ins WireBundle:$destBundle,
-        I32Attr:$destChannel,
-        Variadic<Index>:$amsels
-  );
-  let summary = "Packet switched input connection";
-  let description = [{
-    A Packet switched connection inside a switchbox.
-  }];
-  let assemblyFormat = [{
-    `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
-  }];
-  let extraClassDeclaration = [{
-    int destIndex() { return destChannel().getZExtValue(); }
-    Port destPort() { return std::make_pair(destBundle(), destIndex()); }
-  }];
-}
-
 def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
   let arguments = (
     ins Confined<I8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
@@ -394,8 +423,24 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   );
   let summary = "Declare an arbiter of a switchbox with a master select value (arbiter + msel)";
   let description = [{
-    TODO
+    A combination of arbiter ID and master select (msel) value.
+    This op is used as a pointer to select the arbiter for routing a packet-switched flow
+
+    Example:
+      %a5_m3 = AIE.msel<5>(3)
+
+    This code declares a pointer that represents an  arbiter 5 with msel=3
+
+    From the spec, the number of arbiter per switchbox is 6, and the number of msel values per
+    arbiter is 4
+
+    If a slave port uses this pointer in one of its configuration (via PacketRulesOp and PacketRuleOp),
+    and so does a master port (via MastersetOp), the compiler will establish a packet-switched
+    route path from the slave port to the master port.
+
+    Check out MastersetOp and PacketRuleOp for how to use amsel pointer.
   }];
+
   let assemblyFormat = [{
     `<` $arbiterID `>` `(` $msel `)` attr-dict
   }];
@@ -414,6 +459,44 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   ];
 }
 
+def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
+  let arguments = (
+    ins WireBundle:$destBundle,
+        I32Attr:$destChannel,
+        Variadic<Index>:$amsels
+  );
+  let summary = "Packet switched input connection";
+  let description = [{
+    A Packet switched connection inside a switchbox.
+    This operation specifies the configuration for a master port.
+
+    Example:
+      %a0_m2 = AIE.amsel<0>(2)
+      AIE.masterset("ME" : 0, %a0_m2)
+
+    The code will configure the master port <"ME" : 0> to use arbiter 0 with msel 2
+    (see AMSelOp for more details regarding AMSel)
+
+    In the current architecture, a master port can only be associated with one arbiter. However,
+    a master port can be activated by different msels from one arbiter
+
+    Example:
+      %a1_0 = AIE.amsel<1>(0)
+      %a1_1 = AIE.amsel<1>(1)
+      %a2_3 = AIE.amsel<2>(3)
+
+      AIE.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
+      AIE.masterset("West" : 3, %a1_0, %a1_1) // this is OK
+  }];
+  let assemblyFormat = [{
+    `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int destIndex() { return destChannel().getZExtValue(); }
+    Port destPort() { return std::make_pair(destBundle(), destIndex()); }
+  }];
+}
+
 def AIE_WireOp: AIE_Op<"wire", []> {
   let arguments = (
     ins Index:$source,
@@ -423,7 +506,9 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   );
   let summary = "A bundle of physical wires between components";
   let description = [{
-    The "aie.wire" operation represents a physical set of connections between components in a Versal device.  Typically, these components are switches, represented by an "aie.switchbox" operation, and cores, represented by an [aie.core](#aiecore-aiecoreop) operation.
+    The "aie.wire" operation represents a physical set of connections between components in a Versal device.
+    Typically, these components are switches, represented by an "aie.switchbox" operation, and cores,
+    represented by an [aie.core](#aiecore-aiecoreop) operation.
   }];
   let assemblyFormat = [{
     `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
@@ -442,7 +527,7 @@ def AIE_WireOp: AIE_Op<"wire", []> {
 }
 
 def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
-                                              SingleBlockImplicitTerminator<"EndswitchOp">]> {
+                                              SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
         I32Attr:$sourceChannel
@@ -450,13 +535,16 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched input connection";
   let description = [{
-    A Packet switched connection inside a switchbox.
+    This operation defines the slave port configuration (Lookup Table) for packet-switched routing,
+    and it only accepts PacketRule operation inside its region (rules).
+    The maximum number of entries in a Lookup Table is 4. Therefore, there can only be 4 PacketRule
+    operations in the region.
+
+    See the description of PacketRuleOp for a more concrete example.
   }];
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parsePacketRulesOp(parser, result); }];
-  // let assemblyFormat = [{
-  // 	`(` $sourceBundle `:` $sourceChannel `)` attr-dict
-  // }];
+
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel().getZExtValue(); }
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
@@ -480,7 +568,28 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   );
   let summary = "Packet switched input connection";
   let description = [{
-    A Packet switched connection inside a switchbox.
+    This operation defines the rule (or configuration) of what arbiter and msel to use when a packet
+    stream flows through the slave port that matches the ID after masking.
+
+    Example:
+      LUT ID  |  Mask     | ID          | Arbiter | Msel
+       0      |  5'b11111 | 5'b00010    | 4       | 1
+       1      |  5'b11011 | 5'b00001    | 3       | 2
+       2      |           |             |         |
+       3      |           |             |         |
+
+    If a packet flow that has an ID of 2, it will be directed to the arbiter 4 with msel 1,
+    If a packet flow that has an ID of 1 or 5, it will be directed to the arbiter 3 with msel 2,
+
+    We encapsulate the configuration table as follows:
+    Example:
+      %a4_1 = AIE.amsel<4>(1)
+      %a3_2 = AIE.amsel<3>(2)
+
+      AIE.packetRules("ME" : 0) {
+        AIE.rule(0x1F, 0x2, %a4_1)
+        AIE.rule(0x1B, 0x1, %a3_2)
+      }
   }];
   let extraClassDeclaration = [{
     int maskInt() { return mask().getZExtValue(); }
@@ -501,7 +610,7 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 }
 
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
-                                             SingleBlockImplicitTerminator<"EndswitchOp">]> {
+                                             SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins I8Attr:$ID
   );
@@ -514,9 +623,6 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
   }];
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parsePacketFlowOp(parser, result); }];
-  // let assemblyFormat = [{
-  // 	`(` $sourceBundle `:` $sourceChannel `)` attr-dict
-  // }];
   let extraClassDeclaration = [{
     int IDInt() { return ID().getZExtValue(); }
   }];
@@ -537,7 +643,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   );
   let summary = "A sourceport";
   let description = [{
-     A port which is the source of a flow.
+     A port which is the source of a packet-switched flow.
   }];
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
@@ -564,7 +670,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   );
   let summary = "A destination port";
   let description = [{
-     A port which is the destination  of a flow.
+     A port which is the destination of a packet-switched flow.
   }];
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
@@ -583,59 +689,6 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   ];
 }
 
-def AIE_EndswitchOp: AIE_Op<"endswitch", [Terminator
-                                          /*,Or<[HasParent<"SwitchboxOp">,
-                                                 HasParent<"ShimSwitchboxOp">]>*/
-                                         ]> {
-  let summary = "end of a switch";
-  let description = [{
-    Terminator for switchbox
-  }];
-}
-
-def AIE_EndOp: AIE_Op<"end", [Terminator]> {
-  let summary = "end op";
-  let description = [{
-    Terminator for AIE Ops that have multi-block region
-  }];
-  let assemblyFormat = [{
-    attr-dict
-  }];
-}
-
-def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
-  let arguments = (
-    ins I32Attr:$col,
-        I32Attr:$row
-  );
-
-  let summary = "Declare an AIE tile";
-  let description = [{
-    An AIE tile
-  }];
-
-  let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
-    int colIndex() { return col().getZExtValue(); }
-    int rowIndex() { return row().getZExtValue(); }
-    bool isMemWest() { return ((rowIndex() % 2) == 0); };
-  }];
-
-  let assemblyFormat = [{
-    `(` $col `,` $row `)` attr-dict
-  }];
-
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int col, int row", [{
-              build(builder, result, builder.getIndexType(),
-                    builder.getI32IntegerAttr(col),
-                    builder.getI32IntegerAttr(row));
-              }]>
-  ];
-}
-
 def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
 def S2MM1:  I32EnumAttrCase<"S2MM1", 1>;
 def MM2S0:  I32EnumAttrCase<"MM2S0", 2>;
@@ -648,9 +701,31 @@ def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
 }
 
 def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
-  let summary = "Declare a dma op";
+  let summary = "Declare a dma block descriptor op";
   let description = [{
-    TODO
+    This operation describes the block descriptor buffer configuration. In particular, it specifies
+    what buffer addresss to use, the transfer length, and the buffer type (A or B).
+    
+    This operation must be used in an MLIR block that lives inside a MemOp's region.
+    The block descriptor specifies what lock to use and the buffer configuration.
+
+    Example:
+
+      // this defines a BD that uses lock %lck0 and buffer %buf0
+      ^bd5:
+        AIE.useLock(%lck, "Acquire", 0, 0)
+        AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        AIE.useLock(%lck, "Release", 1, 0)
+        br ^bd6 // point to the next Block, which is also a different Block Descriptor
+
+      ...
+
+      // this defines a BD that does not use any lock
+      ^bd8:
+        AIE.dmaBd(<$buf1 : memref<64xi32>, 0, 64>, 0)
+
+    A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
+    There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
   }];
 
   let arguments = (
@@ -688,6 +763,40 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
 
   let summary = "An op to start DMA";
   let description = [{
+    This operation declares a DMA channel to be used for data transfer. The operation can only be
+    used inside a region of a MemOp.
+
+    Example:
+      %dma0 = AIE.dma("MM2S0")
+      %dma1 = AIE.dma("S2MM1")
+
+    The returned SSA values are used to specify the starting Block Descriptor.
+
+    Example:
+      AIE.terminator(^dma_block0, ^dma_block1, ^end)
+
+      ^dma_block0:
+        cond_br %dma0, ^bd5, ^end // want DMA MM2S0 to start BD5
+
+      ^dma_block1:
+        cond_br %dma1, ^bd1, ^end // want DMA S2MM1 to start BD1
+      ...
+
+      ^bd1:
+        ...
+
+      ^bd5:
+        ...
+
+      ...
+
+      ^end:
+        AIE.end
+
+
+    Note that this piece code does not make any sense in terms of execution flow. We want to model
+    the control flow of the BDs and the relationship with the DMA channels by using MLIR Block semantics.
+    Will this be useful in other cases?
   }];
 
   let arguments = (
@@ -727,7 +836,9 @@ def AIE_MemOp: AIE_Op<"mem", []>,
 
   let summary = "Declare a memory op";
   let description = [{
-    TODO
+    This operation creates a Memory module that belongs to a tile.
+    The region of a MemOp is used to setup the DMAs and Block Descriptors.
+    See DMAOp and DMABdOp for more concrete examples.
   }];
 
   let arguments = (
@@ -754,7 +865,28 @@ def AIE_MemOp: AIE_Op<"mem", []>,
 def AIE_TerminatorOp: AIE_Op<"terminator", [Terminator]> {
   let summary = "A multi-successor terminator op";
   let description = [{
-    TODO
+    This operation is used to specify multiple successor blocks. For now, this is used inside a MemOp
+    region to point to different DMA channel configuration.
+
+    Example:
+      %dma0 = AIE.dmaStart("MM2S0")
+      %dma1 = AIE.dmaStart("MM2S1")
+      %dma2 = AIE.dmaStart("S2MM0")
+
+      AIE.terminator(^dma0_block, ^dma1_block, ^dma2_block, ^end)
+
+      ^dma0_block:
+        cond_br %dma0, ^bd0, ^end
+
+      ^dma1_block:
+        cond_br %dma1, ^bd3, ^end
+
+      ^dma2_block:
+        cond_br %dma2, ^bd1, ^end
+
+      ...
+
+    Naming can be improved.
   }];
 
   let successors = (successor VariadicSuccessor<AnySuccessor>:$dests);
@@ -767,7 +899,13 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
 
   let summary = "Declare a physical lock";
   let description = [{
-    TODO
+    This operation creates a physical lock.
+
+    Example:
+      %lck = AIE.lock(%tile33, 7)
+
+    This SSA value represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
+
   }];
 
   let arguments = (
@@ -805,7 +943,8 @@ def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
 def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    TODO
+    This operation uses a lock. A lock can be acquired with a value, or release with a value.
+    This should be understood as a "blocking" operation.
   }];
 
   let arguments = (
@@ -838,7 +977,13 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
 def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
-    TODO
+    This operation instantiates a buffer that belongs to a Memory Module of a tile.
+
+    Example:
+      %tile33 = AIE.tile(3, 3)
+      %buf = AIE.buffer(%tile33) : memref<256xi64>
+
+    This SSA value represents a 64-bit buffer of 256 elements. The buffer is created in tile (3, 3).
   }];
 
   let arguments = (
@@ -855,7 +1000,24 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
 def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
   let summary = "Declare a token (a logical lock)";
   let description = [{
-    TODO
+    This operation creates a logical lock. We use Symbol so that it can be referenced globally.
+    Unlike the phsical lock, the logical lock is unlimited, and we can specify any integer value
+    associated with a lock. The logical lock is used to manually specify the dependence of tasks, or
+    core executions.
+
+    The operation can also be generated automatically if the Dependence Analysis can be leveraged.
+
+    Example:
+      AIE.token(0) {sym_name = "token0"} // Declare token0 with initial value of 0
+
+      ...
+
+      AIE.useToken @token0("Acquire", 0) // acquire token0 if its value is 0
+
+      ...
+
+      AIE.useToken @token0("Release, 5) // release token0 and set its value to 5
+
   }];
 
   let arguments = (
@@ -874,7 +1036,8 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
 def AIE_UseTokenOp: AIE_Op<"useToken", []> {
   let summary = "acquire/release a logical lock";
   let description = [{
-    TODO
+    This operation uses token (logical lock). A logical lock can be acquired or released with a value.
+    Similar to UseLockOp, this operation can be understood as "blocking" op.
   }];
 
   let arguments = (
@@ -904,7 +1067,11 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
 def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
   let summary = "A memcpy op";
   let description = [{
-    TODO
+    This operation defines a logical data transfer of a buffer from a source tile to another buffer
+    from a destination tile.
+
+    This operation should be lowered to Mem ops with DMA setup and Flow ops for routing data from
+    the source tile to the dest. tile.
   }];
   let arguments = (
     ins FlatSymbolRefAttr:$tokenName,
@@ -941,7 +1108,7 @@ def AIE_GetStreamOp: AIE_Op<"getStream", []>,
                  Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
   let summary = "An op to read from a stream channel/port of a switchbox";
   let description = [{
-    TODO
+    An op to read from a stream channel/port of a switchbox.
   }];
 
   let arguments = (
@@ -961,7 +1128,7 @@ def AIE_GetStreamOp: AIE_Op<"getStream", []>,
 def AIE_PutStreamOp: AIE_Op<"putStream", []> {
   let summary = "An op to write to a stream channel/port of a switchbox";
   let description = [{
-    TODO
+    An op to write to a stream channel/port of a switchbox.
   }];
 
   let arguments = (
@@ -982,7 +1149,7 @@ def AIE_GetCascadeOp: AIE_Op<"getCascade", []>,
                       Results<(outs AnyI<384>)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
-    TODO
+    An op to read from a cascading stream from a neighboring core.
   }];
 
   let results = (outs AnyI<384>:$cascadeValue);
@@ -995,7 +1162,7 @@ def AIE_GetCascadeOp: AIE_Op<"getCascade", []>,
 def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
   let summary = "An op to write to a cascading stream from a neighboring core";
   let description = [{
-    TODO
+    An op to write to a cascading stream from a neighboring core.
   }];
 
   let arguments = (
@@ -1007,56 +1174,27 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
   }];
 }
 
-// Fairly high-level logical ops: ComputeOp, MemoryOp, NetOp
-
-def AIE_ComputeOp: AIE_Op<"compute", []>, Results<(outs Index)> {
-  let summary = "A logical representation of a compute task";
-  let description = [{
-    TODO
-  }];
-
-  let assemblyFormat = [{
-    `(` `)` attr-dict
-  }];
-}
-
-def AIE_MemoryOp: AIE_Op<"memory", []>, Results<(outs Index)> {
-  let summary = "A logical representation of a memory buffer accessed by compute tasks";
-  let description = [{
-    TODO
-  }];
-
-  let arguments = (
-    ins Optional<AnyMemRef>:$buffer
-  );
-
-  let assemblyFormat = [{
-    `(` $buffer type($buffer) `)` attr-dict
-  }];
-}
-
-def AIE_NetOp: AIE_Op<"net", []> {
-  let summary = "A logical directional connection of logical blocks "
-                "(compute->compute, memory->compute, or compute->memory)";
-  let description = [{
-    TODO
-  }];
-
-  let arguments = (
-    ins Index:$source,
-        Index:$dest
-  );
-
-  let assemblyFormat = [{
-    `(` $source `,` $dest `)` attr-dict
-  }];
-
-}
-
 def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
   let summary = "Declare a herd which is a bundle of core organized in a rectangular shape";
   let description = [{
-    TODO
+    This operation creates a group of AIE tiles in 2D shape.
+
+    Example:
+      %herd0 = AIE.herd[1][1] // a single AIE tile. location unknown
+      %herd1 = AIE.herd[4][1] // a row of four-AIE tile
+
+    The operation can be used in replacement of a TileOp -- in case we want to select a group of
+    hardware entities (cores, mems, switchboxes) instead of individual entity, and we don't want to
+    specify their locations just yet. This can be useful if we want to generate parameterizable
+    code (the column and row values are parameterized).
+
+    Example:
+
+      %herd = AIE.herd[2][2] // a herd of 2x2 AIE tiles
+
+      AIE.core(%herd) {
+        // all the cores belong to this herd runs the same code
+      }
   }];
 
   let arguments = (
@@ -1087,7 +1225,7 @@ def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
 def AIE_PlaceOp: AIE_Op<"place", []> {
   let summary = "A place operation that specifies the relative placement (XY) of one herd to another";
   let description = [{
-    TODO
+    A place operation that specifies the relative placement (XY) of one herd to another.
   }];
 
   let arguments = (
@@ -1110,7 +1248,7 @@ def AIE_PlaceOp: AIE_Op<"place", []> {
 def AIE_RouteOp: AIE_Op<"route", []> {
   let summary = "A route operation that routes one herd to another";
   let description = [{
-    TODO
+    A route operation that routes one herd to another.
   }];
 
   let arguments = (
@@ -1137,7 +1275,12 @@ def AIE_RouteOp: AIE_Op<"route", []> {
 def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
   let summary = "An iter operation";
   let description = [{
-    TODO
+    This operation generates index values that can be used with the SelectOp to select a group of tiles
+    from a herd.
+
+    Example:
+      %iter0 = AIE.iter(0, 15, 1) // 0, 1, 2, ... , 15
+      %iter1 = AIE.iter(2, 8, 2)  // 2, 4, 6
   }];
 
   let arguments = (
@@ -1170,7 +1313,19 @@ def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
 def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
   let summary = "A select operation";
   let description = [{
-    TODO
+    This operation selects a group of tiles based on the selected indices.
+
+    Example:
+
+      %herd = AIE.herd[4][4] // a herd of 4x4 tiles
+
+      %ix = AIE.iter(0, 4, 1) // 0, 1, 2, 3
+      %iy = AIE.iter(0, 0, 1) // 0
+
+      %sub_herd = AIE.select(%herd, %ix, %iy)
+
+    The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0],
+    %herd[2][0], %herd[3][0] (the first column of the herd).
   }];
 
   let arguments = (

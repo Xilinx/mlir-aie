@@ -324,7 +324,7 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
         sourceset.insert(source);
       }
     } else if (auto amselOp = dyn_cast<xilinx::AIE::AMSelOp>(ops)) {
-    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -398,7 +398,7 @@ static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
       } else {
         destset.insert(dest);
       }
-    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -459,7 +459,7 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
   for (auto &ops : body.front()) {
     if(auto Op = dyn_cast<xilinx::AIE::PacketSourceOp>(ops)) {
     } else if(auto Op = dyn_cast<xilinx::AIE::PacketDestOp>(ops)) {
-    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndswitchOp>(ops)) {
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a PacketFlow op");
     }

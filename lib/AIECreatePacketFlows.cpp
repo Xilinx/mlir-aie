@@ -13,9 +13,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-typedef std::pair<WireBundle, int> PortTy;
-typedef std::pair<PortTy, PortTy> ConnectTy;
-
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
@@ -35,8 +32,7 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-typedef std::pair<WireBundle, int> PortTy;
-typedef std::pair<Operation *, PortTy> PhysPort;
+typedef std::pair<Operation *, Port> PhysPort;
 
 struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override {
@@ -65,7 +61,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
     DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
     SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
     DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
-    DenseMap<std::pair<Operation *, int>, SmallVector<PortTy, 4>> masterAMSels;
+    DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>> masterAMSels;
 
     for (auto tileOp : m.getOps<TileOp>()) {
       int col = tileOp.colIndex();
@@ -85,7 +81,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
           source = sourcePort.tile().getDefiningOp();
           WireBundle sourceBundle = sourcePort.bundle();
           int sourceChannel = sourcePort.channelIndex();
-          PortTy port = std::make_pair(sourceBundle, sourceChannel);
+          Port port = std::make_pair(sourceBundle, sourceChannel);
           sourceFlow = std::make_pair(std::make_pair(source, port), flowID);
         } else if (PacketDestOp destPort = dyn_cast<PacketDestOp>(Op)) {
           Operation *dest = destPort.tile().getDefiningOp();
@@ -141,13 +137,13 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
         amselValue = map.first.second;
 
         // check if same destinations
-        SmallVector<PortTy, 4> ports(masterAMSels[std::make_pair(tileOp, amselValue)]);
+        SmallVector<Port, 4> ports(masterAMSels[std::make_pair(tileOp, amselValue)]);
         if (ports.size() != packetFlow.second.size())
           continue;
 
         bool matched = true;
         for (auto dest : packetFlow.second) {
-          PortTy port = std::make_pair(dest.second.first, dest.second.second);
+          Port port = std::make_pair(dest.second.first, dest.second.second);
           if (std::find(ports.begin(), ports.end(), port) == ports.end()) {
             matched = false;
             break;
@@ -176,7 +172,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
         }
 
         for (auto dest : packetFlow.second) {
-          PortTy port = std::make_pair(dest.second.first, dest.second.second);
+          Port port = std::make_pair(dest.second.first, dest.second.second);
           masterAMSels[std::make_pair(tileOp, amselValue)].push_back(port);
         }
       }
@@ -214,13 +210,13 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
     SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
-      PortTy slavePort1 = std::make_pair(slave1.first.second.first, slave1.first.second.second);
+      Port slavePort1 = std::make_pair(slave1.first.second.first, slave1.first.second.second);
 
       bool foundgroup = false;
       for (auto &group : slavesGroups) {
         auto slave2 = group.front();
 
-        PortTy slavePort2 = std::make_pair(slave2.first.second.first, slave2.first.second.second);
+        Port slavePort2 = std::make_pair(slave2.first.second.first, slave2.first.second.second);
 
         if (slavePort1 != slavePort2)
           continue;
@@ -324,7 +320,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
                                                           bundle, APInt(32, channel), amsels);
       }
 
-      DenseMap<PortTy, PacketRulesOp> slaveRules;
+      DenseMap<Port, PacketRulesOp> slaveRules;
       for (auto group : slavesGroups) {
       //for (auto map : slaveMasks) {
         builder.setInsertionPoint(b.getTerminator());
