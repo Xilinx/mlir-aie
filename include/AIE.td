@@ -236,17 +236,15 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   let description = [{
 
     A switch in the Shim.
-AXI-Stream Master Ports AXI-Stream Slave Ports
-6 Ports to North (ME Tile) 4 Ports from North (ME Tile)
-4 Ports to West 4 Ports from West
-4 Ports to East 4 Ports from East
-6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
-2 Ports to FIFOs 2 Ports from FIFOs
-1 Port for control packet for ME Shim
-register access
-1 Port for response to access for ME Shim
-registers
-1 Port for trace packet from ME Shim
+    AXI-Stream Master Ports AXI-Stream Slave Ports
+    6 Ports to North (ME Tile) 4 Ports from North (ME Tile)
+    4 Ports to West 4 Ports from West
+    4 Ports to East 4 Ports from East
+    6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
+    2 Ports to FIFOs 2 Ports from FIFOs
+    1 Port for control packet for ME Shim register access
+    1 Port for response to access for ME Shim registers
+    1 Port for trace packet from ME Shim
 
   }];
   let regions = (region AnyRegion:$connections);
@@ -343,7 +341,12 @@ def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
   );
   let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
-    The "aie.connect" operation represents a programmed circuit-switched connection in a stream switch.  It associates a source bundle and source channel with a destination bundle and a destination channel.  The "aie.connect" operation must exist within an "aie.switchbox" or "aie.shimswitchbox" operation.  All of the "aie.connect" operations in a switchbox must have a different destination.  All of the "aie.connect" operations must also have a destination which is different from all of the "aie.masterset" operations in the same switchbox.
+    The "aie.connect" operation represents a programmed circuit-switched connection in a stream switch.
+    It associates a source bundle and source channel with a destination bundle and a destination channel.
+    The "aie.connect" operation must exist within an "aie.switchbox" or "aie.shimswitchbox" operation.
+    All of the "aie.connect" operations in a switchbox must have a different destination.
+    All of the "aie.connect" operations must also have a destination which is different from all
+    of the "aie.masterset" operations in the same switchbox.
     Example:
 
     %7 = aie.switchbox(1, 1) {
@@ -384,14 +387,16 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
-  The "aie.flow" operation represents a circuit switched connection between two endpoints, usually "aie.core" operations.  During routing, this is
-  replaced by "aie.connect" operations which represent the programmed connections inside a switchbox, along with "aie.wire" operations which represent physical connections between switchboxes and other components.
+    The "aie.flow" operation represents a circuit switched connection between two endpoints, usually
+    "aie.tile" operations.  During routing, this is replaced by "aie.connect" operations which represent
+    the programmed connections inside a switchbox, along with "aie.wire" operations which represent
+    physical connections between switchboxes and other components.
 
-Example:
-    %00 = aie.core(0, 0)
-    %11 = aie.core(1, 1)
-    %01 = aie.core(0, 1)
-    aie.flow(%00, "DMA" : 0, %11, "ME" : 1)
+    Example:
+      %00 = aie.tile(0, 0)
+      %11 = aie.tile(1, 1)
+      %01 = aie.tile(0, 1)
+      aie.flow(%00, "DMA" : 0, %11, "ME" : 1)
 
   }];
   let assemblyFormat = [{
@@ -507,8 +512,8 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   let summary = "A bundle of physical wires between components";
   let description = [{
     The "aie.wire" operation represents a physical set of connections between components in a Versal device.
-    Typically, these components are switches, represented by an "aie.switchbox" operation, and cores,
-    represented by an [aie.core](#aiecore-aiecoreop) operation.
+    Typically, these components are switches, represented by an "aie.switchbox" operation, and tiles,
+    represented by an [aie.tile](#aietile-aietileop) operation.
   }];
   let assemblyFormat = [{
     `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
@@ -1320,7 +1325,7 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
       %herd = AIE.herd[4][4] // a herd of 4x4 tiles
 
       %ix = AIE.iter(0, 4, 1) // 0, 1, 2, 3
-      %iy = AIE.iter(0, 0, 1) // 0
+      %iy = AIE.iter(0, 1, 1) // 0
 
       %sub_herd = AIE.select(%herd, %ix, %iy)
 
