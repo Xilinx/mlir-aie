@@ -1,3 +1,5 @@
+// Note: This test *might* fail due to the random order that the code statements are generated
+
 // RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
 
 // CHECK-LABEL: module @test_create_packet_flows1 {

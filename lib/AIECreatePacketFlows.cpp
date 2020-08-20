@@ -79,19 +79,12 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
       for (Operation &Op : b.getOperations()) {
         if (PacketSourceOp sourcePort = dyn_cast<PacketSourceOp>(Op)) {
           source = sourcePort.tile().getDefiningOp();
-          WireBundle sourceBundle = sourcePort.bundle();
-          int sourceChannel = sourcePort.channelIndex();
-          Port port = std::make_pair(sourceBundle, sourceChannel);
-          sourceFlow = std::make_pair(std::make_pair(source, port), flowID);
+          sourceFlow = std::make_pair(std::make_pair(source, sourcePort.port()), flowID);
+          slavePorts.push_back(sourceFlow);
         } else if (PacketDestOp destPort = dyn_cast<PacketDestOp>(Op)) {
           Operation *dest = destPort.tile().getDefiningOp();
-          WireBundle destBundle = destPort.bundle();
-          int destChannel = destPort.channelIndex();
-
           assert(source == dest && "Packet-switch routing between different tiles is not supported for now");
-          packetFlows[sourceFlow].push_back(
-            std::make_pair(dest, std::make_pair(destBundle, destChannel)));
-          slavePorts.push_back(sourceFlow);
+          packetFlows[sourceFlow].push_back(std::make_pair(dest, destPort.port()));
         }
       }
     }
@@ -143,7 +136,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
 
         bool matched = true;
         for (auto dest : packetFlow.second) {
-          Port port = std::make_pair(dest.second.first, dest.second.second);
+          Port port = dest.second;
           if (std::find(ports.begin(), ports.end(), port) == ports.end()) {
             matched = false;
             break;
@@ -172,7 +165,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
         }
 
         for (auto dest : packetFlow.second) {
-          Port port = std::make_pair(dest.second.first, dest.second.second);
+          Port port = dest.second;
           masterAMSels[std::make_pair(tileOp, amselValue)].push_back(port);
         }
       }
@@ -210,22 +203,18 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
     SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
-      Port slavePort1 = std::make_pair(slave1.first.second.first, slave1.first.second.second);
+      Port slavePort1 = slave1.first.second;
 
       bool foundgroup = false;
       for (auto &group : slavesGroups) {
         auto slave2 = group.front();
-
-        Port slavePort2 = std::make_pair(slave2.first.second.first, slave2.first.second.second);
-
+        Port slavePort2 = slave2.first.second;
         if (slavePort1 != slavePort2)
           continue;
 
         bool matched = true;
-
         auto dests1 = packetFlows[slave1];
         auto dests2 = packetFlows[slave2];
-
         if (dests1.size() != dests2.size())
           continue;
 
@@ -330,7 +319,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
         TileOp tile = dyn_cast<TileOp>(port.first);
         WireBundle bundle = port.second.first;
         int channel = port.second.second;
-        auto slave = std::make_pair(bundle, channel);
+        auto slave = port.second;
 
         int ID = group.front().second;
         int mask = slaveMasks[group.front()];

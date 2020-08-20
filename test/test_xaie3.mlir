@@ -1,35 +1,37 @@
+// Note: This test *might* fail due to the random order that the code statements are generated
+
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: XAieTile_CoreControl(&(TileInst[3][4]), XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieTile_CoreControl(&(TileInst[4][5]), XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileInitialize(&(TileInst[3][4]), &(TileDMAInst[3][4]));
-// CHECK: XAieDma_TileBdClearAll(&(TileDMAInst[3][4]));
-// CHECK: XAieDma_TileChResetAll(&(TileDMAInst[3][4]));
-// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][4]), 0, XAIEDMA_TILE_BD_ADDRA, 0, XAIE_ENABLE, 0, XAIE_ENABLE, 1);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][4]), 0, 0, 0, 256, XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][4]), 0);
-// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][4]), XAIEDMA_TILE_CHNUM_MM2S0, 0);
-// CHECK: XAieDma_TileChControl(&(TileDMAInst[3][4]), XAIEDMA_TILE_CHNUM_MM2S0, XAIE_RESETDISABLE, XAIE_ENABLE);
-// CHECK: XAieDma_TileInitialize(&(TileInst[4][5]), &(TileDMAInst[4][5]));
-// CHECK: XAieDma_TileBdClearAll(&(TileDMAInst[4][5]));
-// CHECK: XAieDma_TileChResetAll(&(TileDMAInst[4][5]));
-// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[4][5]), 0, XAIEDMA_TILE_BD_ADDRA, 0, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[4][5]), 0, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[4][5]), 1, XAIEDMA_TILE_BD_ADDRA, 1, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[4][5]), 1, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[4][5]), 2, XAIEDMA_TILE_BD_ADDRA, 2, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[4][5]), 2, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[4][5]), 3, XAIEDMA_TILE_BD_ADDRA, 3, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[4][5]), 3, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[4][5]), 2);
-// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[4][5]), 2, 3);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[4][5]), 0);
-// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[4][5]), 0, 1);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[4][5]), 1);
-// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[4][5]), 1, 2);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[4][5]), 3);
-// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[4][5]), XAIEDMA_TILE_CHNUM_S2MM0, 0);
-// CHECK: XAieDma_TileChControl(&(TileDMAInst[4][5]), XAIEDMA_TILE_CHNUM_S2MM0, XAIE_RESETDISABLE, XAIE_ENABLE);
+// CHECK: XAieTile_CoreControl(&(TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieTile_CoreControl(&(TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileInitialize(&(TileInst[3][3]), &(TileDMAInst[3][3]));
+// CHECK: XAieDma_TileBdClearAll(&(TileDMAInst[3][3]));
+// CHECK: XAieDma_TileChResetAll(&(TileDMAInst[3][3]));
+// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), 0, XAIEDMA_TILE_BD_ADDRA, 0, XAIE_ENABLE, 0, XAIE_ENABLE, 1);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), 0, 0, 0, 256, XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), 0);
+// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_MM2S0, 0);
+// CHECK: XAieDma_TileChControl(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_MM2S0, XAIE_RESETDISABLE, XAIE_ENABLE);
+// CHECK: XAieDma_TileInitialize(&(TileInst[3][3]), &(TileDMAInst[3][3]));
+// CHECK: XAieDma_TileBdClearAll(&(TileDMAInst[3][3]));
+// CHECK: XAieDma_TileChResetAll(&(TileDMAInst[3][3]));
+// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), 0, XAIEDMA_TILE_BD_ADDRA, 0, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), 0, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), 1, XAIEDMA_TILE_BD_ADDRA, 1, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), 1, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), 2, XAIEDMA_TILE_BD_ADDRA, 2, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), 2, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), 3, XAIEDMA_TILE_BD_ADDRA, 3, XAIE_ENABLE, 1, XAIE_ENABLE, 0);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), 3, 0, 0, 16, XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), 2);
+// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[3][3]), 2, 3);
+// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), 0);
+// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[3][3]), 0, 1);
+// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), 1);
+// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[3][3]), 1, 2);
+// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), 3);
+// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, 0);
+// CHECK: XAieDma_TileChControl(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, XAIE_RESETDISABLE, XAIE_ENABLE);
 
 module @test_xaie3 {
   %t33 = AIE.tile(3, 3)

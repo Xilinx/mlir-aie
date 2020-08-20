@@ -3,10 +3,10 @@
 // CHECK:       }
 
 module {
-  %0 = AIE.tile(0, 0)
-  %1 = AIE.tile(1, 1)
-  %2 = AIE.tile(0, 1)
-  %3 = AIE.tile(1, 0)
+  %0 = AIE.tile(0, 1)
+  %1 = AIE.tile(1, 2)
+  %2 = AIE.tile(0, 2)
+  %3 = AIE.tile(1, 1)
   %4 = AIE.switchbox(%0) {
     AIE.connect<"DMA" : 0, "North" : 0>
   }

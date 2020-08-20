@@ -3,13 +3,13 @@
 // CHECK:       }
 
 module {
-  %00 = AIE.tile(0, 0)
-  %11 = AIE.tile(1, 1)
   %01 = AIE.tile(0, 1)
-  AIE.flow(%00, "DMA" : 0, %11, "ME" : 1)
+  %12 = AIE.tile(1, 2)
+  %02 = AIE.tile(0, 2)
+  AIE.flow(%01, "DMA" : 0, %12, "ME" : 1)
   AIE.packet_flow(0x10) {
-    AIE.packet_source < %00, "ME" : 0>
-    AIE.packet_dest < %11, "ME" : 0>
-    AIE.packet_dest < %01, "DMA" : 1>
+    AIE.packet_source < %01, "ME" : 0>
+    AIE.packet_dest < %12, "ME" : 0>
+    AIE.packet_dest < %02, "DMA" : 1>
   }
 }

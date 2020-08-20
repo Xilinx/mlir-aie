@@ -1,3 +1,5 @@
+// Note: This test *might* fail due to the random order that the code statements are generated
+
 // RUN: aie-translate --aie-generate-mmap %s | FileCheck %s
 
 // CHECK: // Tile(5, 4)

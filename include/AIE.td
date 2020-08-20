@@ -152,7 +152,7 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
 def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col,
-        I32Attr:$row
+        Confined<I32Attr, [IntMinValue<1>]>:$row // row 0 is Shim
   );
 
   let summary = "Declare an AIE tile";
@@ -655,6 +655,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return channel().getZExtValue(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -682,6 +683,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return channel().getZExtValue(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -1006,7 +1008,7 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
   let summary = "Declare a token (a logical lock)";
   let description = [{
     This operation creates a logical lock. We use Symbol so that it can be referenced globally.
-    Unlike the phsical lock, the logical lock is unlimited, and we can specify any integer value
+    Unlike phsical locks, logical locks are unlimited, and we can specify any integer value
     associated with a lock. The logical lock is used to manually specify the dependence of tasks, or
     core executions.
 
@@ -1021,7 +1023,7 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
 
       ...
 
-      AIE.useToken @token0("Release, 5) // release token0 and set its value to 5
+      AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
   }];
 

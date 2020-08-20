@@ -93,30 +93,6 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx) {
 } // namespace AIE
 } // namespace xilinx
 
-// static ParseResult parseArbiterOp(OpAsmParser &parser, OperationState &result) {
-//   result.regions.reserve(1);
-//   Region *mastersets = result.addRegion();
-
-//   auto &builder = parser.getBuilder();
-//   //  result.types.push_back(builder.getIndexType());
-
-//   if (parser.parseLParen())
-//     return failure();
-//   if (parser.parseRParen())
-//     return failure();
-
-//   // Parse the mastersets.
-//   if (parser.parseRegion(*mastersets, /*arguments=*/{}, /*argTypes=*/{}))
-//     return failure();
-//   // // Parse the optional attribute list.
-//   // if (parser.parseOptionalAttrDict(result.attributes))
-//   //   return failure();
-//   xilinx::AIE::ArbiterOp::ensureTerminator(*mastersets, parser.getBuilder(), result.location);
-
-//   return success();
-// }
-
-
 static ParseResult parsePacketRulesOp(OpAsmParser &parser, OperationState &result) {
   result.regions.reserve(1);
   Region *rules = result.addRegion();
@@ -154,7 +130,7 @@ static ParseResult parsePacketRulesOp(OpAsmParser &parser, OperationState &resul
   // Parse the rules.
   if (parser.parseRegion(*rules, /*arguments=*/{}, /*argTypes=*/{}))
     return failure();
-  // // Parse the optional attribute list.
+  // Parse the optional attribute list.
   // if (parser.parseOptionalAttrDict(result.attributes))
   //   return failure();
   xilinx::AIE::PacketRulesOp::ensureTerminator(*rules, parser.getBuilder(), result.location);
@@ -195,20 +171,6 @@ static ParseResult parseSwitchboxOp(OpAsmParser &parser, OperationState &result)
   return success();
 }
 
-// static void print(OpAsmPrinter &p, xilinx::AIE::ArbiterOp op) {
-//   bool printBlockTerminators = false;
-
-//   Region &body = op.region();
-//   p << xilinx::AIE::ArbiterOp::getOperationName();
-//   p << '(';
-//   p << ')';
-
-//   p.printRegion(body,
-//                 /*printEntryBlockArgs=*/false,
-//                 /*printBlockTerminators=*/false);
-//   //  p.printOptionalAttrDict(op.getAttrs());
-
-// }
 static void print(OpAsmPrinter &p, xilinx::AIE::PacketRulesOp op) {
   bool printBlockTerminators = false;
 
@@ -242,7 +204,6 @@ static void print(OpAsmPrinter &p, xilinx::AIE::SwitchboxOp op) {
   //  p.printOptionalAttrDict(op.getAttrs());
 
 }
-
 
 static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
   Region &body = op.connections();

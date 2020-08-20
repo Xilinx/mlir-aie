@@ -134,7 +134,7 @@ void registerAIETranslations() {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
           output << "XAieTile_CoreControl("
-                 << tileInstStr(std::to_string(col), std::to_string(row + 1)) << ", "
+                 << tileInstStr(std::to_string(col), std::to_string(row)) << ", "
                  << enable  << ", "
                  << disable <<
                  ");\n";
@@ -160,12 +160,12 @@ void registerAIETranslations() {
           int col = memOp.colIndex();
           int row = memOp.rowIndex();
           output << "XAieDma_TileInitialize(" <<
-                    tileInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
-                    tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ");\n";
+                    tileInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                    tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
           output << "XAieDma_TileBdClearAll(" <<
-                    tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ");\n";
+                    tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
           output << "XAieDma_TileChResetAll(" <<
-                    tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ");\n";
+                    tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
 
           int bdNum = 0;
           DenseMap<Block *, int> blockMap;
@@ -217,7 +217,7 @@ void registerAIETranslations() {
             if (foundBd) {
               if (hasA) {
                 output << "XAieDma_TileBdSetLock(" <<
-                          tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                          tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                           bdNum << ", " <<
                           bufA << ", " <<
                           lockID << ", " <<
@@ -228,7 +228,7 @@ void registerAIETranslations() {
               }
               if (hasB) {
                 output << "XAieDma_TileBdSetLock(" <<
-                          tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                          tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                           bdNum << ", " <<
                           bufB << ", " <<
                           lockID << ", " <<
@@ -239,7 +239,7 @@ void registerAIETranslations() {
               }
 
               output << "XAieDma_TileBdSetAdrLenMod(" <<
-                        tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                        tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                         bdNum << ", " <<
                         "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
                         "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
@@ -260,14 +260,14 @@ void registerAIETranslations() {
             Block *block = map.first;
             int bdNum = map.second;
             output << "XAieDma_TileBdWrite(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       bdNum << ");\n";
             Block *nextBlock = block->getSuccessors()[0]; // should have only one successor block
             if (nextBlock == endBlock)
               continue;
             int nextBdNum = blockMap[nextBlock];
             output << "XAieDma_TileBdSetNext(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       bdNum << ", " <<
                       nextBdNum << ");\n";
           }
@@ -278,11 +278,11 @@ void registerAIETranslations() {
             int bdNum = blockMap[firstBd];
 
             output << "XAieDma_TileSetStartBd(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
                       bdNum << ");\n";
             output << "XAieDma_TileChControl(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
                       resetDisable << ", " <<
                       enable << ");\n";
@@ -302,13 +302,13 @@ void registerAIETranslations() {
           int lockID = lock.getLockID();
           if (op.acquire()) {
             output << "XAieTile_LockAcquire(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       lockID << ", " <<
                       lockVal << ", " <<
                       timeOut << ");\n";
           } else if (op.release()) {
             output << "XAieTile_LockRelease(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row + 1)) << ", " <<
+                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       lockID << ", " <<
                       lockVal << ", " <<
                       timeOut << ");\n";
@@ -371,17 +371,17 @@ void registerAIETranslations() {
 
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "XAieTile_StrmConnectCct(" <<
-                      tileInstStr("x", "y + 1") << ",\n";
+                      tileInstStr("x", "y") << ",\n";
             output << "\tXAIETILE_STRSW_SPORT_" <<
                       stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                       "(" <<
-                      tileInstStr("x", "y + 1") << ", " <<
+                      tileInstStr("x", "y") << ", " <<
                       connectOp.sourceIndex() <<
                       "),\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr("x", "y + 1") << ", " <<
+                      tileInstStr("x", "y") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t" << enable << ");\n";
@@ -398,21 +398,21 @@ void registerAIETranslations() {
             }
 
             output << "XAieTile_StrmConfigMstr(" <<
-                      tileInstStr("x", "y + 1") << ",\n";
+                      tileInstStr("x", "y") << ",\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr("x", "y + 1") << ", " <<
+                      tileInstStr("x", "y") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t" << enable << ",\n"; // port enable
             output << "\t" << enable << ",\n"; // packet enable
             output << "\tXAIETILE_STRSW_MPORT_CFGPKT(" <<
-                      tileInstStr("x", "y + 1") << ",\n";
+                      tileInstStr("x", "y") << ",\n";
             output << "\t\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr("x", "y + 1") << ", " <<
+                      tileInstStr("x", "y") << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t\t" << disable << " /*drop_header*/,\n";
@@ -428,21 +428,21 @@ void registerAIETranslations() {
               int arbiter = amselOp.arbiterIndex();
               int msel    = amselOp.getMselValue();
               output << "XAieTile_StrmConfigSlvSlot(" <<
-                        tileInstStr("x", "y + 1") << ",\n";
+                        tileInstStr("x", "y") << ",\n";
               output << "\tXAIETILE_STRSW_SPORT_" <<
                         stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                         "(" <<
-                        tileInstStr("x", "y + 1") << ", " <<
+                        tileInstStr("x", "y") << ", " <<
                         connectOp.sourceIndex() <<
                         "),\n";
               output << "\t" << slot << "/*slot*/,\n";
               output << "\t" << enable << ",\n";
               output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" <<
-                        tileInstStr("x", "y + 1") << ",\n";
+                        tileInstStr("x", "y") << ",\n";
               output << "\t\tXAIETILE_STRSW_SPORT_" <<
                         stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                         "(" <<
-                        tileInstStr("x", "y + 1") << ", " <<
+                        tileInstStr("x", "y") << ", " <<
                         connectOp.sourceIndex() <<
                         "),\n";
               output << "\t\t" << slot << "/*slot*/,\n";
