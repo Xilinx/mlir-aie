@@ -13,8 +13,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-typedef std::pair<Port, Port> ConnectTy;
-
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
@@ -35,7 +33,7 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 };
 
 int getAvailableDestChannel(
-  SmallVector<ConnectTy, 8> &connects,
+  SmallVector<Connect, 8> &connects,
   Port sourcePort,
   WireBundle destBundle) {
 
@@ -76,11 +74,11 @@ int getAvailableDestChannel(
   return -1;
 }
 
-void build_route(int xSrc, int ySrc, int dX, int dY,
+void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
   WireBundle sourceBundle, int sourceChannel,
   WireBundle destBundle, int destChannel,
   Operation *herdOp,
-  DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<ConnectTy, 8>> &switchboxes) {
+  DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<Connect, 8>> &switchboxes) {
 
   int xCnt = 0;
   int yCnt = 0;
@@ -92,9 +90,6 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
   int xLast, yLast;
   WireBundle lastBundle;
   Port lastPort = std::make_pair(sourceBundle, sourceChannel);
-
-  int xDest = xSrc + dX;
-  int yDest = ySrc + dY;
 
   SmallVector<std::pair<int, int>, 4> congestion;
 
@@ -172,7 +167,7 @@ void build_route(int xSrc, int ySrc, int dX, int dY,
                       "[" << stringifyWireBundle(curBundle) << " : " << curChannel << "]\n";
 
       Port curPort = std::make_pair(curBundle, curChannel);
-      ConnectTy connect = std::make_pair(lastPort, curPort);
+      Connect connect = std::make_pair(lastPort, curPort);
       if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
                     switchboxes[std::make_pair(herdOp, curCoord)].end(),
                     connect) == switchboxes[std::make_pair(herdOp, curCoord)].end())
@@ -200,7 +195,7 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
     SmallVector<Operation *, 4> routeOps;
     DenseMap<std::pair<Operation *, Operation *>, std::pair<int, int>> distances;
     SmallVector<std::pair<std::pair<int, int>, std::pair<int, int>>, 4> routes;
-    DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<ConnectTy, 8>> switchboxes;
+    DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<Connect, 8>> switchboxes;
 
     for (auto herd : m.getOps<HerdOp>()) {
       herds.push_back(herd);
@@ -274,14 +269,12 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
               if (destIterY == sourceIterY)
                 y1 = y0;
 
-              int dX = distX + x1 - x0;
-              int dY = distY + y1 - y0;
-
-              auto route = std::make_pair(std::make_pair(x0, y0), std::make_pair(dX, dY));
+              auto route = std::make_pair(std::make_pair(x0, y0),
+                                          std::make_pair(distX + x1 - x0, distY + y1 - y0));
               if (std::find(routes.begin(), routes.end(), route) != routes.end())
                 continue;
 
-              build_route(x0, y0, dX, dY,
+              buildRoute(x0, y0, x1 + distX, y1 + distY,
                 sourceBundle, sourceChannel,
                 destBundle, destChannel,
                 sourceHerd,

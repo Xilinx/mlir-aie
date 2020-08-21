@@ -98,6 +98,7 @@ public:
 //#include "AIEOpInterfaces.h.inc"
 
 typedef std::pair<WireBundle, int> Port;
+typedef std::pair<Port, Port> Connect;
 
 static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol) && (srcRow == dstRow));

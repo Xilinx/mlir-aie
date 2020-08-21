@@ -34,6 +34,170 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 
 typedef std::pair<Operation *, Port> PhysPort;
 
+int getAvailableDestChannel(
+  SmallVector<std::pair<Connect, int>, 8> &connects,
+  Port sourcePort, int flowID,
+  WireBundle destBundle) {
+
+  if (connects.size() == 0)
+    return 0;
+
+  int numChannels;
+
+  if (destBundle == WireBundle::North)
+    numChannels = 6;
+  else if (destBundle == WireBundle::South ||
+           destBundle == WireBundle::East  ||
+           destBundle == WireBundle::West)
+    numChannels = 4;
+  else
+    numChannels = 2;
+
+  int availableChannel = -1;
+
+  // look for existing connect that has a matching destination
+  for (int i = 0; i < numChannels; i++) {
+    Port port = std::make_pair(destBundle, i);
+    int countFlows = 0;
+    for (auto conn : connects) {
+      Port connDest = conn.first.second;
+      // Since we are doing packet-switched routing, dest ports can be shared among multiple sources.
+      // Therefore, we don't need to worry about checking the same source
+      if (connDest == port)
+        countFlows++;
+    }
+
+    // Since a mask has 5 bits, there can only be 32 logical streams flow through a port
+    // TODO: what about packet-switched flow that uses nested header?
+    if (countFlows > 0 && countFlows < 32)
+      return i;
+  }
+
+  // if not, look for available destination port
+  for (int i = 0; i < numChannels; i++) {
+    Port port = std::make_pair(destBundle, i);
+    SmallVector<Port, 8> ports;
+    for (auto connect : connects)
+      ports.push_back(connect.first.second);
+
+    if (std::find(ports.begin(), ports.end(), port) == ports.end())
+      return i;
+  }
+
+  return -1;
+}
+
+// build packet-switched route
+void buildPSRoute(int xSrc, int ySrc, int xDest, int yDest,
+  Port sourcePort,
+  Port destPort,
+  int flowID,
+  DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>> &switchboxes) {
+
+  int xCnt = 0;
+  int yCnt = 0;
+
+  int xCur = xSrc;
+  int yCur = ySrc;
+  WireBundle curBundle;
+  int curChannel;
+  int xLast, yLast;
+  WireBundle lastBundle;
+  Port lastPort = sourcePort;
+
+  SmallVector<std::pair<int, int>, 4> congestion;
+
+  llvm::dbgs() << "Build route: " << xSrc << " " << ySrc << " --> " << xDest << " " << yDest << '\n';
+  llvm::dbgs() << "flowID " << flowID << '\n';
+  // traverse horizontally, then vertically
+  while (!((xCur == xDest) && (yCur == yDest))) {
+    llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
+
+    auto curCoord = std::make_pair(xCur, yCur);
+    xLast = xCur;
+    yLast = yCur;
+
+    SmallVector<WireBundle, 4> moves;
+
+    if (xCur < xDest)
+      moves.push_back(WireBundle::East);
+    if (xCur > xDest)
+      moves.push_back(WireBundle::West);
+    if (yCur < yDest)
+      moves.push_back(WireBundle::North);
+    if (yCur > yDest)
+      moves.push_back(WireBundle::South);
+
+    if (std::find(moves.begin(), moves.end(), WireBundle::East) == moves.end())
+      moves.push_back(WireBundle::East);
+    if (std::find(moves.begin(), moves.end(), WireBundle::West) == moves.end())
+      moves.push_back(WireBundle::West);
+    if (std::find(moves.begin(), moves.end(), WireBundle::North) == moves.end())
+      moves.push_back(WireBundle::North);
+    if (std::find(moves.begin(), moves.end(), WireBundle::South) == moves.end())
+      moves.push_back(WireBundle::South);
+
+    for (unsigned i = 0; i < moves.size(); i++) {
+      WireBundle move = moves[i];
+      curChannel = getAvailableDestChannel(switchboxes[curCoord], lastPort, flowID, move);
+      if (curChannel == -1)
+        continue;
+
+      if (move == lastBundle)
+        continue;
+
+      if (move == WireBundle::East) {
+        xCur = xCur + 1;
+        yCur = yCur;
+      } else if (move == WireBundle::West) {
+        xCur = xCur - 1;
+        yCur = yCur;
+      } else if (move == WireBundle::North) {
+        xCur = xCur;
+        yCur = yCur + 1;
+      } else if (move == WireBundle::South) {
+        xCur = xCur;
+        yCur = yCur - 1;
+      }
+
+      if (std::find(congestion.begin(), congestion.end(), std::make_pair(xCur, yCur)) != congestion.end())
+        continue;
+
+      curBundle = move;
+      lastBundle = (move == WireBundle::East)  ? WireBundle::West :
+                   (move == WireBundle::West)  ? WireBundle::East :
+                   (move == WireBundle::North) ? WireBundle::South :
+                   (move == WireBundle::South) ? WireBundle::North : lastBundle;
+      break;
+    }
+
+    assert(curChannel >= 0 && "Could not find available destination port!");
+
+    if (curChannel == -1) {
+      congestion.push_back(std::make_pair(xLast, yLast)); // this switchbox is congested
+      switchboxes[curCoord].pop_back(); // back up, remove the last connection
+    } else {
+      llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : " << lastPort.second << "], "
+                      "[" << stringifyWireBundle(curBundle) << " : " << curChannel << "]\n";
+
+      Port curPort = std::make_pair(curBundle, curChannel);
+      Connect connect = std::make_pair(lastPort, curPort);
+      if (std::find(switchboxes[curCoord].begin(),
+                    switchboxes[curCoord].end(),
+                    std::make_pair(connect, flowID)) == switchboxes[curCoord].end())
+        switchboxes[curCoord].push_back(std::make_pair(connect, flowID));
+      lastPort = std::make_pair(lastBundle, curChannel);
+    }
+  }
+
+  llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
+  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : " << lastPort.second << "], "
+                  "[" << stringifyWireBundle(destPort.first) << " : " << destPort.second << "]\n";
+
+  switchboxes[std::make_pair(xCur, yCur)].push_back(
+    std::make_pair(std::make_pair(lastPort, destPort), flowID));
+}
+
 struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override {
 
@@ -69,23 +233,52 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
       tiles[std::make_pair(col, row)] = tileOp;
     }
 
+    DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
     for (auto pktflow : m.getOps<PacketFlowOp>()) {
       Region &r = pktflow.ports();
       Block &b = r.front();
-      Operation *source = nullptr;
       int flowID = pktflow.IDInt();
-      std::pair<PhysPort, int> sourceFlow;
+      int xSrc, ySrc;
+      Port sourcePort;
 
       for (Operation &Op : b.getOperations()) {
-        if (PacketSourceOp sourcePort = dyn_cast<PacketSourceOp>(Op)) {
-          source = sourcePort.tile().getDefiningOp();
-          sourceFlow = std::make_pair(std::make_pair(source, sourcePort.port()), flowID);
-          slavePorts.push_back(sourceFlow);
-        } else if (PacketDestOp destPort = dyn_cast<PacketDestOp>(Op)) {
-          Operation *dest = destPort.tile().getDefiningOp();
-          assert(source == dest && "Packet-switch routing between different tiles is not supported for now");
-          packetFlows[sourceFlow].push_back(std::make_pair(dest, destPort.port()));
+        if (PacketSourceOp pktSource = dyn_cast<PacketSourceOp>(Op)) {
+          TileOp srcTile = dyn_cast<TileOp>(pktSource.tile().getDefiningOp());
+          xSrc = srcTile.colIndex();
+          ySrc = srcTile.rowIndex();
+          sourcePort = pktSource.port();
+        } else if (PacketDestOp pktDest = dyn_cast<PacketDestOp>(Op)) {
+          TileOp destTile = dyn_cast<TileOp>(pktDest.tile().getDefiningOp());
+          int xDest = destTile.colIndex();
+          int yDest = destTile.rowIndex();
+          Port destPort = pktDest.port();
+
+          buildPSRoute(xSrc, ySrc, xDest, yDest, sourcePort, destPort, flowID, switchboxes);
         }
+      }
+    }
+
+    llvm::dbgs() << "Check switchboxes\n";
+     
+    for (auto swbox : switchboxes) {
+      int col = swbox.first.first;
+      int row = swbox.first.second;
+      Operation *tileOp = tiles[std::make_pair(col, row)];
+
+      llvm::dbgs() << "***switchbox*** " << col << " " << row << '\n';
+      SmallVector<std::pair<Connect, int>, 8> connects(swbox.second);
+      for (auto connect : connects) {
+        Port sourcePort = connect.first.first;
+        Port destPort = connect.first.second;
+        int flowID = connect.second;
+
+        llvm::dbgs() << "sourcePort: " << stringifyWireBundle(sourcePort.first) << " " << sourcePort.second << '\n';
+        llvm::dbgs() << "destPort: "   << stringifyWireBundle(destPort.first) << " " << destPort.second << '\n';
+        llvm::dbgs() << "flowID " << flowID << '\n';
+
+        auto sourceFlow = std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
+        packetFlows[sourceFlow].push_back(std::make_pair(tileOp, destPort));
+        slavePorts.push_back(sourceFlow);
       }
     }
 
@@ -238,27 +431,32 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
       }
     }
 
-    llvm::dbgs() << "slavesGroups: " << slavesGroups.size() << '\n';
-
     DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
     for (auto group : slavesGroups) {
-      int mask = -1;
+      // Iterate over all the ID values in a group
+      // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID value,
+      // the bit position should be "don't care", and we will set the mask bit of that position to 0
+      int mask[5] = {-1, -1, -1, -1, -1};
       for (auto port : group) {
         int ID = port.second;
-        if (mask == -1) {
-          mask = ID;
-          continue;
+        for (int i = 0; i < 5; i++) {
+          if (mask[i] == -1)
+            mask[i] = ((ID >> i) & 0x1);
+          else if (mask[i] != ((ID >> i) & 0x1))
+            mask[i] = 2; // found bit difference --> mark as "don't care"
         }
-        mask ^= ID;
       }
 
-      if (group.size() == 1)
-        mask =  0x1F;
-      else
-        mask = ~mask;
-
+      int maskValue = 0;
+      for (int i = 4; i >= 0; i--) {
+        if (mask[i] == 2) // don't care
+          mask[i] = 0;
+        else
+          mask[i] = 1;
+        maskValue = (maskValue << 1) + mask[i];
+      }
       for (auto port : group)
-        slaveMasks[port] = mask & 0x1F;
+        slaveMasks[port] = maskValue;
     }
 
     llvm::dbgs() << "CHECK Slave Masks\n";
@@ -311,12 +509,12 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
 
       DenseMap<Port, PacketRulesOp> slaveRules;
       for (auto group : slavesGroups) {
-      //for (auto map : slaveMasks) {
         builder.setInsertionPoint(b.getTerminator());
 
-        //auto port = map.first.first;
         auto port = group.front().first;
-        TileOp tile = dyn_cast<TileOp>(port.first);
+        if (tileOp != port.first)
+          continue;
+
         WireBundle bundle = port.second.first;
         int channel = port.second.second;
         auto slave = port.second;
