@@ -38,6 +38,24 @@ StringRef tileDMAInstStr(StringRef col, StringRef row) {
   return str;
 }
 
+// Output the buffer map for the given buffer operations, with the given offset.
+// The offset is different depending on where the buffers are accessed from.
+void writeBufferMap(raw_ostream &output, ArrayRef<BufferOp> buffers,
+                    int offset, NetlistAnalysis &NL) {
+  for (auto buf : buffers) {
+    auto symbolAttr =
+      buf.getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    StringRef bufName = std::string(symbolAttr.getValue());
+    int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+    MemRefType t = buf.getType().cast<MemRefType>();
+    int numBytes = t.getSizeInBits() / 8;
+    output << "_symbol " <<
+      bufName << " " <<
+      "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " <<
+      numBytes << '\n';
+  }
+}
+
 void registerAIETranslations() {
   TranslateFromMLIRRegistration
     registrationLLVM("aie-generate-llvmir", [](ModuleOp module, raw_ostream &output) {
@@ -73,39 +91,14 @@ void registerAIETranslations() {
         output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
         output << "// Memory map: name base_address num_bytes\n";
 
-        for (auto map : buffers) {
-          Operation *dstTileOp = map.first;
-          std::pair<int, int> dstCoord = NL.getCoord(dstTileOp);
-          int dstCol = dstCoord.first;
-          int dstRow = dstCoord.second;
-
-          int cardinalMemOffset = 0;
-
-          if (isMemSouth(srcCol, srcRow, dstCol, dstRow))
-            cardinalMemOffset = 0x00020000;
-          else if (isMemWest(srcCol, srcRow, dstCol ,dstRow))
-            cardinalMemOffset = 0x00028000;
-          else if (isMemNorth(srcCol, srcRow, dstCol, dstRow))
-            cardinalMemOffset = 0x00030000;
-          else if (isMemEast(srcCol, srcRow, dstCol, dstRow))
-            cardinalMemOffset = 0x00038000;
-
-          if (cardinalMemOffset == 0)
-            continue;
-
-          for (auto buf : map.second) {
-            auto symbolAttr = buf.getOperation()->getAttrOfType<StringAttr>(
-                                SymbolTable::getSymbolAttrName());
-            StringRef bufName = std::string(symbolAttr.getValue());
-            int bufferBaseAddr = NL.getBufferBaseAddress(buf);
-            MemRefType t = buf.getType().cast<MemRefType>();
-            int numBytes = t.getSizeInBits() / 8;
-            output << "_symbol " <<
-                      bufName << " " <<
-                      "0x" << llvm::utohexstr(cardinalMemOffset + bufferBaseAddr) << " " <<
-                      numBytes << '\n';
-          }
-        }
+        auto doBuffer = [&](Optional<TileID> tile, int offset) {
+          if(tiles.count(tile.getValue()))
+            writeBufferMap(output, buffers[tiles[tile.getValue()]], offset, NL);
+        };
+        if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
+        if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
+        if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
+        if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
       }
       return success();
     });

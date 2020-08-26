@@ -2,35 +2,35 @@
 
 // RUN: aie-translate --aie-generate-mmap %s | FileCheck %s
 
-// CHECK: // Tile(5, 4)
-// CHECK: // Memory map: name base_address num_bytes
-// CHECK: _symbol y 0x28000 32
-// CHECK: // Tile(4, 4)
-// CHECK: // Memory map: name base_address num_bytes
-// CHECK: _symbol t 0x30000 32
+// CHECK-LABEL: // Tile(5, 4)
+// Memory map: name base_address num_bytes
+// CHECK: _symbol a 0x28000 16
+// CHECK: _symbol b 0x28010 64
+// CHECK: _symbol c 0x28050 1024
 // CHECK: _symbol y 0x38000 32
+// CHECK-LABEL: // Tile(4, 4)
+// Memory map: name base_address num_bytes
 // CHECK: _symbol z 0x20000 32
 // CHECK: _symbol a 0x28000 16
 // CHECK: _symbol b 0x28010 64
 // CHECK: _symbol c 0x28050 1024
-// CHECK: // Tile(4, 5)
-// CHECK: // Memory map: name base_address num_bytes
-// CHECK: _symbol t 0x38000 32
+// CHECK: _symbol t 0x30000 32
+// CHECK: _symbol y 0x38000 32
+// CHECK-LABEL: // Tile(4, 5)
+// Memory map: name base_address num_bytes
 // CHECK: _symbol a 0x20000 16
 // CHECK: _symbol b 0x20010 64
 // CHECK: _symbol c 0x20050 1024
-// CHECK: // Tile(4, 3)
-// CHECK: // Memory map: name base_address num_bytes
-// CHECK: _symbol z 0x38000 32
+// CHECK: _symbol t 0x28000 32
+// CHECK-LABEL: // Tile(4, 3)
+// Memory map: name base_address num_bytes
+// CHECK: _symbol z 0x28000 32
 // CHECK: _symbol a 0x30000 16
 // CHECK: _symbol b 0x30010 64
 // CHECK: _symbol c 0x30050 1024
-// CHECK: // Tile(3, 4)
-// CHECK: // Memory map: name base_address num_bytes
-// CHECK: _symbol x 0x28000 32
-// CHECK: _symbol a 0x38000 16
-// CHECK: _symbol b 0x38010 64
-// CHECK: _symbol c 0x38050 1024
+// CHECK-LABEL: // Tile(3, 4)
+// Memory map: name base_address num_bytes
+// CHECK: _symbol x 0x38000 32
 
 module @test_mmap0 {
   %t44 = AIE.tile(4, 4)

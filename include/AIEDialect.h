@@ -99,6 +99,45 @@ public:
 
 typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
+typedef std::pair<int, int> TileID;
+
+static bool isValidTile(TileID src) {
+  // FIXME: what about upper bound?
+  return src.first >= 0 && src.second >= 0;
+}
+// Return the tile ID of the memory to the west of the given tile, if it exists.
+static Optional<TileID> getMemWest(TileID src) {
+  bool isEvenRow = ((src.first % 2) == 0);
+  Optional<TileID> ret;
+  if (isEvenRow)
+    ret = src;
+  else
+    ret = std::make_pair(src.first - 1, src.second);
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+// Return the tile ID of the memory to the west of the given tile, if it exists.
+static Optional<TileID> getMemEast(TileID src) {
+  bool isEvenRow = ((src.first % 2) == 0);
+  Optional<TileID> ret;
+  if (isEvenRow)
+    ret = std::make_pair(src.first + 1, src.second);
+  else
+    ret = src;
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+// Return the tile ID of the memory to the west of the given tile, if it exists.
+static Optional<TileID> getMemNorth(TileID src) {
+  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+static Optional<TileID> getMemSouth(TileID src) {
+  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
 
 static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
   return ((srcCol == dstCol) && (srcRow == dstRow));
