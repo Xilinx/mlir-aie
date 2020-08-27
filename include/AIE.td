@@ -151,8 +151,8 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
 
 def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
   let arguments = (
-    ins I32Attr:$col,
-        Confined<I32Attr, [IntMinValue<1>]>:$row // row 0 is Shim
+    ins Confined<I32Attr, [IntMinValue<0>]>:$col,
+        Confined<I32Attr, [IntMinValue<0>]>:$row
   );
 
   let summary = "Declare an AIE tile";
@@ -164,6 +164,8 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
 
     A tile is a logical abstraction. We use a tile to establish an ownership of a hardware entity
     to it.
+    Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
+    the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
   }];
 
   let extraClassDeclaration = [{

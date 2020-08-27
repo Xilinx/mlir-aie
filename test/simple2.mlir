@@ -1,10 +1,10 @@
-// RUN: aie-opt %s | FileCheck %s
-// CHECK-LABEL: module {
-// CHECK:       }
+// RUN: aie-opt --aie-create-flows --aie-find-flows %s | FileCheck %s
+// CHECK: %[[T23:.*]] = AIE.tile(2, 3)
+// CHECK: %[[T32:.*]] = AIE.tile(3, 2)
+// CHECK: AIE.flow(%[[T23]], "ME" : 1, %[[T32]], "DMA" : 0)
 
 module {
-  %3 = "AIE.tile"() {col=2:i32, row=3:i32} : () -> index
-  %4 = "AIE.tile"() {col=3:i32, row=2:i32} : () -> index
-  "AIE.flow"(%3, %4) {sourceBundle=0:i32,sourceChannel=1:i32,
-                      destBundle=4:i32,destChannel=0:i32} : (index, index) -> ()
+  %0 = AIE.tile(2, 3)
+  %1 = AIE.tile(3, 2)
+  AIE.flow(%0, "ME" : 1, %1, "DMA" : 0)
 }
