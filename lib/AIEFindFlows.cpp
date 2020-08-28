@@ -88,6 +88,7 @@ private:
   llvm::Optional<PortConnection>
   getConnectionThroughWire(Operation *op,
                            Port masterPort) const {
+    LLVM_DEBUG(llvm::dbgs() << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first) << " " << masterPort.second << "\n");
     for (auto wireOp : module.getOps<WireOp>()) {
       if(wireOp.source().getDefiningOp() == op &&
          wireOp.sourceBundle() == masterPort.first) {
@@ -149,7 +150,9 @@ public:
     // Start the worklist by traversing from the tile to its connected
     // switchbox.
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
-    assert(t.hasValue());
+
+    // If there is no wire to traverse, then just return no connection
+    if(!t.hasValue()) return connectedTiles;
     worklist.push_back(std::make_pair(t.getValue(),
                                       std::make_pair(0, 0)));
 
@@ -181,7 +184,10 @@ public:
                            maskValue.second | (nextMaskValue.first & nextMaskValue.second));
           auto nextConnection =
             getConnectionThroughWire(switchOp, nextPort);
-          assert(nextConnection.hasValue());
+
+          // If there is no wire to follow then bail out.
+          if(!nextConnection.hasValue()) continue;
+
           worklist.push_back(std::make_pair(nextConnection.getValue(),
                                             newMaskValue));
         }
