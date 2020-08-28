@@ -184,19 +184,19 @@ void xilinx::AIE::TokenAnalysis::print(raw_ostream &os) {
   for (auto pair : tokenPairs) {
     Operation *acquire = pair.first;
     Operation *release = pair.second;
-    os << "\n[acquire]\n";
     acquire->print(os);
-    os << "\n[release]\n";
+    os << " -> ";
     release->print(os);
+    os << "\n";
   }
 
   os << "\n=====tokenChains: \n";
   for (auto pair : tokenChains) {
     Operation *release = pair.first;
     Operation *acquire = pair.second;
-    os << "\n[release]\n";
     release->print(os);
-    os << "\n[acquire]\n";
+    os << " -> ";
     acquire->print(os);
+    os << "\n";
   }
 }
