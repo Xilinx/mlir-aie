@@ -121,17 +121,20 @@ private:
         LLVM_DEBUG(llvm::dbgs() << "To:" << stringifyWireBundle(connectOp.destPort().first) << " " << connectOp.destPort().second << "\n");
       }
     }
-    // for (auto connectOp : b.getOps<PacketRulesOp>()) {
-    //  if(connectOp.sourcePort() == sourcePort) {
-    //    // llvm::dbgs() << stringifyWireBundle(connectOp.sourcePort().first) << " " << (int)sourcePort.first << "\n";
-    //    for (auto ruleOp : connectOp.rules().front().getOps<PacketRuleOp>()) {
-    //      MasterSetOp masterSetOp = dyn_cast_or_null<MasterSetOp>(ruleOp.masterset().getDefiningOp());
-    //      // llvm::dbgs() << "To:" << stringifyWireBundle(masterSetOp.destPort().first) << " " << masterSetOp.destPort().second << "\n";
-    //      MaskValue maskValue = std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
-    //      portSet.push_back(std::make_pair(masterSetOp.destPort(), maskValue));
-    //    }
-    //  }
-  //   }
+    for (auto connectOp : b.getOps<PacketRulesOp>()) {
+      if (connectOp.sourcePort() == sourcePort) {
+        LLVM_DEBUG(llvm::dbgs() << "Packet From: " << stringifyWireBundle(connectOp.sourcePort().first) << " " << (int)sourcePort.first << "\n");
+        for (auto masterSetOp : b.getOps<MasterSetOp>())
+          for (Value amsel : masterSetOp.amsels())
+            for (auto ruleOp : connectOp.rules().front().getOps<PacketRuleOp>()) {
+               if (ruleOp.amsel() == amsel) {
+                LLVM_DEBUG(llvm::dbgs() << "To:" << stringifyWireBundle(masterSetOp.destPort().first) << " " << masterSetOp.destPort().second << "\n");
+                MaskValue maskValue = std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
+                portSet.push_back(std::make_pair(masterSetOp.destPort(), maskValue));
+              }
+            }
+      }
+    }
     return portSet;
   }
 
@@ -173,6 +176,10 @@ public:
           Port nextPort = nextPortMaskValue.first;
           MaskValue nextMaskValue = nextPortMaskValue.second;
           int maskConflicts = nextMaskValue.first & maskValue.first;
+          LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.first << " " << maskValue.second << "\n");
+          LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.first << " " << nextMaskValue.second << "\n");
+          LLVM_DEBUG(llvm::dbgs() << maskConflicts << "\n");
+
           if((maskConflicts & nextMaskValue.second) !=
              (maskConflicts & maskValue.second)) {
             // Incoming packets cannot match this rule. Skip it.
@@ -194,7 +201,7 @@ public:
         if(nextPortMaskValues.size() > 0 && !matched) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
-          llvm::dbgs() << "No rule matched incoming packet here: ";
+          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
           other->dump();
         }
       }
@@ -282,9 +289,10 @@ struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
     target.addLegalOp<PacketFlowOp>();
     target.addLegalOp<PacketSourceOp>();
     target.addLegalOp<PacketDestOp>();
+    target.addLegalOp<EndOp>();
     target.addDynamicallyLegalOp<TileOp>([](TileOp op) { return (bool)op.getOperation()->getAttrOfType<BoolAttr>("HasFlow"); });
     //   target.addDynamicallyLegalDialect<AIEDialect>();
-
+    LLVM_DEBUG(llvm::dbgs() << "Starting Find Flows\n");
     OwningRewritePatternList patterns;
     patterns.insert<StartFlow>(m.getContext(), m, analysis);
     if (failed(applyPartialConversion(m, target, patterns)))
