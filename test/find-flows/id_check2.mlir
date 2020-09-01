@@ -1,9 +1,6 @@
 // RUN: aie-opt -aie-find-flows %s | FileCheck %s
 // CHECK: %[[T23:.*]] = AIE.tile(2, 3)
 // CHECK: %[[T22:.*]] = AIE.tile(2, 2)
-// CHECK: AIE.flow(%[[T23]], "ME" : 0, %[[T22]], "ME" : 1)
-// CHECK: AIE.flow(%[[T22]], "ME" : 0, %[[T22]], "ME" : 0)
-// CHECK: AIE.flow(%[[T22]], "ME" : 1, %[[T23]], "ME" : 1)
 // CHECK: AIE.packet_flow(13) {
 // CHECK:   AIE.packet_source<%[[T22]], "DMA" : 0>
 // CHECK:   AIE.packet_dest<%[[T23]], "DMA" : 1>

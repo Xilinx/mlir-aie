@@ -102,9 +102,9 @@ module @example0 {
 
     // code
     %val0 = constant 16 : i32
-    %0 = constant 0 : i1
-    AIE.putStream(%val0 : i32, %0 : i1)
-    %val1 = AIE.getStream(%0 : i1) : i128
+    %0 = constant 0 : i32
+    AIE.putStream(%0 : i32, %val0 : i32)
+    %val1 = AIE.getStream(%0 : i32) : i128
     %val2 = constant 1 : i384
     AIE.putCascade(%val2: i384)
 

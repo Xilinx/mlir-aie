@@ -292,6 +292,20 @@ def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_DebugOp: AIE_Op<"debug", []> {
+  let arguments = (
+    ins AnyType:$arg
+  );
+
+  let summary = "Capture a value for debugging";
+  let description = [{
+    Output the given value for debugging.  This is primarily used for simulation.
+  }];
+  let assemblyFormat = [{
+    `(` $arg `:` type($arg) `)` attr-dict
+  }];
+}
+
 def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
@@ -1121,7 +1135,7 @@ def AIE_GetStreamOp: AIE_Op<"getStream", []>,
   }];
 
   let arguments = (
-    ins AnyI<1>:$channel
+    ins AnyInteger:$channel
   );
   let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
 
@@ -1141,7 +1155,7 @@ def AIE_PutStreamOp: AIE_Op<"putStream", []> {
   }];
 
   let arguments = (
-    ins AnyI<1>:$channel,
+    ins AnyInteger:$channel,
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
 
