@@ -9,7 +9,7 @@
 #include "AIEDialect.h"
 #include "AIETokenAnalysis.h"
 
-#define DEBUG_TYPE "create-locks"
+#define DEBUG_TYPE "aie-create-locks"
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
