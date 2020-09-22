@@ -179,7 +179,7 @@ struct AIECreateLocksPass : public PassWrapper<AIECreateLocksPass, OperationPass
       assert(lockID >= 0 && "No more locks to allocate!");
       LLVM_DEBUG(llvm::dbgs() << "Shared tile \n"; tileOp->print(llvm::dbgs()));
       LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
-      builder.setInsertionPointAfter(tile);
+      builder.setInsertionPointAfter((Value)tile);
       LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID);
 
       lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);

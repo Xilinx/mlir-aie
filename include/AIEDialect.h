@@ -16,8 +16,10 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/StringSwitch.h"
-
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include <map>
 
 using namespace mlir;
@@ -33,9 +35,12 @@ void registerAIECreateFlowsPass();
 void registerAIECreateCoresPass();
 void registerAIECreateLocksPass();
 void registerAIEBufferMergePass();
-void registerAIECoreToLLVMPass();
 void registerAIEHerdRoutingPass();
 void registerAIECreatePacketFlowsPass();
+
+
+// FIXME: use this
+//#include "AIEDialect.h.inc"
 
 // The Dialect
 class AIEDialect : public mlir::Dialect {
@@ -197,6 +202,15 @@ static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow)
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "AIE.h.inc"
+
+#define GEN_PASS_CLASSES
+#include "AIEPasses.h.inc"
+
+std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToLLVMPass();
+
+/// Generate the code for registering passes.
+#define GEN_PASS_REGISTRATION
+#include "AIEPasses.h.inc"
 
 } // AIE
 } // xilinx

@@ -16,6 +16,7 @@ add_mlir_dialect_library(AIE
   DEPENDS
   MLIRAIEIncGen
   MLIRAIEEnumsIncGen
+  MLIRAIEPassIncGen
   )
 
 target_link_libraries(AIE

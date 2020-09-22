@@ -145,7 +145,10 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
 
 struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
   OperationPass<ModuleOp>> {
-
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
+    registry.insert<StandardOpsDialect>();
+    registry.insert<xilinx::AIE::AIEDialect>();
+  }
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -185,7 +188,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
       }
       Operation *tileOp = tiles[std::make_pair(colIndex, rowIndex)];
       TileOp tile = dyn_cast<TileOp>(tileOp);
-      builder.setInsertionPointAfter(tile);
+      builder.setInsertionPointAfter((Value)tile);
 
       // create MemOp
       if (!mems[tileOp]) {

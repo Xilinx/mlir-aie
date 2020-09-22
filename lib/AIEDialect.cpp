@@ -8,7 +8,9 @@ using namespace mlir;
 namespace xilinx {
 namespace AIE {
 
-AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx) {
+// FIXME: use Tablegen'd dialect class
+AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx,
+    ::mlir::TypeID::get<AIEDialect>()) {
   //addTypes<AIEListType>();
   addOperations<
 #define GET_OP_LIST

@@ -9,18 +9,18 @@
 //             static allocation (for now) for each core that can access to the buffer
 module @test_core_llvm1 {
 // CHECK:       module @test_core_llvm1 {
-// CHECK:         llvm.mlir.global external @a() : !llvm<"[256 x i32]">
+// CHECK:         llvm.mlir.global external @a() : !llvm.array<256 x i32>
 // CHECK:         llvm.func @core11() {
 // CHECK:           %[[VAL_0:.*]] = llvm.mlir.constant(256 : index) : !llvm.i64
-// CHECK:           %[[VAL_1:.*]] = llvm.mlir.addressof @a : !llvm<"[256 x i32]*">
+// CHECK:           %[[VAL_1:.*]] = llvm.mlir.addressof @a : !llvm.ptr<array<256 x i32>>
 // CHECK:           %[[VAL_2:.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
 // CHECK:           %[[VAL_3:.*]] = llvm.mlir.constant(56 : i32) : !llvm.i32
 // CHECK:           llvm.call @llvm.aie.lock.acquire.reg(%[[VAL_3]], %[[VAL_2]]) : (!llvm.i32, !llvm.i32) -> ()
 // CHECK:           %[[VAL_4:.*]] = llvm.mlir.constant(1 : i32) : !llvm.i32
 // CHECK:           %[[VAL_5:.*]] = llvm.mlir.constant(16 : index) : !llvm.i64
 // CHECK:           %[[VAL_6:.*]] = llvm.mlir.constant(0 : index) : !llvm.i64
-// CHECK:           %[[VAL_7:.*]] = llvm.getelementptr %[[VAL_1]]{{\[}}%[[VAL_6]], %[[VAL_5]]] : (!llvm<"[256 x i32]*">, !llvm.i64, !llvm.i64) -> !llvm<"i32*">
-// CHECK:           llvm.store %[[VAL_4]], %[[VAL_7]] : !llvm<"i32*">
+// CHECK:           %[[VAL_7:.*]] = llvm.getelementptr %[[VAL_1]]{{\[}}%[[VAL_6]], %[[VAL_5]]] : (!llvm.ptr<array<256 x i32>>, !llvm.i64, !llvm.i64) -> !llvm.ptr<i32>
+// CHECK:           llvm.store %[[VAL_4]], %[[VAL_7]] : !llvm.ptr<i32>
 // CHECK:           %[[VAL_8:.*]] = llvm.mlir.constant(1 : i32) : !llvm.i32
 // CHECK:           %[[VAL_9:.*]] = llvm.mlir.constant(56 : i32) : !llvm.i32
 // CHECK:           llvm.call @llvm.aie.lock.release.reg(%[[VAL_9]], %[[VAL_8]]) : (!llvm.i32, !llvm.i32) -> ()
@@ -28,14 +28,14 @@ module @test_core_llvm1 {
 // CHECK:         }
 // CHECK:         llvm.func @core21() {
 // CHECK:           %[[VAL_10:.*]] = llvm.mlir.constant(256 : index) : !llvm.i64
-// CHECK:           %[[VAL_11:.*]] = llvm.mlir.addressof @a : !llvm<"[256 x i32]*">
+// CHECK:           %[[VAL_11:.*]] = llvm.mlir.addressof @a : !llvm.ptr<array<256 x i32>>
 // CHECK:           %[[VAL_12:.*]] = llvm.mlir.constant(1 : i32) : !llvm.i32
 // CHECK:           %[[VAL_13:.*]] = llvm.mlir.constant(24 : i32) : !llvm.i32
 // CHECK:           llvm.call @llvm.aie.lock.acquire.reg(%[[VAL_13]], %[[VAL_12]]) : (!llvm.i32, !llvm.i32) -> ()
 // CHECK:           %[[VAL_14:.*]] = llvm.mlir.constant(16 : index) : !llvm.i64
 // CHECK:           %[[VAL_15:.*]] = llvm.mlir.constant(0 : index) : !llvm.i64
-// CHECK:           %[[VAL_16:.*]] = llvm.getelementptr %[[VAL_11]]{{\[}}%[[VAL_15]], %[[VAL_14]]] : (!llvm<"[256 x i32]*">, !llvm.i64, !llvm.i64) -> !llvm<"i32*">
-// CHECK:           %[[VAL_17:.*]] = llvm.load %[[VAL_16]] : !llvm<"i32*">
+// CHECK:           %[[VAL_16:.*]] = llvm.getelementptr %[[VAL_11]]{{\[}}%[[VAL_15]], %[[VAL_14]]] : (!llvm.ptr<array<256 x i32>>, !llvm.i64, !llvm.i64) -> !llvm.ptr<i32>
+// CHECK:           %[[VAL_17:.*]] = llvm.load %[[VAL_16]] : !llvm.ptr<i32>
 // CHECK:           %[[VAL_18:.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
 // CHECK:           %[[VAL_19:.*]] = llvm.mlir.constant(24 : i32) : !llvm.i32
 // CHECK:           llvm.call @llvm.aie.lock.release.reg(%[[VAL_19]], %[[VAL_18]]) : (!llvm.i32, !llvm.i32) -> ()

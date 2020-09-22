@@ -171,8 +171,8 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);
-    int colIndex() { return col().getZExtValue(); }
-    int rowIndex() { return row().getZExtValue(); }
+    int colIndex() { return col(); }
+    int rowIndex() { return row(); }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
   }];
 
@@ -319,7 +319,7 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
     `(` $col `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int colIndex() { return col().getZExtValue(); }
+    int colIndex() { return col(); }
   }];
   // let builders = [
   //   OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -340,7 +340,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>, Results<(outs Index)> {
     `(` $col `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int colIndex() { return col().getZExtValue(); }
+    int colIndex() { return col(); }
   }];
   // let builders = [
   //   OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -373,23 +373,23 @@ def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
     `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel().getZExtValue(); }
-    int destIndex() { return destChannel().getZExtValue(); }
+    int sourceIndex() { return sourceChannel(); }
+    int destIndex() { return destChannel(); }
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
     Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "WireBundle sourceBundle, int sourceChannel, "
-              "WireBundle destBundle, int destChannel", [{
-              build(builder, result,
-                    sourceBundle,
-                    APInt(32, sourceChannel),
-                    destBundle,
-                    APInt(32, destChannel));
-              }]
-    >
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "WireBundle sourceBundle, int sourceChannel, "
+  //             "WireBundle destBundle, int destChannel", [{
+  //             build(builder, result,
+  //                   sourceBundle,
+  //                   APInt(32, sourceChannel),
+  //                   destBundle,
+  //                   APInt(32, destChannel));
+  //             }]
+  //   >
+  // ];
 }
 
 def AIE_FlowOp: AIE_Op<"flow", []> {
@@ -419,8 +419,8 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel().getZExtValue(); }
-    int destIndex() { return destChannel().getZExtValue(); }
+    int sourceIndex() { return sourceChannel(); }
+    int destIndex() { return destChannel(); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -466,8 +466,8 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
     `<` $arbiterID `>` `(` $msel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int arbiterIndex() { return arbiterID().getZExtValue(); }
-    int getMselValue() { return msel().getZExtValue(); }
+    int arbiterIndex() { return arbiterID(); }
+    int getMselValue() { return msel(); }
   }];
 
   let builders = [
@@ -513,7 +513,7 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(o
     `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int destIndex() { return destChannel().getZExtValue(); }
+    int destIndex() { return destChannel(); }
     Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
 }
@@ -567,18 +567,18 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
   let parser = [{ return ::parsePacketRulesOp(parser, result); }];
 
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel().getZExtValue(); }
+    int sourceIndex() { return sourceChannel(); }
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
   }];
 
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "WireBundle sourceBundle, int sourceChannel", [{
-              build(builder, result,
-                    sourceBundle,
-                    APInt(32, sourceChannel));
-              }]>
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "WireBundle sourceBundle, int sourceChannel", [{
+  //             build(builder, result,
+  //                   sourceBundle,
+  //                   APInt(32, sourceChannel));
+  //             }]>
+  // ];
 }
 
 def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
@@ -613,8 +613,8 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
       }
   }];
   let extraClassDeclaration = [{
-    int maskInt() { return mask().getZExtValue(); }
-    int valueInt() { return value().getZExtValue(); }
+    int maskInt() { return mask(); }
+    int valueInt() { return value(); }
   }];
   let assemblyFormat = [{
     `(` $mask `,` $value `,` $amsel `)` attr-dict
@@ -645,15 +645,15 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
   let printer = [{ return ::print(p, *this); }];
   let parser = [{ return ::parsePacketFlowOp(parser, result); }];
   let extraClassDeclaration = [{
-    int IDInt() { return ID().getZExtValue(); }
+    int IDInt() { return ID(); }
   }];
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int ID", [{
-              build(builder, result,
-                    APInt(8, ID));
-              }]>
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "int ID", [{
+  //             build(builder, result,
+  //                   APInt(8, ID));
+  //             }]>
+  // ];
 }
 
 def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
@@ -670,18 +670,18 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int channelIndex() { return channel().getZExtValue(); }
+    int channelIndex() { return channel(); }
     Port port() { return std::make_pair(bundle(), channelIndex()); }
   }];
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value tile, WireBundle bundle, int channel", [{
-              build(builder, result,
-                    tile,
-                    bundle,
-                    APInt(32, channel));
-              }]>
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "Value tile, WireBundle bundle, int channel", [{
+  //             build(builder, result,
+  //                   tile,
+  //                   bundle,
+  //                   APInt(32, channel));
+  //             }]>
+  // ];
 }
 
 def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
@@ -698,18 +698,18 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int channelIndex() { return channel().getZExtValue(); }
+    int channelIndex() { return channel(); }
     Port port() { return std::make_pair(bundle(), channelIndex()); }
   }];
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value tile, WireBundle bundle, int channel", [{
-              build(builder, result,
-                    tile,
-                    bundle,
-                    APInt(32, channel));
-              }]>
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "Value tile, WireBundle bundle, int channel", [{
+  //             build(builder, result,
+  //                   tile,
+  //                   bundle,
+  //                   APInt(32, channel));
+  //             }]>
+  // ];
 }
 
 def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
@@ -763,10 +763,10 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getOffsetValue() { return offset().getZExtValue(); }
-    int getLenValue() { return len().getZExtValue(); }
-    bool isA() { return (AB().getZExtValue() == 0); }
-    bool isB() { return (AB().getZExtValue() == 1); }
+    int getOffsetValue() { return offset(); }
+    int getLenValue() { return len(); }
+    bool isA() { return (AB() == 0); }
+    bool isB() { return (AB() == 1); }
   }];
 
   let builders = [
@@ -941,7 +941,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   }];
 
   let extraClassDeclaration = [{
-    int getLockID() { return lockID().getZExtValue(); }
+    int getLockID() { return lockID(); }
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
@@ -986,15 +986,15 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }
     bool release() { return (action() == LockAction::Release); }
-    int getLockValue() { return value().getZExtValue(); }
-    int getTimeout() { return timeout().getZExtValue(); }
+    int getLockValue() { return value(); }
+    int getTimeout() { return timeout(); }
   }];
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value lock, int value, LockAction action, int timeout", [{
-              build(builder, result, lock, APInt(32, value), action, APInt(32, timeout));
-              }]>
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "Value lock, int value, LockAction action, int timeout", [{
+  //             build(builder, result, lock, APInt(32, value), action, APInt(32, timeout));
+  //             }]>
+  // ];
 }
 
 def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
@@ -1052,7 +1052,7 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
   }];
 
   let extraClassDeclaration = [{
-    int getTokenValue() { return value().getZExtValue(); }
+    int getTokenValue() { return value(); }
   }];
 }
 
@@ -1076,15 +1076,15 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }
     bool release() { return (action() == LockAction::Release); }
-    int getTokenValue() { return value().getZExtValue(); }
+    int getTokenValue() { return value(); }
   }];
 
-  let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "StringRef tokenName, int value, LockAction action", [{
-              build(builder, result, tokenName, APInt(32, value), action);
-              }]>
-  ];
+  // let builders = [
+  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
+  //             "StringRef tokenName, int value, LockAction action", [{
+  //             build(builder, result, tokenName, APInt(32, value), action);
+  //             }]>
+  // ];
 }
 
 def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
@@ -1118,12 +1118,12 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getAcquireTokenValue() { return acqValue().getZExtValue(); }
-    int getReleaseTokenValue() { return relValue().getZExtValue(); }
-    int getSrcOffsetValue() { return srcOffset().getZExtValue(); }
-    int getDstOffsetValue() { return dstOffset().getZExtValue(); }
-    int getSrcLenValue() { return srcLen().getZExtValue(); }
-    int getDstLenValue() { return dstLen().getZExtValue(); }
+    int getAcquireTokenValue() { return acqValue(); }
+    int getReleaseTokenValue() { return relValue(); }
+    int getSrcOffsetValue() { return srcOffset(); }
+    int getDstOffsetValue() { return dstOffset(); }
+    int getSrcLenValue() { return srcLen(); }
+    int getDstLenValue() { return dstLen(); }
   }];
 }
 
@@ -1226,8 +1226,8 @@ def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
   );
 
   let extraClassDeclaration = [{
-    int getHerdWidth()   { return width().getZExtValue(); }
-    int getHerdHeight()  { return height().getZExtValue(); }
+    int getHerdWidth()   { return width(); }
+    int getHerdHeight()  { return height(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
   }];
 
@@ -1263,8 +1263,8 @@ def AIE_PlaceOp: AIE_Op<"place", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getDistXValue() { return distX().getZExtValue(); }
-    int getDistYValue() { return distY().getZExtValue(); }
+    int getDistXValue() { return distX(); }
+    int getDistYValue() { return distY(); }
   }];
 }
 
@@ -1290,8 +1290,8 @@ def AIE_RouteOp: AIE_Op<"route", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getSourceChannelValue()  { return sourceChannel().getZExtValue(); }
-    int getDestChannelValue()  { return destChannel().getZExtValue(); }
+    int getSourceChannelValue()  { return sourceChannel(); }
+    int getDestChannelValue()  { return destChannel(); }
   }];
 }
 
@@ -1317,9 +1317,9 @@ def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
   }];
 
   let extraClassDeclaration = [{
-    int getStartValue()  { return start().getZExtValue(); }
-    int getEndValue()    { return end().getZExtValue(); }
-    int getStrideValue() { return stride().getZExtValue(); }
+    int getStartValue()  { return start(); }
+    int getEndValue()    { return end(); }
+    int getStrideValue() { return stride(); }
   }];
 
   let builders = [

@@ -279,6 +279,10 @@ struct StartFlow : public OpConversionPattern<AIE::TileOp> {
 
 struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
                                              OperationPass<ModuleOp>> {
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
+    registry.insert<StandardOpsDialect>();
+    registry.insert<xilinx::AIE::AIEDialect>();
+  }
   void runOnOperation() override {
 
     ModuleOp m = getOperation();

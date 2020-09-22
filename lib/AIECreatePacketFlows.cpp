@@ -542,7 +542,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
 
         builder.create<MasterSetOp>(builder.getUnknownLoc(),
                                     builder.getIndexType(),
-                                    bundle, APInt(32, channel), amsels);
+                                    bundle, channel, amsels);
       }
 
       DenseMap<Port, PacketRulesOp> slaveRules;

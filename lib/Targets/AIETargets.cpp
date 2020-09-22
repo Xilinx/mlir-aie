@@ -58,8 +58,10 @@ void writeBufferMap(raw_ostream &output, ArrayRef<BufferOp> buffers,
 
 void registerAIETranslations() {
   TranslateFromMLIRRegistration
-    registrationLLVM("aie-generate-llvmir", [](ModuleOp module, raw_ostream &output) {
-      auto llvmModule = mlir::translateModuleToLLVMIR(module);
+    registrationLLVM("aie-generate-llvmir",
+    [](ModuleOp module, raw_ostream &output) {
+      llvm::LLVMContext llvmContext;
+      auto llvmModule = mlir::translateModuleToLLVMIR(module, llvmContext);
       if (!llvmModule) {
         llvm::errs() << "Failed to emit LLVM IR\n";
         return failure();
@@ -67,6 +69,11 @@ void registerAIETranslations() {
 
       output << *llvmModule;
       return success();
+    }, 
+    [](DialectRegistry &registry) {
+      registry.insert<xilinx::AIE::AIEDialect>();
+      registry.insert<StandardOpsDialect>();
+      registry.insert<LLVM::LLVMDialect>();
     });
 
   TranslateFromMLIRRegistration
@@ -101,6 +108,11 @@ void registerAIETranslations() {
         if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
       }
       return success();
+    }, 
+    [](DialectRegistry &registry) {
+      registry.insert<xilinx::AIE::AIEDialect>();
+      registry.insert<StandardOpsDialect>();
+      registry.insert<LLVM::LLVMDialect>();
     });
 
   TranslateFromMLIRRegistration
@@ -457,7 +469,7 @@ void registerAIETranslations() {
           Region &r = switchboxOp.connections();
           Block &b = r.front();
           bool isEmpty = b.getOps<ConnectOp>().empty();
-          int col = switchboxOp.col().getZExtValue();
+          int col = switchboxOp.col();
           if(!isEmpty) {
             output << "// Shim Switch column " << col << "\n";
           }
@@ -480,6 +492,11 @@ void registerAIETranslations() {
           }
         }
         return success();
+      }, 
+      [](DialectRegistry &registry) {
+        registry.insert<xilinx::AIE::AIEDialect>();
+        registry.insert<StandardOpsDialect>();
+        registry.insert<LLVM::LLVMDialect>();
       });
 }
 }

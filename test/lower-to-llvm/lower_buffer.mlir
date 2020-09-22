@@ -1,14 +1,14 @@
 // RUN: aie-opt --aie-llvm-lowering %s | FileCheck %s
 // CHECK-LABEL: module @codegen1 {
 // CHECK:  llvm.func @core33() {
-// CHECK:    %[[VAR1:.*]] = llvm.mlir.addressof @a : !llvm<"[4 x i32]*">
-// CHECK:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm<"[4 x i32]*">, !llvm.i64, !llvm.i64) -> !llvm<"i32*">
-// CHECK:    llvm.store %{{.*}}, %[[VAR5]] : !llvm<"i32*">
+// CHECK:    %[[VAR1:.*]] = llvm.mlir.addressof @a : !llvm.ptr<array<4 x i32>>
+// CHECK:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm.ptr<array<4 x i32>>, !llvm.i64, !llvm.i64) -> !llvm.ptr<i32>
+// CHECK:    llvm.store %{{.*}}, %[[VAR5]] : !llvm.ptr<i32>
 // CHECK:  }
 // CHECK:  llvm.func @core43() {
-// CHECK:    %[[VAR1:.*]] = llvm.mlir.addressof @a : !llvm<"[4 x i32]*">
-// CHECK:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm<"[4 x i32]*">, !llvm.i64, !llvm.i64) -> !llvm<"i32*">
-// CHECK:    %{{.*}} = llvm.load %[[VAR5]] : !llvm<"i32*">
+// CHECK:    %[[VAR1:.*]] = llvm.mlir.addressof @a : !llvm.ptr<array<4 x i32>>
+// CHECK:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm.ptr<array<4 x i32>>, !llvm.i64, !llvm.i64) -> !llvm.ptr<i32>
+// CHECK:    %{{.*}} = llvm.load %[[VAR5]] : !llvm.ptr<i32>
 // CHECK:  }
 // CHECK:       }
 
