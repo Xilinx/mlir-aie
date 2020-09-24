@@ -24,14 +24,14 @@ using namespace xilinx::AIE;
 namespace xilinx {
 namespace AIE {
 
-StringRef tileInstStr(StringRef col, StringRef row) {
+std::string tileInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "&(TileInst" << "[" << col << "][" << row << "])";
   return str;
 }
 
-StringRef tileDMAInstStr(StringRef col, StringRef row) {
+std::string tileDMAInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "&(TileDMAInst" << "[" << col << "][" << row << "])";
