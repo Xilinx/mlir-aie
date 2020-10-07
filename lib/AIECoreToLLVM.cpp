@@ -177,15 +177,20 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
   DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
   DenseMap<Operation *, LLVM::GlobalOp> &bufferToGlobal;
   LLVMTypeConverter &converter;
+  unsigned tileCol = 0;
+  unsigned tileRow = 0;
 
   AIECoreToLLVMFunc(MLIRContext *context, ModuleOp &m,
     BlockAndValueMapping &mapper,
     DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers,
     DenseMap<Operation *, LLVM::GlobalOp> &bufferToGlobal,
     LLVMTypeConverter &converter,
-    PatternBenefit benefit = 1
+    PatternBenefit benefit = 1,
+    unsigned tileCol = 1,
+    unsigned tileRow = 1
   ) : OpConversionPattern<CoreOp>(context, benefit),
-    module(m), mapper(mapper), tileToBuffers(tileToBuffers), bufferToGlobal(bufferToGlobal), converter(converter) {}
+    module(m), mapper(mapper), tileToBuffers(tileToBuffers), bufferToGlobal(bufferToGlobal), converter(converter),
+    tileCol(tileCol), tileRow(tileRow) {}
 
   LogicalResult matchAndRewrite(CoreOp op, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const override {
@@ -202,12 +207,28 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
     Operation *Op = op.getOperation();
     int col = op.colIndex();
     int row = op.rowIndex();
+
+    // Only pull code for the indicated function
+    if((tileRow != row) || (tileCol != col)) {
+      rewriter.eraseOp(Op);
+      return success();
+    }
+
     std::string coreName("core" + std::to_string(col) + std::to_string(row));
     auto llvmCoreFunc = rewriter.create<LLVM::LLVMFuncOp>(op.getLoc(), coreName,
                   LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
                   {}, /*isVarArg=*/false));
 
     rewriter.cloneRegionBefore(op.body(), llvmCoreFunc.body(), llvmCoreFunc.body().begin(), mapper);
+
+    // Create a main function that just calls the core function above.
+    auto mainFunc = rewriter.create<LLVM::LLVMFuncOp>(rewriter.getUnknownLoc(), "_main",
+                 LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
+                  {}, /*isVarArg=*/false));
+    rewriter.setInsertionPointToStart(mainFunc.addEntryBlock());
+    SmallVector<Value, 8> args;
+    rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), llvmCoreFunc, args); // call with no args.
+    rewriter.create<LLVM::ReturnOp>(rewriter.getUnknownLoc(), args); // return nothing
 
     DenseMap<Operation *, Value> newAllocated;
 
@@ -476,7 +497,8 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
                     >(m.getContext(), m);
 
     populateStdToLLVMConversionPatterns(converter, patterns);
-    patterns.insert<AIECoreToLLVMFunc>(m.getContext(), m, mapper, tileToBuffers, bufferToGlobal, converter);
+    patterns.insert<AIECoreToLLVMFunc>(m.getContext(), m, mapper, tileToBuffers, bufferToGlobal, converter, 1,
+       tileCol, tileRow);
 
     patterns.insert<AIEOpRemoval<AIE::TileOp>,
                     AIEOpRemoval<AIE::MemOp>,
@@ -511,7 +533,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
     int row = op.rowIndex();
     std::string coreName("core" + std::to_string(col) + std::to_string(row));
     auto coreFunc = rewriter.create<FuncOp>(rewriter.getUnknownLoc(), coreName,
-                  FunctionType::get({}, {}, rewriter.getContext()));
+                  FunctionType::get({}, {}, rewriter.getContext()));                  
 
     rewriter.cloneRegionBefore(op.body(), coreFunc.getBody(), coreFunc.getBody().begin(), mapper);
 

@@ -1,0 +1,13 @@
+ENTRY(_main_init)
+SECTIONS
+{
+  . = 0x0;
+  .text : { *(.text) }
+  .data : { *(.data) }
+  b = .;
+  . += 32;
+  a = .;
+  . = 0x20000;
+  _sp_start_value_DM_stack = .;
+  .bss : { *(.bss) }
+}

@@ -59,6 +59,13 @@ def AIECoreToLLVM : Pass<"aie-llvm-lowering", "ModuleOp"> {
         if they do not depend on the loop iterator value or on the result of
         `affine.apply`.
   }];
+  let options = [
+    Option<"tileCol", "tilecol", "unsigned",
+           /*default=*/"-1", "X coordinate of tile to generate code for">,
+    Option<"tileRow", "tilerow", "unsigned",
+           /*default=*/"-1", "Y coordinate of tile to generate code for">
+  ];
+
   let constructor = "xilinx::AIE::createAIECoreToLLVMPass()";
   let dependentDialects = [
     "StandardOpsDialect",
