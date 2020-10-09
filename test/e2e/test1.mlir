@@ -1,7 +1,7 @@
 // RUN: aie-opt --aie-llvm-lowering="tilecol=1 tilerow=1" %s | aie-translate --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=%t.o
 // RUN: aie-translate --aie-generate-mmap %s
-// RUN: ld.lld %S/../../runtime_lib/me_basic.o %t.o -T %S/ld.script -o %t.out
-// RUN: llvm-objdump -dr --arch-name=aie %t.out | FileCheck %s
+// RUN: ld.lld %t.o %S/../../runtime_lib/me_basic.o -T %S/ld.script -o %t.out
+// RUN: llvm-objdump -dr --arch-name=aie %t.out | FileCheck -check-prefix=CHECK11 %s
 
 // Test LLVM lowering for lock accesses and memory accesses (LockOp, UseLockOp, and BufferOp)
 // Things to make sure:

@@ -8,6 +8,8 @@ SECTIONS
 {
   . = 0x0;
   .text : { 
+     // the _main_init symbol from me_basic.o has to come at address zero.
+     *me_basic.o(.text)
      *(.text)
   } > program
   .data : { *(.data) } > data
