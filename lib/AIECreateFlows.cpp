@@ -153,6 +153,12 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
           outIndex = connectOp.destIndex()+1;
         }
       }
+      for (auto masterOp : b.getOps<MasterSetOp>()) {
+        if(masterOp.destBundle() == outBundle &&
+           masterOp.destIndex() >= outIndex) {
+          outIndex = masterOp.destIndex()+1;
+        }
+      }
     }
 
     // This might fail if an outIndex was exactly specified.
