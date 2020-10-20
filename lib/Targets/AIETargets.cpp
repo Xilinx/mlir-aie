@@ -336,7 +336,8 @@ void registerAIETranslations() {
           Region &r = switchboxOp.connections();
           Block &b = r.front();
           bool isEmpty = b.getOps<ConnectOp>().empty() &&
-            b.getOps<MasterSetOp>().empty();
+            b.getOps<MasterSetOp>().empty() &&
+            b.getOps<PacketRulesOp>().empty();
           bool isParam = false;
 
           if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
@@ -344,10 +345,9 @@ void registerAIETranslations() {
             int row = switchboxOp.rowIndex();
             if (!isEmpty) {
               output << "// Core Stream Switch column " << col << " row " << row << "\n";
+              output << "x = " << col << ";\n";
+              output << "y = " << row << ";\n";
             }
-
-            output << "x = " << col << ";\n";
-            output << "y = " << row << ";\n";
           } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(switchboxOp.tile().getDefiningOp())) {
             // parameterize streamswitch's configuration
             isParam = true;
