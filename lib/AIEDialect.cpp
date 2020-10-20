@@ -346,7 +346,7 @@ static void print(OpAsmPrinter &p, xilinx::AIE::PacketFlowOp op) {
 
   Region &body = op.ports();
   p << xilinx::AIE::PacketFlowOp::getOperationName();
-  p << '(' << op.ID() << ')';
+  p << '(' << (int)op.ID() << ')';
 
   p.printRegion(body,
                 /*printEntryBlockArgs=*/false,
