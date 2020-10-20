@@ -133,6 +133,21 @@ static void print(OpAsmPrinter &p, xilinx::AIE::SwitchboxOp op) {
 
 }
 
+static LogicalResult verify(xilinx::AIE::TileOp op) {
+  auto users = op.result().getUsers();
+  bool found = false;
+  for(auto user : users) {
+    if(llvm::isa<xilinx::AIE::SwitchboxOp>(*user)) {
+      assert(!found && "Tile can only have one switchbox");
+      found = true;
+    }
+  }
+  // assert((users.begin() == users.end() || users.begin().next() == users.end()) &&
+  //   "Tile can only have one switchbox");
+
+  return success();
+}
+
 static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
   Region &body = op.connections();
   DenseSet<xilinx::AIE::Port> sourceset;

@@ -149,7 +149,7 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                    AnyFloat.predicate]>,
                                   "scalar">;
 
-def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
+def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
   let arguments = (
     ins Confined<I32Attr, [IntMinValue<0>]>:$col,
         Confined<I32Attr, [IntMinValue<0>]>:$row
@@ -168,6 +168,7 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index)> {
     the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
   }];
 
+  let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);

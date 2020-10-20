@@ -203,6 +203,14 @@ void buildPSRoute(int xSrc, int ySrc, Port sourcePort,
     std::make_pair(std::make_pair(lastPort, destPort), flowID));
 }
 
+SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
+  for(auto i : tile.result().getUsers()) {
+    if(llvm::isa<SwitchboxOp>(*i)) {
+      return llvm::cast<SwitchboxOp>(*i);
+    }
+  }
+  return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
+}
 struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override {
 
@@ -494,7 +502,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
 
       // Create a switchbox for the routes and insert inside it.
       builder.setInsertionPointAfter(tileOp);
-      SwitchboxOp swbox = builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
+      SwitchboxOp swbox = getOrCreateSwitchbox(builder, tile);
       swbox.ensureTerminator(swbox.connections(), builder, builder.getUnknownLoc());
       Block &b = swbox.connections().front();
       builder.setInsertionPoint(b.getTerminator());
