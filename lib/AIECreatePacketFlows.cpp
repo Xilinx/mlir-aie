@@ -90,6 +90,22 @@ int getAvailableDestChannel(
   return -1;
 }
 
+void update_coordinates(int &xCur, int &yCur, WireBundle move) {
+  if (move == WireBundle::East) {
+    xCur = xCur + 1;
+    yCur = yCur;
+  } else if (move == WireBundle::West) {
+    xCur = xCur - 1;
+    yCur = yCur;
+  } else if (move == WireBundle::North) {
+    xCur = xCur;
+    yCur = yCur + 1;
+  } else if (move == WireBundle::South) {
+    xCur = xCur;
+    yCur = yCur - 1;
+  }
+}
+
 // Build a packet-switched route from the sourse to the destination with the given ID.
 // The route is recorded in the given map of switchboxes.
 void buildPSRoute(int xSrc, int ySrc, Port sourcePort,
@@ -148,19 +164,7 @@ void buildPSRoute(int xSrc, int ySrc, Port sourcePort,
       if (move == lastBundle)
         continue;
 
-      if (move == WireBundle::East) {
-        xCur = xCur + 1;
-        yCur = yCur;
-      } else if (move == WireBundle::West) {
-        xCur = xCur - 1;
-        yCur = yCur;
-      } else if (move == WireBundle::North) {
-        xCur = xCur;
-        yCur = yCur + 1;
-      } else if (move == WireBundle::South) {
-        xCur = xCur;
-        yCur = yCur - 1;
-      }
+      update_coordinates(xCur, yCur, move);
 
       if (std::find(congestion.begin(), congestion.end(), std::make_pair(xCur, yCur)) != congestion.end())
         continue;
@@ -297,9 +301,14 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
         Port destPort = connect.first.second;
         int flowID = connect.second;
 
-        LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':');
-        LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(sourcePort.first) << " " << sourcePort.second << " -> ");
-        LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(destPort.first) << " " << destPort.second << '\n');
+        int nextCol = col, nextRow = row;
+        update_coordinates(nextCol, nextRow, sourcePort.first);
+        LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
+                                << stringifyWireBundle(sourcePort.first) << " "
+                                << sourcePort.second << " -> "
+                                << stringifyWireBundle(destPort.first) << " "
+                                << destPort.second << " tile " << nextCol << " "
+                                << nextRow << "\n");
 
         auto sourceFlow = std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
         packetFlows[sourceFlow].push_back(std::make_pair(tileOp, destPort));
