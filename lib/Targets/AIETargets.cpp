@@ -176,10 +176,25 @@ void registerAIETranslations() {
           output << "XAieDma_TileChResetAll(" <<
                     tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
 
-          int bdNum = 0;
           DenseMap<Block *, int> blockMap;
           Block *endBlock = &memOp.body().back();
-          DenseMap<DMAChan, Block *> channelMap;
+          // For each channel, which bdnum does it start with.
+          std::vector<int> channelMap(4);
+
+          {
+            // Assign each block a BD number
+            int bdNum = 0;
+            bool foundBd = false;
+            for (auto &block : memOp.body()) {
+              for (auto op : block.getOps<DMABDOp>()) {
+                foundBd = true;
+              }
+              if (foundBd) {
+                blockMap[&block] = bdNum;
+                bdNum++;
+              }
+            }
+          }
           for (auto &block : memOp.body()) {
             bool foundBd = false;
             int len = 0;
@@ -193,7 +208,7 @@ void registerAIETranslations() {
             StringRef bufB = "0";
             StringRef AbMode    = enable;
             StringRef FifoMode  = disable; // FIXME: when to enable FIFO mode?
-
+            
             for (auto op : block.getOps<DMABDOp>()) {
               foundBd = true;
               len = op.getLenValue();
@@ -223,6 +238,7 @@ void registerAIETranslations() {
               }
             }
 
+            int bdNum = blockMap[&block];
             if (foundBd) {
               if (hasA) {
                 output << "XAieDma_TileBdSetLock(" <<
@@ -255,46 +271,47 @@ void registerAIETranslations() {
                         "/* len */ "  << len << ", " <<
                         "/* ABMode */ "  << AbMode << ", " <<
                         "/* FIFOMode */ "  << FifoMode << ");\n";
-              blockMap[&block] = bdNum;
-              bdNum++;
+
+              Block *nextBlock =
+                  block.getSuccessors()[0]; // should have only one successor
+                                            // block
+              if (nextBlock != endBlock) {
+                int nextBdNum = blockMap[nextBlock];
+                output << "XAieDma_TileBdSetNext("
+                       << tileDMAInstStr(std::to_string(col),
+                                         std::to_string(row))
+                       << ", "
+                       << "/* bd */ " << bdNum << ", "
+                       << "/* nextbd */ " << nextBdNum << ");\n";
+              }
+              output << "XAieDma_TileBdWrite("
+                     << tileDMAInstStr(std::to_string(col), std::to_string(row))
+                     << ", "
+                     << "/* bd */ " << bdNum << ");\n";
             }
 
             for (auto op : block.getOps<CondBranchOp>()) {
               DMAStartOp dmaSt = dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
-              channelMap[dmaSt.dmaChan()] = op.getTrueDest();
+              channelMap[(int)dmaSt.dmaChan()] = blockMap[op.getTrueDest()];
             }
           }
 
-          for (auto map : blockMap) {
-            Block *block = map.first;
-            int bdNum = map.second;
-            output << "XAieDma_TileBdWrite(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                      "/* bd */ "  << bdNum << ");\n";
-            Block *nextBlock = block->getSuccessors()[0]; // should have only one successor block
-            if (nextBlock == endBlock)
-              continue;
-            int nextBdNum = blockMap[nextBlock];
-            output << "XAieDma_TileBdSetNext(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                      "/* bd */ "  << bdNum << ", " <<
-                      "/* nextbd */ "  << nextBdNum << ");\n";
-          }
+          for (auto &block : memOp.body()) {
+            for (auto op : block.getOps<DMAStartOp>()) {
+              int bdNum = channelMap[(int)op.dmaChan()];
 
-          for (auto map : channelMap) {
-            DMAChan channel = map.first;
-            Block *firstBd = map.second;
-            int bdNum = blockMap[firstBd];
-
-            output << "XAieDma_TileSetStartBd(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                      "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
-                      "/* bd */ "  << bdNum << ");\n";
-            output << "XAieDma_TileChControl(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                      "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
-                      resetDisable << ", " <<
-                      enable << ");\n";
+              output << "XAieDma_TileSetStartBd("
+                     << tileDMAInstStr(std::to_string(col), std::to_string(row))
+                     << ", "
+                     << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
+                     << ", "
+                     << "/* bd */ " << bdNum << ");\n";
+              output << "XAieDma_TileChControl("
+                     << tileDMAInstStr(std::to_string(col), std::to_string(row))
+                     << ", "
+                     << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
+                     << ", " << resetDisable << ", " << enable << ");\n";
+            }
           }
         }
         output << "} // mlir_configure_dmas\n\n";

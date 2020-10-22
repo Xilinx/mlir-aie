@@ -1,5 +1,6 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
+// Verifier: useLock should be contained in a core or a memory.
 // CHECK: XAieTile_CoreControl(&(TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
 // CHECK: XAieTile_LockAcquire(&(TileDMAInst[3][3]), 8, 0, 0);
 // CHECK: XAieTile_LockRelease(&(TileDMAInst[3][3]), 8, 1, 0);
