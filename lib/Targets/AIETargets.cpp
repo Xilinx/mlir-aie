@@ -132,6 +132,7 @@ void registerAIETranslations() {
         NL.collectTiles(tiles);
         NL.collectBuffers(buffers);
 
+        output << "void mlir_initialize_cores() {\n";
         // Core configuration
         // Activate a core tile
         // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8 Reset);
@@ -144,6 +145,9 @@ void registerAIETranslations() {
                  << disable <<
                  ");\n";
         }
+        output << "} // mlir_initialize_cores\n\n";
+
+        output << "void mlir_configure_dmas() {\n";
 
         // DMA configuration
         // XAieDma_TileSetStartBd(DmaInstPtr, ChNum, BdStart)
@@ -223,34 +227,34 @@ void registerAIETranslations() {
               if (hasA) {
                 output << "XAieDma_TileBdSetLock(" <<
                           tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                          bdNum << ", " <<
+                          "/* bd */ "  << bdNum << ", " <<
                           bufA << ", " <<
-                          lockID << ", " <<
+                          "/* lockID */ " << lockID << ", " <<
                           enable << ", " <<
-                          relValue << ", " <<
+                          "/* release */ "  << relValue << ", " <<
                           enable << ", " <<
-                          acqValue << ");\n";
+                          "/* acquire */ "  << acqValue << ");\n";
               }
               if (hasB) {
                 output << "XAieDma_TileBdSetLock(" <<
                           tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                          bdNum << ", " <<
+                          "/* bd */ "  << bdNum << ", " <<
                           bufB << ", " <<
-                          lockID << ", " <<
+                          "/* lockID */ " << lockID << ", " <<
                           enable << ", " <<
-                          relValue << ", " <<
+                          "/* release */ "  << relValue << ", " <<
                           enable << ", " <<
-                          acqValue << ");\n";
+                          "/* acquire */ "  << acqValue << ");\n";
               }
 
               output << "XAieDma_TileBdSetAdrLenMod(" <<
                         tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                        bdNum << ", " <<
-                        "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
-                        "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
-                        len << ", " <<
-                        AbMode << ", " <<
-                        FifoMode << ");\n";
+                        "/* bd */ "  << bdNum << ", " <<
+                        "/* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
+                        "/* addrB */ "  << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
+                        "/* len */ "  << len << ", " <<
+                        "/* ABMode */ "  << AbMode << ", " <<
+                        "/* FIFOMode */ "  << FifoMode << ");\n";
               blockMap[&block] = bdNum;
               bdNum++;
             }
@@ -266,15 +270,15 @@ void registerAIETranslations() {
             int bdNum = map.second;
             output << "XAieDma_TileBdWrite(" <<
                       tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                      bdNum << ");\n";
+                      "/* bd */ "  << bdNum << ");\n";
             Block *nextBlock = block->getSuccessors()[0]; // should have only one successor block
             if (nextBlock == endBlock)
               continue;
             int nextBdNum = blockMap[nextBlock];
             output << "XAieDma_TileBdSetNext(" <<
                       tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                      bdNum << ", " <<
-                      nextBdNum << ");\n";
+                      "/* bd */ "  << bdNum << ", " <<
+                      "/* nextbd */ "  << nextBdNum << ");\n";
           }
 
           for (auto map : channelMap) {
@@ -285,7 +289,7 @@ void registerAIETranslations() {
             output << "XAieDma_TileSetStartBd(" <<
                       tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
-                      bdNum << ");\n";
+                      "/* bd */ "  << bdNum << ");\n";
             output << "XAieDma_TileChControl(" <<
                       tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
                       "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(channel) << ", " <<
@@ -293,7 +297,9 @@ void registerAIETranslations() {
                       enable << ");\n";
           }
         }
+        output << "} // mlir_configure_dmas\n\n";
 
+        output << "void mlir_initialize_locks() {\n";
         // Lock configuration
         // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal, u32 TimeOut);
         // u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal, u32 TimeOut);
@@ -319,6 +325,9 @@ void registerAIETranslations() {
                       timeOut << ");\n";
           }
         }
+        output << "} // mlir_initialize_locks\n";
+
+        output << "void mlir_configured_switchboxes() {\n";
 
         // StreamSwitch (switchbox) configuration
         // void XAieTile_StrmConnectCct(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Master, u8 SlvEnable);
@@ -491,6 +500,9 @@ void registerAIETranslations() {
             output << "\t" << enable << ");\n";
           }
         }
+        
+        output << "} // mlir_configured_switchboxes\n\n";
+
         return success();
       }, 
       [](DialectRegistry &registry) {
