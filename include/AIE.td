@@ -855,7 +855,9 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
   ];
 }
 
-def AIE_MemOp: AIE_Op<"mem", []>,
+// MemOps are not actually Callable, but we want to inline code into them, so we have to 
+// implement CallableOpInterface
+def AIE_MemOp: AIE_Op<"mem", [CallableOpInterface]>,
                      Results<(outs Index)> {
 
   let summary = "Declare a memory op";
@@ -877,6 +879,9 @@ def AIE_MemOp: AIE_Op<"mem", []>,
     int colIndex();
     int rowIndex();
     int maxSizeInBytes() { return 32768; }
+    // CallableOpInterface
+    Region *getCallableRegion();
+    ArrayRef<Type> getCallableResults();
   }];
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "

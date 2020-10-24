@@ -3,7 +3,33 @@
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Transforms/InliningUtils.h"
+
 using namespace mlir;
+
+namespace {
+struct AIEInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // We don't have any special restrictions on what can be inlined into
+  // destination regions. Always allow it.
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    return true;
+  }
+  // Operations in aie dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    return true;
+  }
+  // Handle the given inlined terminator by replacing it with a new operation
+  // as necessary. Required when the region has only one block.
+  void handleTerminator(Operation *op,
+                        ArrayRef<Value> valuesToRepl) const final {
+    return;
+  }
+};
+} // end anonymous namespace
 
 namespace xilinx {
 namespace AIE {
@@ -16,6 +42,7 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx,
 #define GET_OP_LIST
 #include "AIE.cpp.inc"
     >();
+  addInterfaces<AIEInlinerInterface>();
 }
 
 } // namespace AIE
@@ -507,6 +534,15 @@ int xilinx::AIE::MemOp::rowIndex() {
   return tile.rowIndex();
 }
 
+  /// Returns the region on the current operation that is callable. This may
+  /// return null in the case of an external callable object, e.g. an external
+  /// function.
+  Region * xilinx::AIE::MemOp::getCallableRegion() { return &(body()); }
+
+  /// Returns the results types that the callable region produces when executed.
+  ArrayRef<Type> xilinx::AIE::MemOp::getCallableResults() { return getType(); }
+
+
 int xilinx::AIE::SwitchboxOp::colIndex() {
   Operation *Op = tile().getDefiningOp();
   xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
@@ -523,10 +559,10 @@ int xilinx::AIE::SwitchboxOp::rowIndex() {
 
 static LogicalResult verify(xilinx::AIE::UseLockOp op) {
   xilinx::AIE::LockOp lockOp = dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
-  if (!lockOp) {
-    op.emitOpError() << "Expected LockOp!\n";
-    return failure();
-  }
+//   if (!lockOp) {
+//     op.emitOpError() << "Expected LockOp!\n";
+// //    return failure();
+//   }
 
   return success();
 }
