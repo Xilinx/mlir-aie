@@ -243,34 +243,34 @@ void registerAIETranslations() {
               if (hasA) {
                 output << "XAieDma_TileBdSetLock(" <<
                           tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                          "/* bd */ "  << bdNum << ", " <<
+                          " /* bd */ "  << bdNum << ", " <<
                           bufA << ", " <<
-                          "/* lockID */ " << lockID << ", " <<
+                          " /* lockID */ " << lockID << ", " <<
                           enable << ", " <<
-                          "/* release */ "  << relValue << ", " <<
+                          " /* release */ "  << relValue << ", " <<
                           enable << ", " <<
-                          "/* acquire */ "  << acqValue << ");\n";
+                          " /* acquire */ "  << acqValue << ");\n";
               }
               if (hasB) {
                 output << "XAieDma_TileBdSetLock(" <<
                           tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                          "/* bd */ "  << bdNum << ", " <<
+                          " /* bd */ "  << bdNum << ", " <<
                           bufB << ", " <<
-                          "/* lockID */ " << lockID << ", " <<
+                          " /* lockID */ " << lockID << ", " <<
                           enable << ", " <<
-                          "/* release */ "  << relValue << ", " <<
+                          " /* release */ "  << relValue << ", " <<
                           enable << ", " <<
-                          "/* acquire */ "  << acqValue << ");\n";
+                          " /* acquire */ "  << acqValue << ");\n";
               }
 
               output << "XAieDma_TileBdSetAdrLenMod(" <<
                         tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                        "/* bd */ "  << bdNum << ", " <<
-                        "/* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
-                        "/* addrB */ "  << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
-                        "/* len */ "  << len << ", " <<
-                        "/* ABMode */ "  << AbMode << ", " <<
-                        "/* FIFOMode */ "  << FifoMode << ");\n";
+                        " /* bd */ "  << bdNum << ", " <<
+                        " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
+                        " /* addrB */ "  << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
+                        " /* len */ "  << len << ", " <<
+                        " /* ABMode */ "  << AbMode << ", " <<
+                        " /* FIFOMode */ "  << FifoMode << ");\n";
 
               Block *nextBlock =
                   block.getSuccessors()[0]; // should have only one successor
@@ -281,13 +281,13 @@ void registerAIETranslations() {
                        << tileDMAInstStr(std::to_string(col),
                                          std::to_string(row))
                        << ", "
-                       << "/* bd */ " << bdNum << ", "
-                       << "/* nextbd */ " << nextBdNum << ");\n";
+                       << " /* bd */ " << bdNum << ", "
+                       << " /* nextbd */ " << nextBdNum << ");\n";
               }
               output << "XAieDma_TileBdWrite("
                      << tileDMAInstStr(std::to_string(col), std::to_string(row))
                      << ", "
-                     << "/* bd */ " << bdNum << ");\n";
+                     << " /* bd */ " << bdNum << ");\n";
             }
 
             for (auto op : block.getOps<CondBranchOp>()) {
@@ -305,7 +305,7 @@ void registerAIETranslations() {
                      << ", "
                      << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", "
-                     << "/* bd */ " << bdNum << ");\n";
+                     << " /* bd */ " << bdNum << ");\n";
               output << "XAieDma_TileChControl("
                      << tileDMAInstStr(std::to_string(col), std::to_string(row))
                      << ", "
@@ -344,7 +344,8 @@ void registerAIETranslations() {
         }
         output << "} // mlir_initialize_locks\n";
 
-        output << "void mlir_configured_switchboxes() {\n";
+        output << "void mlir_configure_switchboxes() {\n";
+        output << "  int x, y;\n";
 
         // StreamSwitch (switchbox) configuration
         // void XAieTile_StrmConnectCct(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Master, u8 SlvEnable);
@@ -447,8 +448,8 @@ void registerAIETranslations() {
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t\t" << disable << " /*drop_header*/,\n";
-            output << "\t\t" << "0x" << llvm::utohexstr(mask) << "/*mask*/,\n"; // FIXME: compute mask for msel
-            output << "\t\t" <<  arbiter << "/*arbiter*/));\n";
+            output << "\t\t" << "0x" << llvm::utohexstr(mask) << " /*mask*/,\n"; // FIXME: compute mask for msel
+            output << "\t\t" <<  arbiter << " /*arbiter*/));\n";
           }
 
           for (auto connectOp : b.getOps<PacketRulesOp>()) {
@@ -466,7 +467,7 @@ void registerAIETranslations() {
                         tileInstStr("x", "y") << ", " <<
                         connectOp.sourceIndex() <<
                         "),\n";
-              output << "\t" << slot << "/*slot*/,\n";
+              output << "\t" << slot << " /*slot*/,\n";
               output << "\t" << enable << ",\n";
               output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" <<
                         tileInstStr("x", "y") << ",\n";
@@ -476,12 +477,12 @@ void registerAIETranslations() {
                         tileInstStr("x", "y") << ", " <<
                         connectOp.sourceIndex() <<
                         "),\n";
-              output << "\t\t" << slot << "/*slot*/,\n";
-              output << "\t\t" << "0x" << llvm::utohexstr(slotOp.valueInt()) << "/*ID value*/,\n";
-              output << "\t\t" << "0x" << llvm::utohexstr(slotOp.maskInt()) << "/*mask*/,\n";
+              output << "\t\t" << slot << " /*slot*/,\n";
+              output << "\t\t" << "0x" << llvm::utohexstr(slotOp.valueInt()) << " /*ID value*/,\n";
+              output << "\t\t" << "0x" << llvm::utohexstr(slotOp.maskInt()) << " /*mask*/,\n";
               output << "\t\t" << enable << ",\n";
-              output << "\t\t" << msel << "/*msel*/,\n";
-              output << "\t\t" << arbiter << "/*arbiter*/));\n";
+              output << "\t\t" << msel << " /*msel*/,\n";
+              output << "\t\t" << arbiter << " /*arbiter*/));\n";
               slot++;
             }
           }
@@ -518,7 +519,7 @@ void registerAIETranslations() {
           }
         }
         
-        output << "} // mlir_configured_switchboxes\n\n";
+        output << "} // mlir_configure_switchboxes\n\n";
 
         return success();
       }, 

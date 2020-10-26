@@ -782,7 +782,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [HasParent<"MemOp">]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>]>,
                      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";

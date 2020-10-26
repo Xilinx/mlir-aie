@@ -206,6 +206,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
           assert(t && "Unsupported type!");
           coreBufTypes.push_back(std::make_pair(t, i));
           BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t, tile);
+//          buf.setAttr("sym_name", builder.getStringAttr("test_name"));
           buffers[callOperands[i]] = buf;
         }
 
