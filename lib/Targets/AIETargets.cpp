@@ -226,14 +226,18 @@ void registerAIETranslations() {
               }
             }
 
-            int acqValue, relValue;
+            int acqValue = 0, relValue = 0;
+            StringRef acqEnable = disable;
+            StringRef relEnable = disable;
             int lockID;
             for (auto op : block.getOps<UseLockOp>()) {
               LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
               lockID = lock.getLockID();
               if (op.acquire()) {
+                acqEnable = enable;
                 acqValue = op.getLockValue();
               } else if (op.release()) {
+                relEnable = enable;
                 relValue = op.getLockValue();
               }
             }
@@ -246,9 +250,9 @@ void registerAIETranslations() {
                           " /* bd */ "  << bdNum << ", " <<
                           bufA << ", " <<
                           " /* lockID */ " << lockID << ", " <<
-                          enable << ", " <<
+                          relEnable << ", " <<
                           " /* release */ "  << relValue << ", " <<
-                          enable << ", " <<
+                          acqEnable << ", " <<
                           " /* acquire */ "  << acqValue << ");\n";
               }
               if (hasB) {
@@ -257,9 +261,9 @@ void registerAIETranslations() {
                           " /* bd */ "  << bdNum << ", " <<
                           bufB << ", " <<
                           " /* lockID */ " << lockID << ", " <<
-                          enable << ", " <<
+                          relEnable << ", " <<
                           " /* release */ "  << relValue << ", " <<
-                          enable << ", " <<
+                          acqEnable << ", " <<
                           " /* acquire */ "  << acqValue << ");\n";
               }
 
