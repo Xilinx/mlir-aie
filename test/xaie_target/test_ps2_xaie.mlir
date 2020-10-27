@@ -23,32 +23,32 @@
 // CHECK: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 0),
 // CHECK: 		XAIE_DISABLE /*drop_header*/,
-// CHECK: 		0x1/*mask*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		0x1 /*mask*/,
+// CHECK: 		0 /*arbiter*/));
 // CHECK: XAieTile_StrmConfigSlvSlot(&(TileInst[x][y]),
 // CHECK: 	XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 	0/*slot*/,
+// CHECK: 	0 /*slot*/,
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIETILE_STRSW_SLVSLOT_CFG(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 		0/*slot*/,
-// CHECK: 		0x0/*ID value*/,
-// CHECK: 		0x1F/*mask*/,
+// CHECK: 		0 /*slot*/,
+// CHECK: 		0x0 /*ID value*/,
+// CHECK: 		0x1F /*mask*/,
 // CHECK: 		XAIE_ENABLE,
-// CHECK: 		0/*msel*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		0 /*msel*/,
+// CHECK: 		0 /*arbiter*/));
 // CHECK: XAieTile_StrmConfigSlvSlot(&(TileInst[x][y]),
 // CHECK: 	XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 1),
-// CHECK: 	0/*slot*/,
+// CHECK: 	0 /*slot*/,
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIETILE_STRSW_SLVSLOT_CFG(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 1),
-// CHECK: 		0/*slot*/,
-// CHECK: 		0x1/*ID value*/,
-// CHECK: 		0x1F/*mask*/,
+// CHECK: 		0 /*slot*/,
+// CHECK: 		0x1 /*ID value*/,
+// CHECK: 		0x1F /*mask*/,
 // CHECK: 		XAIE_ENABLE,
-// CHECK: 		0/*msel*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		0 /*msel*/,
+// CHECK: 		0 /*arbiter*/));
 // many-to-one, single arbiter
 module @test_ps2_xaie {
   %t01 = AIE.tile(0, 1)

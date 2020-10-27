@@ -206,7 +206,7 @@ void registerAIETranslations() {
             bool hasB = false;
             StringRef bufA = "0";
             StringRef bufB = "0";
-            StringRef AbMode    = enable;
+            StringRef AbMode    = disable;
             StringRef FifoMode  = disable; // FIXME: when to enable FIFO mode?
             
             for (auto op : block.getOps<DMABDOp>()) {
@@ -226,6 +226,9 @@ void registerAIETranslations() {
               }
             }
 
+            if (hasA && hasB) {
+              AbMode = enable;
+            }
             int acqValue = 0, relValue = 0;
             StringRef acqEnable = disable;
             StringRef relEnable = disable;

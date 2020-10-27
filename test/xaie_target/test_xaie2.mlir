@@ -6,11 +6,11 @@
 // CHECK: XAieDma_TileBdClearAll(&(TileDMAInst[3][3]));
 // CHECK: XAieDma_TileChResetAll(&(TileDMAInst[3][3]));
 // CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), {{.*}}0, XAIEDMA_TILE_BD_ADDRA, {{.*}}0, XAIE_ENABLE, {{.*}}1, XAIE_ENABLE, {{.*}}0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}0, {{.*}}0x0, {{.*}}0x0, {{.*}}256, {{.*}}XAIE_ENABLE, {{.*}}XAIE_DISABLE);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}0, {{.*}}0x0, {{.*}}0x0, {{.*}}256, {{.*}}XAIE_DISABLE, {{.*}}XAIE_DISABLE);
 // CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[3][3]), {{.*}}0, {{.*}}1);
 // CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), {{.*}}0);
 // CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), {{.*}}1, XAIEDMA_TILE_BD_ADDRA, {{.*}}0, XAIE_ENABLE, {{.*}}1, XAIE_ENABLE, {{.*}}0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}1, {{.*}}0x400, {{.*}}0x0, {{.*}}16, {{.*}}XAIE_ENABLE, {{.*}}XAIE_DISABLE);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}1, {{.*}}0x400, {{.*}}0x0, {{.*}}16, {{.*}}XAIE_DISABLE, {{.*}}XAIE_DISABLE);
 // CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[3][3]), {{.*}}1, {{.*}}0);
 // CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), {{.*}}1);
 // CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, {{.*}}0);

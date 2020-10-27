@@ -19,8 +19,8 @@
 // CHECK: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 0),
 // CHECK: 		XAIE_DISABLE /*drop_header*/,
-// CHECK: 		0x1/*mask*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		0x1 /*mask*/,
+// CHECK: 		0 /*arbiter*/));
 // CHECK: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
 // CHECK: 	XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE,
@@ -28,32 +28,32 @@
 // CHECK: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 1),
 // CHECK: 		XAIE_DISABLE /*drop_header*/,
-// CHECK: 		0x3/*mask*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		0x3 /*mask*/,
+// CHECK: 		0 /*arbiter*/));
 // CHECK: XAieTile_StrmConfigSlvSlot(&(TileInst[x][y]),
 // CHECK: 	XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 	0/*slot*/,
+// CHECK: 	0 /*slot*/,
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIETILE_STRSW_SLVSLOT_CFG(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 		0/*slot*/,
-// CHECK: 		0x0/*ID value*/,
-// CHECK: 		0x1F/*mask*/,
+// CHECK: 		0 /*slot*/,
+// CHECK: 		0x0 /*ID value*/,
+// CHECK: 		0x1F /*mask*/,
 // CHECK: 		XAIE_ENABLE,
-// CHECK: 		0/*msel*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		0 /*msel*/,
+// CHECK: 		0 /*arbiter*/));
 // CHECK: XAieTile_StrmConfigSlvSlot(&(TileInst[x][y]),
 // CHECK: 	XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 	1/*slot*/,
+// CHECK: 	1 /*slot*/,
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIETILE_STRSW_SLVSLOT_CFG(&(TileInst[x][y]),
 // CHECK: 		XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 		1/*slot*/,
-// CHECK: 		0x1/*ID value*/,
-// CHECK: 		0x1F/*mask*/,
+// CHECK: 		1 /*slot*/,
+// CHECK: 		0x1 /*ID value*/,
+// CHECK: 		0x1F /*mask*/,
 // CHECK: 		XAIE_ENABLE,
-// CHECK: 		1/*msel*/,
-// CHECK: 		0/*arbiter*/));
+// CHECK: 		1 /*msel*/,
+// CHECK: 		0 /*arbiter*/));
 
 // partial multicast
 module @test_ps3_xaie {
