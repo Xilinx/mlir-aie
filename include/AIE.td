@@ -175,7 +175,7 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
     int colIndex() { return col(); }
     int rowIndex() { return row(); }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
-    xilinx::AIE::MemOp getMemOp() const {
+    xilinx::AIE::MemOp getMemOp() {
       auto users = result().getUsers();
       bool found = false;
       for(auto user : users) {
