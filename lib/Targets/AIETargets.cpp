@@ -178,8 +178,6 @@ void registerAIETranslations() {
 
           DenseMap<Block *, int> blockMap;
           Block *endBlock = &memOp.body().back();
-          // For each channel, which bdnum does it start with.
-          std::vector<int> channelMap(4);
 
           {
             // Assign each block a BD number
@@ -296,16 +294,11 @@ void registerAIETranslations() {
                      << ", "
                      << " /* bd */ " << bdNum << ");\n";
             }
-
-            for (auto op : block.getOps<CondBranchOp>()) {
-              DMAStartOp dmaSt = dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
-              channelMap[(int)dmaSt.dmaChan()] = blockMap[op.getTrueDest()];
-            }
           }
 
           for (auto &block : memOp.body()) {
             for (auto op : block.getOps<DMAStartOp>()) {
-              int bdNum = channelMap[(int)op.dmaChan()];
+              int bdNum = blockMap[op.dest()];
 
               output << "XAieDma_TileSetStartBd("
                      << tileDMAInstStr(std::to_string(col), std::to_string(row))

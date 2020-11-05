@@ -1,34 +1,28 @@
-// RUN: aie-opt --aie-create-cores %s | FileCheck %s
+// RUN: aie-opt --aie-create-cores --aie-lower-memcpy %s | FileCheck %s
 
 // CHECK-LABEL: module @hello_world {
 // CHECK:   %0 = AIE.tile(3, 3)
 // CHECK:   %1 = AIE.buffer(%0) : memref<512xi32>
 // CHECK:   %2 = AIE.mem(%0) {
-// CHECK:     %10 = AIE.dmaStart("MM2S0")
-// CHECK:     AIE.terminator(^bb3, ^bb1)
-// CHECK:   ^bb1:  // pred: ^bb0
-// CHECK:     cond_br %10, ^bb2, ^bb3
-// CHECK:   ^bb2:  // pred: ^bb1
+// CHECK:     %10 = AIE.dmaStart("MM2S0", ^bb1, ^bb2)
+// CHECK:   ^bb1:
 // CHECK:     AIE.useToken @token0("Acquire", 1)
 // CHECK:     AIE.dmaBd(<%1 : memref<512xi32>, 0, 512>, 0)
 // CHECK:     AIE.useToken @token0("Release", 2)
-// CHECK:     br ^bb3
-// CHECK:   ^bb3:  // 3 preds: ^bb0, ^bb1, ^bb2
+// CHECK:     br ^bb2
+// CHECK:   ^bb2:
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %3 = AIE.tile(4, 4)
 // CHECK:   %4 = AIE.buffer(%3) : memref<512xi32>
 // CHECK:   %5 = AIE.mem(%3) {
-// CHECK:     %10 = AIE.dmaStart("S2MM0")
-// CHECK:     AIE.terminator(^bb3, ^bb1)
-// CHECK:   ^bb1:  // pred: ^bb0
-// CHECK:     cond_br %10, ^bb2, ^bb3
-// CHECK:   ^bb2:  // pred: ^bb1
+// CHECK:     %10 = AIE.dmaStart("S2MM0", ^bb1, ^bb2)
+// CHECK:   ^bb1:
 // CHECK:     AIE.useToken @token0("Acquire", 1)
 // CHECK:     AIE.dmaBd(<%4 : memref<512xi32>, 0, 512>, 0)
 // CHECK:     AIE.useToken @token0("Release", 2)
-// CHECK:     br ^bb3
-// CHECK:   ^bb3:  // 3 preds: ^bb0, ^bb1, ^bb2
+// CHECK:     br ^bb2
+// CHECK:   ^bb2:
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %6 = alloc() : memref<512xi32>

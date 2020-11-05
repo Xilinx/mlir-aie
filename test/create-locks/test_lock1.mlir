@@ -34,20 +34,14 @@ module @test_lock1 {
   AIE.token(0) {sym_name = "token0"}
 
   %m33 = AIE.mem(%t33) {
-    AIE.terminator(^end)
-    ^end:
       AIE.end
   }
 
   %m23 = AIE.mem(%t23) {
-    AIE.terminator(^end)
-    ^end:
       AIE.end
   }
 
   %m43 = AIE.mem(%t43) {
-    AIE.terminator(^end)
-    ^end:
       AIE.end
   }
 

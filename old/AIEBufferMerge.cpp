@@ -1,16 +1,16 @@
 // (c) Copyright 2019 Xilinx Inc. All Rights Reserved.
 
+#include "AIEDialect.h"
+#include "AIENetlistAnalysis.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "AIEDialect.h"
-#include "AIENetlistAnalysis.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SetOperations.h"
+#include "llvm/ADT/SmallSet.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -21,14 +21,16 @@ struct DMARemoval : public OpConversionPattern<DMAStartOp> {
   ModuleOp &module;
   SmallVector<std::pair<Operation *, Operation *>, 4> &dmaPairRemoval;
 
-  DMARemoval(MLIRContext *context, ModuleOp &m,
-    SmallVector<std::pair<Operation *, Operation *>, 4> &dmaPairRemoval,
-    PatternBenefit benefit = 1
-  ) : OpConversionPattern<DMAStartOp>(context, benefit),
-    module(m), dmaPairRemoval(dmaPairRemoval)  {}
+  DMARemoval(
+      MLIRContext *context, ModuleOp &m,
+      SmallVector<std::pair<Operation *, Operation *>, 4> &dmaPairRemoval,
+      PatternBenefit benefit = 1)
+      : OpConversionPattern<DMAStartOp>(context, benefit), module(m),
+        dmaPairRemoval(dmaPairRemoval) {}
 
-  LogicalResult matchAndRewrite(DMAStartOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(DMAStartOp op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     bool foundDMA = false;
 
@@ -47,7 +49,6 @@ struct DMARemoval : public OpConversionPattern<DMAStartOp> {
 
     MemOp mem = dyn_cast<MemOp>(Op->getParentOp());
     Region &r = mem.body();
-
 
     SmallVector<Block *, 4> blocks;
     Block *entryBlock = &r.front();
@@ -77,7 +78,8 @@ struct DMARemoval : public OpConversionPattern<DMAStartOp> {
     }
 
     rewriter.setInsertionPointToEnd(entryBlock);
-    TerminatorOp newTerm = rewriter.create<TerminatorOp>(rewriter.getUnknownLoc(), succBlocks);
+    TerminatorOp newTerm =
+        rewriter.create<TerminatorOp>(rewriter.getUnknownLoc(), succBlocks);
 
     for (auto block : blocks)
       rewriter.eraseBlock(block);
@@ -96,13 +98,14 @@ struct BufferUseRemoval : public OpConversionPattern<MyOp> {
   SmallVector<Operation *, 4> &oldUseOps;
 
   BufferUseRemoval(MLIRContext *context, ModuleOp &m,
-    SmallVector<Operation *, 4> &oldUseOps,
-    PatternBenefit benefit = 1
-  ) : OpConversionPattern<MyOp>(context, benefit),
-    module(m), oldUseOps(oldUseOps)  {}
+                   SmallVector<Operation *, 4> &oldUseOps,
+                   PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit), module(m),
+        oldUseOps(oldUseOps) {}
 
-  LogicalResult matchAndRewrite(MyOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MyOp op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (std::find(oldUseOps.begin(), oldUseOps.end(), Op) == oldUseOps.end())
       return failure();
@@ -112,8 +115,9 @@ struct BufferUseRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-llvm::SmallSet<Operation *, 4> getCommonTiles(ArrayRef<Operation *> Ops,
-  DenseMap<std::pair<int, int>, Operation *> tiles) {
+llvm::SmallSet<Operation *, 4>
+getCommonTiles(ArrayRef<Operation *> Ops,
+               DenseMap<std::pair<int, int>, Operation *> tiles) {
 
   llvm::SmallSet<Operation *, 4> commonTiles;
 
@@ -151,7 +155,8 @@ llvm::SmallSet<Operation *, 4> getCommonTiles(ArrayRef<Operation *> Ops,
   return commonTiles;
 }
 
-struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass<ModuleOp>> {
+struct AIEBufferMergePass
+    : public PassWrapper<AIEBufferMergePass, OperationPass<ModuleOp>> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -164,7 +169,6 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
     DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
     DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-    
     NetlistAnalysis NLA(m, tiles, cores, mems, locks, buffers, switchboxes);
     NLA.runAnalysis();
     NLA.dmaAnalysis();
@@ -172,16 +176,23 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
 
     NLA.collectBufferUsage();
 
-    DenseMap<Operation *, SmallVector<Operation *, 4>> bufferUsers(NLA.getBufferUsers());
-    DenseMap<Operation *, SmallVector<Operation *, 4>> dma2BufMap(NLA.getDMA2BufMap());
+    DenseMap<Operation *, SmallVector<Operation *, 4>> bufferUsers(
+        NLA.getBufferUsers());
+    DenseMap<Operation *, SmallVector<Operation *, 4>> dma2BufMap(
+        NLA.getDMA2BufMap());
     DenseMap<std::pair<Operation *, int>, Operation *> dmas(NLA.getDMAs());
-    DenseMap<Operation *, SmallVector<Operation *, 4>> dmaConnections(NLA.getDMAConnections());
-    DenseMap<std::pair<Operation *, Operation *>, SmallVector<Operation *, 4>> buf2NewTilesMap;
+    DenseMap<Operation *, SmallVector<Operation *, 4>> dmaConnections(
+        NLA.getDMAConnections());
+    DenseMap<std::pair<Operation *, Operation *>, SmallVector<Operation *, 4>>
+        buf2NewTilesMap;
 
     DenseMap<Operation *, Operation *> lockPairs(NLA.getLockPairs());
-    SmallVector<std::pair<Operation *, Operation *>, 4> lockChains(NLA.getLockChains());
-    DenseMap<Operation *, SmallVector<Operation *, 4>> bufAcqLocks(NLA.getBufAcqLocks());
-    DenseMap<Operation *, SmallVector<Operation *, 4>> dma2ConnectsMap(NLA.getDma2ConnectsMap());
+    SmallVector<std::pair<Operation *, Operation *>, 4> lockChains(
+        NLA.getLockChains());
+    DenseMap<Operation *, SmallVector<Operation *, 4>> bufAcqLocks(
+        NLA.getBufAcqLocks());
+    DenseMap<Operation *, SmallVector<Operation *, 4>> dma2ConnectsMap(
+        NLA.getDma2ConnectsMap());
     SmallVector<std::pair<Operation *, Operation *>, 4> dmaConnectOps;
     SmallVector<std::pair<Operation *, Operation *>, 4> dmaPairRemoval;
 
@@ -205,8 +216,10 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
             SmallVector<Operation *, 4> srcUsers(bufferUsers[srcBuf]);
             SmallVector<Operation *, 4> dstUsers(bufferUsers[dstBuf]);
 
-            llvm::SmallSet<Operation *, 4> srcCommonTiles(getCommonTiles(srcUsers, tiles));
-            llvm::SmallSet<Operation *, 4> dstCommonTiles(getCommonTiles(dstUsers, tiles));
+            llvm::SmallSet<Operation *, 4> srcCommonTiles(
+                getCommonTiles(srcUsers, tiles));
+            llvm::SmallSet<Operation *, 4> dstCommonTiles(
+                getCommonTiles(dstUsers, tiles));
 
             set_intersect(srcCommonTiles, dstCommonTiles);
 
@@ -214,7 +227,8 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
               continue;
 
             for (auto commonTile : srcCommonTiles)
-              buf2NewTilesMap[std::make_pair(srcBuf, dstBuf)].push_back(commonTile);
+              buf2NewTilesMap[std::make_pair(srcBuf, dstBuf)].push_back(
+                  commonTile);
 
             CanShareBuf = true;
           }
@@ -223,7 +237,8 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
         if (CanShareBuf) {
           for (auto srcConnectOp : srcConnectOps)
             for (auto dstConnectOp : dstConnectOps)
-              dmaConnectOps.push_back(std::make_pair(srcConnectOp, dstConnectOp));
+              dmaConnectOps.push_back(
+                  std::make_pair(srcConnectOp, dstConnectOp));
 
           dmaPairRemoval.push_back(std::make_pair(srcDma, dstDma));
         }
@@ -243,23 +258,25 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
       TileOp newTile = dyn_cast<TileOp>(newTileOp);
       MemRefType t = srcBuf.getType().cast<MemRefType>();
       builder.setInsertionPoint(srcBuf);
-      BufferOp newBuf = builder.create<BufferOp>(builder.getUnknownLoc(), t, newTile);
+      BufferOp newBuf =
+          builder.create<BufferOp>(builder.getUnknownLoc(), t, newTile);
       mapper.map(srcBuf, newBuf);
       mapper.map(dstBuf, newBuf);
 
       SmallVector<Operation *, 4> users(bufferUsers[srcBufOp]);
-      users.insert(users.end(), bufferUsers[dstBufOp].begin(), bufferUsers[dstBufOp].end());
+      users.insert(users.end(), bufferUsers[dstBufOp].begin(),
+                   bufferUsers[dstBufOp].end());
 
       int newLockID = NLA.getAvailableLockID(newTileOp);
       assert(newLockID >= 0 && "Could not get a new lock!");
 
       // create a new common lock at newTile
       builder.setInsertionPointAfter(newTileOp);
-      LockOp newLock = builder.create<LockOp>(builder.getUnknownLoc(), newTile, newLockID);
+      LockOp newLock =
+          builder.create<LockOp>(builder.getUnknownLoc(), newTile, newLockID);
 
       SmallVector<Operation *, 4> acqLockOps(bufAcqLocks[srcBufOp]);
-      acqLockOps.insert(acqLockOps.end(),
-                        bufAcqLocks[dstBufOp].begin(),
+      acqLockOps.insert(acqLockOps.end(), bufAcqLocks[dstBufOp].begin(),
                         bufAcqLocks[dstBufOp].end());
 
       for (auto Op : users) {
@@ -293,21 +310,24 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
             oldUseOps.push_back(childOp);
           }
 
-          if (std::find(acqLockOps.begin(), acqLockOps.end(), childOp) != acqLockOps.end()) {
+          if (std::find(acqLockOps.begin(), acqLockOps.end(), childOp) !=
+              acqLockOps.end()) {
             UseLockOp oldAcqLock = dyn_cast<UseLockOp>(childOp);
             int acqLockValue = oldAcqLock.getLockValue();
             int acqTimeout = oldAcqLock.getTimeout();
             builder.setInsertionPointAfter(childOp);
-            builder.create<UseLockOp>(builder.getUnknownLoc(), newLock, acqLockValue,
-                                      LockAction::Acquire, acqTimeout);
+            builder.create<UseLockOp>(builder.getUnknownLoc(), newLock,
+                                      acqLockValue, LockAction::Acquire,
+                                      acqTimeout);
 
             Operation *oldRelLockOp = lockPairs[childOp];
             UseLockOp oldRelLock = dyn_cast<UseLockOp>(oldRelLockOp);
             int relLockValue = oldRelLock.getLockValue();
             int relTimeout = oldRelLock.getTimeout();
             builder.setInsertionPointAfter(oldRelLockOp);
-            builder.create<UseLockOp>(builder.getUnknownLoc(), newLock, relLockValue,
-                                      LockAction::Release, relTimeout);
+            builder.create<UseLockOp>(builder.getUnknownLoc(), newLock,
+                                      relLockValue, LockAction::Release,
+                                      relTimeout);
 
             oldUseOps.push_back(childOp);
             oldUseOps.push_back(oldRelLockOp);
@@ -321,7 +341,8 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
       Operation *dstConnectOp = pair.second;
       ConnectOp srcConnect = dyn_cast<ConnectOp>(srcConnectOp);
       ConnectOp dstConnect = dyn_cast<ConnectOp>(dstConnectOp);
-      ArrayRef<Operation *> dmaRoutes(NLA.findRoutes(srcConnectOp, dstConnectOp));
+      ArrayRef<Operation *> dmaRoutes(
+          NLA.findRoutes(srcConnectOp, dstConnectOp));
       for (auto Op : dmaRoutes) {
         ConnectOp op = dyn_cast<ConnectOp>(Op);
         oldUseOps.push_back(Op);
@@ -333,11 +354,9 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
     target.addLegalOp<AIE::MemOp>();
 
     OwningRewritePatternList patterns;
-    patterns.insert<BufferUseRemoval<StoreOp>,
-                    BufferUseRemoval<LoadOp>,
-                    BufferUseRemoval<UseLockOp>,
-                    BufferUseRemoval<ConnectOp>
-                    >(m.getContext(), m, oldUseOps);
+    patterns.insert<BufferUseRemoval<StoreOp>, BufferUseRemoval<LoadOp>,
+                    BufferUseRemoval<UseLockOp>, BufferUseRemoval<ConnectOp>>(
+        m.getContext(), m, oldUseOps);
     patterns.insert<DMARemoval>(m.getContext(), m, dmaPairRemoval);
 
     if (failed(applyPartialConversion(m, target, patterns)))
@@ -346,7 +365,7 @@ struct AIEBufferMergePass : public PassWrapper<AIEBufferMergePass, OperationPass
 };
 
 void xilinx::AIE::registerAIEBufferMergePass() {
-    PassRegistration<AIEBufferMergePass>(
-      "aie-merge-buffers",
-      "Merge distant buffers to maximize sharing opportunities and reduce DMA overhead");
+  PassRegistration<AIEBufferMergePass>(
+      "aie-merge-buffers", "Merge distant buffers to maximize sharing "
+                           "opportunities and reduce DMA overhead");
 }

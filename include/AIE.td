@@ -175,6 +175,15 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
     int colIndex() { return col(); }
     int rowIndex() { return row(); }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
+    xilinx::AIE::MemOp getMemOp() const {
+      auto users = result().getUsers();
+      bool found = false;
+      for(auto user : users) {
+        if(auto memOp = llvm::dyn_cast<xilinx::AIE::MemOp>(*user)) {
+          return memOp;
+        }
+      }
+    }
   }];
 
   let assemblyFormat = [{
@@ -782,7 +791,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>, Terminator]>,
                      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -823,12 +832,10 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>]>,
     Will this be useful in other cases?
   }];
 
-  let arguments = (
-    ins DMAChan:$dmaChan
-  );
-
+  let arguments = (ins DMAChan:$dmaChan);
+  let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $dmaChan `)` attr-dict
+    `(` $dmaChan `,` $dest `,` $chain `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -849,8 +856,8 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>]>,
 
   let builders = [
     OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "DMAChan channel", [{
-              build(builder, result, builder.getIntegerType(1), channel);
+              "DMAChan channel, Block *dest, Block *chain", [{
+              build(builder, result, builder.getIntegerType(1), channel, dest, chain);
               }]>
   ];
 }
@@ -889,39 +896,6 @@ def AIE_MemOp: AIE_Op<"mem", [CallableOpInterface]>,
               build(builder, result, builder.getIndexType(), tile);
               }]>
   ];
-}
-
-def AIE_TerminatorOp: AIE_Op<"terminator", [Terminator]> {
-  let summary = "A multi-successor terminator op";
-  let description = [{
-    This operation is used to specify multiple successor blocks. For now, this is used inside a MemOp
-    region to point to different DMA channel configuration.
-
-    Example:
-      %dma0 = AIE.dmaStart("MM2S0")
-      %dma1 = AIE.dmaStart("MM2S1")
-      %dma2 = AIE.dmaStart("S2MM0")
-
-      AIE.terminator(^dma0_block, ^dma1_block, ^dma2_block, ^end)
-
-      ^dma0_block:
-        cond_br %dma0, ^bd0, ^end
-
-      ^dma1_block:
-        cond_br %dma1, ^bd3, ^end
-
-      ^dma2_block:
-        cond_br %dma2, ^bd1, ^end
-
-      ...
-
-    Naming can be improved.
-  }];
-
-  let successors = (successor VariadicSuccessor<AnySuccessor>:$dests);
-  let assemblyFormat = [{
-    `(` $dests `)` attr-dict
-  }];
 }
 
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {

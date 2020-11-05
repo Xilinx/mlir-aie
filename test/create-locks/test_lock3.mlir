@@ -9,29 +9,23 @@
 // CHECK-NEXT:  %5 = AIE.buffer(%0) : memref<256xi32>
 // CHECK-NEXT:  AIE.token(0) {sym_name = "token0"}
 // CHECK-NEXT:  %6 = AIE.mem(%2) {
-// CHECK-NEXT:    %10 = AIE.dmaStart("MM2S0")
-// CHECK-NEXT:    AIE.terminator(^bb3, ^bb1)
-// CHECK-NEXT:  ^bb1:  // pred: ^bb0
-// CHECK-NEXT:    cond_br %10, ^bb2, ^bb3
-// CHECK-NEXT:  ^bb2:  // pred: ^bb1
+// CHECK-NEXT:    %10 = AIE.dmaStart("MM2S0", ^bb1, ^bb2)
+// CHECK-NEXT:  ^bb1:
 // CHECK-NEXT:    AIE.useLock(%3, "Acquire", 1, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%3, "Release", 0, 0)
-// CHECK-NEXT:    br ^bb3
-// CHECK-NEXT:  ^bb3:  // 3 preds: ^bb0, ^bb1, ^bb2
+// CHECK-NEXT:    br ^bb2
+// CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %7 = AIE.mem(%0) {
-// CHECK-NEXT:    %10 = AIE.dmaStart("S2MM0")
-// CHECK-NEXT:    AIE.terminator(^bb3, ^bb1)
-// CHECK-NEXT:  ^bb1:  // pred: ^bb0
-// CHECK-NEXT:    cond_br %10, ^bb2, ^bb3
-// CHECK-NEXT:  ^bb2:  // pred: ^bb1
+// CHECK-NEXT:    %10 = AIE.dmaStart("S2MM0", ^bb1, ^bb2)
+// CHECK-NEXT:  ^bb1:
 // CHECK-NEXT:    AIE.useLock(%1, "Acquire", 0, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%1, "Release", 1, 0)
-// CHECK-NEXT:    br ^bb3
-// CHECK-NEXT:  ^bb3:  // 3 preds: ^bb0, ^bb1, ^bb2
+// CHECK-NEXT:    br ^bb2
+// CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %8 = AIE.core(%2) {
@@ -60,10 +54,7 @@ module @test_lock3 {
   AIE.token(0) {sym_name = "token0"}
 
   %m33 = AIE.mem(%t33) {
-    %dmaSt = AIE.dmaStart("MM2S0")
-    AIE.terminator(^end, ^dma0)
-    ^dma0:
-      cond_br %dmaSt, ^bd0, ^end
+      %dmaSt = AIE.dmaStart("MM2S0", ^bd0, ^end)
     ^bd0:
       AIE.useToken @token0("Acquire", 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
@@ -74,10 +65,7 @@ module @test_lock3 {
   }
 
   %m44 = AIE.mem(%t44) {
-    %dmaSt = AIE.dmaStart("S2MM0")
-    AIE.terminator(^end, ^dma0)
-    ^dma0:
-      cond_br %dmaSt, ^bd0, ^end
+      %dmaSt = AIE.dmaStart("S2MM0", ^bd0, ^end)
     ^bd0:
       AIE.useToken @token0("Acquire", 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)

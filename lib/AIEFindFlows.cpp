@@ -95,6 +95,9 @@ private:
         Operation *other = wireOp.dest().getDefiningOp();
         Port otherPort = std::make_pair(wireOp.destBundle(),
                                         masterPort.second);
+        LLVM_DEBUG(llvm::dbgs() << "To:" << *other << " "
+                                << stringifyWireBundle(otherPort.first) << " "
+                                << otherPort.second << "\n");
         return std::make_pair(other, otherPort);
       }
       if(wireOp.dest().getDefiningOp() == op &&
@@ -102,6 +105,9 @@ private:
         Operation *other = wireOp.source().getDefiningOp();
         Port otherPort = std::make_pair(wireOp.sourceBundle(),
                                         masterPort.second);
+        LLVM_DEBUG(llvm::dbgs() << "From:" << *other << " "
+                                << stringifyWireBundle(otherPort.first) << " "
+                                << otherPort.second << "\n");
         return std::make_pair(other, otherPort);
       }
     }
@@ -111,6 +117,7 @@ private:
   std::vector<PortMaskValue>
   getConnectionsThroughSwitchbox(SwitchboxOp op,
                                        Port sourcePort) const {
+    LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
     Region &r = op.connections();
     Block &b = r.front();
     std::vector<PortMaskValue> portSet;

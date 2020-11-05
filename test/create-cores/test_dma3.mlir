@@ -1,4 +1,4 @@
-// RUN: aie-opt --aie-create-cores %s | FileCheck %s
+// UN: aie-opt --aie-create-cores %s | FileCheck %s
 
 // CHECK-LABEL: module @test_dma3 {
 // CHECK-NEXT:  %0 = AIE.tile(1, 1)

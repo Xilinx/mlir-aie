@@ -34,10 +34,9 @@ void registerAIEFindFlowsPass();
 void registerAIECreateFlowsPass();
 void registerAIECreateCoresPass();
 void registerAIECreateLocksPass();
-void registerAIEBufferMergePass();
 void registerAIEHerdRoutingPass();
 void registerAIECreatePacketFlowsPass();
-
+void registerAIELowerMemcpyPass();
 
 // FIXME: use this
 //#include "AIEDialect.h.inc"

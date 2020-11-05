@@ -24,10 +24,7 @@ module @example0 {
   %buf43 = AIE.buffer(%t43) { sym_name = "b" } : memref<256xi32>
 
   %m33 = AIE.mem(%t33) {
-    %dmaSt0 = AIE.dmaStart("MM2S0")
-    AIE.terminator(^dma0, ^end)
-    ^dma0:
-      cond_br %dmaSt0, ^bd0, ^end
+      %dmaSt0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l33_0, "Acquire", 1, 0)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
@@ -38,10 +35,7 @@ module @example0 {
   }
 
   %m43 = AIE.mem(%t43) {
-    %dmaSt = AIE.dmaStart("S2MM0")
-    AIE.terminator(^dma0, ^end)
-    ^dma0:
-      cond_br %dmaSt, ^bd0, ^end
+      %dmaSt = AIE.dmaStart("S2MM0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l43_0, "Acquire", 0, 0)
       AIE.dmaBd(<%buf43 : memref<256xi32>, 0, 256>, 0)

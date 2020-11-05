@@ -1,48 +1,39 @@
-// RUN: aie-opt --aie-merge-buffers %s | FileCheck %s
+// UN: aie-opt --aie-merge-buffers %s | FileCheck %s
+// The idea of this pass is probably not a good one.
 
 //CHECK-LABEL: module @test_buffer_merge0 {
-//CHECK-NEXT: %0 = AIE.tile(3, 3)
-//CHECK-NEXT: %1 = AIE.lock(%0, 0)
-//CHECK-NEXT: %2 = AIE.tile(3, 4)
-//CHECK-NEXT: %3 = AIE.tile(3, 2)
-//CHECK-NEXT: %4 = AIE.lock(%2, 0)
-//CHECK-NEXT: %5 = AIE.lock(%3, 0)
-//CHECK-NEXT: %6 = AIE.buffer(%0) : memref<256xi32>
-//CHECK-NEXT: %7 = AIE.buffer(%2) : memref<256xi32>
-//CHECK-NEXT: %8 = AIE.buffer(%3) : memref<256xi32>
-//CHECK-NEXT: %9 = AIE.mem(%2) {
-//CHECK-NEXT:   AIE.terminator(^bb1)
-//CHECK-NEXT:   ^bb1:  // pred: ^bb0
-//CHECK-NEXT:     AIE.end
-//CHECK-NEXT: }
-//CHECK-NEXT: %10 = AIE.mem(%3) {
-//CHECK-NEXT:   AIE.terminator(^bb1)
-//CHECK-NEXT:   ^bb1:  // pred: ^bb0
-//CHECK-NEXT:     AIE.end
-//CHECK-NEXT: }
-//CHECK-NEXT: %11 = AIE.core(%2) {
-//CHECK-NEXT:   AIE.useLock(%1, "Acquire", 0, 0)
-//CHECK-NEXT:   %c16 = constant 16 : index
-//CHECK-NEXT:   %c1_i32 = constant 1 : i32
-//CHECK-NEXT:   store %c1_i32, %6[%c16] : memref<256xi32>
-//CHECK-NEXT:   AIE.useLock(%1, "Release", 1, 0)
-//CHECK-NEXT:   AIE.end
-//CHECK-NEXT: }
-//CHECK-NEXT: %12 = AIE.core(%3) {
-//CHECK-NEXT:   AIE.useLock(%1, "Acquire", 1, 0)
-//CHECK-NEXT:   %c16 = constant 16 : index
-//CHECK-NEXT:   %c1_i32 = constant 1 : i32
-//CHECK-NEXT:   %16 = load %6[%c16] : memref<256xi32>
-//CHECK-NEXT:   AIE.useLock(%1, "Release", 0, 0)
-//CHECK-NEXT:   AIE.end
-//CHECK-NEXT: }
-//CHECK-NEXT: %13 = AIE.switchbox(%2) {
-//CHECK-NEXT: }
-//CHECK-NEXT: %14 = AIE.switchbox(%0) {
-//CHECK-NEXT: }
-//CHECK-NEXT: %15 = AIE.switchbox(%3) {
-//CHECK-NEXT: }
-//CHECK-NEXT: }
+//CHECK: %[[TILE33:.*]] = AIE.tile(3, 3)
+//CHECK: %[[TILE34:.*]] = AIE.tile(3, 4)
+//CHECK: %[[TILE32:.*]] = AIE.tile(3, 2)
+//CHECK: %[[LOCK33:.*]] = AIE.lock(%[[TILE33]], 0)
+//CHECK: %[[LOCK34:.*]] = AIE.lock(%[[TILE34]], 0)
+//CHECK: %[[LOCK32:.*]] = AIE.lock(%[[TILE32]], 0)
+//CHECK: %[[BUF33:.*]] = AIE.buffer(%[[TILE33]]) : memref<256xi32>
+//CHECK: %[[BUF34:.*]] = AIE.buffer(%[[TILE34]]) : memref<256xi32>
+//CHECK: %[[BUF32:.*]] = AIE.buffer(%[[TILE32]]) : memref<256xi32>
+//CHECK: %11 = AIE.core(%2) {
+//CHECK:   AIE.useLock(%1, "Acquire", 0, 0)
+//CHECK:   %c16 = constant 16 : index
+//CHECK:   %c1_i32 = constant 1 : i32
+//CHECK:   store %c1_i32, %6[%c16] : memref<256xi32>
+//CHECK:   AIE.useLock(%1, "Release", 1, 0)
+//CHECK:   AIE.end
+//CHECK: }
+//CHECK: %12 = AIE.core(%3) {
+//CHECK:   AIE.useLock(%1, "Acquire", 1, 0)
+//CHECK:   %c16 = constant 16 : index
+//CHECK:   %c1_i32 = constant 1 : i32
+//CHECK:   %16 = load %6[%c16] : memref<256xi32>
+//CHECK:   AIE.useLock(%1, "Release", 0, 0)
+//CHECK:   AIE.end
+//CHECK: }
+//CHECK: %13 = AIE.switchbox(%2) {
+//CHECK: }
+//CHECK: %14 = AIE.switchbox(%0) {
+//CHECK: }
+//CHECK: %15 = AIE.switchbox(%3) {
+//CHECK: }
+//CHECK: }
 
 // In this simple test, we would like to merge buf34_0 and buf32_0 because:
 //   - they are not used by cores other than core(3, 4) and core(3, 2), respectively (single user)
@@ -72,10 +63,7 @@ module @test_buffer_merge0 {
   %buf32_0 = AIE.buffer(%t32) : memref<256xi32>
 
   %m34 = AIE.mem(%t34) {
-    %dmaSt = AIE.dmaStart("MM2S0")
-    AIE.terminator(^dma0, ^end)
-    ^dma0:
-      cond_br %dmaSt, ^bd0, ^end
+      %dmaSt = AIE.dmaStart("MM2S0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l34_0, "Acquire", 1, 0)
       AIE.dmaBd(<%buf34_0 : memref<256xi32>, 0, 256>, 0)
@@ -86,10 +74,7 @@ module @test_buffer_merge0 {
   }
 
   %m32 = AIE.mem(%t32) {
-    %dmaSt = AIE.dmaStart("S2MM0")
-    AIE.terminator(^dma0, ^end)
-    ^dma0:
-      cond_br %dmaSt, ^bd0, ^end
+      %dmaSt = AIE.dmaStart("S2MM0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l32_0, "Acquire", 0, 0)
       AIE.dmaBd(<%buf32_0 : memref<256xi32>, 0, 256>, 0)

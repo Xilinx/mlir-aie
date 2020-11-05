@@ -5,8 +5,6 @@
 // CHECK-NEXT:    %1 = AIE.buffer(%0) : memref<256xi32>
 // CHECK-NEXT:    %2 = AIE.buffer(%0) : memref<1xi32>
 // CHECK-NEXT:    %3 = AIE.mem(%0) {
-// CHECK-NEXT:      AIE.terminator(^bb1)
-// CHECK-NEXT:      ^bb1:  // pred: ^bb0
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }
 // CHECK-NEXT:    %4 = alloc() : memref<256xi32>
