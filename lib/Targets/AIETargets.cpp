@@ -144,6 +144,10 @@ void registerAIETranslations() {
           output << "XAieTile_CoreControl("
                  << tileInstStr(std::to_string(col), std::to_string(row))
                  << ", " << disable << ", " << enable << ");\n";
+          output << "for (int l=0; l<16; l++)\n"
+                 << "  XAieTile_LockRelease("
+                 << tileInstStr(std::to_string(col), std::to_string(row))
+                 << ", l, 0x0, 0);\n";
 
           if (auto coreOp = tileOp.getCoreOp()) {
             if (auto fileAttr = coreOp.getAttrOfType<StringAttr>("elf_file")) {
