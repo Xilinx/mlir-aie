@@ -405,47 +405,6 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
 }
 
 // CoreOp
-static ParseResult parseCoreOp(OpAsmParser &parser, OperationState &result) {
-  result.regions.reserve(1);
-  Region *body = result.addRegion();
-
-  auto &builder = parser.getBuilder();
-  result.types.push_back(builder.getIndexType());
-
-  OpAsmParser::OperandType tileOperand;
-
-  if (parser.parseLParen())
-    return failure();
-
-  if (parser.parseOperand(tileOperand))
-    return failure();
-
-  if (parser.parseRParen())
-    return failure();
-
-  if (parser.resolveOperands(tileOperand, builder.getIndexType(), result.operands))
-    return failure();
-
-  if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
-    return failure();
-
-  return success();
-}
-
-static void print(OpAsmPrinter &p, xilinx::AIE::CoreOp op) {
-  p << xilinx::AIE::CoreOp::getOperationName();
-
-  p << "(";
-  p << op.tile();
-  p << ")";
-
-  Region &body = op.body();
-
-  p.printRegion(body,
-                /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/true);
-}
-
 static LogicalResult verify(xilinx::AIE::CoreOp op) {
   Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");

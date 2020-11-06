@@ -132,20 +132,45 @@ void registerAIETranslations() {
         NL.collectTiles(tiles);
         NL.collectBuffers(buffers);
 
-        output << "void mlir_initialize_cores() {\n";
-        // Core configuration
-        // Activate a core tile
-        // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8 Reset);
+        output << "void mlir_configure_cores() {\n";
+        // Reset each core.  Load the corresponding ELF file, if necessary.
+        // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8
+        // Reset); auto ret =
+        // XAieGbl_LoadElf(&(TileInst[HERD_START_COL+h_core][HERD_START_ROW+v_core]),
+        // (u8*)elf_file, XAIE_ENABLE);
         for (auto tileOp : module.getOps<TileOp>()) {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
           output << "XAieTile_CoreControl("
-                 << tileInstStr(std::to_string(col), std::to_string(row)) << ", "
-                 << enable  << ", "
-                 << disable <<
-                 ");\n";
+                 << tileInstStr(std::to_string(col), std::to_string(row))
+                 << ", " << disable << ", " << enable << ");\n";
+
+          if (auto coreOp = tileOp.getCoreOp()) {
+            if (auto fileAttr = coreOp.getAttrOfType<StringAttr>("elf_file")) {
+              std::string fileName(fileAttr.getValue());
+              output << "XAieGbl_LoadElf("
+                     << tileInstStr(std::to_string(col), std::to_string(row))
+                     << ", "
+                     << "\"" << fileName << "\", " << enable << ");\n";
+            }
+          }
         }
-        output << "} // mlir_initialize_cores\n\n";
+        output << "} // mlir_configure_cores\n\n";
+
+        output << "void mlir_start_cores() {\n";
+        // Start execution of all the cores.
+        // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8
+        // Reset); auto ret =
+        // XAieGbl_LoadElf(&(TileInst[HERD_START_COL+h_core][HERD_START_ROW+v_core]),
+        // (u8*)elf_file, XAIE_ENABLE);
+        for (auto tileOp : module.getOps<TileOp>()) {
+          int col = tileOp.colIndex();
+          int row = tileOp.rowIndex();
+          output << "XAieTile_CoreControl("
+                 << tileInstStr(std::to_string(col), std::to_string(row))
+                 << ", " << enable << ", " << disable << ");\n";
+        }
+        output << "} // mlir_start_cores\n\n";
 
         output << "void mlir_configure_dmas() {\n";
 

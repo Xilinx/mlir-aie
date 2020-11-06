@@ -183,6 +183,17 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
           return memOp;
         }
       }
+      return nullptr;
+    }
+    xilinx::AIE::CoreOp getCoreOp() {
+      auto users = result().getUsers();
+      bool found = false;
+      for(auto user : users) {
+        if(auto coreOp = llvm::dyn_cast<xilinx::AIE::CoreOp>(*user)) {
+          return coreOp;
+        }
+      }
+      return nullptr;
     }
   }];
 
@@ -285,8 +296,7 @@ def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
   }];
 
   let regions = (region AnyRegion:$body);
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parseCoreOp(parser, result); }];
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
