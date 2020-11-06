@@ -222,7 +222,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
 }
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndOp">]>,
-                     Results<(outs AnyType)> {
+                     Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -232,8 +232,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndOp">
     This operation creates a stream switch that belongs to a tile.
   }];
   let regions = (region AnyRegion:$connections);
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parseSwitchboxOp(parser, result); }];
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
@@ -250,7 +249,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndOp">
 }
 
 def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndOp">]>,
-                         Results<(outs AnyType)> {
+                         Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
   );
@@ -271,8 +270,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
 
   }];
   let regions = (region AnyRegion:$connections);
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parseShimSwitchboxOp(parser, result); }];
+  let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let builders = [
     OpBuilder<"OpBuilder &builder, OperationState &result, "
@@ -583,9 +581,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
 
     See the description of PacketRuleOp for a more concrete example.
   }];
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parsePacketRulesOp(parser, result); }];
-
+  let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
   let extraClassDeclaration = [{
     int sourceIndex() { return sourceChannel(); }
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
@@ -662,8 +658,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
     route, this is replaced by MasterSets and PacketRules inside
     switchboxes.
   }];
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parsePacketFlowOp(parser, result); }];
+  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let extraClassDeclaration = [{
     int IDInt() { return ID(); }
   }];
@@ -889,8 +884,7 @@ def AIE_MemOp: AIE_Op<"mem", [CallableOpInterface]>,
   );
 
   let regions = (region AnyRegion:$body);
-  let printer = [{ return ::print(p, *this); }];
-  let parser = [{ return ::parseMemOp(parser, result); }];
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
     int colIndex();

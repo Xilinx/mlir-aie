@@ -53,118 +53,6 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx,
 } // namespace AIE
 } // namespace xilinx
 
-static ParseResult parsePacketRulesOp(OpAsmParser &parser, OperationState &result) {
-  result.regions.reserve(1);
-  Region *rules = result.addRegion();
-
-  auto &builder = parser.getBuilder();
-  //  result.types.push_back(builder.getIndexType());
-
-  if (parser.parseLParen())
-    return failure();
-  {
-    StringAttr attrVal;
-    NamedAttrList attrStorage;
-    auto loc = parser.getCurrentLocation();
-    if (parser.parseAttribute(attrVal, parser.getBuilder().getNoneType(),
-                              "sourceBundle", attrStorage))
-      return failure();
-
-    auto attrOptional = xilinx::AIE::symbolizeWireBundle(attrVal.getValue());
-    if (!attrOptional)
-      return parser.emitError(loc, "invalid ")
-             << "sourceBundle attribute specification: " << attrVal;
-
-    result.addAttribute("sourceBundle", parser.getBuilder().getI32IntegerAttr(static_cast<int32_t>(attrOptional.getValue())));
-  }
-  if (parser.parseColon())
-    return failure();
-
-  IntegerAttr sourceChannelAttr;
-  if (parser.parseAttribute(sourceChannelAttr, parser.getBuilder().getIntegerType(32), "sourceChannel", result.attributes))
-    return failure();
-
-  if (parser.parseRParen())
-    return failure();
-
-  // Parse the rules.
-  if (parser.parseRegion(*rules, /*arguments=*/{}, /*argTypes=*/{}))
-    return failure();
-  // Parse the optional attribute list.
-  // if (parser.parseOptionalAttrDict(result.attributes))
-  //   return failure();
-  xilinx::AIE::PacketRulesOp::ensureTerminator(*rules, parser.getBuilder(), result.location);
-
-  return success();
-}
-
-static ParseResult parseSwitchboxOp(OpAsmParser &parser, OperationState &result) {
-  // Create the regions for 'then'.
-  result.regions.reserve(1);
-  Region *connections = result.addRegion();
-
-  auto &builder = parser.getBuilder();
-  result.types.push_back(builder.getIndexType());
-
-  OpAsmParser::OperandType tileOperand;
-
-  if (parser.parseLParen())
-    return failure();
-
-  if (parser.parseOperand(tileOperand))
-    return failure();
-
-  if (parser.parseRParen())
-    return failure();
-
-  if (parser.resolveOperands(tileOperand, builder.getIndexType(), result.operands))
-    return failure();
-
-  // Parse the connections.
-  if (parser.parseRegion(*connections, /*arguments=*/{}, /*argTypes=*/{}))
-    return failure();
-  // // Parse the optional attribute list.
-  // if (parser.parseOptionalAttrDict(result.attributes))
-  //   return failure();
-  xilinx::AIE::SwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
-
-  return success();
-}
-
-static void print(OpAsmPrinter &p, xilinx::AIE::PacketRulesOp op) {
-  bool printBlockTerminators = false;
-
-  Region &body = op.rules();
-  p << xilinx::AIE::PacketRulesOp::getOperationName();
-  p << '(';
-  p << "\"" << stringifyWireBundle(op.sourceBundle()) << "\"";
-  p << " " << ":";
-  p << " ";
-  p.printAttributeWithoutType(op.sourceChannelAttr());
-  p << ')';
-
-  p.printRegion(body,
-                /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/false);
-  //  p.printOptionalAttrDict(op.getAttrs());
-
-}
-static void print(OpAsmPrinter &p, xilinx::AIE::SwitchboxOp op) {
-  bool printBlockTerminators = false;
-
-  Region &body = op.connections();
-  p << xilinx::AIE::SwitchboxOp::getOperationName();
-  p << '(';
-  p << op.tile();
-  p << ')';
-
-  p.printRegion(body,
-                /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/false);
-  //  p.printOptionalAttrDict(op.getAttrs());
-
-}
-
 static LogicalResult verify(xilinx::AIE::TileOp op) {
   auto users = op.result().getUsers();
   bool found = false;
@@ -269,56 +157,6 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
   return success();
 }
 
-static ParseResult parseShimSwitchboxOp(OpAsmParser &parser, OperationState &result) {
-  // Create the regions for 'then'.
-  result.regions.reserve(1);
-  Region *connections = result.addRegion();
-
-  auto &builder = parser.getBuilder();
-  result.types.push_back(builder.getIndexType());
-  OpAsmParser::OperandType cond;
-  Type iType = builder.getIndexType();
-  SmallVector<Type, 4> types;
-  types.push_back(iType);
-  types.push_back(iType);
-
-
-  if (parser.parseLParen())
-    return failure();
-
-  IntegerAttr colAttr;
-  if (parser.parseAttribute(colAttr, parser.getBuilder().getIntegerType(32), "col", result.attributes))
-    return failure();
-  if (parser.parseRParen())
-    return failure();
-
-  // Parse the connections.
-  if (parser.parseRegion(*connections, /*arguments=*/{}, /*argTypes=*/{}))
-    return failure();
-  // // Parse the optional attribute list.
-  // if (parser.parseOptionalAttrDict(result.attributes))
-  //   return failure();
-  xilinx::AIE::ShimSwitchboxOp::ensureTerminator(*connections, parser.getBuilder(), result.location);
-
-  return success();
-}
-
-static void print(OpAsmPrinter &p, xilinx::AIE::ShimSwitchboxOp op) {
-  bool printBlockTerminators = false;
-
-  Region &body = op.connections();
-  p << xilinx::AIE::ShimSwitchboxOp::getOperationName();
-  p << '(';
-  p << op.col();
-  p << ')';
-
-  p.printRegion(body,
-                /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/false);
-  //  p.printOptionalAttrDict(op.getAttrs());
-
-}
-
 static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
   Region &body = op.connections();
   DenseSet<xilinx::AIE::Port> destset;
@@ -341,50 +179,6 @@ static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
   }
 
   return success();
-}
-
-static ParseResult parsePacketFlowOp(OpAsmParser &parser, OperationState &result) {
-  // Create the regions for 'then'.
-  result.regions.reserve(1);
-  Region *ports = result.addRegion();
-
-  auto &builder = parser.getBuilder();
-  //  result.types.push_back(builder.getIndexType());
-  OpAsmParser::OperandType cond;
-
-  if (parser.parseLParen())
-    return failure();
-
-  IntegerAttr IDAttr;
-  if (parser.parseAttribute(IDAttr, parser.getBuilder().getIntegerType(8), "ID", result.attributes))
-    return failure();
-
-  if (parser.parseRParen())
-    return failure();
-
-  // Parse the ports.
-  if (parser.parseRegion(*ports, /*arguments=*/{}, /*argTypes=*/{}))
-    return failure();
-  // // Parse the optional attribute list.
-  // if (parser.parseOptionalAttrDict(result.attributes))
-  //   return failure();
-  xilinx::AIE::PacketFlowOp::ensureTerminator(*ports, parser.getBuilder(), result.location);
-
-  return success();
-}
-
-static void print(OpAsmPrinter &p, xilinx::AIE::PacketFlowOp op) {
-  bool printBlockTerminators = false;
-
-  Region &body = op.ports();
-  p << xilinx::AIE::PacketFlowOp::getOperationName();
-  p << '(' << (int)op.ID() << ')';
-
-  p.printRegion(body,
-                /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/false);
-  //  p.printOptionalAttrDict(op.getAttrs());
-
 }
 
 static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
@@ -428,47 +222,6 @@ int xilinx::AIE::CoreOp::rowIndex() {
 }
 
 // MemOp
-static ParseResult parseMemOp(OpAsmParser &parser, OperationState &result) {
-  result.regions.reserve(1);
-  Region *body = result.addRegion();
-
-  auto &builder = parser.getBuilder();
-  result.types.push_back(builder.getIndexType());
-
-  OpAsmParser::OperandType tileOperand;
-
-  if (parser.parseLParen())
-    return failure();
-
-  if (parser.parseOperand(tileOperand))
-    return failure();
-
-  if (parser.parseRParen())
-    return failure();
-
-  if (parser.resolveOperands(tileOperand, builder.getIndexType(), result.operands))
-    return failure();
-
-  if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
-    return failure();
-
-  return success();
-}
-
-static void print(OpAsmPrinter &p, xilinx::AIE::MemOp op) {
-  p << xilinx::AIE::MemOp::getOperationName();
-
-  p << "(";
-  p << op.tile();
-  p << ")";
-
-  Region &body = op.body();
-
-  p.printRegion(body,
-                /*printEntryBlockArgs=*/false,
-                /*printBlockTerminators=*/true);
-}
-
 static LogicalResult verify(xilinx::AIE::MemOp op) {
   Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
