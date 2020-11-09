@@ -198,9 +198,13 @@ static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow)
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
 
+}
+
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "AIE.h.inc"
+
+namespace AIE {
 
 #define GEN_PASS_CLASSES
 #include "AIEPasses.h.inc"

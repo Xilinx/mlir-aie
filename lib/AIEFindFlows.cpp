@@ -306,7 +306,7 @@ struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
     LLVM_DEBUG(llvm::dbgs() << "Starting Find Flows\n");
     OwningRewritePatternList patterns;
     patterns.insert<StartFlow>(m.getContext(), m, analysis);
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
     return;
   }

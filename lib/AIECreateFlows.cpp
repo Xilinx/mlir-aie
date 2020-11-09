@@ -361,7 +361,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
 
     OwningRewritePatternList patterns;
     patterns.insert<RouteFlows>(m.getContext(), m, analysis);
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
     return;
   }

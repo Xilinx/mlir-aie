@@ -136,7 +136,7 @@ struct AIELowerMemcpyPass : public PassWrapper<AIELowerMemcpyPass,
 
     patterns.insert<LowerAIEMemcpy>(m.getContext(), m);
 
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }
 };

@@ -28,10 +28,9 @@
 using namespace mlir;
 
 int main(int argc, char **argv) {
-  registerAllDialects();
+//  registerAllDialects();
   //  registerAllTranslations();
 
-  registerDialect<xilinx::AIE::AIEDialect>();
   xilinx::AIE::registerAIETranslations();
 
   return failed(mlirTranslateMain(argc, argv, "MLIR Translation Testing Tool"));

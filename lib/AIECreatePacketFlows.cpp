@@ -610,7 +610,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
     patterns.insert<AIEOpRemoval<PacketFlowOp>
                    >(m.getContext(), m);
 
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }
 };

@@ -175,21 +175,21 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
     int colIndex() { return col(); }
     int rowIndex() { return row(); }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
-    xilinx::AIE::MemOp getMemOp() {
+    MemOp getMemOp() {
       auto users = result().getUsers();
       bool found = false;
       for(auto user : users) {
-        if(auto memOp = llvm::dyn_cast<xilinx::AIE::MemOp>(*user)) {
+        if(auto memOp = llvm::dyn_cast<MemOp>(*user)) {
           return memOp;
         }
       }
       return nullptr;
     }
-    xilinx::AIE::CoreOp getCoreOp() {
+    CoreOp getCoreOp() {
       auto users = result().getUsers();
       bool found = false;
       for(auto user : users) {
-        if(auto coreOp = llvm::dyn_cast<xilinx::AIE::CoreOp>(*user)) {
+        if(auto coreOp = llvm::dyn_cast<CoreOp>(*user)) {
           return coreOp;
         }
       }
@@ -209,6 +209,21 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
                     builder.getI32IntegerAttr(row));
               }]>
   ];
+}
+
+def AIE_GetTileOp: AIE_Op<"getTile", []>, Results<(outs Index:$result)> {
+  let arguments = (
+    ins Index:$col,
+        Index:$row
+  );
+
+  let summary = "Get a reference to an AIE tile";
+  let description = [{
+    Return a reference to an AIE tile, given the column and the row of the tile.
+  }];
+  let assemblyFormat = [{
+    `(` $col `,` $row `)` attr-dict
+  }];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {

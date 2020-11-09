@@ -326,7 +326,7 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
                     AIEOpRemoval<RouteOp>
                    >(m.getContext(), m);
 
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }
 };

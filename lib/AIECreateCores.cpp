@@ -100,7 +100,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
       }
       Operation *tileOp = tiles[std::make_pair(colIndex, rowIndex)];
       TileOp tile = dyn_cast<TileOp>(tileOp);
-      builder.setInsertionPointAfter((Value)tile);
+      builder.setInsertionPointAfter(tileOp);
 
       // create MemOp
       if (!mems[tileOp]) {
@@ -230,7 +230,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
     patterns.insert<RemoveAIECalls>(m.getContext(), m);
     patterns.insert<RemoveAIEFuncs>(m.getContext(), m, funcs);
 
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }
 };

@@ -13,13 +13,13 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
   bool isLegalToInline(Region *dest, Region *src,
-                       BlockAndValueMapping &valueMapping) const final {
+                       BlockAndValueMapping &valueMapping) const {
     return true;
   }
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *, Region *,
-                       BlockAndValueMapping &) const final {
+                       BlockAndValueMapping &) const {
     return true;
   }
   // Handle the given inlined terminator by replacing it with a new operation
@@ -287,9 +287,9 @@ static LogicalResult verify(xilinx::AIE::UseLockOp op) {
 #include "AIEEnums.cpp.inc"
 
 namespace xilinx {
-  namespace AIE {
 #define GET_OP_CLASSES
 #include "AIE.cpp.inc"
+  namespace AIE {
 
     // void CoreOp::build(Builder *odsBuilder, OperationState &odsState, Type resultType0, int col, int row) {
     //   odsState.addOperands(colValue);

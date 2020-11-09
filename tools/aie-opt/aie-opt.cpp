@@ -20,11 +20,9 @@ using namespace llvm;
 using namespace mlir;
 
 int main(int argc, char **argv) {
-  enableGlobalDialectRegistry(true);
-  registerAllDialects();
+//  enableGlobalDialectRegistry(true);
+//  registerAllDialects();
   registerAllPasses();
-  registerDialect<LLVM::LLVMDialect>();
-  registerDialect<xilinx::AIE::AIEDialect>();
   xilinx::AIE::registerAIEFindFlowsPass();
   xilinx::AIE::registerAIECreateFlowsPass();
   xilinx::AIE::registerAIECreateCoresPass();
@@ -36,6 +34,7 @@ int main(int argc, char **argv) {
 
   DialectRegistry registry;
   registerAllDialects(registry);
+  registry.insert<scf::SCFDialect>();
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
 

@@ -507,7 +507,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
                     AIEOpRemoval<AIE::BufferOp>
                    >(m.getContext(), m);
 
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }
 };
@@ -720,7 +720,7 @@ struct AIECoreToStandardPass : public PassWrapper<AIECoreToStandardPass, Operati
     //                 AIEOpRemoval<AIE::BufferOp>
     //                >(m.getContext(), m);
 
-    if (failed(applyPartialConversion(m, target, patterns)))
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }
 };
