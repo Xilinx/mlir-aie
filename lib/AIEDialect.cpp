@@ -12,25 +12,25 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
-  bool isLegalToInline(Region *dest, Region *src,
-                       BlockAndValueMapping &valueMapping) const {
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
+                       BlockAndValueMapping &valueMapping) const final override {
     return true;
   }
   // Operations in aie dialect are always legal to inline since they are
   // pure.
-  bool isLegalToInline(Operation *, Region *,
-                       BlockAndValueMapping &) const {
+  bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
+                       BlockAndValueMapping &) const final override {
     return true;
   }
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the inlined region has more than one block. 
-  virtual void handleTerminator(Operation *op, Block *newDest) const {
+  void handleTerminator(Operation *op, Block *newDest) const final override {
     return;
   }
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
   void handleTerminator(Operation *op,
-                        ArrayRef<Value> valuesToRepl) const final {
+                        ArrayRef<Value> valuesToRepl) const final override {
     return;
   }
 };
@@ -181,6 +181,49 @@ static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
   return success();
 }
 
+static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
+  Region &body = op.connections();
+  DenseSet<xilinx::AIE::Port> destset;
+  assert(op.getOperation()->getNumRegions());
+  assert(!body.empty());
+  for (auto &ops : body.front()) {
+    if(auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
+      xilinx::AIE::Port dest = std::make_pair(connectOp.destBundle(),
+                                              connectOp.destIndex());
+      if(destset.count(dest)) {
+        return connectOp.emitOpError("targets same destination ") <<
+          stringifyWireBundle(dest.first) << dest.second << " as another connect operation";
+      } else {
+        destset.insert(dest);
+      }
+    } else if(auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
+    } else {
+      return ops.emitOpError("cannot be contained in a Switchbox op");
+    }
+  }
+  if(!op.getTileOp().isShimTile()) {
+    return op.emitOpError("must be in a shim tile, i.e. row == 0.");
+  }
+  return success();
+}
+xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(tile().getDefiningOp());
+}
+
+// ShimDMAOp
+static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
+  Region &body = op.body();
+  assert(op.getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
+  assert(!body.empty() && "ShimDMAOp should have non-empty body");
+  if(!op.getTileOp().isShimTile()) {
+    return op.emitOpError("must be in a shim tile, i.e. row == 0.");
+  }
+  return success();
+}
+xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
+  return cast<TileOp>(tile().getDefiningOp());
+}
+
 static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
   Region &body = op.ports();
   //DenseSet<xilinx::AIE::Port> destset;
@@ -208,17 +251,14 @@ static LogicalResult verify(xilinx::AIE::CoreOp op) {
 }
 
 int xilinx::AIE::CoreOp::colIndex() {
-  Operation *Op = tile().getDefiningOp();
-  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
-
-  return tile.colIndex();
+  return getTileOp().colIndex();
 }
 
 int xilinx::AIE::CoreOp::rowIndex() {
-  Operation *Op = tile().getDefiningOp();
-  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
-
-  return tile.rowIndex();
+  return getTileOp().rowIndex();
+}
+xilinx::AIE::TileOp xilinx::AIE::CoreOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(tile().getDefiningOp());
 }
 
 // MemOp
@@ -259,19 +299,14 @@ int xilinx::AIE::MemOp::rowIndex() {
   /// Returns the results types that the callable region produces when executed.
   ArrayRef<Type> xilinx::AIE::MemOp::getCallableResults() { return getType(); }
 
-
-int xilinx::AIE::SwitchboxOp::colIndex() {
-  Operation *Op = tile().getDefiningOp();
-  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
-
-  return tile.colIndex();
+xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(tile().getDefiningOp());
 }
-
+int xilinx::AIE::SwitchboxOp::colIndex() {
+  return getTileOp().colIndex();
+}
 int xilinx::AIE::SwitchboxOp::rowIndex() {
-  Operation *Op = tile().getDefiningOp();
-  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
-
-  return tile.rowIndex();
+  return getTileOp().rowIndex();
 }
 
 static LogicalResult verify(xilinx::AIE::UseLockOp op) {
@@ -300,26 +335,50 @@ namespace xilinx {
   //#include "ATenOpInterfaces.cpp.inc"
 
     int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
-      switch(bundle) {
-      case WireBundle::ME: return 2;
-      case WireBundle::DMA: return 2;
-      case WireBundle::North: return 4;
-      case WireBundle::West: return 4;
-      case WireBundle::South: return 6;
-      case WireBundle::East: return 4;
-      default: return 0;
-      }
+      if(getTileOp().isShimTile())
+        switch(bundle) {
+        case WireBundle::ME: return 0;
+        case WireBundle::DMA: return 2;
+        case WireBundle::PLIO: return 4;
+        case WireBundle::North: return 6;
+        case WireBundle::West: return 4;
+        case WireBundle::South: return 8;
+        case WireBundle::East: return 4;
+        default: return 0;
+        }
+      else
+        switch(bundle) {
+        case WireBundle::ME: return 2;
+        case WireBundle::DMA: return 2;
+        case WireBundle::North: return 4;
+        case WireBundle::West: return 4;
+        case WireBundle::South: return 6;
+        case WireBundle::East: return 4;
+        default: return 0;
+        }
     }
     int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
-      switch(bundle) {
-      case WireBundle::ME: return 2;
-      case WireBundle::DMA: return 2;
-      case WireBundle::North: return 6;
-      case WireBundle::West: return 4;
-      case WireBundle::South: return 4;
-      case WireBundle::East: return 4;
-      default: return 0;
-      }
+      if(getTileOp().isShimTile())
+        switch(bundle) {
+        case WireBundle::ME: return 0;
+        case WireBundle::DMA: return 2;
+        case WireBundle::PLIO: return 2;
+        case WireBundle::North: return 8;
+        case WireBundle::West: return 4;
+        case WireBundle::South: return 6;
+        case WireBundle::East: return 4;
+        default: return 0;
+        }
+      else
+        switch(bundle) {
+        case WireBundle::ME: return 2;
+        case WireBundle::DMA: return 2;
+        case WireBundle::North: return 6;
+        case WireBundle::West: return 4;
+        case WireBundle::South: return 4;
+        case WireBundle::East: return 4;
+        default: return 0;
+        }
     }
     int TileOp::getNumSourceConnections(WireBundle bundle) {
       switch(bundle) {

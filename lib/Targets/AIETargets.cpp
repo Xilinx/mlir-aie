@@ -141,6 +141,16 @@ void registerAIETranslations() {
         for (auto tileOp : module.getOps<TileOp>()) {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
+          if(tileOp.isShimTile()) {
+            // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETENABLE);
+            // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETDISABLE);
+            output << "XAieTile_ShimColumnReset("
+                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << ", XAIE_RESETENABLE);\n";
+            output << "XAieTile_ShimColumnReset("
+                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << ", XAIE_RESETDISABLE);\n";
+          }
           output << "XAieTile_CoreControl("
                  << tileInstStr(std::to_string(col), std::to_string(row))
                  << ", " << disable << ", " << enable << ");\n";

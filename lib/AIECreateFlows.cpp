@@ -24,7 +24,7 @@ class TileAnalysis {
   int maxcol, maxrow;
   DenseMap<std::pair<int, int>, TileOp> coordToTile;
   DenseMap<std::pair<int, int>, SwitchboxOp> coordToSwitchbox;
-  DenseMap<int, ShimSwitchboxOp> coordToShimSwitchbox;
+  // DenseMap<int, ShimSwitchboxOp> coordToShimSwitchbox;
   DenseMap<int, PLIOOp> coordToPLIO;
 public:
   int getMaxCol() {
@@ -86,24 +86,6 @@ public:
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
-      return switchboxOp;
-    }
-  }
-  ShimSwitchboxOp getShimSwitchbox(OpBuilder &builder, int col) {
-    assert(col >= 0);
-    if(coordToShimSwitchbox.count(col)) {
-      return coordToShimSwitchbox[col];
-    } else {
-      IntegerType i32 = builder.getIntegerType(32);
-      ShimSwitchboxOp switchboxOp =
-        builder.create<ShimSwitchboxOp>(builder.getUnknownLoc(),
-                                    builder.getIndexType(),
-                                    IntegerAttr::get(i32, (int)col));
-      switchboxOp.ensureTerminator(switchboxOp.connections(),
-                                   builder,
-                                   builder.getUnknownLoc());
-      coordToShimSwitchbox[col] = switchboxOp;
-      maxcol = std::max(maxcol, col);
       return switchboxOp;
     }
   }
@@ -191,7 +173,13 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       row = source.rowIndex();
     } else if(PLIOOp source = dyn_cast_or_null<PLIOOp>(op.source().getDefiningOp())) {
       col = source.colIndex();
-      row = -2;
+      row = -1;
+    } else if(CoreOp source = dyn_cast_or_null<CoreOp>(op.source().getDefiningOp())) {
+      col = source.getTileOp().colIndex();
+      row = source.getTileOp().rowIndex();
+    } else if(ShimDMAOp source = dyn_cast_or_null<ShimDMAOp>(op.source().getDefiningOp())) {
+      col = source.getTileOp().colIndex();
+      row = source.getTileOp().rowIndex();
     } else llvm_unreachable("Unimplemented case");
 
     int destcol, destrow;
@@ -200,7 +188,13 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       destrow = dest.rowIndex();
     } else if(PLIOOp dest = dyn_cast_or_null<PLIOOp>(op.dest().getDefiningOp())) {
       destcol = dest.colIndex();
-      destrow = -2;
+      destrow = 0;
+    } else if(CoreOp dest = dyn_cast_or_null<CoreOp>(op.dest().getDefiningOp())) {
+      destcol = dest.getTileOp().colIndex();
+      destrow = dest.getTileOp().rowIndex();
+    } else if(ShimDMAOp dest = dyn_cast_or_null<ShimDMAOp>(op.dest().getDefiningOp())) {
+      destcol = dest.getTileOp().colIndex();
+      destrow = dest.getTileOp().rowIndex();
     } else llvm_unreachable("Unimplemented case");
 
     if(debugRoute)
@@ -240,9 +234,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
         done = true;
       }
       if(nextrow < 0) {
-        ShimSwitchboxOp swOp = analysis.getShimSwitchbox(rewriter, col);
-        Region &r = swOp.connections();
-        addConnection(rewriter, r, bundle, index, outBundle, outIndex);
+        assert(false);
       } else {
         SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
         int col, row;
@@ -252,8 +244,8 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
         addConnection(rewriter, r, bundle, index, outBundle, outIndex);
         if(debugRoute)
           llvm::dbgs() << "Route@(" << col << "," << row << "): " << stringifyWireBundle(bundle) << ":"
-                       << index << "->" << stringifyWireBundle(outBundle) << ":" << outIndex
-                       << "\n";
+                        << index << "->" << stringifyWireBundle(outBundle) << ":" << outIndex
+                        << "\n";
       }
       if(done) break;
       col = nextcol;
@@ -287,9 +279,6 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
       for(int row = 0; row <= analysis.getMaxRow(); row++) {
         analysis.getSwitchbox(builder, col, row);
       }
-    }
-    for(int col = 0; col <= analysis.getMaxCol(); col++) {
-      analysis.getShimSwitchbox(builder, col);
     }
     for(int col = 0; col <= analysis.getMaxCol(); col++) {
       analysis.getPLIO(builder, col);
@@ -329,7 +318,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
                                    sw,
                                    WireBundle::South);
         } else if(row == 0) {
-          auto southsw = analysis.getShimSwitchbox(builder, col);
+          auto southsw = analysis.getSwitchbox(builder, col, row);
           WireOp switchboxOp =
             builder.create<WireOp>(builder.getUnknownLoc(),
                                    southsw,
@@ -337,7 +326,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
                                    sw,
                                    WireBundle::South);
           if(col > 0) {
-            auto westsw = analysis.getShimSwitchbox(builder, col-1);
+            auto westsw = analysis.getSwitchbox(builder, col-1, row);
             WireOp switchboxOp =
               builder.create<WireOp>(builder.getUnknownLoc(),
                                      westsw,

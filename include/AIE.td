@@ -34,9 +34,11 @@ def South: I32EnumAttrCase<"South", 3>;
 def West: I32EnumAttrCase<"West", 4>;
 def North: I32EnumAttrCase<"North", 5>;
 def East: I32EnumAttrCase<"East", 6>;
+def PLIO: I32EnumAttrCase<"PLIO", 7>;
+def NOC: I32EnumAttrCase<"NOC", 8>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-  [ME, DMA, FIFO, South, West, North, East]> {
+  [ME, DMA, FIFO, South, West, North, East, PLIO, NOC]> {
 
   let cppNamespace = "xilinx::AIE";
 }
@@ -174,6 +176,7 @@ def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
     int getNumDestConnections(WireBundle bundle);
     int colIndex() { return col(); }
     int rowIndex() { return row(); }
+    bool isShimTile() { return row() == 0; }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
     MemOp getMemOp() {
       auto users = result().getUsers();
@@ -254,6 +257,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndOp">
     int getNumDestConnections(WireBundle bundle);
     int colIndex();
     int rowIndex();
+    TileOp getTileOp();
   }];
   let builders = [
     OpBuilder<"OpBuilder &builder, OperationState &result, "
@@ -296,6 +300,54 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   ];
 }
 
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [SingleBlockImplicitTerminator<"EndOp">]>,
+                         Results<(outs Index)> {
+  let arguments = (
+    ins Index:$tile
+  );
+
+  let summary = "Declare a switch in the PL shim";
+  let description = [{
+  }];
+  let regions = (region AnyRegion:$connections);
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let verifier = [{ return ::verify(*this); }];
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
+  // let builders = [
+  //   OpBuilder<"OpBuilder &builder, OperationState &result, "
+  //             "Type resultType, int col", [{
+  //             build(builder, result, resultType,
+  //                   builder.getI32IntegerAttr(col));
+  //             }]>
+  // ];
+}
+
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [SingleBlockImplicitTerminator<"EndOp">]>,
+                         Results<(outs Index)> {
+  let arguments = (
+    ins Index:$tile
+  );
+
+  let summary = "Declare a DMA in the PL shim";
+  let description = [{
+  }];
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let verifier = [{ return ::verify(*this); }];
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
+       // let builders = [
+  //   OpBuilder<"OpBuilder &builder, OperationState &result, "
+  //             "Type resultType, int col", [{
+  //             build(builder, result, resultType,
+  //                   builder.getI32IntegerAttr(col));
+  //             }]>
+  // ];
+}
+
 def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -316,6 +368,7 @@ def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
     int colIndex();
     int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
+    TileOp getTileOp();
   }];
 
   let builders = [
@@ -347,27 +400,6 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
   let summary = "Declare an interface to the PL";
   let description = [{
     An interface to the PL.
-  }];
-  let assemblyFormat = [{
-    `(` $col `)` attr-dict
-  }];
-  let extraClassDeclaration = [{
-    int colIndex() { return col(); }
-  }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "Type resultType, int col, int row">
-  // ];
-}
-
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", []>, Results<(outs Index)> {
-  let arguments = (
-    ins I32Attr:$col
-  );
-
-  let summary = "Declare a ShimDMA";
-  let description = [{
-    A DMA in the PL-AIE Shim.
   }];
   let assemblyFormat = [{
     `(` $col `)` attr-dict
@@ -446,6 +478,53 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
       %11 = aie.tile(1, 1)
       %01 = aie.tile(0, 1)
       aie.flow(%00, "DMA" : 0, %11, "ME" : 1)
+
+  }];
+  let assemblyFormat = [{
+    `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int sourceIndex() { return sourceChannel(); }
+    int destIndex() { return destChannel(); }
+  }];
+  let builders = [
+    OpBuilder<"OpBuilder & builder, OperationState &result, "
+              "Value source, int sourceBundle, int sourceChannel,"
+              "Value dest, int destBundle, int destChannel", [{
+              build(builder, result,
+                    source,
+                    builder.getI32IntegerAttr(sourceBundle),
+                    builder.getI32IntegerAttr(sourceChannel),
+                    dest,
+                    builder.getI32IntegerAttr(destBundle),
+                    builder.getI32IntegerAttr(destChannel));
+              }]>
+  ];
+}
+
+def AIE_ConnectionOp: AIE_Op<"connection", []> {
+  let arguments = (
+    ins Index:$source,
+        WireBundle:$sourceBundle,
+        I32Attr:$sourceChannel,
+        Index:$dest,
+        WireBundle:$destBundle,
+        I32Attr:$destChannel
+  );
+  let summary = "A logical circuit-switched connection between cores";
+  let description = [{
+    The "aie.connection" operation represents a circuit switched connection between two endpoints, usually
+    "aie.core" operations.  During routing, this is replaced by "aie.connect" operations which represent
+    the programmed connections inside a switchbox, along with "aie.wire" operations which represent
+    physical connections between switchboxes and other components.  Note that while "aie.flow" operations
+    can express partial routes between tiles, this is not possible with "aie.connection" operations.
+
+    Example:
+      %22 = aie.tile(2, 2)
+      %c22 = aie.core(%22)
+      %11 = aie.tile(1, 1)
+      %c11 = aie.core(%11)
+      aie.flow(%c22, "ME" : 0, %c11, "ME" : 1)
 
   }];
   let assemblyFormat = [{

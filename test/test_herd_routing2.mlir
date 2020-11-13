@@ -1,4 +1,4 @@
-// RUN: aie-opt --aie-herd-routing %s | FileCheck %s
+// UN: aie-opt --aie-herd-routing %s | FileCheck %s
 
 // CHECK-LABEL: module @test_herd_routing2 {
 // CHECK: }
