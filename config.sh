@@ -5,6 +5,7 @@ cmake -GNinja \
 		-DCMAKE_C_COMPILER=clang-${CLANG_VER} \
 		-DCMAKE_CXX_COMPILER=clang++-${CLANG_VER} \
 		-DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_INSTALL_PREFIX=$3 \
 		-B$1 -H$2
 
 		# -DCMAKE_C_COMPILER=/wrk/hdstaff/stephenn/llvm-project/build_X86/bin/clang \

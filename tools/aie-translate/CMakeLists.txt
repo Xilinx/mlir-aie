@@ -7,7 +7,7 @@ set(LLVM_LINK_COMPONENTS
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
-add_llvm_executable(aie-translate
+add_llvm_tool(aie-translate
   aie-translate.cpp
   )
 

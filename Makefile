@@ -8,7 +8,10 @@ ${BUILD_DIR}/.dir:
 
 # This should build a libLLVM-10git.so which we can link against easily.
 build: ${BUILD_DIR}/.dir
-	echo `pwd`; ./config.sh ${BUILD_DIR} .; cd ${BUILD_DIR}; ninja
+	echo `pwd`; ./config.sh ${BUILD_DIR} . ${INSTALL_DIR}; cd ${BUILD_DIR}; ninja
+
+install: ${BUILD_DIR}/.dir
+	echo `pwd`; ./config.sh ${BUILD_DIR} . ${INSTALL_DIR}; cd ${BUILD_DIR}; ninja install
 
 test:
 	cd ${BUILD_DIR}; ninja check-aie

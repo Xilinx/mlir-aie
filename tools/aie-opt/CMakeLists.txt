@@ -3,7 +3,7 @@
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 # Now build our tools
-add_llvm_executable(aie-opt aie-opt.cpp)
+add_llvm_tool(aie-opt aie-opt.cpp)
 llvm_update_compile_flags(aie-opt)
 add_dependencies(aie-opt 
 MLIRAIEIncGen
