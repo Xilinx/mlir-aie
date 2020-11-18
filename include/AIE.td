@@ -12,6 +12,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "AIEInterfaces.td"
 
 def AIE_Dialect : Dialect {
   let name = "AIE";
@@ -151,7 +152,7 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                    AnyFloat.predicate]>,
                                   "scalar">;
 
-def AIE_TileOp: AIE_Op<"tile", []>, Results<(outs Index:$result)> {
+def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let arguments = (
     ins Confined<I32Attr, [IntMinValue<0>]>:$col,
         Confined<I32Attr, [IntMinValue<0>]>:$row
@@ -239,7 +240,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   }];
 }
 
-def AIE_SwitchboxOp: AIE_Op<"switchbox", [SingleBlockImplicitTerminator<"EndOp">]>,
+def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconect, SingleBlockImplicitTerminator<"EndOp">]>,
                      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -300,7 +301,8 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   ];
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [SingleBlockImplicitTerminator<"EndOp">]>,
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconect,
+                                      SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -313,18 +315,21 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [SingleBlockImplicitTerminator<"EndOp">]>,
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
+    int colIndex();
+    int rowIndex();
+    int getNumSourceConnections(WireBundle bundle);
+    int getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder &builder, OperationState &result, "
-  //             "Type resultType, int col", [{
-  //             build(builder, result, resultType,
-  //                   builder.getI32IntegerAttr(col));
-  //             }]>
-  // ];
+ let builders = [
+    OpBuilder<"OpBuilder &builder, OperationState &result, "
+              "Value tile", [{
+              build(builder, result, builder.getIndexType(), tile);
+              }]>
+ ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [SingleBlockImplicitTerminator<"EndOp">]>,
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -337,6 +342,8 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [SingleBlockImplicitTerminator<"EndOp">]>,
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
+    int colIndex();
+    int rowIndex();
     TileOp getTileOp();
   }];
        // let builders = [
@@ -348,7 +355,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [SingleBlockImplicitTerminator<"EndOp">]>,
   // ];
 }
 
-def AIE_CoreOp: AIE_Op<"core", []>, Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -963,7 +970,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>, Termin
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [CallableOpInterface]>,
+def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
                      Results<(outs Index)> {
 
   let summary = "Declare a memory op";

@@ -4,10 +4,12 @@
 #include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "mlir/IR/OpDefinition.h"
 
 using namespace mlir;
 
 namespace {
+
 struct AIEInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   // We don't have any special restrictions on what can be inlined into
@@ -206,8 +208,32 @@ static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
   }
   return success();
 }
+int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
+  switch(bundle) {
+  case WireBundle::DMA: return 2;
+  case WireBundle::NOC: return 4;
+  case WireBundle::PLIO: return 6;
+  case WireBundle::South: return 6;
+  default: return 0;
+  }
+}
+int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
+  switch(bundle) {
+  case WireBundle::DMA: return 2;
+  case WireBundle::NOC: return 4;
+  case WireBundle::PLIO: return 6;
+  case WireBundle::North: return 8;
+  default: return 0;
+  }
+}
 xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(tile().getDefiningOp());
+}
+int xilinx::AIE::ShimMuxOp::colIndex() {
+  return getTileOp().colIndex();
+}
+int xilinx::AIE::ShimMuxOp::rowIndex() {
+  return getTileOp().rowIndex();
 }
 
 // ShimDMAOp
@@ -222,6 +248,12 @@ static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
 }
 xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
   return cast<TileOp>(tile().getDefiningOp());
+}
+int xilinx::AIE::ShimDMAOp::colIndex() {
+  return getTileOp().colIndex();
+}
+int xilinx::AIE::ShimDMAOp::rowIndex() {
+  return getTileOp().rowIndex();
 }
 
 static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
@@ -320,6 +352,7 @@ static LogicalResult verify(xilinx::AIE::UseLockOp op) {
 }
 
 #include "AIEEnums.cpp.inc"
+#include "AIEInterfaces.cpp.inc"
 
 namespace xilinx {
 #define GET_OP_CLASSES
@@ -337,10 +370,11 @@ namespace xilinx {
     int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
       if(getTileOp().isShimTile())
         switch(bundle) {
-        case WireBundle::ME: return 0;
-        case WireBundle::DMA: return 2;
-        case WireBundle::PLIO: return 4;
-        case WireBundle::North: return 6;
+        //case WireBundle::ME: return 0;
+        //case WireBundle::DMA: return 2;
+        //case WireBundle::PLIO: return 4;
+        case WireBundle::FIFO: return 2;
+        case WireBundle::North: return 4;
         case WireBundle::West: return 4;
         case WireBundle::South: return 8;
         case WireBundle::East: return 4;
@@ -350,6 +384,7 @@ namespace xilinx {
         switch(bundle) {
         case WireBundle::ME: return 2;
         case WireBundle::DMA: return 2;
+        case WireBundle::FIFO: return 2;
         case WireBundle::North: return 4;
         case WireBundle::West: return 4;
         case WireBundle::South: return 6;
@@ -360,10 +395,11 @@ namespace xilinx {
     int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
       if(getTileOp().isShimTile())
         switch(bundle) {
-        case WireBundle::ME: return 0;
-        case WireBundle::DMA: return 2;
-        case WireBundle::PLIO: return 2;
-        case WireBundle::North: return 8;
+        // case WireBundle::ME: return 0;
+        // case WireBundle::DMA: return 2;
+        // case WireBundle::PLIO: return 2;
+        case WireBundle::FIFO: return 2;
+        case WireBundle::North: return 6;
         case WireBundle::West: return 4;
         case WireBundle::South: return 6;
         case WireBundle::East: return 4;
@@ -373,6 +409,7 @@ namespace xilinx {
         switch(bundle) {
         case WireBundle::ME: return 2;
         case WireBundle::DMA: return 2;
+        case WireBundle::FIFO: return 2;
         case WireBundle::North: return 6;
         case WireBundle::West: return 4;
         case WireBundle::South: return 4;

@@ -26,6 +26,17 @@ using namespace mlir;
 
 #include "AIEEnums.h.inc"
 
+namespace mlir {
+namespace OpTrait {
+template <typename ConcreteType>
+class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {
+};
+}
+}
+
+/// Include the generated interface declarations.
+#include "AIEInterfaces.h.inc"
+
 namespace xilinx {
 namespace AIE {
 

@@ -85,6 +85,43 @@ private:
     return portSet;
   }
 
+  std::vector<PacketConnection>
+  maskSwitchboxConnections(Operation *switchOp,
+                           std::vector<PortMaskValue> nextPortMaskValues,
+                           MaskValue maskValue) const {
+    std::vector<PacketConnection> worklist;
+    bool matched = false;
+    for (auto &nextPortMaskValue : nextPortMaskValues) {
+      Port nextPort = nextPortMaskValue.first;
+      MaskValue nextMaskValue = nextPortMaskValue.second;
+      int maskConflicts = nextMaskValue.first & maskValue.first;
+      LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.first << " "
+                              << maskValue.second << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.first << " "
+                              << nextMaskValue.second << "\n");
+      LLVM_DEBUG(llvm::dbgs() << maskConflicts << "\n");
+
+      if ((maskConflicts & nextMaskValue.second) !=
+          (maskConflicts & maskValue.second)) {
+        // Incoming packets cannot match this rule. Skip it.
+        continue;
+      }
+      matched = true;
+      MaskValue newMaskValue = std::make_pair(
+          maskValue.first | nextMaskValue.first,
+          maskValue.second | (nextMaskValue.first & nextMaskValue.second));
+      auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
+
+      // If there is no wire to follow then bail out.
+      if (!nextConnection.hasValue())
+        continue;
+
+      worklist.push_back(
+          std::make_pair(nextConnection.getValue(), newMaskValue));
+    }
+    return worklist;
+  }
+
 public:
   // Get the tiles connected to the given tile, starting from the given
   // output port of the tile.  This is 1:N relationship because each
@@ -94,7 +131,7 @@ public:
                     Port port) const {
 
     LLVM_DEBUG(llvm::dbgs() << "getConnectedTile(" << stringifyWireBundle(port.first) << " " << (int)port.second << ")");
-    tileOp.dump();
+    LLVM_DEBUG(tileOp.dump());
 
     // The accumulated result;
     std::vector<PacketConnection> connectedTiles;
@@ -117,81 +154,38 @@ public:
       MaskValue maskValue = t.second;
       Operation *other = portConnection.first;
       Port otherPort = portConnection.second;
-      if(auto tileOp = dyn_cast_or_null<TileOp>(other)) {
+      if(isa<FlowEndPoint>(other)) {
         // If we got to a tile, then add it to the result.
-        connectedTiles.push_back(t);
-      } else if(auto tileOp = dyn_cast_or_null<ShimDMAOp>(other)) {
-        // If we got to a ShimDMA, then add it to the result.
         connectedTiles.push_back(t);
       } else if(auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues =
           getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
-        bool matched = false;
-        for(auto &nextPortMaskValue: nextPortMaskValues) {
-          Port nextPort = nextPortMaskValue.first;
-          MaskValue nextMaskValue = nextPortMaskValue.second;
-          int maskConflicts = nextMaskValue.first & maskValue.first;
-          LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.first << " " << maskValue.second << "\n");
-          LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.first << " " << nextMaskValue.second << "\n");
-          LLVM_DEBUG(llvm::dbgs() << maskConflicts << "\n");
-
-          if((maskConflicts & nextMaskValue.second) !=
-             (maskConflicts & maskValue.second)) {
-            // Incoming packets cannot match this rule. Skip it.
-            continue;
-          }
-          matched = true;
-          MaskValue newMaskValue =
-            std::make_pair(maskValue.first | nextMaskValue.first,
-                           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
-          auto nextConnection =
-            getConnectionThroughWire(switchOp, nextPort);
-
-          // If there is no wire to follow then bail out.
-          if(!nextConnection.hasValue()) continue;
-
-          worklist.push_back(std::make_pair(nextConnection.getValue(),
-                                            newMaskValue));
-        }
-        if(nextPortMaskValues.size() > 0 && !matched) {
+        std::vector<PacketConnection> newWorkList =
+            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
+        // append to the worklist
+        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
+        if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
           LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
-          other->dump();
+          LLVM_DEBUG(other->dump());
         }
      } else if(auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues =
           getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
-        bool matched = false;
-        for(auto &nextPortMaskValue: nextPortMaskValues) {
-          Port nextPort = nextPortMaskValue.first;
-          MaskValue nextMaskValue = nextPortMaskValue.second;
-          int maskConflicts = nextMaskValue.first & maskValue.first;
-          LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.first << " " << maskValue.second << "\n");
-          LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.first << " " << nextMaskValue.second << "\n");
-          LLVM_DEBUG(llvm::dbgs() << maskConflicts << "\n");
-
-          if((maskConflicts & nextMaskValue.second) !=
-             (maskConflicts & maskValue.second)) {
-            // Incoming packets cannot match this rule. Skip it.
-            continue;
-          }
-          matched = true;
-          MaskValue newMaskValue =
-            std::make_pair(maskValue.first | nextMaskValue.first,
-                           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
-          auto nextConnection =
-            getConnectionThroughWire(switchOp, nextPort);
-
-          // If there is no wire to follow then bail out.
-          if(!nextConnection.hasValue()) continue;
-
-          worklist.push_back(std::make_pair(nextConnection.getValue(),
-                                            newMaskValue));
+        std::vector<PacketConnection> newWorkList =
+            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
+        // append to the worklist
+        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
+        if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
+          // No rule matched some incoming packet.  This is likely a
+          // configuration error.
+          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
+          LLVM_DEBUG(other->dump());
         }
       } else {
         LLVM_DEBUG(llvm::dbgs() << "*** Connection Terminated at unknown operation: ");
-        other->dump();
+        LLVM_DEBUG(other->dump());
       }
     }
     return connectedTiles;
@@ -209,6 +203,8 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
         std::vector<PacketConnection> tiles =
           analysis.getConnectedTiles(op,
                                      std::make_pair(bundle, i));
+        LLVM_DEBUG(llvm::dbgs() << tiles.size() << "Flows\n");
+
         for(PacketConnection &c: tiles) {
           PortConnection portConnection = c.first;
           MaskValue maskValue = c.second;
