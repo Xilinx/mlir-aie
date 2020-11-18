@@ -533,6 +533,32 @@ void registerAIETranslations() {
             output << "}\n";
           }
         }
+        for(auto op : module.getOps<ShimMuxOp>()) {
+          Region &r = op.connections();
+          Block &b = r.front();
+          bool isEmpty = b.getOps<ConnectOp>().empty();
+
+          if (isa<TileOp>(op.tile().getDefiningOp())) {
+            int col = op.colIndex();
+            int row = op.rowIndex();
+            if (!isEmpty) {
+              output << "// ShimMux column " << col << " row " << row << "\n";
+              output << "x = " << col << ";\n";
+              output << "y = " << row << ";\n";
+            }
+          }
+
+          // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_MUX_SOUTH7, XAIETILE_SHIM_STRM_MUX_DMA);
+          for (auto connectOp : b.getOps<ConnectOp>()) {
+            output << "XAieTile_ShimStrmMuxConfig(" <<
+                      tileInstStr("x", "y") << ",\n";
+            output << "\tXAIETILE_SHIM_STRM_MUX_" <<
+                      stringifyWireBundle(connectOp.sourceBundle()).upper() <<
+                      connectOp.sourceIndex() << ", " <<
+                      stringifyWireBundle(connectOp.destBundle()).upper() <<
+                      ");\n";
+          }
+        }
         for(auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
           Region &r = switchboxOp.connections();
           Block &b = r.front();
