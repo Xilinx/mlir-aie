@@ -27,7 +27,6 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
   std::map<StringRef, SmallVector<UseTokenOp, 4>> visitors;
   module.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseTokenOp>(Op)) {
-      int tokenValue = op.getTokenValue();
       StringRef tokenName = op.tokenName();
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() && "Token not found!");
       if (op.acquire()) {
@@ -95,7 +94,9 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
           acquireValue = op.getTokenValue();
         else if (auto op = dyn_cast<MemcpyOp>(AOp))
           acquireValue = op.getAcquireTokenValue();
-
+        else
+          continue;
+        
         // Release and Acquire form a chain if they set/get the token with the same value
         if (releaseValue != acquireValue)
           continue;
@@ -167,7 +168,7 @@ Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1, Operat
     bool IsW = isWest(col1, row1, col2, row2);
     bool IsN = isNorth(col1, row1, col2, row2);
     bool IsE = isEast(col1, row1, col2, row2);
-    bool IsInternal = isInternal(col1, row1, col2, row2);
+    //bool IsInternal = isInternal(col1, row1, col2, row2);
     bool IsEvenRow = ((row1 % 2) == 0);
 
     if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))

@@ -227,12 +227,8 @@ void registerAIETranslations() {
           {
             // Assign each block a BD number
             int bdNum = 0;
-            bool foundBd = false;
             for (auto &block : memOp.body()) {
-              for (auto op : block.getOps<DMABDOp>()) {
-                foundBd = true;
-              }
-              if (foundBd) {
+              if(!block.getOps<DMABDOp>().empty()) {
                 blockMap[&block] = bdNum;
                 bdNum++;
               }

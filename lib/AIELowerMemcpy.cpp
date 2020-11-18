@@ -34,31 +34,12 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     ConversionPatternRewriter &rewriter) const {
 
     Region &r = mem.body();
-    Block &entryBlock = r.front();
     Block &endBlock = r.back();
     Block *dmaBlock = rewriter.createBlock(&endBlock);
     Block *bdBlock = rewriter.createBlock(&endBlock);
 
-     Operation *termOp = entryBlock.getTerminator();
-    // TerminatorOp oldTerm = dyn_cast<TerminatorOp>(termOp);
-
-    // Retrieve current successor dma Blocks, and add new successor Block
-//    SmallVector<Block *, 4> succBlocks(oldTerm.dests());
-//    succBlocks.push_back(dmaBlock);
-
     rewriter.setInsertionPointToStart(dmaBlock);
-    DMAStartOp dmaStart = rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel, bdBlock, &endBlock);
-
-    // Replace old terminator with new terminator that includes new dma Block as a successor
-    // rewriter.setInsertionPointToEnd(&entryBlock);
-    // TerminatorOp newTerm = rewriter.create<TerminatorOp>(rewriter.getUnknownLoc(), succBlocks);
-    // rewriter.eraseOp(termOp);
-
-    // // Setup dma Block
-    // // It should contain a conditional branch op that points to a bd Block.
-    // // The bd Block is the start block description of the DMA transfer
-    // rewriter.setInsertionPointToStart(dmaBlock);
-    // rewriter.create<CondBranchOp>(rewriter.getUnknownLoc(), dmaStart, bdBlock, &endBlock);
+    rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel, bdBlock, &endBlock);
 
     // Setup bd Block
     // It should contain locking operations (lock or token) as well as DMABD op for specifying

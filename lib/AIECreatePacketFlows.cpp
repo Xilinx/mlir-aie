@@ -56,8 +56,6 @@ int getAvailableDestChannel(
   else
     numChannels = 2;
 
-  int availableChannel = -1;
-
   // look for existing connect that has a matching destination
   for (int i = 0; i < numChannels; i++) {
     Port port = std::make_pair(destBundle, i);
@@ -93,15 +91,15 @@ int getAvailableDestChannel(
 void update_coordinates(int &xCur, int &yCur, WireBundle move) {
   if (move == WireBundle::East) {
     xCur = xCur + 1;
-    yCur = yCur;
+    // yCur = yCur;
   } else if (move == WireBundle::West) {
     xCur = xCur - 1;
-    yCur = yCur;
+    // yCur = yCur;
   } else if (move == WireBundle::North) {
-    xCur = xCur;
+    // xCur = xCur;
     yCur = yCur + 1;
   } else if (move == WireBundle::South) {
-    xCur = xCur;
+    // xCur = xCur;
     yCur = yCur - 1;
   }
 }
@@ -112,10 +110,6 @@ void buildPSRoute(int xSrc, int ySrc, Port sourcePort,
                   int xDest, int yDest, Port destPort,
                   int flowID,
                   DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>> &switchboxes) {
-
-  int xCnt = 0;
-  int yCnt = 0;
-
   int xCur = xSrc;
   int yCur = ySrc;
   WireBundle curBundle;
@@ -602,7 +596,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
 
         Block &rules = packetrules.rules().front();
         builder.setInsertionPoint(rules.getTerminator());
-        PacketRuleOp rule = builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
+        builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
       }
     }
 

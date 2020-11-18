@@ -55,7 +55,7 @@ struct AIEDebugOpLowering : public OpConversionPattern<DebugOp> {
     assert(func && "Could not find the intrinsic function!");
     SmallVector<Value, 1> args;
     args.push_back(op.arg());
-    auto call = rewriter.create<CallOp>(rewriter.getUnknownLoc(), func, args);
+    rewriter.create<CallOp>(rewriter.getUnknownLoc(), func, args);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -87,7 +87,7 @@ struct AIEPutStreamLowering : public OpConversionPattern<PutStreamOp> {
     SmallVector<Value, 2> args;
     args.push_back(op.channel());
     args.push_back(op.streamValue());
-    auto putMSCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
+    rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -104,8 +104,6 @@ struct AIEGetStreamLowering : public OpConversionPattern<GetStreamOp> {
 
   LogicalResult matchAndRewrite(GetStreamOp op, ArrayRef<Value> operands,
                                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
     std::string funcName = "llvm.aie.get.";
     if (op.isWideStream())
       funcName += "wss";
@@ -142,7 +140,7 @@ struct AIEPutCascadeLowering : public OpConversionPattern<PutCascadeOp> {
     assert(putMCDFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.cascadeValue());
-    auto putMCDCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
+    rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -159,8 +157,6 @@ struct AIEGetCascadeLowering : public OpConversionPattern<GetCascadeOp> {
 
   LogicalResult matchAndRewrite(GetCascadeOp op, ArrayRef<Value> operands,
                                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName);
     assert(getSCDFunc && "Could not find the intrinsic function!");
@@ -177,8 +173,8 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
   DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
   DenseMap<Operation *, LLVM::GlobalOp> &bufferToGlobal;
   LLVMTypeConverter &converter;
-  unsigned tileCol = 0;
-  unsigned tileRow = 0;
+  int tileCol = 0;
+  int tileRow = 0;
 
   AIECoreToLLVMFunc(MLIRContext *context, ModuleOp &m,
     BlockAndValueMapping &mapper,
@@ -186,8 +182,8 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
     DenseMap<Operation *, LLVM::GlobalOp> &bufferToGlobal,
     LLVMTypeConverter &converter,
     PatternBenefit benefit = 1,
-    unsigned tileCol = 1,
-    unsigned tileRow = 1
+    int tileCol = 1,
+    int tileRow = 1
   ) : OpConversionPattern<CoreOp>(context, benefit),
     module(m), mapper(mapper), tileToBuffers(tileToBuffers), bufferToGlobal(bufferToGlobal), converter(converter),
     tileCol(tileCol), tileRow(tileRow) {}
@@ -249,9 +245,8 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
 
         auto int64Ty = LLVM::LLVMType::getInt64Ty(&converter.getContext());
         auto indexType = IndexType::get(rewriter.getContext());
-        Value dim = rewriter.create<LLVM::ConstantOp>(rewriter.getUnknownLoc(), int64Ty,
+        rewriter.create<LLVM::ConstantOp>(rewriter.getUnknownLoc(), int64Ty,
           IntegerAttr::get(indexType, t.getShape()[0]));
-        auto ptrType = converter.convertType(t.getElementType()).cast<LLVM::LLVMType>().getPointerTo();
         LLVM::GlobalOp global = bufferToGlobal[buffer.getOperation()];
         Value allocated = rewriter.create<LLVM::AddressOfOp>(rewriter.getUnknownLoc(), global);
         newAllocated[buffer] = allocated;
@@ -262,7 +257,7 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPointAfter(childOp);
 
       if (EndOp end = dyn_cast<EndOp>(childOp)) {
-        auto llvmReturn = rewriter.create<LLVM::ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
+        rewriter.create<LLVM::ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
         rewriter.eraseOp(childOp);
       } else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
         LockOp lock = dyn_cast<LockOp>(useLock.lock().getDefiningOp());
@@ -305,8 +300,7 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
         args.push_back(coreLockIDValue);
         args.push_back(lockValue);
 
-        auto useLockCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), useLockFunc, args);
-
+        rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), useLockFunc, args);
         rewriter.eraseOp(childOp);
       } else if (mlir::StoreOp store = dyn_cast<mlir::StoreOp>(childOp)) {
         // TODO: support multi-dimension indexing
@@ -315,7 +309,6 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
         Operation *storeBuf = store.getMemRef().getDefiningOp();
         if (newAllocated.count(storeBuf) != 0) {
           Value allocated = newAllocated[storeBuf];
-          auto retType = allocated.getType().cast<LLVM::LLVMType>().getPointerElementTy().getArrayElementType();
           auto int32Ty = LLVM::LLVMType::getInt32Ty(&converter.getContext());
           auto int64Ty = LLVM::LLVMType::getInt64Ty(&converter.getContext());
           auto indexType = IndexType::get(rewriter.getContext());
@@ -335,7 +328,6 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
         if (newAllocated.count(loadBuf) != 0) {
           Value allocated = newAllocated[loadBuf];
           auto retType = allocated.getType().cast<LLVM::LLVMType>().getPointerElementTy().getArrayElementType();
-          auto int32Ty = LLVM::LLVMType::getInt32Ty(&converter.getContext());
           auto int64Ty = LLVM::LLVMType::getInt64Ty(&converter.getContext());
           auto indexType = IndexType::get(rewriter.getContext());
           Value constZero = rewriter.create<LLVM::ConstantOp>(rewriter.getUnknownLoc(), int64Ty,
@@ -404,7 +396,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     // llvm.func @debug_i32(%val: !llvm.i32) -> ()
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getInt32Ty(&converter.getContext()));
-    auto debug_i32Func = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "debug_i32",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "debug_i32",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
@@ -413,7 +405,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 32));
     callArgTypes.push_back(LLVM::LLVMType::getInt32Ty(&converter.getContext()));
     // callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 1));
-    auto putMSFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.ms",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.ms",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
@@ -421,7 +413,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 32));
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 128));
-    auto putWMSFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
@@ -429,40 +421,40 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 32));
     callArgTypes.push_back(LLVM::LLVMType::getFloatTy(&converter.getContext()));
-    auto putFMFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.fms",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.fms",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.get.ss(%channel: !llvm.i1) -> !llvm.i32
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 32));
-    auto getSSFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.ss",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.ss",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getInt32Ty(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.get.wss(%channel: !llvm.i1) -> !llvm.i128
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 32));
-    auto getWSSFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.wss",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.wss",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getIntNTy(&converter.getContext(), 128),
         callArgTypes, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.get.fss(%channel: !llvm.i1) -> !llvm.float
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 32));
-    auto getFSSFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.fss",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.fss",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getFloatTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.put.scd(%scd_val: !llvm.i384) -> ()
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getIntNTy(&converter.getContext(), 384));
-    auto putMCDFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.mcd",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.put.mcd",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
     // llvm.func @llvm.aie.get.scd() -> !llvm.i384
-    auto getSCDFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.scd",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.get.scd",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getIntNTy(&converter.getContext(), 384),
         {}, /*isVarArg=*/false));
 
@@ -470,7 +462,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getInt32Ty(&converter.getContext()));
     callArgTypes.push_back(LLVM::LLVMType::getInt32Ty(&converter.getContext()));
-    auto acqLockFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.acquire.reg",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.acquire.reg",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
@@ -478,7 +470,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     callArgTypes.clear();
     callArgTypes.push_back(LLVM::LLVMType::getInt32Ty(&converter.getContext()));
     callArgTypes.push_back(LLVM::LLVMType::getInt32Ty(&converter.getContext()));
-    auto relLockFunc = builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.release.reg",
+    builder.create<LLVM::LLVMFuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.release.reg",
         LLVM::LLVMType::getFunctionTy(LLVM::LLVMType::getVoidTy(&converter.getContext()),
         callArgTypes, /*isVarArg=*/false));
 
@@ -562,7 +554,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPointAfter(childOp);
 
       if (EndOp end = dyn_cast<EndOp>(childOp)) {
-        auto returnOp = rewriter.create<ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
+        rewriter.create<ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
         rewriter.eraseOp(childOp);
       }
       //  else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
@@ -652,47 +644,47 @@ struct AIECoreToStandardPass : public PassWrapper<AIECoreToStandardPass, Operati
     Type floatType = FloatType::getF32(builder.getContext());
 
     // llvm.func @debug_i32(%val: !llvm.i32) -> ()
-    auto debug_i32Func = builder.create<FuncOp>(builder.getUnknownLoc(), "debug_i32",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "debug_i32",
         FunctionType::get({int32Type}, {}, builder.getContext()));
 
     // llvm.func @llvm.aie.put.ms(%channel: !llvm.i1, %stream_val: !llvm.i32) -> ()
-    auto putMSFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.ms",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.ms",
         FunctionType::get({int32Type, int32Type}, {}, builder.getContext()));
 
     // llvm.func @llvm.aie.put.mws(%channel: !llvm.i1, %stream_val: !llvm.i128) -> ()
-    auto putWMSFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
         FunctionType::get({int32Type, int128Type}, {}, builder.getContext()));
 
     // llvm.func @llvm.aie.put.mfs(%channel: !llvm.i1, %stream_val: !llvm.float) -> ()
-    auto putFMFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.fms",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.fms",
         FunctionType::get({int32Type, floatType}, {}, builder.getContext()));
 
     // llvm.func @llvm.aie.get.ss(%channel: !llvm.i1) -> !llvm.i32
-    auto getSSFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.ss",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.ss",
         FunctionType::get({int32Type}, {int32Type}, builder.getContext()));
 
     // llvm.func @llvm.aie.get.wss(%channel: !llvm.i1) -> !llvm.i128
-    auto getWSSFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.wss",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.wss",
         FunctionType::get({int32Type}, {int128Type}, builder.getContext()));
 
     // llvm.func @llvm.aie.get.fss(%channel: !llvm.i1) -> !llvm.float
-    auto getFSSFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.fss",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.fss",
         FunctionType::get({int32Type}, {floatType}, builder.getContext()));
 
     // llvm.func @llvm.aie.put.scd(%scd_val: !llvm.i384) -> ()
-    auto putMCDFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.mcd",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.mcd",
         FunctionType::get({int384Type}, {}, builder.getContext()));
 
     // llvm.func @llvm.aie.get.scd() -> !llvm.i384
-    auto getSCDFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.scd",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.scd",
         FunctionType::get({}, {int384Type}, builder.getContext()));
 
     // llvm.func @llvm.aie.lock.acquire.reg(%lock_id: !llvm.i32, %lock_val: !llvm.i32) ->()
-    auto acqLockFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.acquire.reg",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.acquire.reg",
         FunctionType::get({int32Type, int32Type}, {}, builder.getContext()));
 
     // llvm.func @llvm.aie.lock.release.reg(%lock_id: !llvm.i32, %lock_val: !llvm.i32) ->()
-    auto relLockFunc = builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.release.reg",
+    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.release.reg",
         FunctionType::get({int32Type, int32Type}, {}, builder.getContext()));
 
 

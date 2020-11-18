@@ -116,99 +116,29 @@ typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
 typedef std::pair<int, int> TileID;
 
-static bool isValidTile(TileID src) {
-  // FIXME: what about upper bound?
-  return src.first >= 0 && src.second >= 0;
-}
+bool isValidTile(TileID src);
+
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-static Optional<TileID> getMemWest(TileID src) {
-  bool isEvenRow = ((src.first % 2) == 0);
-  Optional<TileID> ret;
-  if (isEvenRow)
-    ret = src;
-  else
-    ret = std::make_pair(src.first - 1, src.second);
-  if(!isValidTile(ret.getValue())) ret.reset();
-  return ret;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-static Optional<TileID> getMemEast(TileID src) {
-  bool isEvenRow = ((src.first % 2) == 0);
-  Optional<TileID> ret;
-  if (isEvenRow)
-    ret = std::make_pair(src.first + 1, src.second);
-  else
-    ret = src;
-  if(!isValidTile(ret.getValue())) ret.reset();
-  return ret;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-static Optional<TileID> getMemNorth(TileID src) {
-  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if(!isValidTile(ret.getValue())) ret.reset();
-  return ret;
-}
-static Optional<TileID> getMemSouth(TileID src) {
-  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
-  if(!isValidTile(ret.getValue())) ret.reset();
-  return ret;
-}
+Optional<TileID> getMemWest(TileID src);
+// Return the tile ID of the memory to the east of the given tile, if it exists.
+Optional<TileID> getMemEast(TileID src);
+// Return the tile ID of the memory to the north of the given tile, if it exists.
+Optional<TileID> getMemNorth(TileID src);
+// Return the tile ID of the memory to the south of the given tile, if it exists.
+Optional<TileID> getMemSouth(TileID src);
 
-static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow));
-}
+bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isEast(int srcCol, int srcRow, int dstCol, int dstRow);
 
-static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
-}
+bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
+bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
-static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) {
-  bool IsEvenRow = ((srcRow % 2) == 0);
-  return (IsEvenRow  && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
-         (!IsEvenRow && isWest(srcCol, srcRow, dstCol, dstRow));
-}
-
-static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
-}
-
-static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
-  bool IsEvenRow = ((srcRow % 2) == 0);
-  return (!IsEvenRow && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
-         (IsEvenRow  && isEast(srcCol, srcRow, dstCol, dstRow));
-}
-
-static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
-}
-
-static bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return isNorth(srcCol, srcRow, dstCol, dstRow);
-}
-
-static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
-}
-
-static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return isSouth(srcCol, srcRow, dstCol, dstRow);
-}
-
-static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
-  bool IsEvenRow = ((coreRow % 2) == 0);
-
-  bool IsMemWest = (isWest(coreCol, coreRow, memCol, memRow)   && !IsEvenRow) ||
-                   (isInternal(coreCol, coreRow, memCol, memRow) &&  IsEvenRow);
-
-  bool IsMemEast = (isEast(coreCol, coreRow, memCol, memRow)   &&  IsEvenRow) ||
-                   (isInternal(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
-
-  bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
-  bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);
-
-  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
-}
-
+bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
 }
 
 // include TableGen generated Op definitions

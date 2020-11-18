@@ -41,6 +41,99 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
 namespace xilinx {
 namespace AIE {
 
+bool isValidTile(TileID src) {
+  // FIXME: what about upper bound?
+  return src.first >= 0 && src.second >= 0;
+}
+// Return the tile ID of the memory to the west of the given tile, if it exists.
+Optional<TileID> getMemWest(TileID src) {
+  bool isEvenRow = ((src.first % 2) == 0);
+  Optional<TileID> ret;
+  if (isEvenRow)
+    ret = src;
+  else
+    ret = std::make_pair(src.first - 1, src.second);
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+// Return the tile ID of the memory to the west of the given tile, if it exists.
+Optional<TileID> getMemEast(TileID src) {
+  bool isEvenRow = ((src.first % 2) == 0);
+  Optional<TileID> ret;
+  if (isEvenRow)
+    ret = std::make_pair(src.first + 1, src.second);
+  else
+    ret = src;
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+// Return the tile ID of the memory to the west of the given tile, if it exists.
+Optional<TileID> getMemNorth(TileID src) {
+  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+Optional<TileID> getMemSouth(TileID src) {
+  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
+  if(!isValidTile(ret.getValue())) ret.reset();
+  return ret;
+}
+
+bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow));
+}
+
+bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
+}
+
+bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) {
+  bool IsEvenRow = ((srcRow % 2) == 0);
+  return (IsEvenRow  && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
+         (!IsEvenRow && isWest(srcCol, srcRow, dstCol, dstRow));
+}
+
+bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
+}
+
+bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
+  bool IsEvenRow = ((srcRow % 2) == 0);
+  return (!IsEvenRow && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
+         (IsEvenRow  && isEast(srcCol, srcRow, dstCol, dstRow));
+}
+
+bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
+}
+
+bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return isNorth(srcCol, srcRow, dstCol, dstRow);
+}
+
+bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
+}
+
+bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
+  return isSouth(srcCol, srcRow, dstCol, dstRow);
+}
+
+bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
+  bool IsEvenRow = ((coreRow % 2) == 0);
+
+  bool IsMemWest = (isWest(coreCol, coreRow, memCol, memRow)   && !IsEvenRow) ||
+                   (isInternal(coreCol, coreRow, memCol, memRow) &&  IsEvenRow);
+
+  bool IsMemEast = (isEast(coreCol, coreRow, memCol, memRow)   &&  IsEvenRow) ||
+                   (isInternal(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
+
+  bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
+  bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);
+
+  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
+}
+
 // FIXME: use Tablegen'd dialect class
 AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx,
     ::mlir::TypeID::get<AIEDialect>()) {
@@ -342,7 +435,7 @@ int xilinx::AIE::SwitchboxOp::rowIndex() {
 }
 
 static LogicalResult verify(xilinx::AIE::UseLockOp op) {
-  xilinx::AIE::LockOp lockOp = dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
+//  xilinx::AIE::LockOp lockOp = dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
 //   if (!lockOp) {
 //     op.emitOpError() << "Expected LockOp!\n";
 // //    return failure();

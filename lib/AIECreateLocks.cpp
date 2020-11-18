@@ -27,7 +27,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
     DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>> &lockChains,
     PatternBenefit benefit = 1
   ) : OpConversionPattern<UseTokenOp>(context, benefit),
-    module(m), lockChains(lockChains), acqLocks(acqLocks), relLocks(relLocks) {}
+    module(m), acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
 
   LogicalResult matchAndRewrite(UseTokenOp op, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const override {

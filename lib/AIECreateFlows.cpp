@@ -69,7 +69,6 @@ public:
     if(coordToTile.count(std::make_pair(col, row))) {
       return coordToTile[std::make_pair(col, row)];
     } else {
-      IntegerType i32 = builder.getIntegerType(32);
       TileOp tileOp =
         builder.create<TileOp>(builder.getUnknownLoc(), col, row);
       coordToTile[std::make_pair(col, row)] = tileOp;
@@ -84,7 +83,6 @@ public:
     if(coordToSwitchbox.count(std::make_pair(col, row))) {
       return coordToSwitchbox[std::make_pair(col, row)];
     } else {
-      IntegerType i32 = builder.getIntegerType(32);
       SwitchboxOp switchboxOp =
         builder.create<SwitchboxOp>(builder.getUnknownLoc(),
                                     getTile(builder, col, row));
@@ -104,7 +102,6 @@ public:
     if(coordToShimMux.count(std::make_pair(col, row))) {
       return coordToShimMux[std::make_pair(col, row)];
     } else {
-      IntegerType i32 = builder.getIntegerType(32);
       ShimMuxOp switchboxOp =
         builder.create<ShimMuxOp>(builder.getUnknownLoc(),
                                     getTile(builder, col, row));
@@ -136,8 +133,8 @@ public:
 
 struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
   using OpConversionPattern<AIE::FlowOp>::OpConversionPattern;
-  TileAnalysis &analysis;
   ModuleOp &module;
+  TileAnalysis &analysis;
   RouteFlows(MLIRContext *context, ModuleOp &m, TileAnalysis &a,
              PatternBenefit benefit = 1)
     : OpConversionPattern<FlowOp>(context, benefit),
@@ -175,12 +172,11 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     }
 
     // This might fail if an outIndex was exactly specified.
-    ConnectOp connectOp =
-      rewriter.template create<ConnectOp>(rewriter.getUnknownLoc(),
-                                          inBundle,
-                                          inIndex,
-                                          outBundle,
-                                          outIndex);
+    rewriter.template create<ConnectOp>(rewriter.getUnknownLoc(),
+                                        inBundle,
+                                        inIndex,
+                                        outBundle,
+                                        outIndex);
 
     rewriter.restoreInsertionPoint(point);
 
@@ -299,8 +295,6 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
 
     ModuleOp m = getOperation();
     TileAnalysis analysis(m);
-    IntegerType i32 = IntegerType::get(32, m.getContext());
-
     OpBuilder builder(m.getBody()->getTerminator());
 
     // Populate tiles and switchboxes.
@@ -322,59 +316,52 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
       for(int row = 0; row <= analysis.getMaxRow(); row++) {
         auto tile = analysis.getTile(builder, col, row);
         auto sw = analysis.getSwitchbox(builder, col, row);
-        WireOp meWireOp =
-          builder.create<WireOp>(builder.getUnknownLoc(),
-                                 tile,
-                                 WireBundle::ME,
-                                 sw,
-                                 WireBundle::ME);
-        WireOp dmaWireOp =
-          builder.create<WireOp>(builder.getUnknownLoc(),
-                                 tile,
-                                 WireBundle::DMA,
-                                 sw,
-                                 WireBundle::DMA);
+        builder.create<WireOp>(builder.getUnknownLoc(),
+                                tile,
+                                WireBundle::ME,
+                                sw,
+                                WireBundle::ME);
+        builder.create<WireOp>(builder.getUnknownLoc(),
+                                tile,
+                                WireBundle::DMA,
+                                sw,
+                                WireBundle::DMA);
         if(col > 0) {
           auto westsw = analysis.getSwitchbox(builder, col-1, row);
-          WireOp switchboxOp =
-            builder.create<WireOp>(builder.getUnknownLoc(),
-                                   westsw,
-                                   WireBundle::East,
-                                   sw,
-                                   WireBundle::West);
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  westsw,
+                                  WireBundle::East,
+                                  sw,
+                                  WireBundle::West);
         }
         if(row > 0) {
           auto southsw = analysis.getSwitchbox(builder, col, row-1);
-          WireOp switchboxOp =
-            builder.create<WireOp>(builder.getUnknownLoc(),
-                                   southsw,
-                                   WireBundle::North,
-                                   sw,
-                                   WireBundle::South);
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  southsw,
+                                  WireBundle::North,
+                                  sw,
+                                  WireBundle::South);
         } else if(row == 0) {
           auto southsw = analysis.getSwitchbox(builder, col, row);
-          WireOp switchboxOp =
-            builder.create<WireOp>(builder.getUnknownLoc(),
-                                   southsw,
-                                   WireBundle::North,
-                                   sw,
-                                   WireBundle::South);
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  southsw,
+                                  WireBundle::North,
+                                  sw,
+                                  WireBundle::South);
           if(col > 0) {
             auto westsw = analysis.getSwitchbox(builder, col-1, row);
-            WireOp switchboxOp =
-              builder.create<WireOp>(builder.getUnknownLoc(),
-                                     westsw,
-                                     WireBundle::East,
-                                     southsw,
-                                     WireBundle::West);
+            builder.create<WireOp>(builder.getUnknownLoc(),
+                                    westsw,
+                                    WireBundle::East,
+                                    southsw,
+                                    WireBundle::West);
           }
           auto plio = analysis.getPLIO(builder, col);
-          WireOp PLIOOp =
-            builder.create<WireOp>(builder.getUnknownLoc(),
-                                   plio,
-                                   WireBundle::North,
-                                   southsw,
-                                   WireBundle::South);
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  plio,
+                                  WireBundle::North,
+                                  southsw,
+                                  WireBundle::South);
         }
       }
     }

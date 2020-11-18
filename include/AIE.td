@@ -181,22 +181,16 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
     MemOp getMemOp() {
       auto users = result().getUsers();
-      bool found = false;
-      for(auto user : users) {
-        if(auto memOp = llvm::dyn_cast<MemOp>(*user)) {
+      for(auto user : users)
+        if(auto memOp = llvm::dyn_cast<MemOp>(*user))
           return memOp;
-        }
-      }
       return nullptr;
     }
     CoreOp getCoreOp() {
       auto users = result().getUsers();
-      bool found = false;
-      for(auto user : users) {
-        if(auto coreOp = llvm::dyn_cast<CoreOp>(*user)) {
+      for(auto user : users)
+        if(auto coreOp = llvm::dyn_cast<CoreOp>(*user))
           return coreOp;
-        }
-      }
       return nullptr;
     }
   }];
@@ -759,6 +753,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
     route, this is replaced by MasterSets and PacketRules inside
     switchboxes.
   }];
+  let verifier = [{ return ::verify(*this); }];
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let extraClassDeclaration = [{
     int IDInt() { return ID(); }

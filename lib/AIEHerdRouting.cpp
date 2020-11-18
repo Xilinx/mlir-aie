@@ -51,8 +51,6 @@ int getAvailableDestChannel(
   else
     numChannels = 2;
 
-  int availableChannel = -1;
-
   // look for existing connect
   for (int i = 0; i < numChannels; i++) {
     Port port = std::make_pair(destBundle, i);
@@ -79,9 +77,6 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
   WireBundle destBundle, int destChannel,
   Operation *herdOp,
   DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<Connect, 8>> &switchboxes) {
-
-  int xCnt = 0;
-  int yCnt = 0;
 
   int xCur = xSrc;
   int yCur = ySrc;
@@ -134,15 +129,15 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
 
       if (move == WireBundle::East) {
         xCur = xCur + 1;
-        yCur = yCur;
+        // yCur = yCur;
       } else if (move == WireBundle::West) {
         xCur = xCur - 1;
-        yCur = yCur;
+        // yCur = yCur;
       } else if (move == WireBundle::North) {
-        xCur = xCur;
+        // xCur = xCur;
         yCur = yCur + 1;
       } else if (move == WireBundle::South) {
-        xCur = xCur;
+        // xCur = xCur;
         yCur = yCur - 1;
       }
 
@@ -249,7 +244,6 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
       std::pair<int, int> distance = distances[std::make_pair(sourceHerd, destHerd)];
       int distX = distance.first;
       int distY = distance.second;
-      int xStride, yStride;
       // FIXME: this looks like it can be improved further ...
       for (int xSrc = sourceStartX; xSrc < sourceEndX; xSrc += sourceStrideX) {
         for (int ySrc = sourceStartY; ySrc < sourceEndY; ySrc += sourceStrideY) {

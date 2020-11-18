@@ -210,15 +210,14 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
           MaskValue maskValue = c.second;
           Operation *destOp = portConnection.first;
           Port destPort = portConnection.second;
-          IntegerType i32 = IntegerType::get(32, rewriter.getContext());
           if(maskValue.first == 0) {
-            Operation *flowOp = rewriter.create<FlowOp>(Op->getLoc(),
-                                                        Op->getResult(0),
-                                                        (int)bundle,
-                                                        (int)i,
-                                                        destOp->getResult(0),
-                                                        (int)destPort.first,
-                                                        (int)destPort.second);
+            rewriter.create<FlowOp>(Op->getLoc(),
+                                    Op->getResult(0),
+                                    (int)bundle,
+                                    (int)i,
+                                    destOp->getResult(0),
+                                    (int)destPort.first,
+                                    (int)destPort.second);
           } else {
             PacketFlowOp flowOp = rewriter.create<PacketFlowOp>(Op->getLoc(),
                                                        maskValue.second);
@@ -227,14 +226,14 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
                                     Op->getLoc());
             OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
             rewriter.setInsertionPoint(flowOp.ports().front().getTerminator());
-            Operation *packetSourceOp = rewriter.create<PacketSourceOp>(Op->getLoc(),
-                                                            Op->getResult(0),
-                                                                 bundle,
-                                                                 (int)i);
-            Operation *packetDestOp = rewriter.create<PacketDestOp>(Op->getLoc(),
-                                                        destOp->getResult(0),
-                                                        destPort.first,
-                                                        (int)destPort.second);
+            rewriter.create<PacketSourceOp>(Op->getLoc(),
+                                            Op->getResult(0),
+                                            bundle,
+                                            (int)i);
+            rewriter.create<PacketDestOp>(Op->getLoc(),
+                                          destOp->getResult(0),
+                                          destPort.first,
+                                          (int)destPort.second);
             rewriter.restoreInsertionPoint(ip);
           }
         }
