@@ -231,18 +231,24 @@ int xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
   return memUsage / 8;
 }
 
+// FIXME: make address assignment for buffers explicit and move this function to
+// an interface
 int xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
-  BufferOp buf = dyn_cast<BufferOp>(bufOp);
-  Operation *tileOp = buf.tile().getDefiningOp();
-  int baseAddr = 0;
-  for (unsigned i = 0; i < buffers[tileOp].size(); i++) {
-    MemRefType t = buffers[tileOp][i].getType().cast<MemRefType>();
-    if (bufOp == buffers[tileOp][i])
-      break;
-    baseAddr += (t.getSizeInBits() / 8);
+  if (auto buf = dyn_cast<BufferOp>(bufOp)) {
+    Operation *tileOp = buf.tile().getDefiningOp();
+    int baseAddr = 0;
+    for (unsigned i = 0; i < buffers[tileOp].size(); i++) {
+      MemRefType t = buffers[tileOp][i].getType().cast<MemRefType>();
+      if (bufOp == buffers[tileOp][i])
+        break;
+      baseAddr += (t.getSizeInBits() / 8);
+    }
+    return baseAddr;
+  } else if (auto buf = dyn_cast<ExternalBufferOp>(bufOp)) {
+    return buf.address();
+  } else {
+    llvm_unreachable("unknown buffer type");
   }
-
-  return baseAddr;
 }
 
 SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(

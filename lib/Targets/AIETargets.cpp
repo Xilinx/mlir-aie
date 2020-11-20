@@ -24,6 +24,12 @@ using namespace xilinx::AIE;
 namespace xilinx {
 namespace AIE {
 
+std::string shimDMAInstStr(StringRef col, StringRef index) {
+  std::string str;
+  llvm::raw_string_ostream rss(str);
+  rss << "ShimDMAInst_" << col << "_" << index;
+  return str;
+}
 std::string tileInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
@@ -352,6 +358,145 @@ void registerAIETranslations() {
                      << ", "
                      << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", " << resetDisable << ", " << enable << ");\n";
+            }
+          }
+        }
+        // XAieDma_Shim ShimDmaInst1;
+        // u32 XAieDma_ShimSoftInitialize(XAieGbl_Tile *TileInstPtr,
+        // XAieDma_Shim *DmaInstPtr); void XAieDma_ShimInitialize(XAieGbl_Tile
+        // *TileInstPtr, XAieDma_Shim *DmaInstPtr); u32
+        // XAieDma_ShimChReset(XAieDma_Shim *DmaInstPtr, u8 ChNum); u32
+        // XAieDma_ShimChResetAll(XAieDma_Shim *DmaInstPtr); void
+        // XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum, u8 LockId,
+        // u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8 LockAcqVal); void
+        // XAieDma_ShimBdSetAxi(XAieDma_Shim *DmaInstPtr, u8 BdNum, u8 Smid, u8
+        // BurstLen, u8 Qos, u8 Cache, u8 Secure); void
+        // XAieDma_ShimBdSetPkt(XAieDma_Shim *DmaInstPtr, u8 BdNum, u8 PktEn, u8
+        // PktType, u8 PktId); void XAieDma_ShimBdSetNext(XAieDma_Shim
+        // *DmaInstPtr, u8 BdNum, u8 NextBd); void
+        // XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum, u16
+        // AddrHigh, u32 AddrLow, u32 Length); void
+        // XAieDma_ShimBdWrite(XAieDma_Shim *DmaInstPtr, u8 BdNum); void
+        // XAieDma_ShimBdClear(XAieDma_Shim *DmaInstPtr, u8 BdNum); void
+        // XAieDma_ShimBdClearAll(XAieDma_Shim *DmaInstPtr); u8
+        // XAieDma_ShimWaitDone(XAieDma_Shim *DmaInstPtr, u32 ChNum, u32
+        // TimeOut); u8 XAieDma_ShimPendingBdCount(XAieDma_Shim *DmaInstPtr, u32
+        // ChNum);
+        int index = 0;
+        for (auto op : module.getOps<ShimDMAOp>()) {
+          int col = op.colIndex();
+          int row = op.rowIndex();
+          std::string dmaName =
+              shimDMAInstStr(std::to_string(col), std::to_string(index));
+          output << "XAieDma_Shim " << dmaName << ";\n";
+          output << "XAieDma_ShimInitialize("
+                 << tileInstStr(std::to_string(col), std::to_string(row))
+                 << ", " << dmaName << ");\n";
+
+          DenseMap<Block *, int> blockMap;
+          Block *endBlock = &op.body().back();
+
+          {
+            // Assign each block a BD number
+            int bdNum = 0;
+            for (auto &block : op.body()) {
+              if (!block.getOps<DMABDOp>().empty()) {
+                blockMap[&block] = bdNum;
+                bdNum++;
+              }
+            }
+          }
+          for (auto &block : op.body()) {
+            bool foundBd = false;
+            int len = 0;
+            int offset = 0;
+            int BaseAddr = 0;
+
+            for (auto op : block.getOps<DMABDOp>()) {
+              foundBd = true;
+              len = op.getLenValue();
+              BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+              offset = op.getOffsetValue();
+            }
+
+            int acqValue = 0, relValue = 0;
+            StringRef acqEnable = disable;
+            StringRef relEnable = disable;
+            int lockID;
+            for (auto op : block.getOps<UseLockOp>()) {
+              LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
+              lockID = lock.getLockID();
+              if (op.acquire()) {
+                acqEnable = enable;
+                acqValue = op.getLockValue();
+              } else if (op.release()) {
+                relEnable = enable;
+                relValue = op.getLockValue();
+              }
+            }
+
+            int bdNum = blockMap[&block];
+            if (foundBd) {
+              // void XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum,
+              // u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8
+              // LockAcqVal);
+              output << "XAieDma_ShimBdSetLock(" << dmaName << ", "
+                     << " /* bd */ " << bdNum << ", "
+                     << " /* lockID */ " << lockID << ", " << relEnable << ", "
+                     << " /* release */ " << relValue << ", " << acqEnable
+                     << ", "
+                     << " /* acquire */ " << acqValue << ");\n";
+              // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
+              // u16 AddrHigh, u32 AddrLow, u32 Length);
+              int address = BaseAddr + offset;
+              output << "XAieDma_ShimBdSetAddr(" << dmaName << ", "
+                     << " /* bd */ " << bdNum << ", "
+                     << "HIGH_ADDR((u64)" << llvm::utohexstr(address) << "), "
+                     << "LOW_ADDR((u64)" << llvm::utohexstr(address) << "), " <<
+                  // " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA +
+                  // offsetA) << ", " <<
+                  " /* len */ " << len << ");\n";
+
+              // void XAieDma_ShimBdSetAxi(XAieDma_Shim *DmaInstPtr, u8 BdNum,
+              // u8 Smid, u8 BurstLen, u8 Qos, u8 Cache, u8 Secure);
+              output << "XAieDma_ShimBdSetAxi(" << dmaName << ", "
+                     << "/* bd */ " << bdNum << ", "
+                     << "/* smid */ 0, "
+                     << "/* burstlen */ 4, "
+                     << "/* QOS */ 0, "
+                     << "/* Cache */ 0, "
+                     << "/* secure */ " << enable << ");\n";
+
+              Block *nextBlock =
+                  block.getSuccessors()[0]; // should have only one successor
+                                            // block
+              if (nextBlock != endBlock) {
+                int nextBdNum = blockMap[nextBlock];
+                // void XAieDma_ShimBdSetNext(XAieDma_Shim *DmaInstPtr, u8
+                // BdNum, u8 NextBd);
+                output << "XAieDma_ShimBdSetNext(" << dmaName << ", "
+                       << " /* bd */ " << bdNum << ", "
+                       << " /* nextbd */ " << nextBdNum << ");\n";
+              }
+              output << "XAieDma_ShimBdWrite(" << dmaName << ", "
+                     << " /* bd */ " << bdNum << ");\n";
+            }
+          }
+
+          for (auto &block : op.body()) {
+            for (auto op : block.getOps<DMAStartOp>()) {
+              int bdNum = blockMap[op.dest()];
+
+              output << "XAieDma_ShimSetStartBd(" << dmaName << ", "
+                     << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChan(op.dmaChan())
+                     << ", "
+                     << " /* bd */ " << bdNum << ");\n";
+              // #define XAieDma_ShimChControl(DmaInstPtr, ChNum, PauseStrm,
+              // PauseMm, Enable)
+              output << "XAieDma_ShimChControl(" << dmaName << ", "
+                     << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
+                     << ", /* PauseStream */ " << disable << ", /* PauseMM */ "
+                     << disable << ", /* Enable */ " << enable << ");\n";
             }
           }
         }

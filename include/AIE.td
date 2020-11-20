@@ -323,7 +323,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconect,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, SingleBlockImplicitTerminator<"EndOp">]>,
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint/*, CallableOpInterface*/]>,
                          Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -892,7 +892,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp"]>, Terminator]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp", "ShimDMAOp"]>, Terminator]>,
                      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -1100,6 +1100,33 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   }];
 }
 
+def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef)> {
+  let summary = "Declare a buffer in external memory";
+  let description = [{
+    This operation instantiates a buffer that exists in some physical
+    location in a device, most likely external memory.
+
+    Example:
+      %buf = AIE.external_buffer 0x200000 : memref<256xi64>
+
+    This SSA value represents a 64-bit buffer of 256 elements.
+  }];
+
+  let arguments = (ins I64Attr:$address);
+  let results = (outs AnyMemRef:$buffer);
+
+  let assemblyFormat = [{
+    $address attr-dict `:` type($buffer)
+  }];
+  
+  let extraClassDeclaration = [{
+    // bool acquire() { return (action() == LockAction::Acquire); }
+    // bool release() { return (action() == LockAction::Release); }
+    // int getLockValue() { return value(); }
+    // int getTimeout() { return timeout(); }
+  }];
+}
+
 def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
   let summary = "Declare a token (a logical lock)";
   let description = [{
@@ -1123,9 +1150,7 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
 
   }];
 
-  let arguments = (
-    ins I32Attr:$value
-  );
+  let arguments = (ins I32Attr:$value);
 
   let assemblyFormat = [{
     `(` $value `)` attr-dict
