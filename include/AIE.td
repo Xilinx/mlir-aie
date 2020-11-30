@@ -200,11 +200,11 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int col, int row", [{
-              build(builder, result, builder.getIndexType(),
-                    builder.getI32IntegerAttr(col),
-                    builder.getI32IntegerAttr(row));
+    OpBuilderDAG<(ins "int":$col, "int":$row),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(),
+                    $_builder.getI32IntegerAttr(col),
+                    $_builder.getI32IntegerAttr(row));
               }]>
   ];
 }
@@ -219,9 +219,7 @@ def AIE_GetTileOp: AIE_Op<"getTile", []>, Results<(outs Index:$result)> {
   let description = [{
     Return a reference to an AIE tile, given the column and the row of the tile.
   }];
-  let assemblyFormat = [{
-    `(` $col `,` $row `)` attr-dict
-  }];
+  let assemblyFormat = [{ `(` $col `,` $row `)` attr-dict }];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -229,9 +227,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   let description = [{
     A generic terminator operation for AIE ops' regions.
   }];
-  let assemblyFormat = [{
-    attr-dict
-  }];
+  let assemblyFormat = [{ attr-dict }];
 }
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconect, SingleBlockImplicitTerminator<"EndOp">]>,
@@ -255,9 +251,9 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconect, SingleBlockImplicitTermin
     TileOp getTileOp();
   }];
   let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "Value tile", [{
-              build(builder, result, builder.getIndexType(), tile);
+    OpBuilderDAG<(ins "Value":$tile),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(), tile);
               }]>
   ];
 }
@@ -287,11 +283,10 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "Type resultType, int col", [{
-              build(builder, result, resultType,
-                    builder.getI32IntegerAttr(col));
-              }]>
+    OpBuilderDAG<(ins "Type":$resultType,
+                      "int":$col), [{
+        build($_builder, $_state, resultType, $_builder.getI32IntegerAttr(col));
+    }]>
   ];
 }
 
@@ -316,9 +311,9 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconect,
     TileOp getTileOp();
   }];
  let builders = [
-    OpBuilder<"OpBuilder &builder, OperationState &result, "
-              "Value tile", [{
-              build(builder, result, builder.getIndexType(), tile);
+    OpBuilderDAG<(ins "Value":$tile),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(), tile);
               }]>
  ];
 }
@@ -340,13 +335,6 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint/*, CallableOpInterface*/]>,
     int rowIndex();
     TileOp getTileOp();
   }];
-       // let builders = [
-  //   OpBuilder<"OpBuilder &builder, OperationState &result, "
-  //             "Type resultType, int col", [{
-  //             build(builder, result, resultType,
-  //                   builder.getI32IntegerAttr(col));
-  //             }]>
-  // ];
 }
 
 def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint]>, Results<(outs Index)> {
@@ -373,8 +361,9 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint]>, Results<(outs Index)> {
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, Value tile", [{
-              build(builder, result, builder.getIndexType(), tile);
+    OpBuilderDAG<(ins "Value":$tile),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(), tile);
               }]>
   ];
 }
@@ -388,9 +377,7 @@ def AIE_DebugOp: AIE_Op<"debug", []> {
   let description = [{
     Output the given value for debugging.  This is primarily used for simulation.
   }];
-  let assemblyFormat = [{
-    `(` $arg `:` type($arg) `)` attr-dict
-  }];
+  let assemblyFormat = [{ `(` $arg `:` type($arg) `)` attr-dict }];
 }
 
 def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
@@ -402,16 +389,10 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
   let description = [{
     An interface to the PL.
   }];
-  let assemblyFormat = [{
-    `(` $col `)` attr-dict
-  }];
+  let assemblyFormat = [{ `(` $col `)` attr-dict }];
   let extraClassDeclaration = [{
     int colIndex() { return col(); }
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "Type resultType, int col, int row">
-  // ];
 }
 
 def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
@@ -444,18 +425,6 @@ def AIE_ConnectOp: AIE_Op<"connect", [/*HasParent<"SwitchboxOp">*/]> {
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
     Port destPort() { return std::make_pair(destBundle(), destIndex()); }
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "WireBundle sourceBundle, int sourceChannel, "
-  //             "WireBundle destBundle, int destChannel", [{
-  //             build(builder, result,
-  //                   sourceBundle,
-  //                   APInt(32, sourceChannel),
-  //                   destBundle,
-  //                   APInt(32, destChannel));
-  //             }]
-  //   >
-  // ];
 }
 
 def AIE_FlowOp: AIE_Op<"flow", []> {
@@ -489,16 +458,16 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     int destIndex() { return destChannel(); }
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value source, int sourceBundle, int sourceChannel,"
-              "Value dest, int destBundle, int destChannel", [{
-              build(builder, result,
+    OpBuilderDAG<(ins "Value":$source, "int":$sourceBundle,
+      "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel),
+    [{
+              build($_builder, $_state,
                     source,
-                    builder.getI32IntegerAttr(sourceBundle),
-                    builder.getI32IntegerAttr(sourceChannel),
+                    $_builder.getI32IntegerAttr(sourceBundle),
+                    $_builder.getI32IntegerAttr(sourceChannel),
                     dest,
-                    builder.getI32IntegerAttr(destBundle),
-                    builder.getI32IntegerAttr(destChannel));
+                    $_builder.getI32IntegerAttr(destBundle),
+                    $_builder.getI32IntegerAttr(destChannel));
               }]>
   ];
 }
@@ -536,16 +505,16 @@ def AIE_ConnectionOp: AIE_Op<"connection", []> {
     int destIndex() { return destChannel(); }
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value source, int sourceBundle, int sourceChannel,"
-              "Value dest, int destBundle, int destChannel", [{
-              build(builder, result,
+    OpBuilderDAG<(ins "Value":$source, "int":$sourceBundle,
+      "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel),
+    [{
+              build($_builder, $_state,
                     source,
-                    builder.getI32IntegerAttr(sourceBundle),
-                    builder.getI32IntegerAttr(sourceChannel),
+                    $_builder.getI32IntegerAttr(sourceBundle),
+                    $_builder.getI32IntegerAttr(sourceChannel),
                     dest,
-                    builder.getI32IntegerAttr(destBundle),
-                    builder.getI32IntegerAttr(destChannel));
+                    $_builder.getI32IntegerAttr(destBundle),
+                    $_builder.getI32IntegerAttr(destChannel));
               }]>
   ];
 }
@@ -584,11 +553,11 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int arbiterID, int msel", [{
-              build(builder, result, builder.getIndexType(),
-                    builder.getI8IntegerAttr(arbiterID),
-                    builder.getI8IntegerAttr(msel));
+    OpBuilderDAG<(ins "int":$arbiterID, "int":$msel),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(),
+                    $_builder.getI8IntegerAttr(arbiterID),
+                    $_builder.getI8IntegerAttr(msel));
               }]>
   ];
 }
@@ -648,14 +617,14 @@ def AIE_WireOp: AIE_Op<"wire", []> {
     `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value source, int sourceBundle, "
-              "Value dest, int destBundle", [{
-              build(builder, result,
+    OpBuilderDAG<(ins "Value":$source, "int":$sourceBundle, "Value":$dest,
+      "int":$destBundle),
+    [{
+              build($_builder, $_state,
                     source,
-                    builder.getI32IntegerAttr((int)sourceBundle),
+                    $_builder.getI32IntegerAttr((int)sourceBundle),
                     dest,
-                    builder.getI32IntegerAttr((int)destBundle));
+                    $_builder.getI32IntegerAttr((int)destBundle));
               }]>
   ];
 }
@@ -681,15 +650,6 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
     int sourceIndex() { return sourceChannel(); }
     Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
   }];
-
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "WireBundle sourceBundle, int sourceChannel", [{
-  //             build(builder, result,
-  //                   sourceBundle,
-  //                   APInt(32, sourceChannel));
-  //             }]>
-  // ];
 }
 
 def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
@@ -731,11 +691,11 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
     `(` $mask `,` $value `,` $amsel `)` attr-dict
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int mask, int value, Value amsel", [{
-              build(builder, result,
-                    builder.getI8IntegerAttr(mask),
-                    builder.getI8IntegerAttr(value),
+    OpBuilderDAG<(ins "int":$mask, "int":$value, "Value":$amsel),
+    [{
+              build($_builder, $_state,
+                    $_builder.getI8IntegerAttr(mask),
+                    $_builder.getI8IntegerAttr(value),
                     amsel);
               }]>
   ];
@@ -758,13 +718,6 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [/*HasParent<"SwitchboxOp">*/
   let extraClassDeclaration = [{
     int IDInt() { return ID(); }
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "int ID", [{
-  //             build(builder, result,
-  //                   APInt(8, ID));
-  //             }]>
-  // ];
 }
 
 def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
@@ -784,15 +737,6 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return channel(); }
     Port port() { return std::make_pair(bundle(), channelIndex()); }
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "Value tile, WireBundle bundle, int channel", [{
-  //             build(builder, result,
-  //                   tile,
-  //                   bundle,
-  //                   APInt(32, channel));
-  //             }]>
-  // ];
 }
 
 def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
@@ -812,15 +756,6 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     int channelIndex() { return channel(); }
     Port port() { return std::make_pair(bundle(), channelIndex()); }
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "Value tile, WireBundle bundle, int channel", [{
-  //             build(builder, result,
-  //                   tile,
-  //                   bundle,
-  //                   APInt(32, channel));
-  //             }]>
-  // ];
 }
 
 def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
@@ -881,13 +816,13 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value buffer, int offset, int len, int AB", [{
-              build(builder, result,
+    OpBuilderDAG<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB),
+    [{
+              build($_builder, $_state,
                     buffer,
-                    builder.getI32IntegerAttr(offset),
-                    builder.getI32IntegerAttr(len),
-                    builder.getI32IntegerAttr(AB));
+                    $_builder.getI32IntegerAttr(offset),
+                    $_builder.getI32IntegerAttr(len),
+                    $_builder.getI32IntegerAttr(AB));
               }]>
   ];
 }
@@ -956,9 +891,9 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp", "ShimDMA
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "DMAChan channel, Block *dest, Block *chain", [{
-              build(builder, result, builder.getIntegerType(1), channel, dest, chain);
+    OpBuilderDAG<(ins "DMAChan":$channel, "Block *":$dest, "Block *":$chain),
+    [{
+              build($_builder, $_state, $_builder.getIntegerType(1), channel, dest, chain);
               }]>
   ];
 }
@@ -967,14 +902,12 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp", "ShimDMA
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
                      Results<(outs Index)> {
-
   let summary = "Declare a memory op";
   let description = [{
     This operation creates a Memory module that belongs to a tile.
     The region of a MemOp is used to setup the DMAs and Block Descriptors.
     See DMAOp and DMABdOp for more concrete examples.
   }];
-
   let arguments = (
     ins Index:$tile
   );
@@ -991,15 +924,14 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
     ArrayRef<Type> getCallableResults();
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value tile", [{
-              build(builder, result, builder.getIndexType(), tile);
+    OpBuilderDAG<(ins "Value":$tile),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(), tile);
               }]>
   ];
 }
 
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
-
   let summary = "Declare a physical lock";
   let description = [{
     This operation creates a physical lock.
@@ -1010,26 +942,21 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
     This SSA value represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
 
   }];
-
   let arguments = (
     ins Index:$tile,
         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
   );
-
-  let assemblyFormat = [{
-    `(` $tile `,` $lockID `)` attr-dict
-  }];
-
+  let assemblyFormat = [{ `(` $tile `,` $lockID `)` attr-dict }];
   let extraClassDeclaration = [{
     int getLockID() { return lockID(); }
   }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value tile, int lockID", [{
-              build(builder, result,
-                    builder.getIndexType(),
+    OpBuilderDAG<(ins "Value":$tile, "int":$lockID),
+    [{
+              build($_builder, $_state,
+                    $_builder.getIndexType(),
                     tile,
-                    builder.getI32IntegerAttr(lockID));
+                    $_builder.getI32IntegerAttr(lockID));
               }]>
   ];
 }
@@ -1049,14 +976,12 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     This operation uses a lock. A lock can be acquired with a value, or release with a value.
     This should be understood as a "blocking" operation.
   }];
-
   let arguments = (
     ins Index:$lock,
         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
         LockAction:$action,
         I32Attr:$timeout
   );
-
   let assemblyFormat = [{
     `(` $lock `,` $action `,` $value `,` $timeout `)` attr-dict
   }];
@@ -1069,12 +994,6 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     int getLockValue() { return value(); }
     int getTimeout() { return timeout(); }
   }];
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "Value lock, int value, LockAction action, int timeout", [{
-  //             build(builder, result, lock, APInt(32, value), action, APInt(32, timeout));
-  //             }]>
-  // ];
 }
 
 def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
@@ -1088,16 +1007,11 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
 
     This SSA value represents a 64-bit buffer of 256 elements. The buffer is created in tile (3, 3).
   }];
-
   let arguments = (
     ins Index:$tile
   );
-
   let results = (outs AnyMemRef:$buffer);
-
-  let assemblyFormat = [{
-    `(` $tile `)` attr-dict `:`  type($buffer)
-  }];
+  let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
 }
 
 def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef)> {
@@ -1111,19 +1025,10 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
 
     This SSA value represents a 64-bit buffer of 256 elements.
   }];
-
   let arguments = (ins I64Attr:$address);
   let results = (outs AnyMemRef:$buffer);
-
-  let assemblyFormat = [{
-    $address attr-dict `:` type($buffer)
-  }];
-  
+  let assemblyFormat = [{ $address attr-dict `:` type($buffer) }];
   let extraClassDeclaration = [{
-    // bool acquire() { return (action() == LockAction::Acquire); }
-    // bool release() { return (action() == LockAction::Release); }
-    // int getLockValue() { return value(); }
-    // int getTimeout() { return timeout(); }
   }];
 }
 
@@ -1149,13 +1054,8 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
       AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
   }];
-
   let arguments = (ins I32Attr:$value);
-
-  let assemblyFormat = [{
-    `(` $value `)` attr-dict
-  }];
-
+  let assemblyFormat = [{ `(` $value `)` attr-dict }];
   let extraClassDeclaration = [{
     int getTokenValue() { return value(); }
   }];
@@ -1167,29 +1067,17 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
     This operation uses token (logical lock). A logical lock can be acquired or released with a value.
     Similar to UseLockOp, this operation can be understood as "blocking" op.
   }];
-
   let arguments = (
     ins FlatSymbolRefAttr:$tokenName,
         I32Attr:$value,
         LockAction:$action
   );
-
-  let assemblyFormat = [{
-    $tokenName `(` $action `,` $value `)` attr-dict
-  }];
-
+  let assemblyFormat = [{ $tokenName `(` $action `,` $value `)` attr-dict }];
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }
     bool release() { return (action() == LockAction::Release); }
     int getTokenValue() { return value(); }
   }];
-
-  // let builders = [
-  //   OpBuilder<"OpBuilder & builder, OperationState &result, "
-  //             "StringRef tokenName, int value, LockAction action", [{
-  //             build(builder, result, tokenName, APInt(32, value), action);
-  //             }]>
-  // ];
 }
 
 def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
@@ -1214,14 +1102,12 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
         I32Attr:$dstOffset,
         I32Attr:$dstLen
   );
-
   let assemblyFormat = [{
     $tokenName `(` $acqValue `,` $relValue `)` `(`
       $srcTile `:` `<` $srcBuf `,` $srcOffset `,` $srcLen `>` `,`
       $dstTile `:` `<` $dstBuf `,` $dstOffset `,` $dstLen `>` `)`
         attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
   }];
-
   let extraClassDeclaration = [{
     int getAcquireTokenValue() { return acqValue(); }
     int getReleaseTokenValue() { return relValue(); }
@@ -1238,12 +1124,10 @@ def AIE_GetStreamOp: AIE_Op<"getStream", []>,
   let description = [{
     An op to read from a stream channel/port of a switchbox.
   }];
-
   let arguments = (
     ins AnyInteger:$channel
   );
   let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
-
   let assemblyFormat = [{
     `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
   }];
@@ -1258,12 +1142,10 @@ def AIE_PutStreamOp: AIE_Op<"putStream", []> {
   let description = [{
     An op to write to a stream channel/port of a switchbox.
   }];
-
   let arguments = (
     ins AnyInteger:$channel,
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
-
   let assemblyFormat = [{
     `(` $streamValue `:` type($streamValue) `,` $channel `:` type($channel) `)` attr-dict
   }];
@@ -1279,12 +1161,8 @@ def AIE_GetCascadeOp: AIE_Op<"getCascade", []>,
   let description = [{
     An op to read from a cascading stream from a neighboring core.
   }];
-
   let results = (outs AnyI<384>:$cascadeValue);
-
-  let assemblyFormat = [{
-    `(` `)` attr-dict `:` type($cascadeValue)
-  }];
+  let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascadeValue) }];
 }
 
 def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
@@ -1292,14 +1170,10 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", []> {
   let description = [{
     An op to write to a cascading stream from a neighboring core.
   }];
-
   let arguments = (
     ins AnyI<384>:$cascadeValue
   );
-
-  let assemblyFormat = [{
-    `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
-  }];
+  let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
 def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
@@ -1324,28 +1198,22 @@ def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
         // all the cores belong to this herd runs the same code
       }
   }];
-
   let arguments = (
     ins I32Attr:$width,
         I32Attr:$height
   );
-
   let extraClassDeclaration = [{
     int getHerdWidth()   { return width(); }
     int getHerdHeight()  { return height(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
   }];
-
-  let assemblyFormat = [{
-    `[` $width `]` `[` $height `]` attr-dict
-  }];
-
+  let assemblyFormat = [{ `[` $width `]` `[` $height `]` attr-dict }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int width, int height", [{
-              build(builder, result, builder.getIndexType(),
-                    builder.getI32IntegerAttr(width),
-                    builder.getI32IntegerAttr(height));
+    OpBuilderDAG<(ins "int":$width, "int":$height),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(),
+                    $_builder.getI32IntegerAttr(width),
+                    $_builder.getI32IntegerAttr(height));
               }]>
   ];
 }
@@ -1355,18 +1223,13 @@ def AIE_PlaceOp: AIE_Op<"place", []> {
   let description = [{
     A place operation that specifies the relative placement (XY) of one herd to another.
   }];
-
   let arguments = (
     ins Index:$sourceHerd,
         Index:$destHerd,
         I32Attr:$distX,
         I32Attr:$distY
   );
-
-  let assemblyFormat = [{
-    `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict
-  }];
-
+  let assemblyFormat = [{ `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict }];
   let extraClassDeclaration = [{
     int getDistXValue() { return distX(); }
     int getDistYValue() { return distY(); }
@@ -1378,22 +1241,18 @@ def AIE_RouteOp: AIE_Op<"route", []> {
   let description = [{
     A route operation that routes one herd to another.
   }];
-
   let arguments = (
     ins Index:$sourceHerds,
         WireBundle:$sourceBundle,
         I32Attr:$sourceChannel,
-
         Index:$destHerds,
         WireBundle:$destBundle,
         I32Attr:$destChannel
   );
-
   let assemblyFormat = [{
     `(` `<` $sourceHerds `,` $sourceBundle `:` $sourceChannel `>` `,`
         `<` $destHerds   `,` $destBundle   `:` $destChannel   `>` `)` attr-dict
   }];
-
   let extraClassDeclaration = [{
     int getSourceChannelValue()  { return sourceChannel(); }
     int getDestChannelValue()  { return destChannel(); }
@@ -1410,30 +1269,24 @@ def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
       %iter0 = AIE.iter(0, 15, 1) // 0, 1, 2, ... , 15
       %iter1 = AIE.iter(2, 8, 2)  // 2, 4, 6
   }];
-
   let arguments = (
     ins I32Attr:$start,
         I32Attr:$end,
         I32Attr:$stride
   );
-
-  let assemblyFormat = [{
-    `(` $start `,` $end `,` $stride `)` attr-dict
-  }];
-
+  let assemblyFormat = [{ `(` $start `,` $end `,` $stride `)` attr-dict }];
   let extraClassDeclaration = [{
     int getStartValue()  { return start(); }
     int getEndValue()    { return end(); }
     int getStrideValue() { return stride(); }
   }];
-
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "int start, int end, int stride", [{
-              build(builder, result, builder.getIndexType(),
-                    builder.getI32IntegerAttr(start),
-                    builder.getI32IntegerAttr(end),
-                    builder.getI32IntegerAttr(stride));
+    OpBuilderDAG<(ins "int":$start, "int":$end, "int":$stride),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(),
+                    $_builder.getI32IntegerAttr(start),
+                    $_builder.getI32IntegerAttr(end),
+                    $_builder.getI32IntegerAttr(stride));
               }]>
   ];
 }
@@ -1462,14 +1315,11 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
         Index:$iterY
   );
 
-  let assemblyFormat = [{
-    `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict
-  }];
-
+  let assemblyFormat = [{ `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict }];
   let builders = [
-    OpBuilder<"OpBuilder & builder, OperationState &result, "
-              "Value startHerd, Value iterX, Value iterY", [{
-              build(builder, result, builder.getIndexType(),
+    OpBuilderDAG<(ins "Value":$startHerd, "Value":$iterX, "Value":$iterY),
+    [{
+              build($_builder, $_state, $_builder.getIndexType(),
                     startHerd, iterX, iterY);
               }]>
   ];
