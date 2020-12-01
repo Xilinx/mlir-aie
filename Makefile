@@ -10,6 +10,9 @@ ${BUILD_DIR}/.dir:
 build: ${BUILD_DIR}/.dir
 	echo `pwd`; ./config.sh ${BUILD_DIR} . ${INSTALL_DIR}; cd ${BUILD_DIR}; ninja
 
+doc: ${BUILD_DIR}/.dir
+	echo `pwd`; ./config.sh ${BUILD_DIR} . ${INSTALL_DIR}; cd ${BUILD_DIR}; ninja mlir-doc
+
 install: ${BUILD_DIR}/.dir
 	echo `pwd`; ./config.sh ${BUILD_DIR} . ${INSTALL_DIR}; cd ${BUILD_DIR}; ninja install
 
