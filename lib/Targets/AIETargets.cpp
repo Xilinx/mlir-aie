@@ -347,8 +347,9 @@ void registerAIETranslations() {
             for (auto op : block.getOps<DMAStartOp>()) {
               int bdNum = blockMap[op.dest()];
 
+              // Note fixup with extra parenthesis here.
               output << "XAieDma_TileSetStartBd("
-                     << tileDMAInstStr(std::to_string(col), std::to_string(row))
+                     << "(" << tileDMAInstStr(std::to_string(col), std::to_string(row)) << ")"
                      << ", "
                      << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", "

@@ -13,7 +13,7 @@
 // CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}1, {{.*}}0x400, {{.*}}0x0, {{.*}}16, {{.*}}XAIE_DISABLE, {{.*}}XAIE_DISABLE);
 // CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[3][3]), {{.*}}1, {{.*}}0);
 // CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), {{.*}}1);
-// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, {{.*}}0);
+// CHECK: XAieDma_TileSetStartBd((&(TileDMAInst[3][3])), XAIEDMA_TILE_CHNUM_S2MM0, {{.*}}0);
 // CHECK: XAieDma_TileChControl(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, XAIE_RESETDISABLE, XAIE_ENABLE);
 
 module @test_xaie2 {

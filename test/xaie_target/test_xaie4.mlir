@@ -7,8 +7,8 @@
 // CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), {{.*}}1, XAIEDMA_TILE_BD_ADDRA, {{.*}}1, XAIE_ENABLE, {{.*}}0, XAIE_ENABLE, {{.*}}1);
 // CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}1, {{.*}}0x400, {{.*}}0x0, {{.*}}256, {{.*}}XAIE_DISABLE, {{.*}}XAIE_DISABLE);
 // CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), {{.*}}1);
-// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_MM2S0, {{.*}}0);
-// CHECK: XAieDma_TileSetStartBd(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, {{.*}}1);
+// CHECK: XAieDma_TileSetStartBd((&(TileDMAInst[3][3])), XAIEDMA_TILE_CHNUM_MM2S0, {{.*}}0);
+// CHECK: XAieDma_TileSetStartBd((&(TileDMAInst[3][3])), XAIEDMA_TILE_CHNUM_S2MM0, {{.*}}1);
 
 module @test_xaie3 {
   %t33 = AIE.tile(3, 3)
