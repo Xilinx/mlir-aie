@@ -203,7 +203,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
         std::vector<PacketConnection> tiles =
           analysis.getConnectedTiles(op,
                                      std::make_pair(bundle, i));
-        LLVM_DEBUG(llvm::dbgs() << tiles.size() << "Flows\n");
+        LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
 
         for(PacketConnection &c: tiles) {
           PortConnection portConnection = c.first;

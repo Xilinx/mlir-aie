@@ -342,26 +342,24 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
                                   sw,
                                   WireBundle::South);
         } else if(row == 0) {
-          auto southsw = analysis.getSwitchbox(builder, col, row);
+          auto shimsw = analysis.getShimMux(builder, col);
           builder.create<WireOp>(builder.getUnknownLoc(),
-                                  southsw,
+                                  shimsw,
                                   WireBundle::North,
                                   sw,
                                   WireBundle::South);
-          if(col > 0) {
-            auto westsw = analysis.getSwitchbox(builder, col-1, row);
-            builder.create<WireOp>(builder.getUnknownLoc(),
-                                    westsw,
-                                    WireBundle::East,
-                                    southsw,
-                                    WireBundle::West);
-          }
           auto plio = analysis.getPLIO(builder, col);
           builder.create<WireOp>(builder.getUnknownLoc(),
                                   plio,
                                   WireBundle::North,
-                                  southsw,
+                                  shimsw,
                                   WireBundle::South);
+
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  tile,
+                                  WireBundle::DMA,
+                                  shimsw,
+                                  WireBundle::DMA);
         }
       }
     }
