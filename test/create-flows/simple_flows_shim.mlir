@@ -1,34 +1,37 @@
 // RUN: aie-opt --split-input-file --aie-create-flows %s | FileCheck %s
+// CHECK: module
 // CHECK: %[[T21:.*]] = AIE.tile(2, 1)
 // CHECK: %[[T20:.*]] = AIE.tile(2, 0)
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// CHECK:    AIE.connect<"North" : 0, "South" : 4>
-// CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
 // CHECK:    AIE.connect<"North" : 0, "South" : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T21]])  {
 // CHECK:    AIE.connect<"North" : 0, "South" : 0>
+// CHECK:  }
+// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
+// CHECK:    AIE.connect<"South" : 0, "PLIO" : 0>
 // CHECK:  }
 
 module {
   %t23 = AIE.tile(2, 1)
   %t22 = AIE.tile(2, 0)
-  AIE.flow(%t23, "North" : 0, %t22, "South" : 4)
+  AIE.flow(%t23, "North" : 0, %t22, "PLIO" : 0)
 }
 
 // -----
 
+// CHECK: module
 // CHECK: %[[T21:.*]] = AIE.tile(2, 1)
 // CHECK: %[[T20:.*]] = AIE.tile(2, 0)
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// CHECK:    AIE.connect<"North" : 0, "DMA" : 0>
-// CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
 // CHECK:    AIE.connect<"North" : 0, "South" : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T21]])  {
 // CHECK:    AIE.connect<"ME" : 0, "South" : 0>
+// CHECK:  }
+// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
+// FIXME: should be "South":7
+// CHECK:    AIE.connect<"South" : 0, "DMA" : 1>
 // CHECK:  }
 module {
   %t21 = AIE.tile(2, 1)
@@ -39,18 +42,20 @@ module {
   %dma = AIE.shimDMA(%t20)  {
     AIE.end
   }
-  AIE.flow(%c21, "ME" : 0, %dma, "DMA" : 0)
+  AIE.flow(%c21, "ME" : 0, %dma, "DMA" : 1)
 }
 
 // -----
 
+// CHECK: module
 // CHECK: %[[T20:.*]] = AIE.tile(2, 0)
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// CHECK:    AIE.connect<"DMA" : 0, "North" : 0>
-// CHECK:    AIE.connect<"North" : 0, "DMA" : 1>
-// CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
 // CHECK:    AIE.connect<"South" : 0, "South" : 0>
+// CHECK:  }
+// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
+// FIXME: these connections are wrong.
+// CHECK:    AIE.connect<"DMA" : 0, "South" : 0>
+// CHECK:    AIE.connect<"South" : 0, "DMA" : 1>
 // CHECK:  }
 module {
   %t20 = AIE.tile(2, 0)

@@ -315,7 +315,7 @@ int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   case WireBundle::DMA: return 2;
   case WireBundle::NOC: return 4;
   case WireBundle::PLIO: return 6;
-  case WireBundle::North: return 8;
+  case WireBundle::South: return 8;
   default: return 0;
   }
 }

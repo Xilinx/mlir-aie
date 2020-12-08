@@ -392,7 +392,7 @@ void registerAIETranslations() {
           output << "XAieDma_Shim " << dmaName << ";\n";
           output << "XAieDma_ShimInitialize("
                  << tileInstStr(std::to_string(col), std::to_string(row))
-                 << ", " << dmaName << ");\n";
+                 << ", &" << dmaName << ");\n";
 
           DenseMap<Block *, int> blockMap;
           Block *endBlock = &op.body().back();
@@ -694,15 +694,28 @@ void registerAIETranslations() {
             }
           }
 
-          // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_MUX_SOUTH7, XAIETILE_SHIM_STRM_MUX_DMA);
+          // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
+          // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
           for (auto connectOp : b.getOps<ConnectOp>()) {
-            output << "XAieTile_ShimStrmMuxConfig(" <<
-                      tileInstStr("x", "y") << ",\n";
-            output << "\tXAIETILE_SHIM_STRM_MUX_" <<
-                      stringifyWireBundle(connectOp.sourceBundle()).upper() <<
-                      connectOp.sourceIndex() << ", " <<
-                      stringifyWireBundle(connectOp.destBundle()).upper() <<
-                      ");\n";
+            if(connectOp.sourceBundle() == WireBundle::South) {
+              // demux!
+              output << "XAieTile_ShimStrmDemuxConfig(" <<
+                        tileInstStr("x", "y") << ",\n";
+              output << "\tXAIETILE_SHIM_STRM_DEM_" <<
+                        stringifyWireBundle(connectOp.sourceBundle()).upper() <<
+                        connectOp.sourceIndex() << ",\n" <<
+                        "\tXAIETILE_SHIM_STRM_DEM_" <<
+                        stringifyWireBundle(connectOp.destBundle()).upper() << ");\n";
+            } else {
+              // mux
+              output << "XAieTile_ShimStrmMuxConfig(" <<
+                        tileInstStr("x", "y") << ",\n";
+              output << "\tXAIETILE_SHIM_STRM_MUX_" <<
+                        stringifyWireBundle(connectOp.destBundle()).upper() <<
+                        connectOp.destIndex() << ",\n" <<
+                        "\tXAIETILE_SHIM_STRM_MUX_" <<
+                        stringifyWireBundle(connectOp.sourceBundle()).upper() << ");\n";
+            }
           }
         }
         for(auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {

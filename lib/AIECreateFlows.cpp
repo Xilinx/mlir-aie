@@ -223,7 +223,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       ShimMuxOp shimMuxOp = analysis.getShimMux(rewriter, col);
       int internalIndex = -1;
       addConnection(rewriter, cast<Interconect>(shimMuxOp.getOperation()),
-        bundle, index, WireBundle::North, internalIndex);
+        bundle, index, WireBundle::South, internalIndex);
       bundle = WireBundle::South;
       index = internalIndex;
     }
@@ -269,7 +269,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
           addConnection(rewriter, cast<Interconect>(swOp.getOperation()),
             bundle, index, WireBundle::South, internalIndex);
           addConnection(rewriter, cast<Interconect>(shimMuxOp.getOperation()),
-            WireBundle::North, internalIndex, outBundle, outIndex);
+            WireBundle::South, internalIndex, outBundle, outIndex);
         } else {
           // Most tiles are simple and just go through a switchbox.
           SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
@@ -345,7 +345,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
           auto shimsw = analysis.getShimMux(builder, col);
           builder.create<WireOp>(builder.getUnknownLoc(),
                                   shimsw,
-                                  WireBundle::North,
+                                  WireBundle::South, // This is odd, but it is correct.
                                   sw,
                                   WireBundle::South);
           auto plio = analysis.getPLIO(builder, col);
