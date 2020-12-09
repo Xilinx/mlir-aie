@@ -140,10 +140,6 @@ void registerAIETranslations() {
 
         output << "void mlir_configure_cores() {\n";
         // Reset each core.  Load the corresponding ELF file, if necessary.
-        // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8
-        // Reset); auto ret =
-        // XAieGbl_LoadElf(&(TileInst[HERD_START_COL+h_core][HERD_START_ROW+v_core]),
-        // (u8*)elf_file, XAIE_ENABLE);
         for (auto tileOp : module.getOps<TileOp>()) {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
@@ -156,28 +152,34 @@ void registerAIETranslations() {
             output << "XAieTile_ShimColumnReset("
                   << tileInstStr(std::to_string(col), std::to_string(row))
                   << ", XAIE_RESETDISABLE);\n";
-          }
-          output << "XAieTile_CoreControl("
-                 << tileInstStr(std::to_string(col), std::to_string(row))
-                 << ", " << disable << ", " << enable << ");\n";
-          output << "for (int l=0; l<16; l++)\n"
-                 << "  XAieTile_LockRelease("
-                 << tileInstStr(std::to_string(col), std::to_string(row))
-                 << ", l, 0x0, 0);\n";
+          } else {
+            // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable,
+            // u8 Reset);
+            // auto ret =
+            // XAieGbl_LoadElf(&(TileInst[row][col]),
+            // (u8*)elf_file, XAIE_ENABLE);
+            output << "XAieTile_CoreControl("
+                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << ", " << disable << ", " << enable << ");\n";
+            output << "for (int l=0; l<16; l++)\n"
+                  << "  XAieTile_LockRelease("
+                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << ", l, 0x0, 0);\n";
 
-          if (auto coreOp = tileOp.getCoreOp()) {
-            if (auto fileAttr = coreOp.getAttrOfType<StringAttr>("elf_file")) {
-              std::string fileName(fileAttr.getValue());
-              output << "{\n"
-                     << "int ret = XAieGbl_LoadElf("
-                     << tileInstStr(std::to_string(col), std::to_string(row))
-                     << ", "
-                     << "(u8*)\"" << fileName << "\", " << enable << ");\n";
-              output << "if (ret == XAIELIB_FAILURE)\n"
-                     << "printf(\"Failed to load elf for Core[%d,%d], ret is %d\", "
-                     << std::to_string(col) << ", " << std::to_string(row) << ", ret);\n"
-                     << "assert(ret != XAIELIB_FAILURE);\n"
-                     << "}\n";
+            if (auto coreOp = tileOp.getCoreOp()) {
+              if (auto fileAttr = coreOp.getAttrOfType<StringAttr>("elf_file")) {
+                std::string fileName(fileAttr.getValue());
+                output << "{\n"
+                      << "int ret = XAieGbl_LoadElf("
+                      << tileInstStr(std::to_string(col), std::to_string(row))
+                      << ", "
+                      << "(u8*)\"" << fileName << "\", " << enable << ");\n";
+                output << "if (ret == XAIELIB_FAILURE)\n"
+                      << "printf(\"Failed to load elf for Core[%d,%d], ret is %d\", "
+                      << std::to_string(col) << ", " << std::to_string(row) << ", ret);\n"
+                      << "assert(ret != XAIELIB_FAILURE);\n"
+                      << "}\n";
+              }
             }
           }
         }
@@ -192,9 +194,11 @@ void registerAIETranslations() {
         for (auto tileOp : module.getOps<TileOp>()) {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
-          output << "XAieTile_CoreControl("
-                 << tileInstStr(std::to_string(col), std::to_string(row))
-                 << ", " << enable << ", " << disable << ");\n";
+          if(!tileOp.isShimTile()) {
+            output << "XAieTile_CoreControl("
+                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << ", " << enable << ", " << disable << ");\n";
+          }
         }
         output << "} // mlir_start_cores\n\n";
 

@@ -1,8 +1,16 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
+// CHECK: mlir_configure_cores
+// CHECK: XAieTile_CoreControl(&(TileInst[2][1]), XAIE_DISABLE, XAIE_ENABLE);
+// CHECK-NOT: XAieTile_CoreControl(&(TileInst[2][0])
+// CHECK: for (int l=0; l<16; l++)
+// CHECK:   XAieTile_LockRelease(&(TileInst[2][1]), l, 0x0, 0);
+// CHECK: XAieTile_ShimColumnReset(&(TileInst[2][0]), XAIE_RESETENABLE);
+// CHECK: XAieTile_ShimColumnReset(&(TileInst[2][0]), XAIE_RESETDISABLE);
+
 // CHECK: mlir_start_cores
 // CHECK: XAieTile_CoreControl(&(TileInst[2][1]), XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieTile_CoreControl(&(TileInst[2][0]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK-NOT: XAieTile_CoreControl(&(TileInst[2][0])
 
 // CHECK: mlir_configure_dmas
 // CHECK: XAieDma_Shim ShimDMAInst_2_0;
