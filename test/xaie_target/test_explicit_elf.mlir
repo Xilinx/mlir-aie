@@ -2,7 +2,7 @@
 
 // CHECK: mlir_configure_cores
 // CHECK: XAieTile_CoreControl(&(TileInst[3][3]), XAIE_DISABLE, XAIE_ENABLE);
-// CHECK: XAieGbl_LoadElf(&(TileInst[3][3]), "test.elf", XAIE_ENABLE);
+// CHECK: XAieGbl_LoadElf(&(TileInst[3][3]), (u8*)"test.elf", XAIE_ENABLE);
 // CHECK: mlir_start_cores
 // CHECK: XAieTile_CoreControl(&(TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
 module @test_xaie0 {

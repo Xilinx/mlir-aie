@@ -172,7 +172,7 @@ void registerAIETranslations() {
                      << "int ret = XAieGbl_LoadElf("
                      << tileInstStr(std::to_string(col), std::to_string(row))
                      << ", "
-                     << "\"" << fileName << "\", " << enable << ");\n";
+                     << "(u8*)\"" << fileName << "\", " << enable << ");\n";
               output << "if (ret == XAIELIB_FAILURE)\n"
                      << "printf(\"Failed to load elf for Core[%d,%d], ret is %d\", "
                      << std::to_string(col) << ", " << std::to_string(row) << ", ret);\n"
