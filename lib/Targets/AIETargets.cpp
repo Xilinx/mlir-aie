@@ -246,7 +246,10 @@ void registerAIETranslations() {
           }
           for (auto &block : memOp.body()) {
             bool foundBd = false;
-            int len = 0;
+            int lenA = 0;
+            int lenB = 0;
+            int bytesA = 0;
+            int bytesB = 0;
             int offsetA = 0;
             int offsetB = 0;
             int BaseAddrA = 0;
@@ -257,18 +260,21 @@ void registerAIETranslations() {
             StringRef bufB = "0";
             StringRef AbMode    = disable;
             StringRef FifoMode  = disable; // FIXME: when to enable FIFO mode?
-            
             for (auto op : block.getOps<DMABDOp>()) {
               foundBd = true;
-              len = op.getLenValue();
+              ShapedType bufferType = op.buffer().getType().cast<::mlir::MemRefType>();
               if (op.isA()) {
                 BaseAddrA = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+                lenA = op.getLenValue();
+                bytesA = bufferType.getElementTypeBitWidth()/8;
                 offsetA = op.getOffsetValue();
                 bufA = "XAIEDMA_TILE_BD_ADDRA";
                 hasA = true;
               }
               if (op.isB()) {
                 BaseAddrB = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+                lenB = op.getLenValue();
+                bytesB = bufferType.getElementTypeBitWidth()/8;
                 offsetB = op.getOffsetValue();
                 bufB = "XAIEDMA_TILE_BD_ADDRB";
                 hasB = true;
@@ -277,6 +283,10 @@ void registerAIETranslations() {
 
             if (hasA && hasB) {
               AbMode = enable;
+              if(lenA != lenB)
+                llvm::errs() << "ABmode must have matching lengths.\n";
+              if(bytesA != bytesB)
+                llvm::errs() << "ABmode must have matching element data types.\n";
             }
             int acqValue = 0, relValue = 0;
             StringRef acqEnable = disable;
@@ -324,7 +334,7 @@ void registerAIETranslations() {
                         " /* bd */ "  << bdNum << ", " <<
                         " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
                         " /* addrB */ "  << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
-                        " /* len */ "  << len << ", " <<
+                        " /* len */ "  << lenA << " * " << bytesA << ", " <<
                         " /* ABMode */ "  << AbMode << ", " <<
                         " /* FIFOMode */ "  << FifoMode << ");\n";
 
@@ -414,12 +424,15 @@ void registerAIETranslations() {
           for (auto &block : op.body()) {
             bool foundBd = false;
             int len = 0;
+            int bytes = 0;
             int offset = 0;
             int BaseAddr = 0;
 
             for (auto op : block.getOps<DMABDOp>()) {
               foundBd = true;
               len = op.getLenValue();
+              ShapedType bufferType = op.buffer().getType().cast<::mlir::MemRefType>();
+              bytes = bufferType.getElementTypeBitWidth()/8;
               BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
               offset = op.getOffsetValue();
             }
@@ -460,7 +473,7 @@ void registerAIETranslations() {
                      << "LOW_ADDR((u64)" << llvm::utohexstr(address) << "), " <<
                   // " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA +
                   // offsetA) << ", " <<
-                  " /* len */ " << len << ");\n";
+                  " /* len */ " << len << " * " << bytes << ");\n";
 
               // void XAieDma_ShimBdSetAxi(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u8 Smid, u8 BurstLen, u8 Qos, u8 Cache, u8 Secure);
