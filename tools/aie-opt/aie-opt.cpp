@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
 //  enableGlobalDialectRegistry(true);
 //  registerAllDialects();
   registerAllPasses();
+  xilinx::AIE::registerAIEAssignBufferAddressesPass();
   xilinx::AIE::registerAIEFindFlowsPass();
   xilinx::AIE::registerAIECreateFlowsPass();
   xilinx::AIE::registerAIECreateCoresPass();

@@ -40,6 +40,7 @@ class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {
 namespace xilinx {
 namespace AIE {
 
+void registerAIEAssignBufferAddressesPass();
 void registerAIETranslations();
 void registerAIEFindFlowsPass();
 void registerAIECreateFlowsPass();

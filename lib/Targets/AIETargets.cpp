@@ -120,6 +120,44 @@ void registerAIETranslations() {
       registry.insert<StandardOpsDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
+  // TranslateFromMLIRRegistration
+  //   registrationMMap("aie-generate-ldscript", [](ModuleOp module, raw_ostream &output) {
+  //     DenseMap<std::pair<int, int>, Operation *> tiles;
+  //     DenseMap<Operation *, CoreOp> cores;
+  //     DenseMap<Operation *, MemOp> mems;
+  //     DenseMap<std::pair<Operation *, int>, LockOp> locks;
+  //     DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+  //     DenseMap<Operation *, SwitchboxOp> switchboxes;
+
+  //     NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+  //     NL.collectTiles(tiles);
+  //     NL.collectBuffers(buffers);
+
+  //     for (auto tile : tiles) {
+  //       Operation *srcTileOp = tile.second;
+  //       std::pair<int, int> srcCoord = NL.getCoord(srcTileOp);
+  //       int srcCol = srcCoord.first;
+  //       int srcRow = srcCoord.second;
+
+  //       output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
+  //       output << "// Memory map: name base_address num_bytes\n";
+
+  //       auto doBuffer = [&](Optional<TileID> tile, int offset) {
+  //         if(tiles.count(tile.getValue()))
+  //           writeBufferMap(output, buffers[tiles[tile.getValue()]], offset, NL);
+  //       };
+  //       if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
+  //       if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
+  //       if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
+  //       if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
+  //     }
+  //     return success();
+  //   },
+  //   [](DialectRegistry &registry) {
+  //     registry.insert<xilinx::AIE::AIEDialect>();
+  //     registry.insert<StandardOpsDialect>();
+  //     registry.insert<LLVM::LLVMDialect>();
+  //   });
 
   TranslateFromMLIRRegistration
     registrationXAIE("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {

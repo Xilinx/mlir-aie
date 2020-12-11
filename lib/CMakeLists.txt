@@ -1,4 +1,5 @@
 add_mlir_dialect_library(AIE
+  AIEAssignBuffers.cpp
   AIEDialect.cpp
   AIETokenAnalysis.cpp
   AIENetlistAnalysis.cpp

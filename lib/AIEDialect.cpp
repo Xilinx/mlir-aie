@@ -386,6 +386,15 @@ xilinx::AIE::TileOp xilinx::AIE::CoreOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(tile().getDefiningOp());
 }
 
+// BufferOp
+int64_t xilinx::AIE::BufferOp::getAllocationSize() {
+  MemRefType type = getType().cast<MemRefType>();
+  return type.getNumElements() * type.getElementTypeBitWidth()/8;
+}
+xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(tile().getDefiningOp());
+}
+
 // MemOp
 static LogicalResult verify(xilinx::AIE::MemOp op) {
   Region &body = op.body();

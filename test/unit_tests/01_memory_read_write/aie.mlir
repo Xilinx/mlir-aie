@@ -14,6 +14,7 @@ module @test1_core_llvm1 {
 //    AIE.useLock(%lock12_0, "Acquire", 0, 0)
     %val1 = constant 1 : i32
     %idx1 = constant 3 : index
+//    %2 = addi %val1, %val1 : i32
     store %val1, %buf12_0[%idx1] : memref<256xi32>
     %val2 = constant 2 : i32
     %idx2 = constant 5 : index

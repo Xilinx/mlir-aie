@@ -1,4 +1,6 @@
 #!/bin/bash
-xchessmk test.prx
-xca_udm_dbg -t sim.tcl
+
+CARDANO=/proj/xbuilds/2020.1_daily_latest/installs/lin64/Vitis/2020.1/cardano/
+${CARDANO}/bin/xchessmk test.prx
+${CARDANO}/bin/xca_udm_dbg -t sim.tcl
 
