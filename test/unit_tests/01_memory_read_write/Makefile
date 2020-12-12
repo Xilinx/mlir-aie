@@ -34,14 +34,20 @@ all: test.exe
 %_inc.cpp: %.mlir
 	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
-%.ll : %.mlir
+%.mlir_addresses : %.mlir
+	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
+
+%.ll : %.mlir_addresses
 	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
 
 %.o : %.ll
 	llc $*.ll -O0 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
-%.elf : %.o
-	$(XBRIDGE) $*.o
+%.bcf : %.mlir_addresses
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=2 $< > $@
+
+%.elf : %.o %.bcf
+	$(XBRIDGE) $< -c $*.bcf -o $@
 
 #ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
 
