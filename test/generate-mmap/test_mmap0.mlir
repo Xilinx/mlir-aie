@@ -1,6 +1,5 @@
-// Note: This test *might* fail due to the random order that the code statements are generated
-
 // RUN: aie-translate --aie-generate-mmap %s | FileCheck %s
+// RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-bcf %s | FileCheck --check-prefix=BCF44 %s
 
 // CHECK-LABEL: // Tile(5, 4)
 // Memory map: name base_address num_bytes
@@ -32,6 +31,25 @@
 // Memory map: name base_address num_bytes
 // CHECK: _symbol x 0x38000 32
 
+// BCF44: _entry_point _main_init
+// BCF44: _symbol      _main _after _main_init
+// BCF44: _symbol      _main_init 0
+// BCF44: _reserved DMb      0x00000 0x20000 //Don't put data in code memory
+// BCF44: _symbol z 0x20000 0x20
+// BCF44: _extern z
+// BCF44: _symbol a 0x28000 0x10
+// BCF44: _extern a
+// BCF44: _symbol b 0x28010 0x40
+// BCF44: _extern b
+// BCF44: _symbol c 0x28050 0x400
+// BCF44: _extern c
+// BCF44: _symbol t 0x30000 0x20
+// BCF44: _extern t
+// BCF44: _symbol y 0x38000 0x20
+// BCF44: _extern y
+// BCF44: _stack    DM_stack 0x20000  0x400 //stack for core
+// BCF44: _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+
 module @test_mmap0 {
   %t44 = AIE.tile(4, 4)
   %t34 = AIE.tile(3, 4)
@@ -39,13 +57,13 @@ module @test_mmap0 {
   %t43 = AIE.tile(4, 3)
   %t45 = AIE.tile(4, 5)
 
-  %buf44_0 = AIE.buffer(%t44) { sym_name = "a" } : memref<4xi32>
-  %buf44_1 = AIE.buffer(%t44) { sym_name = "b" } : memref<16xi32>
-  %buf44_2 = AIE.buffer(%t44) { sym_name = "c" } : memref<256xi32>
-  %buf34_0 = AIE.buffer(%t34) { sym_name = "x" } : memref<8xi32>
-  %buf54_0 = AIE.buffer(%t54) { sym_name = "y" } : memref<8xi32>
-  %buf43_0 = AIE.buffer(%t43) { sym_name = "z" } : memref<8xi32>
-  %buf45_0 = AIE.buffer(%t45) { sym_name = "t" } : memref<8xi32>
+  %buf44_0 = AIE.buffer(%t44) { sym_name = "a", address = 0x0 } : memref<4xi32>
+  %buf44_1 = AIE.buffer(%t44) { sym_name = "b", address = 0x10  } : memref<16xi32>
+  %buf44_2 = AIE.buffer(%t44) { sym_name = "c", address = 0x50 } : memref<256xi32>
+  %buf34_0 = AIE.buffer(%t34) { sym_name = "x", address = 0x0 } : memref<8xi32>
+  %buf54_0 = AIE.buffer(%t54) { sym_name = "y", address = 0x0 } : memref<8xi32>
+  %buf43_0 = AIE.buffer(%t43) { sym_name = "z", address = 0x0 } : memref<8xi32>
+  %buf45_0 = AIE.buffer(%t45) { sym_name = "t", address = 0x0 } : memref<8xi32>
 
 }
 

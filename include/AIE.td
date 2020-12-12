@@ -1045,6 +1045,14 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
   let extraClassDeclaration = [{
+    StringAttr name() {
+      return getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    }
+    // Return the address of this buffer
+    int64_t address() {
+      // FIXME: Error handling?
+      return getAttrOfType<IntegerAttr>("address").getInt();
+    }
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
     TileOp getTileOp();

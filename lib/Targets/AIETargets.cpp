@@ -21,6 +21,13 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+static llvm::cl::opt<int> tileCol("tilecol",
+                                  llvm::cl::desc("column coordinate of core to translate"),
+                                  llvm::cl::init(0));
+static llvm::cl::opt<int> tileRow("tilerow",
+                                  llvm::cl::desc("row coordinate of core to translate"),
+                                  llvm::cl::init(0));
+
 namespace xilinx {
 namespace AIE {
 
@@ -46,20 +53,26 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
 
 // Output the buffer map for the given buffer operations, with the given offset.
 // The offset is different depending on where the buffers are accessed from.
-void writeBufferMap(raw_ostream &output, ArrayRef<BufferOp> buffers,
+void writeBufferMap(raw_ostream &output, BufferOp buf,
                     int offset, NetlistAnalysis &NL) {
-  for (auto buf : buffers) {
-    auto symbolAttr =
-      buf.getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-    StringRef bufName = std::string(symbolAttr.getValue());
-    int bufferBaseAddr = NL.getBufferBaseAddress(buf);
-    MemRefType t = buf.getType().cast<MemRefType>();
-    int numBytes = t.getSizeInBits() / 8;
-    output << "_symbol " <<
-      bufName << " " <<
-      "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " <<
-      numBytes << '\n';
-  }
+  std::string bufName(buf.name().getValue());
+  int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+  int numBytes = buf.getAllocationSize();
+  output << "_symbol " << bufName << " " <<
+    "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " <<
+    numBytes << '\n';
+}
+// Output the memorymap in BCF format for the given buffer operations, with the given offset.
+// The offset is different depending on where the buffers are accessed from.
+void writeBCFMap(raw_ostream &output, BufferOp buf,
+                    int offset, NetlistAnalysis &NL) {
+  std::string bufName(buf.name().getValue());
+  int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+  int numBytes = buf.getAllocationSize();
+  output << "_symbol " << bufName << " " <<
+    "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " " <<
+    "0x" << llvm::utohexstr(numBytes) << '\n';
+  output << "_extern " << bufName << "\n";
 }
 
 void registerAIETranslations() {
@@ -106,7 +119,8 @@ void registerAIETranslations() {
 
         auto doBuffer = [&](Optional<TileID> tile, int offset) {
           if(tiles.count(tile.getValue()))
-            writeBufferMap(output, buffers[tiles[tile.getValue()]], offset, NL);
+            for (auto buf : buffers[tiles[tile.getValue()]])
+              writeBufferMap(output, buf, offset, NL);
         };
         if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
         if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
@@ -158,6 +172,62 @@ void registerAIETranslations() {
   //     registry.insert<StandardOpsDialect>();
   //     registry.insert<LLVM::LLVMDialect>();
   //   });
+//   _entry_point _main_init
+// _symbol      _main _after _main_init
+// _symbol      _main_init 0
+// _reserved DMb      0x00000 0x20000
+// _symbol   a        0x38000 0x2000
+// _extern   a
+// _stack    DM_stack 0x20000  0x400 //stack for core
+// _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+
+  TranslateFromMLIRRegistration
+    registrationBCF("aie-generate-bcf", [](ModuleOp module, raw_ostream &output) {
+      DenseMap<std::pair<int, int>, Operation *> tiles;
+      DenseMap<Operation *, CoreOp> cores;
+      DenseMap<Operation *, MemOp> mems;
+      DenseMap<std::pair<Operation *, int>, LockOp> locks;
+      DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+      DenseMap<Operation *, SwitchboxOp> switchboxes;
+
+      NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+      NL.collectTiles(tiles);
+      NL.collectBuffers(buffers);
+// _entry_point _main_init
+// _symbol      _main _after _main_init
+// _symbol      _main_init 0
+// _reserved DMb      0x00000 0x20000
+// _symbol   a        0x38000 0x2000
+// _extern   a
+// _stack    DM_stack 0x20000  0x400 //stack for core
+// _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+      for (auto tile : module.getOps<TileOp>())
+        if(tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+          output << "_entry_point _main_init\n";
+          output << "_symbol      _main _after _main_init\n";
+          output << "_symbol      _main_init 0\n";
+          output << "_reserved DMb      0x00000 0x20000 //Don't put data in code memory\n";
+
+          auto doBuffer = [&](Optional<TileID> tile, int offset) {
+            if(tiles.count(tile.getValue()))
+              for (auto buf : buffers[tiles[tile.getValue()]])
+                writeBCFMap(output, buf, offset, NL);
+          };
+          auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
+          if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
+          if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
+          if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
+          if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
+          output << "_stack    DM_stack 0x20000  0x400 //stack for core\n";
+          output << "_reserved DMb 0x40000 0xc0000 // And everything else the core can't see\n";
+        }
+      return success();
+    },
+    [](DialectRegistry &registry) {
+      registry.insert<xilinx::AIE::AIEDialect>();
+      registry.insert<StandardOpsDialect>();
+      registry.insert<LLVM::LLVMDialect>();
+    });
 
   TranslateFromMLIRRegistration
     registrationXAIE("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {

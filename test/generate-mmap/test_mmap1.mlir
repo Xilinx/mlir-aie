@@ -1,5 +1,3 @@
-// Note: This test *might* fail due to the random order that the code statements are generated
-
 // RUN: aie-translate --aie-generate-mmap %s | FileCheck %s
 
 // CHECK-LABEL: Tile(4, 4)
@@ -20,6 +18,6 @@ module @test_mmap1 {
   %t33 = AIE.tile(3, 3) // Different row
   %t35 = AIE.tile(3, 5) // Different row
 
-  %buf34_0 = AIE.buffer(%t34) { sym_name = "a" } : memref<4xi32>
+  %buf34_0 = AIE.buffer(%t34) { sym_name = "a", address = 0x0 } : memref<4xi32>
 }
 
