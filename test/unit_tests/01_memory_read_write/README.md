@@ -4,7 +4,7 @@ Current test doesn't create a working elf from peana so we need to build the des
 cd chess_example
 ./build_run.sh
 <ctrl-c to exit after simulation is run>
-cp kernel ..
+cp work/Release_LLVM/kernel.prx/kernel ..
 cd ..
 make aie.elf
 make aie_inc.cpp
