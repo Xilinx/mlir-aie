@@ -18,6 +18,8 @@
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 
+#define MLIR_STACK_OFFSET 4096
+
 namespace {
 
 XAieGbl_Config *AieConfigPtr;	                          /**< AIE configuration pointer */
@@ -45,9 +47,6 @@ main(int argc, char *argv[])
     mlir_configure_switchboxes();
     mlir_initialize_locks();
     mlir_configure_dmas();
-
-    XAieGbl_LoadElf(&(TileInst[1][3]),(u8*)("kernel"),XAIE_ENABLE);
-
     mlir_start_cores();
 
     //XAieLib_usleep(1000);
@@ -55,7 +54,7 @@ main(int argc, char *argv[])
     int errors = 0;
 
     for (int i=0; i<32; i++) {
-        uint32_t d = XAieTile_DmReadWord(&(TileInst[1][3]), 4096+(i*4));
+        uint32_t d = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(i*4));
         printf("Tile[1][3]: data[%d] = %d\n",i,d);
         if(((i==3) && (d!=14)) || ((i==5) && (d!=8)) || ((i==9) && (d!=14)))
             errors++;
