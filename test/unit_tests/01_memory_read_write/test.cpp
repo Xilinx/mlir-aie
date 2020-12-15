@@ -57,7 +57,7 @@ main(int argc, char *argv[])
     for (int i=0; i<32; i++) {
         uint32_t d = XAieTile_DmReadWord(&(TileInst[1][3]), 4096+(i*4));
         printf("Tile[1][3]: data[%d] = %d\n",i,d);
-        if(((i==3) && (d!=14)) || ((i==5) && (d!=8)))
+        if(((i==3) && (d!=14)) || ((i==5) && (d!=8)) || ((i==9) && (d!=14)))
             errors++;
     }
 

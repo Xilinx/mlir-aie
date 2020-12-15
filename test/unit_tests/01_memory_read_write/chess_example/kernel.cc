@@ -14,6 +14,8 @@ void func(int32_t *buf)
     buf[3] = val;
     val = 8;
     buf[5] = val;
+    val = buf[3];
+    buf[9] = val;
 }
 
 int32_t buf[32];
