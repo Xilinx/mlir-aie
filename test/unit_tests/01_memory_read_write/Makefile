@@ -38,22 +38,22 @@ all: test.exe
 	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
 
 %.ll : %.mlir_addresses
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
 
 %.o : %.ll
 	llc $*.ll -O0 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
 %.bcf : %.mlir_addresses
-	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=2 $< > $@
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=3 $< > $@
 
 %.elf : %.o %.bcf
 	$(XBRIDGE) $< -c $*.bcf -o $@
 
 #ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
 
-%.bin : %.mlir
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=$*.o && \
-	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script --oformat binary -o $@
+#%.bin : %.mlir
+#	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=$*.o && \
+#	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script --oformat binary -o $@
 
 .PRECIOUS: aie.ll aie.o
 
@@ -64,4 +64,4 @@ all: test.exe
 	cp work/Release_LLVM/$*.prx/$* ../$*.elf
 
 clean:
-	rm -rf aie_inc.cpp *.o *.exe *.elf ./$(AIE_SRC_DIR)/work
+	rm -rf aie_inc.cpp *.o *.ll *.mlir_addresses *.exe *.elf* ./$(AIE_SRC_DIR)/work 
