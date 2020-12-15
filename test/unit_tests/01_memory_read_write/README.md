@@ -1,15 +1,8 @@
-Current test doesn't create a working elf from peana so we need to build the design directly via xchessmk.
-
+To build design, simply type:
 ```
-cd chess_example
-./build_run.sh
-<ctrl-c to exit after simulation is run>
-cp work/Release_LLVM/kernel.prx/kernel ..
-cd ..
 make aie.elf
 make aie_inc.cpp
 ```
-
 Then you can copy the entire 01_memory_read_write diretory to the board and then compile the arm code on the board and run the test.
 ```
 scp -r 01_memory_read_write xilinx@<board ip>:/home/xilinx/.
@@ -21,3 +14,15 @@ cd 01_memory_read_write
 make test.exe
 sudo ./test.exe
 ```
+
+To use the synopsys built design instead, you can do the following during the build step:
+```
+make aie.elf
+make aie_inc.cpp
+cd chess_example
+./build_run.sh
+<ctrl-c to exit after simulation is run>
+cp work/Release_LLVM/kernel.prx/kernel ../aie.elf
+cd ..
+```
+
