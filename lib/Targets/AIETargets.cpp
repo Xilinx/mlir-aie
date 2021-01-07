@@ -229,6 +229,25 @@ void registerAIETranslations() {
       registry.insert<LLVM::LLVMDialect>();
     });
 
+
+  TranslateFromMLIRRegistration
+    registrationCoreList("aie-generate-corelist", [](ModuleOp module, raw_ostream &output) {
+        output << "[";
+        for (auto tileOp : module.getOps<TileOp>()) {
+          int col = tileOp.colIndex();
+          int row = tileOp.rowIndex();
+          if (auto coreOp = tileOp.getCoreOp()) {
+            output << '(' << std::to_string(col) << ',' << std::to_string(row) << "),";
+          }
+        }
+        output << "]\n";
+        return success();
+    },
+    [](DialectRegistry &registry) {
+      registry.insert<xilinx::AIE::AIEDialect>();
+      registry.insert<StandardOpsDialect>();
+      registry.insert<LLVM::LLVMDialect>();
+    });               
   TranslateFromMLIRRegistration
     registrationXAIE("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
         StringRef enable  = "XAIE_ENABLE";
