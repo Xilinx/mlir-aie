@@ -12,6 +12,10 @@ AIE_BASE_OBJ = ../../../runtime_lib/me_basic.o
 AIE_OPT     = ../../../../build/aie/bin/aie-opt
 AIE_XLATE   = ../../../../build/aie/bin/aie-translate
 XBRIDGE     = ../../../../build/aie-tools/bin/xbridge
+#AIE_OPT     = ../../../../build-container/aie/bin/aie-opt
+#AIE_XLATE   = ../../../../build-container/aie/bin/aie-translate
+#XBRIDGE     = ../../../../build-container/aie-tools/bin/xbridge
+
 
 all: test.exe
 
