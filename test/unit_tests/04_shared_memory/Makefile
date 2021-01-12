@@ -47,8 +47,8 @@ aie_inc.cpp: aie.mlir
 %13.ll : %13.mlir_addresses
 	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*13.ll
 
-%23.ll : %23.mlir_addresses
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=2 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*23.ll
+%14.ll : %14.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=4" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*14.ll
 
 %.o : %.ll
 	llc $*.ll -O2 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
@@ -56,8 +56,8 @@ aie_inc.cpp: aie.mlir
 %13.bcf : %13.mlir_addresses
 	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=3 $< > $@
 
-%23.bcf : %23.mlir_addresses
-	$(AIE_XLATE) --aie-generate-bcf --tilecol=2 --tilerow=3 $< > $@
+%14.bcf : %14.mlir_addresses
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=4 $< > $@
 
 %.elf : %.o %.bcf
 	$(XBRIDGE) $< -c $*.bcf -o $@
