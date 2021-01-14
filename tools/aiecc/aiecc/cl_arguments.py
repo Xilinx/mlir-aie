@@ -6,7 +6,7 @@ import sys
 def parse_args():
     parser = argparse.ArgumentParser(prog='aiecc')
     parser.add_argument('filename',
-            metavar="TEST_PATH",
+            metavar="file",
             help='File to compile')
 
     opts = parser.parse_args(sys.argv[1:])
