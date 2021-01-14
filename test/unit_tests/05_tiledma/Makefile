@@ -36,7 +36,7 @@ all: test.exe
 
 # mlir translate into include c source (e.g. aie_inc.cpp)
 #%_inc.cpp: %.mlir
-aie_inc.cpp: aie.mlir
+aie_inc.cpp: aie.mlir_addresses
 	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
 #%.mlir_addresses : %.mlir
