@@ -368,7 +368,6 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
     target.addLegalOp<SwitchboxOp>();
     target.addLegalOp<ShimMuxOp>();
     target.addLegalOp<EndOp>();
-    //target.addDynamicallyLegalOp<FlowOp>([](FlowOp op) { return (bool)op.getOperation()->getAttrOfType<BoolAttr>("IsRouted"); });
 
     OwningRewritePatternList patterns;
     patterns.insert<RouteFlows>(m.getContext(), m, analysis);

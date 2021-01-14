@@ -714,9 +714,7 @@ void registerAIETranslations() {
             // parameterize streamswitch's configuration
             isParam = true;
             HerdOp sourceHerd = dyn_cast<HerdOp>(sel.startHerd().getDefiningOp());
-            auto symbolAttr = sourceHerd.getOperation()->getAttrOfType<StringAttr>(
-                                SymbolTable::getSymbolAttrName());
-            std::string sourceHerdName(symbolAttr.getValue());
+            std::string sourceHerdName(sourceHerd.name().getValue());
 
             IterOp iterX     = dyn_cast<IterOp>(sel.iterX().getDefiningOp());
             IterOp iterY     = dyn_cast<IterOp>(sel.iterY().getDefiningOp());

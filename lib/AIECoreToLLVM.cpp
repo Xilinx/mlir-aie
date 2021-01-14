@@ -384,8 +384,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
       // FIXME: Support multi-dimensional types.
       auto globalType = LLVM::LLVMType::getArrayTy(elementType, t.getShape()[0]);
       Attribute value; // has no value.
-      // FIXME: might not exist
-      auto symName = buffer.getAttrOfType<StringAttr>("sym_name").getValue();
+      auto symName = buffer.name().getValue();
       auto global = builder.create<LLVM::GlobalOp>(buffer.getLoc(), globalType,
          false, LLVM::Linkage::External, symName, value);
       bufferToGlobal[buffer.getOperation()] = global;
