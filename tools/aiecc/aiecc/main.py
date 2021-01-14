@@ -53,3 +53,9 @@ def main(builtin_params={}):
         call(['llc', file_core_llvmir_stripped, '-O0', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         file_core_elf = corefile(core, "elf")
         call(['xbridge', file_core_obj, '-c', file_core_bcf, '-o', file_core_elf])
+
+    # Generate the included host interface
+    file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
+    call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+    file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
+    call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])

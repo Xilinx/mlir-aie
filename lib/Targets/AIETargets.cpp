@@ -294,19 +294,23 @@ void registerAIETranslations() {
                   << ", l, 0x0, 0);\n";
 
             if (auto coreOp = tileOp.getCoreOp()) {
+              std::string fileName;
               if (auto fileAttr = coreOp.getAttrOfType<StringAttr>("elf_file")) {
-                std::string fileName(fileAttr.getValue());
-                output << "{\n"
-                      << "int ret = XAieGbl_LoadElf("
-                      << tileInstStr(std::to_string(col), std::to_string(row))
-                      << ", "
-                      << "(u8*)\"" << fileName << "\", " << enable << ");\n";
-                output << "if (ret == XAIELIB_FAILURE)\n"
-                      << "printf(\"Failed to load elf for Core[%d,%d], ret is %d\", "
-                      << std::to_string(col) << ", " << std::to_string(row) << ", ret);\n"
-                      << "assert(ret != XAIELIB_FAILURE);\n"
-                      << "}\n";
+                fileName = std::string(fileAttr.getValue());
+              } else {
+                fileName = std::string("core_") + std::to_string(col) + "_" +
+                                                  std::to_string(row) + ".elf";
               }
+              output << "{\n"
+                    << "int ret = XAieGbl_LoadElf("
+                    << tileInstStr(std::to_string(col), std::to_string(row))
+                    << ", "
+                    << "(u8*)\"" << fileName << "\", " << enable << ");\n";
+              output << "if (ret == XAIELIB_FAILURE)\n"
+                    << "printf(\"Failed to load elf for Core[%d,%d], ret is %d\", "
+                    << std::to_string(col) << ", " << std::to_string(row) << ", ret);\n"
+                    << "assert(ret != XAIELIB_FAILURE);\n"
+                    << "}\n";
             }
           }
         }

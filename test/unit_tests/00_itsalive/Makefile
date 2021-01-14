@@ -9,14 +9,18 @@ CFLAGS := -std=c++11 -I/opt/xaiengine/include
 AIE_SRC_DIR  = kernel
 AIE_BASE_OBJ = ../../../runtime_lib/me_basic.o
 
-AIE_OPT     = ../../../../build/aie/bin/aie-opt
-AIE_XLATE   = ../../../../build/aie/bin/aie-translate
-XBRIDGE     = ../../../../build/aie-tools/bin/xbridge
+AIE_OPT     = aie-opt
+AIE_XLATE   = aie-translate
+XBRIDGE     = xbridge
+AIECC       = ../../../tools/aiecc/aiecc.py
 
 all: test.exe
 
+acdc_project/aie_inc.cpp: aie.mlir
+	$(AIECC) aie.mlir
+
 # compile sources
-%.o: %.cpp aie_inc.cpp
+%.o: %.cpp acdc_project/aie_inc.cpp
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # compile and link on board
@@ -31,23 +35,23 @@ all: test.exe
 		-o $@
 
 # mlir translate into include c source (e.g. aie_inc.cpp)
-%_inc.cpp: %.mlir
-	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
+# %_inc.cpp: %.mlir
+# 	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
-%.ll : %.mlir
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
+# %.ll : %.mlir
+# 	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
 
-%.o : %.ll
-	llc $*.ll -O0 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
+# %.o : %.ll
+# 	llc $*.ll -O0 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
-%.elf : %.o
-	$(XBRIDGE) $*.o -o $*.elf
+# %.elf : %.o
+# 	$(XBRIDGE) $*.o -o $*.elf
 
-#ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
+# #ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
 
-%.bin : %.mlir
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=$*.o && \
-	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script --oformat binary -o $@
+# %.bin : %.mlir
+# 	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=$*.o && \
+# 	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script --oformat binary -o $@
 
 #.PRECIOUS: aie.ll aie.o
 
