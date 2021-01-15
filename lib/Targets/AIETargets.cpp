@@ -74,6 +74,17 @@ void writeBCFMap(raw_ostream &output, BufferOp buf,
     "0x" << llvm::utohexstr(numBytes) << '\n';
   output << "_extern " << bufName << "\n";
 }
+// Output the memorymap in gnu linker format for the given buffer operations, with the given offset.
+// The offset is different depending on where the buffers are accessed from.
+void writeLDScriptMap(raw_ostream &output, BufferOp buf,
+                    int offset, NetlistAnalysis &NL) {
+  std::string bufName(buf.name().getValue());
+  int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+  int numBytes = buf.getAllocationSize();
+  output << ". = 0x" << llvm::utohexstr(offset + bufferBaseAddr) << "\n";
+  output << bufName << " = .;\n";
+  output << ". += 0x" << llvm::utohexstr(numBytes) << '\n';
+}
 
 void registerAIETranslations() {
   TranslateFromMLIRRegistration
@@ -134,44 +145,93 @@ void registerAIETranslations() {
       registry.insert<StandardOpsDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
-  // TranslateFromMLIRRegistration
-  //   registrationMMap("aie-generate-ldscript", [](ModuleOp module, raw_ostream &output) {
-  //     DenseMap<std::pair<int, int>, Operation *> tiles;
-  //     DenseMap<Operation *, CoreOp> cores;
-  //     DenseMap<Operation *, MemOp> mems;
-  //     DenseMap<std::pair<Operation *, int>, LockOp> locks;
-  //     DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-  //     DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-  //     NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
-  //     NL.collectTiles(tiles);
-  //     NL.collectBuffers(buffers);
+///// ld.script format:
+//
+// MEMORY
+// {
+//    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+//    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+// }
+// ENTRY(_main_init)
+// SECTIONS
+// {
+//   . = 0x0;
+//   .text : { 
+//      // the _main_init symbol from me_basic.o has to come at address zero.
+//      *me_basic.o(.text)
+//      . = 0x200;
+//      *(.text)
+//   } > program
+//   .data : { *(.data) } > data
+//   . = 0x20000;
+//   _sp_start_value_DM_stack = .;
+//   . = 0x24000;
+//   a = .;
+//   . += 1024;
+//   .bss : { *(.bss) } > data
+// }
 
-  //     for (auto tile : tiles) {
-  //       Operation *srcTileOp = tile.second;
-  //       std::pair<int, int> srcCoord = NL.getCoord(srcTileOp);
-  //       int srcCol = srcCoord.first;
-  //       int srcRow = srcCoord.second;
+  TranslateFromMLIRRegistration
+    registrationLDScript("aie-generate-ldscript", [](ModuleOp module, raw_ostream &output) {
+      DenseMap<std::pair<int, int>, Operation *> tiles;
+      DenseMap<Operation *, CoreOp> cores;
+      DenseMap<Operation *, MemOp> mems;
+      DenseMap<std::pair<Operation *, int>, LockOp> locks;
+      DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+      DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-  //       output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
-  //       output << "// Memory map: name base_address num_bytes\n";
+      NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+      NL.collectTiles(tiles);
+      NL.collectBuffers(buffers);
 
-  //       auto doBuffer = [&](Optional<TileID> tile, int offset) {
-  //         if(tiles.count(tile.getValue()))
-  //           writeBufferMap(output, buffers[tiles[tile.getValue()]], offset, NL);
-  //       };
-  //       if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
-  //       if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
-  //       if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
-  //       if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
-  //     }
-  //     return success();
-  //   },
-  //   [](DialectRegistry &registry) {
-  //     registry.insert<xilinx::AIE::AIEDialect>();
-  //     registry.insert<StandardOpsDialect>();
-  //     registry.insert<LLVM::LLVMDialect>();
-  //   });
+      for (auto tile : tiles) {
+        Operation *srcTileOp = tile.second;
+        std::pair<int, int> srcCoord = NL.getCoord(srcTileOp);
+        int srcCol = srcCoord.first;
+        int srcRow = srcCoord.second;
+
+        output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
+        output << "// Memory map: name base_address num_bytes\n";
+        output << R"THESCRIPT(
+MEMORY
+{
+   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+   data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+}
+ENTRY(_main_init)
+SECTIONS
+{
+  . = 0x0;
+  .text : { 
+     // the _main_init symbol from me_basic.o has to come at address zero.
+     *me_basic.o(.text)
+     . = 0x200;
+     *(.text)
+  } > program
+  .data : { *(.data) } > data
+  . = 0x20000;
+  _sp_start_value_DM_stack = .;
+  . = 0x24000;
+)THESCRIPT";
+        auto doBuffer = [&](Optional<TileID> tile, int offset) {
+          if(tiles.count(tile.getValue()))
+            for (auto buf : buffers[tiles[tile.getValue()]])
+              writeLDScriptMap(output, buf, offset, NL);
+        };
+        if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
+        if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
+        if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
+        if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
+      }
+      return success();
+    },
+    [](DialectRegistry &registry) {
+      registry.insert<xilinx::AIE::AIEDialect>();
+      registry.insert<StandardOpsDialect>();
+      registry.insert<LLVM::LLVMDialect>();
+    });
+
 //   _entry_point _main_init
 // _symbol      _main _after _main_init
 // _symbol      _main_init 0
