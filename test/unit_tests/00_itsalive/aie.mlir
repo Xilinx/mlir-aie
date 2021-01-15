@@ -4,7 +4,7 @@
 module @test1_core_llvm1 {
   %tile12 = AIE.tile(1, 2)
 
-  %buf12_0 = AIE.buffer(%tile12) { sym_name = "a" } : memref<256xi32>
+  %buf12_0 = AIE.buffer(%tile12) { sym_name = "a", address = 0 } : memref<256xi32>
 //  %buf12_1 = AIE.buffer(%tile12) { sym_name = "b" } : memref<256xi32>
 
 //  %lock12_0 = AIE.lock(%tile12, 0)
@@ -21,6 +21,6 @@ module @test1_core_llvm1 {
     // store %val2, %buf12_0[%idx2] : memref<256xi32>
 //    AIE.useLock(%lock12_1, "Release", 1, 0)
     AIE.end
-  }
+  } { elf_file = "aie.elf" }
 
 }

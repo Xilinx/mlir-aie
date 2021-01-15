@@ -14,7 +14,7 @@ AIE_XLATE   = aie-translate
 XBRIDGE     = xbridge
 AIECC       = ../../../tools/aiecc/aiecc.py
 
-all: test.exe
+all: aie.elf test.exe
 
 acdc_project/aie_inc.cpp: aie.mlir
 	$(AIECC) aie.mlir
@@ -35,31 +35,33 @@ acdc_project/aie_inc.cpp: aie.mlir
 		-o $@
 
 # mlir translate into include c source (e.g. aie_inc.cpp)
-# %_inc.cpp: %.mlir
-# 	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
+%_inc.cpp: %.mlir
+	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
-# %.ll : %.mlir
-# 	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
+%.ll : %.mlir
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
 
-# %.o : %.ll
-# 	llc $*.ll -O0 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
+%.o : %.ll
+	llc $*.ll -O0 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
-# %.elf : %.o
-# 	$(XBRIDGE) $*.o -o $*.elf
+ld.script : aie.mlir
+	$(AIE_TRANSLATE) --aie-generate-ldscript aie.mlir -o ld.script
 
-# #ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
+%.elf : %.o ld.script
+	#$(XBRIDGE) $*.o -o $*.elf
+	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
 
-# %.bin : %.mlir
-# 	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=$*.o && \
-# 	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script --oformat binary -o $@
+%.bin : %.mlir
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=$*.o && \
+	ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script --oformat binary -o $@
 
 #.PRECIOUS: aie.ll aie.o
 
 # generate kernel source
-%.elf: $(AIE_SRC_DIR)/%.cc
-	cd ./$(AIE_SRC_DIR) && \
-	xchessmk $*.prx && \
-	cp work/Release_LLVM/$*.prx/$* ../$*.elf
+# %.elf: $(AIE_SRC_DIR)/%.cc
+# 	cd ./$(AIE_SRC_DIR) && \
+# 	xchessmk $*.prx && \
+# 	cp work/Release_LLVM/$*.prx/$* ../$*.elf
 
 clean:
 	rm -rf aie_inc.cpp *.o *.exe *.elf ./$(AIE_SRC_DIR)/work
