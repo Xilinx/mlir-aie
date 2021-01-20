@@ -1,6 +1,10 @@
-SYSROOT="/group/xrlabs/platforms/pynq_on_versal_vck190/vck190-sysroot"
+#SYSROOT="/scratch/jefff/aarch64/mnt"
+SYSROOT="/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot"
 LINKER="lld"
 #HOST_BUILD="/wrk/hdstaff/stephenn/nobkup/acdc-install"
+HOST_BUILD=$1/../../build/peano
+LDFLAGS="-Wl,-z,notext -fuse-ld=${LINKER} -L${SYSROOT}/usr/lib/gcc/aarch64-linux-gnu/7"
+CFLAGS="-Wl,-z,notext --sysroot=${SYSROOT} --target=aarch64-linux-gnu -fuse-ld=${LINKER} -Wno-unused-command-line-argument"
 
 CLANG_VER=8
 cmake -GNinja \
@@ -9,14 +13,14 @@ cmake -GNinja \
 		-DCMAKE_C_COMPILER=clang-${CLANG_VER} \
 		-DCMAKE_CXX_COMPILER=clang++-${CLANG_VER} \
 		-DCMAKE_ASM_COMPILER=clang-${CLANG_VER} \
-		-DCMAKE_C_LINK_FLAGS="-static-libgcc -static-libstdc++ -static -fuse-ld=${LINKER} -L${SYSROOT}/usr/lib/gcc/aarch64-linux-gnu/7" \
-		-DCMAKE_CXX_LINK_FLAGS="-static-libgcc -static-libstdc++ -static -fuse-ld=${LINKER} -L${SYSROOT}/usr/lib/gcc/aarch64-linux-gnu/7" \
-        -DCMAKE_C_IMPLICIT_LINK_LIBRARIES="gcc" \
-        -DCMAKE_CXX_IMPLICIT_LINK_LIBRARIES="gcc" \
+		-DCMAKE_C_LINK_FLAGS="${LDFLAGS}" \
+		-DCMAKE_CXX_LINK_FLAGS="${LDFLAGS}" \
+        -DCMAKE_C_IMPLICIT_LINK_LIBRARIES="gcc_s" \
+        -DCMAKE_CXX_IMPLICIT_LINK_LIBRARIES="gcc_s" \
 		-DCMAKE_BUILD_TYPE=MinSizeRel \
 -DCMAKE_CROSSCOMPILING=ON \
--DCMAKE_C_FLAGS="--sysroot=${SYSROOT} --target=aarch64-linux-gnu -static -fuse-ld=${LINKER} -Wno-unused-command-line-argument" \
--DCMAKE_CXX_FLAGS="--sysroot=${SYSROOT} --target=aarch64-linux-gnu -static -fuse-ld=${LINKER} -Wno-unused-command-line-argument" \
+-DCMAKE_C_FLAGS="${CFLAGS}" \
+-DCMAKE_CXX_FLAGS="${CFLAGS}" \
         -DCMAKE_INSTALL_PREFIX=$3 \
 		-B$1 -H$2
 
