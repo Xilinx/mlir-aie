@@ -38,20 +38,41 @@ all: test.exe
 		-o $@
 
 # mlir translate into include c source (e.g. aie_inc.cpp)
-%_inc.cpp: %.mlir
+#%_inc.cpp: %.mlir
+aie_inc.cpp: aie.mlir
 	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
-%.mlir_addresses : %.mlir
-	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
+#%.mlir_addresses : %.mlir
+#	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
+%.mlir_addresses : aie.mlir
+	$(AIE_OPT) --aie-assign-buffer-addresses aie.mlir > $@
 
-%.ll : %.mlir_addresses
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
+%13.ll : %13.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*13.ll
+
+%32.ll : %32.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=3 tilerow=2" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*32.ll
+
+%33.ll : %33.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=3 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*33.ll
+
+%34.ll : %34.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=3 tilerow=4" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*34.ll
 
 %.o : %.ll
 	llc $*.ll -O2 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
-%.bcf : %.mlir_addresses
+%13.bcf : %13.mlir_addresses
 	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=3 $< > $@
+
+%32.bcf : %32.mlir_addresses
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=3 --tilerow=2 $< > $@
+
+%33.bcf : %33.mlir_addresses
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=3 --tilerow=3 $< > $@
+
+%34.bcf : %34.mlir_addresses
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=3 --tilerow=4 $< > $@
 
 %.elf : %.o %.bcf
 	$(XBRIDGE) $< -c $*.bcf -o $@
