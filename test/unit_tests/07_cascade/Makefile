@@ -9,12 +9,9 @@ CFLAGS := -std=c++11 -I/opt/xaiengine/include
 AIE_SRC_DIR  = .
 AIE_BASE_OBJ = ../../../runtime_lib/me_basic.o
 
-AIE_OPT     = aie-opt
-AIE_XLATE   = aie-translate
-XBRIDGE     = xbridge
-#AIE_OPT     = ../../../../build/aie/bin/aie-opt
-#AIE_XLATE   = ../../../../build/aie/bin/aie-translate
-#XBRIDGE     = ../../../../build/aie-tools/bin/xbridge
+AIE_OPT     = ../../../../build/aie/bin/aie-opt
+AIE_XLATE   = ../../../../build/aie/bin/aie-translate
+XBRIDGE     = ../../../../build/aie-tools/bin/xbridge
 #AIE_OPT     = ../../../../build-container/aie/bin/aie-opt
 #AIE_XLATE   = ../../../../build-container/aie/bin/aie-translate
 #XBRIDGE     = ../../../../build-container/aie-tools/bin/xbridge
@@ -38,20 +35,29 @@ all: test.exe
 		-o $@
 
 # mlir translate into include c source (e.g. aie_inc.cpp)
-%_inc.cpp: %.mlir
+#%_inc.cpp: %.mlir
+aie_inc.cpp: aie.mlir
 	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
-%.mlir_addresses : %.mlir
-	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
+#%.mlir_addresses : %.mlir
+#	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
+%.mlir_addresses : aie.mlir
+	$(AIE_OPT) --aie-assign-buffer-addresses aie.mlir > $@
 
-%.ll : %.mlir_addresses
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
+%13.ll : %13.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*13.ll
+
+%23.ll : %23.mlir_addresses
+	$(AIE_OPT) --aie-llvm-lowering="tilecol=2 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*23.ll
 
 %.o : %.ll
 	llc $*.ll -O2 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
-%.bcf : %.mlir_addresses
+%13.bcf : %13.mlir_addresses
 	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=3 $< > $@
+
+%23.bcf : %23.mlir_addresses
+	$(AIE_XLATE) --aie-generate-bcf --tilecol=2 --tilerow=3 $< > $@
 
 %.elf : %.o %.bcf
 	$(XBRIDGE) $< -c $*.bcf -o $@
