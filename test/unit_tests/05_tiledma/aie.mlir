@@ -16,9 +16,9 @@ module @test3_core_llvm1 {
   %lock33_6 = AIE.lock(%tile33, 6) // interbuffer lock
   %lock33_7 = AIE.lock(%tile33, 7) // output buffer lock
 
-  AIE.switchbox(%tile13) { AIE.connect<"ME": 0, "East": 1> }
+  AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
   AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 3> }
-  AIE.switchbox(%tile33) { AIE.connect<"West": 3, "ME": 1> }
+  AIE.switchbox(%tile33) { AIE.connect<"West": 3, "DMA": 1> }
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1, 0) // acquire for read(e.g. input ping)
@@ -78,7 +78,7 @@ module @test3_core_llvm1 {
     ^bd0:
       AIE.useLock(%lock33_6, "Acquire", 0, 0)
       AIE.dmaBd(<%buf33_0: memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%lock33_7, "Release", 1, 0)
+      AIE.useLock(%lock33_6, "Release", 1, 0)
       br ^end // point to the next BD, or termination
     ^end:
       AIE.end
