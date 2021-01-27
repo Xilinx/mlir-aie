@@ -15,13 +15,13 @@ module @test3_core_llvm1 {
   %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock
   %lock13_5 = AIE.lock(%tile13, 5) // interbuffer lock
 
-//  AIE.switchbox(%tile13) { AIE.connect<"ME": 0, "East": 1> }
+//  AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
 //  AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 3> }
-//  AIE.switchbox(%tile33) { AIE.connect<"West": 3, "ME": 1> }
+//  AIE.switchbox(%tile33) { AIE.connect<"West": 3, "DMA": 1> }
 
-  AIE.flow(%tile13, "ME" : 0, %tile32, "ME" : 1)
-  AIE.flow(%tile13, "ME" : 0, %tile33, "ME" : 1)
-  AIE.flow(%tile13, "ME" : 0, %tile34, "ME" : 1)
+  AIE.flow(%tile13, "DMA" : 0, %tile32, "DMA" : 1)
+  AIE.flow(%tile13, "DMA" : 0, %tile33, "DMA" : 1)
+  AIE.flow(%tile13, "DMA" : 0, %tile34, "DMA" : 1)
 
   // Broadcast source tile (tile13)
   %core13 = AIE.core(%tile13) {
