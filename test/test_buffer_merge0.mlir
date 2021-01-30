@@ -12,19 +12,19 @@
 //CHECK: %[[BUF34:.*]] = AIE.buffer(%[[TILE34]]) : memref<256xi32>
 //CHECK: %[[BUF32:.*]] = AIE.buffer(%[[TILE32]]) : memref<256xi32>
 //CHECK: %11 = AIE.core(%2) {
-//CHECK:   AIE.useLock(%1, "Acquire", 0, 0)
+//CHECK:   AIE.useLock(%1, Acquire, 0, 0)
 //CHECK:   %c16 = constant 16 : index
 //CHECK:   %c1_i32 = constant 1 : i32
 //CHECK:   store %c1_i32, %6[%c16] : memref<256xi32>
-//CHECK:   AIE.useLock(%1, "Release", 1, 0)
+//CHECK:   AIE.useLock(%1, Release, 1, 0)
 //CHECK:   AIE.end
 //CHECK: }
 //CHECK: %12 = AIE.core(%3) {
-//CHECK:   AIE.useLock(%1, "Acquire", 1, 0)
+//CHECK:   AIE.useLock(%1, Acquire, 1, 0)
 //CHECK:   %c16 = constant 16 : index
 //CHECK:   %c1_i32 = constant 1 : i32
 //CHECK:   %16 = load %6[%c16] : memref<256xi32>
-//CHECK:   AIE.useLock(%1, "Release", 0, 0)
+//CHECK:   AIE.useLock(%1, Release, 0, 0)
 //CHECK:   AIE.end
 //CHECK: }
 //CHECK: %13 = AIE.switchbox(%2) {
@@ -63,54 +63,54 @@ module @test_buffer_merge0 {
   %buf32_0 = AIE.buffer(%t32) : memref<256xi32>
 
   %m34 = AIE.mem(%t34) {
-      %dmaSt = AIE.dmaStart("MM2S0", ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(MM2S0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l34_0, "Acquire", 1, 0)
+      AIE.useLock(%l34_0, Acquire, 1, 0)
       AIE.dmaBd(<%buf34_0 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l34_0, "Release", 0, 0)
+      AIE.useLock(%l34_0, Release, 0, 0)
       br ^end
     ^end:
       AIE.end
   }
 
   %m32 = AIE.mem(%t32) {
-      %dmaSt = AIE.dmaStart("S2MM0", ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l32_0, "Acquire", 0, 0)
+      AIE.useLock(%l32_0, Acquire, 0, 0)
       AIE.dmaBd(<%buf32_0 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l32_0, "Release", 1, 0)
+      AIE.useLock(%l32_0, Release, 1, 0)
       br ^end
     ^end:
       AIE.end
   }
 
   %c34 = AIE.core(%t34) {
-    AIE.useLock(%l34_0, "Acquire", 0, 0)
+    AIE.useLock(%l34_0, Acquire, 0, 0)
     %i = constant 16 : index
     %0 = constant 1 : i32
     store %0, %buf34_0[%i] : memref<256xi32>
-    AIE.useLock(%l34_0, "Release", 1, 0)
+    AIE.useLock(%l34_0, Release, 1, 0)
     AIE.end
   }
 
   %c32 = AIE.core(%t32) {
-    AIE.useLock(%l32_0, "Acquire", 1, 0)
+    AIE.useLock(%l32_0, Acquire, 1, 0)
     %i = constant 16 : index
     %0 = constant 1 : i32
     %1 = load %buf32_0[%i] : memref<256xi32>
-    AIE.useLock(%l32_0, "Release", 0, 0)
+    AIE.useLock(%l32_0, Release, 0, 0)
     AIE.end
   }
 
   %s34 = AIE.switchbox(%t34) {
-    AIE.connect<"DMA": 0, "South": 0>
+    AIE.connect<DMA: 0, South: 0>
   }
 
   %s33 = AIE.switchbox(%t33) {
-    AIE.connect<"North": 0, "South": 0>
+    AIE.connect<North: 0, South: 0>
   }
 
   %s32 = AIE.switchbox(%t32) {
-    AIE.connect<"North": 0, "DMA": 0>
+    AIE.connect<North: 0, DMA: 0>
   }
 }

@@ -2,24 +2,24 @@
 // RUN: aie-opt --aie-llvm-lowering="tilecol=2 tilerow=1" %s | FileCheck --check-prefix=CHECK21 %s
 
 //CHECK11:   llvm.func @core11() {
-//CHECK11:     %[[CH0:.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
-//CHECK11:     %[[CH1:.*]] = llvm.mlir.constant(1 : i32) : !llvm.i32
-//CHECK11:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : !llvm.i32
-//CHECK11:     %[[C32:.*]] = llvm.mlir.constant(32 : i128) : !llvm.i128
-//CHECK11:     llvm.call @llvm.aie.put.ms(%[[CH0]], %[[C16]]) : (!llvm.i32, !llvm.i32) -> ()
-//CHECK11:     llvm.call @llvm.aie.put.wms(%[[CH1]], %[[C32]]) : (!llvm.i32, !llvm.i128) -> ()
-//CHECK11:     %[[C64:.*]] = llvm.mlir.constant(64 : i384) : !llvm.i384
-//CHECK11:     llvm.call @llvm.aie.put.mcd(%[[C64]]) : (!llvm.i384) -> ()
+//CHECK11:     %[[CH0:.*]] = llvm.mlir.constant(0 : i32) : i32
+//CHECK11:     %[[CH1:.*]] = llvm.mlir.constant(1 : i32) : i32
+//CHECK11:     %[[C16:.*]] = llvm.mlir.constant(16 : i32) : i32
+//CHECK11:     %[[C32:.*]] = llvm.mlir.constant(32 : i128) : i128
+//CHECK11:     llvm.call @llvm.aie.put.ms(%[[CH0]], %[[C16]]) : (i32, i32) -> ()
+//CHECK11:     llvm.call @llvm.aie.put.wms(%[[CH1]], %[[C32]]) : (i32, i128) -> ()
+//CHECK11:     %[[C64:.*]] = llvm.mlir.constant(64 : i384) : i384
+//CHECK11:     llvm.call @llvm.aie.put.mcd(%[[C64]]) : (i384) -> ()
 //CHECK11:     llvm.return
 //CHECK11:   }
 
 //CHECK21:   llvm.func @core21() {
-//CHECK21:     %[[CH0:.*]] = llvm.mlir.constant(0 : i32) : !llvm.i32
-//CHECK21:     %[[CH1:.*]] = llvm.mlir.constant(1 : i32) : !llvm.i32
-//CHECK21:     %[[R0:.*]] = llvm.call @llvm.aie.get.ss(%[[CH0]]) : (!llvm.i32) -> !llvm.i32
-//CHECK21:     %[[R1:.*]] = llvm.call @llvm.aie.get.ss(%[[CH1]]) : (!llvm.i32) -> !llvm.i32
-//CHECK21:     %{{.*}} = llvm.add %[[R0]], %[[R1]] : !llvm.i32
-//CHECK21:     %{{.*}} = llvm.call @llvm.aie.get.scd() : () -> !llvm.i384
+//CHECK21:     %[[CH0:.*]] = llvm.mlir.constant(0 : i32) : i32
+//CHECK21:     %[[CH1:.*]] = llvm.mlir.constant(1 : i32) : i32
+//CHECK21:     %[[R0:.*]] = llvm.call @llvm.aie.get.ss(%[[CH0]]) : (i32) -> i32
+//CHECK21:     %[[R1:.*]] = llvm.call @llvm.aie.get.ss(%[[CH1]]) : (i32) -> i32
+//CHECK21:     %{{.*}} = llvm.add %[[R0]], %[[R1]] : i32
+//CHECK21:     %{{.*}} = llvm.call @llvm.aie.get.scd() : () -> i384
 //CHECK21:     llvm.return
 //CHECK21:   }
 

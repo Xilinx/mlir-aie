@@ -77,23 +77,23 @@ module @test_ps5_xaie {
   %t11 = AIE.tile(1, 1)
 
   AIE.switchbox(%t01) {
-    AIE.connect<"DMA" : 0, "East" : 0>
-    AIE.connect<"DMA" : 1, "East" : 1>
+    AIE.connect<DMA : 0, East : 0>
+    AIE.connect<DMA : 1, East : 1>
   }
 
   AIE.switchbox(%t11) {
     %a0_0 = AIE.amsel<0>(0)
     %a1_0 = AIE.amsel<1>(0)
 
-    AIE.masterset("ME" : 0, %a0_0)
-    AIE.masterset("ME" : 1, %a1_0)
+    AIE.masterset(ME : 0, %a0_0)
+    AIE.masterset(ME : 1, %a1_0)
 
-    AIE.packetrules("West" : 0) {
+    AIE.packetrules(West : 0) {
       AIE.rule(0x1F, 0x0, %a0_0)
       AIE.rule(0x1F, 0x1, %a1_0)
     }
 
-    AIE.packetrules("West" : 1) {
+    AIE.packetrules(West : 1) {
       AIE.rule(0x1F, 0x0, %a1_0)
     }
   }
@@ -104,17 +104,17 @@ module @test_ps5_xaie {
 //  %t11 = AIE.tile(1, 1)
 //
 //  AIE.packet_flow(0x0) {
-//    AIE.packet_source<%t01, "DMA" : 0>
-//    AIE.packet_dest<%t11, "ME" : 0>
+//    AIE.packet_source<%t01, DMA : 0>
+//    AIE.packet_dest<%t11, ME : 0>
 //  }
 //
 //  AIE.packet_flow(0x1) {
-//    AIE.packet_source<%t01, "DMA" : 0>
-//    AIE.packet_dest<%t11, "ME" : 1>
+//    AIE.packet_source<%t01, DMA : 0>
+//    AIE.packet_dest<%t11, ME : 1>
 //  }
 //
 //  AIE.packet_flow(0x0) {
-//    AIE.packet_source<%t01, "DMA" : 1>
-//    AIE.packet_dest<%t11, "ME" : 1>
+//    AIE.packet_source<%t01, DMA : 1>
+//    AIE.packet_dest<%t11, ME : 1>
 //  }
 //}

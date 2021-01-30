@@ -248,7 +248,7 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
 
   SmallVector<Operation *, 4> nextConnectOps;
 
-  Operation *swboxOp = currentConnect.getParentOp();
+  Operation *swboxOp = currentConnect->getParentOp();
   SwitchboxOp swbox = dyn_cast<SwitchboxOp>(swboxOp);
   int col = swbox.colIndex();
   int row = swbox.rowIndex();
@@ -364,7 +364,7 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
       ArrayRef<Operation *> destConnectOps(findDestConnectOps(connect, WireBundle::DMA));
       for (auto destConnectOp : destConnectOps) {
         ConnectOp destConnect = dyn_cast<ConnectOp>(destConnectOp);
-        SwitchboxOp destSwbox = dyn_cast<SwitchboxOp>(destConnect.getParentOp());
+        SwitchboxOp destSwbox = dyn_cast<SwitchboxOp>(destConnect->getParentOp());
         Operation *destMemOp = mems[destSwbox.tile().getDefiningOp()];
         int destChannelIndex = destConnect.destIndex();
         Operation *destDmaOp = dmas[std::make_pair(destMemOp, destChannelIndex)];

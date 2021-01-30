@@ -1046,7 +1046,7 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
   let extraClassDeclaration = [{
     StringAttr name() {
-      if(auto attr = getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
         return attr;
       } else {
         emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
@@ -1056,7 +1056,7 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
     }
     // Return the address of this buffer
     int64_t address() {
-      if(auto attr = getAttrOfType<IntegerAttr>("address")) {
+      if(auto attr = getOperation()->getAttrOfType<IntegerAttr>("address")) {
         return attr.getInt();
       } else {
         emitOpError("does not have 'address' attribute specified");
@@ -1263,7 +1263,7 @@ def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
     int getHerdHeight()  { return height(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
     StringAttr name() {
-      if(auto attr = getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
         return attr;
       } else {
         emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<

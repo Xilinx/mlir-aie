@@ -4,11 +4,11 @@
 // CHECK-NEXT:    %0 = AIE.tile(1, 1)
 // CHECK-NEXT:    %1 = AIE.buffer(%0) : memref<256xi32>
 // CHECK-NEXT:    %2 = AIE.mem(%0) {
-// CHECK-NEXT:      %10 = AIE.dmaStart("MM2S0", ^bb1, ^bb2)
+// CHECK-NEXT:      %10 = AIE.dmaStart(MM2S0, ^bb1, ^bb2)
 // CHECK-NEXT:      ^bb1:
-// CHECK-NEXT:        AIE.useToken @token0("Acquire", 1)
+// CHECK-NEXT:        AIE.useToken @token0(Acquire, 1)
 // CHECK-NEXT:        AIE.dmaBd(<%1 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:        AIE.useToken @token0("Release", 2)
+// CHECK-NEXT:        AIE.useToken @token0(Release, 2)
 // CHECK-NEXT:        br ^bb2
 // CHECK-NEXT:      ^bb2:
 // CHECK-NEXT:        AIE.end
@@ -16,11 +16,11 @@
 // CHECK-NEXT:    %3 = AIE.tile(2, 2)
 // CHECK-NEXT:    %4 = AIE.buffer(%3) : memref<256xi32>
 // CHECK-NEXT:    %5 = AIE.mem(%3) {
-// CHECK-NEXT:      %10 = AIE.dmaStart("S2MM0", ^bb1, ^bb2)
+// CHECK-NEXT:      %10 = AIE.dmaStart(S2MM0, ^bb1, ^bb2)
 // CHECK-NEXT:      ^bb1:
-// CHECK-NEXT:        AIE.useToken @token0("Acquire", 1)
+// CHECK-NEXT:        AIE.useToken @token0(Acquire, 1)
 // CHECK-NEXT:        AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:        AIE.useToken @token0("Release", 2)
+// CHECK-NEXT:        AIE.useToken @token0(Release, 2)
 // CHECK-NEXT:        br ^bb2
 // CHECK-NEXT:      ^bb2:
 // CHECK-NEXT:        AIE.end
@@ -29,14 +29,14 @@
 // CHECK-NEXT:    %7 = alloc() : memref<256xi32>
 // CHECK-NEXT:    AIE.token(0) {sym_name = "token0"}
 // CHECK-NEXT:    %8 = AIE.core(%0) {
-// CHECK-NEXT:      AIE.useToken @token0("Acquire", 0)
-// CHECK-NEXT:      AIE.useToken @token0("Release", 1)
+// CHECK-NEXT:      AIE.useToken @token0(Acquire, 0)
+// CHECK-NEXT:      AIE.useToken @token0(Release, 1)
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
-// CHECK-NEXT:    AIE.flow(%0, "DMA" : 0, %3, "DMA" : 0)
+// CHECK-NEXT:    AIE.flow(%0, DMA : 0, %3, DMA : 0)
 // CHECK-NEXT:    %9 = AIE.core(%3) {
-// CHECK-NEXT:      AIE.useToken @token0("Acquire", 2)
-// CHECK-NEXT:      AIE.useToken @token0("Release", 3)
+// CHECK-NEXT:      AIE.useToken @token0(Acquire, 2)
+// CHECK-NEXT:      AIE.useToken @token0(Release, 3)
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
@@ -66,16 +66,16 @@ module @test_dma0 {
   AIE.token(0) { sym_name="token0" }
 
   func @task0(%arg0: memref<256xi32>) -> () {
-    AIE.useToken @token0("Acquire", 0)
+    AIE.useToken @token0(Acquire, 0)
     // code
-    AIE.useToken @token0("Release", 1)
+    AIE.useToken @token0(Release, 1)
     return
   }
 
   func @task1(%arg0: memref<256xi32>) -> () {
-    AIE.useToken @token0("Acquire", 2)
+    AIE.useToken @token0(Acquire, 2)
     // code
-    AIE.useToken @token0("Release", 3)
+    AIE.useToken @token0(Release, 3)
     return
   }
 

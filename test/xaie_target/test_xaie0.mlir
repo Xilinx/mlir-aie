@@ -10,6 +10,6 @@ module @test_xaie0 {
 
   %l33_8 = AIE.lock(%t33, 8)
 
-  AIE.useLock(%l33_8, "Acquire", 0, 0)
-  AIE.useLock(%l33_8, "Release", 1, 0)
+  AIE.useLock(%l33_8, Acquire, 0, 0)
+  AIE.useLock(%l33_8, Release, 1, 0)
 }

@@ -403,7 +403,7 @@ static LogicalResult verify(xilinx::AIE::MemOp op) {
 
   for (auto &bodyOp : body.getOps()) {
     if (auto allocOp = dyn_cast<AllocOp>(bodyOp)) {
-      if (!allocOp.getAttr("id"))
+      if (!allocOp->getAttr("id"))
         op.emitOpError() << "allocOp in MemOp region should have an id attribute\n";
     }
   }

@@ -355,7 +355,7 @@ SECTIONS
 
             if (auto coreOp = tileOp.getCoreOp()) {
               std::string fileName;
-              if (auto fileAttr = coreOp.getAttrOfType<StringAttr>("elf_file")) {
+              if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
                 fileName = std::string(fileAttr.getValue());
               } else {
                 fileName = std::string("core_") + std::to_string(col) + "_" +

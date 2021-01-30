@@ -25,8 +25,8 @@ module @example1 {
   AIE.token(0) { sym_name="token1" }
 
   func @task0(%arg0: memref<256xi32>, %arg1: i32) -> () {
-    AIE.useToken @token0("Acquire", 0)
-    AIE.useToken @token1("Acquire", 0)
+    AIE.useToken @token0(Acquire, 0)
+    AIE.useToken @token1(Acquire, 0)
 
     // code
     %i = constant 8: index
@@ -34,26 +34,26 @@ module @example1 {
     store %arg1, %arg0[%i] : memref<256xi32>
     //store %k, %arg0[%i] : memref<256xi32>
 
-    AIE.useToken @token0("Release", 1)
-    AIE.useToken @token1("Release", 1)
+    AIE.useToken @token0(Release, 1)
+    AIE.useToken @token1(Release, 1)
     return
   }
 
   func @task1(%arg0: memref<256xi32>) -> () {
-    AIE.useToken @token0("Acquire", 2)
+    AIE.useToken @token0(Acquire, 2)
 
     // code
 
-    AIE.useToken @token0("Release", 3)
+    AIE.useToken @token0(Release, 3)
     return
   }
 
   func @task2(%arg0: memref<256xi32>) -> () {
-    AIE.useToken @token1("Acquire", 2)
+    AIE.useToken @token1(Acquire, 2)
 
     // code
 
-    AIE.useToken @token1("Release", 3)
+    AIE.useToken @token1(Release, 3)
     return
   }
 
