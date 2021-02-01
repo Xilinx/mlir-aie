@@ -185,13 +185,9 @@ void registerAIETranslations() {
       NL.collectTiles(tiles);
       NL.collectBuffers(buffers);
 
-      for (auto tile : tiles) {
-        Operation *srcTileOp = tile.second;
-        std::pair<int, int> srcCoord = NL.getCoord(srcTileOp);
-        int srcCol = srcCoord.first;
-        int srcRow = srcCoord.second;
-
-        output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
+      for (auto tile : module.getOps<TileOp>())
+        if(tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+        output << "// Tile(" << tileCol << ", " << tileRow << ")\n";
         output << "// Memory map: name base_address num_bytes\n";
         output << R"THESCRIPT(
 MEMORY
@@ -219,6 +215,7 @@ SECTIONS
             for (auto buf : buffers[tiles[tile.getValue()]])
               writeLDScriptMap(output, buf, offset, NL);
         };
+        auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
         if(auto tile = getMemSouth(srcCoord)) doBuffer(tile, 0x00020000);
         if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
         if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);

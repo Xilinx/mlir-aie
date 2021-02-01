@@ -1,5 +1,6 @@
 // RUN: aie-translate --aie-generate-mmap %s | FileCheck %s
 // RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-bcf %s | FileCheck --check-prefix=BCF44 %s
+// RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-ldscript %s | FileCheck --check-prefix=LD44 %s
 
 // CHECK-LABEL: Tile(5, 4)
 // CHECK: _symbol y 0x28000 32
@@ -44,6 +45,46 @@
 // BCF44: _extern y
 // BCF44: _stack    DM_stack 0x20000  0x400 //stack for core
 // BCF44: _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+
+
+
+// LD44: MEMORY
+// LD44: {
+// LD44:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+// LD44:    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+// LD44: }
+// LD44: ENTRY(_main_init)
+// LD44: SECTIONS
+// LD44: {
+// LD44:   . = 0x0;
+// LD44:   .text : {
+// LD44:      // the _main_init symbol from me_basic.o has to come at address zero.
+// LD44:      *me_basic.o(.text)
+// LD44:      . = 0x200;
+// LD44:      *(.text)
+// LD44:   } > program
+// LD44:   .data : { *(.data) } > data
+// LD44:   . = 0x20000;
+// LD44:   _sp_start_value_DM_stack = .;
+// LD44:   . = 0x24000;
+// LD44: . = 0x20000
+// LD44: z = .;
+// LD44: . += 0x20
+// LD44: . = 0x28000
+// LD44: a = .;
+// LD44: . += 0x10
+// LD44: . = 0x28010
+// LD44: b = .;
+// LD44: . += 0x40
+// LD44: . = 0x28050
+// LD44: c = .;
+// LD44: . += 0x400
+// LD44: . = 0x30000
+// LD44: t = .;
+// LD44: . += 0x20
+// LD44: . = 0x38000
+// LD44: y = .;
+// LD44: . += 0x20
 
 module @test_mmap0 {
   %t44 = AIE.tile(4, 4)
