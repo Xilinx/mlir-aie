@@ -9,7 +9,7 @@
 // CHECK-LABEL: Tile(3, 5)
 // CHECK: _symbol a 0x20000 16
 // CHECK-LABEL: Tile(3, 4)
-// CHECK: _symbol a 0x38000 16
+// CHECK: _symbol a 0x28000 16
 
 module @test_mmap1 {
   %t34 = AIE.tile(3, 4)
