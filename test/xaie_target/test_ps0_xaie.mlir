@@ -60,10 +60,10 @@ module @test_ps0_xaie {
     %a0_0 = AIE.amsel<0>(0)
     %a0_1 = AIE.amsel<0>(1)
 
-    AIE.masterset("ME" : 0, %a0_0)
-    AIE.masterset("ME" : 1, %a0_1)
+    AIE.masterset(ME : 0, %a0_0)
+    AIE.masterset(ME : 1, %a0_1)
 
-    AIE.packetrules("West" : 0) {
+    AIE.packetrules(West : 0) {
       AIE.rule(0x1F, 0x0, %a0_0)
       AIE.rule(0x1F, 0x1, %a0_1)
     }
@@ -74,12 +74,12 @@ module @test_ps0_xaie {
 //  %t11 = AIE.tile(1, 1)
 //
 //  AIE.packet_flow(0x0) {
-//    AIE.packet_source<%t11, "West" : 0>
-//    AIE.packet_dest<%t11, "ME" : 0>
+//    AIE.packet_source<%t11, West : 0>
+//    AIE.packet_dest<%t11, ME : 0>
 //  }
 //
 //  AIE.packet_flow(0x1) {
-//    AIE.packet_source<%t11, "West" : 0>
-//    AIE.packet_dest<%t11, "ME" : 1>
+//    AIE.packet_source<%t11, West : 0>
+//    AIE.packet_dest<%t11, ME : 1>
 //  }
 //}

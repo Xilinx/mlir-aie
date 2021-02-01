@@ -4,11 +4,11 @@
 // CHECK:   %0 = AIE.tile(3, 3)
 // CHECK:   %1 = AIE.buffer(%0) : memref<512xi32>
 // CHECK:   %2 = AIE.mem(%0) {
-// CHECK:     %10 = AIE.dmaStart("MM2S0", ^bb1, ^bb2)
+// CHECK:     %10 = AIE.dmaStart(MM2S0, ^bb1, ^bb2)
 // CHECK:   ^bb1:
-// CHECK:     AIE.useToken @token0("Acquire", 1)
+// CHECK:     AIE.useToken @token0(Acquire, 1)
 // CHECK:     AIE.dmaBd(<%1 : memref<512xi32>, 0, 512>, 0)
-// CHECK:     AIE.useToken @token0("Release", 2)
+// CHECK:     AIE.useToken @token0(Release, 2)
 // CHECK:     br ^bb2
 // CHECK:   ^bb2:
 // CHECK:     AIE.end
@@ -16,11 +16,11 @@
 // CHECK:   %3 = AIE.tile(4, 4)
 // CHECK:   %4 = AIE.buffer(%3) : memref<512xi32>
 // CHECK:   %5 = AIE.mem(%3) {
-// CHECK:     %10 = AIE.dmaStart("S2MM0", ^bb1, ^bb2)
+// CHECK:     %10 = AIE.dmaStart(S2MM0, ^bb1, ^bb2)
 // CHECK:   ^bb1:
-// CHECK:     AIE.useToken @token0("Acquire", 1)
+// CHECK:     AIE.useToken @token0(Acquire, 1)
 // CHECK:     AIE.dmaBd(<%4 : memref<512xi32>, 0, 512>, 0)
-// CHECK:     AIE.useToken @token0("Release", 2)
+// CHECK:     AIE.useToken @token0(Release, 2)
 // CHECK:     br ^bb2
 // CHECK:   ^bb2:
 // CHECK:     AIE.end
@@ -29,21 +29,21 @@
 // CHECK:   %7 = alloc() : memref<512xi32>
 // CHECK:   AIE.token(0) {sym_name = "token0"}
 // CHECK:   %8 = AIE.core(%0) {
-// CHECK:     AIE.useToken @token0("Acquire", 0)
+// CHECK:     AIE.useToken @token0(Acquire, 0)
 // CHECK:     %c16 = constant 16 : index
 // CHECK:     %c1_i32 = constant 1 : i32
 // CHECK:     store %c1_i32, %1[%c16] : memref<512xi32>
-// CHECK:     AIE.useToken @token0("Release", 1)
+// CHECK:     AIE.useToken @token0(Release, 1)
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %9 = AIE.core(%3) {
-// CHECK:     AIE.useToken @token0("Acquire", 2)
+// CHECK:     AIE.useToken @token0(Acquire, 2)
 // CHECK:     %c16 = constant 16 : index
 // CHECK:     %10 = load %4[%c16] : memref<512xi32>
-// CHECK:     AIE.useToken @token0("Release", 3)
+// CHECK:     AIE.useToken @token0(Release, 3)
 // CHECK:     AIE.end
 // CHECK:   }
-// CHECK:   AIE.flow(%0, "DMA" : 0, %3, "DMA" : 0)
+// CHECK:   AIE.flow(%0, DMA : 0, %3, DMA : 0)
 // CHECK: }
 
 module @hello_world {
@@ -57,19 +57,19 @@ module @hello_world {
   AIE.token(0) { sym_name="token0" }
 
   func @producer(%arg0: memref<512xi32>) -> () {
-    AIE.useToken @token0("Acquire", 0)
+    AIE.useToken @token0(Acquire, 0)
     %i = constant 16 : index
     %val = constant 1 : i32
     store %val, %arg0[%i] : memref<512xi32>
-    AIE.useToken @token0("Release", 1)
+    AIE.useToken @token0(Release, 1)
     return
   }
 
   func @consumer(%arg0: memref<512xi32>) -> () {
-    AIE.useToken @token0("Acquire", 2)
+    AIE.useToken @token0(Acquire, 2)
     %i = constant 16 : index
     %val = load %arg0[%i] : memref<512xi32>
-    AIE.useToken @token0("Release", 3)
+    AIE.useToken @token0(Release, 3)
     return
   }
 

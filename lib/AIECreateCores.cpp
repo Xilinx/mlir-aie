@@ -47,7 +47,7 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
   LogicalResult matchAndRewrite(CallOp op, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    if (!op.getAttr("aie.x") || !op.getAttr("aie.y"))
+    if (!op->getAttr("aie.x") || !op->getAttr("aie.y"))
       return failure();
 
     rewriter.eraseOp(Op);
@@ -83,14 +83,14 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
     // A CoreOp will be created for the core, and the FuncOp body is cloned
     // to the CoreOp region
     for (auto callOp : m.getOps<CallOp>()) {
-      if (!callOp.getAttr("aie.x") || !callOp.getAttr("aie.y"))
+      if (!callOp->getAttr("aie.x") || !callOp->getAttr("aie.y"))
         continue;
 
       SmallVector<Value, 4> callOperands(callOp.getArgOperands());
       SmallVector<std::pair<MemRefType, int>, 4> coreBufTypes;
 
-      int colIndex = callOp.getAttrOfType<IntegerAttr>("aie.x").getInt();
-      int rowIndex = callOp.getAttrOfType<IntegerAttr>("aie.y").getInt();
+      int colIndex = callOp->getAttrOfType<IntegerAttr>("aie.x").getInt();
+      int rowIndex = callOp->getAttrOfType<IntegerAttr>("aie.y").getInt();
 
       // get or create TileOp
       if (!tiles[std::make_pair(colIndex, rowIndex)]) {

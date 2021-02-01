@@ -11,9 +11,9 @@ module @test_create_packet_flows0 {
 // The actual indices used for the amsel arguments is unimportant.
 // CHECK:           %[[VAL_6:.*]] = AIE.amsel<0> (0)
 // CHECK:           %[[VAL_7:.*]] = AIE.amsel<0> (1)
-// CHECK:           %[[VAL_4:.*]] = AIE.masterset("ME" : 0, %[[VAL_2:.*]])
-// CHECK:           %[[VAL_5:.*]] = AIE.masterset("ME" : 1, %[[VAL_3:.*]])
-// CHECK:           AIE.packetrules("West" : 0) {
+// CHECK:           %[[VAL_4:.*]] = AIE.masterset(ME : 0, %[[VAL_2:.*]])
+// CHECK:           %[[VAL_5:.*]] = AIE.masterset(ME : 1, %[[VAL_3:.*]])
+// CHECK:           AIE.packetrules(West : 0) {
 // CHECK:             AIE.rule(31, 1, %[[VAL_3]])
 // CHECK:             AIE.rule(31, 0, %[[VAL_2]])
 // CHECK:           }
@@ -22,12 +22,12 @@ module @test_create_packet_flows0 {
   %t11 = AIE.tile(1, 1)
 
   AIE.packet_flow(0x0) {
-    AIE.packet_source<%t11, "West" : 0>
-    AIE.packet_dest<%t11, "ME" : 0>
+    AIE.packet_source<%t11, West : 0>
+    AIE.packet_dest<%t11, ME : 0>
   }
 
   AIE.packet_flow(0x1) {
-    AIE.packet_source<%t11, "West" : 0>
-    AIE.packet_dest<%t11, "ME" : 1>
+    AIE.packet_source<%t11, West : 0>
+    AIE.packet_dest<%t11, ME : 1>
   }
 }

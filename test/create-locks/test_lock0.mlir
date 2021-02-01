@@ -5,12 +5,12 @@
 // CHECK:  %1 = AIE.tile(2, 3)
 // CHECK:  %2 = AIE.lock(%1, 0)
 // CHECK:  %5 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%2, "Acquire", 0, 0)
-// CHECK:    AIE.useLock(%2, "Release", 1, 0)
+// CHECK:    AIE.useLock(%2, Acquire, 0, 0)
+// CHECK:    AIE.useLock(%2, Release, 1, 0)
 // CHECK:  }
 // CHECK:  %6 = AIE.core(%1) {
-// CHECK:    AIE.useLock(%2, "Acquire", 1, 0)
-// CHECK:    AIE.useLock(%2, "Release", 0, 0)
+// CHECK:    AIE.useLock(%2, Acquire, 1, 0)
+// CHECK:    AIE.useLock(%2, Release, 0, 0)
 // CHECK:  }
 
 // Generate LockOp in the top-level module
@@ -31,14 +31,14 @@ module @test_lock0 {
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token0("Acquire", 0)
-    AIE.useToken @token0("Release", 1)
+    AIE.useToken @token0(Acquire, 0)
+    AIE.useToken @token0(Release, 1)
     AIE.end
   }
 
   %c23 = AIE.core(%t23) {
-    AIE.useToken @token0("Acquire", 1)
-    AIE.useToken @token0("Release", 2)
+    AIE.useToken @token0(Acquire, 1)
+    AIE.useToken @token0(Release, 2)
     AIE.end
   }
 }

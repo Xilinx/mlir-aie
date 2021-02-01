@@ -32,7 +32,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   LogicalResult matchAndRewrite(UseTokenOp op, ArrayRef<Value> operands,
                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    Operation *parentOp = op.getParentOp();
+    Operation *parentOp = op->getParentOp();
 
     int srcCol, srcRow;
     bool IsParentMemOp = false;

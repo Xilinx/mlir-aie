@@ -17,7 +17,7 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
 
   // Collecting token symbols
   for (auto op : module.getOps<TokenOp>()) {
-      StringRef tokenName = op.getAttrOfType<StringAttr>(
+      StringRef tokenName = op->getAttrOfType<StringAttr>(
                             ::mlir::SymbolTable::getSymbolAttrName()).getValue();
     int value = op.getTokenValue();
     tokenSymbols[tokenName] = value;
@@ -116,7 +116,7 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
 Operation *xilinx::AIE::TokenAnalysis::getTokenUserOp(Operation *Op) {
 
   if (UseTokenOp op = dyn_cast<UseTokenOp>(Op)) {
-    while (Operation *parentOp = op.getParentOp()) {
+    while (Operation *parentOp = op->getParentOp()) {
       if (isa<CoreOp>(parentOp) || isa<MemOp>(parentOp))
         return parentOp;
     }

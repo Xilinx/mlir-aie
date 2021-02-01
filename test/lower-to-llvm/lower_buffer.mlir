@@ -2,12 +2,12 @@
 // RUN: aie-opt --aie-llvm-lowering="tilecol=4 tilerow=3" %s | FileCheck --check-prefix=CHECK43 %s
 // CHECK33-LABEL:  llvm.func @core33() {
 // CHECK33:    %[[VAR1:.*]] = llvm.mlir.addressof @a : !llvm.ptr<array<4 x i32>>
-// CHECK33:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm.ptr<array<4 x i32>>, !llvm.i64, !llvm.i64) -> !llvm.ptr<i32>
+// CHECK33:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm.ptr<array<4 x i32>>, i64, i64) -> !llvm.ptr<i32>
 // CHECK33:    llvm.store %{{.*}}, %[[VAR5]] : !llvm.ptr<i32>
 // CHECK33:  }
 // CHECK43-LABEL:  llvm.func @core43() {
 // CHECK43:    %[[VAR1:.*]] = llvm.mlir.addressof @a : !llvm.ptr<array<4 x i32>>
-// CHECK43:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm.ptr<array<4 x i32>>, !llvm.i64, !llvm.i64) -> !llvm.ptr<i32>
+// CHECK43:    %[[VAR5:.*]] = llvm.getelementptr %[[VAR1]][%{{.*}}, %{{.*}}] : (!llvm.ptr<array<4 x i32>>, i64, i64) -> !llvm.ptr<i32>
 // CHECK43:    %{{.*}} = llvm.load %[[VAR5]] : !llvm.ptr<i32>
 // CHECK43:  }
 

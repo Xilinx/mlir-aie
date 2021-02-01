@@ -8,18 +8,18 @@
 // CHECK:  %4 = AIE.tile(4, 3)
 // CHECK:  AIE.token(0) {sym_name = "token0"}
 // CHECK:  %8 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, "Acquire", 0, 0)
-// CHECK:    AIE.useLock(%3, "Release", 1, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 0, 0)
+// CHECK:    AIE.useLock(%3, Release, 1, 0)
 // CHECK:  }
 // CHECK:  %9 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%1, "Acquire", 0, 0)
-// CHECK:    AIE.useLock(%3, "Acquire", 1, 0)
-// CHECK:    AIE.useLock(%3, "Release", 0, 0)
-// CHECK:    AIE.useLock(%1, "Release", 1, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 0, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 1, 0)
+// CHECK:    AIE.useLock(%3, Release, 0, 0)
+// CHECK:    AIE.useLock(%1, Release, 1, 0)
 // CHECK:  }
 // CHECK:  %10 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%1, "Acquire", 1, 0)
-// CHECK:    AIE.useLock(%1, "Release", 0, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 1, 0)
+// CHECK:    AIE.useLock(%1, Release, 0, 0)
 // CHECK:  }
 // CHECK:}
 
@@ -46,20 +46,20 @@ module @test_lock1 {
   }
 
   %c23 = AIE.core(%t23) {
-    AIE.useToken @token0("Acquire", 0)
-    AIE.useToken @token0("Release", 1)
+    AIE.useToken @token0(Acquire, 0)
+    AIE.useToken @token0(Release, 1)
     AIE.end
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token0("Acquire", 1)
-    AIE.useToken @token0("Release", 2)
+    AIE.useToken @token0(Acquire, 1)
+    AIE.useToken @token0(Release, 2)
     AIE.end
   }
 
   %c43 = AIE.core(%t43) {
-    AIE.useToken @token0("Acquire", 2)
-    AIE.useToken @token0("Release", 3)
+    AIE.useToken @token0(Acquire, 2)
+    AIE.useToken @token0(Release, 3)
     AIE.end
   }
 }

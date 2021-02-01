@@ -45,41 +45,41 @@ module {
     AIE.end
   }
   %s21 = AIE.switchbox(%t21)  {
-    AIE.connect<"ME" : 0, "South" : 0>
+    AIE.connect<ME : 0, South : 0>
   }
   %c20 = AIE.core(%t20)  {
     AIE.end
   }
   %s20 = AIE.switchbox(%t20)  {
-    AIE.connect<"North" : 0, "South" : 2>
+    AIE.connect<North : 0, South : 2>
   }
   %mux = AIE.shimmux(%t20)  {
-    AIE.connect<"South" : 2, "DMA" : 0>
+    AIE.connect<South : 2, DMA : 0>
   }
   %dma = AIE.shimDMA(%t20)  {
       %lock0 = AIE.lock(%t20, 0)
       %lock1 = AIE.lock(%t20, 1)
    
-      AIE.dmaStart("S2MM0", ^bd0, ^dma0)
+      AIE.dmaStart(S2MM0, ^bd0, ^dma0)
     ^dma0:
-      AIE.dmaStart("MM2S0", ^bd1, ^end)
+      AIE.dmaStart(MM2S0, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%lock0, "Acquire", 0, 0)
+      AIE.useLock(%lock0, Acquire, 0, 0)
       AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 16>, 0)
-      AIE.useLock(%lock0, "Release", 1, 0)
+      AIE.useLock(%lock0, Release, 1, 0)
       br ^bd0
     ^bd1:
-      AIE.useLock(%lock1, "Acquire", 1, 0)
+      AIE.useLock(%lock1, Acquire, 1, 0)
       AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 4>, 0)
-      AIE.useLock(%lock1, "Release", 0, 0)
+      AIE.useLock(%lock1, Release, 0, 0)
       br ^bd1
     ^end:
       AIE.end
   }
-  AIE.wire(%s21 : "South", %s20 : "North")
-  AIE.wire(%s20 : "South", %mux : "North")
-  AIE.wire(%mux : "DMA", %dma : "DMA")
-  AIE.wire(%mux : "South", %t20 : "DMA")
-  AIE.wire(%s21 : "ME", %c21 : "ME")
-  AIE.wire(%s21 : "ME", %t21 : "ME")
+  AIE.wire(%s21 : South, %s20 : North)
+  AIE.wire(%s20 : South, %mux : North)
+  AIE.wire(%mux : DMA, %dma : DMA)
+  AIE.wire(%mux : South, %t20 : DMA)
+  AIE.wire(%s21 : ME, %c21 : ME)
+  AIE.wire(%s21 : ME, %t21 : ME)
 }
