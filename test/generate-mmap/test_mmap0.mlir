@@ -1,35 +1,30 @@
 // RUN: aie-translate --aie-generate-mmap %s | FileCheck %s
 // RUN: aie-translate --tilecol=4 --tilerow=4 --aie-generate-bcf %s | FileCheck --check-prefix=BCF44 %s
 
-// CHECK-LABEL: // Tile(5, 4)
-// Memory map: name base_address num_bytes
-// CHECK: _symbol a 0x28000 16
-// CHECK: _symbol b 0x28010 64
-// CHECK: _symbol c 0x28050 1024
-// CHECK: _symbol y 0x38000 32
-// CHECK-LABEL: // Tile(4, 4)
-// Memory map: name base_address num_bytes
+// CHECK-LABEL: Tile(5, 4)
+// CHECK: _symbol y 0x28000 32
+// CHECK-LABEL: Tile(4, 4)
 // CHECK: _symbol z 0x20000 32
 // CHECK: _symbol a 0x28000 16
 // CHECK: _symbol b 0x28010 64
 // CHECK: _symbol c 0x28050 1024
 // CHECK: _symbol t 0x30000 32
 // CHECK: _symbol y 0x38000 32
-// CHECK-LABEL: // Tile(4, 5)
-// Memory map: name base_address num_bytes
+// CHECK-LABEL: Tile(4, 5)
 // CHECK: _symbol a 0x20000 16
 // CHECK: _symbol b 0x20010 64
 // CHECK: _symbol c 0x20050 1024
-// CHECK: _symbol t 0x28000 32
-// CHECK-LABEL: // Tile(4, 3)
-// Memory map: name base_address num_bytes
-// CHECK: _symbol z 0x28000 32
+// CHECK: _symbol t 0x38000 32
+// CHECK-LABEL: Tile(4, 3)
 // CHECK: _symbol a 0x30000 16
 // CHECK: _symbol b 0x30010 64
 // CHECK: _symbol c 0x30050 1024
-// CHECK-LABEL: // Tile(3, 4)
-// Memory map: name base_address num_bytes
-// CHECK: _symbol x 0x38000 32
+// CHECK: _symbol z 0x38000 32
+// CHECK-LABEL: Tile(3, 4)
+// CHECK: _symbol x 0x28000 32
+// CHECK: _symbol a 0x38000 16
+// CHECK: _symbol b 0x38010 64
+// CHECK: _symbol c 0x38050 1024
 
 // BCF44: _entry_point _main_init
 // BCF44: _symbol      _main _after _main_init

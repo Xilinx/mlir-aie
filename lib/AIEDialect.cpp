@@ -47,7 +47,7 @@ bool isValidTile(TileID src) {
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemWest(TileID src) {
-  bool isEvenRow = ((src.first % 2) == 0);
+  bool isEvenRow = ((src.second % 2) == 0);
   Optional<TileID> ret;
   if (isEvenRow)
     ret = src;
@@ -58,7 +58,7 @@ Optional<TileID> getMemWest(TileID src) {
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemEast(TileID src) {
-  bool isEvenRow = ((src.first % 2) == 0);
+  bool isEvenRow = ((src.second % 2) == 0);
   Optional<TileID> ret;
   if (isEvenRow)
     ret = std::make_pair(src.first + 1, src.second);
