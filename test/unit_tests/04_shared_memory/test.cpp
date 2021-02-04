@@ -84,7 +84,7 @@ main(int argc, char *argv[])
 
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(7*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
     XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7); // set input value
 
 //    XAieLib_usleep(1000);
@@ -104,9 +104,10 @@ main(int argc, char *argv[])
 
 //    XAieLib_usleep(1000);
 //    print_core_status(1,3);
-    XAieTile_LockAcquire(&(TileInst[2][3]), 7, 0, 0); // Should this part of setup???
-    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(7*4));
-    printf("Tile[2][3]: data[%d] = %d\n",7,d2);
+    printf("Waiting to acquire output lock for read ...\n");
+    while(!XAieTile_LockAcquire(&(TileInst[2][3]), 7, 0, 0)) {} // Should this part of setup???
+    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[2][3]: data[%d] = %d\n",5,d2);
 
     // 7+7+21 = 35
     int errors = 0;

@@ -40,7 +40,7 @@ module @test3_core_llvm1 {
   %core33 = AIE.core(%tile33) {
     AIE.useLock(%lock33_6, "Acquire", 1, 0) // acquire for read(e.g. input ping)
     AIE.useLock(%lock33_7, "Acquire", 0, 0) // acquire for write
-    %idx1 = constant 3 : index
+    %idx1 = constant 5 : index
     %val1 = load %buf33_0[%idx1] : memref<256xi32>
     %2    = addi %val1, %val1 : i32
     %3 = addi %2, %val1 : i32
@@ -57,9 +57,11 @@ module @test3_core_llvm1 {
   %mem13 = AIE.mem(%tile13) {
 //    %dma0 = AIE.dmaStart("MM2S0")
 //    AIE.terminator(^dma0, ^end)
-    %dma0 = AIE.dmaStart("MM2S0", ^dma0, ^end)
-    ^dma0:
-      cond_br %dma0, ^bd0, ^end // point to the start BD
+//    %dma0 = AIE.dmaStart("MM2S0", ^dma0, ^end)
+//    ^dma0:
+////      AIE.useLock(%lock13_5, "Release", 0, 0)
+//      cond_br %dma0, ^bd0, ^end // point to the start BD
+    %dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock13_5, "Acquire", 1, 0)
       AIE.dmaBd(<%buf13_1 : memref<256xi32>, 0, 256>, 0)
@@ -72,9 +74,11 @@ module @test3_core_llvm1 {
   %mem33 = AIE.mem(%tile33) {
 //    %dma0 = AIE.dmStart("S2MM0")
 //    AIE.terminator(^dma0, ^end)
-    %dma0 = AIE.dmaStart("S2MM0", ^dma0, ^end)
-    ^dma0:
-      cond_br %dma0, ^bd0, ^end // point to the start BD
+//    %dma0 = AIE.dmaStart("S2MM1", ^dma0, ^end)
+//    ^dma0:
+////      AIE.useLock(%lock33_6, "Release", 1, 0))
+//      cond_br %dma0, ^bd0, ^end // point to the start BD
+    %dma0 = AIE.dmaStart("S2MM1", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock33_6, "Acquire", 0, 0)
       AIE.dmaBd(<%buf33_0: memref<256xi32>, 0, 256>, 0)
