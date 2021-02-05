@@ -50,7 +50,7 @@ def main(builtin_params={}):
         file_core_llvmir_stripped = corefile(core, "stripped.ll")
         call(['opt', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_obj = corefile(core, "o")
-        call(['llc', file_core_llvmir_stripped, '-O0', '--march=aie', '--filetype=obj', '-o', file_core_obj])
+        call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         file_core_elf = corefile(core, "elf")
         call(['xbridge', file_core_obj, '-c', file_core_bcf, '-o', file_core_elf])
 

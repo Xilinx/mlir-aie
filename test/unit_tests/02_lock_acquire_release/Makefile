@@ -69,4 +69,4 @@ acdc_project/aie_inc.cpp: aie.mlir
 #	cp work/Release_LLVM/$*.prx/$* ../$*.elf
 
 clean:
-	rm -rf aie_inc.cpp *.o *.ll *.mlir_addresses *.exe *.elf* ./$(AIE_SRC_DIR)/work kernel test.mem *bcf
+	rm -rf aie_inc.cpp *.o *.ll *.mlir_addresses *.exe *.elf* ./$(AIE_SRC_DIR)/work kernel test.mem *bcf acdc_project

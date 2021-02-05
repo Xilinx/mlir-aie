@@ -33,7 +33,7 @@ module @test3_core_llvm1 {
   %core14 = AIE.core(%tile14) {
     AIE.useLock(%lock13_5, "Acquire", 1, 0) // acquire for read(e.g. input ping)
     AIE.useLock(%lock14_7, "Acquire", 0, 0) // acquire for write
-    %idx1 = constant 3 : index
+    %idx1 = constant 5 : index
     %val1 = load %buf13_1[%idx1] : memref<256xi32>
     %2    = addi %val1, %val1 : i32
     %3 = addi %2, %val1 : i32

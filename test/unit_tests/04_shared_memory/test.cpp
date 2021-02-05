@@ -84,29 +84,67 @@ main(int argc, char *argv[])
 
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
     XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7); // set input value
 
-//    XAieLib_usleep(1000);
-//    print_core_status(1,3);
+    uint32_t tmp;
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
+    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[1][4]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][4]: b[%d] = %d\n",5,tmp);
+
+    XAieLib_usleep(1000);
+    print_core_status(1,3);
+    print_core_status(1,4);
 
     printf("Start cores\n");
     mlir_start_cores();
 
-//    XAieLib_usleep(1000);
-//    print_core_status(1,3);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
+    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[1][4]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][4]: b[%d] = %d\n",5,tmp);
 
-    uint32_t d1 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(7*4));
-    printf("Tile[2][3]: data[%d] = %d\n",7,d1);
+    XAieLib_usleep(1000);
+    print_core_status(1,3);
+    print_core_status(1,4);
+
+    uint32_t d1 = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][4]: data[%d] = %d\n",5,d1);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
 
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
+    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[1][4]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][4]: b[%d] = %d\n",5,tmp);
+
+    XAieLib_usleep(1000);
+    print_core_status(1,3);
+    print_core_status(1,4);
+
+
 //    XAieLib_usleep(1000);
 //    print_core_status(1,3);
     printf("Waiting to acquire output lock for read ...\n");
-    while(!XAieTile_LockAcquire(&(TileInst[2][3]), 7, 0, 0)) {} // Should this part of setup???
-    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(5*4));
+//    while(!XAieTile_LockAcquire(&(TileInst[1][4]), 7, 0, 0)) {} // Should this part of setup???
+    int lock = XAieTile_LockAcquire(&(TileInst[1][4]), 7, 0, 0);
+    printf("lock = %d\n",lock);
+    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+1024+(5*4));
     printf("Tile[2][3]: data[%d] = %d\n",5,d2);
 
     // 7+7+21 = 35
