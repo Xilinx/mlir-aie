@@ -81,9 +81,9 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf,
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = NL.getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();
-  output << ". = 0x" << llvm::utohexstr(offset + bufferBaseAddr) << "\n";
+  output << ". = 0x" << llvm::utohexstr(offset + bufferBaseAddr) << ";\n";
   output << bufName << " = .;\n";
-  output << ". += 0x" << llvm::utohexstr(numBytes) << '\n';
+  output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
 }
 
 void registerAIETranslations() {
@@ -187,8 +187,8 @@ void registerAIETranslations() {
 
       for (auto tile : module.getOps<TileOp>())
         if(tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-        output << "// Tile(" << tileCol << ", " << tileRow << ")\n";
-        output << "// Memory map: name base_address num_bytes\n";
+        //output << "// Tile(" << tileCol << ", " << tileRow << ")\n";
+        //output << "// Memory map: name base_address num_bytes\n";
         output << R"THESCRIPT(
 MEMORY
 {
@@ -220,6 +220,7 @@ SECTIONS
         if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
         if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
         if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
+        output << "}\n";
       }
       return success();
     },
