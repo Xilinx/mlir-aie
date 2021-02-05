@@ -8,6 +8,15 @@ def parse_args():
     parser.add_argument('filename',
             metavar="file",
             help='File to compile')
+    parser.add_argument('--xbridge',
+            dest="xbridge",
+            default=True,
+            action='store_true',
+            help='Link using xbridge')
+    parser.add_argument('--no-xbridge',
+            dest="xbridge",
+            action='store_false',
+            help='Link using xbridge')
 
     opts = parser.parse_args(sys.argv[1:])
 
