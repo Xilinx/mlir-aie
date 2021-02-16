@@ -24,6 +24,6 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
-  } { elf_file = "aie.elf" }
+  } { elf_file = "core_1_3.elf" }
 
 }

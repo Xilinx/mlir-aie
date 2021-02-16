@@ -1,7 +1,6 @@
 To build design, simply type:
 ```
-make aie.elf
-make aie_inc.cpp
+make 
 ```
 Then you can copy the entire 01_memory_read_write diretory to the board and then compile the arm code on the board and run the test.
 ```
@@ -11,6 +10,8 @@ scp -r 01_memory_read_write xilinx@<board ip>:/home/xilinx/.
 On the board, execute:
 ```
 cd 01_memory_read_write
+cp acdc_project/aie_inc.cpp .
+cp acdc_project/core*elf .
 make test.exe
 sudo ./test.exe
 ```

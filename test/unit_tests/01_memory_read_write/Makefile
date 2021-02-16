@@ -18,7 +18,7 @@ AIECC       = ../../../tools/aiecc/aiecc.py
 all: test.exe
 
 acdc_project/aie_inc.cpp: aie.mlir
-	$(AIECC) aie.mlir
+	$(AIECC) --no-xbridge aie.mlir
 
 # compile sources
 %.o: %.cpp acdc_project/aie_inc.cpp

@@ -66,6 +66,92 @@ void print_core_status(u32 col, u32 row)
     }
 }
 
+void print_dma_status(int col, int row) {
+
+
+  u32 dma_mm2s_status = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001DF10);
+  u32 dma_s2mm_status = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001DF00);
+  u32 dma_mm2s_control = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001DE10);
+  u32 dma_s2mm_control = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001DE00);
+  u32 dma_bd0_a       = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001D000); 
+  u32 dma_bd0_control = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001D018);
+
+  u32 s2mm_ch0_running = dma_s2mm_status & 0x3;
+  u32 s2mm_ch1_running = (dma_s2mm_status >> 2) & 0x3;
+  u32 mm2s_ch0_running = dma_mm2s_status & 0x3;
+  u32 mm2s_ch1_running = (dma_mm2s_status >> 2) & 0x3;
+
+  printf("DMA [%d, %d] mm2s_status/ctrl is %08X %08X, s2mm_status is %08X %08X, BD0_Addr_A is %08X, BD0_control is %08X\n",col, row, dma_mm2s_status, dma_mm2s_control, dma_s2mm_status, dma_s2mm_control, dma_bd0_a, dma_bd0_control);
+  for (int bd=0;bd<8;bd++) {
+      u32 dma_bd_addr_a        = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001D000 + (0x20*bd));
+      u32 dma_bd_control       = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001D018 + (0x20*bd));
+    if (dma_bd_control & 0x80000000) {
+      printf("BD %d valid\n",bd);
+      int current_s2mm_ch0 = (dma_s2mm_status >> 16) & 0xf;  
+      int current_s2mm_ch1 = (dma_s2mm_status >> 20) & 0xf;  
+      int current_mm2s_ch0 = (dma_mm2s_status >> 16) & 0xf;  
+      int current_mm2s_ch1 = (dma_mm2s_status >> 20) & 0xf;  
+
+      if (s2mm_ch0_running && bd == current_s2mm_ch0) {
+        printf(" * Current BD for s2mm channel 0\n");
+      }
+      if (s2mm_ch1_running && bd == current_s2mm_ch1) {
+        printf(" * Current BD for s2mm channel 1\n");
+      }
+      if (mm2s_ch0_running && bd == current_mm2s_ch0) {
+        printf(" * Current BD for mm2s channel 0\n");
+      }
+      if (mm2s_ch1_running && bd == current_mm2s_ch1) {
+        printf(" * Current BD for mm2s channel 1\n");
+      }
+
+      if (dma_bd_control & 0x08000000) {
+        u32 dma_packet = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001D010 + (0x20*bd));
+        printf("   Packet mode: %02X\n",dma_packet & 0x1F);
+      }
+      int words_to_transfer = 1+(dma_bd_control & 0x1FFF);
+      int base_address = dma_bd_addr_a  & 0x1FFF;
+//      printf("   Transfering %d 32 bit words to/from %05X\n",words_to_transfer, base_address);
+      printf("   Transfering %d 32 bit words to/from %06X\n",words_to_transfer, base_address);
+
+      printf("   ");
+//      for (int w=0;w<4; w++) {
+      for (int w=0;w<7; w++) {
+        printf("%08X ",XAieTile_DmReadWord(&(TileInst[col][row]), (base_address+w) * 4));
+      }
+      printf("\n");
+      if (dma_bd_addr_a & 0x40000) {
+        u32 lock_id = (dma_bd_addr_a >> 22) & 0xf;
+        printf("   Acquires lock %d ",lock_id);
+        if (dma_bd_addr_a & 0x10000) 
+          printf("with value %d ",(dma_bd_addr_a >> 17) & 0x1);
+
+        printf("currently ");
+        u32 locks = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001EF00);
+        u32 two_bits = (locks >> (lock_id*2)) & 0x3;
+        if (two_bits) {
+          u32 acquired = two_bits & 0x1;
+          u32 value = two_bits & 0x2;
+          if (acquired)
+            printf("Acquired ");
+          printf(value?"1":"0");
+        }
+        else printf("0");
+        printf("\n");
+
+      }
+      if (dma_bd_control & 0x30000000) { // FIFO MODE
+        int FIFO = (dma_bd_control >> 28) & 0x3;
+          u32 dma_fifo_counter = XAieGbl_Read32(TileInst[col][row].TileAddr + 0x0001DF20);				
+        printf("   Using FIFO Cnt%d : %08X\n",FIFO, dma_fifo_counter);
+      }
+    }
+
+  }
+
+}
+
+
 int
 main(int argc, char *argv[])
 {
@@ -84,34 +170,126 @@ main(int argc, char *argv[])
 
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(7*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
+    XAieTile_DmWriteWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
+
     XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7); // set input value
 
-//    XAieLib_usleep(1000);
-//    print_core_status(1,3);
+    uint32_t tmp;
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
+    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][2]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][3]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][4]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][2]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][4]: b[%d] = %d\n",5,tmp);
+
+    XAieLib_usleep(1000);
+    print_core_status(1,3);
+    print_dma_status(1,3);
+    print_core_status(3,2);
+    print_dma_status(3,2);
+    print_core_status(3,3);
+    print_dma_status(3,3);
+    print_core_status(3,4);
+    print_dma_status(3,4);
 
     printf("Start cores\n");
     mlir_start_cores();
 
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
+    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][2]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][3]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][4]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][2]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][4]: b[%d] = %d\n",5,tmp);
+
+    print_core_status(1,3);
+    print_dma_status(1,3);
+    print_core_status(3,2);
+    print_dma_status(3,2);
+    print_core_status(3,3);
+    print_dma_status(3,3);
+    print_core_status(3,4);
+    print_dma_status(3,4);
+
 //    XAieLib_usleep(1000);
 //    print_core_status(1,3);
 
-    uint32_t d1 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(7*4));
-    printf("Tile[3][3]: data[%d] = %d\n",7,d1);
+    uint32_t d1_32 = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][2]: b[%d] = %d\n",5,d1_32);
+    uint32_t d1_33 = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][3]: b[%d] = %d\n",5,d1_33);
+    uint32_t d1_34 = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][4]: b[%d] = %d\n",5,d1_34);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
 
-//    XAieLib_usleep(1000);
-//    print_core_status(1,3);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
+    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][2]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][3]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4));
+    printf("Tile[3][4]: a[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][2]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][3]: b[%d] = %d\n",5,tmp);
+    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][4]: b[%d] = %d\n",5,tmp);
+
+    XAieLib_usleep(1000);
+    print_core_status(1,3);
+    print_dma_status(1,3);
+    print_core_status(3,2);
+    print_dma_status(3,2);
+    print_core_status(3,3);
+    print_dma_status(3,3);
+    print_core_status(3,4);
+    print_dma_status(3,4);
+
     XAieTile_LockAcquire(&(TileInst[3][3]), 7, 0, 0); // Should this part of setup???
-    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+1024+(7*4));
-    printf("Tile[3][3]: data[%d] = %d\n",7,d2);
+    uint32_t d2_32 = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][2]: b[%d] = %d\n",5,d2_32);
+    uint32_t d2_33 = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][3]: b[%d] = %d\n",5,d2_33);
+    uint32_t d2_34 = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
+    printf("Tile[3][4]: b[%d] = %d\n",5,d2_34);
 
     // 7+7+21 = 35
     int errors = 0;
     //if(d1 == 35 || d2 != 35) errors++;
-    if(d1 == 245 || d2 != 245) errors++;
+    if(d1_32 != 0 || d1_33 != 0 || d1_34 != 0 || d2_32 != 105 || d2_33 != 140 || d2_34 != 175) errors++;
 
     if (!errors) {
         printf("PASS!\n");

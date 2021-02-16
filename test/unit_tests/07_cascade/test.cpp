@@ -113,7 +113,7 @@ main(int argc, char *argv[])
     // 7*5 = 35, 35*5 = 175
     int errors = 0;
     //if(d1 == 35 || d2 != 35) errors++;
-    if(d1 == 175 || d2 != 175) errors++;
+    if(d1 != 0 || d2 != 175) errors++;
 
     if (!errors) {
         printf("PASS!\n");

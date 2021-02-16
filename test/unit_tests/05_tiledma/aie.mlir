@@ -34,7 +34,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
-  } { elf_file = "aie13.elf" }
+  } { elf_file = "core_1_3.elf" }
 
 
   %core33 = AIE.core(%tile33) {
@@ -52,7 +52,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock33_7, "Release", 1, 0) // release for read
     AIE.end
 
-  } { elf_file = "aie33.elf" }
+  } { elf_file = "core_3_3.elf" }
 
   %mem13 = AIE.mem(%tile13) {
 //    %dma0 = AIE.dmaStart("MM2S0")

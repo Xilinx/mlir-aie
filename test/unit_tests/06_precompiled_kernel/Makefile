@@ -11,19 +11,17 @@ AIE_BASE_OBJ = ../../../runtime_lib/me_basic.o
 
 AIE_OPT     = aie-opt
 AIE_XLATE   = aie-translate
+LLC         = llc
 XBRIDGE     = xbridge
-#AIE_OPT     = ../../../../build/aie/bin/aie-opt
-#AIE_XLATE   = ../../../../build/aie/bin/aie-translate
-#XBRIDGE     = ../../../../build/aie-tools/bin/xbridge
-#AIE_OPT     = ../../../../build-container/aie/bin/aie-opt
-#AIE_XLATE   = ../../../../build-container/aie/bin/aie-translate
-#XBRIDGE     = ../../../../build-container/aie-tools/bin/xbridge
-
+AIECC       = ../../../tools/aiecc/aiecc.py
 
 all: test.exe
 
+acdc_project/aie_inc.cpp: aie.mlir
+	$(AIECC) --no-xbridge aie.mlir
+
 # compile sources
-%.o: %.cpp aie_inc.cpp
+%.o: %.cpp acdc_project/aie_inc.cpp
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # compile and link on board
@@ -38,23 +36,23 @@ all: test.exe
 		-o $@
 
 # mlir translate into include c source (e.g. aie_inc.cpp)
-%_inc.cpp: %.mlir
-	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
+#%_inc.cpp: %.mlir
+#	$(AIE_OPT) --aie-create-flows --aie-find-flows $^ | $(AIE_XLATE) --aie-generate-xaie -o $@
 
-%.mlir_addresses : %.mlir
-	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
+#%.mlir_addresses : %.mlir
+#	$(AIE_OPT) --aie-assign-buffer-addresses $*.mlir > $@
 
-%.ll : %.mlir_addresses
-	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
+#%.ll : %.mlir_addresses
+#	$(AIE_OPT) --aie-llvm-lowering="tilecol=1 tilerow=3" $^ | $(AIE_XLATE) --aie-generate-llvmir | opt -strip -S > $*.ll
 
-%.o : %.ll
-	llc $*.ll -O2 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
+#%.o : %.ll
+#	llc $*.ll -O2 --march=aie -align-all-blocks=4 --filetype=obj -o=$*.o
 
-%.bcf : %.mlir_addresses
-	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=3 $< > $@
+#%.bcf : %.mlir_addresses
+#	$(AIE_XLATE) --aie-generate-bcf --tilecol=1 --tilerow=3 $< > $@
 
-%.elf : %.o %.bcf
-	$(XBRIDGE) $< -c $*.bcf -o $@
+#%.elf : %.o %.bcf
+#	$(XBRIDGE) $< -c $*.bcf -o $@
 
 #ld.lld $*.o $(AIE_BASE_OBJ) -T ./ld.script -o $@
 
@@ -71,4 +69,4 @@ all: test.exe
 #	cp work/Release_LLVM/$*.prx/$* ../$*.elf
 
 clean:
-	rm -rf aie_inc.cpp *.o *.ll *.mlir_addresses *.exe *.elf* ./$(AIE_SRC_DIR)/work kernel test.mem *bcf
+	rm -rf aie_inc.cpp *.o *.ll *.mlir_addresses *.exe *.elf* ./$(AIE_SRC_DIR)/work kernel test.mem *bcf acdc_project
