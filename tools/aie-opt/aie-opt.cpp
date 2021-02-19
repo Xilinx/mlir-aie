@@ -29,6 +29,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIECreateCoresPass();
   xilinx::AIE::registerAIECreateLocksPass();
   xilinx::AIE::registerAIECoreToLLVMPass();
+  xilinx::AIE::registerAIECoreToStandardPass();
   xilinx::AIE::registerAIEHerdRoutingPass();
   xilinx::AIE::registerAIECreatePacketFlowsPass();
   xilinx::AIE::registerAIELowerMemcpyPass();

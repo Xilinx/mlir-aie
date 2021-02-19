@@ -353,6 +353,11 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     ModuleOp m = getOperation();
     OpBuilder builder(m.getBody()->getTerminator());
 
+    LowerToLLVMOptions options = {/*useBarePtrCallConv =*/true,
+                                  /*emitCWrappers =*/true,
+                                  /*indexBitwidth =*/32,
+                                  /*useAlignedAlloc =*/false};
+
     LLVMTypeConverter converter(&getContext());
 
     // Extract all CoreOps
@@ -478,6 +483,8 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
 
     LLVMConversionTarget target(getContext());
     target.addLegalOp<ModuleOp, mlir::ModuleTerminatorOp>();
+    // target.addLegalDialect<LLVM::LLVMDialect>();
+    // target.addIllegalOp<LLVM::DialectCastOp>();
 
     OwningRewritePatternList patterns;
     patterns.insert<AIEPutStreamLowering,
@@ -491,8 +498,13 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     patterns.insert<AIECoreToLLVMFunc>(m.getContext(), m, mapper, tileToBuffers, bufferToGlobal, converter, 1,
        tileCol, tileRow);
 
-    patterns.insert<AIEOpRemoval<AIE::TileOp>,
+    // if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    //   signalPassFailure();
+
+    patterns.insert<AIEOpRemoval<AIE::FlowOp>,
+                    AIEOpRemoval<AIE::TileOp>,
                     AIEOpRemoval<AIE::MemOp>,
+                    AIEOpRemoval<AIE::ShimMuxOp>,
                     AIEOpRemoval<AIE::SwitchboxOp>,
                     AIEOpRemoval<AIE::LockOp>,
                     AIEOpRemoval<AIE::BufferOp>
@@ -503,229 +515,7 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
   }
 };
 
-struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
-  using OpConversionPattern<CoreOp>::OpConversionPattern;
-  ModuleOp &module;
-  BlockAndValueMapping &mapper;
-  DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
-
-  AIECoreToStandardFunc(MLIRContext *context, ModuleOp &m,
-    BlockAndValueMapping &mapper,
-    DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers,
-    PatternBenefit benefit = 1
-  ) : OpConversionPattern<CoreOp>(context, benefit),
-    module(m), mapper(mapper), tileToBuffers(tileToBuffers) {}
-
-  LogicalResult matchAndRewrite(CoreOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const override {
-
-    Operation *Op = op.getOperation();
-    int col = op.colIndex();
-    int row = op.rowIndex();
-    std::string coreName("core" + std::to_string(col) + std::to_string(row));
-    auto coreFunc = rewriter.create<FuncOp>(rewriter.getUnknownLoc(), coreName,
-                  FunctionType::get(rewriter.getContext(), {}, {}));                  
-
-    rewriter.cloneRegionBefore(op.body(), coreFunc.getBody(), coreFunc.getBody().begin(), mapper);
-
-    DenseMap<Operation *, Value> newAllocated;
-
-    for (auto map : tileToBuffers) {
-      Operation *tileOp = map.first;
-      SmallVector<BufferOp, 4> buffers(map.second);
-      TileOp tile = dyn_cast<TileOp>(tileOp);
-      int dstCol = tile.colIndex();
-      int dstRow = tile.rowIndex();
-
-      if (!isLegalMemAffinity(col, row, dstCol, dstRow))
-        continue;
-
-      rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
-      for (auto buffer : buffers) {
-        MemRefType t = buffer.getType().cast<MemRefType>();
-        assert(t.getShape().size() == 1 && "Only supporting MemRefType of shape 1 for now!");
-        Value allocated = rewriter.create<AllocOp>(rewriter.getUnknownLoc(), t);
-        newAllocated[buffer] = allocated;
-      }
-    }
-
-    coreFunc.getBody().walk([&](Operation *childOp) {
-      rewriter.setInsertionPointAfter(childOp);
-
-      if (EndOp end = dyn_cast<EndOp>(childOp)) {
-        rewriter.create<ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
-        rewriter.eraseOp(childOp);
-      }
-      //  else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
-      //   LockOp lock = dyn_cast<LockOp>(useLock.lock().getDefiningOp());
-      //   TileOp tile = dyn_cast<TileOp>(lock.tile().getDefiningOp());
-      //   int dstCol = tile.colIndex();
-      //   int dstRow = tile.rowIndex();
-
-      //   int cardinalMemOffset = 0;
-
-      //   if (isMemSouth(col, row, dstCol, dstRow))
-      //     cardinalMemOffset = 0;
-      //   else if (isMemWest(col, row, dstCol, dstRow))
-      //     cardinalMemOffset = 16;
-      //   else if (isMemNorth(col, row, dstCol, dstRow))
-      //     cardinalMemOffset = 32;
-      //   else if (isMemEast(col, row, dstCol, dstRow))
-      //     cardinalMemOffset = 48;
-      //   else
-      //     llvm_unreachable("Found illegal lock user!");
-
-      //   int coreLockID = cardinalMemOffset + lock.getLockID();
-
-      //   std::string funcName = "llvm.aie.lock.";
-      //   if (useLock.acquire())
-      //     funcName += "acquire.reg";
-      //   else if (useLock.release())
-      //     funcName += "release.reg";
-
-      //   auto useLockFunc = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName);
-      //   assert(useLockFunc && "Could not find the intrinsic function!");
-      //   SmallVector<Value, 2> args;
-      //   Value lockValue = rewriter.create<LLVM::ConstantOp>(
-      //     rewriter.getUnknownLoc(), IntegerType::get(&converter.getContext(), 32),
-      //     rewriter.getI32IntegerAttr(useLock.getLockValue()));
-
-      //   Value coreLockIDValue = rewriter.create<LLVM::ConstantOp>(
-      //     rewriter.getUnknownLoc(), IntegerType::get(&converter.getContext(), 32),
-      //     rewriter.getI32IntegerAttr(coreLockID));
-
-      //   args.push_back(coreLockIDValue);
-      //   args.push_back(lockValue);
-
-      //   auto useLockCall = rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), useLockFunc, args);
-
-      //   rewriter.eraseOp(childOp);
-      // }
-    });
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct AIECoreToStandardPass : public PassWrapper<AIECoreToStandardPass, OperationPass<ModuleOp>> {
-  void runOnOperation() override {
-
-    ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
-
-    // Extract all CoreOps
-    // Create an LLVM func for each CoreOp
-    // Clone the region body of each CoreOp to the newly created LLVM func
-
-    DenseMap<std::pair<int, int>, Operation *> tiles;
-    DenseMap<Operation *, CoreOp> cores;
-    DenseMap<Operation *, MemOp> mems;
-    DenseMap<std::pair<Operation *, int>, LockOp> locks;
-    DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
-    DenseMap<Operation *, SwitchboxOp> switchboxes;
-
-    NetlistAnalysis NL(m, tiles, cores, mems, locks, tileToBuffers, switchboxes);
-    NL.collectTiles(tiles);
-    NL.collectCores(cores);
-    NL.collectBuffers(tileToBuffers);
-
-    // Populate intrinsic functions
-    // Intrinsic information: peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td
-    // Also take a look at the tests: peano/llvm-project/llvm/test/CodeGen/AIE
-    builder.setInsertionPointToStart(m.getBody());
-
-    SmallVector<Type, 2> callArgTypes;
-
-    Type int32Type = IntegerType::get(builder.getContext(), 32);
-    Type int128Type = IntegerType::get(builder.getContext(), 128);
-    Type int384Type = IntegerType::get(builder.getContext(), 384);
-    Type floatType = FloatType::getF32(builder.getContext());
-
-    // llvm.func @debug_i32(%val: !llvm.i32) -> ()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "debug_i32",
-        FunctionType::get(builder.getContext(), {int32Type}, {}));
-
-    // llvm.func @llvm.aie.put.ms(%channel: !llvm.i1, %stream_val: !llvm.i32) -> ()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.ms",
-        FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}));
-
-    // llvm.func @llvm.aie.put.mws(%channel: !llvm.i1, %stream_val: !llvm.i128) -> ()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
-        FunctionType::get(builder.getContext(), {int32Type, int128Type}, {}));
-
-    // llvm.func @llvm.aie.put.mfs(%channel: !llvm.i1, %stream_val: !llvm.float) -> ()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.fms",
-        FunctionType::get(builder.getContext(), {int32Type, floatType}, {}));
-
-    // llvm.func @llvm.aie.get.ss(%channel: !llvm.i1) -> !llvm.i32
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.ss",
-        FunctionType::get(builder.getContext(), {int32Type}, {int32Type}));
-
-    // llvm.func @llvm.aie.get.wss(%channel: !llvm.i1) -> !llvm.i128
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.wss",
-        FunctionType::get(builder.getContext(), {int32Type}, {int128Type}));
-
-    // llvm.func @llvm.aie.get.fss(%channel: !llvm.i1) -> !llvm.float
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.fss",
-        FunctionType::get(builder.getContext(), {int32Type}, {floatType}));
-
-    // llvm.func @llvm.aie.put.scd(%scd_val: !llvm.i384) -> ()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.mcd",
-        FunctionType::get(builder.getContext(), {int384Type}, {}));
-
-    // llvm.func @llvm.aie.get.scd() -> !llvm.i384
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.get.scd",
-        FunctionType::get(builder.getContext(), {}, {int384Type}));
-
-    // llvm.func @llvm.aie.lock.acquire.reg(%lock_id: !llvm.i32, %lock_val: !llvm.i32) ->()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.acquire.reg",
-        FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}));
-
-    // llvm.func @llvm.aie.lock.release.reg(%lock_id: !llvm.i32, %lock_val: !llvm.i32) ->()
-    builder.create<FuncOp>(builder.getUnknownLoc(), "llvm.aie.lock.release.reg",
-        FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}));
-
-
-    BlockAndValueMapping mapper;
-
-    ConversionTarget target(getContext());
-    target.addLegalDialect<StandardOpsDialect>();
-    target.addLegalOp<FuncOp, ModuleOp, mlir::ModuleTerminatorOp>();
-
-    OwningRewritePatternList patterns;
-    patterns.insert<
-    // AIEPutStreamLowering,
-    //                 AIEGetStreamLowering,
-    //                 AIEPutCascadeLowering,
-    //                 AIEGetCascadeLowering,
-                     AIEDebugOpLowering
-                    >(m.getContext(), m);
-
-    patterns.insert<AIECoreToStandardFunc>(m.getContext(), m, mapper, tileToBuffers);
-
-    // patterns.insert<AIEOpRemoval<AIE::TileOp>,
-    //                 AIEOpRemoval<AIE::MemOp>,
-    //                 AIEOpRemoval<AIE::SwitchboxOp>,
-    //                 AIEOpRemoval<AIE::LockOp>,
-    //                 AIEOpRemoval<AIE::BufferOp>
-    //                >(m.getContext(), m);
-
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
-      signalPassFailure();
-  }
-};
-
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::AIE::createAIECoreToLLVMPass() {
   return std::make_unique<AIECoreToLLVMPass>();
 }
-
-// void xilinx::AIE::registerAIECoreToLLVMPass() {
-//     PassRegistration<AIECoreToLLVMPass>(
-//       "aie-llvm-lowering",
-//       "Lowering operations in AIE cores' regions to LLVM");
-//     PassRegistration<AIECoreToStandardPass>(
-//       "aie-standard-lowering",
-//       "Lowering operations in AIE cores' regions to Standard Dialect");
-// }
