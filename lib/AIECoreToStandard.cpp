@@ -399,7 +399,9 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
     patterns.insert<AIEOpRemoval<AIE::TileOp>,
+                    AIEOpRemoval<AIE::FlowOp>,
                     AIEOpRemoval<AIE::MemOp>,
+                    AIEOpRemoval<AIE::ShimMuxOp>,
                     AIEOpRemoval<AIE::SwitchboxOp>,
                     AIEOpRemoval<AIE::LockOp>,
                     AIEOpRemoval<AIE::BufferOp>
