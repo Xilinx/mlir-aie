@@ -13,20 +13,20 @@
 // CHECK: x = 1;
 // CHECK: y = 1;
 // CHECK: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
-// CHECK: 		XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 0),
+// CHECK: 		XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 0),
 // CHECK: 		XAIE_DISABLE /*drop_header*/,
 // CHECK: 		0x1 /*mask*/,
 // CHECK: 		0 /*arbiter*/));
 // CHECK: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIE_ENABLE,
 // CHECK: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
-// CHECK: 		XAIETILE_STRSW_MPORT_ME(&(TileInst[x][y]), 1),
+// CHECK: 		XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 1),
 // CHECK: 		XAIE_DISABLE /*drop_header*/,
 // CHECK: 		0x1 /*mask*/,
 // CHECK: 		1 /*arbiter*/));
@@ -67,8 +67,8 @@ module @test_ps1_xaie {
     %a0_0 = AIE.amsel<0>(0)
     %a1_0 = AIE.amsel<1>(0)
 
-    AIE.masterset(ME : 0, %a0_0)
-    AIE.masterset(ME : 1, %a1_0)
+    AIE.masterset(Core : 0, %a0_0)
+    AIE.masterset(Core : 1, %a1_0)
 
     AIE.packetrules(West : 0) {
       AIE.rule(0x1F, 0x0, %a0_0)
@@ -83,11 +83,11 @@ module @test_ps1_xaie {
 //
 //  AIE.packet_flow(0x0) {
 //    AIE.packet_source<%t01, DMA : 0>
-//    AIE.packet_dest<%t11, ME : 0>
+//    AIE.packet_dest<%t11, Core : 0>
 //  }
 //
 //  AIE.packet_flow(0x1) {
 //    AIE.packet_source<%t01, DMA : 0>
-//    AIE.packet_dest<%t11, ME : 1>
+//    AIE.packet_dest<%t11, Core : 1>
 //  }
 //}

@@ -10,9 +10,9 @@ module @test_create_packet_flows3 {
 // CHECK:         %[[VAL_1:.*]] = AIE.switchbox(%[[VAL_0]]) {
 // CHECK:           %[[VAL_6:.*]] = AIE.amsel<0> (0)
 // CHECK:           %[[VAL_7:.*]] = AIE.amsel<0> (1)
-// CHECK:           %[[VAL_4:.*]] = AIE.masterset(ME : 0, %[[VAL_2:.*]])
-// CHECK:           %[[VAL_5:.*]] = AIE.masterset(ME : 1,
-// CHECK-SAME:      %[[VAL_2]]
+// CHECK:           %[[VAL_4:.*]] = AIE.masterset(Core : 0, %[[VAL_2:.*]])
+// CHECK:           %[[VAL_5:.*]] = AIE.masterset(Core : 1,
+// CHECK-SACore :      %[[VAL_2]]
 // CHECK:           AIE.packetrules(West : 1) {
 // CHECK:             AIE.rule(31, 1, %[[VAL_3:.*]])
 // CHECK:           }
@@ -25,12 +25,12 @@ module @test_create_packet_flows3 {
 
   AIE.packet_flow(0x0) {
     AIE.packet_source<%t11, West : 0>
-    AIE.packet_dest<%t11, ME : 0>
-    AIE.packet_dest<%t11, ME : 1>
+    AIE.packet_dest<%t11, Core : 0>
+    AIE.packet_dest<%t11, Core : 1>
   }
 
   AIE.packet_flow(0x1) {
     AIE.packet_source<%t11, West : 1>
-    AIE.packet_dest<%t11, ME : 1>
+    AIE.packet_dest<%t11, Core : 1>
   }
 }

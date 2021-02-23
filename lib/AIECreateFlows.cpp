@@ -318,9 +318,9 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
         auto sw = analysis.getSwitchbox(builder, col, row);
         builder.create<WireOp>(builder.getUnknownLoc(),
                                 tile,
-                                WireBundle::ME,
+                                WireBundle::Core,
                                 sw,
-                                WireBundle::ME);
+                                WireBundle::Core);
         builder.create<WireOp>(builder.getUnknownLoc(),
                                 tile,
                                 WireBundle::DMA,

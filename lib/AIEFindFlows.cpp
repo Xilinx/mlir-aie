@@ -197,7 +197,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
     Operation *Op = op.getOperation();
     rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
 
-    std::vector<WireBundle> bundles = {WireBundle::ME, WireBundle::DMA};
+    std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
     for(WireBundle bundle: bundles) {
       for(int i = 0; i < op.getNumSourceConnections(bundle); i++) {
         std::vector<PacketConnection> tiles =

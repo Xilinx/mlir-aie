@@ -472,7 +472,7 @@ namespace xilinx {
     int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
       if(getTileOp().isShimTile())
         switch(bundle) {
-        //case WireBundle::ME: return 0;
+        //case WireBundle::Core: return 0;
         //case WireBundle::DMA: return 2;
         //case WireBundle::PLIO: return 4;
         case WireBundle::FIFO: return 2;
@@ -484,7 +484,7 @@ namespace xilinx {
         }
       else
         switch(bundle) {
-        case WireBundle::ME: return 2;
+        case WireBundle::Core: return 2;
         case WireBundle::DMA: return 2;
         case WireBundle::FIFO: return 2;
         case WireBundle::North: return 4;
@@ -497,7 +497,7 @@ namespace xilinx {
     int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
       if(getTileOp().isShimTile())
         switch(bundle) {
-        // case WireBundle::ME: return 0;
+        // case WireBundle::Core: return 0;
         // case WireBundle::DMA: return 2;
         // case WireBundle::PLIO: return 2;
         case WireBundle::FIFO: return 2;
@@ -509,7 +509,7 @@ namespace xilinx {
         }
       else
         switch(bundle) {
-        case WireBundle::ME: return 2;
+        case WireBundle::Core: return 2;
         case WireBundle::DMA: return 2;
         case WireBundle::FIFO: return 2;
         case WireBundle::North: return 6;
@@ -521,14 +521,14 @@ namespace xilinx {
     }
     int TileOp::getNumSourceConnections(WireBundle bundle) {
       switch(bundle) {
-      case WireBundle::ME: return 2;
+      case WireBundle::Core: return 2;
       case WireBundle::DMA: return 2;
       default: return 0;
       }
     }
     int TileOp::getNumDestConnections(WireBundle bundle) {
       switch(bundle) {
-      case WireBundle::ME: return 2;
+      case WireBundle::Core: return 2;
       case WireBundle::DMA: return 2;
       default: return 0;
       }

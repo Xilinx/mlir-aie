@@ -28,7 +28,7 @@ switch is referred to as 'switchbox' to avoid confusion with the
   }];
 }
 
-def ME: I32EnumAttrCase<"ME", 0>;
+def Core: I32EnumAttrCase<"Core", 0>;
 def DMA: I32EnumAttrCase<"DMA", 1>;
 def FIFO: I32EnumAttrCase<"FIFO", 2>;
 def South: I32EnumAttrCase<"South", 3>;
@@ -39,7 +39,7 @@ def PLIO: I32EnumAttrCase<"PLIO", 7>;
 def NOC: I32EnumAttrCase<"NOC", 8>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-  [ME, DMA, FIFO, South, West, North, East, PLIO, NOC]> {
+  [Core, DMA, FIFO, South, West, North, East, PLIO, NOC]> {
 
   let cppNamespace = "xilinx::AIE";
 }
@@ -151,7 +151,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconect, SingleBlockImplicitTermin
     ```
     %tile = aie.tile(1, 1)
     aie.switchbox(%tile) {
-      aie.connect<"West" : 0, "ME" : 1>
+      aie.connect<"West" : 0, "Core" : 1>
     }
     ```
   }];
@@ -183,14 +183,14 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
 
     A switch in the Shim.
     AXI-Stream Master Ports AXI-Stream Slave Ports
-    6 Ports to North (ME Tile) 4 Ports from North (ME Tile)
+    6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
     4 Ports to West 4 Ports from West
     4 Ports to East 4 Ports from East
     6 Ports to South(DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
     2 Ports to FIFOs 2 Ports from FIFOs
-    1 Port for control packet for ME Shim register access
-    1 Port for response to access for ME Shim registers
-    1 Port for trace packet from ME Shim
+    1 Port for control packet for Shim register access
+    1 Port for response to access for Shim registers
+    1 Port for trace packet from Shim
 
   }];
   let regions = (region AnyRegion:$connections);
@@ -350,7 +350,7 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
     ```
     %tile = aie.tile(1, 1)
     aie.switchbox(%tile) {
-      aie.connect<"West" : 0, "ME" : 1>
+      aie.connect<"West" : 0, "Core" : 1>
     }
     ```
   }];
@@ -386,7 +386,7 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
       %00 = aie.tile(0, 0)
       %11 = aie.tile(1, 1)
       %01 = aie.tile(0, 1)
-      aie.flow(%00, "DMA" : 0, %11, "ME" : 1)
+      aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
     ```
   }];
   let assemblyFormat = [{
@@ -432,7 +432,7 @@ def AIE_ConnectionOp: AIE_Op<"connection", []> {
       %c22 = aie.core(%22)
       %11 = aie.tile(1, 1)
       %c11 = aie.core(%11)
-      aie.flow(%c22, "ME" : 0, %c11, "ME" : 1)
+      aie.flow(%c22, "Core" : 0, %c11, "Core" : 1)
 
   }];
   let assemblyFormat = [{
@@ -512,9 +512,9 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(o
 
     Example:
       %a0_m2 = AIE.amsel<0>(2)
-      AIE.masterset("ME" : 0, %a0_m2)
+      AIE.masterset("Core" : 0, %a0_m2)
 
-    The code will configure the master port <"ME" : 0> to use arbiter 0 with msel 2
+    The code will configure the master port <"Core" : 0> to use arbiter 0 with msel 2
     (see AMSelOp for more details regarding AMSel)
 
     In the current architecture, a master port can only be associated with one arbiter. However,
@@ -619,7 +619,7 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
       %a4_1 = AIE.amsel<4>(1)
       %a3_2 = AIE.amsel<3>(2)
 
-      AIE.packetRules("ME" : 0) {
+      AIE.packetRules("Core" : 0) {
         AIE.rule(0x1F, 0x2, %a4_1)
         AIE.rule(0x1B, 0x1, %a3_2)
       }
@@ -657,8 +657,8 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
     ```
       %01 = AIE.tile(0, 1)
       AIE.packet_flow(0x10) {
-        AIE.packet_source<%01, "ME" : 0>
-        AIE.packet_dest<%01, "ME" : 0>
+        AIE.packet_source<%01, "Core" : 0>
+        AIE.packet_dest<%01, "Core" : 0>
       }
     ```
   }];

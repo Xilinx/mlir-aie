@@ -27,10 +27,10 @@ module {
 // CHECK:    AIE.connect<North : 0, South : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T21]])  {
-// CHECK:    AIE.connect<ME : 0, South : 0>
+// CHECK:    AIE.connect<Core : 0, South : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// FIXME: should be South:7
+// FIXCore : should be South:7
 // CHECK:    AIE.connect<South : 0, DMA : 1>
 // CHECK:  }
 module {
@@ -42,7 +42,7 @@ module {
   %dma = AIE.shimDMA(%t20)  {
     AIE.end
   }
-  AIE.flow(%c21, ME : 0, %dma, DMA : 1)
+  AIE.flow(%c21, Core : 0, %dma, DMA : 1)
 }
 
 // -----
@@ -53,7 +53,7 @@ module {
 // CHECK:    AIE.connect<South : 0, South : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// FIXME: these connections are wrong.
+// FIXCore : these connections are wrong.
 // CHECK:    AIE.connect<DMA : 0, South : 0>
 // CHECK:    AIE.connect<South : 0, DMA : 1>
 // CHECK:  }

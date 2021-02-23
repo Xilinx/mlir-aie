@@ -1,6 +1,6 @@
 // RUN: aie-opt --aie-create-cores --aie-lower-memcpy %s | FileCheck %s
 
-// FIXME: DMA ops have issues here: reuse of DMAs is bad, also should chain from one DMA op to the next.
+// FIXCore : DMA ops have issues here: reuse of DMAs is bad, also should chain from one DMA op to the next.
 
 // CHECK-LABEL: module @test_dma1 {
 // CHECK-NEXT:    %0 = AIE.tile(1, 1)

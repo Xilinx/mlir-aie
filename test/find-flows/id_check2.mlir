@@ -23,8 +23,8 @@ module {
       AIE.rule(12, 12, %18)
     }
   }
-  AIE.wire(%0: ME, %tile0: ME)
-  AIE.wire(%1: ME, %tile1: ME)
+  AIE.wire(%0: Core, %tile0: Core)
+  AIE.wire(%1: Core, %tile1: Core)
   AIE.wire(%0: DMA, %tile0: DMA)
   AIE.wire(%1: DMA, %tile1: DMA)
   AIE.wire(%0: South, %1: North)

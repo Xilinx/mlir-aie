@@ -45,7 +45,7 @@ module {
     AIE.end
   }
   %s21 = AIE.switchbox(%t21)  {
-    AIE.connect<ME : 0, South : 0>
+    AIE.connect<Core : 0, South : 0>
   }
   %c20 = AIE.core(%t20)  {
     AIE.end
@@ -80,6 +80,6 @@ module {
   AIE.wire(%s20 : South, %mux : North)
   AIE.wire(%mux : DMA, %dma : DMA)
   AIE.wire(%mux : South, %t20 : DMA)
-  AIE.wire(%s21 : ME, %c21 : ME)
-  AIE.wire(%s21 : ME, %t21 : ME)
+  AIE.wire(%s21 : Core, %c21 : Core)
+  AIE.wire(%s21 : Core, %t21 : Core)
 }
