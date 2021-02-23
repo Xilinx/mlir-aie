@@ -1,5 +1,4 @@
-
-// aie-opt --aie-create-flows --aie-find-flows %s | aie-translate --aie-generate-xaie
+// RUN: aiecc.py %s
 
 module @test1_core_llvm1 {
   %tile12 = AIE.tile(1, 2)

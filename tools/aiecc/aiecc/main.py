@@ -77,3 +77,15 @@ def main(builtin_params={}):
     do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
     file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
     do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+
+    # Lastly, compile the generated host interface with any ARM code.
+    cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+    if(opts.sysroot):
+      cmd += ['--sysroot=%s' % opts.sysroot]
+    cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
+    cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
+    cmd += ['-Iacdc_project']
+    cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+
+    if(len(opts.arm_args) > 0):
+      do_call(cmd + opts.arm_args)

@@ -7,12 +7,16 @@ def parse_args():
     parser = argparse.ArgumentParser(prog='aiecc')
     parser.add_argument('filename',
             metavar="file",
-            help='File to compile')
+            help='MLIR file to compile')
+    parser.add_argument('--sysroot',
+            metavar="sysroot",
+            default="",
+            help='sysroot for cross-compilation')
     parser.add_argument('-v',
             dest="verbose",
             default=False,
             action='store_true',
-            help='Link using xbridge')
+            help='Trace commands as they are executed')
     parser.add_argument('--xbridge',
             dest="xbridge",
             default=True,
@@ -21,7 +25,11 @@ def parse_args():
     parser.add_argument('--no-xbridge',
             dest="xbridge",
             action='store_false',
-            help='Link using xbridge')
+            help='Link using peano')
+    parser.add_argument("arm_args",
+            action='store',
+            help='arguments for ARM compiler',
+            nargs=argparse.REMAINDER)
 
     opts = parser.parse_args(sys.argv[1:])
 
