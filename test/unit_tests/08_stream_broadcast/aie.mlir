@@ -10,10 +10,12 @@ module @test3_core_llvm1 {
 
   AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
   AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 2> }
-  AIE.switchbox(%tile33) { AIE.connect<"West": 2, "North": 3> }
-  AIE.switchbox(%tile33) { AIE.connect<"West": 2, "South": 3> }
+  AIE.switchbox(%tile33) {
+    AIE.connect<"West": 2, "North": 3>
+    AIE.connect<"West": 2, "South": 3>
+    AIE.connect<"West": 2, "DMA": 1>
+  }
   AIE.switchbox(%tile32) { AIE.connect<"North": 3, "DMA": 1> }
-  AIE.switchbox(%tile33) { AIE.connect<"West": 2, "DMA": 1> }
   AIE.switchbox(%tile34) { AIE.connect<"South": 3, "DMA": 1> }
 
 //  AIE.flow(%tile13, "DMA" : 0, %tile32, "DMA" : 1)
