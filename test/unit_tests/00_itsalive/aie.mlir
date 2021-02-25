@@ -20,6 +20,5 @@ module @test1_core_llvm1 {
     // store %val2, %buf12_0[%idx2] : memref<256xi32>
 //    AIE.useLock(%lock12_1, "Release", 1, 0)
     AIE.end
-  } { elf_file = "aie.elf" }
-
+  }
 }

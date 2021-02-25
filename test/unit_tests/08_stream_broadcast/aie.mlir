@@ -43,7 +43,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
-  } { elf_file = "core_1_3.elf" }
+  }
 
   %mem13 = AIE.mem(%tile13) {
 //    %dma0 = AIE.dmaStart("MM2S0")
@@ -61,7 +61,7 @@ module @test3_core_llvm1 {
       AIE.end
   }
 
-  %core23 = AIE.core(%tile23) { AIE.end } { elf_file = "core_2_3.elf" }
+  %core23 = AIE.core(%tile23) { AIE.end }
 
   // Broadcast target tile #1 (tile32)
   %buf32_0 = AIE.buffer(%tile32) { sym_name = "a32" } : memref<256xi32>
@@ -85,7 +85,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock32_7, "Release", 1, 0) // release for read
     AIE.end
 
-  } { elf_file = "core_3_2.elf" }
+  }
 
   %mem32 = AIE.mem(%tile32) {
     %dma0 = AIE.dmaStart("S2MM1", ^bd0, ^end)
@@ -120,7 +120,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock33_7, "Release", 1, 0) // release for read
     AIE.end
 
-  } { elf_file = "core_3_3.elf" }
+  }
 
   %mem33 = AIE.mem(%tile33) {
     %dma0 = AIE.dmaStart("S2MM1", ^bd0, ^end)
@@ -155,7 +155,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock34_7, "Release", 1, 0) // release for read
     AIE.end
 
-  } { elf_file = "core_3_4.elf" }
+  }
 
   %mem34 = AIE.mem(%tile34) {
     %dma0 = AIE.dmaStart("S2MM1", ^bd0, ^end)

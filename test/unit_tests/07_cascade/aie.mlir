@@ -23,7 +23,7 @@ module @test3_core_llvm1 {
 //    puc_mcd(upd_elem(v16int16,%5,0))
 //    AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.end
-  } { elf_file = "core_1_3.elf" }
+  }
 
 
   %core23 = AIE.core(%tile23) {
@@ -38,6 +38,6 @@ module @test3_core_llvm1 {
 //    store %5, %buf23_0[%idx2] : memref<256xi32>
 //    AIE.useLock(%lock23_7, "Release", 1, 0) // release for read
     AIE.end
-  } { elf_file = "core_2_3.elf" }
+  }
 
 }

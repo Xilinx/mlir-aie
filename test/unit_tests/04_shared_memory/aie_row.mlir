@@ -1,4 +1,3 @@
-
 // aie-opt --aie-create-flows --aie-find-flows %s | aie-translate --aie-generate-xaie
 
 module @test3_core_llvm1 {
@@ -27,7 +26,7 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
-  } { elf_file = "aie13.elf" }
+  }
 
 
   %core23 = AIE.core(%tile23) {
@@ -44,7 +43,6 @@ module @test3_core_llvm1 {
     AIE.useLock(%lock13_5, "Release", 0, 0) // release for write
     AIE.useLock(%lock23_7, "Release", 1, 0) // release for read
     AIE.end
-
-  } { elf_file = "aie23.elf" }
+  }
 
 }
