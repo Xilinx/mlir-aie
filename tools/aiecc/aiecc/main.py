@@ -68,12 +68,12 @@ def main(builtin_params={}):
         file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
         do_call(['opt', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_elf = corefile(".", core, "elf")
+        file_core_obj = tmpcorefile(core, "o")
+        do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         if(opts.xbridge == True):
-          file_core_obj = tmpcorefile(core, "o")
-          do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           do_call(['xbridge', file_core_obj, '-c', file_core_bcf, '-o', file_core_elf])
         else:
-          do_call(['clang', '-O2', '--target=aie', file_core_llvmir_stripped, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+          do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
     # Generate the included host interface
     file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
