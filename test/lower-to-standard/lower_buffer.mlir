@@ -1,5 +1,6 @@
 // RUN: aie-opt --aie-standard-lowering="tilecol=3 tilerow=3" %s | FileCheck --check-prefix=CHECK33 %s
 // RUN: aie-opt --aie-standard-lowering="tilecol=4 tilerow=3" %s | FileCheck --check-prefix=CHECK43 %s
+// CHECK33:    global_memref "public" @a : memref<4xi32>
 // CHECK33-LABEL:  func @core33() {
 // CHECK33:    %0 = get_global_memref @a : memref<4xi32>
 // CHECK33:    %c0 = constant 0 : index
@@ -8,6 +9,7 @@
 // CHECK33:    return
 // CHECK33:  }
 
+// CHECK43:    global_memref "public" @a : memref<4xi32>
 // CHECK43-LABEL:  func @core43() {
 // CHECK43:    %0 = get_global_memref @a : memref<4xi32>
 // CHECK43:    %c0 = constant 0 : index
