@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://unpkg.com/konva@4.2.2/konva.min.js"></script>
+    <meta charset="utf-8" />
+    <title>Konva Drag and Drop Demo</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background-color: #f0f0f0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container"></div>
+    <script>
+		var port = new Konva.Line({
+		  points: [-3,-4, 3,-4, 0,4],
+        fill: '#00D2FF',
+        stroke: 'grey',
+        strokeWidth: 3,
+        closed: true
+      });
+		var portpair = new Konva.Group({
+      x: 0,
+      y: 0,
+      rotation: 0
+      });
+		var inport = port.clone({ x: 0});
+		portpair.add(inport);
+		var outport = port.clone({ x: 8, rotation:180 });
+		portpair.add(outport);
+
+		var width = window.innerWidth;
+      var height = window.innerHeight;
+
+      var stage = new Konva.Stage({
+        container: 'container',
+        width: width,
+        height: height
+      });
+
+      var layer = new Konva.Layer();
+      var rectX = stage.width() / 2 - 50;
+      var rectY = stage.height() / 2 - 25;
+
+      var box = new Konva.Rect({
+        x: rectX,
+        y: rectY,
+        width: 100,
+        height: 50,
+        fill: '#00D2FF',
+        stroke: 'black',
+        strokeWidth: 4,
+        draggable: true
+      });
+
+      // add cursor styling
+      <!-- box.on('mouseover', function() { -->
+      <!--   document.body.style.cursor = 'pointer'; -->
+      <!-- }); -->
+      <!-- box.on('mouseout', function() { -->
+      <!--   document.body.style.cursor = 'default'; -->
+      <!-- }); -->
+
+      layer.add(box);
+
+      var switchbox = new Konva.Group({
+        x: 0,
+        y: 0,
+        rotation: 0
+      });
+
+		var poly = new Konva.Line({
+        points: [0,0,200,0,200,140,140,200, 0,200, 0,0],
+        fill: '#00D2FF',
+        stroke: 'black',
+        strokeWidth: 5,
+        closed: true
+      });
+		switchbox.add(poly);
+
+class DownPorts extends Konva.Group {
+
+	 constructor(obj, size) {
+		  super(obj)
+		  this.ports = [];
+
+		  for (var i = 0; i < size; i++) {
+				var clone = port.clone({
+					 x: i*10,
+				});
+				this.add(clone);
+				this.ports[i] = clone;
+        }
+	 }
+}
+class UpPorts extends Konva.Group {
+	// var Konva.Line : ports[] = new Konva.Line[10];
+	 constructor(obj, size) {
+		  super(obj)
+		  this.ports = [];
+		  for (var i = 0; i < size; i++) {
+		  var clone = port.clone({
+				x: i*10,
+				rotation: 180
+		  });
+				this.ports[i] = clone;
+		  this.add(clone);
+      }
+  }
+}
+class RightPorts extends Konva.Group {
+	// var Konva.Line : ports[] = new Konva.Line[10];
+	 constructor(obj, size) {
+		  super(obj)
+		  this.ports = [];
+		  for (var i = 0; i < size; i++) {
+		  var clone = port.clone({
+				y: i*10,
+				rotation: -90
+		  });
+				this.ports[i] = clone;
+		  this.add(clone);
+      }
+  }
+}
+class LeftPorts extends Konva.Group {
+//	 var Konva.Line : ports[] = new Konva.Line[10];
+	 constructor(obj, size) {
+		  super(obj)
+		  this.ports = [];
+		for (var i = 0; i < size; i++) {
+		  var clone = port.clone({
+				y: i*10,
+				rotation: 90
+		  });
+			 this.ports[i] = clone;
+		  this.add(clone);
+      }
+  }
+}
+
+var sep = 20;
+// Northside
+var northOuts = new UpPorts({x: sep, y: 0}, 6);
+var northIns = new DownPorts({x: northOuts.getClientRect().x +
+									 northOuts.getClientRect().width + sep,
+									 y: 0 }, 4);
+switchbox.add(northOuts);
+switchbox.add(northIns);
+// Southside
+var southIns = new UpPorts({x: sep, y: 200}, 6);
+var southOuts = new DownPorts({x: southIns.getClientRect().x +
+									 southIns.getClientRect().width + sep,
+										y: 200}, 4);
+switchbox.add(southOuts);
+switchbox.add(southIns);
+// EastSide
+var eastOuts = new RightPorts({x: 200, y: sep}, 4);
+var eastIns = new LeftPorts({x: 200,
+									y: eastOuts.getClientRect().y +
+									   eastOuts.getClientRect().height + sep}, 4);
+switchbox.add(eastOuts);
+switchbox.add(eastIns);
+// Westbound
+var westIns = new RightPorts({x: 0, y: sep}, 4);
+var westOuts = new LeftPorts({x: 0,
+										y: westIns.getClientRect().y +
+										westIns.getClientRect().height + sep
+									  }, 4);
+switchbox.add(westOuts);
+switchbox.add(westIns);
+// Corebound
+var coreIns = new UpPorts({x: 140 + .5*sep, y: 200-.5*sep, rotation: -45}, 4);
+ switchbox.add(coreIns);
+var coreOuts = new DownPorts({x: coreIns.getClientRect().x +
+									  coreIns.getClientRect().width,
+									  y: coreIns.getClientRect().y, rotation: -45}, 4);
+switchbox.add(coreOuts);
+switchbox.add(coreIns);
+var re = new Konva.Rect({
+								 x:coreOuts.getClientRect().x,
+								 y:coreOuts.getClientRect().y,
+								 width: coreOuts.getClientRect().width,
+								 height: coreOuts.getClientRect().height,
+								 stroke: 'red',
+								 strokeWidth: 1,
+								});
+switchbox.add(re);
+
+		for (var i = 0; i < 4; i++) {
+      var redLine = new Konva.Line({
+			 points: [coreOuts.ports[i].getClientRect().x,
+						 coreOuts.ports[i].getClientRect().y,
+						 coreOuts.ports[i].getClientRect().x-sep,
+						 coreOuts.ports[i].getClientRect().y-sep,
+						 westIns.ports[i].getClientRect().x+sep,
+						 westIns.ports[i].getClientRect().y,
+						 westIns.ports[i].getClientRect().x,
+						 westIns.ports[i].getClientRect().y],
+        stroke: 'red',
+        strokeWidth: 2,
+			 tension: .5,
+			 bezier: false
+      });
+switchbox.add(redLine);
+		}
+			 var clone = switchbox.clone({
+			 x: 120,
+			 y: 40,
+			 draggable:true
+		});
+		layer.add(clone);
+		var clone = switchbox.clone({
+			 x: 500,
+			 y: 40,
+			 draggable:true
+		});
+		layer.add(clone);
+		stage.add(layer);
+    </script>
+  </body>
+</html>
