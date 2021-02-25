@@ -46,27 +46,30 @@ def main(builtin_params={}):
     t = run(['aie-translate', '--aie-generate-corelist', file_with_addresses], stdout=PIPE, stderr=PIPE, universal_newlines=True)
     cores = eval(t.stdout)
 
-    def corefile(core, ext):
+    def corefile(dirname, core, ext):
         (corecol, corerow) = core
-        return os.path.join(tmpdirname, 'core_%d_%d.%s' % (corecol, corerow, ext))
+        return os.path.join(dirname, 'core_%d_%d.%s' % (corecol, corerow, ext))
 
+    def tmpcorefile(core, ext):
+        return corefile(tmpdirname, core, ext)
+        
     for core in cores:
         (corecol, corerow) = core
-        file_core = corefile(core, "mlir")
+        file_core = tmpcorefile(core, "mlir")
         do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core,
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_with_addresses, '-o', file_core])
         #do_call(['aie-opt', '--aie-llvm-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
-        file_core_bcf = corefile(core, "bcf")
+        file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
-        file_core_ldscript = corefile(core, "ld.script")
+        file_core_ldscript = tmpcorefile(core, "ld.script")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
-        file_core_llvmir = corefile(core, "ll")
+        file_core_llvmir = tmpcorefile(core, "ll")
         do_call(['aie-translate', '--aie-generate-llvmir', file_core, '-o', file_core_llvmir])
-        file_core_llvmir_stripped = corefile(core, "stripped.ll")
+        file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
         do_call(['opt', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
-        file_core_elf = corefile(core, "elf")
+        file_core_elf = corefile(".", core, "elf")
         if(opts.xbridge == True):
-          file_core_obj = corefile(core, "o")
+          file_core_obj = tmpcorefile(core, "o")
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           do_call(['xbridge', file_core_obj, '-c', file_core_bcf, '-o', file_core_elf])
         else:

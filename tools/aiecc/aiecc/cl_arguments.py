@@ -2,6 +2,9 @@ import argparse
 import os
 import shlex
 import sys
+import shutil
+
+xbridge_found = shutil.which("xbridge")
 
 def parse_args():
     parser = argparse.ArgumentParser(prog='aiecc')
@@ -19,11 +22,12 @@ def parse_args():
             help='Trace commands as they are executed')
     parser.add_argument('--xbridge',
             dest="xbridge",
-            default=True,
+            default=xbridge_found,
             action='store_true',
             help='Link using xbridge')
     parser.add_argument('--no-xbridge',
             dest="xbridge",
+            default=not xbridge_found,
             action='store_false',
             help='Link using peano')
     parser.add_argument("arm_args",
