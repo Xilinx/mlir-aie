@@ -228,7 +228,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPoint(coreFunc);
       for (auto buffer : buffers) {
         auto symName = buffer.name().getValue();
-        assert(t.getShape().size() == 1 && "Only supporting MemRefType of shape 1 for now!");
+        assert(buffer.getType().cast<MemRefType>().getShape().size() == 1 && "Only supporting MemRefType of shape 1 for now!");
         rewriter.create<GlobalMemrefOp>(rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"), TypeAttr::get(buffer.getType()), nullptr, false);
       }
       rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
