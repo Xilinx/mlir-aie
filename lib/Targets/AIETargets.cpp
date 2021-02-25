@@ -202,6 +202,7 @@ SECTIONS
         if(auto tile = getMemWest(srcCoord))  doBuffer(tile, 0x00028000);
         if(auto tile = getMemNorth(srcCoord)) doBuffer(tile, 0x00030000);
         if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
+        output << "  .bss : { *(.bss) } > data\n";
         output << "}\n";
       }
       return success();
