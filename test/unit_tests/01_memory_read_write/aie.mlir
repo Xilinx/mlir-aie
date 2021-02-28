@@ -1,4 +1,4 @@
-// RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 // UN: clang --target=aarch64-linux-gnu --sysroot="/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot" -I/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot/opt/xaiengine/include -std=c++11 -I/opt/xaiengine/include -c -o %s.o -Iacdc_project %S/test.cpp
 // UN: clang --target=aarch64-linux-gnu --sysroot="/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot" -L/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot/opt/xaiengine/lib -fuse-ld=lld %s.o -std=c++11 -I/opt/xaiengine/include -rdynamic -lxaiengine -lmetal -lopen_amp -ldl -L/opt/xaiengine/lib -o %s.elf
 
