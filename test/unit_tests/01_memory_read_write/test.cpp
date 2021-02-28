@@ -43,6 +43,8 @@ main(int argc, char *argv[])
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
 
+    ACDC_clear_tile_memory(TileInst[1][3]);
+    
     mlir_configure_cores();
     mlir_configure_switchboxes();
     mlir_initialize_locks();

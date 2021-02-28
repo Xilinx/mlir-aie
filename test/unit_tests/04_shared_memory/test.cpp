@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <xaiengine.h>
+#include "test_library.h"
 
 #define XAIE_NUM_ROWS            8
 #define XAIE_NUM_COLS           50
@@ -32,8 +33,6 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
 }
 
-#include "../../../runtime_lib/test_library.h"
-
 int
 main(int argc, char *argv[])
 {
@@ -44,6 +43,9 @@ main(int argc, char *argv[])
     XAieGbl_HwInit(&AieConfig);
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+
+    ACDC_clear_tile_memory(TileInst[1][3]);
+    ACDC_clear_tile_memory(TileInst[1][4]);
 
     mlir_configure_cores();
     mlir_configure_switchboxes();
