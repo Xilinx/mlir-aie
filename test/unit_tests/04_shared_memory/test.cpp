@@ -52,69 +52,53 @@ main(int argc, char *argv[])
     mlir_configure_dmas();
     mlir_initialize_locks();
 
+    int errors = 0;
+
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7); // set input value
+    
+    mlir_write_buffer_a(3, 7);
 
-    uint32_t tmp;
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
-    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[1][4]: c[%d] = %d\n",5,tmp);
+    ACDC_check("Before", mlir_read_buffer_a(3), 7);
+    ACDC_check("Before", mlir_read_buffer_b(5), 0);
+    ACDC_check("Before", mlir_read_buffer_c(5), 0);
+    ACDC_dump_tile_memory(TileInst[1][3]);
+    ACDC_dump_tile_memory(TileInst[1][4]);
 
-    XAieLib_usleep(1000);
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[1][4]);
+    // ACDC_print_tile_status(TileInst[1][3]);
+    // ACDC_print_tile_status(TileInst[1][4]);
 
-    printf("Start cores\n");
+    printf("Starting cores\n");
     mlir_start_cores();
 
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
-    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[1][4]: c[%d] = %d\n",5,tmp);
+    ACDC_dump_tile_memory(TileInst[1][3]);
+    ACDC_dump_tile_memory(TileInst[1][4]);
 
-    XAieLib_usleep(1000);
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[1][4]);
+    // ACDC_print_tile_status(TileInst[1][3]);
+    // ACDC_print_tile_status(TileInst[1][4]);
 
-    uint32_t d1 = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[1][4]: c[%d] = %d\n",5,d1);
-
+    ACDC_check("Before and started", mlir_read_buffer_a(3), 7);
+    ACDC_check("Before and started", mlir_read_buffer_b(5), 0);
+    ACDC_check("Before and started", mlir_read_buffer_c(5), 0);
+    
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
-
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
-    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[1][4]: c[%d] = %d\n",5,tmp);
-
-    XAieLib_usleep(1000);
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[1][4]);
-
-
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(1,3);
+    int tries = 1;
     printf("Waiting to acquire output lock for read ...\n");
-//    while(!XAieTile_LockAcquire(&(TileInst[1][4]), 7, 0, 0)) {} // Should this part of setup???
-    int lock = XAieTile_LockAcquire(&(TileInst[1][4]), 7, 0, 0);
-    printf("lock = %d\n",lock);
-    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[1][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[1][4]: c[%d] = %d\n",5,d2);
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[1][4]), 7, 0, 0)) {
+        tries++;
+    }
+    printf("It took %d tries.\n", tries);
 
-    // 7+7+21 = 35
-    int errors = 0;
-    //if(d1 == 35 || d2 != 35) errors++;
-    if(d1 != 0 || d2 != 175) errors++;
+    // ACDC_print_tile_status(TileInst[1][3]);
+    // ACDC_print_tile_status(TileInst[1][4]);
+
+    ACDC_check("After", mlir_read_buffer_a(3), 7);
+    ACDC_check("After", mlir_read_buffer_b(5), 35);
+    ACDC_check("After", mlir_read_buffer_c(5), 175);
+
+    ACDC_dump_tile_memory(TileInst[1][3]);
+    ACDC_dump_tile_memory(TileInst[1][4]);
 
     if (!errors) {
         printf("PASS!\n");

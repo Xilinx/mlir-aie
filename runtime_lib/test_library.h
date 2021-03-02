@@ -1,4 +1,7 @@
 #include <xaiengine.h>
+#include <stdio.h>
+
+#define ACDC_check(s, r, v) if(r != v) {printf("ERROR %s: %s expected %d, but was %d!\n", s, #r, v, r); errors++;}
 
 /// Dump the contents of the memory associated with the given tile.
 void ACDC_dump_tile_memory(struct XAieGbl_Tile &tile);
