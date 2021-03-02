@@ -690,6 +690,36 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
         
         output << "} // mlir_configure_switchboxes\n\n";
 
+        // Output Buffer Accessors
+        for (auto tile : tiles) {
+          Operation *tileOp = tile.second;
+          std::pair<int, int> coord = NL.getCoord(tileOp);
+          int col = coord.first;
+          int row = coord.second;
+          auto tileInst = tileInstStr(std::to_string(col), std::to_string(row));
+
+          auto writeBufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
+            // int32_t mlir_read_buffer_a13(int index) {
+            //     return XAieTile_DmReadWord(&(TileInst[1][3]), a13_offset + (index*4));
+            // }
+            // void mlir_write_buffer_a13(int index, int32_t value) {
+            //     XAieTile_DmWriteWord(&(TileInst[1][3]), a13_offset + (index*4), value);
+            // }
+            std::string bufName(buf.name().getValue());
+            output << "const int " << bufName << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
+            output << "int32_t" << " mlir_read_buffer_" << bufName << "(int index) {\n";
+            output << "  return XAieTile_DmReadWord(" << tileInst << ", " << bufName << "_offset + (index*4));\n";
+            output << "}\n";
+            output << "void mlir_write_buffer_" << bufName << "(int index, " << "int32_t" << " value) {\n";
+            output << "  return XAieTile_DmWriteWord(" << tileInst << ", " << bufName << "_offset + (index*4), value);\n";
+            output << "}\n";
+          };
+
+          // if(tiles.count(tile.getValue()))
+            for (auto buf : buffers[tileOp])
+              writeBufferAccessor(coord, buf);
+          // };
+        }
         return success();
       }
 }

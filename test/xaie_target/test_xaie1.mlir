@@ -13,8 +13,8 @@
 module @test_xaie1 {
   %t33 = AIE.tile(3, 3)
 
-  %buf33_0 = AIE.buffer(%t33) {address = 4096 : i32} : memref<256xi32>
-  %buf33_1 = AIE.buffer(%t33) {address = 5120 : i32} : memref<256xi32>
+  %buf33_0 = AIE.buffer(%t33) {address = 4096 : i32, sym_name = "buf33_0"} : memref<256xi32>
+  %buf33_1 = AIE.buffer(%t33) {address = 5120 : i32, sym_name = "buf33_1"} : memref<256xi32>
   %l33_0 = AIE.lock(%t33, 0)
 
   %m33 = AIE.mem(%t33) {
