@@ -397,8 +397,8 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               int address = BaseAddr + offset;
               output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", "
                      << " /* bd */ " << bdNum << ", "
-                     << "HIGH_ADDR((u64)" << llvm::utohexstr(address) << "), "
-                     << "LOW_ADDR((u64)" << llvm::utohexstr(address) << "), " <<
+                     << "HIGH_ADDR((u64)0x" << llvm::utohexstr(address) << "), "
+                     << "LOW_ADDR((u64)0x" << llvm::utohexstr(address) << "), " <<
                   // " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA +
                   // offsetA) << ", " <<
                   " /* len */ " << len << " * " << bytes << ");\n";
