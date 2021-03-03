@@ -352,9 +352,9 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           for (auto &block : op.body()) {
             bool foundBd = false;
             int len = 0;
-            int bytes = 0;
-            int offset = 0;
-            int BaseAddr = 0;
+            uint64_t bytes = 0;
+            uint64_t offset = 0;
+            uint64_t BaseAddr = 0;
 
             for (auto op : block.getOps<DMABDOp>()) {
               foundBd = true;
@@ -394,7 +394,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                      << " /* acquire */ " << acqValue << ");\n";
               // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u16 AddrHigh, u32 AddrLow, u32 Length);
-              int address = BaseAddr + offset;
+              uint64_t address = BaseAddr + offset;
               output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", "
                      << " /* bd */ " << bdNum << ", "
                      << "HIGH_ADDR((u64)0x" << llvm::utohexstr(address) << "), "

@@ -222,8 +222,8 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
   }
 }
 
-int xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
-  int memUsage = 0;
+uint64_t xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
+  uint64_t memUsage = 0;
   for (auto buf : buffers[tileOp]) {
     MemRefType t = buf.getType().cast<MemRefType>();
     memUsage += t.getSizeInBits();
@@ -233,7 +233,7 @@ int xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
 
 // FIXME: make address assignment for buffers explicit and move this function to
 // an interface
-int xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
+uint64_t xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
   if (auto buf = dyn_cast<BufferOp>(bufOp)) {
     return buf.address();
   } else if (auto buf = dyn_cast<ExternalBufferOp>(bufOp)) {

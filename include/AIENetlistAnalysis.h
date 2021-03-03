@@ -101,8 +101,8 @@ public:
   bool validateCoreOrMemRegion(Operation *CoreOrMemOp);
   void collectBufferUsage();
   void collectDMAUsage();
-  int getMemUsageInBytes(Operation *tileOp) const;
-  int getBufferBaseAddress(Operation *bufOp) const;
+  uint64_t getMemUsageInBytes(Operation *tileOp) const;
+  uint64_t getBufferBaseAddress(Operation *bufOp) const;
 
   SmallVector<Operation *, 4> getNextConnectOps(ConnectOp currentConnect) const;
   SmallVector<Operation *, 4> findDestConnectOps(ConnectOp source, WireBundle destBundle) const;
