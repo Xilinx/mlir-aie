@@ -386,7 +386,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               // void XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8
               // LockAcqVal);
-              output << "XAieDma_ShimBdSetLock(" << dmaName << ", "
+              output << "XAieDma_ShimBdSetLock(&" << dmaName << ", "
                      << " /* bd */ " << bdNum << ", "
                      << " /* lockID */ " << lockID << ", " << relEnable << ", "
                      << " /* release */ " << relValue << ", " << acqEnable
@@ -395,7 +395,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u16 AddrHigh, u32 AddrLow, u32 Length);
               int address = BaseAddr + offset;
-              output << "XAieDma_ShimBdSetAddr(" << dmaName << ", "
+              output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", "
                      << " /* bd */ " << bdNum << ", "
                      << "HIGH_ADDR((u64)" << llvm::utohexstr(address) << "), "
                      << "LOW_ADDR((u64)" << llvm::utohexstr(address) << "), " <<
@@ -405,7 +405,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
 
               // void XAieDma_ShimBdSetAxi(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u8 Smid, u8 BurstLen, u8 Qos, u8 Cache, u8 Secure);
-              output << "XAieDma_ShimBdSetAxi(" << dmaName << ", "
+              output << "XAieDma_ShimBdSetAxi(&" << dmaName << ", "
                      << "/* bd */ " << bdNum << ", "
                      << "/* smid */ 0, "
                      << "/* burstlen */ 4, "
@@ -420,11 +420,11 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                 int nextBdNum = blockMap[nextBlock];
                 // void XAieDma_ShimBdSetNext(XAieDma_Shim *DmaInstPtr, u8
                 // BdNum, u8 NextBd);
-                output << "XAieDma_ShimBdSetNext(" << dmaName << ", "
+                output << "XAieDma_ShimBdSetNext(&" << dmaName << ", "
                        << " /* bd */ " << bdNum << ", "
                        << " /* nextbd */ " << nextBdNum << ");\n";
               }
-              output << "XAieDma_ShimBdWrite(" << dmaName << ", "
+              output << "XAieDma_ShimBdWrite(&" << dmaName << ", "
                      << " /* bd */ " << bdNum << ");\n";
             }
           }
@@ -433,13 +433,13 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
             for (auto op : block.getOps<DMAStartOp>()) {
               int bdNum = blockMap[op.dest()];
 
-              output << "XAieDma_ShimSetStartBd(" << dmaName << ", "
+              output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
                      << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", "
                      << " /* bd */ " << bdNum << ");\n";
               // #define XAieDma_ShimChControl(DmaInstPtr, ChNum, PauseStrm,
               // PauseMm, Enable)
-              output << "XAieDma_ShimChControl(" << dmaName << ", "
+              output << "XAieDma_ShimChControl(&" << dmaName << ", "
                      << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", /* PauseStream */ " << disable << ", /* PauseMM */ "
                      << disable << ", /* Enable */ " << enable << ");\n";

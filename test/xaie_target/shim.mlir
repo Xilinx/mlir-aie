@@ -15,20 +15,20 @@
 // CHECK: mlir_configure_dmas
 // CHECK: XAieDma_Shim ShimDMAInst_2_0;
 // CHECK: XAieDma_ShimInitialize(&(TileInst[2][0]), &ShimDMAInst_2_0);
-// CHECK: XAieDma_ShimBdSetLock(ShimDMAInst_2_0,  /* bd */ 0,  /* lockID */ 0, XAIE_ENABLE,  /* release */ 1, XAIE_ENABLE,  /* acquire */ 0);
-// CHECK: XAieDma_ShimBdSetAddr(ShimDMAInst_2_0,  /* bd */ 0, HIGH_ADDR((u64)20000), LOW_ADDR((u64)20000),  /* len */ 16 * 4);
-// CHECK: XAieDma_ShimBdSetAxi(ShimDMAInst_2_0, /* bd */ 0, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
-// CHECK: XAieDma_ShimBdSetNext(ShimDMAInst_2_0,  /* bd */ 0,  /* nextbd */ 0);
-// CHECK: XAieDma_ShimBdWrite(ShimDMAInst_2_0,  /* bd */ 0);
-// CHECK: XAieDma_ShimBdSetLock(ShimDMAInst_2_0,  /* bd */ 1,  /* lockID */ 1, XAIE_ENABLE,  /* release */ 0, XAIE_ENABLE,  /* acquire */ 1);
-// CHECK: XAieDma_ShimBdSetAddr(ShimDMAInst_2_0,  /* bd */ 1, HIGH_ADDR((u64)20000), LOW_ADDR((u64)20000),  /* len */ 4 * 4);
-// CHECK: XAieDma_ShimBdSetAxi(ShimDMAInst_2_0, /* bd */ 1, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
-// CHECK: XAieDma_ShimBdSetNext(ShimDMAInst_2_0,  /* bd */ 1,  /* nextbd */ 1);
-// CHECK: XAieDma_ShimBdWrite(ShimDMAInst_2_0,  /* bd */ 1);
-// CHECK: XAieDma_ShimSetStartBd(ShimDMAInst_2_0, XAIEDMA_SHIM_CHNUM_S2MM0,  /* bd */ 0);
-// CHECK: XAieDma_ShimChControl(ShimDMAInst_2_0, XAIEDMA_TILE_CHNUM_S2MM0, /* PauseStream */ XAIE_DISABLE, /* PauseMM */ XAIE_DISABLE, /* Enable */ XAIE_ENABLE);
-// CHECK: XAieDma_ShimSetStartBd(ShimDMAInst_2_0, XAIEDMA_SHIM_CHNUM_MM2S0,  /* bd */ 1);
-// CHECK: XAieDma_ShimChControl(ShimDMAInst_2_0, XAIEDMA_TILE_CHNUM_MM2S0, /* PauseStream */ XAIE_DISABLE, /* PauseMM */ XAIE_DISABLE, /* Enable */ XAIE_ENABLE);
+// CHECK: XAieDma_ShimBdSetLock(&ShimDMAInst_2_0,  /* bd */ 0,  /* lockID */ 0, XAIE_ENABLE,  /* release */ 1, XAIE_ENABLE,  /* acquire */ 0);
+// CHECK: XAieDma_ShimBdSetAddr(&ShimDMAInst_2_0,  /* bd */ 0, HIGH_ADDR((u64)20000), LOW_ADDR((u64)20000),  /* len */ 16 * 4);
+// CHECK: XAieDma_ShimBdSetAxi(&ShimDMAInst_2_0, /* bd */ 0, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
+// CHECK: XAieDma_ShimBdSetNext(&ShimDMAInst_2_0,  /* bd */ 0,  /* nextbd */ 0);
+// CHECK: XAieDma_ShimBdWrite(&ShimDMAInst_2_0,  /* bd */ 0);
+// CHECK: XAieDma_ShimBdSetLock(&ShimDMAInst_2_0,  /* bd */ 1,  /* lockID */ 1, XAIE_ENABLE,  /* release */ 0, XAIE_ENABLE,  /* acquire */ 1);
+// CHECK: XAieDma_ShimBdSetAddr(&ShimDMAInst_2_0,  /* bd */ 1, HIGH_ADDR((u64)20000), LOW_ADDR((u64)20000),  /* len */ 4 * 4);
+// CHECK: XAieDma_ShimBdSetAxi(&ShimDMAInst_2_0, /* bd */ 1, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
+// CHECK: XAieDma_ShimBdSetNext(&ShimDMAInst_2_0,  /* bd */ 1,  /* nextbd */ 1);
+// CHECK: XAieDma_ShimBdWrite(&ShimDMAInst_2_0,  /* bd */ 1);
+// CHECK: XAieDma_ShimSetStartBd(&ShimDMAInst_2_0, XAIEDMA_SHIM_CHNUM_S2MM0,  /* bd */ 0);
+// CHECK: XAieDma_ShimChControl(&ShimDMAInst_2_0, XAIEDMA_TILE_CHNUM_S2MM0, /* PauseStream */ XAIE_DISABLE, /* PauseMM */ XAIE_DISABLE, /* Enable */ XAIE_ENABLE);
+// CHECK: XAieDma_ShimSetStartBd(&ShimDMAInst_2_0, XAIEDMA_SHIM_CHNUM_MM2S0,  /* bd */ 1);
+// CHECK: XAieDma_ShimChControl(&ShimDMAInst_2_0, XAIEDMA_TILE_CHNUM_MM2S0, /* PauseStream */ XAIE_DISABLE, /* PauseMM */ XAIE_DISABLE, /* Enable */ XAIE_ENABLE);
 
 // CHECK: mlir_configure_switchboxes
 // CHECK: x = 2;
