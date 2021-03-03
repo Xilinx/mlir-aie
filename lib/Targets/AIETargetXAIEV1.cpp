@@ -366,12 +366,14 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
             }
 
             int acqValue = 0, relValue = 0;
+            bool hasLock = false;
             StringRef acqEnable = disable;
             StringRef relEnable = disable;
-            int lockID;
+            int lockID = 0;
             for (auto op : block.getOps<UseLockOp>()) {
               LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
               lockID = lock.getLockID();
+              hasLock = true;
               if (op.acquire()) {
                 acqEnable = enable;
                 acqValue = op.getLockValue();
@@ -386,12 +388,13 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               // void XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8
               // LockAcqVal);
-              output << "XAieDma_ShimBdSetLock(&" << dmaName << ", "
-                     << " /* bd */ " << bdNum << ", "
-                     << " /* lockID */ " << lockID << ", " << relEnable << ", "
-                     << " /* release */ " << relValue << ", " << acqEnable
-                     << ", "
-                     << " /* acquire */ " << acqValue << ");\n";
+              if(hasLock)
+                output << "XAieDma_ShimBdSetLock(&" << dmaName << ", "
+                      << " /* bd */ " << bdNum << ", "
+                      << " /* lockID */ " << lockID << ", " << relEnable << ", "
+                      << " /* release */ " << relValue << ", " << acqEnable
+                      << ", "
+                      << " /* acquire */ " << acqValue << ");\n";
               // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
               // u16 AddrHigh, u32 AddrLow, u32 Length);
               uint64_t address = BaseAddr + offset;

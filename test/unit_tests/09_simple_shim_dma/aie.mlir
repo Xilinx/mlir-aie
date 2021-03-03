@@ -21,9 +21,9 @@ module {
       AIE.dmaStart(MM2S0, ^bd0, ^end)
 
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1, 0)
+//      AIE.useLock(%lock1, Acquire, 1, 0)
       AIE.dmaBd(<%buffer : memref<512 x i32>, 0, 512>, 0)
-      AIE.useLock(%lock1, Release, 0, 0)
+  //    AIE.useLock(%lock1, Release, 0, 0)
       br ^bd0
     ^end:
       AIE.end
