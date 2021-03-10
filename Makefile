@@ -24,7 +24,7 @@ doc: ${BUILD_DIR}/.dir
 install: ${BUILD_DIR}/.dir
 	echo `pwd`; ./config.sh ${BUILD_DIR} . ${INSTALL_DIR}; cd ${BUILD_DIR}; ninja install
 
-install-cross: ${BUILD_DIR}/.dir
+install-cross: ${BUILD_CROSS_DIR}/.dir
 	echo `pwd`; ./config-cross.sh ${BUILD_CROSS_DIR} . ${INSTALL_DIR}-cross; cd ${BUILD_CROSS_DIR}; ninja install
 
 test:
