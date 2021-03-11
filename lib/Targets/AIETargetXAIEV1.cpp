@@ -160,7 +160,6 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                     tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
 
           DenseMap<Block *, int> blockMap;
-          Block *endBlock = &memOp.body().back();
 
           {
             // Assign each block a BD number
@@ -266,10 +265,10 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                         " /* ABMode */ "  << AbMode << ", " <<
                         " /* FIFOMode */ "  << FifoMode << ");\n";
 
-              Block *nextBlock =
-                  block.getSuccessors()[0]; // should have only one successor
+              if(block.getNumSuccessors() > 0) {
+                Block *nextBlock =
+                    block.getSuccessors()[0]; // should have only one successor
                                             // block
-              if (nextBlock != endBlock) {
                 int nextBdNum = blockMap[nextBlock];
                 output << "XAieDma_TileBdSetNext("
                        << tileDMAInstStr(std::to_string(col),
@@ -337,7 +336,6 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                  << ", &" << dmaName << ");\n";
 
           DenseMap<Block *, int> blockMap;
-          Block *endBlock = &op.body().back();
 
           {
             // Assign each block a BD number
@@ -416,10 +414,10 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                      << "/* Cache */ 0, "
                      << "/* secure */ " << enable << ");\n";
 
-              Block *nextBlock =
-                  block.getSuccessors()[0]; // should have only one successor
-                                            // block
-              if (nextBlock != endBlock) {
+              if(block.getNumSuccessors() > 0) {
+                Block *nextBlock =
+                    block.getSuccessors()[0]; // should have only one successor
+                                              // block
                 int nextBdNum = blockMap[nextBlock];
                 // void XAieDma_ShimBdSetNext(XAieDma_Shim *DmaInstPtr, u8
                 // BdNum, u8 NextBd);
