@@ -1,0 +1,9 @@
+<project name="Project" processor="me">
+    <file type="c" name="kernel.cc" path="."/>
+    <option id="backend.mist2.xargs" value="-ggraph +A" inherit="1"/>
+    <option id="cpp.define" value="__AIENGINE__" inherit="1"/>
+    <option id="bridge.cfg" value="kernel.bcf"/>
+    <option id="cpp.include" value="&lt;CARDANO_ROOT&gt;/include ." inherit="1"/>
+    <option id="project.name" value="kernel"/>
+    <option id="project.type" value="exe"/>
+</project>

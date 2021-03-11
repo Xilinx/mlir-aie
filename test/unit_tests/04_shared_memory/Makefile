@@ -3,7 +3,7 @@
 
 CC := gcc
 #CFLAGS := -Wall -std=c++11 -I/opt/xaiengine/include
-CFLAGS := -std=c++11 -I/opt/xaiengine/include
+CFLAGS := -std=c++11 -I/opt/xaiengine/include -I../../../runtime_lib
 #CFLAGS := -I/opt/xaienginev2/include
 
 AIE_SRC_DIR  = .
@@ -23,11 +23,18 @@ acdc_project/aie_inc.cpp: aie.mlir
 #	$(AIECC) --no-xbridge aie.mlir
 
 # compile sources
-%.o: %.cpp acdc_project/aie_inc.cpp
+%.o: %.cpp 
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+test.o: test.cpp acdc_project/aie_inc.cpp 
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+test_library.o: ../../../runtime_lib/test_library.cpp
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # compile and link on board
-%.exe: %.o
+#%.exe: %.o
+test.exe: test.o test_library.o
 	$(CC) $^ \
 		-rdynamic \
 		-lxaiengine \

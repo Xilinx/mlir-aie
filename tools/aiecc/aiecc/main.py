@@ -29,7 +29,7 @@ def main(builtin_params={}):
         sys.stderr.write('\ncompiling %s\n' % opts.filename)
 
     thispath = os.path.dirname(os.path.realpath(__file__))
-    me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
+    me_basic_o = os.path.join(thispath, '..','..','..','runtime_lib', 'me_basic.o')
 
     # with tempfile.TemporaryDirectory() as tmpdirname:
     tmpdirname = "acdc_project"

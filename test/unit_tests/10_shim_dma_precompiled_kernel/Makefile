@@ -19,7 +19,9 @@ AIECC       = ../../../tools/aiecc/aiecc.py
 all: test.exe
 
 acdc_project/aie_inc.cpp: aie.mlir
-	$(AIECC) aie.mlir
+	aie-opt --aie-create-flows $< -o acdc_project/input_physical.mlir
+	aie-translate --aie-generate-xaie acdc_project/input_physical.mlir -o $@
+#	$(AIECC) aie.mlir
 #	$(AIECC) --no-xbridge aie.mlir
 
 # compile sources
