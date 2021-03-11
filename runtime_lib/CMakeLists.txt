@@ -6,4 +6,5 @@ add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/runtime_lib/me_basic.o
                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
 
 # Install too
-install(FILES me_basic.o DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
+set(INSTALLS me_basic.o test_library.cpp test_library.h)
+install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
