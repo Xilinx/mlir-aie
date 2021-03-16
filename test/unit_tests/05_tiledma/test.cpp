@@ -29,7 +29,7 @@ XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuratio
 XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
 XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
-#include "aie_inc.cpp"
+#include "acdc_project/aie_inc.cpp"
 
 }
 
@@ -44,9 +44,6 @@ main(int argc, char *argv[])
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    ACDC_clear_tile_memory(TileInst[3][3]);
-    
     mlir_configure_cores();
     mlir_configure_switchboxes();
     mlir_configure_dmas();
@@ -57,37 +54,26 @@ main(int argc, char *argv[])
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
 
-    mlir_write_buffer_a13(3, 7);
+    ACDC_clear_tile_memory(TileInst[1][3]);
+    ACDC_clear_tile_memory(TileInst[3][3]);
+    mlir_write_buffer_a13(3, 7); // set input value
 
-    ACDC_check("Before", mlir_read_buffer_a13(3), 7);
-    ACDC_check("Before", mlir_read_buffer_b13(5), 0);
-    ACDC_check("Before", mlir_read_buffer_a33(5), 0);
-    ACDC_check("Before", mlir_read_buffer_b33(5), 0);
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    // ACDC_print_tile_status(TileInst[1][3]);
-    // ACDC_print_dma_status(TileInst[1][3]);
-    // ACDC_print_tile_status(TileInst[3][3]);
-    // ACDC_print_dma_status(TileInst[3][3]);
+    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7);
+    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0);
 
-    printf("Starting cores\n");
+    printf("Start cores\n");
     mlir_start_cores();
 
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    
-    // ACDC_print_tile_status(TileInst[1][3]);
-    // ACDC_print_dma_status(TileInst[1][3]);
-    // ACDC_print_tile_status(TileInst[3][3]);
-    // ACDC_print_dma_status(TileInst[3][3]);
+    ACDC_check("Before release lock:", mlir_read_buffer_a13(3), 7);
+    ACDC_check("Before release lock:", mlir_read_buffer_b13(5), 0);
+    ACDC_check("Before release lock:", mlir_read_buffer_a33(5), 0);
+    ACDC_check("Before release lock:", mlir_read_buffer_b33(5), 0);
 
-    ACDC_check("Before and started", mlir_read_buffer_a13(3), 7);
-    ACDC_check("Before and started", mlir_read_buffer_b13(5), 0);
-    ACDC_check("Before and started", mlir_read_buffer_a33(5), 0);
-    ACDC_check("Before and started", mlir_read_buffer_b33(5), 0);
-    
-    printf("Releasing input buffer lock.\n");
+    printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
+
     int tries = 1;
     printf("Waiting to acquire output lock for read ...\n");
     while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][3]), 7, 1, 0)) {
@@ -95,18 +81,10 @@ main(int argc, char *argv[])
     }
     printf("It took %d tries.\n", tries);
 
-    // ACDC_print_tile_status(TileInst[1][3]);
-    // ACDC_print_dma_status(TileInst[1][3]);
-    // ACDC_print_tile_status(TileInst[3][3]);
-    // ACDC_print_dma_status(TileInst[3][3]);
-
-    ACDC_check("After", mlir_read_buffer_a13(3), 7);
-    ACDC_check("After", mlir_read_buffer_b13(5), 35);
-    ACDC_check("After", mlir_read_buffer_a33(5), 35);
-    ACDC_check("After", mlir_read_buffer_b33(5), 175);
-    
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a13(3), 7);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 175);
 
     if (!errors) {
         printf("PASS!\n");

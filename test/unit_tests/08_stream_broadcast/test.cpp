@@ -29,9 +29,10 @@ XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuratio
 XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
 XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
-#include "aie_inc.cpp"
+#include "acdc_project/aie_inc.cpp"
 
 }
+
 
 int
 main(int argc, char *argv[])
@@ -44,163 +45,72 @@ main(int argc, char *argv[])
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    ACDC_clear_tile_memory(TileInst[3][2]);
-    ACDC_clear_tile_memory(TileInst[3][3]);
-    ACDC_clear_tile_memory(TileInst[3][4]);
-
     mlir_configure_cores();
     mlir_configure_switchboxes();
     mlir_configure_dmas();
     mlir_initialize_locks();
 
+    int errors = 0;
+
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4), 0); // reset output to 0
 
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7); // set input value
+    ACDC_clear_tile_memory(TileInst[1][3]);
+    ACDC_clear_tile_memory(TileInst[3][2]);
+    ACDC_clear_tile_memory(TileInst[3][3]);
+    ACDC_clear_tile_memory(TileInst[3][4]);
+    mlir_write_buffer_a13(3,7);
 
-    uint32_t tmp;
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][2]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    ACDC_dump_tile_memory(TileInst[3][4]);
-
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
-    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][2]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][3]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][4]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][2]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][4]: b[%d] = %d\n",5,tmp);
-
-    XAieLib_usleep(1000);
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_dma_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[3][2]);
-    ACDC_print_dma_status(TileInst[3][2]);
-    ACDC_print_tile_status(TileInst[3][3]);
-    ACDC_print_dma_status(TileInst[3][3]);
-    ACDC_print_tile_status(TileInst[3][4]);
-    ACDC_print_dma_status(TileInst[3][4]);
+    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7);
+    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_a32(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_b32(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_a34(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_b34(5), 0);
 
     printf("Start cores\n");
     mlir_start_cores();
 
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][2]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    ACDC_dump_tile_memory(TileInst[3][4]);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
-    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][2]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][3]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][4]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][2]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][4]: b[%d] = %d\n",5,tmp);
-
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_dma_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[3][2]);
-    ACDC_print_dma_status(TileInst[3][2]);
-    ACDC_print_tile_status(TileInst[3][3]);
-    ACDC_print_dma_status(TileInst[3][3]);
-    ACDC_print_tile_status(TileInst[3][4]);
-    ACDC_print_dma_status(TileInst[3][4]);
-
-    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[1][3]);
-
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][2]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    ACDC_dump_tile_memory(TileInst[3][4]);
-    
-    uint32_t d1_32 = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][2]: b[%d] = %d\n",5,d1_32);
-    uint32_t d1_33 = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][3]: b[%d] = %d\n",5,d1_33);
-    uint32_t d1_34 = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][4]: b[%d] = %d\n",5,d1_34);
+    ACDC_check("After start cores:", mlir_read_buffer_b13(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_a32(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_b32(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_a33(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_b33(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_a34(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_b34(5), 0);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
 
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][2]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    ACDC_dump_tile_memory(TileInst[3][4]);
+    int tries = 1;
+    printf("Waiting to acquire output lock for read tile[3][2]...\n");
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][2]), 7, 1, 0)) {
+        tries++;
+    }
+    printf("It took %d tries.\n", tries);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a32(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b32(5), 105);
 
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4));
-    printf("Tile[1][3]: a[%d] = %d\n",3,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][2]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][3]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[3][4]: a[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][2]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][3]: b[%d] = %d\n",5,tmp);
-    tmp = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][4]: b[%d] = %d\n",5,tmp);
+    tries = 1;
+    printf("Waiting to acquire output lock for read tile[3][3]...\n");
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][3]), 7, 1, 0)) {
+        tries++;
+    }
+    printf("It took %d tries.\n", tries);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 140);
 
-    XAieLib_usleep(1000);
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_dma_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[3][2]);
-    ACDC_print_dma_status(TileInst[3][2]);
-    ACDC_print_tile_status(TileInst[3][3]);
-    ACDC_print_dma_status(TileInst[3][3]);
-    ACDC_print_tile_status(TileInst[3][4]);
-    ACDC_print_dma_status(TileInst[3][4]);
-
-    XAieTile_LockAcquire(&(TileInst[3][3]), 7, 0, 0); // Should this part of setup???
-
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[3][2]);
-    ACDC_dump_tile_memory(TileInst[3][3]);
-    ACDC_dump_tile_memory(TileInst[3][4]);
-    
-    uint32_t d2_32 = XAieTile_DmReadWord(&(TileInst[3][2]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][2]: b[%d] = %d\n",5,d2_32);
-    uint32_t d2_33 = XAieTile_DmReadWord(&(TileInst[3][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][3]: b[%d] = %d\n",5,d2_33);
-    uint32_t d2_34 = XAieTile_DmReadWord(&(TileInst[3][4]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[3][4]: b[%d] = %d\n",5,d2_34);
-
-    // 7+7+21 = 35
-    int errors = 0;
-    //if(d1 == 35 || d2 != 35) errors++;
-    if(d1_32 != 0 || d1_33 != 0 || d1_34 != 0 || d2_32 != 105 || d2_33 != 140 || d2_34 != 175) errors++;
+    tries = 1;
+    printf("Waiting to acquire output lock for read tile[3][4]...\n");
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][4]), 7, 1, 0)) {
+        tries++;
+    }
+    printf("It took %d tries.\n", tries);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a34(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b34(5), 175);
 
     if (!errors) {
         printf("PASS!\n");

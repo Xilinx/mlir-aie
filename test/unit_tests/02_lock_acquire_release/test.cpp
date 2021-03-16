@@ -29,7 +29,7 @@ XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuratio
 XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
 XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
-#include "aie_inc.cpp"
+#include "acdc_project/aie_inc.cpp"
 
 }
 
@@ -44,8 +44,6 @@ main(int argc, char *argv[])
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    
     mlir_configure_cores();
     mlir_configure_switchboxes();
     mlir_initialize_locks();

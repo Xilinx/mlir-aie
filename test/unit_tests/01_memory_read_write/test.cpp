@@ -29,7 +29,7 @@ XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuratio
 XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
 XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
-#include "aie_inc.cpp"
+#include "acdc_project/aie_inc.cpp"
 
 }
 
@@ -52,17 +52,11 @@ main(int argc, char *argv[])
     mlir_configure_dmas();
     mlir_start_cores();
 
-    XAieLib_usleep(1000);
-
     int errors = 0;
 
-    for (int i=0; i<256; i++) {
-        uint32_t d = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET + (i*4));
-        if(d != 0)
-          printf("Tile[1][3]: a[%d] = %d\n",i,d);
-        if(((i==3) && (d!=14)) || ((i==5) && (d!=8)) || ((i==9) && (d!=14)))
-            errors++;
-    }
+    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(3),14);
+    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(5),8);
+    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(9),14);
 
     if (!errors) {
         printf("PASS!\n");

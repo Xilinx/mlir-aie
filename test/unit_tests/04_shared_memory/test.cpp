@@ -62,20 +62,9 @@ main(int argc, char *argv[])
     ACDC_check("Before", mlir_read_buffer_a(3), 7);
     ACDC_check("Before", mlir_read_buffer_b(5), 0);
     ACDC_check("Before", mlir_read_buffer_c(5), 0);
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[1][4]);
-
-    // ACDC_print_tile_status(TileInst[1][3]);
-    // ACDC_print_tile_status(TileInst[1][4]);
 
     printf("Starting cores\n");
     mlir_start_cores();
-
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[1][4]);
-
-    // ACDC_print_tile_status(TileInst[1][3]);
-    // ACDC_print_tile_status(TileInst[1][4]);
 
     ACDC_check("Before and started", mlir_read_buffer_a(3), 7);
     ACDC_check("Before and started", mlir_read_buffer_b(5), 0);
@@ -90,15 +79,9 @@ main(int argc, char *argv[])
     }
     printf("It took %d tries.\n", tries);
 
-    // ACDC_print_tile_status(TileInst[1][3]);
-    // ACDC_print_tile_status(TileInst[1][4]);
-
     ACDC_check("After", mlir_read_buffer_a(3), 7);
     ACDC_check("After", mlir_read_buffer_b(5), 35);
     ACDC_check("After", mlir_read_buffer_c(5), 175);
-
-    ACDC_dump_tile_memory(TileInst[1][3]);
-    ACDC_dump_tile_memory(TileInst[1][4]);
 
     if (!errors) {
         printf("PASS!\n");

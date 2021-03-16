@@ -51,35 +51,27 @@ main(int argc, char *argv[])
     mlir_configure_dmas();
     mlir_initialize_locks();
 
+    int errors = 0;
+
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4), 0);
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7);
-
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[1][3]);
+    mlir_write_buffer_a(3, 7);
 
     printf("Start cores\n");
     mlir_start_cores();
 
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[1][3]);
-
-    uint32_t d1 = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: data[%d] = %d\n",5,d1);
+    ACDC_check("Before release lock:", mlir_read_buffer_b(5), 0);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
 
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[1][3]);
-    XAieTile_LockAcquire(&(TileInst[1][3]), 5, 0, 0); // Should this part of setup???
-    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+1024+(5*4));
-    printf("Tile[1][3]: data[%d] = %d\n",5,d2);
-
-    // 7+7+21 = 35
-    int errors = 0;
-    if(d1 == 35 || d2 != 35) errors++;
+    int tries = 1;
+    printf("Waiting to acquire output lock for read ...\n");
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[1][3]), 5, 1, 0)) {
+        tries++;
+    }
+    printf("It took %d tries.\n", tries);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b(5), 35);
 
     if (!errors) {
         printf("PASS!\n");

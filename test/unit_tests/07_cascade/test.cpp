@@ -29,9 +29,10 @@ XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuratio
 XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
 XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
-#include "aie_inc.cpp"
+#include "acdc_project/aie_inc.cpp"
 
 }
+
 
 int
 main(int argc, char *argv[])
@@ -44,46 +45,33 @@ main(int argc, char *argv[])
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    ACDC_clear_tile_memory(TileInst[2][3]);
-
     mlir_configure_cores();
     mlir_configure_switchboxes();
     mlir_configure_dmas();
     mlir_initialize_locks();
 
+    int errors = 0;
+
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    XAieTile_DmWriteWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+(5*4), 0); // reset output to 0
-    XAieTile_DmWriteWord(&(TileInst[1][3]), MLIR_STACK_OFFSET+(3*4), 7); // set input value
-
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[2][3]);
+    mlir_write_buffer_a(3,7);
 
     printf("Start cores\n");
     mlir_start_cores();
 
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[2][3]);
-
-    uint32_t d1 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[2][3]: data[%d] = %d\n",7,d1);
+    ACDC_check("Before release lock:", mlir_read_buffer_c(5), 0);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
 
-//    XAieLib_usleep(1000);
-//    ACDC_print_tile_status(TileInst[2][3]);
-
+    int tries = 1;
     printf("Waiting to acquire output lock for read ...\n");
-    while(!XAieTile_LockAcquire(&(TileInst[2][3]), 7, 1, 0)) {} // Should this part of setup???
-    uint32_t d2 = XAieTile_DmReadWord(&(TileInst[2][3]), MLIR_STACK_OFFSET+(5*4));
-    printf("Tile[2][3]: data[%d] = %d\n",7,d2);
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[2][3]), 7, 1, 0)) {
+        tries++;
+    }
+    printf("It took %d tries.\n", tries);
 
-    // 7*5 = 35, 35*5 = 175
-    int errors = 0;
-    //if(d1 == 35 || d2 != 35) errors++;
-    if(d1 != 0 || d2 != 175) errors++;
+    ACDC_check("After acquire lock:", mlir_read_buffer_c(5), 175);
 
     if (!errors) {
         printf("PASS!\n");
