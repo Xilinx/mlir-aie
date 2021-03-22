@@ -12,10 +12,10 @@ module @test6b_core_llvm1 {
 
   func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
 
-  func @func_wrap(%A: memref<256xi32>, %B: memref<256xi32>) -> () {
-    call @func(%A, %B) : (memref<256xi32>, memref<256xi32>) -> ()
-    return
-  }
+//  func @func_wrap(%A: memref<256xi32>, %B: memref<256xi32>) -> () {
+//    call @func(%A, %B) : (memref<256xi32>, memref<256xi32>) -> ()
+//    return
+//  }
 
   %core13 = AIE.core(%tile13) { 
     AIE.useLock(%lock13_3, "Acquire", 1, 0) // acquire for read(e.g. input ping)
@@ -28,9 +28,10 @@ module @test6b_core_llvm1 {
 //    %5 = addi %4, %val1 : i32
 //    %idx2 = constant 5 : index
 //    store %5, %buf13_1[%idx2] : memref<256xi32>
-    %A = alloc() : memref<256xi32>
-    %B = alloc() : memref<256xi32>
-    call @func_wrap(%A, %B) : (memref<256xi32>, memref<256xi32>) -> ()
+//    %A = alloc() : memref<256xi32>
+//    %B = alloc() : memref<256xi32>
+//    call @func_wrap(%A, %B) : (memref<256xi32>, memref<256xi32>) -> ()
+    call @func(%buf13_0, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
