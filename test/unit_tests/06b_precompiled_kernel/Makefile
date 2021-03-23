@@ -5,8 +5,9 @@ all: core_1_3.elf
 
 core_1_3.elf:
 	aie-opt --aie-assign-buffer-addresses --convert-scf-to-std aie.mlir -o input_with_addresses.mlir
-	aie-opt input_with_addresses.mlir --canonicalize --convert-std-to-llvm=use-bare-ptr-memref-call-conv -canonicalize -o aie_out.mlir
-	aie-opt aie_out.mlir --aie-llvm-lowering="tilecol=1 tilerow=3" -o core_1_3.mlir
+	aie-opt --aie-standard-lowering="tilecol=1 tilerow=3" --convert-std-to-llvm=use-bare-ptr-memref-call-conv input_with_addresses.mlir -o core_1_3.mlir
+	# aie-opt input_with_addresses.mlir --canonicalize --convert-std-to-llvm=use-bare-ptr-memref-call-conv -canonicalize -o aie_out.mlir
+	# aie-opt aie_out.mlir --aie-llvm-lowering="tilecol=1 tilerow=3" -o core_1_3.mlir
 	aie-translate --aie-generate-llvmir core_1_3.mlir -o core_1_3.ll
 	aie-translate aie_out.mlir --aie-generate-bcf --tilecol=1 --tilerow=3 -o core_1_3.bcf
 	opt --strip-debug core_1_3.ll -o core_1_3.stripped_debug.ll
