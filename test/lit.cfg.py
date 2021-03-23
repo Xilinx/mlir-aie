@@ -58,6 +58,7 @@ tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir, config.cardano_root + 
 tools = [
     'aie-opt',
     'aie-translate',
+    'aiecc.py',
     'ld.lld',
     'llc',
     'llvm-objdump',

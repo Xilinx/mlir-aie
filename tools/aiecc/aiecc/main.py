@@ -21,15 +21,19 @@ def do_call(command):
         sys.exit(1)
 
 def main(builtin_params={}):
+    thispath = os.path.dirname(os.path.realpath(__file__))
+    me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
+    # Assume that aie-opt, etc. binaries are relative to this script.
+    aie_path = os.path.join(thispath, '..')
+
+    os.environ['PATH'] = aie_path + os.pathsep + os.environ['PATH']
+
     global opts
     opts = aiecc.cl_arguments.parse_args()
     is_windows = platform.system() == 'Windows'
 
     if(opts.verbose):
         sys.stderr.write('\ncompiling %s\n' % opts.filename)
-
-    thispath = os.path.dirname(os.path.realpath(__file__))
-    me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
 
     # with tempfile.TemporaryDirectory() as tmpdirname:
     tmpdirname = "acdc_project"
@@ -88,6 +92,7 @@ def main(builtin_params={}):
     cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
     cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
     cmd += ['-Iacdc_project']
+    cmd += ['-I.'] # We need this to pick up acdc_project/aie_inc.cpp properly because acdc_project is generated in the CWD
     cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
 
     if(len(opts.arm_args) > 0):
