@@ -51,15 +51,18 @@ config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
+llvm_config.with_environment('XILINXD_LICENSE_FILE', config.cardano_license)
+llvm_config.with_environment('CARDANO', config.cardano_root)
 
-tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir, config.cardano_root + "/bin"]
 tools = [
     'aie-opt',
     'aie-translate',
     'ld.lld',
     'llc',
     'llvm-objdump',
-    'opt'
+    'opt',
+    'xchesscc'
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

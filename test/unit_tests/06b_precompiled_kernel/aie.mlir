@@ -1,3 +1,4 @@
+// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/chess_example/kernel.cc
 // RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
 
@@ -35,7 +36,7 @@ module @test6b_core_llvm1 {
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
-  } { elf_file = "core_1_3.elf" }
+  } { link_with="kernel.o" }
 
 }
 

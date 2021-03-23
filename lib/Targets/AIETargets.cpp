@@ -136,6 +136,7 @@ void registerAIETranslations() {
 //    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
 // }
 // ENTRY(_main_init)
+// INPUT(something.o)
 // SECTIONS
 // {
 //   . = 0x0;
@@ -204,6 +205,12 @@ SECTIONS
         if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
         output << "  .bss : { *(.bss) } > data\n";
         output << "}\n";
+        if (auto coreOp = tile.getCoreOp()) {
+          if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("link_with")) {
+            auto fileName = std::string(fileAttr.getValue());
+            output << "INPUT(" << fileName << ")\n";
+          }
+        }
       }
       return success();
     },
