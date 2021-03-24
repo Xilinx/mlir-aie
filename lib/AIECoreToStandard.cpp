@@ -400,10 +400,12 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
     patterns.insert<AIEOpRemoval<AIE::TileOp>,
                     AIEOpRemoval<AIE::FlowOp>,
                     AIEOpRemoval<AIE::MemOp>,
+                    AIEOpRemoval<AIE::ShimDMAOp>,
                     AIEOpRemoval<AIE::ShimMuxOp>,
                     AIEOpRemoval<AIE::SwitchboxOp>,
                     AIEOpRemoval<AIE::LockOp>,
-                    AIEOpRemoval<AIE::BufferOp>
+                    AIEOpRemoval<AIE::BufferOp>,
+                    AIEOpRemoval<AIE::ExternalBufferOp>
                    >(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))

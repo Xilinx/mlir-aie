@@ -53,12 +53,15 @@ module {
 
   // Shim DMA connection to kernel
   AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-  %sw1  = AIE.switchbox(%t70) { AIE.connect<"South" : 3, "North" : 3> }
-  %mux1 = AIE.shimmux  (%t70) { AIE.connect<"DMA"   : 0, "South" : 3> }
-
   AIE.flow(%t73, "DMA" : 1, %t71, "South" : 2)
-  %sw2  = AIE.switchbox(%t70) { AIE.connect<"North" : 2, "South" : 2> }
-  %mux2 = AIE.shimmux  (%t70) { AIE.connect<"South" : 2, "DMA" : 0> }
+  %sw1  = AIE.switchbox(%t70) {
+    AIE.connect<"South" : 3, "North" : 3>
+    AIE.connect<"North" : 2, "South" : 2>
+  }
+  %mux1 = AIE.shimmux  (%t70) {
+    AIE.connect<"DMA"   : 0, "South" : 3> 
+    AIE.connect<"South" : 2, "DMA" : 0>
+  }
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
