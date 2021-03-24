@@ -153,12 +153,10 @@ static LogicalResult verify(xilinx::AIE::TileOp op) {
   bool found = false;
   for(auto user : users) {
     if(llvm::isa<xilinx::AIE::SwitchboxOp>(*user)) {
-      assert(!found && "Tile can only have one switchbox");
+      if(found) return op.emitError("Tile can only have one switchbox");
       found = true;
     }
   }
-  // assert((users.begin() == users.end() || users.begin().next() == users.end()) &&
-  //   "Tile can only have one switchbox");
 
   return success();
 }
