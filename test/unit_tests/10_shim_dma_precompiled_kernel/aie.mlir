@@ -1,6 +1,7 @@
+// RUN: xchessmk %S/chess_example/kernel.prx
 // RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module {
+module @test10_shim_dma_precompiled_kernel{
   %t73 = AIE.tile(7, 3)
   %t72 = AIE.tile(7, 2)
   %t71 = AIE.tile(7, 1)

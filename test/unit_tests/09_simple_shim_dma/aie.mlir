@@ -1,6 +1,6 @@
 // RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module {
+module @test09_simple_shim_dma {
   %t70 = AIE.tile(7, 0)
   %t71 = AIE.tile(7, 1)
   %t72 = AIE.tile(7, 2)
@@ -21,9 +21,9 @@ module {
       AIE.dmaStart(MM2S0, ^bd0, ^end)
 
     ^bd0:
-//      AIE.useLock(%lock1, Acquire, 1, 0)
+      AIE.useLock(%lock1, Acquire, 1, 0)
       AIE.dmaBd(<%buffer : memref<512 x i32>, 0, 512>, 0)
-  //    AIE.useLock(%lock1, Release, 0, 0)
+      AIE.useLock(%lock1, Release, 0, 0)
       br ^bd0
     ^end:
       AIE.end

@@ -1,6 +1,6 @@
 // RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module @test3_core_llvm1 {
+module @test08_stream_broadcast {
   %tile13 = AIE.tile(1, 3)
   %tile23 = AIE.tile(2, 3)
 
@@ -8,19 +8,19 @@ module @test3_core_llvm1 {
   %tile33 = AIE.tile(3, 3)
   %tile34 = AIE.tile(3, 4)
 
-  AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
-  AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 2> }
-  AIE.switchbox(%tile33) {
-    AIE.connect<"West": 2, "North": 3>
-    AIE.connect<"West": 2, "South": 3>
-    AIE.connect<"West": 2, "DMA": 1>
-  }
-  AIE.switchbox(%tile32) { AIE.connect<"North": 3, "DMA": 1> }
-  AIE.switchbox(%tile34) { AIE.connect<"South": 3, "DMA": 1> }
+//  AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
+//  AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 2> }
+//  AIE.switchbox(%tile33) {
+//    AIE.connect<"West": 2, "North": 3>
+//    AIE.connect<"West": 2, "South": 3>
+//    AIE.connect<"West": 2, "DMA": 1>
+//  }
+//  AIE.switchbox(%tile32) { AIE.connect<"North": 3, "DMA": 1> }
+//  AIE.switchbox(%tile34) { AIE.connect<"South": 3, "DMA": 1> }
 
-//  AIE.flow(%tile13, "DMA" : 0, %tile32, "DMA" : 1)
-//  AIE.flow(%tile13, "DMA" : 0, %tile33, "DMA" : 1)
-//  AIE.flow(%tile13, "DMA" : 0, %tile34, "DMA" : 1)
+  AIE.flow(%tile13, "DMA" : 0, %tile32, "DMA" : 1)
+  AIE.flow(%tile13, "DMA" : 0, %tile33, "DMA" : 1)
+  AIE.flow(%tile13, "DMA" : 0, %tile34, "DMA" : 1)
 
   // Broadcast source tile (tile13)
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a13" } : memref<256xi32>
@@ -46,12 +46,7 @@ module @test3_core_llvm1 {
   }
 
   %mem13 = AIE.mem(%tile13) {
-//    %dma0 = AIE.dmaStart("MM2S0")
-//    AIE.terminator(^dma0, ^end)
-//    %dma0 = AIE.dmaStart("MM2S0", ^dma0, ^end)
     %dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
-//    ^dma0:
-//      cond_br %dma0, ^bd0, ^end // point to the start BD
     ^bd0:
       AIE.useLock(%lock13_5, "Acquire", 1, 0)
       AIE.dmaBd(<%buf13_1 : memref<256xi32>, 0, 256>, 0)

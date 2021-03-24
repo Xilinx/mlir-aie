@@ -1,11 +1,12 @@
+// RUN: xchessmk %S/cascade_kernels/kernel13.prx
+// RUN: xchessmk %S/cascade_kernels/kernel23.prx
 // RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module @test3_core_llvm1 {
+module @test07_cascade {
   %tile13 = AIE.tile(1, 3)
   %tile23 = AIE.tile(2, 3)
 
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
-//  %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
   %buf23_0 = AIE.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
 
   %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock

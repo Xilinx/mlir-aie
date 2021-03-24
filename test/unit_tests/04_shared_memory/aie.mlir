@@ -1,6 +1,6 @@
 // RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module @test3_core_llvm1 {
+module @test04_shared_memory {
   %tile13 = AIE.tile(1, 3)
   %tile14 = AIE.tile(1, 4)
 
