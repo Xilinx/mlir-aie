@@ -31,8 +31,10 @@ config.host_arch = "@HOST_ARCH@"
 config.aie_src_root = "@CMAKE_SOURCE_DIR@"
 config.aie_obj_root = "@CMAKE_BINARY_DIR@"
 # FIXME: cmake needs to find this
-config.cardano_license = "2100@aiengine-eng"
-config.cardano_root = "/proj/xbuilds/2020.1_daily_latest/installs/lin64/Vitis/2020.1/cardano/"
+config.vitis_cardano_license = "2100@aiengine-eng"
+config.vitis_cardano_root = "@VITIS_ROOT@/cardano"
+config.vitis_aietools_root = "@VITIS_ROOT@/aietools"
+config.vitis_sysroot = "@VitisSysroot@"
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

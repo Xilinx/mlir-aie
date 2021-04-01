@@ -1,5 +1,6 @@
+// UNSUPPORTED: arm
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/chess_example/kernel.cc
-// RUN: aiecc.py --sysroot=/group/xrlabs/platforms/pynq_on_versal_vck190_hacked/vck190-sysroot %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
 
 module @test06b_precompiled_kernel {
