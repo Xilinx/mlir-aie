@@ -30,8 +30,7 @@ config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"
 config.aie_src_root = "@CMAKE_SOURCE_DIR@"
 config.aie_obj_root = "@CMAKE_BINARY_DIR@"
-# FIXME: cmake needs to find this
-config.vitis_cardano_license = "2100@aiengine-eng"
+# pass on vitis settings
 config.vitis_cardano_root = "@VITIS_ROOT@/cardano"
 config.vitis_aietools_root = "@VITIS_ROOT@/aietools"
 config.vitis_sysroot = "@VitisSysroot@"

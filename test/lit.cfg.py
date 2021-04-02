@@ -51,7 +51,7 @@ config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
-llvm_config.with_environment('XILINXD_LICENSE_FILE', config.vitis_cardano_license)
+llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
 llvm_config.with_environment('CARDANO', config.vitis_cardano_root)
 llvm_config.with_environment('VITIS_SYSROOT',config.vitis_sysroot)
 
