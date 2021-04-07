@@ -61,6 +61,7 @@ def main(builtin_params={}):
         (corecol, corerow) = core
         file_core = tmpcorefile(core, "mlir")
         do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core,
+                            '--convert-vector-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_with_addresses, '-o', file_core])
         #do_call(['aie-opt', '--aie-llvm-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
         file_core_bcf = tmpcorefile(core, "bcf")

@@ -12,8 +12,10 @@
 #include "mlir/Translation.h"
 #include "AIEDialect.h"
 #include "AIENetlistAnalysis.h"
+#include "mlir/Dialect/Vector/VectorOps.h"
 
 using namespace mlir;
+using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 //using namespace mlir::LLVM;
@@ -381,6 +383,7 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
     BlockAndValueMapping mapper;
     ConversionTarget target(getContext());
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<VectorDialect>();
     target.addLegalOp<FuncOp, ModuleOp, mlir::ModuleTerminatorOp>();
 
     OwningRewritePatternList patterns;

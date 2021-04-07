@@ -18,8 +18,10 @@
 
 #include "AIEDialect.h"
 #include "AIENetlistAnalysis.h"
+#include "mlir/Dialect/Vector/VectorOps.h"
 
 using namespace mlir;
+using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
@@ -85,6 +87,7 @@ void registerAIETranslations() {
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
 
@@ -125,6 +128,7 @@ void registerAIETranslations() {
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
 
@@ -217,6 +221,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
 
@@ -274,6 +279,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
 
@@ -294,6 +300,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
     TranslateFromMLIRRegistration
@@ -303,6 +310,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });                
   }
