@@ -1,6 +1,6 @@
-// aie-opt --aie-create-flows --aie-find-flows %s | aie-translate --aie-generate-xaie
+// RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module @test3_core_llvm1 {
+module @test4_row_shared_memory {
   %tile13 = AIE.tile(1, 3)
   %tile23 = AIE.tile(2, 3)
 

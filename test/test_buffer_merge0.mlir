@@ -1,4 +1,5 @@
-// UN: aie-opt --aie-merge-buffers %s | FileCheck %s
+// XFAIL: *
+// RUN: aie-opt --aie-merge-buffers %s | FileCheck %s
 // The idea of this pass is probably not a good one.
 
 //CHECK-LABEL: module @test_buffer_merge0 {
