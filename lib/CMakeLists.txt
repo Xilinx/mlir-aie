@@ -12,6 +12,7 @@ add_mlir_dialect_library(AIE
   AIEHerdRouting.cpp
   AIECreatePacketFlows.cpp
   AIELowerMemcpy.cpp
+  AIENormalizeAddressSpaces.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -20,6 +21,7 @@ add_mlir_dialect_library(AIE
   MLIRAIEEnumsIncGen
   MLIRAIEInterfacesIncGen
   MLIRAIEPassIncGen
+  MLIRAIENormalizeAddressSpacesIncGen
   )
 
 target_link_libraries(AIE

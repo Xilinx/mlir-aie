@@ -153,6 +153,7 @@ namespace AIE {
 
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToLLVMPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

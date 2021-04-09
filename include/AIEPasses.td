@@ -55,4 +55,21 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
     "xilinx::AIE::AIEDialect",
   ];
 }
+
+def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp"> {
+  let summary = "Remove non-default address spaces";
+  let description = [{
+    Early in the flow, it is convenient to represent multiple memories using different
+    address spaces.  However, after outlining code for AIE engines, the core itself only
+    has access to a single address space.  To avoid confusion, this pass normalizes
+    any address spaces remaining in the code, converting them to the default address
+    space.
+  }];
+
+  let constructor = "xilinx::AIE::createAIENormalizeAddressSpacesPass()";
+  let dependentDialects = [
+    "StandardOpsDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
 #endif

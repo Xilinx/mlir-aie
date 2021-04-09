@@ -33,6 +33,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIEHerdRoutingPass();
   xilinx::AIE::registerAIECreatePacketFlowsPass();
   xilinx::AIE::registerAIELowerMemcpyPass();
+  xilinx::AIE::registerAIENormalizeAddressSpacesPass();
 
   DialectRegistry registry;
   registerAllDialects(registry);

@@ -23,9 +23,9 @@ add_public_tablegen_target(MLIRAIEPassIncGen)
 
 add_mlir_doc(AIEPasses -gen-pass-doc AIEPasses ./)
 
-#set(LLVM_TARGET_DEFINITIONS AIEFindFlows.td)
-#mlir_tablegen(AIEFindFlows.inc -gen-rewriters)
-#add_public_tablegen_target(MLIRAIEFindFlowsIncGen)
+set(LLVM_TARGET_DEFINITIONS AIENormalizeAddressSpaces.td)
+mlir_tablegen(AIENormalizeAddressSpaces.inc -gen-rewriters)
+add_public_tablegen_target(MLIRAIENormalizeAddressSpacesIncGen)
 
 # set(LLVM_TARGET_DEFINITIONS AIE.td)
 # mlir_tablegen(LLVMConversions.inc -gen-llvmir-conversions)
