@@ -60,19 +60,22 @@ def main(builtin_params={}):
     for core in cores:
         (corecol, corerow) = core
         file_core = tmpcorefile(core, "mlir")
-        do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core,
-                            '--aie-normalize-address-spaces',
+        do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
+        file_opt_core = tmpcorefile(core, "opt.mlir")
+        do_call(['aie-opt', '--aie-normalize-address-spaces',
+                            '--canonicalize',
+                            '--cse',
                             '--convert-vector-to-llvm',
-                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_with_addresses, '-o', file_core])
+                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_core, '-o', file_opt_core])
         #do_call(['aie-opt', '--aie-llvm-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
         file_core_ldscript = tmpcorefile(core, "ld.script")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
         file_core_llvmir = tmpcorefile(core, "ll")
-        do_call(['aie-translate', '--aie-generate-llvmir', file_core, '-o', file_core_llvmir])
+        do_call(['aie-translate', '--aie-generate-llvmir', file_opt_core, '-o', file_core_llvmir])
         file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
-        do_call(['opt', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
+        do_call(['opt', '-O2', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_elf = corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])

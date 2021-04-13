@@ -238,6 +238,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         auto symName = buffer.name().getValue();
         auto allocated = rewriter.create<GetGlobalMemrefOp>(rewriter.getUnknownLoc(), t, symName);
         newAllocated[buffer] = allocated.result();
+        // Assume that buffers are aligned so they can be vectorized.
+        auto alignment = rewriter.create<AssumeAlignmentOp>(rewriter.getUnknownLoc(), allocated, 32);
         rewriter.replaceOp(buffer, allocated.result());
       }
     }
