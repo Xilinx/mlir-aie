@@ -1,0 +1,10 @@
+#!/bin/bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+export AIETOOLS=$VITIS/aietools
+export RDI_DATADIR=$AIETOOLS/data
+export UNWRAPPED_XCHESSCC=$AIETOOLS/bin/unwrapped/lnx64.o/xchesscc
+export LD_LIBRARY_PATH=$AIETOOLS/lib/lnx64.o:$AIETOOLS/lnx64/tools/dot/lib:$LD_LIBRARY_PATH
+# Carefully crafted path so that we can inject other scripts into the chess path, namely chess-clang
+export PATH=$DIR:$AIETOOLS/bin/unwrapped/lnx64.o:$AIETOOLS/tps/lnx64/target/bin/LNa64bin
+$UNWRAPPED_XCHESSCC +P 4 -p me -C Release_LLVM -P $AIETOOLS/data/cervino/lib -d -f $@
