@@ -79,7 +79,7 @@ def main(builtin_params={}):
         file_core_elf = corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc == True):
-          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_stripped, '-o', file_core_obj
+          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_stripped, '-o', file_core_obj])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         if(opts.xbridge == True):
