@@ -31,6 +31,7 @@ set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 find_package(Vitis)
+find_package(Python3 COMPONENTS Interpreter)
 
 # Define the default arguments to use with 'lit', and an option for the user to
 # override.
