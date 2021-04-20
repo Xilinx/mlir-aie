@@ -4,8 +4,8 @@ import shlex
 import sys
 import shutil
 
-xbridge_found = false #shutil.which("xbridge")
-xchesscc_found = false #shutil.which("xchesscc_wrapper")
+xbridge_found = False #shutil.which("xbridge")
+xchesscc_found = False #shutil.which("xchesscc_wrapper")
 
 def parse_args():
     parser = argparse.ArgumentParser(prog='aiecc')
