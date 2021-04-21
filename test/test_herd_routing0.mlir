@@ -1,6 +1,6 @@
 // Note: This test *might* fail due to the random order that the code statements are generated
 
-// XFAIL: *
+// REQUIRES: unknown
 // RUN: aie-opt --aie-herd-routing %s | FileCheck %s
 
 // CHECK-LABEL: module @test_herd_routing0 {

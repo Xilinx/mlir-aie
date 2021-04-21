@@ -1,4 +1,4 @@
-// XFAIL: *
+// REQUIRES: unknown
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: for (x = ifm_X + 0; x < ifm_X + 1; x += 1) {

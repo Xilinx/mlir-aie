@@ -1,4 +1,4 @@
-// XFAIL: *
+// REQUIRES: unknown
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // Fixme: create-locks iterates over maps, so this might fail.
