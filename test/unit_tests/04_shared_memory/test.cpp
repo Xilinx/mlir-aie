@@ -74,10 +74,12 @@ main(int argc, char *argv[])
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
     int tries = 1;
     printf("Waiting to acquire output lock for read ...\n");
-    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[1][4]), 7, 0, 0)) {
+    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[1][4]), 7, 1, 0)) {
         tries++;
     }
     printf("It took %d tries.\n", tries);
+    if(tries == 1000)
+        printf("ERROR: timeout hit!\n");
 
     ACDC_check("After", mlir_read_buffer_a(3), 7);
     ACDC_check("After", mlir_read_buffer_b(5), 35);
