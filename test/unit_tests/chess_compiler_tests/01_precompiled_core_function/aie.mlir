@@ -3,7 +3,7 @@
 // RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
 
-module @test06b_precompiled_kernel {
+module @test_chesss_01_precompiled_core_function {
   %tile13 = AIE.tile(1, 3)
 
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>

@@ -1,4 +1,4 @@
-// REQUIRES: unknown
+// REQUIRES: stephenn
 // RUN: aie-opt --aie-create-cores %s | FileCheck %s
 
 // CHECK-LABEL: module @test_dma2 {
