@@ -1,6 +1,6 @@
 // UNSUPPORTED: arm
 // RUN: xchessmk %S/chess_example/kernel.prx
-// RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
 module @test_chess_02_deprecated_precompiled_kernel {
   %tile13 = AIE.tile(1, 3)
