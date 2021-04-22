@@ -20,30 +20,9 @@ def do_call(command):
         print("Error encountered while running: " + " ".join(command))
         sys.exit(1)
 
-def main(builtin_params={}):
+def run_flow(opts, tmpdirname):
     thispath = os.path.dirname(os.path.realpath(__file__))
     me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
-    # Assume that aie-opt, etc. binaries are relative to this script.
-    aie_path = os.path.join(thispath, '..')
-
-    os.environ['PATH'] = aie_path + os.pathsep + os.environ['PATH']
-
-    global opts
-    opts = aiecc.cl_arguments.parse_args()
-    is_windows = platform.system() == 'Windows'
-
-    if(opts.verbose):
-        sys.stderr.write('\ncompiling %s\n' % opts.filename)
-
-    # with tempfile.TemporaryDirectory() as tmpdirname:
-    tmpdirname = "acdc_project"
-    try:
-        os.mkdir(tmpdirname)
-    except FileExistsError:
-        pass
-
-    if(opts.verbose):
-        print('created temporary directory', tmpdirname)
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
     do_call(['aie-opt', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
@@ -99,9 +78,37 @@ def main(builtin_params={}):
       cmd += ['--sysroot=%s' % opts.sysroot]
     cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
     cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
-    cmd += ['-Iacdc_project']
-    cmd += ['-I.'] # We need this to pick up acdc_project/aie_inc.cpp properly because acdc_project is generated in the CWD
+    cmd += ['-I%s' % tmpdirname]
     cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
 
     if(len(opts.arm_args) > 0):
       do_call(cmd + opts.arm_args)
+
+def main(builtin_params={}):
+    thispath = os.path.dirname(os.path.realpath(__file__))
+
+    # Assume that aie-opt, etc. binaries are relative to this script.
+    aie_path = os.path.join(thispath, '..')
+
+    os.environ['PATH'] = aie_path + os.pathsep + os.environ['PATH']
+
+    global opts
+    opts = aiecc.cl_arguments.parse_args()
+    is_windows = platform.system() == 'Windows'
+
+    if(opts.verbose):
+        sys.stderr.write('\ncompiling %s\n' % opts.filename)
+
+    if(opts.tmpdir):
+      tmpdirname = opts.tmpdir
+      try:
+        os.mkdir(tmpdirname)
+      except FileExistsError:
+        pass
+      if(opts.verbose):
+        print('created temporary directory', tmpdirname)
+
+      run_flow(opts, tmpdirname)
+    else:
+      with tempfile.TemporaryDirectory() as tmpdirname:
+        run_flow(opts, tmpdirname)

@@ -27,7 +27,7 @@ XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuratio
 XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
 XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
-#include "acdc_project/aie_inc.cpp"
+#include "aie_inc.cpp"
 
 }
 
