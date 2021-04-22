@@ -16,6 +16,8 @@
 #define XAIE_NUM_COLS           50
 #define XAIE_ADDR_ARRAY_OFF     0x800
 
+#define LOCK_TIMEOUT 100
+
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 
@@ -65,12 +67,10 @@ main(int argc, char *argv[])
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
 
-    int tries = 1;
     printf("Waiting to acquire output lock for read ...\n");
-    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[1][3]), 5, 1, 0)) {
-        tries++;
+    if(!XAieTile_LockAcquire(&(TileInst[1][3]), 5, 1, LOCK_TIMEOUT)) {
+        printf("ERROR: timeout hit!\n");
     }
-    printf("It took %d tries.\n", tries);
     ACDC_check("After acquire lock:", mlir_read_buffer_b(5), 35);
 
     if (!errors) {

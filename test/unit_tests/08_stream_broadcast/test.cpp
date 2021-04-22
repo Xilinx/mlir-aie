@@ -16,6 +16,8 @@
 #define XAIE_NUM_COLS           50
 #define XAIE_ADDR_ARRAY_OFF     0x800
 
+#define LOCK_TIMEOUT 100
+
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 
@@ -84,31 +86,28 @@ main(int argc, char *argv[])
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
 
-    int tries = 1;
     printf("Waiting to acquire output lock for read tile[3][2]...\n");
-    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][2]), 7, 1, 0)) {
-        tries++;
+    if(!XAieTile_LockAcquire(&(TileInst[3][2]), 7, 1, LOCK_TIMEOUT)) {
+        printf("ERROR: timeout hit!\n");
     }
-    printf("It took %d tries.\n", tries);
+
+    ACDC_print_dma_status(TileInst[3][2]);
+    
     ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35);
     ACDC_check("After acquire lock:", mlir_read_buffer_a32(5), 35);
     ACDC_check("After acquire lock:", mlir_read_buffer_b32(5), 105);
 
-    tries = 1;
     printf("Waiting to acquire output lock for read tile[3][3]...\n");
-    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][3]), 7, 1, 0)) {
-        tries++;
+    if(!XAieTile_LockAcquire(&(TileInst[3][3]), 7, 1, LOCK_TIMEOUT)) {
+        printf("ERROR: timeout hit!\n");
     }
-    printf("It took %d tries.\n", tries);
     ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35);
     ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 140);
 
-    tries = 1;
     printf("Waiting to acquire output lock for read tile[3][4]...\n");
-    while(tries < 1000 && !XAieTile_LockAcquire(&(TileInst[3][4]), 7, 1, 0)) {
-        tries++;
+    if(!XAieTile_LockAcquire(&(TileInst[3][4]), 7, 1, LOCK_TIMEOUT)) {
+        printf("ERROR: timeout hit!\n");
     }
-    printf("It took %d tries.\n", tries);
     ACDC_check("After acquire lock:", mlir_read_buffer_a34(5), 35);
     ACDC_check("After acquire lock:", mlir_read_buffer_b34(5), 175);
 
