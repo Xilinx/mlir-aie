@@ -58,7 +58,10 @@ def run_flow(opts, tmpdirname):
         file_core_elf = corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc == True):
-          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_stripped, '-o', file_core_obj])
+          file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
+          do_call(['cp', file_core_llvmir_stripped, file_core_llvmir_chesshack])
+          do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
+          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesshack, '-o', file_core_obj])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         if(opts.xbridge == True):
