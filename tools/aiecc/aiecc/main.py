@@ -65,7 +65,7 @@ def run_flow(opts, tmpdirname):
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         if(opts.xbridge == True):
-          do_call(['xbridge', file_core_obj, '-c', file_core_bcf, '-o', file_core_elf])
+          do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
         else:
           do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
