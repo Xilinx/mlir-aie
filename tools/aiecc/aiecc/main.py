@@ -23,11 +23,17 @@ def do_call(command):
 def run_flow(opts, tmpdirname):
     thispath = os.path.dirname(os.path.realpath(__file__))
     me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
+    chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
     do_call(['aie-opt', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
     t = run(['aie-translate', '--aie-generate-corelist', file_with_addresses], stdout=PIPE, stderr=PIPE, universal_newlines=True)
     cores = eval(t.stdout)
+
+    if(opts.xchesscc == True):
+      chess_intrinsic_wrapper = os.path.join(tmpdirname, 'chess_intrinsic_wrapper.ll')
+      do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', chess_intrinsic_wrapper])      
+      do_call(['sed', '-i', 's/^target.*//', chess_intrinsic_wrapper])     
 
     def corefile(dirname, core, ext):
         (corecol, corerow) = core
@@ -61,7 +67,10 @@ def run_flow(opts, tmpdirname):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
           do_call(['cp', file_core_llvmir_stripped, file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
-          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesshack, '-o', file_core_obj])
+          file_core_llvmir_chesslinked = tmpcorefile(core, "chesslinked.ll")
+          do_call(['llvm-link', file_core_llvmir_chesshack, chess_intrinsic_wrapper, '-S', '-o', file_core_llvmir_chesslinked])
+          do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesslinked])
+          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
         if(opts.xbridge == True):

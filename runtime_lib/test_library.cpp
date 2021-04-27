@@ -1,3 +1,6 @@
+// (c) Copyright 2021 Xilinx Inc. All Rights Reserved.
+
+// This file contains common libraries used for testing.
 
 #include "test_library.h"
 #include <stdio.h>
