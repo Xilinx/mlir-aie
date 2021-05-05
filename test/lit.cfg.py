@@ -51,10 +51,26 @@ config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
-llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
-llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
+#llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
+#llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
 llvm_config.with_environment('CARDANO', config.vitis_cardano_root)
 llvm_config.with_environment('VITIS_SYSROOT',config.vitis_sysroot)
+
+#test if LM_LICENSE_FILE valid
+import shutil
+result = shutil.which("xchesscc")
+validLMLicense = (result != None)
+
+if validLMLicense:
+    config.available_features.add('valid_xchess_license')
+    lm_license_file = os.getenv('LM_LICENSE_FILE')
+    if(lm_license_file != None):
+        llvm_config.with_environment('LM_LICENSE_FILE', lm_license_file)
+    xilinxd_license_file = os.getenv('XILINXD_LICENSE_FILE')
+    if(xilinxd_license_file != None):
+        llvm_config.with_environment('XILINXD_LICENSE_FILE', xilinxd_license_file)
+else:
+    print("WARNING: no valid xchess license that is required by some of the lit tests")
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir, config.vitis_aietools_root + "/bin"]
 tools = [
@@ -65,7 +81,6 @@ tools = [
     'llc',
     'llvm-objdump',
     'opt',
-    'xchesscc'
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

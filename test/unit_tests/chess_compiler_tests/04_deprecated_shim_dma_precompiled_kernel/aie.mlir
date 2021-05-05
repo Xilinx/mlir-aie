@@ -1,4 +1,4 @@
-// UNSUPPORTED: arm
+// REQUIRES: valid_xchess_license
 // RUN: xchessmk %S/chess_example/kernel.prx
 // RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
