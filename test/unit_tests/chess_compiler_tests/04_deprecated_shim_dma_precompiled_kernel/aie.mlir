@@ -1,6 +1,6 @@
-// REQUIRES: valid_xchess_license
-// RUN: xchessmk %S/chess_example/kernel.prx
+// UNSUPPORTED: arm
 // RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib +l acdc_project/core_7_3.bcf %S/chess_example/kernel.cc -o custom_7_3.elf
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %t73 = AIE.tile(7, 3)
@@ -8,17 +8,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %t71 = AIE.tile(7, 1)
   %t70 = AIE.tile(7, 0)
 
-  %buf_a_ping = AIE.buffer(%t73) { address = 4096  : i32, sym_name = "a_ping" } : memref<256xi32>
-  %buf_a_pong = AIE.buffer(%t73) { address = 8192  : i32, sym_name = "a_pong" } : memref<256xi32>
-  %buf_b_ping = AIE.buffer(%t73) { address = 16384 : i32, sym_name = "b_ping" } : memref<256xi32>
-  %buf_b_pong = AIE.buffer(%t73) { address = 24576 : i32, sym_name = "b_pong" } : memref<256xi32>
+  %buf_a_ping = AIE.buffer(%t73) {sym_name = "a_ping" } : memref<256xi32>
+  %buf_a_pong = AIE.buffer(%t73) {sym_name = "a_pong" } : memref<256xi32>
+  %buf_b_ping = AIE.buffer(%t73) {sym_name = "b_ping" } : memref<256xi32>
+  %buf_b_pong = AIE.buffer(%t73) {sym_name = "b_pong" } : memref<256xi32>
 
   %lock_a_ping = AIE.lock(%t73, 3) // a_ping
   %lock_a_pong = AIE.lock(%t73, 4) // a_pong
   %lock_b_ping = AIE.lock(%t73, 5) // b_ping
   %lock_b_pong = AIE.lock(%t73, 6) // b_pong
 
-  %c13 = AIE.core(%t73) { AIE.end } { elf_file = "aie.elf" }
+  %c13 = AIE.core(%t73) { AIE.end } { elf_file = "custom_7_3.elf" }
 
   // Tile DMA
   %m73 = AIE.mem(%t73) {
@@ -78,7 +78,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0, 0)
 //      br ^bd0
-      br ^end
+      br ^dma
     ^bd1:
       AIE.useLock(%lock2, Acquire, 1, 0)
       AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 512>, 0)

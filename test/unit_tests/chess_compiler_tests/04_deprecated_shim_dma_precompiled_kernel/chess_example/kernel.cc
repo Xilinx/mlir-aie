@@ -1,11 +1,11 @@
 #include <stdio.h>
 
-int32_t iter;
+//int32_t iter;
 
-int32_t a_ping[256];
-int32_t a_pong[256];
-int32_t b_ping[256];
-int32_t b_pong[256];
+extern int32_t a_ping[256];
+extern int32_t a_pong[256];
+extern int32_t b_ping[256];
+extern int32_t b_pong[256];
 
 #define LOCK_OFFSET 48
 #define A_PING (LOCK_OFFSET+3)
@@ -28,20 +28,20 @@ inline void func(int32_t *a, int32_t *b)
 
 void func_wrap()
 {
-    int bounds = iter;
+    int bounds = 2;//iter;
 
     // NOTE: odd iterations need locks reset externally when core is run again
     while(bounds > 0) { // TODO: need to change this to start count at 0 so we do ping first
         if((bounds & 0x1) == 0) {
             acquire(A_PING,LOCK_READ); 
             acquire(B_PING,LOCK_WRITE); 
-            func(&a_ping[0], &b_ping[0]);
+            func(a_ping, b_ping);
             release(A_PING,LOCK_WRITE); 
             release(B_PING,LOCK_READ); 
         } else {
             acquire(A_PONG,LOCK_READ); 
             acquire(B_PONG,LOCK_WRITE); 
-            func(&a_pong[0], &b_pong[0]);
+            func(a_pong, b_pong);
             release(A_PONG,LOCK_WRITE); 
             release(B_PONG,LOCK_READ); 
         }

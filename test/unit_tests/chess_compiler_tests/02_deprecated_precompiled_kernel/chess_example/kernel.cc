@@ -6,8 +6,8 @@
 
 //void func(int32_t *buf);
 
-int32_t a[256];
-int32_t b[256];
+extern int32_t a[256];
+extern int32_t b[256];
 
 #define LOCK_OFFSET 48
 
