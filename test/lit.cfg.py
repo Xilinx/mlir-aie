@@ -59,7 +59,14 @@ llvm_config.with_environment('VITIS_SYSROOT',config.vitis_sysroot)
 #test if LM_LICENSE_FILE valid
 import shutil
 result = shutil.which("xchesscc")
-validLMLicense = (result != None)
+#validLMLicense = (result != None)
+
+import subprocess
+if result != None:
+    result = subprocess.run(['xchesscc','+v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    validLMLicense = (len(result.stderr.decode('utf-8')) == 0)
+else:
+    validLMLicense = False
 
 if validLMLicense:
     config.available_features.add('valid_xchess_license')
