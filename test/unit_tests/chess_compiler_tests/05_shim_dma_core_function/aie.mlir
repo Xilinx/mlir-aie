@@ -21,19 +21,34 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
 
   %c13 = AIE.core(%t73) { 
+    
+    %lb = constant 0 : index
+    %ub = constant 2 : index
+    %step = constant 1 : index  
 
-    AIE.useLock(%lock_a_ping, "Acquire", 1, 0) // acquire for read
-    AIE.useLock(%lock_b_ping, "Acquire", 0, 0) // acquire for write
-    call @func(%buf_a_ping, %buf_b_ping) : (memref<256xi32>, memref<256xi32>) -> ()
-    AIE.useLock(%lock_a_ping, "Release", 0, 0) // release for write
-    AIE.useLock(%lock_b_ping, "Release", 1, 0) // release for read
-    
-    AIE.useLock(%lock_a_pong, "Acquire", 1, 0) // acquire for read
-    AIE.useLock(%lock_b_pong, "Acquire", 0, 0) // acquire for write
-    call @func(%buf_a_pong, %buf_b_pong) : (memref<256xi32>, memref<256xi32>) -> ()
-    AIE.useLock(%lock_a_pong, "Release", 0, 0) // release for write
-    AIE.useLock(%lock_b_pong, "Release", 1, 0) // release for read
-    
+    scf.for %iv = %lb to %ub step %step {
+
+      %cv = and %iv, %step : i1
+      scf.if %cv { 
+
+        AIE.useLock(%lock_a_ping, "Acquire", 1, 0) // acquire for read
+        AIE.useLock(%lock_b_ping, "Acquire", 0, 0) // acquire for write
+        call @func(%buf_a_ping, %buf_b_ping) : (memref<256xi32>, memref<256xi32>) -> ()
+        AIE.useLock(%lock_a_ping, "Release", 0, 0) // release for write
+        AIE.useLock(%lock_b_ping, "Release", 1, 0) // release for read
+
+      } else {
+
+        AIE.useLock(%lock_a_pong, "Acquire", 1, 0) // acquire for read
+        AIE.useLock(%lock_b_pong, "Acquire", 0, 0) // acquire for write
+        call @func(%buf_a_pong, %buf_b_pong) : (memref<256xi32>, memref<256xi32>) -> ()
+        AIE.useLock(%lock_a_pong, "Release", 0, 0) // release for write
+        AIE.useLock(%lock_b_pong, "Release", 1, 0) // release for read
+      
+      }
+
+    }
+
     AIE.end
   } { link_with="kernel.o" }
 
