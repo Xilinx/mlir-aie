@@ -37,9 +37,10 @@ def North: I32EnumAttrCase<"North", 5>;
 def East: I32EnumAttrCase<"East", 6>;
 def PLIO: I32EnumAttrCase<"PLIO", 7>;
 def NOC: I32EnumAttrCase<"NOC", 8>;
+def Trace: I32EnumAttrCase<"Trace", 9>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-  [Core, DMA, FIFO, South, West, North, East, PLIO, NOC]> {
+  [Core, DMA, FIFO, South, West, North, East, PLIO, NOC, Trace]> {
 
   let cppNamespace = "xilinx::AIE";
 }
