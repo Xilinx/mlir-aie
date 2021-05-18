@@ -478,6 +478,7 @@ namespace xilinx {
         case WireBundle::West: return 4;
         case WireBundle::South: return 8;
         case WireBundle::East: return 4;
+	case WireBundle::Trace: return 1;			
         default: return 0;
         }
       else
@@ -515,7 +516,6 @@ namespace xilinx {
         case WireBundle::West: return 4;
         case WireBundle::South: return 4;
         case WireBundle::East: return 4;
-	case WireBundle::Trace: return 2;
         default: return 0;
         }
     }
