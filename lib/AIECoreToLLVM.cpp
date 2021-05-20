@@ -302,7 +302,7 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
 
         rewriter.create<LLVM::CallOp>(rewriter.getUnknownLoc(), useLockFunc, args);
         rewriter.eraseOp(childOp);
-      } else if (mlir::StoreOp store = dyn_cast<mlir::StoreOp>(childOp)) {
+      } else if (auto store = dyn_cast<mlir::memref::StoreOp>(childOp)) {
         // TODO: support multi-dimension indexing
         Value storeIdx = store.indices()[0];
         Value storeValue = store.getValueToStore();
@@ -321,7 +321,7 @@ struct AIECoreToLLVMFunc : public OpConversionPattern<CoreOp> {
 
           rewriter.eraseOp(childOp);
         }
-      } else if (mlir::LoadOp load = dyn_cast<mlir::LoadOp>(childOp)) {
+      } else if (auto load = dyn_cast<mlir::memref::LoadOp>(childOp)) {
         // TODO: support multi-dimension indexing
         Value loadIdx= load.indices()[0];
         Operation *loadBuf = load.getMemRef().getDefiningOp();
@@ -353,10 +353,10 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     ModuleOp m = getOperation();
     OpBuilder builder(m.getBody()->getTerminator());
 
-    LowerToLLVMOptions options = {/*useBarePtrCallConv =*/true,
-                                  /*emitCWrappers =*/true,
-                                  /*indexBitwidth =*/32,
-                                  /*useAlignedAlloc =*/false};
+    LowerToLLVMOptions options(
+        m.getContext(),
+        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+    options.useBarePtrCallConv = true;
 
     LLVMTypeConverter converter(&getContext());
 
@@ -482,11 +482,11 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
     BlockAndValueMapping mapper;
 
     LLVMConversionTarget target(getContext());
-    target.addLegalOp<ModuleOp, mlir::ModuleTerminatorOp>();
+    target.addLegalOp<ModuleOp>();
     // target.addLegalDialect<LLVM::LLVMDialect>();
     // target.addIllegalOp<LLVM::DialectCastOp>();
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<AIEPutStreamLowering,
                     AIEGetStreamLowering,
                     AIEPutCascadeLowering,

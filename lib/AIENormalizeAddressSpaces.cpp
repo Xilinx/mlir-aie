@@ -35,11 +35,11 @@ struct AIENormalizeAddressSpacesPass : public PassWrapper<AIENormalizeAddressSpa
     ModuleOp m = getOperation();
     
     ConversionTarget target(getContext());
-    target.addDynamicallyLegalOp<GlobalMemrefOp>([](GlobalMemrefOp op) {
+    target.addDynamicallyLegalOp<memref::GlobalOp>([](memref::GlobalOp op) {
       return op.type().cast<MemRefType>().getMemorySpace() == 0;
     });
-    OwningRewritePatternList patterns;
-    populateWithGenerated(&getContext(), patterns);
+    OwningRewritePatternList patterns(&getContext());
+    populateWithGenerated(patterns);
     
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

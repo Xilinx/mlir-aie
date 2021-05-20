@@ -213,11 +213,11 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
           if(maskValue.first == 0) {
             rewriter.create<FlowOp>(Op->getLoc(),
                                     Op->getResult(0),
-                                    (int)bundle,
-                                    (int)i,
+                                    bundle,
+                                    i,
                                     destOp->getResult(0),
-                                    (int)destPort.first,
-                                    (int)destPort.second);
+                                    destPort.first,
+                                    destPort.second);
           } else {
             PacketFlowOp flowOp = rewriter.create<PacketFlowOp>(Op->getLoc(),
                                                        maskValue.second);

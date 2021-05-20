@@ -107,7 +107,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "int":$col, "int":$row),
+    OpBuilder<(ins "int":$col, "int":$row),
     [{
               build($_builder, $_state, $_builder.getIndexType(),
                     $_builder.getI32IntegerAttr(col),
@@ -167,7 +167,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconect, SingleBlockImplicitTermin
     TileOp getTileOp();
   }];
   let builders = [
-    OpBuilderDAG<(ins "Value":$tile),
+    OpBuilder<(ins "Value":$tile),
     [{
               build($_builder, $_state, $_builder.getIndexType(), tile);
               }]>
@@ -198,7 +198,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
   let verifier = [{ return ::verify(*this); }];
   let builders = [
-    OpBuilderDAG<(ins "Type":$resultType,
+    OpBuilder<(ins "Type":$resultType,
                       "int":$col), [{
         build($_builder, $_state, resultType, $_builder.getI32IntegerAttr(col));
     }]>
@@ -236,7 +236,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconect,
     TileOp getTileOp();
   }];
  let builders = [
-    OpBuilderDAG<(ins "Value":$tile), [{
+    OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
  ];
@@ -300,7 +300,7 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint]>, Results<(outs Index)> {
     TileOp getTileOp();
   }];
   let builders = [
-    OpBuilderDAG<(ins "Value":$tile), [{
+    OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
@@ -397,18 +397,18 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     int sourceIndex() { return sourceChannel(); }
     int destIndex() { return destChannel(); }
   }];
-  let builders = [
-    OpBuilderDAG<(ins "Value":$source, "int":$sourceBundle,
-      "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel), [{
-      build($_builder, $_state,
-            source,
-            $_builder.getI32IntegerAttr(sourceBundle),
-            $_builder.getI32IntegerAttr(sourceChannel),
-            dest,
-            $_builder.getI32IntegerAttr(destBundle),
-            $_builder.getI32IntegerAttr(destChannel));
-      }]>
-  ];
+  // let builders = [
+  //   OpBuilder<(ins "Value":$source, "int":$sourceBundle,
+  //     "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel), [{
+  //     build($_builder, $_state,
+  //           source,
+  //           $_builder.getI32IntegerAttr(sourceBundle),
+  //           $_builder.getI32IntegerAttr(sourceChannel),
+  //           dest,
+  //           $_builder.getI32IntegerAttr(destBundle),
+  //           $_builder.getI32IntegerAttr(destChannel));
+  //     }]>
+  // ];
 }
 
 def AIE_ConnectionOp: AIE_Op<"connection", []> {
@@ -443,18 +443,18 @@ def AIE_ConnectionOp: AIE_Op<"connection", []> {
     int sourceIndex() { return sourceChannel(); }
     int destIndex() { return destChannel(); }
   }];
-  let builders = [
-    OpBuilderDAG<(ins "Value":$source, "int":$sourceBundle,
-      "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel), [{
-      build($_builder, $_state,
-            source,
-            $_builder.getI32IntegerAttr(sourceBundle),
-            $_builder.getI32IntegerAttr(sourceChannel),
-            dest,
-            $_builder.getI32IntegerAttr(destBundle),
-            $_builder.getI32IntegerAttr(destChannel));
-      }]>
-  ];
+  // let builders = [
+  //   OpBuilder<(ins "Value":$source, "int":$sourceBundle,
+  //     "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel), [{
+  //     build($_builder, $_state,
+  //           source,
+  //           $_builder.getI32IntegerAttr(sourceBundle),
+  //           $_builder.getI32IntegerAttr(sourceChannel),
+  //           dest,
+  //           $_builder.getI32IntegerAttr(destBundle),
+  //           $_builder.getI32IntegerAttr(destChannel));
+  //     }]>
+  // ];
 }
 
 def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
@@ -491,7 +491,7 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "int":$arbiterID, "int":$msel),
+    OpBuilder<(ins "int":$arbiterID, "int":$msel),
     [{
               build($_builder, $_state, $_builder.getIndexType(),
                     $_builder.getI8IntegerAttr(arbiterID),
@@ -554,16 +554,16 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   let assemblyFormat = [{
     `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
-  let builders = [
-    OpBuilderDAG<(ins "Value":$source, "int":$sourceBundle, "Value":$dest,
-      "int":$destBundle), [{
-      build($_builder, $_state,
-            source,
-            $_builder.getI32IntegerAttr((int)sourceBundle),
-            dest,
-            $_builder.getI32IntegerAttr((int)destBundle));
-      }]>
-  ];
+  // let builders = [
+  //   OpBuilder<(ins "Value":$source, "int":$sourceBundle, "Value":$dest,
+  //     "int":$destBundle), [{
+  //     build($_builder, $_state,
+  //           source,
+  //           $_builder.getI32IntegerAttr((int)sourceBundle),
+  //           dest,
+  //           $_builder.getI32IntegerAttr((int)destBundle));
+  //     }]>
+  // ];
 }
 
 def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
@@ -633,14 +633,14 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   let assemblyFormat = [{
     `(` $mask `,` $value `,` $amsel `)` attr-dict
   }];
-  let builders = [
-    OpBuilderDAG<(ins "int":$mask, "int":$value, "Value":$amsel), [{
-      build($_builder, $_state,
-            $_builder.getI8IntegerAttr(mask),
-            $_builder.getI8IntegerAttr(value),
-            amsel);
-      }]>
-  ];
+  // let builders = [
+  //   OpBuilder<(ins "int":$mask, "int":$value, "Value":$amsel), [{
+  //     build($_builder, $_state,
+  //           $_builder.getI8IntegerAttr(mask),
+  //           $_builder.getI8IntegerAttr(value),
+  //           amsel);
+  //     }]>
+  // ];
 }
 
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
@@ -772,15 +772,15 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     bool isB() { return (AB() == 1); }
   }];
 
-  let builders = [
-    OpBuilderDAG<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
-      build($_builder, $_state,
-            buffer,
-            $_builder.getI32IntegerAttr(offset),
-            $_builder.getI32IntegerAttr(len),
-            $_builder.getI32IntegerAttr(AB));
-      }]>
-  ];
+  // let builders = [
+  //   OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+  //     build($_builder, $_state,
+  //           buffer,
+  //           $_builder.getI32IntegerAttr(offset),
+  //           $_builder.getI32IntegerAttr(len),
+  //           $_builder.getI32IntegerAttr(AB));
+  //     }]>
+  // ];
 }
 
 def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp", "ShimDMAOp"]>, Terminator]>,
@@ -831,7 +831,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp", "ShimDMA
   }];
 
   let builders = [
-    OpBuilderDAG<(ins "DMAChan":$channel, "Block *":$dest, "Block *":$chain),
+    OpBuilder<(ins "DMAChan":$channel, "Block *":$dest, "Block *":$chain),
     [{
               build($_builder, $_state, $_builder.getIntegerType(1), channel, dest, chain);
               }]>
@@ -863,7 +863,7 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
     ArrayRef<Type> getCallableResults();
   }];
   let builders = [
-    OpBuilderDAG<(ins "Value":$tile), [{
+    OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
@@ -890,7 +890,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
     int getLockID() { return lockID(); }
   }];
   let builders = [
-    OpBuilderDAG<(ins "Value":$tile, "int":$lockID), [{
+    OpBuilder<(ins "Value":$tile, "int":$lockID), [{
       build($_builder, $_state,
         $_builder.getIndexType(),
         tile,
@@ -1181,7 +1181,7 @@ def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
   }];
   let assemblyFormat = [{ `[` $width `]` `[` $height `]` attr-dict }];
   let builders = [
-    OpBuilderDAG<(ins "int":$width, "int":$height),
+    OpBuilder<(ins "int":$width, "int":$height),
     [{
               build($_builder, $_state, $_builder.getIndexType(),
                     $_builder.getI32IntegerAttr(width),
@@ -1253,7 +1253,7 @@ def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
     int getStrideValue() { return stride(); }
   }];
   let builders = [
-    OpBuilderDAG<(ins "int":$start, "int":$end, "int":$stride), [{
+    OpBuilder<(ins "int":$start, "int":$end, "int":$stride), [{
       build($_builder, $_state, $_builder.getIndexType(),
             $_builder.getI32IntegerAttr(start),
             $_builder.getI32IntegerAttr(end),
@@ -1286,7 +1286,7 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
   );
   let assemblyFormat = [{ `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict }];
   let builders = [
-    OpBuilderDAG<(ins "Value":$startHerd, "Value":$iterX, "Value":$iterY), [{
+    OpBuilder<(ins "Value":$startHerd, "Value":$iterX, "Value":$iterY), [{
       build($_builder, $_state, $_builder.getIndexType(),
             startHerd, iterX, iterY);
       }]>

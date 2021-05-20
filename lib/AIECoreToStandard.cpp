@@ -230,16 +230,17 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPoint(coreFunc);
       for (auto buffer : buffers) {
         auto symName = buffer.name().getValue();
-        rewriter.create<GlobalMemrefOp>(rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"), TypeAttr::get(buffer.getType()), nullptr, false);
+        rewriter.create<memref::GlobalOp>(rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
+                                          buffer.getType(), nullptr, false);
       }
       rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
       for (auto buffer : buffers) {
         MemRefType t = buffer.getType().cast<MemRefType>();
         auto symName = buffer.name().getValue();
-        auto allocated = rewriter.create<GetGlobalMemrefOp>(rewriter.getUnknownLoc(), t, symName);
+        auto allocated = rewriter.create<memref::GetGlobalOp>(rewriter.getUnknownLoc(), t, symName);
         newAllocated[buffer] = allocated.result();
         // Assume that buffers are aligned so they can be vectorized.
-        auto alignment = rewriter.create<AssumeAlignmentOp>(rewriter.getUnknownLoc(), allocated, 32);
+        auto alignment = rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(), allocated, 32);
         rewriter.replaceOp(buffer, allocated.result());
       }
     }
@@ -386,9 +387,9 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
     ConversionTarget target(getContext());
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalDialect<VectorDialect>();
-    target.addLegalOp<FuncOp, ModuleOp, mlir::ModuleTerminatorOp>();
+    target.addLegalOp<FuncOp, ModuleOp>();
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<AIEPutStreamToStdLowering,
                     AIEGetStreamToStdLowering,
                     AIEPutCascadeToStdLowering,

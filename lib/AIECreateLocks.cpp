@@ -199,7 +199,7 @@ struct AIECreateLocksPass : public PassWrapper<AIECreateLocksPass, OperationPass
     ConversionTarget target(getContext());
     target.addLegalOp<UseLockOp>();
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<Token2LockLowering>(m.getContext(), m, acqLocks, relLocks, lockChains);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))

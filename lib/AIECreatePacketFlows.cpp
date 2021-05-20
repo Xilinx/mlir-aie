@@ -8,6 +8,7 @@
 #include "mlir/Translation.h"
 #include "AIEDialect.h"
 #include "AIENetlistAnalysis.h"
+#include "llvm/ADT/Twine.h"
 
 #define DEBUG_TYPE "aie-create-packet-flows"
 
@@ -508,8 +509,8 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
       int mask = map.second;
 
       LLVM_DEBUG(llvm::dbgs() << "Port " << tile << " " << stringifyWireBundle(bundle) << " " << channel << '\n');
-      LLVM_DEBUG(llvm::dbgs() << "Mask " << "0x" << llvm::utohexstr(mask) << '\n');
-      LLVM_DEBUG(llvm::dbgs() << "ID " << "0x" << llvm::utohexstr(ID) << '\n');
+      LLVM_DEBUG(llvm::dbgs() << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+      LLVM_DEBUG(llvm::dbgs() << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     }
 
     // Realize the routes in MLIR
@@ -600,7 +601,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
       }
     }
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<AIEOpRemoval<PacketFlowOp>
                    >(m.getContext(), m);
 

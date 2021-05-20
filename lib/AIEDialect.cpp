@@ -400,7 +400,7 @@ static LogicalResult verify(xilinx::AIE::MemOp op) {
   assert(!body.empty() && "MemOp should have non-empty body");
 
   for (auto &bodyOp : body.getOps()) {
-    if (auto allocOp = dyn_cast<AllocOp>(bodyOp)) {
+    if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {
       if (!allocOp->getAttr("id"))
         op.emitOpError() << "allocOp in MemOp region should have an id attribute\n";
     }

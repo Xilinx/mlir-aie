@@ -102,13 +102,13 @@ struct AIELowerMemcpyPass : public PassWrapper<AIELowerMemcpyPass,
       // that legally relocates the ports
       assert(destChannel[op.dstTile()] <= 2 &&
              "Could not allocate more than two dest. channel when creating FlowOp");
-      // WireBundle[1] = DMA
-      builder.create<FlowOp>(builder.getUnknownLoc(), srcTile, 1, 0, dstTile, 1, destChannel[op.dstTile()]);
+      builder.create<FlowOp>(builder.getUnknownLoc(), srcTile, WireBundle::DMA, 0,
+                                                      dstTile, WireBundle::DMA, destChannel[op.dstTile()]);
       destChannel[op.dstTile()]++;
     }
 
     ConversionTarget target(getContext());
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();

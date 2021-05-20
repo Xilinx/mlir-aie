@@ -9,7 +9,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Translation.h"
-#include "mlir/Target/LLVMIR.h"
+#include "mlir/Target/LLVMIR/Import.h"
 
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"

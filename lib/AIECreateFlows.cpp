@@ -8,6 +8,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
 #include "AIEDialect.h"
+#include "llvm/Support/Debug.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -369,7 +370,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
     target.addLegalOp<ShimMuxOp>();
     target.addLegalOp<EndOp>();
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<RouteFlows>(m.getContext(), m, analysis);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

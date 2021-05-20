@@ -315,7 +315,7 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
 
     ConversionTarget target(getContext());
 
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     patterns.insert<AIEOpRemoval<PlaceOp>,
                     AIEOpRemoval<RouteOp>
                    >(m.getContext(), m);

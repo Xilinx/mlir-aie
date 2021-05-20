@@ -171,7 +171,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
               assert(t.getShape()[0] == 1 && "Expected MemRefType of single element");
 
               Value zero = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
-              auto loadOp = builder.create<LoadOp>(builder.getUnknownLoc(), arg.getType(), buf, zero);
+              auto loadOp = builder.create<memref::LoadOp>(builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
             } else {
               mapper.map(arg, buf);
@@ -219,7 +219,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
     // }
 
     ConversionTarget target(getContext());
-    OwningRewritePatternList patterns;
+    OwningRewritePatternList patterns(&getContext());
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
