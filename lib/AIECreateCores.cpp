@@ -64,7 +64,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     DenseMap<std::pair<int, int>, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;

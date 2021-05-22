@@ -195,7 +195,7 @@ public:
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
                          OpBuilder &rewriter) {
     Operation *Op = op.getOperation();
-    rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
+    rewriter.setInsertionPointToEnd(Op->getBlock());
 
     std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
     for(WireBundle bundle: bundles) {
@@ -252,7 +252,7 @@ struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
     ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
 
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
       findFlowsFrom(tile, analysis, builder);
     }

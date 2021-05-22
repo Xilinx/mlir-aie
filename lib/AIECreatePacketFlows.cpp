@@ -225,7 +225,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     ConversionTarget target(getContext());
 

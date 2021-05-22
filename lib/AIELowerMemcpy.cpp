@@ -85,7 +85,7 @@ struct AIELowerMemcpyPass : public PassWrapper<AIELowerMemcpyPass,
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     // Setup FlowOps
     // Since memcpy moves data from one memory module to another, we use WireBundle::DMA

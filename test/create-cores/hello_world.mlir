@@ -25,21 +25,21 @@
 // CHECK:   ^bb2:
 // CHECK:     AIE.end
 // CHECK:   }
-// CHECK:   %6 = alloc() : memref<512xi32>
-// CHECK:   %7 = alloc() : memref<512xi32>
+// CHECK:   %6 = memref.alloc() : memref<512xi32>
+// CHECK:   %7 = memref.alloc() : memref<512xi32>
 // CHECK:   AIE.token(0) {sym_name = "token0"}
 // CHECK:   %8 = AIE.core(%0) {
 // CHECK:     AIE.useToken @token0(Acquire, 0)
 // CHECK:     %c16 = constant 16 : index
 // CHECK:     %c1_i32 = constant 1 : i32
-// CHECK:     store %c1_i32, %1[%c16] : memref<512xi32>
+// CHECK:     memref.store %c1_i32, %1[%c16] : memref<512xi32>
 // CHECK:     AIE.useToken @token0(Release, 1)
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %9 = AIE.core(%3) {
 // CHECK:     AIE.useToken @token0(Acquire, 2)
 // CHECK:     %c16 = constant 16 : index
-// CHECK:     %10 = load %4[%c16] : memref<512xi32>
+// CHECK:     %10 = memref.load %4[%c16] : memref<512xi32>
 // CHECK:     AIE.useToken @token0(Release, 3)
 // CHECK:     AIE.end
 // CHECK:   }
@@ -51,8 +51,8 @@ module @hello_world {
   %tile33 = AIE.tile(3, 3)
   %tile44 = AIE.tile(4, 4)
 
-  %buf0 = alloc() : memref<512xi32>
-  %buf1 = alloc() : memref<512xi32>
+  %buf0 = memref.alloc() : memref<512xi32>
+  %buf1 = memref.alloc() : memref<512xi32>
 
   AIE.token(0) { sym_name="token0" }
 
@@ -60,7 +60,7 @@ module @hello_world {
     AIE.useToken @token0(Acquire, 0)
     %i = constant 16 : index
     %val = constant 1 : i32
-    store %val, %arg0[%i] : memref<512xi32>
+    memref.store %val, %arg0[%i] : memref<512xi32>
     AIE.useToken @token0(Release, 1)
     return
   }
@@ -68,7 +68,7 @@ module @hello_world {
   func @consumer(%arg0: memref<512xi32>) -> () {
     AIE.useToken @token0(Acquire, 2)
     %i = constant 16 : index
-    %val = load %arg0[%i] : memref<512xi32>
+    %val = memref.load %arg0[%i] : memref<512xi32>
     AIE.useToken @token0(Release, 3)
     return
   }

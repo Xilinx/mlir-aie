@@ -308,7 +308,7 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     // Extract all CoreOps
     // Create an LLVM func for each CoreOp
@@ -386,6 +386,7 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
     BlockAndValueMapping mapper;
     ConversionTarget target(getContext());
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 
@@ -401,7 +402,9 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
        tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
-    patterns.insert<AIEOpRemoval<AIE::TileOp>,
+
+    OwningRewritePatternList removepatterns(&getContext());
+    removepatterns.insert<AIEOpRemoval<AIE::TileOp>,
                     AIEOpRemoval<AIE::FlowOp>,
                     AIEOpRemoval<AIE::MemOp>,
                     AIEOpRemoval<AIE::ShimDMAOp>,
@@ -412,7 +415,7 @@ struct AIECoreToStandardPass : public AIECoreToStandardBase<AIECoreToStandardPas
                     AIEOpRemoval<AIE::ExternalBufferOp>
                    >(m.getContext(), m);
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();
   }
 };

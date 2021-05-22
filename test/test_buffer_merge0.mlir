@@ -24,7 +24,7 @@
 //CHECK:   AIE.useLock(%1, Acquire, 1, 0)
 //CHECK:   %c16 = constant 16 : index
 //CHECK:   %c1_i32 = constant 1 : i32
-//CHECK:   %16 = load %6[%c16] : memref<256xi32>
+//CHECK:   %16 = memref.load %6[%c16] : memref<256xi32>
 //CHECK:   AIE.useLock(%1, Release, 0, 0)
 //CHECK:   AIE.end
 //CHECK: }
@@ -98,7 +98,7 @@ module @test_buffer_merge0 {
     AIE.useLock(%l32_0, Acquire, 1, 0)
     %i = constant 16 : index
     %0 = constant 1 : i32
-    %1 = load %buf32_0[%i] : memref<256xi32>
+    %1 = memref.load %buf32_0[%i] : memref<256xi32>
     AIE.useLock(%l32_0, Release, 0, 0)
     AIE.end
   }

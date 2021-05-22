@@ -6,6 +6,8 @@ set(LLVM_LINK_COMPONENTS
 
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
+message("Translations: ${translation_libs}")
 
 add_llvm_tool(aie-translate
   aie-translate.cpp
@@ -16,6 +18,7 @@ llvm_update_compile_flags(aie-translate)
 target_link_libraries(aie-translate
   PRIVATE
   ${dialect_libs}
+  ${translation_libs}
   AIE
   AIETargets
   MLIRIR
@@ -23,5 +26,6 @@ target_link_libraries(aie-translate
   MLIRPass
   MLIRTranslation
   MLIRSupport
-  MLIRTargetLLVMIR
+  MLIRTargetLLVMIRExport
+  MLIRTargetLLVMIRImport
   )

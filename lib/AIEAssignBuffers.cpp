@@ -17,7 +17,7 @@ static int64_t assignAddress(AIE::BufferOp op,
                              int64_t lastAddress,
                              OpBuilder &rewriter) {
   Operation *Op = op.getOperation();
-  rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
+  rewriter.setInsertionPointToEnd(Op->getBlock());
 
   int64_t startAddr = lastAddress;
   int64_t endAddr = startAddr + op.getAllocationSize();
@@ -34,7 +34,7 @@ struct AIEAssignBufferAddressesPass : public PassWrapper<AIEAssignBufferAddresse
   }
   void runOnOperation() override {
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.

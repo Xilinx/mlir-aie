@@ -351,11 +351,11 @@ struct AIECoreToLLVMPass : public AIECoreToLLVMBase<AIECoreToLLVMPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     LowerToLLVMOptions options(
         m.getContext(),
-        DataLayout(cast<DataLayoutOpInterface>(m.getOperation())));
+        DataLayout(m));//cast<DataLayoutOpInterface>(m.getOperation())));
     options.useBarePtrCallConv = true;
 
     LLVMTypeConverter converter(&getContext());

@@ -1,5 +1,5 @@
 // RUN: aie-opt --aie-assign-buffer-addresses %s > %t.temp1
-// RUN: aie-opt --aie-llvm-lowering="tilecol=1 tilerow=1" %t.temp1 | aie-translate --aie-generate-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=%t.o
+// RUN: aie-opt --aie-llvm-lowering="tilecol=1 tilerow=1" %t.temp1 | aie-translate --mlir-to-llvmir | opt -strip -S | llc -O0 --march=aie --filetype=obj -o=%t.o
 // RUN: aie-translate --aie-generate-mmap %t.temp1
 // RUN: ld.lld %t.o %S/../../runtime_lib/me_basic.o -T %S/ld.script -o %t.out
 // RUN: llvm-objdump -dr --arch-name=aie %t.out | FileCheck -check-prefix=CHECK11 %s
@@ -30,8 +30,8 @@ module @test_core_llvm1 {
     AIE.useLock(%lock11_8, Acquire, 0, 0)
     %0 = constant 1 : i32
     %i = constant 16 : index
-    store %0, %buf11_0[%i] : memref<256xi32>
-    store %0, %buf12_0[%i] : memref<256xi32>
+    memref.store %0, %buf11_0[%i] : memref<256xi32>
+    memref.store %0, %buf12_0[%i] : memref<256xi32>
     AIE.useLock(%lock11_8, Release, 1, 0)
     AIE.end
   }
@@ -39,7 +39,7 @@ module @test_core_llvm1 {
   %core21 = AIE.core(%tile21) {
     AIE.useLock(%lock11_8, Acquire, 1, 0)
     %i = constant 16 : index
-    %0 = load %buf11_0[%i] : memref<256xi32>
+    %0 = memref.load %buf11_0[%i] : memref<256xi32>
     AIE.useLock(%lock11_8, Release, 0, 0)
     AIE.end
   }

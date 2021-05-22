@@ -38,6 +38,7 @@ int main(int argc, char **argv) {
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert<scf::SCFDialect>();
+  registry.insert<memref::MemRefDialect>();
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
 

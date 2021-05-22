@@ -17,9 +17,9 @@ module @example1 {
   %t42 = AIE.tile(4, 2)
   %t44 = AIE.tile(4, 4)
 
-  %buf0 = alloc() : memref<256xi32>
-  %buf1 = alloc() : memref<256xi32>
-  %buf2 = alloc() : memref<256xi32>
+  %buf0 = memref.alloc() : memref<256xi32>
+  %buf1 = memref.alloc() : memref<256xi32>
+  %buf2 = memref.alloc() : memref<256xi32>
 
   AIE.token(0) { sym_name="token0" }
   AIE.token(0) { sym_name="token1" }
@@ -31,7 +31,7 @@ module @example1 {
     // code
     %i = constant 8: index
     //%k = constant 1: i32
-    store %arg1, %arg0[%i] : memref<256xi32>
+    memref.store %arg1, %arg0[%i] : memref<256xi32>
     //store %k, %arg0[%i] : memref<256xi32>
 
     AIE.useToken @token0(Release, 1)

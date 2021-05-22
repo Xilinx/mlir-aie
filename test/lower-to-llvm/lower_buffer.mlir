@@ -17,14 +17,14 @@ module @codegen1 {
   %core33 = AIE.core(%t33) {
     %0 = constant 0 : index
     %377 = constant 377 : i32
-    store %377, %a[%0] : memref<4xi32>
+    memref.store %377, %a[%0] : memref<4xi32>
     AIE.end
   }
   %t34 = AIE.tile(4, 3)
 
   %core34 = AIE.core(%t34) {
     %0 = constant 0 : index
-    %1 = load %a[%0] : memref<4xi32>
+    %1 = memref.load %a[%0] : memref<4xi32>
 //    AIE.debug(%1 : i32)
     AIE.end
   }

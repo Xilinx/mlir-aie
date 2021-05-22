@@ -71,26 +71,27 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf,
   output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
 }
 
-void registerAIETranslations() {
-  TranslateFromMLIRRegistration
-    registrationLLVM("aie-generate-llvmir",
-    [](ModuleOp module, raw_ostream &output) {
-      llvm::LLVMContext llvmContext;
-      auto llvmModule = mlir::translateModuleToLLVMIR(module, llvmContext);
-      if (!llvmModule) {
-        llvm::errs() << "Failed to emit LLVM IR\n";
-        return failure();
-      }
+  void registerAIETranslations() {
+//   TranslateFromMLIRRegistration
+//     registrationLLVM("aie-generate-llvmir",
+//     [](ModuleOp module, raw_ostream &output) {
+//       llvm::LLVMContext llvmContext;
+//       auto llvmModule = mlir::translateModuleToLLVMIR(module, llvmContext);
+//       if (!llvmModule) {
+//         llvm::errs() << "Failed to emit LLVM IR\n";
+//         return failure();
+//       }
 
-      output << *llvmModule;
-      return success();
-    }, 
-    [](DialectRegistry &registry) {
-      registry.insert<xilinx::AIE::AIEDialect>();
-      registry.insert<StandardOpsDialect>();
-      registry.insert<VectorDialect>();
-      registry.insert<LLVM::LLVMDialect>();
-    });
+//       output << *llvmModule;
+//       return success();
+//     },
+//     [](DialectRegistry &registry) {
+//       registry.insert<xilinx::AIE::AIEDialect>();
+//       registry.insert<StandardOpsDialect>();
+//       registry.insert<memref::MemRefDialect>();
+//       registry.insert<VectorDialect>();
+//       registry.insert<LLVM::LLVMDialect>();
+//     });
 
   TranslateFromMLIRRegistration
     registrationMMap("aie-generate-mmap", [](ModuleOp module, raw_ostream &output) {
@@ -129,6 +130,7 @@ void registerAIETranslations() {
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<memref::MemRefDialect>();
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
@@ -222,6 +224,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<memref::MemRefDialect>();
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
@@ -280,6 +283,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<memref::MemRefDialect>();
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
@@ -301,6 +305,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<memref::MemRefDialect>();
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
@@ -311,6 +316,7 @@ SECTIONS
     [](DialectRegistry &registry) {
       registry.insert<xilinx::AIE::AIEDialect>();
       registry.insert<StandardOpsDialect>();
+      registry.insert<memref::MemRefDialect>();
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });                

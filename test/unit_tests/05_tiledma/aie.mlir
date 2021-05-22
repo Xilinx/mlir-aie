@@ -23,13 +23,13 @@ module @test05_tiledma {
     AIE.useLock(%lock13_3, "Acquire", 1, 0) // acquire for read(e.g. input ping)
     AIE.useLock(%lock13_5, "Acquire", 0, 0) // acquire for write
     %idx1 = constant 3 : index
-    %val1 = load %buf13_0[%idx1] : memref<256xi32>
+    %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
     %2    = addi %val1, %val1 : i32
     %3 = addi %2, %val1 : i32
     %4 = addi %3, %val1 : i32
     %5 = addi %4, %val1 : i32
     %idx2 = constant 5 : index
-    store %5, %buf13_1[%idx2] : memref<256xi32>
+    memref.store %5, %buf13_1[%idx2] : memref<256xi32>
     AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1, 0) // release for read
     AIE.end
@@ -39,13 +39,13 @@ module @test05_tiledma {
     AIE.useLock(%lock33_6, "Acquire", 1, 0) // acquire for read(e.g. input ping)
     AIE.useLock(%lock33_7, "Acquire", 0, 0) // acquire for write
     %idx1 = constant 5 : index
-    %val1 = load %buf33_0[%idx1] : memref<256xi32>
+    %val1 = memref.load %buf33_0[%idx1] : memref<256xi32>
     %2    = addi %val1, %val1 : i32
     %3 = addi %2, %val1 : i32
     %4 = addi %3, %val1 : i32
     %5 = addi %4, %val1 : i32
     %idx2 = constant 5 : index
-    store %5, %buf33_1[%idx2] : memref<256xi32>
+    memref.store %5, %buf33_1[%idx2] : memref<256xi32>
     AIE.useLock(%lock33_6, "Release", 0, 0) // release for write
     AIE.useLock(%lock33_7, "Release", 1, 0) // release for read
     AIE.end

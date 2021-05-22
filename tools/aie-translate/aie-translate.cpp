@@ -14,6 +14,7 @@
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/InitAllTranslations.h"
 #include "mlir/Translation.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
@@ -28,9 +29,10 @@
 using namespace mlir;
 
 int main(int argc, char **argv) {
-//  registerAllDialects();
-  //  registerAllTranslations();
+  // DialectRegistry registry;
+  // registerAllDialects(registry);
 
+  registerAllTranslations();
   xilinx::AIE::registerAIETranslations();
 
   return failed(mlirTranslateMain(argc, argv, "MLIR Translation Testing Tool"));

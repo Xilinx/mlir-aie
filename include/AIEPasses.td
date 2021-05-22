@@ -26,6 +26,7 @@ def AIECoreToLLVM : Pass<"aie-llvm-lowering", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIECoreToLLVMPass()";
   let dependentDialects = [
     "StandardOpsDialect",
+    "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
     "mlir::LLVM::LLVMDialect"
   ];
@@ -52,6 +53,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIECoreToStandardPass()";
   let dependentDialects = [
     "StandardOpsDialect",
+    "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -69,6 +71,7 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp">
   let constructor = "xilinx::AIE::createAIENormalizeAddressSpacesPass()";
   let dependentDialects = [
     "StandardOpsDialect",
+    "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }

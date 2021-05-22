@@ -23,7 +23,7 @@ module @test_core_llvm1 {
     AIE.useLock(%lock11_8, Acquire, 0, 0)
     %0 = constant 1 : i32
     %i = constant 16 : index
-    store %0, %buf11_0[%i] : memref<256xi32>
+    memref.store %0, %buf11_0[%i] : memref<256xi32>
     AIE.useLock(%lock11_8, Release, 1, 0)
     AIE.end
   }
@@ -31,7 +31,7 @@ module @test_core_llvm1 {
   %core12 = AIE.core(%tile12) {
     AIE.useLock(%lock11_8, Acquire, 1, 0)
     %i = constant 16 : index
-    %0 = load %buf11_0[%i] : memref<256xi32>
+    %0 = memref.load %buf11_0[%i] : memref<256xi32>
     AIE.useLock(%lock11_8, Release, 0, 0)
     AIE.end
   }

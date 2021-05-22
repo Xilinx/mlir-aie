@@ -20,6 +20,12 @@ def do_call(command):
         print("Error encountered while running: " + " ".join(command))
         sys.exit(1)
 
+def do_run(command):
+    if(opts.verbose):
+        print(" ".join(command))
+    ret = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True)
+    return ret
+
 def run_flow(opts, tmpdirname):
     thispath = os.path.dirname(os.path.realpath(__file__))
     me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
@@ -27,7 +33,7 @@ def run_flow(opts, tmpdirname):
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
     do_call(['aie-opt', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
-    t = run(['aie-translate', '--aie-generate-corelist', file_with_addresses], stdout=PIPE, stderr=PIPE, universal_newlines=True)
+    t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
     if(opts.xchesscc == True):
@@ -58,7 +64,7 @@ def run_flow(opts, tmpdirname):
         file_core_ldscript = tmpcorefile(core, "ld.script")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
         file_core_llvmir = tmpcorefile(core, "ll")
-        do_call(['aie-translate', '--aie-generate-llvmir', file_opt_core, '-o', file_core_llvmir])
+        do_call(['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
         file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
         do_call(['opt', '-O2', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_elf = corefile(".", core, "elf")

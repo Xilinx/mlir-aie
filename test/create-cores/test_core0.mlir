@@ -6,7 +6,7 @@
 // CHECK-NEXT:    %2 = AIE.mem(%0) {
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }
-// CHECK-NEXT:    %3 = alloc() : memref<256xi32>
+// CHECK-NEXT:    %3 = memref.alloc() : memref<256xi32>
 // CHECK-NEXT:    func @host_task() {
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }
@@ -25,7 +25,7 @@
 //   - clone function body into core's region; map the function arguments to the
 //     corresponding newly created buffer ops
 module @test_core0 {
-  %buf = alloc() : memref<256xi32>
+  %buf = memref.alloc() : memref<256xi32>
 
   func @aie_task(%arg0: memref<256xi32>) -> () {
     return

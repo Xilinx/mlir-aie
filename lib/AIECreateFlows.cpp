@@ -296,7 +296,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
 
     ModuleOp m = getOperation();
     TileAnalysis analysis(m);
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     // Populate tiles and switchboxes.
     for(int col = 0; col <= analysis.getMaxCol(); col++) {

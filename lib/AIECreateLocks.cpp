@@ -121,7 +121,7 @@ struct AIECreateLocksPass : public PassWrapper<AIECreateLocksPass, OperationPass
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     TokenAnalysis TA(m);
     TA.runAnalysis();

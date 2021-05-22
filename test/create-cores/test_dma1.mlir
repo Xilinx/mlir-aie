@@ -46,9 +46,9 @@
 // CHECK-NEXT:      ^bb2:
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }
-// CHECK-NEXT:    %9 = alloc() : memref<256xi32>
-// CHECK-NEXT:    %10 = alloc() : memref<256xi32>
-// CHECK-NEXT:    %11 = alloc() : memref<256xi32>
+// CHECK-NEXT:    %9 = memref.alloc() : memref<256xi32>
+// CHECK-NEXT:    %10 = memref.alloc() : memref<256xi32>
+// CHECK-NEXT:    %11 = memref.alloc() : memref<256xi32>
 // CHECK-NEXT:    AIE.token(0) {sym_name = "token0"}
 // CHECK-NEXT:    AIE.token(0) {sym_name = "token1"}
 // CHECK-NEXT:    %12 = AIE.core(%0) {
@@ -81,9 +81,9 @@ module @test_dma1 {
   %t22 = AIE.tile(2, 2) // consumer
   %t33 = AIE.tile(3, 3) // consumer
 
-  %buf0 = alloc() : memref<256xi32>
-  %buf1 = alloc() : memref<256xi32>
-  %buf2 = alloc() : memref<256xi32>
+  %buf0 = memref.alloc() : memref<256xi32>
+  %buf1 = memref.alloc() : memref<256xi32>
+  %buf2 = memref.alloc() : memref<256xi32>
 
   AIE.token(0) { sym_name="token0" }
   AIE.token(0) { sym_name="token1" }
