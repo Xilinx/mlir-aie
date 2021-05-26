@@ -15,22 +15,16 @@ set(AIECC_TARGETS ${AIECC_FILES})
 list(TRANSFORM AIECC_TARGETS PREPEND ${PROJECT_BINARY_DIR}/bin/)
 
 # Stuff our python into the build area:
-add_custom_target(copy-python ALL DEPENDS ${AIECC_TARGETS})
+add_custom_target(aiecc.py ALL DEPENDS ${AIECC_TARGETS})
 foreach(file ${AIECC_FILES})
 add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/bin/${file}
                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
                    ${PROJECT_BINARY_DIR}/bin/${file}
                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
 endforeach()
-#add_dependencies(MainTarget copy-python)
 
 # Install our python stuff too.
 install(PROGRAMS aiecc.py DESTINATION ${PYTHON_INSTALL_PATH})
 foreach(file ${AIECC_SUBFILES})
   install(PROGRAMS aiecc/${file} DESTINATION ${PYTHON_INSTALL_PATH}/aiecc)
 endforeach()
-
-#configure_file("script2.py.in" "script2.py" @ONLY)
-
-#set(SCRIPT2_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/<...>)
-#install(FILES script2.py DESTINATION ${SCRIPT2_INSTALL_PATH}

@@ -13,7 +13,7 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
-project(aie LANGUAGES CXX C)
+project(AIE LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -26,9 +26,12 @@ find_package(MLIR REQUIRED CONFIG)
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
+# These are a bit of a hack, because we're hijacking alot of LLVM machinery
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
+
+set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 
 find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
@@ -59,3 +62,4 @@ add_subdirectory(lib)
 add_subdirectory(test)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
+add_subdirectory(cmake/modules)
