@@ -1,4 +1,4 @@
-// UNSUPPORTED: arm
+// REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/chess_example/kernel.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
