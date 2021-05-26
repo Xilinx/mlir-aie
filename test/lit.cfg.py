@@ -31,6 +31,7 @@ config.test_exec_root = os.path.join(config.aie_obj_root, 'test')
 
 config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
+config.substitutions.append(('%VITIS_SYSROOT%', config.vitis_sysroot))
 
 llvm_config.with_system_environment(
     ['HOME', 'INCLUDE', 'LIB', 'TMP', 'TEMP'])
@@ -54,7 +55,6 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 #llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
 #llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
 llvm_config.with_environment('CARDANO', config.vitis_cardano_root)
-llvm_config.with_environment('VITIS_SYSROOT',config.vitis_sysroot)
 
 #test if LM_LICENSE_FILE valid
 import shutil

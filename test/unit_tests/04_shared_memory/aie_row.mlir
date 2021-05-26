@@ -1,4 +1,4 @@
-// RUN: aiecc.py --tmpdir=%t --sysroot=${VITIS_SYSROOT} %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --tmpdir=%t --sysroot=%VITIS_SYSROOT% %s -I%S/../../../runtime_lib/ %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
 module @test4_row_shared_memory {
   %tile13 = AIE.tile(1, 3)
