@@ -28,8 +28,9 @@ config.host_ldflags = '@HOST_LDFLAGS@'
 config.llvm_use_sanitizer = "@LLVM_USE_SANITIZER@"
 config.llvm_host_triple = '@LLVM_HOST_TRIPLE@'
 config.host_arch = "@HOST_ARCH@"
-config.aie_src_root = "@CMAKE_SOURCE_DIR@"
-config.aie_obj_root = "@CMAKE_BINARY_DIR@"
+
+config.aie_src_root = "@AIE_SOURCE_DIR@"
+config.aie_obj_root = "@AIE_BINARY_DIR@"
 # pass on vitis settings
 config.vitis_cardano_root = "@VITIS_ROOT@/cardano"
 config.vitis_aietools_root = "@VITIS_ROOT@/aietools"
@@ -50,4 +51,4 @@ import lit.llvm
 lit.llvm.initialize(lit_config, config)
 
 # Let the main config do the real work.
-lit_config.load_config(config, "@CMAKE_SOURCE_DIR@/test/lit.cfg.py")
+lit_config.load_config(config, "@PROJECT_SOURCE_DIR@/lit.cfg.py")
