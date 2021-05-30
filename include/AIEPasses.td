@@ -75,4 +75,16 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp">
     "xilinx::AIE::AIEDialect",
   ];
 }
+
+def AIEVectorOpt : Pass<"aie-vector-opt", "FuncOp"> {
+  let summary = "optimize vector instructions for AIE";
+  let description = [{
+    After super-vectorization, some additional optimizations are important
+    for improving QOR and enabling lowering to LLVM.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEVectorOptPass()";
+  let dependentDialects = [
+  ];
+}
 #endif

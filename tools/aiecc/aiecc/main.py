@@ -32,7 +32,7 @@ def run_flow(opts, tmpdirname):
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
-    do_call(['aie-opt', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
+    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
     t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
@@ -56,6 +56,7 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-opt', '--aie-normalize-address-spaces',
                             '--canonicalize',
                             '--cse',
+                            '--aie-vector-opt',
                             '--convert-vector-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_core, '-o', file_opt_core])
         #do_call(['aie-opt', '--aie-llvm-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])

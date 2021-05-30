@@ -34,6 +34,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIECreatePacketFlowsPass();
   xilinx::AIE::registerAIELowerMemcpyPass();
   xilinx::AIE::registerAIENormalizeAddressSpacesPass();
+  xilinx::AIE::registerAIEVectorOptPass();
 
   DialectRegistry registry;
   registerAllDialects(registry);
