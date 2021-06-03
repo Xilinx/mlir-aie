@@ -63,29 +63,30 @@ if(config.vitis_root):
   llvm_config.with_environment('CARDANO', config.vitis_cardano_root)
 
 #test if LM_LICENSE_FILE valid
-import shutil
-result = None
-if(config.vitis_root):
-    result = shutil.which("xchesscc")
-#validLMLicense = (result != None)
+if(config.enable_chess_tests):
+    import shutil
+    result = None
+    if(config.vitis_root):
+        result = shutil.which("xchesscc")
+    #validLMLicense = (result != None)
 
-import subprocess
-if result != None:
-    result = subprocess.run(['xchesscc','+v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-    validLMLicense = (len(result.stderr.decode('utf-8')) == 0)
-else:
-    validLMLicense = False
+    import subprocess
+    if result != None:
+        result = subprocess.run(['xchesscc','+v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        validLMLicense = (len(result.stderr.decode('utf-8')) == 0)
+    else:
+        validLMLicense = False
 
-if validLMLicense:
-    config.available_features.add('valid_xchess_license')
-    lm_license_file = os.getenv('LM_LICENSE_FILE')
-    if(lm_license_file != None):
-        llvm_config.with_environment('LM_LICENSE_FILE', lm_license_file)
-    xilinxd_license_file = os.getenv('XILINXD_LICENSE_FILE')
-    if(xilinxd_license_file != None):
-        llvm_config.with_environment('XILINXD_LICENSE_FILE', xilinxd_license_file)
-else:
-    print("WARNING: no valid xchess license that is required by some of the lit tests")
+    if validLMLicense:
+        config.available_features.add('valid_xchess_license')
+        lm_license_file = os.getenv('LM_LICENSE_FILE')
+        if(lm_license_file != None):
+            llvm_config.with_environment('LM_LICENSE_FILE', lm_license_file)
+        xilinxd_license_file = os.getenv('XILINXD_LICENSE_FILE')
+        if(xilinxd_license_file != None):
+            llvm_config.with_environment('XILINXD_LICENSE_FILE', xilinxd_license_file)
+    else:
+        print("WARNING: no valid xchess license that is required by some of the lit tests")
 
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]

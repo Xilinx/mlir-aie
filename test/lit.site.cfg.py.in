@@ -32,6 +32,7 @@ config.host_arch = "@HOST_ARCH@"
 config.aie_src_root = "@AIE_SOURCE_DIR@"
 config.aie_obj_root = "@AIE_BINARY_DIR@"
 # pass on vitis settings
+config.enable_chess_tests = @ENABLE_CHESS_TESTS@
 config.vitis_root = "@VITIS_ROOT@"
 config.vitis_sysroot = "@VitisSysroot@"
 config.libxaie_dir = "@XILINX_LIBXAIE_DIR@"
