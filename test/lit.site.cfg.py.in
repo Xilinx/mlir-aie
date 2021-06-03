@@ -34,6 +34,7 @@ config.aie_obj_root = "@AIE_BINARY_DIR@"
 # pass on vitis settings
 config.vitis_root = "@VITIS_ROOT@"
 config.vitis_sysroot = "@VitisSysroot@"
+config.libxaie_dir = "@XILINX_LIBXAIE_DIR@"
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

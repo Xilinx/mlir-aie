@@ -36,7 +36,7 @@ find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE in the sysroot
 set(CMAKE_FIND_ROOT_PATH ${VitisSysroot})
-find_package(LibXAIE REQUIRED)
+find_package(LibXAIE)
 
 if(NOT AIE_BINARY_DIR)
 find_package(AIE REQUIRED CONFIG)
