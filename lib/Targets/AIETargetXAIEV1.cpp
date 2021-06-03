@@ -590,6 +590,15 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.amsel().getDefiningOp());
               int arbiter = amselOp.arbiterIndex();
               int msel    = amselOp.getMselValue();
+              output << "XAieTile_StrmConfigSlv(" <<
+                        tileInstStr("x", "y") << ",\n";
+              output << "\tXAIETILE_STRSW_SPORT_" <<
+                        stringifyWireBundle(connectOp.sourceBundle()).upper() <<
+                        "(" <<
+                        tileInstStr("x", "y") << ", " <<
+                        connectOp.sourceIndex() <<
+                        "),\n";
+              output << "\t" << enable << ", " << enable << ");\n";
               output << "XAieTile_StrmConfigSlvSlot(" <<
                         tileInstStr("x", "y") << ",\n";
               output << "\tXAIETILE_STRSW_SPORT_" <<
@@ -602,12 +611,12 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               output << "\t" << enable << ",\n";
               output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" <<
                         tileInstStr("x", "y") << ",\n";
-              output << "\t\tXAIETILE_STRSW_SPORT_" <<
+              output << "\t\t(XAIETILE_STRSW_SPORT_" <<
                         stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                         "(" <<
                         tileInstStr("x", "y") << ", " <<
                         connectOp.sourceIndex() <<
-                        "),\n";
+                        ")),\n";
               output << "\t\t" << slot << " /*slot*/,\n";
               output << "\t\t" << "0x" << llvm::utohexstr(slotOp.valueInt()) << " /*ID value*/,\n";
               output << "\t\t" << "0x" << llvm::utohexstr(slotOp.maskInt()) << " /*mask*/,\n";
