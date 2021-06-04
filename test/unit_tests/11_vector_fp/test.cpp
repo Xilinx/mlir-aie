@@ -52,23 +52,13 @@ main(int argc, char *argv[])
     mlir_initialize_locks();
     mlir_start_cores();
 
-    union caster {
-        int i;
-        float f;
-    };
-
-    caster c;
-    c.f = 1.0;
-    mlir_write_buffer_a(3, c.i);
+    mlir_write_buffer_a(3, 1.0);
 
     int errors = 0;
 
-    c.i = mlir_read_buffer_a(3);
-    ACDC_check_float("After memory writes", c.f, 1.0);
-    c.i = mlir_read_buffer_a(5);
-    ACDC_check_float("After memory writes", c.f, 8.0);
-    c.i = mlir_read_buffer_a(9);
-    ACDC_check_float("After memory writes", c.f, 14.0);
+    ACDC_check_float("After memory writes", mlir_read_buffer_a(3), 1.0);
+    ACDC_check_float("After memory writes", mlir_read_buffer_a(5), 64.0);
+    ACDC_check_float("After memory writes", mlir_read_buffer_a(9), 196.0);
 
     if (!errors) {
         printf("PASS!\n");

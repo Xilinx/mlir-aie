@@ -708,7 +708,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           int row = coord.second;
           auto tileInst = tileInstStr(std::to_string(col), std::to_string(row));
 
-          auto writeBufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
+          auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
             // int32_t mlir_read_buffer_a13(int index) {
             //     return XAieTile_DmReadWord(&(TileInst[1][3]), a13_offset + (index*4));
             // }
@@ -716,18 +716,57 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
             //     XAieTile_DmWriteWord(&(TileInst[1][3]), a13_offset + (index*4), value);
             // }
             std::string bufName(buf.name().getValue());
+            Type t = buf.getType();
+            Type et;
+            std::string typestr;
+            if (auto memrefType = t.dyn_cast<MemRefType>()) {
+              et = memrefType.getElementType();
+              if (et.isInteger(32))
+                typestr = "int32_t";
+              else if (et.isF32())
+                typestr = "float";
+              else {
+                output << "// buffer " << bufName << " with unsupported type "
+                       << t << ";\n";
+                return; // Unsupported type
+              }
+
+            } else {
+              output << "// buffer " << bufName << " with unsupported type "
+                     << t << ";\n";
+              return; // Unsupported type
+            }
+
             output << "const int " << bufName << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-            output << "int32_t" << " mlir_read_buffer_" << bufName << "(int index) {\n";
-            output << "  return XAieTile_DmReadWord(" << tileInst << ", " << bufName << "_offset + (index*4));\n";
+            output << typestr << " mlir_read_buffer_" << bufName
+                   << "(int index) {\n";
+            output << "  int32_t value = XAieTile_DmReadWord(" << tileInst
+                   << ", " << bufName << "_offset + (index*4));\n";
+            if (et.isInteger(32))
+              output << "  return value;\n";
+            else if (et.isF32()) {
+              output << "  union caster { int32_t i; float f; };\n";
+              output << "  caster c; c.i = value;\n";
+              output << "  return c.f;\n";
+            }
             output << "}\n";
-            output << "void mlir_write_buffer_" << bufName << "(int index, " << "int32_t" << " value) {\n";
-            output << "  return XAieTile_DmWriteWord(" << tileInst << ", " << bufName << "_offset + (index*4), value);\n";
+            output << "void mlir_write_buffer_" << bufName << "(int index, "
+                   << typestr << " value) {\n";
+            if (et.isInteger(32))
+              output << "  int32_t int_value = value;\n";
+            else if (et.isF32()) {
+              output << "  union caster { int32_t i; float f; };\n";
+              output << "  caster c; c.f = value;\n";
+              output << "  int32_t int_value = c.i;\n";
+            }
+            output << "  return XAieTile_DmWriteWord(" << tileInst << ", "
+                   << bufName << "_offset + (index*4), int_value);\n";
             output << "}\n";
           };
 
           // if(tiles.count(tile.getValue()))
             for (auto buf : buffers[tileOp])
-              writeBufferAccessor(coord, buf);
+              bufferAccessor(coord, buf);
           // };
         }
         return success();
