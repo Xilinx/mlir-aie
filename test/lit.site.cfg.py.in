@@ -31,6 +31,9 @@ config.host_arch = "@HOST_ARCH@"
 
 config.aie_src_root = "@AIE_SOURCE_DIR@"
 config.aie_obj_root = "@AIE_BINARY_DIR@"
+# test_exec_root: The root path where tests should be run.
+config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
+
 # pass on vitis settings
 config.enable_chess_tests = @CONFIG_ENABLE_CHESS_TESTS@
 config.vitis_root = "@VITIS_ROOT@"

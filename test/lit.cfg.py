@@ -26,9 +26,6 @@ config.suffixes = ['.mlir']
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
 
-# test_exec_root: The root path where tests should be run.
-config.test_exec_root = os.path.join(config.aie_obj_root, 'test')
-
 config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 config.substitutions.append(('%VITIS_SYSROOT%', config.vitis_sysroot))
@@ -43,11 +40,6 @@ llvm_config.use_default_substitutions()
 # directories.
 config.excludes = ['Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt']
 
-# test_source_root: The root path where tests are located.
-config.test_source_root = os.path.dirname(__file__)
-
-# test_exec_root: The root path where tests should be run.
-config.test_exec_root = os.path.join(config.aie_obj_root, 'test')
 config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
 if(config.vitis_root):
