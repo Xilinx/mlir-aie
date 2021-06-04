@@ -68,7 +68,7 @@ add_definitions(${LLVM_DEFINITIONS})
 
 if(ENABLE_CHESS_TESTS)
 set(CONFIG_ENABLE_CHESS_TESTS 1)
-else
+else()
 set(CONFIG_ENABLE_CHESS_TESTS 0)
 endif()
 configure_lit_site_cfg(
