@@ -66,6 +66,11 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
 
+if(ENABLE_CHESS_TESTS)
+set(CONFIG_ENABLE_CHESS_TESTS 1)
+else
+set(CONFIG_ENABLE_CHESS_TESTS 0)
+endif()
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
