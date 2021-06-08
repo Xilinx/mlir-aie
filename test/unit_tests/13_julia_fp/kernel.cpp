@@ -34,7 +34,7 @@ int error;
 const int cols=64;
 const int lines=64;
 
-void do_line(float *line_start_address,
+void do_line(unsigned *line_start_address,
 	     float cr, float ci, float Im) {
 	float MinRe = -2.0f, MaxRe = 2.0f;
 	int index = 0;
@@ -58,7 +58,7 @@ void do_line(float *line_start_address,
 				done = 1;
 			}
 			zi = zr*zi;
-			zi = zi*2 + ci;
+			zi = zi*2.0f + ci;
 			zr = a-b + cr;
 		}
 		if(n > MAX_ITER) {
@@ -70,10 +70,10 @@ void do_line(float *line_start_address,
 	}
 }
 
-void julia(float *framebuffer, float cr, float ci)
+void julia(unsigned *framebuffer, float cr, float ci)
 {
   // Fractal Julia code
-  float *line_start_address;
+  unsigned *line_start_address;
   float MinIm = -2.0f, MaxIm = 2.0f;
   line_start_address = framebuffer;
   float Im = MaxIm;
@@ -86,6 +86,6 @@ void julia(float *framebuffer, float cr, float ci)
 void func(int32_t *a, int32_t *b)
 {
    a[2] = 0xDEAD;
-    julia((float *)a, 0.3f, 0.3f);
+    julia((unsigned *)a, 0.3f, 0.3f);
     a[0] = 0xDEAD;
 }
