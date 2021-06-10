@@ -53,6 +53,7 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 
 if(config.vitis_root):
   llvm_config.with_environment('CARDANO', config.vitis_cardano_root)
+  llvm_config.with_environment('VITIS', config.vitis_root)
 
 #test if LM_LICENSE_FILE valid
 if(config.enable_chess_tests):
