@@ -23,6 +23,7 @@ struct AIEVectorOptPass : public PassWrapper<AIEVectorOptPass,
                                              OperationPass<FuncOp>> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
     registry.insert<StandardOpsDialect>();
+    registry.insert<memref::MemRefDialect>();
   }
   void runOnOperation() override {
     FuncOp f = getOperation();
