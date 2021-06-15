@@ -8,11 +8,13 @@ import platform
 import sys
 import time
 from subprocess import PIPE, run, call
+from joblib import Parallel, delayed
 import tempfile
 
 import aiecc.cl_arguments
 
 def do_call(command):
+    global opts
     if(opts.verbose):
         print(" ".join(command))
     ret = call(command)
@@ -21,6 +23,7 @@ def do_call(command):
         sys.exit(1)
 
 def do_run(command):
+    global opts
     if(opts.verbose):
         print(" ".join(command))
     ret = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True)
@@ -48,7 +51,7 @@ def run_flow(opts, tmpdirname):
     def tmpcorefile(core, ext):
         return corefile(tmpdirname, core, ext)
         
-    for core in cores:
+    def process_core(core):
         (corecol, corerow) = core
         file_core = tmpcorefile(core, "mlir")
         do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
@@ -88,6 +91,9 @@ def run_flow(opts, tmpdirname):
             do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+
+    # Compile each core in parallel
+    Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
 
     # Generate the included host interface
     file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
