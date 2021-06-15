@@ -41,7 +41,7 @@ module @test09_simple_shim_dma {
       %srcDma = AIE.dmaStart("MM2S0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l73, "Acquire", 0, 0)
-      AIE.dmaBdPckt(0x5, 0xD)
+      AIE.dmaBdPacket(0x5, 0xD)
       AIE.dmaBd(<%buf73 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l73, "Release", 1, 0)
       br ^end
@@ -53,7 +53,7 @@ module @test09_simple_shim_dma {
       %srcDma = AIE.dmaStart("MM2S0", ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l71, "Acquire", 0, 0)
-      AIE.dmaBdPckt(0x4, 0xC)
+      AIE.dmaBdPacket(0x4, 0xC)
       AIE.dmaBd(<%buf71 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l71, "Release", 1, 0)
       br ^end

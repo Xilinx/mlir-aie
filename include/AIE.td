@@ -726,11 +726,11 @@ def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIE_DMABDPCKTOp: AIE_Op<"dmaBdPckt", []> {
+def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   let summary = "Enable packet headers for a dma block descriptor";
   let description = [{
     This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
-    the packet type (3-bits) and packet header (5-bits).
+    the packet type (3-bits) and packet ID (5-bits).
     
     This operation must be used in an MLIR block that lives inside a MemOp's region, and before AIE.dmaBd.
     The block descriptor specifies what lock to use and the buffer configuration.
@@ -740,7 +740,7 @@ def AIE_DMABDPCKTOp: AIE_Op<"dmaBdPckt", []> {
       // this defines a BD that uses lock %lck0 and buffer %buf0
       ^bd5:
         AIE.useLock(%lck, "Acquire", 0, 0)
-        AIE.dmaBdPckt(0x4, 0xD)
+        AIE.dmaBdPacket(0x4, 0xD)
         AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
         AIE.useLock(%lck, "Release", 1, 0)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
@@ -750,17 +750,17 @@ def AIE_DMABDPCKTOp: AIE_Op<"dmaBdPckt", []> {
   }];
 
   let arguments = (
-    ins I32Attr:$pckt_type,
-        I32Attr:$pckt_id
+    ins I32Attr:$packet_type,
+        I32Attr:$packet_id
   );
 
   let assemblyFormat = [{
-    `(` $pckt_type `,` $pckt_id `)` attr-dict
+    `(` $packet_type `,` $packet_id `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    int getPcktType() { return pckt_type(); }
-    int getPcktId() { return pckt_id(); }
+    int getPacketType() { return packet_type(); }
+    int getPacketID() { return packet_id(); }
   }];
 
 }
