@@ -70,20 +70,24 @@ def run_flow(opts, tmpdirname):
         do_call(['opt', '-O2', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_elf = corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
-        if(opts.xchesscc == True):
+        if(opts.xchesscc):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
           do_call(['cp', file_core_llvmir_stripped, file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
           file_core_llvmir_chesslinked = tmpcorefile(core, "chesslinked.ll")
           do_call(['llvm-link', file_core_llvmir_chesshack, chess_intrinsic_wrapper, '-S', '-o', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesslinked])
-          do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
+          if(opts.xbridge):
+            do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '+l', file_core_bcf, '-o', file_core_elf])
+          else:
+            do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
+            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
-        if(opts.xbridge == True):
-          do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
-        else:
-          do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+          if(opts.xbridge):
+            do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
+          else:
+            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
     # Generate the included host interface
     file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
