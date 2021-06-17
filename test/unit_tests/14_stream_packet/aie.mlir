@@ -1,6 +1,6 @@
 // RUN: aiecc.py --sysroot=${VITIS_SYSROOT} %s -I%S/../../../runtime_lib %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 
-module @test09_simple_shim_dma {
+module @test14_stream_packet {
   %t73 = AIE.tile(7, 3)
   %t72 = AIE.tile(7, 2)
   %t62 = AIE.tile(6, 2)
