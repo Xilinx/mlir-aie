@@ -138,3 +138,42 @@ void ACDC_print_tile_status(struct XAieGbl_Tile &tile) {
         }
     }
 }
+
+void ACDC_clear_config(struct XAieGbl_Tile &tile) {
+// 0x00000000 - 0x0007FFF Memory Banks (32 Kbyte)
+// 0x00008000 - 0x000FFFF Reserved
+// 0x00011000 - 0x0011FFF Mem Performance Registers
+// 0x00014000 - 0x0014FFF Debug, timer, trace control
+// 0x00018000 - 0x0010200 Reserved
+// 0x0001D000 - 0x001DFFF *Tile DMA Registers
+// 0x0001E000 - 0x001EFFF *Lock Registers
+// 0x0001F000 - 0x001FFFF Reserved
+// 0x00020000 - 0x00027FFF *Program Memory (16 Kbyte)
+// 0x00028000 - 0x0002FFFF Reserved
+// 0x00030000 - 0x00030FFF Core Debug Registers
+// 0x00031000 - 0x00031FFF Core Performance Registers
+// 0x00032000 - 0x00033FFF Core Control & Status Registers
+// 0x00034000 - 0x00034FFF *Event & Trace Registers
+// 0x0003F000 - 0x0003F0FF *Stream Switch Master Config
+// 0x0003F100 – 0x0003FFF *Stream Switch Slave Config
+
+    int col = tile.ColId;
+    int row = tile.RowId;
+  	u64 TileAddr = tile.TileAddr;
+    // TileDMA and Locks
+    for (int i=0x1D000; i<0x1EFFF; i+=4) {
+    	XAieGbl_Write32(TileAddr+i, 0);
+    }
+    // Program Memory
+    for (int i=0x20000; i<0x27FFF; i+=4) {
+    	XAieGbl_Write32(TileAddr+i, 0);
+    }
+    // Event & Trace Registers
+    for (int i=0x34000; i<0x34FFF; i+=4) {
+    	XAieGbl_Write32(TileAddr+i, 0);
+    }
+    // Stream Switch config
+    for (int i=0x3F000; i<0x3FFFF; i+=4) {
+    	XAieGbl_Write32(TileAddr+i, 0);
+    }
+}
