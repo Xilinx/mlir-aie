@@ -1,4 +1,4 @@
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%S/../../../runtime_lib %S/../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 
 module @test14_stream_packet {
   %t73 = AIE.tile(7, 3)
