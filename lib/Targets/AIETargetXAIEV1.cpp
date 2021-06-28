@@ -26,24 +26,29 @@ using namespace xilinx::AIE;
 namespace xilinx {
 namespace AIE {
 
-std::string shimDMAInstStr(StringRef col, StringRef index) {
+static std::string shimDMAInstStr(StringRef col, StringRef index) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "ShimDMAInst_" << col << "_" << index;
   return str;
 }
-std::string tileInstStr(StringRef col, StringRef row) {
+static std::string tileInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "&(TileInst" << "[" << col << "][" << row << "])";
   return str;
 }
-
-std::string tileDMAInstStr(StringRef col, StringRef row) {
+static std::string tileInstStr(int col, int row) {
+  return tileInstStr(std::to_string(col), std::to_string(row));
+}
+static std::string tileDMAInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "&(TileDMAInst" << "[" << col << "][" << row << "])";
   return str;
+}
+static std::string tileDMAInstStr(int col, int row) {
+  return tileDMAInstStr(std::to_string(col), std::to_string(row));
 }
 
   mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
@@ -71,11 +76,12 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
             // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETENABLE);
             // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETDISABLE);
             output << "XAieTile_ShimColumnReset("
-                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << tileInstStr(col, row)
                   << ", XAIE_RESETENABLE);\n";
             output << "XAieTile_ShimColumnReset("
-                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << tileInstStr(col, row)
                   << ", XAIE_RESETDISABLE);\n";
+
           } else {
             // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable,
             // u8 Reset);
@@ -83,11 +89,11 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
             // XAieGbl_LoadElf(&(TileInst[row][col]),
             // (u8*)elf_file, XAIE_ENABLE);
             output << "XAieTile_CoreControl("
-                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << tileInstStr(col, row)
                   << ", " << disable << ", " << enable << ");\n";
             output << "for (int l=0; l<16; l++)\n"
                   << "  XAieTile_LockRelease("
-                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << tileInstStr(col, row)
                   << ", l, 0x0, 0);\n";
 
             if (auto coreOp = tileOp.getCoreOp()) {
@@ -100,7 +106,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               }
               output << "{\n"
                     << "int ret = XAieGbl_LoadElf("
-                    << tileInstStr(std::to_string(col), std::to_string(row))
+                    << tileInstStr(col, row)
                     << ", "
                     << "(u8*)\"" << fileName << "\", " << enable << ");\n";
               output << "if (ret == XAIELIB_FAILURE)\n"
@@ -124,7 +130,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           int row = tileOp.rowIndex();
           if(!tileOp.isShimTile()) {
             output << "XAieTile_CoreControl("
-                  << tileInstStr(std::to_string(col), std::to_string(row))
+                  << tileInstStr(col, row)
                   << ", " << enable << ", " << disable << ");\n";
           }
         }
@@ -152,12 +158,12 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           int col = memOp.colIndex();
           int row = memOp.rowIndex();
           output << "XAieDma_TileInitialize(" <<
-                    tileInstStr(std::to_string(col), std::to_string(row)) << ", " <<
-                    tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
+                    tileInstStr(col, row) << ", " <<
+                    tileDMAInstStr(col, row) << ");\n";
           output << "XAieDma_TileBdClearAll(" <<
-                    tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
+                    tileDMAInstStr(col, row) << ");\n";
           output << "XAieDma_TileChResetAll(" <<
-                    tileDMAInstStr(std::to_string(col), std::to_string(row)) << ");\n";
+                    tileDMAInstStr(col, row) << ");\n";
 
           DenseMap<Block *, int> blockMap;
 
@@ -244,7 +250,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
             if (foundBd) {
               if (hasA) {
                 output << "XAieDma_TileBdSetLock(" <<
-                          tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                          tileDMAInstStr(col, row) << ", " <<
                           " /* bd */ "  << bdNum << ", " <<
                           bufA << ", " <<
                           " /* lockID */ " << lockID << ", " <<
@@ -255,7 +261,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               }
               if (hasB) {
                 output << "XAieDma_TileBdSetLock(" <<
-                          tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                          tileDMAInstStr(col, row) << ", " <<
                           " /* bd */ "  << bdNum << ", " <<
                           bufB << ", " <<
                           " /* lockID */ " << lockID << ", " <<
@@ -266,7 +272,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               }
 
               output << "XAieDma_TileBdSetAdrLenMod(" <<
-                        tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                        tileDMAInstStr(col, row) << ", " <<
                         " /* bd */ "  << bdNum << ", " <<
                         " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", " <<
                         " /* addrB */ "  << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " <<
@@ -280,22 +286,21 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
                                             // block
                 int nextBdNum = blockMap[nextBlock];
                 output << "XAieDma_TileBdSetNext("
-                       << tileDMAInstStr(std::to_string(col),
-                                         std::to_string(row))
+                       << tileDMAInstStr(col, row)
                        << ", "
                        << " /* bd */ " << bdNum << ", "
                        << " /* nextbd */ " << nextBdNum << ");\n";
               }
               if (foundBdPacket) {
                 output << "XAieDma_TileBdSetPkt(" <<
-                          tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                          tileDMAInstStr(col, row) << ", " <<
                           " /* bd */ "  << bdNum << ", " <<
                           " /* en */ "  << 1 << ", "  <<
                           " /* type */ "  << packetType << ", "  <<
                           " /* id */ "  << packetID << ");\n";
               }
               output << "XAieDma_TileBdWrite("
-                     << tileDMAInstStr(std::to_string(col), std::to_string(row))
+                     << tileDMAInstStr(col, row)
                      << ", "
                      << " /* bd */ " << bdNum << ");\n";
             }
@@ -307,13 +312,13 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
 
               // Note fixup with extra parenthesis here.
               output << "XAieDma_TileSetStartBd("
-                     << "(" << tileDMAInstStr(std::to_string(col), std::to_string(row)) << ")"
+                     << "(" << tileDMAInstStr(col, row) << ")"
                      << ", "
                      << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", "
                      << " /* bd */ " << bdNum << ");\n";
               output << "XAieDma_TileChControl("
-                     << tileDMAInstStr(std::to_string(col), std::to_string(row))
+                     << tileDMAInstStr(col, row)
                      << ", "
                      << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                      << ", " << resetDisable << ", " << enable << ");\n";
@@ -349,7 +354,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
               shimDMAInstStr(std::to_string(col), std::to_string(index));
           output << "XAieDma_Shim " << dmaName << ";\n";
           output << "XAieDma_ShimInitialize("
-                 << tileInstStr(std::to_string(col), std::to_string(row))
+                 << tileInstStr(col, row)
                  << ", &" << dmaName << ");\n";
 
           DenseMap<Block *, int> blockMap;
@@ -480,13 +485,13 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           int lockID = lock.getLockID();
           if (op.acquire()) {
             output << "XAieTile_LockAcquire(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                      tileDMAInstStr(col, row) << ", " <<
                       lockID << ", " <<
                       lockVal << ", " <<
                       timeOut << ");\n";
           } else if (op.release()) {
             output << "XAieTile_LockRelease(" <<
-                      tileDMAInstStr(std::to_string(col), std::to_string(row)) << ", " <<
+                      tileDMAInstStr(col, row) << ", " <<
                       lockID << ", " <<
                       lockVal << ", " <<
                       timeOut << ");\n";
@@ -698,17 +703,17 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           }
           for (auto connectOp : b.getOps<ConnectOp>()) {
             output << "XAieTile_StrmConnectCct(" <<
-                      tileInstStr(std::to_string(col), "0") << ",\n";
+                      tileInstStr(col, 0) << ",\n";
             output << "\tXAIETILE_STRSW_SPORT_" <<
                       stringifyWireBundle(connectOp.sourceBundle()).upper() <<
                       "(" <<
-                      tileInstStr(std::to_string(col), "0") << ", " <<
+                      tileInstStr(col, 0) << ", " <<
                       connectOp.sourceIndex() <<
                       "),\n";
             output << "\tXAIETILE_STRSW_MPORT_" <<
                       stringifyWireBundle(connectOp.destBundle()).upper() <<
                       "(" <<
-                      tileInstStr(std::to_string(col), "0") << ", " <<
+                      tileInstStr(col, 0) << ", " <<
                       connectOp.destIndex() <<
                       "),\n";
             output << "\t" << enable << ");\n";
@@ -723,7 +728,7 @@ std::string tileDMAInstStr(StringRef col, StringRef row) {
           std::pair<int, int> coord = NL.getCoord(tileOp);
           int col = coord.first;
           int row = coord.second;
-          auto tileInst = tileInstStr(std::to_string(col), std::to_string(row));
+          auto tileInst = tileInstStr(col, row);
 
           auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
             // int32_t mlir_read_buffer_a13(int index) {
