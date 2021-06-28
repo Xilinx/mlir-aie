@@ -1,4 +1,10 @@
+# to print unicode characters, run this:
+# export PYTHONIOENCODING=utf8
+
 import math
+import json
+import os
+import argparse
 
 from enum import Enum
 
@@ -42,7 +48,6 @@ class canvas:
         self.characters.append([point, character]);
         
     def draw_line(self, start, finish):
-
         if (self.direction([start,finish]) == Direction.Vert):
             self.vert_line_list.append([start, finish])
         else:
@@ -50,7 +55,7 @@ class canvas:
         
     def draw_square(self, center, size):
         horz_origin = math.floor((center[0] + 0.5) - (size/2));
-        horz_extent = math.ceil((center[0] + 0.5) + (size/2));
+        horz_extent = math.ceil((center[0] + 0.5) + (size/2) + 2);
 
         vert_origin = math.floor( (center[1] + 0.5)- (size/2));
         vert_extent =  math.ceil( (center[1] + 0.5) + (size/2));
@@ -128,28 +133,26 @@ class canvas:
         # if vert through, clear bits for vert end
         
         
-        
         chars = {
             0 : ' ',
-            2 : u'\u2500',
-            16 : u'\u2502',
-            9 : u'\u250c',
-            33 : u'\u2514',
-            12 : u'\u2510',
-            36 : u'\u2518',
-            1 : u'\u2576',
-            8 : u'\u2577',
-            32 : u'\u2575',
-            4 : u'\u2574',
-            18 : u'\u253c',
-            25 : u'\u251c',
+            2 : u'\u2500', # horz line
+            16 : u'\u2502',# vert line
+            9 : u'\u250c', # box top left
+            33 : u'\u2514',# box bot left
+            12 : u'\u2510',# box top right
+            36 : u'\u2518',# box bot right
+            1 : u'\u2576', # right half horz line 
+            8 : u'\u2577', # lower half vert line
+            32 : u'\u2575',# upper half vert line
+            4 : u'\u2574', # left half horz line
+            18 : u'\u253c',# vert AND horz
+            25 : u'\u251c',# vert and right
             17 : u'\u251c',
-            20 : u'\u2524',
-            10 : u'\u252c',
-            34 : u'\u2534',
-            21 : u'\u253c',
+            20 : u'\u2524',# vert and left
+            10 : u'\u252c',# horz and bot
+            34 : u'\u2534',# horz and top
+            21 : u'\u253c',# vert AND horz
             42 : u'\u253c'
-            
             
         }
         try:
@@ -157,7 +160,7 @@ class canvas:
         except KeyError:
          char = "x"
          
-        return char;
+        return char
 
     def combine(self, a, b):
         return [ a[0] or b[0], a[1] or b[1], a[2] or b[2]];
@@ -175,50 +178,95 @@ class canvas:
                        print(charloc[1], end='', sep='');
                        index = -1;
                        break
-               if index == 0: 
+               if index == 0: # not a character, either vert or horz line 
                    for line in self.horz_line_list:
                        horz_line_points = self.combine(horz_line_points, self.within_line((y,x),line));
-
-                   index += self.find_horz_index(horz_line_points);
+                   index += self.find_horz_index(horz_line_points)
 
                    for line in self.vert_line_list:
                        vert_line_points = self.combine(vert_line_points, self.within_line((y,x),line));
-
-                   index += 8*self.find_horz_index(vert_line_points);
+                   index += 8*self.find_horz_index(vert_line_points)
 
                    print("{}".format(self.transform(index)), end='', sep='')
                    #print(" {} ".format(index), end='', sep='')
    
            print("")
 
-def draw_switchbox(canvas, xoffset, yoffset):
-    c.draw_square((xoffset+5,yoffset+4),2);
-   # c.draw_line((1,1), (1,5))
-   
-    c.draw_character((xoffset+2,yoffset+4), 5)
-    c.draw_character((xoffset+9,yoffset+4), 6)
+superscripts = {
+   # 0 : u'\u2070', 
+    0 : ' ', 
+    1 : u'\u00b9', 
+    2 : u'\u00b2', 
+    3 : u'\u00b3', 
+    4 : u'\u2074', 
+    5 : u'\u2075', 
+    6 : u'\u2076', 
+    7 : u'\u2077', 
+    8 : u'\u2078', 
+    9 : u'\u2079', 
+}
+subscripts = {
+   # 0 : u'\u2080', 
+    0 : ' ', 
+    1 : u'\u2081', 
+    2 : u'\u2082', 
+    3 : u'\u2083', 
+    4 : u'\u2084', 
+    5 : u'\u2085', 
+    6 : u'\u2086', 
+    7 : u'\u2087', 
+    8 : u'\u2088', 
+    9 : u'\u2089', 
+}
 
-    c.draw_character((xoffset+2,yoffset+5), 5)
-    c.draw_character((xoffset+9,yoffset+5), 6)
+def draw_switchbox(canvas, xoffset, yoffset, northbound, southbound, eastbound, westbound, draw_demand=True, name=""):
+    c.draw_square((xoffset+5,yoffset+4),2)
 
-    #c.draw_character((1,4), 5)
-    c.draw_character((xoffset+5,yoffset+2), 0)
-    c.draw_character((xoffset+6,yoffset+2), 1)
+    # label it
+    if len(name) > 0:
+        c.draw_character((xoffset+6,yoffset+4), name[0])
+    if len(name) > 1:
+        c.draw_character((xoffset+7,yoffset+4), name[1])
+    if len(name) > 2:
+        c.draw_character((xoffset+8,yoffset+4), name[2])
     
-    c.draw_character((xoffset+5,yoffset+7), 0)
-    c.draw_character((xoffset+6,yoffset+7), 1)
-    
-    c.draw_line((xoffset+1,yoffset+5), (xoffset+4,yoffset+5))
-    c.draw_line((xoffset+1,yoffset+4), (xoffset+4,yoffset+4))
-    
-    c.draw_line((xoffset+7,yoffset+5), (xoffset+10,yoffset+5))
-    c.draw_line((xoffset+7,yoffset+4), (xoffset+10,yoffset+4))
-    
-    c.draw_line((xoffset+5,yoffset+1), (xoffset+5,yoffset+3))
-    c.draw_line((xoffset+6,yoffset+1), (xoffset+6,yoffset+3))
 
-    c.draw_line((xoffset+5,yoffset+6), (xoffset+5,yoffset+8))
-    c.draw_line((xoffset+6,yoffset+6), (xoffset+6,yoffset+8))
+    # left of the switchbox (south)
+    if northbound > 0: 
+        c.draw_line((xoffset+9,yoffset+4), (xoffset+13,yoffset+4))
+        if(draw_demand):
+            c.draw_character((xoffset+11,yoffset+3), subscripts[northbound])
+            if(northbound > 6): # if overcapacity, mark with an 'x'            
+                c.draw_character((xoffset+10,yoffset+4), 'x')
+                #c.draw_character((xoffset+11,yoffset+4), 'x')
+                c.draw_character((xoffset+12,yoffset+4), 'x')
+    if southbound > 0: 
+        c.draw_line((xoffset+0,yoffset+5), (xoffset+4,yoffset+5))
+        if(draw_demand):
+            c.draw_character((xoffset+2,yoffset+6), superscripts[southbound])
+            if(southbound > 4): # if overcapacity, mark with an 'x'
+                c.draw_character((xoffset+1, yoffset+5), 'x')
+                #c.draw_character((xoffset+2, yoffset+5), 'x')
+                c.draw_character((xoffset+3, yoffset+5), 'x')
+
+    # below the switchbox (east)
+    if eastbound > 0: 
+        c.draw_line((xoffset+6,yoffset+6), (xoffset+6,yoffset+8))
+        if(draw_demand):
+            c.draw_character((xoffset+5,yoffset+7), superscripts[eastbound])
+            if(eastbound > 4): # if overcapacity, mark with an 'x'
+                c.draw_character((xoffset+6, yoffset+6), 'x')
+                #c.draw_character((xoffset+6, yoffset+7), 'x')
+                c.draw_character((xoffset+6, yoffset+8), 'x')
+    if westbound > 0: 
+        c.draw_line((xoffset+7,yoffset+1), (xoffset+7,yoffset+3))
+        if(draw_demand):
+            c.draw_character((xoffset+8,yoffset+2), superscripts[westbound])
+            if(westbound > 4): # if overcapacity, mark with an 'x'
+                c.draw_character((xoffset+7, yoffset+1), 'x')
+                #c.draw_character((xoffset+7, yoffset+2), 'x')
+                c.draw_character((xoffset+7, yoffset+3), 'x')
+
 
 def draw_herd(c,xoff, yoff):
     draw_switchbox(c,xoff+6,yoff+15)
@@ -240,59 +288,94 @@ def draw_herd(c,xoff, yoff):
     draw_switchbox(c,xoff+20,yoff+0)
     draw_switchbox(c,xoff+27,yoff+5)
     draw_switchbox(c,xoff+27,yoff+0)
+
+
+SB_WIDTH = 9; SB_HEIGHT = 5 # distances between switchboxes
+def draw_switchboxes(c, switchboxes):
+    for item in switchboxes:
+        draw_switchbox(c, SB_WIDTH*item['row'], SB_HEIGHT*item['col'], 
+            item['northbound'], item['southbound'],
+            item['eastbound'], item['westbound'], draw_demand=True,
+            name="{}{}".format(item['col'], item['row'] ))
+    
+# given a route, draw arrow characters to indicate the route
+# route is a list of switchboxes, represented as int tuple coordinates
+left_arrow = u'\u2190'
+up_arrow   = u'\u2191'
+right_arrow= u'\u2192'
+down_arrow = u'\u2193'
+def draw_route(c, route):
+    for i in range(len(route)):
+        xoffset = SB_WIDTH*route[i][1]
+        yoffset = SB_HEIGHT*route[i][0]
+        # for routes starting in the shim, draw arrows coming from PL
+        if(route[i][1] == 0):
+            if(i == 0):
+                c.draw_character((xoffset+1, yoffset+4), right_arrow)
+                c.draw_character((xoffset+2, yoffset+4), right_arrow)
+                c.draw_character((xoffset+3, yoffset+4), right_arrow)
+
+            if(i == len(route)-1):
+                c.draw_character((xoffset+1, yoffset+5), left_arrow)
+                c.draw_character((xoffset+2, yoffset+5), left_arrow)
+                c.draw_character((xoffset+3, yoffset+5), left_arrow)
+
+        if i != 0:
+            if(route[i][0] == route[i-1][0] - 1): # route goes west 
+                c.draw_character((xoffset+7, yoffset+7), up_arrow)
+            if(route[i-1][1] == route[i][1] - 1): # route goes north
+                c.draw_character((xoffset+1, yoffset+4), right_arrow)
+                c.draw_character((xoffset+2, yoffset+4), right_arrow)
+                c.draw_character((xoffset+3, yoffset+4), right_arrow)
+
+        if i != len(route)-1:
+            if(route[i][0] == route[i+1][0] - 1): # route goes east 
+                c.draw_character((xoffset+6, yoffset+7), down_arrow)
+            if(route[i][1] == route[i+1][1] + 1): # route goes south
+                c.draw_character((xoffset+1, yoffset+5), left_arrow)
+                c.draw_character((xoffset+2, yoffset+5), left_arrow)
+                c.draw_character((xoffset+3, yoffset+5), left_arrow)
+
+
     
 if __name__ == '__main__':
-    c = canvas(80,30);
+    # setup python unicode encoding
+    os.system("export PYTHONIOENCODING=utf8")
 
-    draw_herd(c,0,0)
-    draw_herd(c,28,0)
+    parser = argparse.ArgumentParser(description='Draw switchboxes, demands and routes')
+    parser.add_argument('-j', '--json', help='Filepath for JSON file to read')
+    parser.add_argument('-r', '--route_list', help='List of routes to print')
+    args = parser.parse_args()
 
-    c.rasterize();
+    if args.json: json_file_path = args.json
+    else: json_file_path = "./switchbox.json" # default JSON
 
+    with open(json_file_path) as f:
+        json_data = json.load(f)
     
-  #  print(u'\u2500') # Horz
-  #  print(u'\u2502') # Vert
-  #  print ("");
-    # print(u'\u2574') # West
-    # print(u'\u2575') # South
-    # print(u'\u2576') # East
-    # print(u'\u2577') # North
-    # print ("");
+    switchboxes = []
+    routes = []
+
+    for key, item in json_data.items():
+        if "switchbox" in key:
+            switchboxes.append(item)
+        if "route" in key:
+            routes.append(item)
     
-    # print(u'\u2510') # West-South
-    # print(u'\u2514') # East-North
-    # print(u'\u250c') # South-East
-    # print(u'\u2518') # West-North
+    max_col = 0
+    for switchbox in switchboxes:
+        if switchbox['col'] > max_col:
+            max_col = switchbox['col']
 
-    # print(u'\u252c') # tee-South
-    # print(u'\u2524') # tee-west
-    # print(u'\u251c') # tee-east
-    # print(u'\u2534') # tee-north
-    
-    # print(u'\u253c') # cross
+    routes_to_print = []
+    if args.route_list: 
+        for route in args.route_list.split(","):
+            routes_to_print.append(int(route.strip()))
+    else: routes_to_print = range(len(routes))
 
-# draw a box, centered on
-
-# draw_box(width, height)
-# draw_line();
-# draw_line();
-
-
-# Canvas origin is top left. 
-
-# rasterize(canvas, object_list)
-
-
-#horz-end-left
-#horz-end-right
-#horz-through
-
-#vert-end-left
-#vert-end-right
-#vert-through
-
-
-
-#for x in canvas.width
-# for y in canvas.height
-  # Interrogate each object to see if it has a 
+    for i in routes_to_print:
+        c = canvas(60, 5+5*(max_col+1));
+        draw_switchboxes(c, switchboxes)
+        print("Route {}: {}".format(i, routes[i]))
+        draw_route(c, routes[i])
+        c.rasterize()

@@ -137,7 +137,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   let assemblyFormat = [{ attr-dict }];
 }
 
-def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconect, SingleBlockImplicitTerminator<"EndOp">]>,
+def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, SingleBlockImplicitTerminator<"EndOp">]>,
                      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -205,7 +205,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   ];
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconect,
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect,
                                       SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs Index)> {
   let arguments = (

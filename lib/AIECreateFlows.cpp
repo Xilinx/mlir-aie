@@ -14,6 +14,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+#define DEBUG_TYPE "aie-create-flows"
 static llvm::cl::opt<bool> debugRoute("debug-route",
                                       llvm::cl::desc("Enable Debugging of routing process"),
                                       llvm::cl::init(false));
@@ -124,7 +125,7 @@ public:
       PLIOOp op =
         builder.create<PLIOOp>(builder.getUnknownLoc(),
                                builder.getIndexType(),
-                               IntegerAttr::get(i32, (int)col));
+                               IntegerAttr::get(i32, (int32_t)col));
       coordToPLIO[col] = op;
       maxcol = std::max(maxcol, col);
       return op;
@@ -146,30 +147,77 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
   }
 
   void addConnection(ConversionPatternRewriter &rewriter,
-                     Interconect op,
+                    // could be a shim-mux or a switchbox. 
+                     Interconnect op,
+                     FlowOp flowOp,
                      WireBundle inBundle,
                      int inIndex,
                      WireBundle outBundle,
                      int &outIndex) const {
+
+    LLVM_DEBUG(llvm::dbgs() << " - addConnection (" << 
+                stringifyWireBundle(inBundle) << " : " << inIndex << ") -> (" <<
+                stringifyWireBundle(outBundle) << " : " << outIndex << ")\n");
+
     Region &r = op.connections();
     Block &b = r.front();
     auto point = rewriter.saveInsertionPoint();
     rewriter.setInsertionPoint(b.getTerminator());
+
+    std::vector<int> validIndices;
+
+    // if this interconnect is a shim-mux then..
+    if(isa<ShimMuxOp>(op)) {
+      // (enforce) in-bound connections from 'South' must route straight through. 
+      // (enforce) in-bound connections from north to South must route straight through
+      if( (inBundle == WireBundle::South && outBundle == WireBundle::North) ||
+          (inBundle == WireBundle::North && outBundle == WireBundle::South) ) {
+            outIndex = inIndex;
+      }
+      // (enforce) out-bound connections from 'DMA' on index 0 go out on north-bound 3 
+      // (enforce) out-bound connections from 'DMA' on index 1 go out on north-bound 7
+      else if(inBundle == WireBundle::DMA && outBundle == WireBundle::North) {
+        if(inIndex == 0) 
+          outIndex = 3;
+        else outIndex = 7;
+      }
+    }
+    else { // not a shimmux
+      // if shim switch to shimmux connection...
+      // (enforce) in-bound connections from north to DMA channel 0 must come in on index 2 
+      // (enforce) in-bound connections from north to DMA channel 1 must come in on index 3 
+      if(op.rowIndex() == 0 && outBundle == WireBundle::South && 
+            flowOp.destBundle() == WireBundle::DMA) {
+        if(flowOp.destChannel() == 0)
+          outIndex = 2;
+        else outIndex = 3;
+      }
+      else if(outBundle == WireBundle::North)
+        validIndices = {0, 1, 2, 3, 4, 5};
+      else validIndices = {0, 1, 2, 3}; //most connections have 4 valid outIndex options
+    }
+
+    // If no index has been dictated, find an index that is bigger than any existing index.
     if(outIndex == -1) {
-      // Find an index that is bigger than any existing index.
-      outIndex = 0;
+      uint8_t choice = 0;
+      outIndex = validIndices[choice];
+
       for (auto connectOp : b.getOps<ConnectOp>()) {
-        if(connectOp.destBundle() == outBundle &&
-           connectOp.destIndex() >= outIndex) {
-          outIndex = connectOp.destIndex()+1;
+        if(connectOp.destBundle() == outBundle)
+          while(connectOp.destIndex() >= outIndex) {
+            outIndex = validIndices[++choice];
         }
       }
       for (auto masterOp : b.getOps<MasterSetOp>()) {
-        if(masterOp.destBundle() == outBundle &&
-           masterOp.destIndex() >= outIndex) {
-          outIndex = masterOp.destIndex()+1;
+        if(masterOp.destBundle() == outBundle)
+          while(masterOp.destIndex() >= outIndex) {
+            outIndex = validIndices[++choice];
         }
       }
+      if(debugRoute)
+        if(choice > validIndices.size())
+          llvm::dbgs() << "AIECreateFlows: Illegal routing channel detected!\n" <<
+                          "Too many routes in tile (" << op.colIndex() << ", " << op.rowIndex() << ")\n";
     }
 
     // This might fail if an outIndex was exactly specified.
@@ -185,14 +233,14 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       int col, row;
       col = op.colIndex();
       row = op.rowIndex();
-      llvm::dbgs() << "Route@(" << col << "," << row << "): " << stringifyWireBundle(inBundle) << ":"
+      llvm::dbgs() << "\t\tRoute@(" << col << "," << row << "): " << stringifyWireBundle(inBundle) << ":"
                   << inIndex << "->" << stringifyWireBundle(outBundle) << ":" << outIndex
                   << "\n";
     }
   }
+
   void rewrite(AIE::FlowOp op, ArrayRef<Value > operands,
                   ConversionPatternRewriter &rewriter) const override {
-
     Operation *Op = op.getOperation();
     WireBundle sourceBundle = op.sourceBundle();
     int sourceIndex = op.sourceIndex();
@@ -219,20 +267,27 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     WireBundle bundle = sourceBundle;
     int index = sourceIndex;
 
+    // sourcing from the shim tile 
+    // If intent is to route from PLIO - "south" is specified  (Attach ShimMux to to PLIO)
+    // if intent is to route from DMA - "DMA" is specificed ( Attach ShimMux to DMA)
     if(row == 0) {
       // The Shim row of tiles needs some extra connectivity
+      LLVM_DEBUG(llvm::dbgs() << "\tInitial Extra shim connectivity\t");
       ShimMuxOp shimMuxOp = analysis.getShimMux(rewriter, col);
       int internalIndex = -1;
-      addConnection(rewriter, cast<Interconect>(shimMuxOp.getOperation()),
-        bundle, index, WireBundle::South, internalIndex);
+      addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()), op,
+        bundle, index, WireBundle::North, internalIndex);
       bundle = WireBundle::South;
       index = internalIndex;
+      // does not update row... instead connection made in `while' loop
     }
 
     int nextcol = col, nextrow = row;
     WireBundle nextBundle;
     int done = false;
     while(!done) {
+      // Travel vertically to the right row, then horizontally to the right column
+
       // Create a connection inside this switchbox.
       WireBundle outBundle;
       int outIndex = -1; // pick connection.
@@ -254,27 +309,35 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
         nextcol = col+1;
       } else {
         assert(row == destrow && col == destcol);
-        // done, so connect to the correct target bundle.
+        // In the right tile streamswitch,  done, so connect to the correct target bundle.
         outBundle = destBundle;
-        outIndex = destIndex;
+        outIndex = destIndex; 
         done = true;
       }
       if(nextrow < 0) {
         assert(false);
       } else {
-        if(row == 0) {
+ 
+        if(row == 0 && done) {    
+             // we reached our destination, and that destination is in the shim, 
+        // we're terminating in either the DMA or the PLIO
           // The Shim row of tiles needs some extra connectivity
           SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
           ShimMuxOp shimMuxOp = analysis.getShimMux(rewriter, col);
           int internalIndex = -1;
-          addConnection(rewriter, cast<Interconect>(swOp.getOperation()),
+          LLVM_DEBUG(llvm::dbgs() << "\tExtra shim switch connectivity\t");
+          addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), op,
             bundle, index, WireBundle::South, internalIndex);
-          addConnection(rewriter, cast<Interconect>(shimMuxOp.getOperation()),
-            WireBundle::South, internalIndex, outBundle, outIndex);
+
+          LLVM_DEBUG(llvm::dbgs() << "\tExtra shim DMA connectivity\t");
+          addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()), op, 
+            WireBundle::North, internalIndex, outBundle, outIndex);
+
         } else {
           // Most tiles are simple and just go through a switchbox.
+          LLVM_DEBUG(llvm::dbgs() << "\tRegular switch connectivity\t");
           SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
-          addConnection(rewriter, cast<Interconect>(swOp.getOperation()),
+          addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), op,
             bundle, index, outBundle, outIndex);
         }
       }
@@ -317,17 +380,8 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
       for(int row = 0; row <= analysis.getMaxRow(); row++) {
         auto tile = analysis.getTile(builder, col, row);
         auto sw = analysis.getSwitchbox(builder, col, row);
-        builder.create<WireOp>(builder.getUnknownLoc(),
-                                tile,
-                                WireBundle::Core,
-                                sw,
-                                WireBundle::Core);
-        builder.create<WireOp>(builder.getUnknownLoc(),
-                                tile,
-                                WireBundle::DMA,
-                                sw,
-                                WireBundle::DMA);
         if(col > 0) {
+          // connections east-west between stream switches
           auto westsw = analysis.getSwitchbox(builder, col-1, row);
           builder.create<WireOp>(builder.getUnknownLoc(),
                                   westsw,
@@ -336,6 +390,19 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
                                   WireBundle::West);
         }
         if(row > 0) {
+          // connections between abstract 'core' of tile 
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  tile,
+                                  WireBundle::Core,
+                                  sw,
+                                  WireBundle::Core);
+          // connections between abstract 'dma' of tile                        
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                                  tile,
+                                  WireBundle::DMA,
+                                  sw,
+                                  WireBundle::DMA);
+          // connections north-south inside array ( including connection to shim row)                        
           auto southsw = analysis.getSwitchbox(builder, col, row-1);
           builder.create<WireOp>(builder.getUnknownLoc(),
                                   southsw,
@@ -343,23 +410,24 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
                                   sw,
                                   WireBundle::South);
         } else if(row == 0) {
-          auto shimsw = analysis.getShimMux(builder, col);
+          auto shimmux = analysis.getShimMux(builder, col);
           builder.create<WireOp>(builder.getUnknownLoc(),
-                                  shimsw,
-                                  WireBundle::South, // This is odd, but it is correct.
+                                  shimmux,
+                                  WireBundle::North, // Changed to connect into the north
                                   sw,
                                   WireBundle::South);
+          // PLIO is attached to shim mux                        
           auto plio = analysis.getPLIO(builder, col);
           builder.create<WireOp>(builder.getUnknownLoc(),
                                   plio,
                                   WireBundle::North,
-                                  shimsw,
+                                  shimmux,
                                   WireBundle::South);
-
+          // abstract 'DMA' connection on tile is attached to shim mux ( in row 0 )
           builder.create<WireOp>(builder.getUnknownLoc(),
                                   tile,
                                   WireBundle::DMA,
-                                  shimsw,
+                                  shimmux,
                                   WireBundle::DMA);
         }
       }

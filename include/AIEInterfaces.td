@@ -22,7 +22,7 @@ def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   ];
 }
 
-def Interconect : OpInterface<"Interconect"> {
+def Interconnect : OpInterface<"Interconnect"> {
   let description = [{
     Interface for operations that have interconnect-like properties,
     enabling them to host flows for routing.

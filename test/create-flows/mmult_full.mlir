@@ -1,5 +1,4 @@
 // RUN: aie-opt --aie-create-flows --aie-find-flows %s | FileCheck %s
-
 // CHECK: %[[T1:.*]] = AIE.tile(7, 0)
 // CHECK: %[[T3:.*]] = AIE.tile(8, 3)
 // CHECK: %[[T15:.*]] = AIE.tile(6, 0)
@@ -21,7 +20,6 @@
 // CHECK: AIE.flow(%[[T43]], DMA : 0, %[[T45]], DMA : 0)
 // CHECK: AIE.flow(%[[T43]], DMA : 1, %[[T45]], DMA : 1)
 // CHECK: AIE.flow(%[[T45]], DMA : 0, %[[T43]], DMA : 0)
-
 
 module @aie.herd_0  {
   %0 = AIE.tile(7, 1)
@@ -62,6 +60,47 @@ module @aie.herd_0  {
     AIE.useLock(%5, Release, 0, 0)
     br ^bb6
   ^bb7:  // pred: ^bb3
+    AIE.end
+  }
+  %12 = AIE.core(%3)  {
+    br ^bb1
+  ^bb1:  // pred: ^bb0
+    br ^bb2
+  ^bb2:  // pred: ^bb1
+    %c32 = constant 32 : index
+    %c0 = constant 0 : index
+    %c16 = constant 16 : index
+    scf.for %arg0 = %c0 to %c32 step %c16 {
+      AIE.useLock(%9, Acquire, 1, 0)
+      AIE.useLock(%7, Acquire, 1, 0)
+      AIE.useLock(%4, Acquire, 1, 0)
+      AIE.useLock(%5, Acquire, 0, 0)
+      %c0_0 = constant 0 : index
+      %c16_1 = constant 16 : index
+      %c1 = constant 1 : index
+      scf.for %arg1 = %c0_0 to %c16_1 step %c1 {
+        %c0_2 = constant 0 : index
+        %c16_3 = constant 16 : index
+        %c1_4 = constant 1 : index
+        scf.for %arg2 = %c0_2 to %c16_3 step %c1_4 {
+          %c0_5 = constant 0 : index
+          %c16_6 = constant 16 : index
+          %c1_7 = constant 1 : index
+          scf.for %arg3 = %c0_5 to %c16_6 step %c1_7 {
+            %63 = memref.load %10[%arg1, %arg3] : memref<16x16xf32, 2>
+            %64 = memref.load %8[%arg3, %arg2] : memref<16x16xf32, 2>
+            %65 = memref.load %6[%arg1, %arg2] : memref<16x16xf32, 2>
+            %66 = mulf %63, %64 : f32
+            %67 = addf %65, %66 : f32
+            memref.store %67, %6[%arg1, %arg2] : memref<16x16xf32, 2>
+          }
+        }
+      }
+      AIE.useLock(%9, Release, 0, 0)
+      AIE.useLock(%7, Release, 0, 0)
+      AIE.useLock(%4, Release, 0, 0)
+      AIE.useLock(%5, Release, 1, 0)
+    }
     AIE.end
   }
   %13 = AIE.tile(6, 2)
@@ -105,6 +144,47 @@ module @aie.herd_0  {
   ^bb7:  // pred: ^bb3
     AIE.end
   }
+  %26 = AIE.core(%17)  {
+    br ^bb1
+  ^bb1:  // pred: ^bb0
+    br ^bb2
+  ^bb2:  // pred: ^bb1
+    %c32 = constant 32 : index
+    %c0 = constant 0 : index
+    %c16 = constant 16 : index
+    scf.for %arg0 = %c0 to %c32 step %c16 {
+      AIE.useLock(%23, Acquire, 1, 0)
+      AIE.useLock(%21, Acquire, 1, 0)
+      AIE.useLock(%18, Acquire, 1, 0)
+      AIE.useLock(%19, Acquire, 0, 0)
+      %c0_0 = constant 0 : index
+      %c16_1 = constant 16 : index
+      %c1 = constant 1 : index
+      scf.for %arg1 = %c0_0 to %c16_1 step %c1 {
+        %c0_2 = constant 0 : index
+        %c16_3 = constant 16 : index
+        %c1_4 = constant 1 : index
+        scf.for %arg2 = %c0_2 to %c16_3 step %c1_4 {
+          %c0_5 = constant 0 : index
+          %c16_6 = constant 16 : index
+          %c1_7 = constant 1 : index
+          scf.for %arg3 = %c0_5 to %c16_6 step %c1_7 {
+            %63 = memref.load %24[%arg1, %arg3] : memref<16x16xf32, 2>
+            %64 = memref.load %22[%arg3, %arg2] : memref<16x16xf32, 2>
+            %65 = memref.load %20[%arg1, %arg2] : memref<16x16xf32, 2>
+            %66 = mulf %63, %64 : f32
+            %67 = addf %65, %66 : f32
+            memref.store %67, %20[%arg1, %arg2] : memref<16x16xf32, 2>
+          }
+        }
+      }
+      AIE.useLock(%23, Release, 0, 0)
+      AIE.useLock(%21, Release, 0, 0)
+      AIE.useLock(%18, Release, 0, 0)
+      AIE.useLock(%19, Release, 1, 0)
+    }
+    AIE.end
+  }
   %27 = AIE.tile(3, 2)
   %28 = AIE.tile(3, 1)
   %29 = AIE.tile(3, 0)
@@ -144,6 +224,47 @@ module @aie.herd_0  {
     AIE.useLock(%33, Release, 0, 0)
     br ^bb6
   ^bb7:  // pred: ^bb3
+    AIE.end
+  }
+  %40 = AIE.core(%31)  {
+    br ^bb1
+  ^bb1:  // pred: ^bb0
+    br ^bb2
+  ^bb2:  // pred: ^bb1
+    %c32 = constant 32 : index
+    %c0 = constant 0 : index
+    %c16 = constant 16 : index
+    scf.for %arg0 = %c0 to %c32 step %c16 {
+      AIE.useLock(%37, Acquire, 1, 0)
+      AIE.useLock(%35, Acquire, 1, 0)
+      AIE.useLock(%32, Acquire, 1, 0)
+      AIE.useLock(%33, Acquire, 0, 0)
+      %c0_0 = constant 0 : index
+      %c16_1 = constant 16 : index
+      %c1 = constant 1 : index
+      scf.for %arg1 = %c0_0 to %c16_1 step %c1 {
+        %c0_2 = constant 0 : index
+        %c16_3 = constant 16 : index
+        %c1_4 = constant 1 : index
+        scf.for %arg2 = %c0_2 to %c16_3 step %c1_4 {
+          %c0_5 = constant 0 : index
+          %c16_6 = constant 16 : index
+          %c1_7 = constant 1 : index
+          scf.for %arg3 = %c0_5 to %c16_6 step %c1_7 {
+            %63 = memref.load %38[%arg1, %arg3] : memref<16x16xf32, 2>
+            %64 = memref.load %36[%arg3, %arg2] : memref<16x16xf32, 2>
+            %65 = memref.load %34[%arg1, %arg2] : memref<16x16xf32, 2>
+            %66 = mulf %63, %64 : f32
+            %67 = addf %65, %66 : f32
+            memref.store %67, %34[%arg1, %arg2] : memref<16x16xf32, 2>
+          }
+        }
+      }
+      AIE.useLock(%37, Release, 0, 0)
+      AIE.useLock(%35, Release, 0, 0)
+      AIE.useLock(%32, Release, 0, 0)
+      AIE.useLock(%33, Release, 1, 0)
+    }
     AIE.end
   }
   %41 = AIE.tile(2, 2)
@@ -187,64 +308,62 @@ module @aie.herd_0  {
   ^bb7:  // pred: ^bb3
     AIE.end
   }
-  %55 = AIE.switchbox(%43)  {
-    AIE.connect<South : 3, North : 0>
-    AIE.connect<South : 7, North : 1>
-    AIE.connect<North : 0, South : 2>
-    AIE.connect<North : 1, South : 3>
+  %54 = AIE.core(%45)  {
+    br ^bb1
+  ^bb1:  // pred: ^bb0
+    br ^bb2
+  ^bb2:  // pred: ^bb1
+    %c32 = constant 32 : index
+    %c0 = constant 0 : index
+    %c16 = constant 16 : index
+    scf.for %arg0 = %c0 to %c32 step %c16 {
+      AIE.useLock(%51, Acquire, 1, 0)
+      AIE.useLock(%49, Acquire, 1, 0)
+      AIE.useLock(%46, Acquire, 1, 0)
+      AIE.useLock(%47, Acquire, 0, 0)
+      %c0_0 = constant 0 : index
+      %c16_1 = constant 16 : index
+      %c1 = constant 1 : index
+      scf.for %arg1 = %c0_0 to %c16_1 step %c1 {
+        %c0_2 = constant 0 : index
+        %c16_3 = constant 16 : index
+        %c1_4 = constant 1 : index
+        scf.for %arg2 = %c0_2 to %c16_3 step %c1_4 {
+          %c0_5 = constant 0 : index
+          %c16_6 = constant 16 : index
+          %c1_7 = constant 1 : index
+          scf.for %arg3 = %c0_5 to %c16_6 step %c1_7 {
+            %63 = memref.load %52[%arg1, %arg3] : memref<16x16xf32, 2>
+            %64 = memref.load %50[%arg3, %arg2] : memref<16x16xf32, 2>
+            %65 = memref.load %48[%arg1, %arg2] : memref<16x16xf32, 2>
+            %66 = mulf %63, %64 : f32
+            %67 = addf %65, %66 : f32
+            memref.store %67, %48[%arg1, %arg2] : memref<16x16xf32, 2>
+          }
+        }
+      }
+      AIE.useLock(%51, Release, 0, 0)
+      AIE.useLock(%49, Release, 0, 0)
+      AIE.useLock(%46, Release, 0, 0)
+      AIE.useLock(%47, Release, 1, 0)
+    }
+    AIE.end
   }
-  AIE.flow(%42, South : 0, %45, DMA : 0)
-  AIE.flow(%42, South : 1, %45, DMA : 1)
-  AIE.flow(%45, DMA : 0, %42, South : 0)
-  %56 = AIE.switchbox(%29)  {
-    AIE.connect<South : 3, North : 0>
-    AIE.connect<South : 7, North : 1>
-    AIE.connect<North : 0, South : 2>
-    AIE.connect<North : 1, South : 3>
-  }
-  AIE.flow(%28, South : 0, %31, DMA : 0)
-  AIE.flow(%28, South : 1, %31, DMA : 1)
-  AIE.flow(%31, DMA : 0, %42, South : 1)
-  %57 = AIE.switchbox(%15)  {
-    AIE.connect<South : 3, North : 0>
-    AIE.connect<South : 7, North : 1>
-    AIE.connect<North : 0, South : 2>
-    AIE.connect<North : 1, South : 3>
-  }
-  AIE.flow(%14, South : 0, %17, DMA : 0)
-  AIE.flow(%14, South : 1, %17, DMA : 1)
-  AIE.flow(%17, DMA : 0, %28, South : 0)
-  %58 = AIE.switchbox(%1)  {
-    AIE.connect<South : 3, North : 0>
-    AIE.connect<South : 7, North : 1>
-    AIE.connect<North : 0, South : 2>
-    AIE.connect<North : 1, South : 3>
-  }
-  AIE.flow(%0, South : 0, %3, DMA : 0)
-  AIE.flow(%0, South : 1, %3, DMA : 1)
-  AIE.flow(%3, DMA : 0, %28, South : 1)
-  %59 = AIE.shimmux(%43)  {
-    AIE.connect<DMA : 0, North : 3>
-    AIE.connect<DMA : 1, North : 7>
-    AIE.connect<North : 2, DMA : 0>
-    AIE.connect<North : 3, DMA : 1>
-  }
-  %60 = AIE.shimmux(%29)  {
-    AIE.connect<DMA : 0, North : 3>
-    AIE.connect<DMA : 1, North : 7>
-    AIE.connect<North : 2, DMA : 0>
-    AIE.connect<North : 3, DMA : 1>
-  }
-  %61 = AIE.shimmux(%15)  {
-    AIE.connect<DMA : 0, North : 3>
-    AIE.connect<DMA : 1, North : 7>
-    AIE.connect<North : 2, DMA : 0>
-    AIE.connect<North : 3, DMA : 1>
-  }
-  %62 = AIE.shimmux(%1)  {
-    AIE.connect<DMA : 0, North : 3>
-    AIE.connect<DMA : 1, North : 7>
-    AIE.connect<North : 2, DMA : 0>
-    AIE.connect<North : 3, DMA : 1>
-  }
+
+  AIE.flow(%43, DMA : 0, %45, DMA : 0)
+  AIE.flow(%43, DMA : 1, %45, DMA : 1)
+  AIE.flow(%45, DMA : 0, %43, DMA : 0)
+ 
+  AIE.flow(%29, DMA : 0, %31, DMA : 0)
+  AIE.flow(%29, DMA : 1, %31, DMA : 1)
+  AIE.flow(%31, DMA : 0, %43, DMA : 1)
+ 
+  AIE.flow(%15, DMA : 0, %17, DMA : 0)
+  AIE.flow(%15, DMA : 1, %17, DMA : 1)
+  AIE.flow(%3, DMA : 0, %29, DMA : 1)
+ 
+  AIE.flow(%1, DMA : 0, %3, DMA : 0)
+  AIE.flow(%1, DMA : 1, %3, DMA : 1)
+  AIE.flow(%17, DMA : 0, %29, DMA : 0)
+  
 }
