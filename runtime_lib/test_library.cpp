@@ -139,41 +139,57 @@ void ACDC_print_tile_status(struct XAieGbl_Tile &tile) {
     }
 }
 
+static void clear_range(u64 TileAddr, u64 low, u64 high) {
+  for (int i=low; i<=high; i+=4) {
+    XAieGbl_Write32(TileAddr+i, 0);
+    // int x = XAieGbl_Read32(TileAddr+i);
+    // if(x != 0) {
+    //   printf("@%x = %x\n", i, x);
+    //   XAieGbl_Write32(TileAddr+i, 0);
+    // }
+  }
+}
 void ACDC_clear_config(struct XAieGbl_Tile &tile) {
-// 0x00000000 - 0x0007FFF Memory Banks (32 Kbyte)
-// 0x00008000 - 0x000FFFF Reserved
-// 0x00011000 - 0x0011FFF Mem Performance Registers
-// 0x00014000 - 0x0014FFF Debug, timer, trace control
-// 0x00018000 - 0x0010200 Reserved
-// 0x0001D000 - 0x001DFFF *Tile DMA Registers
-// 0x0001E000 - 0x001EFFF *Lock Registers
-// 0x0001F000 - 0x001FFFF Reserved
-// 0x00020000 - 0x00027FFF *Program Memory (16 Kbyte)
-// 0x00028000 - 0x0002FFFF Reserved
-// 0x00030000 - 0x00030FFF Core Debug Registers
-// 0x00031000 - 0x00031FFF Core Performance Registers
-// 0x00032000 - 0x00033FFF Core Control & Status Registers
-// 0x00034000 - 0x00034FFF *Event & Trace Registers
-// 0x0003F000 - 0x0003F0FF *Stream Switch Master Config
-// 0x0003F100 – 0x0003FFF *Stream Switch Slave Config
-
     int col = tile.ColId;
     int row = tile.RowId;
   	u64 TileAddr = tile.TileAddr;
-    // TileDMA and Locks
-    for (int i=0x1D000; i<0x1EFFF; i+=4) {
-    	XAieGbl_Write32(TileAddr+i, 0);
-    }
+
+    // Put the core in reset first, otherwise bus collisions
+    // result in arm bus errors.
+    XAieTile_CoreControl(&tile, XAIE_DISABLE, XAIE_ENABLE);
+
     // Program Memory
-    for (int i=0x20000; i<0x27FFF; i+=4) {
-    	XAieGbl_Write32(TileAddr+i, 0);
-    }
-    // Event & Trace Registers
-    for (int i=0x34000; i<0x34FFF; i+=4) {
-    	XAieGbl_Write32(TileAddr+i, 0);
-    }
-    // Stream Switch config
-    for (int i=0x3F000; i<0x3FFFF; i+=4) {
-    	XAieGbl_Write32(TileAddr+i, 0);
-    }
+    clear_range(TileAddr, 0x20000, 0x200FF);
+    // TileDMA
+    clear_range(TileAddr, 0x1D000, 0x1D1F8);
+    XAieGbl_Write32(TileAddr+0x1DE00, 0);
+    XAieGbl_Write32(TileAddr+0x1DE08, 0);
+    XAieGbl_Write32(TileAddr+0x1DE10, 0);
+    XAieGbl_Write32(TileAddr+0x1DE08, 0);
+    // Stream Switch master config
+    clear_range(TileAddr, 0x3F000, 0x3F060);
+    // Stream Switch slave config
+    clear_range(TileAddr, 0x3F100, 0x3F168);
+    // Stream Switch slave slot config
+    clear_range(TileAddr, 0x3F200, 0x3F3AC);
+}
+
+void ACDC_clear_shim_config(struct XAieGbl_Tile &tile) {
+    int col = tile.ColId;
+    int row = tile.RowId;
+	u64 TileAddr = tile.TileAddr;
+
+    // ShimDMA
+    clear_range(TileAddr, 0x1D000, 0x1D13C);
+    XAieGbl_Write32(TileAddr+0x1D140, 0);
+    XAieGbl_Write32(TileAddr+0x1D148, 0);
+    XAieGbl_Write32(TileAddr+0x1D150, 0);
+    XAieGbl_Write32(TileAddr+0x1D158, 0);
+
+    // Stream Switch master config
+    clear_range(TileAddr, 0x3F000, 0x3F058);
+    // Stream Switch slave config
+    clear_range(TileAddr, 0x3F100, 0x3F15C);
+    // Stream Switch slave slot config
+    clear_range(TileAddr, 0x3F200, 0x3F37C);
 }

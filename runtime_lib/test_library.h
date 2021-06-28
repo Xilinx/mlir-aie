@@ -20,3 +20,6 @@ void ACDC_print_tile_status(struct XAieGbl_Tile &tile);
 
 /// Zero out the program and configuration memory of the tile.
 void ACDC_clear_config(struct XAieGbl_Tile &tile);
+
+/// Zero out the configuration memory of the shim tile.
+void ACDC_clear_shim_config(struct XAieGbl_Tile &tile);
