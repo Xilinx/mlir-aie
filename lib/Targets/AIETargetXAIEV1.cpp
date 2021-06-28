@@ -50,6 +50,13 @@ static std::string tileDMAInstStr(StringRef col, StringRef row) {
 static std::string tileDMAInstStr(int col, int row) {
   return tileDMAInstStr(std::to_string(col), std::to_string(row));
 }
+static std::string clear_range(int col, int row, int low, int high) {
+  std::string str;
+  llvm::raw_string_ostream rss(str);
+  rss << "for (int i=0x" << llvm::utohexstr(low) << "; i<=0x" << llvm::utohexstr(high) <<
+         "; i+=4) XAieGbl_Write32((" << tileInstStr(col, row) << ")->TileAddr+i, 0);\n";
+  return str;
+}
 
   mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         StringRef enable  = "XAIE_ENABLE";
@@ -78,6 +85,24 @@ static std::string tileDMAInstStr(int col, int row) {
             output << "XAieTile_ShimColumnReset("
                   << tileInstStr(col, row)
                   << ", XAIE_RESETENABLE);\n";
+            output << "// Reset configuration\n";
+            if(tileOp.isShimNOCTile()) {
+              output << "// Reset configuration\n";
+              output << "// ShimDMA\n";
+              output << clear_range(col, row, 0x1D000, 0x1D13C);
+              output << clear_range(col, row, 0x1D140, 0x1D140);
+              output << clear_range(col, row, 0x1D148, 0x1D148);
+              output << clear_range(col, row, 0x1D150, 0x1D150);
+              output << clear_range(col, row, 0x1D158, 0x1D158);
+            }
+            if(tileOp.isShimNOCorPLTile()) {
+              output << "// Stream Switch master config\n";
+              output << clear_range(col, row, 0x3F000, 0x3F058);
+              output << "// Stream Switch slave config\n";
+              output << clear_range(col, row, 0x3F100, 0x3F15C);
+              output << "// Stream Switch slave slot config\n";
+              output << clear_range(col, row, 0x3F200, 0x3F37C);
+            }
             output << "XAieTile_ShimColumnReset("
                   << tileInstStr(col, row)
                   << ", XAIE_RESETDISABLE);\n";
@@ -91,6 +116,23 @@ static std::string tileDMAInstStr(int col, int row) {
             output << "XAieTile_CoreControl("
                   << tileInstStr(col, row)
                   << ", " << disable << ", " << enable << ");\n";
+            output << "// Reset configuration\n";
+            output << "// Program Memory\n";
+            output << clear_range(col, row, 0x20000, 0x23FFF);
+            output << "// TileDMA\n";
+            output << clear_range(col, row, 0x1D000, 0x1D1F8);
+            output << clear_range(col, row, 0x1DE00, 0x1DE00);
+            output << clear_range(col, row, 0x1DE08, 0x1DE08);
+            output << clear_range(col, row, 0x1DE10, 0x1DE10);
+            output << clear_range(col, row, 0x1DE18, 0x1DE18);
+            output << "// Stream Switch master config\n";
+            output << clear_range(col, row, 0x3F000, 0x3F060);
+            output << "// Stream Switch slave config\n";
+            output << clear_range(col, row, 0x3F100, 0x3F168);
+            output << "// Stream Switch slave slot config\n";
+            output << clear_range(col, row, 0x3F200, 0x3F3AC);
+
+            // Release locks
             output << "for (int l=0; l<16; l++)\n"
                   << "  XAieTile_LockRelease("
                   << tileInstStr(col, row)
