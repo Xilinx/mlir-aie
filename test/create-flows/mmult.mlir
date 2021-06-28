@@ -1,3 +1,5 @@
+// RUN: aie-opt --aie-create-flows --aie-find-flows %s | FileCheck %s
+
 module @aie.herd_0  {
   %0 = AIE.tile(7, 1)
   %1 = AIE.tile(7, 0)
