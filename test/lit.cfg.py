@@ -31,6 +31,11 @@ config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 config.substitutions.append(('%VITIS_SYSROOT%', config.vitis_sysroot))
 config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib")))
 
+if(config.enable_board_tests):
+    config.substitutions.append(('%run_on_board', "echo %T >> /home/xilinx/testlog | sync | sudo"))
+else:
+    config.substitutions.append(('%run_on_board', "echo"))
+
 llvm_config.with_system_environment(
     ['HOME', 'INCLUDE', 'LIB', 'TMP', 'TEMP'])
 
@@ -95,3 +100,7 @@ tools = [
 ]
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+if(config.enable_board_tests):
+    lit_config.parallelism_groups["board"] = 1
+    config.parallelism_group = "board"

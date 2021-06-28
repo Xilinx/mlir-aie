@@ -36,6 +36,7 @@ config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
 
 # pass on vitis settings
 config.enable_chess_tests = @CONFIG_ENABLE_CHESS_TESTS@
+config.enable_board_tests = @CONFIG_ENABLE_BOARD_TESTS@
 config.vitis_root = "@VITIS_ROOT@"
 config.vitis_sysroot = "@VitisSysroot@"
 config.libxaie_dir = "@XILINX_XAIE_LIBS@"

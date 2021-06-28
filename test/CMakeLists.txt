@@ -23,6 +23,12 @@ option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS "Build the LLVM tools. If OFF, just generate build targets." ON)
 
 set(ENABLE_CHESS_TESTS ON CACHE BOOL "Enable backend tests using xchesscc")
+if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL aarch64)
+  set(DEFAULT_ENABLE_BOARD_TESTS ON)
+else()
+  set(DEFAULT_ENABLE_BOARD_TESTS OFF)
+endif()
+option(ENABLE_BOARD_TESTS "Enable board tests" ${DEFAULT_ENABLE_BOARD_TESTS})
 
 find_package(MLIR REQUIRED CONFIG)
 
@@ -71,6 +77,11 @@ set(CONFIG_ENABLE_CHESS_TESTS 1)
 else()
 set(CONFIG_ENABLE_CHESS_TESTS 0)
 endif()
+if(ENABLE_BOARD_TESTS)
+set(CONFIG_ENABLE_BOARD_TESTS 1)
+else()
+set(CONFIG_ENABLE_BOARD_TESTS 0)
+endif()
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg.py
@@ -88,6 +99,7 @@ set(TEST_DEPENDS
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
+  ARGS "-sv --timeout 180 --time-tests"
   )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 

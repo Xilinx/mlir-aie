@@ -1,4 +1,5 @@
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: %run_on_board %T/test.elf
 
 module @test09_simple_shim_dma {
   %t70 = AIE.tile(7, 0)
