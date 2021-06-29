@@ -1,10 +1,11 @@
 // (c) Copyright 2019 Xilinx Inc. All Rights Reserved.
 #include "AIEDialect.h"
-#include "mlir/IR/DialectImplementation.h"
-#include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Transforms/InliningUtils.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallSet.h"
 
 using namespace mlir;
 
@@ -255,6 +256,7 @@ static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
   DenseSet<xilinx::AIE::Port> destset;
   assert(op.getOperation()->getNumRegions());
   assert(!body.empty());
+
   for (auto &ops : body.front()) {
     if(auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
       xilinx::AIE::Port dest = std::make_pair(connectOp.destBundle(),
@@ -279,6 +281,11 @@ static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
   DenseSet<xilinx::AIE::Port> destset;
   assert(op.getOperation()->getNumRegions());
   assert(!body.empty());
+
+  auto tileOp = op.getTileOp();
+  if (!tileOp.isShimNOCTile())
+    return op.emitOpError("must be in a ShimTile with a NOC connection");
+
   for (auto &ops : body.front()) {
     if(auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
       xilinx::AIE::Port dest = std::make_pair(connectOp.destBundle(),
@@ -332,9 +339,10 @@ static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
   Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
   assert(!body.empty() && "ShimDMAOp should have non-empty body");
-  if(!op.getTileOp().isShimTile()) {
-    return op.emitOpError("must be in a shim tile, i.e. row == 0.");
-  }
+  auto tileOp = op.getTileOp();
+  if (!tileOp.isShimNOCTile())
+    return op.emitOpError("must be in a ShimTile with a NOC connection");
+
   return success();
 }
 xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
@@ -533,6 +541,14 @@ namespace xilinx {
       default: return 0;
       }
     }
-
+    static llvm::SmallDenseSet<unsigned, 16> noc_columns = {2,  3,  6,  7,
+                                                            10, 11, 18, 19};
+    bool TileOp::isShimNOCTile() {
+      return isShimTile() && noc_columns.contains(col());
+    }
+    bool TileOp::isShimPLTile() {
+      return isShimNOCorPLTile() && !isShimNOCTile();
+    }
+    bool TileOp::isShimNOCorPLTile() { return isShimTile() && (col() > 0); }
   } // namespace AIE
 } // namespace xilinx

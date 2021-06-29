@@ -104,10 +104,10 @@ public:
     if(coordToShimMux.count(std::make_pair(col, row))) {
       return coordToShimMux[std::make_pair(col, row)];
     } else {
+      assert(getTile(builder, col, row).isShimNOCTile());
       ShimMuxOp switchboxOp =
         builder.create<ShimMuxOp>(builder.getUnknownLoc(),
                                     getTile(builder, col, row));
-                                    //coordToTile[std::make_pair(col, row)]);
       switchboxOp.ensureTerminator(switchboxOp.connections(),
                                    builder,
                                    builder.getUnknownLoc());
@@ -272,6 +272,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     // if intent is to route from DMA - "DMA" is specificed ( Attach ShimMux to DMA)
     if(row == 0) {
       // The Shim row of tiles needs some extra connectivity
+      // FIXME: is this correct in a ShimPLTile?
       LLVM_DEBUG(llvm::dbgs() << "\tInitial Extra shim connectivity\t");
       ShimMuxOp shimMuxOp = analysis.getShimMux(rewriter, col);
       int internalIndex = -1;
@@ -319,19 +320,21 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       } else {
  
         if(row == 0 && done) {    
-             // we reached our destination, and that destination is in the shim, 
-        // we're terminating in either the DMA or the PLIO
-          // The Shim row of tiles needs some extra connectivity
-          SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
-          ShimMuxOp shimMuxOp = analysis.getShimMux(rewriter, col);
-          int internalIndex = -1;
-          LLVM_DEBUG(llvm::dbgs() << "\tExtra shim switch connectivity\t");
-          addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), op,
-            bundle, index, WireBundle::South, internalIndex);
+             // we reached our destination, and that destination is in the shim,
+             // we're terminating in either the DMA or the PLIO
+             // The Shim row of tiles needs some extra connectivity
+             // FIXME: is this correct in a ShimPLTile?
+             SwitchboxOp swOp = analysis.getSwitchbox(rewriter, col, row);
+             ShimMuxOp shimMuxOp = analysis.getShimMux(rewriter, col);
+             int internalIndex = -1;
+             LLVM_DEBUG(llvm::dbgs() << "\tExtra shim switch connectivity\t");
+             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
+                           op, bundle, index, WireBundle::South, internalIndex);
 
-          LLVM_DEBUG(llvm::dbgs() << "\tExtra shim DMA connectivity\t");
-          addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()), op, 
-            WireBundle::North, internalIndex, outBundle, outIndex);
+             LLVM_DEBUG(llvm::dbgs() << "\tExtra shim DMA connectivity\t");
+             addConnection(
+                 rewriter, cast<Interconnect>(shimMuxOp.getOperation()), op,
+                 WireBundle::North, internalIndex, outBundle, outIndex);
 
         } else {
           // Most tiles are simple and just go through a switchbox.
@@ -410,25 +413,28 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
                                   sw,
                                   WireBundle::South);
         } else if(row == 0) {
-          auto shimmux = analysis.getShimMux(builder, col);
-          builder.create<WireOp>(builder.getUnknownLoc(),
-                                  shimmux,
-                                  WireBundle::North, // Changed to connect into the north
-                                  sw,
-                                  WireBundle::South);
-          // PLIO is attached to shim mux                        
-          auto plio = analysis.getPLIO(builder, col);
-          builder.create<WireOp>(builder.getUnknownLoc(),
-                                  plio,
-                                  WireBundle::North,
-                                  shimmux,
-                                  WireBundle::South);
-          // abstract 'DMA' connection on tile is attached to shim mux ( in row 0 )
-          builder.create<WireOp>(builder.getUnknownLoc(),
-                                  tile,
-                                  WireBundle::DMA,
-                                  shimmux,
-                                  WireBundle::DMA);
+          if (tile.isShimNOCTile()) {
+            auto shimsw = analysis.getShimMux(builder, col);
+            builder.create<WireOp>(
+                builder.getUnknownLoc(), shimsw,
+                WireBundle::North, // Changed to connect into the north
+                sw, WireBundle::South);
+            // PLIO is attached to shim mux
+            auto plio = analysis.getPLIO(builder, col);
+            builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                   WireBundle::North, shimsw,
+                                   WireBundle::South);
+
+            // abstract 'DMA' connection on tile is attached to shim mux ( in
+            // row 0 )
+            builder.create<WireOp>(builder.getUnknownLoc(), tile,
+                                   WireBundle::DMA, shimsw, WireBundle::DMA);
+          } else if (tile.isShimPLTile()) {
+            // PLIO is attached directly to switch
+            auto plio = analysis.getPLIO(builder, col);
+            builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                   WireBundle::North, sw, WireBundle::South);
+          }
         }
       }
     }

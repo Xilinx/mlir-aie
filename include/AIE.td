@@ -85,6 +85,9 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     int colIndex() { return col(); }
     int rowIndex() { return row(); }
     bool isShimTile() { return row() == 0; }
+    bool isShimNOCTile();
+    bool isShimPLTile();
+    bool isShimNOCorPLTile();
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
     MemOp getMemOp() {
       auto users = result().getUsers();
