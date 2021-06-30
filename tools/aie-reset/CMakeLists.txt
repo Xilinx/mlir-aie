@@ -1,4 +1,7 @@
-add_llvm_executable(aie-reset aie-reset.cpp)
+add_executable(aie-reset aie-reset.cpp)
+
+include_directories(${XILINX_XAIE_INCLUDE_DIR})
+link_libraries(${XILINX_XAIE_LIBS})
 
 install(TARGETS aie-reset
 EXPORT AIETargets
