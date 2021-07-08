@@ -166,6 +166,8 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
 
     std::vector<int> validIndices;
 
+    //TODO: may need to reserve index for DMA connections so that PLIO doesn't use them
+ 
     // if this interconnect is a shim-mux then..
     if(isa<ShimMuxOp>(op)) {
       // (enforce) in-bound connections from 'South' must route straight through. 
@@ -214,10 +216,9 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
             outIndex = validIndices[++choice];
         }
       }
-      if(debugRoute)
-        if(choice > validIndices.size())
-          llvm::dbgs() << "AIECreateFlows: Illegal routing channel detected!\n" <<
-                          "Too many routes in tile (" << op.colIndex() << ", " << op.rowIndex() << ")\n";
+      if(choice >= validIndices.size())
+        op.emitOpError("\nAIECreateFlows: Illegal routing channel detected!\n") <<
+                        "Too many routes in tile (" << op.colIndex() << ", " << op.rowIndex() << ")\n";
     }
 
     // This might fail if an outIndex was exactly specified.
@@ -287,7 +288,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     WireBundle nextBundle;
     int done = false;
     while(!done) {
-      // Travel vertically to the right row, then horizontally to the right column
+      // Travel vertically to the destination row, then horizontally to the destination column
 
       // Create a connection inside this switchbox.
       WireBundle outBundle;
@@ -310,7 +311,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
         nextcol = col+1;
       } else {
         assert(row == destrow && col == destcol);
-        // In the right tile streamswitch,  done, so connect to the correct target bundle.
+        // In the destination tile streamswitch,  done, so connect to the correct target bundle.
         outBundle = destBundle;
         outIndex = destIndex; 
         done = true;
