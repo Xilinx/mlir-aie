@@ -404,10 +404,20 @@ xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
 // MemOp
 static LogicalResult verify(xilinx::AIE::MemOp op) {
   Region &body = op.body();
+  llvm::SmallSet<xilinx::AIE::DMAChan, 4> used_channels;
+
   assert(op.getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
   assert(!body.empty() && "MemOp should have non-empty body");
 
   for (auto &bodyOp : body.getOps()) {
+    //check for duplicate DMA channels within the same MemOp
+    if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
+      auto DMA_chan = DMA_start.dmaChan();
+      if(used_channels.contains(DMA_chan))
+        DMA_start.emitOpError() << "Duplicate DMA channel " << stringifyDMAChan(DMA_chan) << " detected in MemOp!";
+      used_channels.insert(DMA_chan);
+    }
+
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {
       if (!allocOp->getAttr("id"))
         op.emitOpError() << "allocOp in MemOp region should have an id attribute\n";
