@@ -542,7 +542,9 @@ namespace xilinx {
       }
     }
     static llvm::SmallDenseSet<unsigned, 16> noc_columns = {2,  3,  6,  7,
-                                                            10, 11, 18, 19};
+                                                            10, 11, 18, 19,
+							    26, 27, 34, 35,
+							    42, 43, 46, 47};
     bool TileOp::isShimNOCTile() {
       return isShimTile() && noc_columns.contains(col());
     }
