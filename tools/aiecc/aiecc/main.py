@@ -8,7 +8,7 @@ import platform
 import sys
 import time
 from subprocess import PIPE, run, call
-from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 import tempfile
 
 import aiecc.cl_arguments
@@ -93,7 +93,9 @@ def run_flow(opts, tmpdirname):
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
     # Compile each core in parallel
-    Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
+    # Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
+    for core in cores:
+      process_core(core)
 
     # Generate the included host interface
     file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
