@@ -5,7 +5,7 @@
 # mlir_tablegen(AIEEnums.cpp.inc -gen-enum-defs)
 # add_public_tablegen_target(MLIRAIEIncGen)
 add_mlir_dialect(AIE AIE)
-add_mlir_doc(AIE -gen-dialect-doc AIEDialect Dialects/)
+add_mlir_doc(AIE AIEDialect ./ -gen-dialect-doc)
 
 set(LLVM_TARGET_DEFINITIONS AIE.td)
 mlir_tablegen(AIEEnums.h.inc -gen-enum-decls)
@@ -21,7 +21,7 @@ set(LLVM_TARGET_DEFINITIONS AIEPasses.td)
 mlir_tablegen(AIEPasses.h.inc -gen-pass-decls -name AIE)
 add_public_tablegen_target(MLIRAIEPassIncGen)
 
-add_mlir_doc(AIEPasses -gen-pass-doc AIEPasses ./)
+add_mlir_doc(AIEPasses AIEPasses ./ -gen-pass-doc)
 
 set(LLVM_TARGET_DEFINITIONS AIENormalizeAddressSpaces.td)
 mlir_tablegen(AIENormalizeAddressSpaces.inc -gen-rewriters)
