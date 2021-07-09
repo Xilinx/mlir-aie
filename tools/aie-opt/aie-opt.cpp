@@ -1,6 +1,5 @@
 // (c) Copyright 2019 Xilinx Inc. All Rights Reserved.
 
-//#include "mlir/Analysis/Passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/IR/Dialect.h"
@@ -20,20 +19,19 @@ using namespace llvm;
 using namespace mlir;
 
 int main(int argc, char **argv) {
-//  enableGlobalDialectRegistry(true);
-//  registerAllDialects();
+
   registerAllPasses();
   xilinx::AIE::registerAIEAssignBufferAddressesPass();
-  xilinx::AIE::registerAIEFindFlowsPass();
-  xilinx::AIE::registerAIECreateFlowsPass();
-  xilinx::AIE::registerAIECreateCoresPass();
-  xilinx::AIE::registerAIECreateLocksPass();
   xilinx::AIE::registerAIECoreToLLVMPass();
   xilinx::AIE::registerAIECoreToStandardPass();
+  xilinx::AIE::registerAIECreateCoresPass();
+  xilinx::AIE::registerAIECreateLocksPass();
+  xilinx::AIE::registerAIEFindFlowsPass();
   xilinx::AIE::registerAIEHerdRoutingPass();
-  xilinx::AIE::registerAIECreatePacketFlowsPass();
   xilinx::AIE::registerAIELowerMemcpyPass();
   xilinx::AIE::registerAIENormalizeAddressSpacesPass();
+  xilinx::AIE::registerAIERouteFlowsPass();
+  xilinx::AIE::registerAIERoutePacketFlowsPass();
   xilinx::AIE::registerAIEVectorOptPass();
 
   DialectRegistry registry;

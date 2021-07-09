@@ -357,8 +357,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
 };
 
 
-struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
-                                                   OperationPass<ModuleOp>> {
+struct AIERouteFlowsPass : public AIERouteFlowsBase<AIERouteFlowsPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -453,8 +452,7 @@ struct AIECreateSwitchboxPass : public PassWrapper<AIECreateSwitchboxPass,
   }
 };
 
-void xilinx::AIE::registerAIECreateFlowsPass() {
-    PassRegistration<AIECreateSwitchboxPass>(
-      "aie-create-flows",
-      "Extract flows from a placed and routed design");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIERouteFlowsPass() {
+  return std::make_unique<AIERouteFlowsPass>();
 }

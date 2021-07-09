@@ -42,15 +42,10 @@ class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {
 namespace xilinx {
 namespace AIE {
 
-void registerAIEAssignBufferAddressesPass();
 void registerAIETranslations();
-void registerAIEFindFlowsPass();
-void registerAIECreateFlowsPass();
-void registerAIECreateCoresPass();
-void registerAIECreateLocksPass();
-void registerAIEHerdRoutingPass();
-void registerAIECreatePacketFlowsPass();
-void registerAIELowerMemcpyPass();
+
+
+
 
 // FIXME: use this
 //#include "AIEDialect.h.inc"
@@ -153,9 +148,17 @@ namespace AIE {
 #define GEN_PASS_CLASSES
 #include "AIEPasses.h.inc"
 
+std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignBufferAddressesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToLLVMPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIECreateCoresPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLocksPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEHerdRoutingPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMemcpyPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<FuncOp>> createAIEVectorOptPass();
 
 /// Generate the code for registering passes.

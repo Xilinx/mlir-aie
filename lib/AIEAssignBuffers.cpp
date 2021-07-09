@@ -7,7 +7,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "AIEDialect.h"
 
-#define DEBUG_TYPE "aie-find-flows"
+#define DEBUG_TYPE "aie-assign-buffers"
 
 using namespace mlir;
 using namespace xilinx;
@@ -26,8 +26,7 @@ static int64_t assignAddress(AIE::BufferOp op,
   return endAddr;
 }
 
-struct AIEAssignBufferAddressesPass : public PassWrapper<AIEAssignBufferAddressesPass,
-                                             OperationPass<ModuleOp>> {
+struct AIEAssignBufferAddressesPass : public AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<StandardOpsDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
@@ -58,8 +57,7 @@ struct AIEAssignBufferAddressesPass : public PassWrapper<AIEAssignBufferAddresse
   }
 };
 
-void xilinx::AIE::registerAIEAssignBufferAddressesPass() {
-    PassRegistration<AIEAssignBufferAddressesPass>(
-      "aie-assign-buffer-addresses",
-      "Assign memory locations for buffers in each tile");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIEAssignBufferAddressesPass() {
+  return std::make_unique<AIEAssignBufferAddressesPass>();
 }

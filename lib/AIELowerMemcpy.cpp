@@ -78,10 +78,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   }
 };
 
-struct AIELowerMemcpyPass : public PassWrapper<AIELowerMemcpyPass,
-  OperationPass<ModuleOp>> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-  }
+struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -122,8 +119,7 @@ struct AIELowerMemcpyPass : public PassWrapper<AIELowerMemcpyPass,
   }
 };
 
-void xilinx::AIE::registerAIELowerMemcpyPass() {
-    PassRegistration<AIELowerMemcpyPass>(
-      "aie-lower-memcpy",
-      "Lower AIE.Memcpy operations to Flows and DMA programs");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIELowerMemcpyPass() {
+  return std::make_unique<AIELowerMemcpyPass>();
 }

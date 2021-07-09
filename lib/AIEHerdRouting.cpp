@@ -179,7 +179,7 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
     std::make_pair(lastPort, std::make_pair(destBundle, destChannel)));
 }
 
-struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass<ModuleOp>> {
+struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -325,8 +325,7 @@ struct AIEHerdRoutingPass : public PassWrapper<AIEHerdRoutingPass, OperationPass
   }
 };
 
-void xilinx::AIE::registerAIEHerdRoutingPass() {
-    PassRegistration<AIEHerdRoutingPass>(
-      "aie-herd-routing",
-      "Lowering herds with place and route ops to AIE cores, mems, and switchboxes");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIEHerdRoutingPass() {
+  return std::make_unique<AIEHerdRoutingPass>();
 }

@@ -55,12 +55,7 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
   }
 };
 
-struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
-  OperationPass<ModuleOp>> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
-    registry.insert<StandardOpsDialect>();
-    registry.insert<xilinx::AIE::AIEDialect>();
-  }
+struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -235,8 +230,7 @@ struct AIECreateCoresPass : public PassWrapper<AIECreateCoresPass,
   }
 };
 
-void xilinx::AIE::registerAIECreateCoresPass() {
-    PassRegistration<AIECreateCoresPass>(
-      "aie-create-cores",
-      "Create CoreOp, MemOp, and FlowOp of AIE dialect");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIECreateCoresPass() {
+  return std::make_unique<AIECreateCoresPass>();
 }

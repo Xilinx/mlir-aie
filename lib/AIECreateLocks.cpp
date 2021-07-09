@@ -117,7 +117,7 @@ static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks, Operatio
   return -1;
 }
 
-struct AIECreateLocksPass : public PassWrapper<AIECreateLocksPass, OperationPass<ModuleOp>> {
+struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -207,8 +207,7 @@ struct AIECreateLocksPass : public PassWrapper<AIECreateLocksPass, OperationPass
   }
 };
 
-void xilinx::AIE::registerAIECreateLocksPass() {
-    PassRegistration<AIECreateLocksPass>(
-      "aie-create-locks",
-      "Generate physical lock ops from logical lock (token) ops");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIECreateLocksPass() {
+  return std::make_unique<AIECreateLocksPass>();
 }

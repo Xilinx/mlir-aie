@@ -209,7 +209,7 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
   }
   return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
 }
-struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, OperationPass<ModuleOp>> {
+struct AIERoutePacketFlowsPass : public AIERouteFlowsBase<AIERoutePacketFlowsPass> {
   // Map from tile coordinates to TileOp
   DenseMap<std::pair<int, int>, Operation *> tiles;
   Operation *getOrCreateTile(OpBuilder &builder, int col, int row) {
@@ -610,8 +610,7 @@ struct AIECreatePacketFlowsPass : public PassWrapper<AIECreatePacketFlowsPass, O
   }
 };
 
-void xilinx::AIE::registerAIECreatePacketFlowsPass() {
-    PassRegistration<AIECreatePacketFlowsPass>(
-      "aie-create-packet-flows",
-      "Lowering PacketFlow ops to Switchbox ops with packet-switch routing");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIERoutePacketFlowsPass() {
+  return std::make_unique<AIERoutePacketFlowsPass>();
 }

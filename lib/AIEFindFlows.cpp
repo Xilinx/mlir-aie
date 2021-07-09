@@ -241,8 +241,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
     }
 }
 
-struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
-                                             OperationPass<ModuleOp>> {
+struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
     registry.insert<StandardOpsDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
@@ -259,8 +258,8 @@ struct AIEFindFlowsPass : public PassWrapper<AIEFindFlowsPass,
   }
 };
 
-void xilinx::AIE::registerAIEFindFlowsPass() {
-    PassRegistration<AIEFindFlowsPass>(
-      "aie-find-flows",
-      "Extract flows from a placed and routed design");
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIEFindFlowsPass() {
+  return std::make_unique<AIEFindFlowsPass>();
 }
+
