@@ -9,7 +9,7 @@
 // CHECK:    AIE.connect<North : 0, South : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// CHECK:    AIE.connect<South : 0, PLIO : 0>
+// CHECK:    AIE.connect<North : 0, PLIO : 0>
 // CHECK:  }
 
 module {
@@ -24,14 +24,13 @@ module {
 // CHECK: %[[T21:.*]] = AIE.tile(2, 1)
 // CHECK: %[[T20:.*]] = AIE.tile(2, 0)
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
-// CHECK:    AIE.connect<North : 0, South : 0>
+// CHECK:    AIE.connect<North : 0, South : 3>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T21]])  {
 // CHECK:    AIE.connect<Core : 0, South : 0>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// FIXCore : should be South:7
-// CHECK:    AIE.connect<South : 0, DMA : 1>
+// CHECK:    AIE.connect<North : 3, DMA : 1>
 // CHECK:  }
 module {
   %t21 = AIE.tile(2, 1)
@@ -50,12 +49,11 @@ module {
 // CHECK: module
 // CHECK: %[[T20:.*]] = AIE.tile(2, 0)
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T20]])  {
-// CHECK:    AIE.connect<South : 0, South : 0>
+// CHECK:    AIE.connect<South : 3, South : 3>
 // CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// FIXCore : these connections are wrong.
-// CHECK:    AIE.connect<DMA : 0, South : 0>
-// CHECK:    AIE.connect<South : 0, DMA : 1>
+// CHECK:    AIE.connect<DMA : 0, North : 3>
+// CHECK:    AIE.connect<North : 3, DMA : 1>
 // CHECK:  }
 module {
   %t20 = AIE.tile(2, 0)
