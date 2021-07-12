@@ -1,9 +1,10 @@
-# set(LLVM_TARGET_DEFINITIONS AIE.td)
-# mlir_tablegen(AIE.h.inc -gen-op-decls)
-# mlir_tablegen(AIE.cpp.inc -gen-op-defs)
-# mlir_tablegen(AIEEnums.h.inc -gen-enum-decls)
-# mlir_tablegen(AIEEnums.cpp.inc -gen-enum-defs)
-# add_public_tablegen_target(MLIRAIEIncGen)
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2021 Xilinx Inc.
+
 add_mlir_dialect(AIE AIE)
 add_mlir_doc(AIE AIEDialect ./ -gen-dialect-doc)
 

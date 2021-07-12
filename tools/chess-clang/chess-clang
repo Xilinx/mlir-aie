@@ -1,4 +1,10 @@
 #!/bin/bash
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2021 Xilinx Inc.
 
 # ------------- Secondary Test Implementation, Take File input -----------------
 # Need to find these as they're compiler supplied, although the .ll file is optional

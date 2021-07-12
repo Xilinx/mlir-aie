@@ -1,5 +1,10 @@
-# Find the libraries that correspond to the LLVM components
-# that we wish to use
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2021 Xilinx Inc.
+
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 # Now build our tools

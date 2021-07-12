@@ -1,6 +1,14 @@
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2021 Xilinx Inc.
+
 # Generate a list of CMake library targets so that other CMake projects can
 # link against them. LLVM calls its version of this file LLVMExports.cmake, but
 # the usual CMake convention seems to be ${Project}Targets.cmake.
+
 set(AIE_INSTALL_PACKAGE_DIR lib${LLVM_LIBDIR_SUFFIX}/cmake/aie)
 set(aie_cmake_builddir "${CMAKE_BINARY_DIR}/${AIE_INSTALL_PACKAGE_DIR}")
 

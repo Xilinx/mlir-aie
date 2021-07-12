@@ -1,4 +1,12 @@
-// (c) Copyright 2020 Xilinx Inc. All Rights Reserved.
+//===- aie-reset.cpp --------------------------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2020 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
 
 // This binary is useful for triggering a soft reset of the AIEngine
 // array through the NPI interface.  The soft reset reinitializes all

@@ -1,9 +1,10 @@
-// (c) Copyright 2019 Xilinx Inc. All Rights Reserved.
-//===- AIEDialect.h - Dialect definition for the AIE IR ----------------===//
+//===- AIETokenAnalysis.h ---------------------------------------*- C++ -*-===//
 //
-// Copyright 2019 Xilinx
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-//===---------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
 
 #ifndef MLIR_AIE_LOCKANALYSIS_H
 #define MLIR_AIE_LOCKANALYSIS_H
