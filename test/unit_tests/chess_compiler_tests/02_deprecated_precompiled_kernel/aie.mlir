@@ -1,3 +1,13 @@
+//===- aie.mlir ------------------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2021 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // REQUIRES: valid_xchess_license
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib +l acdc_project/core_1_3.bcf %S/chess_example/kernel.cc -o custom_1_3.elf

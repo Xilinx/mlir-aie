@@ -1,3 +1,13 @@
+//===- lower_stream.mlir ---------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2021 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt --aie-llvm-lowering="tilecol=1 tilerow=1" %s | FileCheck --check-prefix=CHECK11 %s
 // RUN: aie-opt --aie-llvm-lowering="tilecol=2 tilerow=1" %s | FileCheck --check-prefix=CHECK21 %s
 

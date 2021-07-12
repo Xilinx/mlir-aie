@@ -1,3 +1,13 @@
+//===- lower_buffer.mlir ---------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2021 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt --aie-llvm-lowering="tilecol=3 tilerow=3" %s | FileCheck --check-prefix=CHECK33 %s
 // RUN: aie-opt --aie-llvm-lowering="tilecol=4 tilerow=3" %s | FileCheck --check-prefix=CHECK43 %s
 // CHECK33-LABEL:  llvm.func @core33() {

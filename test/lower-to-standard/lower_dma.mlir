@@ -1,3 +1,13 @@
+//===- lower_dma.mlir ------------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2021 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt --aie-standard-lowering="tilecol=3 tilerow=3" %s | FileCheck %s
 
 // CHECK:    call @llvm.aie.lock.acquire.reg(%c48_i32, %c0_i32) : (i32, i32) -> ()
