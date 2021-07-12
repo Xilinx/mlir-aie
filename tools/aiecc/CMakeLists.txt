@@ -1,3 +1,10 @@
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2021 Xilinx Inc.
+
 set(PYTHON_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/bin)
 
 set(AIECC_SUBFILES
@@ -16,11 +23,22 @@ list(TRANSFORM AIECC_TARGETS PREPEND ${PROJECT_BINARY_DIR}/bin/)
 
 # Stuff our python into the build area:
 add_custom_target(aiecc.py ALL DEPENDS ${AIECC_TARGETS})
-foreach(file ${AIECC_FILES})
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/bin/${file}
-                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
-                   ${PROJECT_BINARY_DIR}/bin/${file}
-                   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+
+# This chicanery is necessary to ensure executable permissions.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/copy_aiecc.cmake"
+"file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/aiecc.py
+DESTINATION ${PROJECT_BINARY_DIR}/bin
+FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_WRITE
+GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)")
+
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/bin/aiecc.py COMMAND
+${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/copy_aiecc.cmake)
+
+foreach(file ${AIECC_SUBFILES})
+add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/bin/aiecc/${file}
+                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/aiecc/${file}
+                   ${PROJECT_BINARY_DIR}/bin/aiecc/${file}
+                   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/aiecc/${file})
 endforeach()
 
 # Install our python stuff too.
