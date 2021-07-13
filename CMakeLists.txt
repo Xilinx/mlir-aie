@@ -67,6 +67,10 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
 
+# Make sure we build the docs
+add_custom_target(docs ALL)
+add_dependencies(docs mlir-doc)
+
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(test)
