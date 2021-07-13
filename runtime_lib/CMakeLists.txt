@@ -6,13 +6,30 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 set(INSTALLS
-    me_basic.o
     test_library.cpp
     test_library.h
     chess_intrinsic_wrapper.cpp)
 
+
 # Stuff into the build area:
 add_custom_target(copy-runtime-libs ALL)
+# Extract me_basic.o from libme.a, which is shipped with Vitis.
+add_custom_target(copy-runtime-libs-me_basic ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
+    # Exists in the source tree.. just copy it.
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
+                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
+                    ${CMAKE_CURRENT_BINARY_DIR}/${file}
+                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+elseif(DEFINED VITIS_ROOT)
+    # Extract from Vitis.
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
+                       COMMAND ar -x ${VITIS_ROOT}/aietools/data/cervino/lib/Release/libme.a me_basic.o)
+else()
+    message(WARNING "No source of me_basic.o... Hope you don't need it!")
+endif()
+add_dependencies(copy-runtime-libs copy-runtime-libs-me_basic )
+
 foreach(file ${INSTALLS})
     add_custom_target(copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
@@ -23,4 +40,5 @@ foreach(file ${INSTALLS})
 endforeach()
 
 # Install too
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
