@@ -17,10 +17,10 @@ add_custom_target(copy-runtime-libs ALL)
 add_custom_target(copy-runtime-libs-me_basic ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o)
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
     # Exists in the source tree.. just copy it.
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
-                    ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
+                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o
+                    ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
+                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
 elseif(DEFINED VITIS_ROOT)
     # Extract from Vitis.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
