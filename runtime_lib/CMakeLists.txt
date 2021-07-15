@@ -24,11 +24,26 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
 elseif(DEFINED VITIS_ROOT)
     # Extract from Vitis.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
-                       COMMAND ar -x ${VITIS_ROOT}/aietools/data/cervino/lib/Release/libme.a me_basic.o)
+                       COMMAND ar -x ${VITIS_LIBME} me_basic.o)
 else()
     message(WARNING "No source of me_basic.o... Hope you don't need it!")
 endif()
 add_dependencies(copy-runtime-libs copy-runtime-libs-me_basic )
+
+# copy libc and libm from Vitis
+add_custom_target(copy-runtime-libs-libc ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libc.a)
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libc.a
+                COMMAND ${CMAKE_COMMAND} -E copy ${VITIS_AIE_LIBC}
+                ${CMAKE_CURRENT_BINARY_DIR}/libc.a
+                DEPENDS ${VITIS_AIE_LIBC})
+add_dependencies(copy-runtime-libs copy-runtime-libs-libc )
+
+add_custom_target(copy-runtime-libs-libm ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libm.a)
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libm.a
+                COMMAND ${CMAKE_COMMAND} -E copy ${VITIS_AIE_LIBM}
+                ${CMAKE_CURRENT_BINARY_DIR}/libm.a
+                DEPENDS ${VITIS_AIE_LIBM})
+add_dependencies(copy-runtime-libs copy-runtime-libs-libm )
 
 foreach(file ${INSTALLS})
     add_custom_target(copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})

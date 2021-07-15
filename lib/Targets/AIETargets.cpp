@@ -136,6 +136,13 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf,
 //      // the _main_init symbol from me_basic.o has to come at address zero.
 //      *me_basic.o(.text)
 //      . = 0x200;
+//      __ctors_start__ = .;
+//      __init_array_start = .;
+//      KEEP(SORT(*)(.init_array))
+//      __ctors_end__ = .;
+//      __init_array_end = .;
+//      __dtors_start__ = .;
+//      __dtors_end__ = .;
 //      *(.text)
 //   } > program
 //   .data : { *(.data) } > data
@@ -178,9 +185,19 @@ SECTIONS
      // the _main_init symbol from me_basic.o has to come at address zero.
      *me_basic.o(.text)
      . = 0x200;
+     _ctors_start = .;
+     _init_array_start = .;
+     KEEP(SORT(*.init_array))
+     _ctors_end = .;
+     _init_array_end = .;
+     _dtors_start = .;
+     _dtors_end = .;
      *(.text)
   } > program
-  .data : { *(.data) } > data
+  .data : { 
+     *(.data*);
+     *(.rodata*)
+  } > data
   . = 0x20000;
   _sp_start_value_DM_stack = .;
   . = 0x24000;

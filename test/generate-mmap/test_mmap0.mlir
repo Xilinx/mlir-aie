@@ -67,13 +67,23 @@
 // LD44: SECTIONS
 // LD44: {
 // LD44:   . = 0x0;
-// LD44:   .text : {
-// LD44:      // the _main_init symbol from me_basic.o has to come at address zero.
-// LD44:      *me_basic.o(.text)
-// LD44:      . = 0x200;
-// LD44:      *(.text)
-// LD44:   } > program
-// LD44:   .data : { *(.data) } > data
+// LD44:  .text : {
+// LD44:     // the _main_init symbol from me_basic.o has to come at address zero.
+// LD44:     *me_basic.o(.text)
+// LD44:     . = 0x200;
+// LD44:     _ctors_start = .;
+// LD44:     _init_array_start = .;
+// LD44:     KEEP(SORT(*.init_array))
+// LD44:     _ctors_end = .;
+// LD44:     _init_array_end = .;
+// LD44:     _dtors_start = .;
+// LD44:     _dtors_end = .;
+// LD44:     *(.text)
+// LD44:  } > program
+// LD44:  .data : {
+// LD44:     *(.data*);
+// LD44:     *(.rodata*)
+// LD44:  } > data
 // LD44:   . = 0x20000;
 // LD44:   _sp_start_value_DM_stack = .;
 // LD44:   . = 0x24000;

@@ -39,6 +39,8 @@ def do_run(command):
 def run_flow(opts, tmpdirname):
     thispath = os.path.dirname(os.path.realpath(__file__))
     me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
+    libc = os.path.join(thispath, '..','..','runtime_lib', 'libc.a')
+    libm = os.path.join(thispath, '..','..','runtime_lib', 'libm.a')
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
@@ -97,7 +99,10 @@ def run_flow(opts, tmpdirname):
           if(opts.xbridge):
             do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
-            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+            # "-r" below generates a relocatable file, disabling checks for undefined symbols.
+            # This is necessary because libc seems slightly broken (around 'atexits')
+            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libc, libm,
+            '-r', '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
     # Compile each core in parallel
     # Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
