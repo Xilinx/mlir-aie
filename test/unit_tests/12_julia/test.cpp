@@ -83,9 +83,9 @@ main(int argc, char *argv[])
     ACDC_check("After release lock:", mlir_read_buffer_b(5), 35);
 
     if (!errors) {
-        printf("PASS!\n");
+        printf("PASS!\n"); return 0;
     } else {
-        printf("Fail!\n");
+        printf("Fail!\n"); return -1;
     }
     printf("test done.\n");
 }

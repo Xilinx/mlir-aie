@@ -87,9 +87,9 @@ main(int argc, char *argv[])
     }
 
     if (!errors) {
-        printf("PASS!\n");
+        printf("PASS!\n"); return 0;
     } else {
-        printf("Fail!\n");
+        printf("Fail!\n"); return -1;
     }
     printf("test done.\n");
 }

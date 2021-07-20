@@ -94,10 +94,10 @@ main(int argc, char *argv[])
   }
 
   if (!errors) {
-    printf("PASS!\n");
+    printf("PASS!\n"); return 0;
   }
   else {
-    printf("fail %d/%d.\n", (DMA_COUNT-errors), DMA_COUNT);
+    printf("fail %d/%d.\n", (DMA_COUNT-errors), DMA_COUNT); return -1;
   }
 
 }
