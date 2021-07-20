@@ -130,7 +130,7 @@ void ACDC_print_tile_status(struct XAieGbl_Tile &tile) {
 
     R0 = XAieGbl_Read32(tile.TileAddr + 0x00030000);
     R4 = XAieGbl_Read32(tile.TileAddr + 0x00030040);
-    printf("Core [%d, %d] status is %08X, timer is %u, PC is %d, locks are %08X, LR is %08X, SP is %08X, R0 is %08X,R4 is %08X\n",col, row, status, coreTimerLow, PC, locks, LR, SP, R0, R4);
+    printf("Core [%d, %d] status is %08X, timer is %u, PC is %08X, locks are %08X, LR is %08X, SP is %08X, R0 is %08X,R4 is %08X\n",col, row, status, coreTimerLow, PC, locks, LR, SP, R0, R4);
     printf("Core [%d, %d] trace status is %08X\n",col, row, trace_status);
 
     for (int lock=0;lock<16;lock++) {
@@ -145,6 +145,19 @@ void ACDC_print_tile_status(struct XAieGbl_Tile &tile) {
             printf("\n");
         }
     }
+
+    const char * core_status_strings[] = {"Enabled", "In Reset",
+      "Memory Stall S", "Memory Stall W", "Memory Stall N", "Memory Stall E",
+      "Lock Stall S", "Lock Stall W", "Lock Stall N", "Lock Stall E",
+      "Stream Stall S", "Stream Stall W", "Stream Stall N", "Stream Stall E",
+      "Cascade Stall Master", "Cascade Stall Slave", "Debug Halt", "ECC Error",
+      "ECC Scrubbing", "Error Halt", "Core Done"};
+    printf("Core Status: ");
+    for(int i = 0; i <= 20; i++) {
+      if((status >> i) & 0x1)
+        printf("%s ", core_status_strings[i]);
+    }
+    printf("\n");
 }
 
 static void clear_range(u64 TileAddr, u64 low, u64 high) {
