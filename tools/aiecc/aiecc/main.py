@@ -142,14 +142,22 @@ def main(builtin_params={}):
         vitis_path = os.path.dirname(vitis_bin_path)
         os.environ['VITIS'] = vitis_path
         print("Found Vitis at " + vitis_path)
-        aietools_path = os.path.join(vitis_path, "aietools")
-        if(not os.path.exists(aietools_path)):
-          aietools_path = os.path.join(vitis_path, "cardano")
-        aietools_bin_path = os.path.join(aietools_path, "bin")
-        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, aietools_bin_path, os.environ['PATH']])
+        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, os.environ['PATH']])
+ 
+    if('VITIS' in os.environ):
+      vitis_path = os.environ['VITIS']
+      # Find the aietools directory, needed by xchesscc_wrapper
+      
+      aietools_path = os.path.join(vitis_path, "aietools")
+      if(not os.path.exists(aietools_path)):
+        aietools_path = os.path.join(vitis_path, "cardano")
+      os.environ['AIETOOLS'] = aietools_path
 
-    os.environ['PATH'] = aie_path + os.pathsep + os.environ['PATH']
+      aietools_bin_path = os.path.join(aietools_path, "bin")
+      os.environ['PATH'] = os.pathsep.join([aietools_bin_path, os.environ['PATH']])
 
+    os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])
+    
     global opts
     opts = aiecc.cl_arguments.parse_args()
     is_windows = platform.system() == 'Windows'
