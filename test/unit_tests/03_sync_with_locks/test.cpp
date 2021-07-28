@@ -70,7 +70,7 @@ main(int argc, char *argv[])
     printf("Start cores\n");
     mlir_start_cores();
 
-    ACDC_check("Before release lock:", mlir_read_buffer_b(5), 0);
+    ACDC_check("Before release lock:", mlir_read_buffer_b(5), 0, errors);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
@@ -79,7 +79,7 @@ main(int argc, char *argv[])
     if(!XAieTile_LockAcquire(&(TileInst[1][3]), 5, 1, LOCK_TIMEOUT)) {
         printf("ERROR: timeout hit!\n");
     }
-    ACDC_check("After acquire lock:", mlir_read_buffer_b(5), 35);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b(5), 35, errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;

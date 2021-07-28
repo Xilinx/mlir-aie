@@ -71,16 +71,16 @@ main(int argc, char *argv[])
     }
     mlir_write_buffer_a(3, 7);
 
-    ACDC_check("Before", mlir_read_buffer_a(3), 7);
-    ACDC_check("Before", mlir_read_buffer_b(5), 0);
-    ACDC_check("Before", mlir_read_buffer_c(5), 0);
+    ACDC_check("Before", mlir_read_buffer_a(3), 7, errors);
+    ACDC_check("Before", mlir_read_buffer_b(5), 0, errors);
+    ACDC_check("Before", mlir_read_buffer_c(5), 0, errors);
 
     printf("Starting cores\n");
     mlir_start_cores();
 
-    ACDC_check("Before and started", mlir_read_buffer_a(3), 7);
-    ACDC_check("Before and started", mlir_read_buffer_b(5), 0);
-    ACDC_check("Before and started", mlir_read_buffer_c(5), 0);
+    ACDC_check("Before and started", mlir_read_buffer_a(3), 7, errors);
+    ACDC_check("Before and started", mlir_read_buffer_b(5), 0, errors);
+    ACDC_check("Before and started", mlir_read_buffer_c(5), 0, errors);
     
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
@@ -89,9 +89,9 @@ main(int argc, char *argv[])
         printf("ERROR: timeout hit!\n");
     }
 
-    ACDC_check("After", mlir_read_buffer_a(3), 7);
-    ACDC_check("After", mlir_read_buffer_b(5), 35);
-    ACDC_check("After", mlir_read_buffer_c(5), 175);
+    ACDC_check("After", mlir_read_buffer_a(3), 7, errors);
+    ACDC_check("After", mlir_read_buffer_b(5), 35, errors);
+    ACDC_check("After", mlir_read_buffer_c(5), 175, errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;

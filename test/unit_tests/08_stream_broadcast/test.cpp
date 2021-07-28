@@ -71,25 +71,25 @@ main(int argc, char *argv[])
     ACDC_clear_tile_memory(TileInst[3][4]);
     mlir_write_buffer_a13(3,7);
 
-    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7);
-    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_a32(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_b32(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_a34(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_b34(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_a32(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_b32(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_a34(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_b34(5), 0, errors);
 
     printf("Start cores\n");
     mlir_start_cores();
 
-    ACDC_check("After start cores:", mlir_read_buffer_b13(5), 0);
-    ACDC_check("After start cores:", mlir_read_buffer_a32(5), 0);
-    ACDC_check("After start cores:", mlir_read_buffer_b32(5), 0);
-    ACDC_check("After start cores:", mlir_read_buffer_a33(5), 0);
-    ACDC_check("After start cores:", mlir_read_buffer_b33(5), 0);
-    ACDC_check("After start cores:", mlir_read_buffer_a34(5), 0);
-    ACDC_check("After start cores:", mlir_read_buffer_b34(5), 0);
+    ACDC_check("After start cores:", mlir_read_buffer_b13(5), 0, errors);
+    ACDC_check("After start cores:", mlir_read_buffer_a32(5), 0, errors);
+    ACDC_check("After start cores:", mlir_read_buffer_b32(5), 0, errors);
+    ACDC_check("After start cores:", mlir_read_buffer_a33(5), 0, errors);
+    ACDC_check("After start cores:", mlir_read_buffer_b33(5), 0, errors);
+    ACDC_check("After start cores:", mlir_read_buffer_a34(5), 0, errors);
+    ACDC_check("After start cores:", mlir_read_buffer_b34(5), 0, errors);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
@@ -101,23 +101,23 @@ main(int argc, char *argv[])
 
     ACDC_print_dma_status(TileInst[3][2]);
     
-    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35);
-    ACDC_check("After acquire lock:", mlir_read_buffer_a32(5), 35);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b32(5), 105);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a32(5), 35, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b32(5), 105, errors);
 
     printf("Waiting to acquire output lock for read tile[3][3]...\n");
     if(!XAieTile_LockAcquire(&(TileInst[3][3]), 7, 1, LOCK_TIMEOUT)) {
         printf("ERROR: timeout hit!\n");
     }
-    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 140);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 140, errors);
 
     printf("Waiting to acquire output lock for read tile[3][4]...\n");
     if(!XAieTile_LockAcquire(&(TileInst[3][4]), 7, 1, LOCK_TIMEOUT)) {
         printf("ERROR: timeout hit!\n");
     }
-    ACDC_check("After acquire lock:", mlir_read_buffer_a34(5), 35);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b34(5), 175);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a34(5), 35, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b34(5), 175, errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;

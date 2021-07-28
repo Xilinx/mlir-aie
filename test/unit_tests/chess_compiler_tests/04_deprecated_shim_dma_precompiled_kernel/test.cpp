@@ -134,10 +134,10 @@ main(int argc, char *argv[])
       mlir_write_buffer_b_pong(i, 0x4);
     }
 
-    ACDC_check("Before", mlir_read_buffer_a_ping(3), 4);
-    ACDC_check("Before", mlir_read_buffer_a_pong(3), 4);
-    ACDC_check("Before", mlir_read_buffer_b_ping(5), 4);
-    ACDC_check("Before", mlir_read_buffer_b_pong(5), 4);
+    ACDC_check("Before", mlir_read_buffer_a_ping(3), 4, errors);
+    ACDC_check("Before", mlir_read_buffer_a_pong(3), 4, errors);
+    ACDC_check("Before", mlir_read_buffer_b_ping(5), 4, errors);
+    ACDC_check("Before", mlir_read_buffer_b_pong(5), 4, errors);
 
 //    ACDC_dump_tile_memory(TileInst[7][3]);
 
@@ -176,10 +176,10 @@ main(int argc, char *argv[])
     locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
     printf("Locks70 = %08X\n", locks70);
 
-    ACDC_check("After", mlir_read_buffer_a_ping(3), 4);
-    ACDC_check("After", mlir_read_buffer_a_pong(3), 256+4);
-    ACDC_check("After", mlir_read_buffer_b_ping(5), 20);
-    ACDC_check("After", mlir_read_buffer_b_pong(5), (256+4)*5);    
+    ACDC_check("After", mlir_read_buffer_a_ping(3), 4, errors);
+    ACDC_check("After", mlir_read_buffer_a_pong(3), 256+4, errors);
+    ACDC_check("After", mlir_read_buffer_b_ping(5), 20, errors);
+    ACDC_check("After", mlir_read_buffer_b_pong(5), (256+4)*5, errors);    
 
 /*
     // Dump contents of ddr_ptr_out
@@ -189,8 +189,8 @@ main(int argc, char *argv[])
             printf("ddr_ptr_out[%d] = %d\n", i, d);
     }
 */
-    ACDC_check("DDR out",ddr_ptr_out[5],20);
-    ACDC_check("DDR out",ddr_ptr_out[256+5],(256+4)*5);
+    ACDC_check("DDR out",ddr_ptr_out[5],20, errors);
+    ACDC_check("DDR out",ddr_ptr_out[256+5],(256+4)*5, errors);
 
     /*
     XAieDma_Shim ShimDmaInst1;

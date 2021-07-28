@@ -68,9 +68,9 @@ main(int argc, char *argv[])
     }
 
     ACDC_dump_tile_memory(TileInst[1][6]);
-    ACDC_check("prime5[0]", mlir_read_buffer_prime5(0),7);
-    ACDC_check("prime5[1]", mlir_read_buffer_prime5(1),11);
-    ACDC_check("prime5[2]", mlir_read_buffer_prime5(2),13);
+    ACDC_check("prime5[0]", mlir_read_buffer_prime5(0),7, errors);
+    ACDC_check("prime5[1]", mlir_read_buffer_prime5(1),11, errors);
+    ACDC_check("prime5[2]", mlir_read_buffer_prime5(2),13, errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;

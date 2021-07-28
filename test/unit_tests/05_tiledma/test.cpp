@@ -68,18 +68,18 @@ main(int argc, char *argv[])
     ACDC_clear_tile_memory(TileInst[3][3]);
     mlir_write_buffer_a13(3, 7); // set input value
 
-    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7);
-    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0);
-    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0);
+    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0, errors);
+    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0, errors);
 
     printf("Start cores\n");
     mlir_start_cores();
 
-    ACDC_check("Before release lock:", mlir_read_buffer_a13(3), 7);
-    ACDC_check("Before release lock:", mlir_read_buffer_b13(5), 0);
-    ACDC_check("Before release lock:", mlir_read_buffer_a33(5), 0);
-    ACDC_check("Before release lock:", mlir_read_buffer_b33(5), 0);
+    ACDC_check("Before release lock:", mlir_read_buffer_a13(3), 7, errors);
+    ACDC_check("Before release lock:", mlir_read_buffer_b13(5), 0, errors);
+    ACDC_check("Before release lock:", mlir_read_buffer_a33(5), 0, errors);
+    ACDC_check("Before release lock:", mlir_read_buffer_b33(5), 0, errors);
 
     printf("Release input buffer lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0); 
@@ -89,10 +89,10 @@ main(int argc, char *argv[])
         printf("ERROR: timeout hit!\n");
     }
 
-    ACDC_check("After acquire lock:", mlir_read_buffer_a13(3), 7);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35);
-    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 175);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a13(3), 7, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35, errors);
+    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 175, errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;

@@ -62,9 +62,9 @@ main(int argc, char *argv[])
 
     int errors = 0;
 
-    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(3),14);
-    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(5),8);
-    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(9),14);
+    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(3),14,errors);
+    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(5),8,errors);
+    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(9),14,errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;

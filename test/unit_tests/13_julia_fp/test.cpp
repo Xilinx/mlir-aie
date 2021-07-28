@@ -68,7 +68,7 @@ main(int argc, char *argv[])
     printf("Start cores\n");
     mlir_start_cores();
 
-    ACDC_check("Before release lock:", mlir_read_buffer_b(5), 0);
+    ACDC_check("Before release lock:", mlir_read_buffer_b(5), 0, errors);
 
     printf("Release lock.\n");
     XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
@@ -80,7 +80,7 @@ main(int argc, char *argv[])
     }
     printf("It took %d tries.\n", tries);
 
-    ACDC_check("After release lock:", mlir_read_buffer_b(5), 35);
+    ACDC_check("After release lock:", mlir_read_buffer_b(5), 35, errors);
 
     for(int i = 0; i < 8; i++) {
         printf("%d %d\n", i, mlir_read_buffer_a(i));

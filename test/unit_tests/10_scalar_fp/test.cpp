@@ -64,9 +64,9 @@ main(int argc, char *argv[])
 
     int errors = 0;
 
-    ACDC_check_float("After memory writes", mlir_read_buffer_a(3), 1.0);
-    ACDC_check_float("After memory writes", mlir_read_buffer_a(5), 8.0);
-    ACDC_check_float("After memory writes", mlir_read_buffer_a(9), 14.0);
+    ACDC_check_float("After memory writes", mlir_read_buffer_a(3), 1.0, errors);
+    ACDC_check_float("After memory writes", mlir_read_buffer_a(5), 8.0, errors);
+    ACDC_check_float("After memory writes", mlir_read_buffer_a(9), 14.0, errors);
 
     if (!errors) {
         printf("PASS!\n"); return 0;
