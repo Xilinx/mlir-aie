@@ -17,6 +17,7 @@ import time
 from subprocess import PIPE, run, call
 # from joblib import Parallel, delayed
 import tempfile
+import shutil
 
 import aiecc.cl_arguments
 
@@ -132,6 +133,20 @@ def main(builtin_params={}):
 
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
+
+    if('VITIS' not in os.environ):
+      # Try to find vitis in the path
+      vpp_path = shutil.which("v++")
+      if(vpp_path):
+        vitis_bin_path = os.path.dirname(os.path.realpath(vpp_path))
+        vitis_path = os.path.dirname(vitis_bin_path)
+        os.environ['VITIS'] = vitis_path
+        print("Found Vitis at " + vitis_path)
+        aietools_path = os.path.join(vitis_path, "aietools")
+        if(not os.path.exists(aietools_path)):
+          aietools_path = os.path.join(vitis_path, "cardano")
+        aietools_bin_path = os.path.join(aietools_path, "bin")
+        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, aietools_bin_path, os.environ['PATH']])
 
     os.environ['PATH'] = aie_path + os.pathsep + os.environ['PATH']
 
