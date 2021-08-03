@@ -62,7 +62,12 @@ main(int argc, char *argv[])
 
     printf("Acquire input buffer lock first.\n");
     XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
-    mlir_write_buffer_a(3,7);
+    mlir_write_buffer_a(0,1);
+    mlir_write_buffer_a(1,1);
+    mlir_write_buffer_a(2,2);
+    mlir_write_buffer_a(3,3);
+    mlir_write_buffer_a(4,4);
+    mlir_write_buffer_a(5,8);
 
     printf("Start cores\n");
     mlir_start_cores();
@@ -79,6 +84,8 @@ main(int argc, char *argv[])
     }
     printf("It took %d tries.\n", tries);
 
+    ACDC_dump_tile_memory(TileInst[1][3]);
+    ACDC_dump_tile_memory(TileInst[2][3]);
     ACDC_check("After acquire lock:", mlir_read_buffer_c(5), 175, errors);
 
     if (!errors) {
