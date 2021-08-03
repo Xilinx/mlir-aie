@@ -72,3 +72,5 @@ setenv PYTHONPATH ${ACDC}/python:${PYTHONPATH}
 setenv LD_LIBRARY_PATH ${ACDC}/lib:${LD_LIBRARY_PATH}
 ```
 
+-----
+ (c) Copyright 2019-2021 Xilinx Inc.
