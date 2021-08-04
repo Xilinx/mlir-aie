@@ -345,7 +345,6 @@ int xilinx::AIE::ShimMuxOp::rowIndex() {
 
 // ShimDMAOp
 static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
-  Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
   assert(!body.empty() && "ShimDMAOp should have non-empty body");
   auto tileOp = op.getTileOp();
@@ -383,7 +382,6 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
 
 // CoreOp
 static LogicalResult verify(xilinx::AIE::CoreOp op) {
-  Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
   assert(!body.empty() && "CoreOp should have non-empty body");
 

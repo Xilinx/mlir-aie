@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-flows --aie-find-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
 // CHECK: %[[T01:.*]] = AIE.tile(0, 1)
 // CHECK: %[[T12:.*]] = AIE.tile(1, 2)
 // CHECK: AIE.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)

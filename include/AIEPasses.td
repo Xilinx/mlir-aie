@@ -162,6 +162,19 @@ def AIERouteFlows : Pass<"aie-create-flows", "ModuleOp"> {
   ];
 }
 
+def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
+  let summary = "Route aie.flow operations through switchboxes with Pathfinder algorithm";
+  let description = [{
+    Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
+    operations. Uses Pathfinder congestion-aware algorithm. 
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPathfinderPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "ModuleOp"> {
   let summary = "Route aie.packetflow operations through switchboxes";
   let description = [{

@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIELowerMemcpyPass();
   xilinx::AIE::registerAIENormalizeAddressSpacesPass();
   xilinx::AIE::registerAIERouteFlowsPass();
+  xilinx::AIE::registerAIERoutePathfinderFlowsPass();
   xilinx::AIE::registerAIERoutePacketFlowsPass();
   xilinx::AIE::registerAIEVectorOptPass();
 

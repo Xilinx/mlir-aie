@@ -1,4 +1,5 @@
-//===- over_flows.mlir -----------------------------------------*- MLIR -*-===//
+
+//===- broadcast.mlir -----------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -28,14 +29,14 @@
 // CHECK: %[[T82:.*]] = AIE.tile(8, 2)
 // CHECK: %[[T83:.*]] = AIE.tile(8, 3)
 //
-// CHECK: AIE.flow(%[[T71]], DMA : 0, %[[T20]], DMA : 0)
-// CHECK: AIE.flow(%[[T71]], DMA : 1, %[[T20]], DMA : 1)
-// CHECK: AIE.flow(%[[T72]], DMA : 0, %[[T60]], DMA : 0)
-// CHECK: AIE.flow(%[[T72]], DMA : 1, %[[T60]], DMA : 1)
-// CHECK: AIE.flow(%[[T73]], DMA : 0, %[[T70]], DMA : 0)
-// CHECK: AIE.flow(%[[T73]], DMA : 1, %[[T70]], DMA : 1)
-// CHECK: AIE.flow(%[[T83]], DMA : 0, %[[T30]], DMA : 0)
-// CHECK: AIE.flow(%[[T83]], DMA : 1, %[[T30]], DMA : 1)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T82]], DMA : 0)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T31]], DMA : 0)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T13]], DMA : 0)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T83]], DMA : 1)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T31]], DMA : 1)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
 
 module {
 %t03 = AIE.tile(0, 3)
@@ -57,13 +58,15 @@ module {
 %t82 = AIE.tile(8, 2)
 %t83 = AIE.tile(8, 3)
 
-AIE.flow(%t71, DMA : 0, %t20, DMA : 0)
-AIE.flow(%t71, DMA : 1, %t20, DMA : 1)
-AIE.flow(%t72, DMA : 0, %t60, DMA : 0)
-AIE.flow(%t72, DMA : 1, %t60, DMA : 1)
-AIE.flow(%t73, DMA : 0, %t70, DMA : 0)
-AIE.flow(%t73, DMA : 1, %t70, DMA : 1)
-AIE.flow(%t83, DMA : 0, %t30, DMA : 0)
-AIE.flow(%t83, DMA : 1, %t30, DMA : 1)
+AIE.flow(%t20, DMA : 0, %t13, DMA : 0)
+AIE.flow(%t20, DMA : 0, %t31, DMA : 0)
+AIE.flow(%t20, DMA : 0, %t71, DMA : 0)
+AIE.flow(%t20, DMA : 0, %t82, DMA : 0)
+
+AIE.flow(%t60, DMA : 0, %t02, DMA : 1)
+AIE.flow(%t60, DMA : 0, %t83, DMA : 1)
+AIE.flow(%t60, DMA : 0, %t22, DMA : 1)
+AIE.flow(%t60, DMA : 0, %t31, DMA : 1)
+
 }
 
