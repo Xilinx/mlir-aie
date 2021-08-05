@@ -282,15 +282,15 @@ ConvertFlowsToInterconnect(
     Operation *Op = flowOp.getOperation();
 
     TileOp srcTile = cast<TileOp>(flowOp.source().getDefiningOp());
-    //TileOp dstTile = cast<TileOp>(flowOp.dest().getDefiningOp());
+    TileOp dstTile = cast<TileOp>(flowOp.dest().getDefiningOp());
     TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-    //TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     auto srcBundle = flowOp.sourceBundle();
     auto srcChannel= flowOp.sourceChannel();
-    //auto dstBundle = flowOp.destBundle();
-    //auto dstChannel= flowOp.destChannel();
+    auto dstBundle = flowOp.destBundle();
+    auto dstChannel= flowOp.destChannel();
     Port srcPort = std::make_pair(srcBundle, srcChannel);
-    //Port dstPort = std::make_pair(dstBundle, dstChannel);
+    // Port dstPort = std::make_pair(dstBundle, dstChannel);
     LLVM_DEBUG(llvm::dbgs() << "\n\t---Begin rewrite() for flowOp: (" << 
         srcCoords.first << ", " << srcCoords.second << ")" <<
         stringifyWireBundle(srcBundle) << (int)srcChannel<<

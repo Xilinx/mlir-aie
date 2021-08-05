@@ -346,7 +346,7 @@ int xilinx::AIE::ShimMuxOp::rowIndex() {
 // ShimDMAOp
 static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
   assert(op.getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
-  assert(!body.empty() && "ShimDMAOp should have non-empty body");
+  assert(!op.body().empty() && "ShimDMAOp should have non-empty body");
   auto tileOp = op.getTileOp();
   if (!tileOp.isShimNOCTile())
     return op.emitOpError("must be in a ShimTile with a NOC connection");
@@ -383,7 +383,7 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
 // CoreOp
 static LogicalResult verify(xilinx::AIE::CoreOp op) {
   assert(op.getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
-  assert(!body.empty() && "CoreOp should have non-empty body");
+  assert(!op.body().empty() && "CoreOp should have non-empty body");
 
   return success();
 }
