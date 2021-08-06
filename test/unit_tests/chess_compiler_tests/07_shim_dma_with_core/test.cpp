@@ -53,46 +53,8 @@ main(int argc, char *argv[])
     AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
     XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
     
-    /*
-    XAieDma_Shim ShimDMAInst_7_0;
-    XAieDma_ShimInitialize(&(TileInst[7][0]), &ShimDMAInst_7_0);
-    XAieDma_ShimChResetAll(&ShimDMAInst_7_0);
-    XAieDma_ShimBdClearAll(&ShimDMAInst_7_0);
-
-    XAieDma_Tile TileDmaInst_7_3;
-    XAieDma_TileInitialize(&(TileInst[7][3]), &TileDmaInst_7_3);
-    XAieDma_TileBdClearAll(&TileDmaInst_7_3);
-    XAieDma_TileChResetAll(&TileDmaInst_7_3);
-    */
-    
     mlir_configure_cores();    
     mlir_configure_switchboxes();
-    for (int l=0; l<16; l++){
-        XAieTile_LockRelease(&(TileInst[7][0]), l, 0x0, 0);
-    }
-
-    for (int bd=0;bd<16;bd++) {
-        // Take no prisoners.  No regerts
-        // Overwrites the DMA_BDX_Control registers
-        for(int ofst=0;ofst<0x14;ofst+=0x4){
-            u32 rb = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x0001D000+(bd*0x14)+ofst);
-            if (rb != 0){
-                printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
-            }
-            //XAieGbl_Write32(TileInst[7][0].TileAddr + 0x0001D000+(bd*0x14)+ofst, 0x0);
-        }
-    }
-
-    for (int dma=0;dma<4;dma++) {
-        for(int ofst=0;ofst<0x8;ofst+=0x4){
-            u32 rb = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x0001D140+(dma*0x8)+ofst);
-            if (rb != 0){
-                printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
-            }
-            //XAieGbl_Write32(TileInst[7][0].TileAddr + 0x0001D140+(dma*0x8)+ofst, 0x0);
-        }
-    }
-
     mlir_initialize_locks();
 
     u32 sleep_u = 100000; 
@@ -124,24 +86,6 @@ main(int argc, char *argv[])
     }
 
     ACDC_clear_tile_memory(TileInst[7][3]);  
-
-    // Set iteration to 2 TODO: fix this
-    // XAieTile_DmWriteWord(&(TileInst[7][3]), 5120 , 2);
-
-    for (int i=0; i<DMA_COUNT/2; i++) {
-      mlir_write_buffer_a_ping(i, 0x4);
-      mlir_write_buffer_a_pong(i, 0x4);
-      mlir_write_buffer_b_ping(i, 0x4);
-      mlir_write_buffer_b_pong(i, 0x4);
-    }
-
-    ACDC_check("Before", mlir_read_buffer_a_ping(3), 4,errors);
-    ACDC_check("Before", mlir_read_buffer_a_pong(3), 4,errors);
-    ACDC_check("Before", mlir_read_buffer_b_ping(5), 4,errors);
-    ACDC_check("Before", mlir_read_buffer_b_pong(5), 4,errors);
-
-//    ACDC_dump_tile_memory(TileInst[7][3]);
-
 /*
     // TODO Check for completion of shimdma
     int shimdma_stat_mm2s0, shimdma_stat_s2mm0;
@@ -168,7 +112,6 @@ main(int argc, char *argv[])
 
     printf("Release lock for accessing DDR.\n");
     XAieTile_LockRelease(&(TileInst[7][0]), /*lockid*/ 1, /*r/w*/ 1, 0); 
-    //usleep(10000);
     XAieTile_LockRelease(&(TileInst[7][0]), /*lockid*/ 2, /*r/w*/ 1, 0); 
 
     usleep(sleep_u);
@@ -181,7 +124,6 @@ main(int argc, char *argv[])
     ACDC_check("After", mlir_read_buffer_a_pong(0), 448, errors);
     ACDC_check("After", mlir_read_buffer_b_ping(0), 385, errors);
     ACDC_check("After", mlir_read_buffer_b_pong(0), 449, errors);    
-
 
     // Dump contents of ddr_ptr_out
     for (int i=0; i<16; i++) {
@@ -199,24 +141,7 @@ main(int argc, char *argv[])
     XAieDma_ShimChControl((&ShimDmaInst1), XAIEDMA_SHIM_CHNUM_MM2S0, XAIE_DISABLE, XAIE_DISABLE, XAIE_DISABLE);
     XAieDma_ShimChControl((&ShimDmaInst1), XAIEDMA_SHIM_CHNUM_S2MM0, XAIE_DISABLE, XAIE_DISABLE, XAIE_DISABLE);
     */
-    for (int bd=0;bd<16;bd++) {
-        // Take no prisoners.  No regerts
-        // Overwrites the DMA_BDX_Control registers
-        for(int ofst=0;ofst<0x14;ofst+=0x4){
-            //u32 rb = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x0001D000+(bd*0x14)+ofst);
-            //printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
-            XAieGbl_Write32(TileInst[7][0].TileAddr + 0x0001D000+(bd*0x14)+ofst, 0x0);
-        }
-    }
 
-    for (int dma=0;dma<4;dma++) {
-        for(int ofst=0;ofst<0x8;ofst+=0x4){
-            //u32 rb = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x0001D140+(dma*0x8)+ofst);
-            //printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
-            XAieGbl_Write32(TileInst[7][0].TileAddr + 0x0001D140+(dma*0x8)+ofst, 0x0);
-        }
-    }
-    
     if (!errors) {
         printf("PASS!\n"); return 0;
     } else {
