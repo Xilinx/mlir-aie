@@ -109,4 +109,4 @@ add_lit_testsuite(check-aie "Running the aie regression tests"
   )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 
-add_lit_testsuites(AIE ${CMAKE_CURRENT_SOURCE_DIR} DEPENDS ${TEST_DEPENDS})
+add_lit_testsuites(AIE ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TEST_DEPENDS} ARGS "-sv --timeout 180 --time-tests")
