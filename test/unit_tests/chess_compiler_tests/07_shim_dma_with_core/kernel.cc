@@ -14,6 +14,6 @@ void func(int *a, int *b, int size)
 {
     int new_size = 64;
     for (int i = 0; i < 64; i ++){
-        b[i] = a[i];
+        b[i] = a[i] + 1;
     }
 }
