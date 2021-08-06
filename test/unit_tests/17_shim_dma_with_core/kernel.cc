@@ -10,10 +10,10 @@
 
 #include "kernel.h"
 
-void func(int32_t *a, int32_t *b, int32_t size)
+void func(int *a, int *b, int size)
 {
     int new_size = 256;
-    for (int32_t i = 0; i < 256; i ++){
+    for (int i = 0; i < 256; i ++){
         b[i] = a[i];
     }
 }

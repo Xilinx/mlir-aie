@@ -118,7 +118,7 @@ main(int argc, char *argv[])
         ddr_ptr_in  = (uint32_t *)mmap(NULL, 0x800, PROT_READ|PROT_WRITE, MAP_SHARED, fd, DDR_ADDR_IN);
         ddr_ptr_out = (uint32_t *)mmap(NULL, 0x800, PROT_READ|PROT_WRITE, MAP_SHARED, fd, DDR_ADDR_OUT);
         for (int i=0; i<DMA_COUNT; i++) {
-            ddr_ptr_in[i] = i+1;
+            ddr_ptr_in[i] = i;
             ddr_ptr_out[i] = 0;
         }
     }
@@ -177,20 +177,20 @@ main(int argc, char *argv[])
     locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
     printf("Locks70 = %08X\n", locks70);
 
-    ACDC_check("After", mlir_read_buffer_a_ping(3), 4, errors);
-    ACDC_check("After", mlir_read_buffer_a_pong(3), 256+4, errors);
-    ACDC_check("After", mlir_read_buffer_b_ping(5), 6, errors);
-    ACDC_check("After", mlir_read_buffer_b_pong(5), (256+6), errors);    
+    ACDC_check("After", mlir_read_buffer_a_ping(0), 384, errors);
+    ACDC_check("After", mlir_read_buffer_a_pong(0), 448, errors);
+    ACDC_check("After", mlir_read_buffer_b_ping(0), 385, errors);
+    ACDC_check("After", mlir_read_buffer_b_pong(0), 449, errors);    
 
 
     // Dump contents of ddr_ptr_out
-    for (int i=0; i<DMA_COUNT; i++) {
+    for (int i=0; i<16; i++) {
         uint32_t d = ddr_ptr_out[i];
         printf("ddr_ptr_out[%d] = %d\n", i, d);
     }
 
-    ACDC_check("DDR out",ddr_ptr_out[5],6, errors);
-    ACDC_check("DDR out",ddr_ptr_out[256+5],(256+5 + 1), errors);
+    for (int i=0; i<512; i++)
+        ACDC_check("DDR out",ddr_ptr_out[i],i+1, errors);
 
     /*
     XAieDma_Shim ShimDmaInst1;
@@ -218,9 +218,8 @@ main(int argc, char *argv[])
     }
     
     if (!errors) {
-        printf("PASS!\n");
+        printf("PASS!\n"); return 0;
     } else {
-        printf("Fail!\n");
+        printf("Fail!\n"); return -1;
     }
-    printf("test done.\n");
 }

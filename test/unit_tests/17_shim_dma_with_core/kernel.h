@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <stdio.h>
+// #include <stdint.h>
 
 extern "C" {
-void func(int32_t *a, int32_t *b, int32_t size);
+void func(int *a, int *b, int size);
 }
