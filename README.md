@@ -1,27 +1,34 @@
 This repository contains an MLIR-based toolchain for Xilinx Versal AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with convenient low-level access to devices and enable the development of a wide variety of programming models from higher level abstractions.  As such, although it contains some examples, this project is not intended to represent end-to-end compilation flows or to be particularly easy to use for system design.
 
-# Building ACDC
+# Building the MLIR AIE toolchain
 
 ## Prerequisites
 
 ```
 cmake 3.17.5
 ninja 1.8.2
-Xilinx Vitis 2020.2
+Xilinx Vitis 2020.1
 sudo pip3 install joblib psutil
-clang/llvm 13+ from source https://github.com/llvm/llvm-project/commit/ebe408ad8003c946ef871b955ab18e64e82697cb
+clang/llvm 13+ from source https://github.com/llvm/llvm-project
+Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
-Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-based Linux.
+Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-based Linux, however
+the tools are largely board and device indepdendent and can be adapted to other environments.
 
 ## Building on X86
 
 First compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR enabled:
 In addition, we make some common build optimizations to use a linker other than 'ld' (which tends
 to be quite slow on large link jobs) and to link against libLLVM.so and libClang.so.  You may find
-that other options are also useful.
+that other options are also useful.  Note that due to changing MLIR APIs, only a particular revision
+is expected to work.
+
 ```sh
-mkdir ${LLVM}; cd ${LLVM}
+git clone https://github.com/llvm/llvm-project
+cd llvm-project
+git checkout ebe408ad8003
+mkdir ${LLVMBUILD}; cd ${LLVMBUILD}
 cmake -GNinja \
     -DLLVM_LINK_LLVM_DYLIB=ON 
     -DCLANG_LINK_CLANG_DYLIB=ON
@@ -37,11 +44,13 @@ ninja; ninja check-llvm; ninja install
 
 Then you can build the AIE tools:
 ```sh
+git clone https://github.com/Xilinx/cmakeModules
+git clone https://github.com/Xilinx/mlir-aie
 mkdir build; cd build
 cmake -GNinja \
-    -DLLVM_DIR=${LLVM}/lib/cmake/llvm \
-    -DMLIR_DIR=${LLVM}/lib/cmake/mlir \
-    -DCMAKE_MODULE_PATH=/wrk/hdstaff/stephenn/acdc/cmakeModules/cmakeModulesXilinx/ \
+    -DLLVM_DIR=${LLVMBUILD}/lib/cmake/llvm \
+    -DMLIR_DIR=${LLVMBUILD}/lib/cmake/mlir \
+    -DCMAKE_MODULE_PATH=/path/to/cmakeModules/ \
     -DVitisSysroot=${SYSROOT} \
     -DCMAKE_BUILD_TYPE=Debug \
     ..
@@ -61,15 +70,14 @@ cd /
 sudo symlinks -rc .
 ```
 
-
 ## Environment setup
 In order to run all the tools, it may be necessary to add some paths into your environment:
 
 ```
-setenv ACDC /path/to/build/install
-setenv PATH ${ACDC}/bin:${PATH}
-setenv PYTHONPATH ${ACDC}/python:${PYTHONPATH}
-setenv LD_LIBRARY_PATH ${ACDC}/lib:${LD_LIBRARY_PATH}
+setenv MLIRAIE /path/to/build/install
+setenv PATH ${MLIRAIE}/bin:${PATH}
+setenv PYTHONPATH ${MLIRAIE}/python:${PYTHONPATH}
+setenv LD_LIBRARY_PATH ${MLIRAIE}/lib:${LD_LIBRARY_PATH}
 ```
 
 -----
