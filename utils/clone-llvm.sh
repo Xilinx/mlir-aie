@@ -12,4 +12,9 @@
 #
 ##===----------------------------------------------------------------------===##
 
-git clone --depth 1 https://github.com/llvm/llvm-project.git llvm --branch ebe408ad8003
+git clone --depth 1 https://github.com/llvm/llvm-project.git llvm
+pushd llvm
+git fetch --depth=1 origin ebe408ad8003c946ef871b955ab18e64e82697cb
+git checkout ebe408ad8003
+popd
+
