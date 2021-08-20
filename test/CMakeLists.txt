@@ -7,6 +7,10 @@
 
 cmake_minimum_required(VERSION 3.10)
 
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
   set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
@@ -49,7 +53,7 @@ find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE in the sysroot
-set(CMAKE_FIND_ROOT_PATH ${VitisSysroot})
+set(LibXAIE_ROOT ${VitisSysroot}/opt/xaiengine)
 find_package(LibXAIE)
 
 if(NOT AIE_BINARY_DIR)
