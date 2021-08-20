@@ -55,8 +55,7 @@ config.excludes = ['Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENS
 config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
 if(config.vitis_root):
-    config.vitis_cardano_root = os.path.join(config.vitis_root, "cardano")
-    config.vitis_aietools_bin = os.path.join(config.vitis_root, "aietools", "bin")
+    config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
 
 # Tweak the PATH to include the tools dir.
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
@@ -64,7 +63,7 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 #llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
 
 if(config.vitis_root):
-  llvm_config.with_environment('CARDANO', config.vitis_cardano_root)
+  llvm_config.with_environment('CARDANO', config.vitis_aietools_dir)
   llvm_config.with_environment('VITIS', config.vitis_root)
 
 #test if LM_LICENSE_FILE valid

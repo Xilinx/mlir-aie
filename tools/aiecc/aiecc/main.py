@@ -17,6 +17,7 @@ import time
 from subprocess import PIPE, run, call
 # from joblib import Parallel, delayed
 import tempfile
+import shutil
 
 import aiecc.cl_arguments
 
@@ -99,10 +100,8 @@ def run_flow(opts, tmpdirname):
           if(opts.xbridge):
             do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
-            # "-r" below generates a relocatable file, disabling checks for undefined symbols.
-            # This is necessary because libc seems slightly broken (around 'atexits')
-            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libc, libm,
-            '-r', '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
+            '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
     # Compile each core in parallel
     # Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
@@ -133,8 +132,30 @@ def main(builtin_params={}):
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
 
-    os.environ['PATH'] = aie_path + os.pathsep + os.environ['PATH']
+    if('VITIS' not in os.environ):
+      # Try to find vitis in the path
+      vpp_path = shutil.which("v++")
+      if(vpp_path):
+        vitis_bin_path = os.path.dirname(os.path.realpath(vpp_path))
+        vitis_path = os.path.dirname(vitis_bin_path)
+        os.environ['VITIS'] = vitis_path
+        print("Found Vitis at " + vitis_path)
+        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, os.environ['PATH']])
+ 
+    if('VITIS' in os.environ):
+      vitis_path = os.environ['VITIS']
+      # Find the aietools directory, needed by xchesscc_wrapper
+      
+      aietools_path = os.path.join(vitis_path, "aietools")
+      if(not os.path.exists(aietools_path)):
+        aietools_path = os.path.join(vitis_path, "cardano")
+      os.environ['AIETOOLS'] = aietools_path
 
+      aietools_bin_path = os.path.join(aietools_path, "bin")
+      os.environ['PATH'] = os.pathsep.join([aietools_bin_path, os.environ['PATH']])
+
+    os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])
+    
     global opts
     opts = aiecc.cl_arguments.parse_args()
     is_windows = platform.system() == 'Windows'

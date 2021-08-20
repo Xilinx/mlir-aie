@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// (c) Copyright 2019 Xilinx Inc.
+//
 //===----------------------------------------------------------------------===//
 
 #include "AIEDialect.h"
@@ -343,9 +345,8 @@ int xilinx::AIE::ShimMuxOp::rowIndex() {
 
 // ShimDMAOp
 static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
-  Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
-  assert(!body.empty() && "ShimDMAOp should have non-empty body");
+  assert(!op.body().empty() && "ShimDMAOp should have non-empty body");
   auto tileOp = op.getTileOp();
   if (!tileOp.isShimNOCTile())
     return op.emitOpError("must be in a ShimTile with a NOC connection");
@@ -381,9 +382,8 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
 
 // CoreOp
 static LogicalResult verify(xilinx::AIE::CoreOp op) {
-  Region &body = op.body();
   assert(op.getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
-  assert(!body.empty() && "CoreOp should have non-empty body");
+  assert(!op.body().empty() && "CoreOp should have non-empty body");
 
   return success();
 }

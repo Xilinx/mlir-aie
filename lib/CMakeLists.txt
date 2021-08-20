@@ -12,6 +12,8 @@ add_mlir_dialect_library(AIE
   AIENetlistAnalysis.cpp
   AIEFindFlows.cpp
   AIECreateFlows.cpp
+  AIEPathfinder.cpp
+  AIECreatePathfindFlows.cpp
   AIECreateCores.cpp
   AIECreateLocks.cpp
   AIECoreToLLVM.cpp

@@ -1,16 +1,9 @@
-#
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# (c) Copyright 2021 Xilinx Inc.
-
 # to print unicode characters, run this:
 # export PYTHONIOENCODING=utf8
 
 import math
 import json
-import os
+import os, sys
 import argparse
 
 from enum import Enum
@@ -62,7 +55,7 @@ class canvas:
         
     def draw_square(self, center, size):
         horz_origin = math.floor((center[0] + 0.5) - (size/2));
-        horz_extent = math.ceil((center[0] + 0.5) + (size/2) + 2);
+        horz_extent = math.ceil((center[0] + 0.5) + (size/2) + 3);
 
         vert_origin = math.floor( (center[1] + 0.5)- (size/2));
         vert_extent =  math.ceil( (center[1] + 0.5) + (size/2));
@@ -226,7 +219,8 @@ subscripts = {
     9 : u'\u2089', 
 }
 
-def draw_switchbox(canvas, xoffset, yoffset, northbound, southbound, eastbound, westbound, draw_demand=True, name=""):
+def draw_switchbox(canvas, xoffset, yoffset, source_count, destination_count,
+         northbound, southbound, eastbound, westbound, draw_demand=True, name=""):
     c.draw_square((xoffset+5,yoffset+4),2)
 
     # label it
@@ -236,13 +230,23 @@ def draw_switchbox(canvas, xoffset, yoffset, northbound, southbound, eastbound, 
         c.draw_character((xoffset+7,yoffset+4), name[1])
     if len(name) > 2:
         c.draw_character((xoffset+8,yoffset+4), name[2])
+    if len(name) > 3:
+        c.draw_character((xoffset+9,yoffset+4), name[3])
+
+    # draw source and destination count
+    if(source_count > 0 or destination_count > 0):
+        c.draw_character((xoffset+7,yoffset+5), '*')
+    if(source_count > 0):
+        c.draw_character((xoffset+5,yoffset+5), 'S')
+    if(destination_count > 0):
+        c.draw_character((xoffset+9,yoffset+5), 'D')
     
 
     # left of the switchbox (south)
     if northbound > 0: 
-        c.draw_line((xoffset+9,yoffset+4), (xoffset+13,yoffset+4))
+        c.draw_line((xoffset+10,yoffset+4), (xoffset+14,yoffset+4))
         if(draw_demand):
-            c.draw_character((xoffset+11,yoffset+3), subscripts[northbound])
+            c.draw_character((xoffset+12,yoffset+3), subscripts[northbound])
             if(northbound > 6): # if overcapacity, mark with an 'x'            
                 c.draw_character((xoffset+10,yoffset+4), 'x')
                 #c.draw_character((xoffset+11,yoffset+4), 'x')
@@ -266,44 +270,23 @@ def draw_switchbox(canvas, xoffset, yoffset, northbound, southbound, eastbound, 
                 #c.draw_character((xoffset+6, yoffset+7), 'x')
                 c.draw_character((xoffset+6, yoffset+8), 'x')
     if westbound > 0: 
-        c.draw_line((xoffset+7,yoffset+1), (xoffset+7,yoffset+3))
+        c.draw_line((xoffset+8,yoffset+1), (xoffset+8,yoffset+3))
         if(draw_demand):
-            c.draw_character((xoffset+8,yoffset+2), superscripts[westbound])
+            c.draw_character((xoffset+9,yoffset+2), superscripts[westbound])
             if(westbound > 4): # if overcapacity, mark with an 'x'
-                c.draw_character((xoffset+7, yoffset+1), 'x')
+                c.draw_character((xoffset+8, yoffset+1), 'x')
                 #c.draw_character((xoffset+7, yoffset+2), 'x')
-                c.draw_character((xoffset+7, yoffset+3), 'x')
+                c.draw_character((xoffset+8, yoffset+3), 'x')
 
 
-def draw_herd(c,xoff, yoff):
-    draw_switchbox(c,xoff+6,yoff+15)
-    draw_switchbox(c,xoff+6,yoff+10)
-    draw_switchbox(c,xoff+13,yoff+15)
-    draw_switchbox(c,xoff+13,yoff+10)
-    
-    draw_switchbox(c,xoff+20,yoff+15)
-    draw_switchbox(c,xoff+20,yoff+10)
-    draw_switchbox(c,xoff+27,yoff+15)
-    draw_switchbox(c,xoff+27,yoff+10)
-
-    draw_switchbox(c,xoff+6,yoff+5)
-    draw_switchbox(c,xoff+6,yoff+0)
-    draw_switchbox(c,xoff+13,yoff+5)
-    draw_switchbox(c,xoff+13,yoff+0)
-    
-    draw_switchbox(c,xoff+20,yoff+5)
-    draw_switchbox(c,xoff+20,yoff+0)
-    draw_switchbox(c,xoff+27,yoff+5)
-    draw_switchbox(c,xoff+27,yoff+0)
-
-
-SB_WIDTH = 9; SB_HEIGHT = 5 # distances between switchboxes
+SB_WIDTH = 10; SB_HEIGHT = 5 # distances between switchboxes
 def draw_switchboxes(c, switchboxes):
     for item in switchboxes:
         draw_switchbox(c, SB_WIDTH*item['row'], SB_HEIGHT*item['col'], 
+            item['source_count'], item['destination_count'],
             item['northbound'], item['southbound'],
             item['eastbound'], item['westbound'], draw_demand=True,
-            name="{}{}".format(item['col'], item['row'] ))
+            name="{},{}".format(item['col'], item['row'] ))
     
 # given a route, draw arrow characters to indicate the route
 # route is a list of switchboxes, represented as int tuple coordinates
@@ -312,36 +295,39 @@ up_arrow   = u'\u2191'
 right_arrow= u'\u2192'
 down_arrow = u'\u2193'
 def draw_route(c, route):
-    for i in range(len(route)):
-        xoffset = SB_WIDTH*route[i][1]
-        yoffset = SB_HEIGHT*route[i][0]
-        # for routes starting in the shim, draw arrows coming from PL
-        if(route[i][1] == 0):
-            if(i == 0):
+    for i in range(len(route)-1):
+        col = route[i][0][0]
+        row = route[i][0][1]
+        xoffset = SB_WIDTH*row
+        yoffset = SB_HEIGHT*col
+        if len(route[i]) == 1: continue
+        dirs = route[i][1]
+        if(i == 0): 
+            if(row == 0): # for routes starting in the shim, draw arrows coming from PL
                 c.draw_character((xoffset+1, yoffset+4), right_arrow)
                 c.draw_character((xoffset+2, yoffset+4), right_arrow)
                 c.draw_character((xoffset+3, yoffset+4), right_arrow)
 
-            if(i == len(route)-1):
-                c.draw_character((xoffset+1, yoffset+5), left_arrow)
-                c.draw_character((xoffset+2, yoffset+5), left_arrow)
-                c.draw_character((xoffset+3, yoffset+5), left_arrow)
-
-        if i != 0:
-            if(route[i][0] == route[i-1][0] - 1): # route goes west 
-                c.draw_character((xoffset+7, yoffset+7), up_arrow)
-            if(route[i-1][1] == route[i][1] - 1): # route goes north
-                c.draw_character((xoffset+1, yoffset+4), right_arrow)
-                c.draw_character((xoffset+2, yoffset+4), right_arrow)
-                c.draw_character((xoffset+3, yoffset+4), right_arrow)
-
-        if i != len(route)-1:
-            if(route[i][0] == route[i+1][0] - 1): # route goes east 
+        for j in range(len(dirs)):
+            # 0 = North, 1 = East, 2 = South, 3 = West
+            if(dirs[j] == "North"):
+                c.draw_character((xoffset+11, yoffset+4), right_arrow)
+                c.draw_character((xoffset+12, yoffset+4), right_arrow)
+                c.draw_character((xoffset+13, yoffset+4), right_arrow)
+                row = row+1
+            elif(dirs[j] == "East"):
                 c.draw_character((xoffset+6, yoffset+7), down_arrow)
-            if(route[i][1] == route[i+1][1] + 1): # route goes south
+                col = col+1
+            elif(dirs[j] == "South"):
                 c.draw_character((xoffset+1, yoffset+5), left_arrow)
                 c.draw_character((xoffset+2, yoffset+5), left_arrow)
                 c.draw_character((xoffset+3, yoffset+5), left_arrow)
+                row = row-1
+            elif(dirs[j] == "West"):
+                c.draw_character((xoffset+8, yoffset+2), up_arrow)
+                col = col-1
+
+
 
 
     
@@ -352,10 +338,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Draw switchboxes, demands and routes')
     parser.add_argument('-j', '--json', help='Filepath for JSON file to read')
     parser.add_argument('-r', '--route_list', help='List of routes to print')
+    parser.add_argument('-o', '--output', help='Path to output directory. Text files of the routes will be stored here.')
     args = parser.parse_args()
 
     if args.json: json_file_path = args.json
-    else: json_file_path = "./switchbox.json" # default JSON
+    else: json_file_path = "switchbox.json" # default JSON
 
     with open(json_file_path) as f:
         json_data = json.load(f)
@@ -370,9 +357,12 @@ if __name__ == '__main__':
             routes.append(item)
     
     max_col = 0
+    max_row = 0
     for switchbox in switchboxes:
         if switchbox['col'] > max_col:
             max_col = switchbox['col']
+        if switchbox['row'] > max_row:
+            max_row = switchbox['row']
 
     routes_to_print = []
     if args.route_list: 
@@ -380,9 +370,21 @@ if __name__ == '__main__':
             routes_to_print.append(int(route.strip()))
     else: routes_to_print = range(len(routes))
 
+    output_directory = json_file_path.split('.')[0] + '/'
+    if args.output:
+        output_directory = args.output
+
+    if not os.path.isdir(output_directory):
+        os.mkdir(output_directory)
+
     for i in routes_to_print:
-        c = canvas(60, 5+5*(max_col+1));
+        c = canvas(12*(max_row+1), 5+5*(max_col+1));
         draw_switchboxes(c, switchboxes)
-        print("Route {}: {}".format(i, routes[i]))
-        draw_route(c, routes[i])
-        c.rasterize()
+        filename = os.path.join(output_directory, "route{}.txt".format(i))
+        sys.stdout = sys.__stdout__
+        print("Printing route {} of {}: {}".format(i, len(routes_to_print)-1, filename))
+        with open(filename, 'w') as f:
+            sys.stdout = f
+            print("Route {}: {}".format(i, routes[i]))
+            draw_route(c, routes[i])
+            c.rasterize()

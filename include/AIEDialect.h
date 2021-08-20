@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// (c) Copyright 2019 Xilinx Inc.
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef MLIR_AIE_DIALECT_H
@@ -161,6 +163,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<FuncOp>> createAIEVectorOptPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

@@ -4,6 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// (c) Copyright 2019 Xilinx Inc.
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef AIE_PASSES
@@ -155,6 +157,19 @@ def AIERouteFlows : Pass<"aie-create-flows", "ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIERouteFlowsPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
+  let summary = "Route aie.flow operations through switchboxes with Pathfinder algorithm";
+  let description = [{
+    Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
+    operations. Uses Pathfinder congestion-aware algorithm. 
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPathfinderPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
   ];
