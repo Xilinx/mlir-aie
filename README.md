@@ -48,9 +48,9 @@ git clone https://github.com/Xilinx/cmakeModules
 git clone https://github.com/Xilinx/mlir-aie
 mkdir build; cd build
 cmake -GNinja \
-    -DLLVM_DIR=${LLVMBUILD}/lib/cmake/llvm \
-    -DMLIR_DIR=${LLVMBUILD}/lib/cmake/mlir \
-    -DCMAKE_MODULE_PATH=/path/to/cmakeModules/ \
+    -DLLVM_DIR=${absolute path to LLVMBUILD}/lib/cmake/llvm \
+    -DMLIR_DIR=${absolute path to LLVMBUILD}/lib/cmake/mlir \
+    -DCMAKE_MODULE_PATH=/absolute/path/to/cmakeModules/ \
     -DVitisSysroot=${SYSROOT} \
     -DCMAKE_BUILD_TYPE=Debug \
     ..
