@@ -24,7 +24,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include "xaiengine.h"
 
 #define XAIE_NUM_ROWS            8
 #define XAIE_NUM_COLS           50
