@@ -17,9 +17,8 @@ add_mlir_library(AIETargets
   IRReader
   Support
   TransformUtils
-  )
-target_link_libraries(AIETargets
-  PUBLIC
+
+  LINK_LIBS PUBLIC
   AIE
   MLIRTranslation
 )

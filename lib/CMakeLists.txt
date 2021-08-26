@@ -32,10 +32,8 @@ add_mlir_dialect_library(AIE
   MLIRAIEInterfacesIncGen
   MLIRAIEPassIncGen
   MLIRAIENormalizeAddressSpacesIncGen
-  )
 
-target_link_libraries(AIE
-  PUBLIC
+  LINK_LIBS PUBLIC
   MLIRIR
   MLIRPass
   MLIRTransformUtils
