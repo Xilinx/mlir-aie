@@ -78,6 +78,9 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
             /usr/bin/clang-tidy-9 100
 
+      - name: Install libboost
+        run: sudo apt-get install -y libboost-all-dev
+
       # --------
       # Restore LLVM from cache and build if it's not in there.
       # --------
