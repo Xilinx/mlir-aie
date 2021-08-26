@@ -81,6 +81,9 @@ jobs:
       - name: Install libboost
         run: sudo apt-get install -y libboost-all-dev
 
+      - name: Install psutil
+        run: sudo pip install psutil
+
       # --------
       # Restore LLVM from cache and build if it's not in there.
       # --------
