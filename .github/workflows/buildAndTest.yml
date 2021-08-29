@@ -160,6 +160,17 @@ jobs:
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make -j$(nproc)
 
+      - name: Generate Docs
+        run: |
+          cd build_release
+          make docs
+
+      - name: Publish to github-pages
+        uses: peaceiris/actions-gh-pages@v3.6.1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build_release/docs
+
       # --------
       # Lint the code.
       # -------
@@ -264,4 +275,3 @@ jobs:
             echo "================"
           fi
 
-    # --- end of build-repo job.
