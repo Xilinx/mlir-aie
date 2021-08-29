@@ -1,6 +1,10 @@
+# MLIR-based AIEngine toolchain
+
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Xilinx/mlir-aie/Build%20and%20Test)
+
 This repository contains an MLIR-based toolchain for Xilinx Versal AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with convenient low-level access to devices and enable the development of a wide variety of programming models from higher level abstractions.  As such, although it contains some examples, this project is not intended to represent end-to-end compilation flows or to be particularly easy to use for system design.
 
-# Building the MLIR AIE toolchain
+# Building the code
 
 ## Prerequisites
 
@@ -57,7 +61,7 @@ cmake -GNinja \
 ninja; ninja check-aie; ninja mlir-doc; ninja install
 ```
 
-The AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
+The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
 
 ### Sysroot
 Since the AIE tools are cross-compiling, in order to actually compile code, we need a 'sysroot' directory,
