@@ -10,6 +10,7 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for X
 
 [AIE Passes](AIEPasses.md)
 
+[Github sources](https://github.com/Xilinx/mlir-aie)
 -----
 
 <p align="center">Copyright&copy; 2019-2021 Xilinx</p>
