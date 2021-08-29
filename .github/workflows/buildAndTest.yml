@@ -164,7 +164,7 @@ jobs:
         run: |
           cd build_release
           make docs
-          cp -r docs/* build_release/docs
+          cp -r docs build_release/docs
           cp README.md build_release/docs
 
       - name: Publish to github-pages
