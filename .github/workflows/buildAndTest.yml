@@ -165,8 +165,7 @@ jobs:
           pushd build_release
           make docs
           popd
-          cp -r docs build_release/docs
-          cp README.md build_release/docs
+          cp -r docs/* build_release/docs
 
       - name: Publish to github-pages
         uses: peaceiris/actions-gh-pages@v3.6.1
