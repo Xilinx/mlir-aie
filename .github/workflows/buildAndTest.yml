@@ -162,8 +162,9 @@ jobs:
 
       - name: Generate Docs
         run: |
-          cd build_release
+          pushd build_release
           make docs
+          popd
           cp -r docs build_release/docs
           cp README.md build_release/docs
 
