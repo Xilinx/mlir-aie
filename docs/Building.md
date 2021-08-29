@@ -78,6 +78,6 @@ setenv PYTHONPATH ${MLIRAIE}/python:${PYTHONPATH}
 setenv LD_LIBRARY_PATH ${MLIRAIE}/lib:${LD_LIBRARY_PATH}
 ```
 
-=====
+-----
 
- (c) Copyright 2019-2021 Xilinx Inc.
+<p align="center">Copyright&copy; 2019-2021 Xilinx</p>
