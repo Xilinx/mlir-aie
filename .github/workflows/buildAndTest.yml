@@ -160,20 +160,6 @@ jobs:
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make -j$(nproc)
 
-      - name: Generate Docs
-        run: |
-          pushd build_release
-          make docs
-          popd
-          cp -r docs/* build_release/docs
-
-      - name: Publish to github-pages
-        uses: peaceiris/actions-gh-pages@v3.6.1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build_release/docs
-          enable_jekyll: true
-
       # --------
       # Lint the code.
       # -------
