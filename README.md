@@ -6,6 +6,8 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for X
 
 [Getting Started](Building.md)
 
+[Running on a board](Platform.md)
+
 [Github sources](https://github.com/Xilinx/mlir-aie)
 
 Generated code documentation
