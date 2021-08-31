@@ -1,6 +1,6 @@
 ﻿# AIE Flows and Routing
 
-Introduction on how connect tiles in the AIE physical dialect
+Introduction on how to connect tiles in the AIE physical dialect
 
 ## AIE Tile Routing
 
