@@ -128,7 +128,6 @@ jobs:
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
-          pushd build_release
           make docs
           popd
           cp -r docs/* build_release/docs
