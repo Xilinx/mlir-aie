@@ -1,0 +1,19 @@
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# 
+# (c) Copyright 2021 Xilinx Inc.
+# 
+
+#
+# Automatically generated file; DO NOT EDIT.
+# PetaLinux SDK Project Configuration
+#
+CONFIG_PROJECT_ADDITIONAL_COMPONENTS_SEARCH_PATH=""
+
+#
+# Subsystems of the project
+#
+CONFIG_PROJECT_SUBSYSTEM_LINUX_INSTANCE_LINUX=y
+CONFIG_PROJECT_SUBSYSTEMS=y

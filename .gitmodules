@@ -1,0 +1,3 @@
+[submodule "platforms/boards"]
+	path = platforms/boards
+	url = https://github.com/Xilinx/XilinxBoardStore.git
