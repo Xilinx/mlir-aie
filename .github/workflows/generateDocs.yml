@@ -1,4 +1,4 @@
-name: Build and Test
+name: Generate Github Pages
 
 on:
   push:
@@ -54,7 +54,7 @@ jobs:
 
   # Build repo and run its tests.
   build-repo:
-    name: Build and Test
+    name: Generate Docs
     needs: build-llvm
     runs-on: ubuntu-latest
     steps:
