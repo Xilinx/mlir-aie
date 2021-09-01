@@ -14,6 +14,9 @@ Generated code documentation
 - [AIE Dialect](AIEDialect.md)
 - [AIE Passes](AIEPasses.md)
 
+Tutorials
+- [AIE Design Patterns](AIEDesignPatterns)
+- [AIE Routing](AIERouting)
 -----
 
 <p align="center">Copyright&copy; 2019-2021 Xilinx</p>
