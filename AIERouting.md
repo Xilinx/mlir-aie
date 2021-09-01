@@ -1,14 +1,6 @@
 ﻿# AIE Flows and Routing
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 Introduction on how to connect tiles in the AIE physical dialect
-=======
-Introduction on how connect tiles in the AIE physical dialect
->>>>>>> 2ca9878 (Updated File names)
-=======
-Introduction on how to connect tiles in the AIE physical dialect
->>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 
 ## AIE Tile Routing
 
