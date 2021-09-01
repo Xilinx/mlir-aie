@@ -6,10 +6,15 @@ This document is an introduction to using the AIE dialect in practice and provid
 ## Using AIE Cores
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 [Core Example](mlir-aie/test/unit_tests/03_sync_with_locks/aie.mlir)
 
 =======
 >>>>>>> 2ca9878 (Updated File names)
+=======
+[Core Example](mlir-aie/test/unit_tests/03_sync_with_locks/aie.mlir)
+
+>>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 We can use the AIE Cores as below to perform some operations
 
 Define a tile and a buffer
@@ -29,17 +34,23 @@ Perform some operations on the buffer in the core
 	AIE.end
 }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 
 
 ```
 
 ## Single-buffered Communication
 [Single-buffer DMA example](mlir-aie/test/unit_tests/05_tiledma/aie.mlir)
+<<<<<<< HEAD
 =======
 ```
 
 ## Single-buffered Communication
 >>>>>>> 2ca9878 (Updated File names)
+=======
+>>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 
 Define the AIE tiles you want to communicate between. Here Tile (7,1) will be the source and (7,2) the destination.
 
@@ -111,11 +122,17 @@ At the end, we release the lock back in state 0. This allows for the memory to r
 
 ## Double-buffered Communication
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 [Double-buffer DMA example](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
 
 =======
 >>>>>>> 2ca9878 (Updated File names)
+=======
+
+[Double-buffer DMA example](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+
+>>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 This example uses the same setup as the previous. For Tile (7,2) we can define an additional lock and buffer and change the buffers to be half the size:
 ```
 %lock72_0 = AIE.lock(%t72, 0) 
@@ -167,10 +184,15 @@ We can use the core in a similar fashion, using the two locks to perform operati
 ## Controlling from the ARM Processor
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 [Controlling From ARM](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
 
 =======
 >>>>>>> 2ca9878 (Updated File names)
+=======
+[Controlling From ARM](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+
+>>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 We can perform some operations from the ARM processor and configure the lock to start the transfer. Here is a simple example where we write to a buffer, and begin the data transfer all from the host code.
 
 We use a similar example to the single buffered communication:
@@ -232,9 +254,13 @@ This allows the data transfer to begin
 
 ## Static DDR Configuration
 <<<<<<< HEAD
+<<<<<<< HEAD
 [Static DDR](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
 =======
 >>>>>>> 2ca9878 (Updated File names)
+=======
+[Static DDR](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+>>>>>>> ed0e792 (Updated examples with unit test real code example, fixed typos)
 
 To read/write from DDR, we declare an external buffer with a location and size
 ```
