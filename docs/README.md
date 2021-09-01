@@ -17,6 +17,7 @@ Generated code documentation
 Tutorials
 - [AIE Design Patterns](AIEDesignPatterns)
 - [AIE Routing](AIERouting)
+
 -----
 
 <p align="center">Copyright&copy; 2019-2021 Xilinx</p>
