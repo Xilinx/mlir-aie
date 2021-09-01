@@ -13,6 +13,8 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for X
 Generated code documentation
 - [AIE Dialect](AIEDialect.md)
 - [AIE Passes](AIEPasses.md)
+
+Tutorials
 - [AIE Design Patterns](AIEDesignPatterns)
 - [AIE Routing](AIERouting)
 -----
