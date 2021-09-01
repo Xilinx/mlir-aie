@@ -5,8 +5,11 @@ This document is an introduction to using the AIE dialect in practice and provid
 
 ## Using AIE Cores
 
+<<<<<<< HEAD
 [Core Example](mlir-aie/test/unit_tests/03_sync_with_locks/aie.mlir)
 
+=======
+>>>>>>> 2ca9878 (Updated File names)
 We can use the AIE Cores as below to perform some operations
 
 Define a tile and a buffer
@@ -25,12 +28,18 @@ Perform some operations on the buffer in the core
 
 	AIE.end
 }
+<<<<<<< HEAD
 
 
 ```
 
 ## Single-buffered Communication
 [Single-buffer DMA example](mlir-aie/test/unit_tests/05_tiledma/aie.mlir)
+=======
+```
+
+## Single-buffered Communication
+>>>>>>> 2ca9878 (Updated File names)
 
 Define the AIE tiles you want to communicate between. Here Tile (7,1) will be the source and (7,2) the destination.
 
@@ -101,9 +110,12 @@ We can also perform some operations in the AIE core using the same locks. When t
 At the end, we release the lock back in state 0. This allows for the memory to re-acquire the lock in state 0.
 
 ## Double-buffered Communication
+<<<<<<< HEAD
 
 [Double-buffer DMA example](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
 
+=======
+>>>>>>> 2ca9878 (Updated File names)
 This example uses the same setup as the previous. For Tile (7,2) we can define an additional lock and buffer and change the buffers to be half the size:
 ```
 %lock72_0 = AIE.lock(%t72, 0) 
@@ -154,8 +166,11 @@ We can use the core in a similar fashion, using the two locks to perform operati
 
 ## Controlling from the ARM Processor
 
+<<<<<<< HEAD
 [Controlling From ARM](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
 
+=======
+>>>>>>> 2ca9878 (Updated File names)
 We can perform some operations from the ARM processor and configure the lock to start the transfer. Here is a simple example where we write to a buffer, and begin the data transfer all from the host code.
 
 We use a similar example to the single buffered communication:
@@ -216,7 +231,10 @@ XAieTile_LockRelease(&(TileInst[7][1]), 0, 1, 0); // Release lock
 This allows the data transfer to begin
 
 ## Static DDR Configuration
+<<<<<<< HEAD
 [Static DDR](mlir-aie/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+=======
+>>>>>>> 2ca9878 (Updated File names)
 
 To read/write from DDR, we declare an external buffer with a location and size
 ```
