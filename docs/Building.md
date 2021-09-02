@@ -17,10 +17,10 @@ the tools are largely board and device indepdendent and can be adapted to other 
 ## Building on X86
 
 First compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR enabled:
-In addition, we make some common build optimizations to use a linker other than 'ld' (which tends
-to be quite slow on large link jobs) and to link against libLLVM.so and libClang.so.  You may find
-that other options are also useful.  Note that due to changing MLIR APIs, only a particular revision
-is expected to work.
+In addition, we make some common build optimizations to use a linker ('lld' or 'gold') other than
+'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
+so.  You may find that other options are also useful.  Note that due to changing MLIR APIs, only a
+particular revision is expected to work.
 
 ```sh
 git clone https://github.com/llvm/llvm-project
@@ -28,15 +28,15 @@ cd llvm-project
 git checkout ebe408ad8003
 mkdir ${LLVMBUILD}; cd ${LLVMBUILD}
 cmake -GNinja \
-    -DLLVM_LINK_LLVM_DYLIB=ON 
-    -DCLANG_LINK_CLANG_DYLIB=ON
-    -DLLVM_BUILD_UTILS=ON
-    -DLLVM_INSTALL_UTILS=ON
-    -DLLVM_USE_LINKER=lld  (or gold)
-    -DCMAKE_INSTALL_PREFIX=${ACDCInstallDir}
-    -DLLVM_ENABLE_PROJECTS="clang;lld;mlir"
-    -DLLVM_TARGETS_TO_BUILD:STRING="X86;ARM;AArch64;"
-    ..
+    -DLLVM_LINK_LLVM_DYLIB=ON \
+    -DCLANG_LINK_CLANG_DYLIB=ON \
+    -DLLVM_BUILD_UTILS=ON \
+    -DLLVM_INSTALL_UTILS=ON \
+    -DLLVM_USE_LINKER=lld \
+    -DCMAKE_INSTALL_PREFIX=${ACDCInstallDir} \
+    -DLLVM_ENABLE_PROJECTS="clang;lld;mlir" \
+    -DLLVM_TARGETS_TO_BUILD:STRING="X86;ARM;AArch64;" \
+    ../llvm
 ninja; ninja check-llvm; ninja install
 ```
 
