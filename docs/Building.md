@@ -67,6 +67,7 @@ Absolute symbolic links can be converted to relative symbolic links using [symli
 cd /
 sudo symlinks -rc .
 ```
+Following the [platform build steps](Platform.md) will also create a sysroot.
 
 ## Environment setup
 In order to run all the tools, it may be necessary to add some paths into your environment:
