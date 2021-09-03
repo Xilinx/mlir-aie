@@ -1,6 +1,7 @@
 # MLIR-based AIEngine toolchain
 
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/Xilinx/mlir-aie/Build%20and%20Test)
+![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)
 
 ![](https://mlir.llvm.org//mlir-logo.png)
 
