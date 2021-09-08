@@ -21,6 +21,20 @@ set(AIECC_FILES
 set(AIECC_TARGETS ${AIECC_FILES})
 list(TRANSFORM AIECC_TARGETS PREPEND ${PROJECT_BINARY_DIR}/bin/)
 
+if(${AIE_COMPILER} STREQUAL XCHESSCC)
+set(CONFIG_COMPILE_WITH_XCHESSCC True)
+else()
+set(CONFIG_COMPILE_WITH_XCHESSCC False)
+endif()
+if(${AIE_LINKER} STREQUAL XCHESSCC)
+set(CONFIG_LINK_WITH_XCHESSCC True)
+else()
+set(CONFIG_LINK_WITH_XCHESSCC False)
+endif()
+
+configure_file(aiecc/configure.py.in ${PROJECT_BINARY_DIR}/bin/aiecc/configure.py)
+install(PROGRAMS ${PROJECT_BINARY_DIR}/bin/aiecc/configure.py DESTINATION ${PYTHON_INSTALL_PATH}/aiecc)
+
 # Stuff our python into the build area:
 add_custom_target(aiecc.py ALL DEPENDS ${AIECC_TARGETS})
 

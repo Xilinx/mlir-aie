@@ -11,8 +11,7 @@ import shlex
 import sys
 import shutil
 
-xbridge_found = False #shutil.which("xbridge")
-xchesscc_found = False #shutil.which("xchesscc_wrapper")
+from aiecc.configure import *
 
 def parse_args():
     parser = argparse.ArgumentParser(prog='aiecc')
@@ -39,22 +38,22 @@ def parse_args():
             help='Enable MLIR vectorization')
     parser.add_argument('--xbridge',
             dest="xbridge",
-            default=xbridge_found,
+            default=aie_link_with_xchesscc,
             action='store_true',
             help='Link using xbridge')
     parser.add_argument('--no-xbridge',
             dest="xbridge",
-            default=not xbridge_found,
+            default=not aie_link_with_xchesscc,
             action='store_false',
             help='Link using peano')
     parser.add_argument('--xchesscc',
             dest="xchesscc",
-            default=xchesscc_found,
+            default=aie_compile_with_xchesscc,
             action='store_true',
             help='Compile using xchesscc')
     parser.add_argument('--no-xchesscc',
             dest="xchesscc",
-            default=not xchesscc_found,
+            default=not aie_compile_with_xchesscc,
             action='store_false',
             help='Compile using peano')
     parser.add_argument("arm_args",

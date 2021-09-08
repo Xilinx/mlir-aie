@@ -25,6 +25,9 @@ project(AIE LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
+set(AIE_COMPILER "XCHESSCC" CACHE STRING "Backend compiler selection")
+set(AIE_LINKER "XCHESSCC" CACHE STRING "Backend linker selection")
+
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS "Build the LLVM tools. If OFF, just generate build targets." ON)
 
