@@ -54,6 +54,8 @@ def run_flow(opts, tmpdirname):
       do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', chess_intrinsic_wrapper])      
       do_call(['sed', '-i', 's/^target.*//', chess_intrinsic_wrapper])     
 
+      do_call(['sed', '-i', 's/noalias_sidechannel[^,]*,//', chess_intrinsic_wrapper])
+
     def corefile(dirname, core, ext):
         (corecol, corerow) = core
         return os.path.join(dirname, 'core_%d_%d.%s' % (corecol, corerow, ext))
@@ -87,9 +89,12 @@ def run_flow(opts, tmpdirname):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
           do_call(['cp', file_core_llvmir_stripped, file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
+          do_call(['sed', '-i', 's/noalias_sidechannel[^,],//', file_core_llvmir_chesshack])
           file_core_llvmir_chesslinked = tmpcorefile(core, "chesslinked.ll")
           do_call(['llvm-link', file_core_llvmir_chesshack, chess_intrinsic_wrapper, '-S', '-o', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesslinked])
+          # Formal function argument names not used in older LLVM
+          do_call(['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', file_core_llvmir_chesslinked])
           if(opts.xbridge):
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '+l', file_core_bcf, '-o', file_core_elf])
           else:
