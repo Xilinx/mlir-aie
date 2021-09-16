@@ -157,13 +157,16 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
   #define over_capacity_coeff 0.02
   #define used_capacity_coeff 0.02 
   do {
-    LLVM_DEBUG(llvm::dbgs() << "Begin findPaths iteration #" << iteration_count << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "Begin findPaths iteration #" << iteration_count << "\n");
     // update demand on all channels
     edge_pair = edges(graph);
     for(edge_iterator it = edge_pair.first; it != edge_pair.second; it++) {
       Channel *ch = &graph[*it];
-      //LLVM_DEBUG(llvm::dbgs() << "Pre update:\tEdge " << *it << "\t: used = " << ch->used_capacity << 
-      //  "\t demand = " << ch->demand << "\t over_capacity_count= " << ch->over_capacity_count<< "\t");
+      // LLVM_DEBUG(llvm::dbgs() << "Pre update:\tEdge " << *it << "\t: used = "
+      // << ch->used_capacity <<
+      //   "\t demand = " << ch->demand << "\t over_capacity_count= " <<
+      //   ch->over_capacity_count<< "\t");
       if(ch->fixed_capacity.size() >= ch->max_capacity) {
         ch->demand = std::numeric_limits<float>::max();
       } else {
@@ -176,8 +179,10 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
     // if reach MAX_ITERATIONS, throw an error since no routing can be found
     // TODO: add error throwing mechanism
     if(++iteration_count > MAX_ITERATIONS) {
-      LLVM_DEBUG(llvm::dbgs() << "Pathfinder: MAX_ITERATIONS has been exceeded (" << 
-        MAX_ITERATIONS << " iterations)...unable to find routing for flows.\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Pathfinder: MAX_ITERATIONS has been exceeded ("
+                 << MAX_ITERATIONS
+                 << " iterations)...unable to find routing for flows.\n");
       //return {};
       // return the invalid solution for debugging purposes
       return routing_solution;
@@ -278,12 +283,16 @@ bool Pathfinder::isLegal() {
   bool legal = true; // assume legal until found otherwise
   for(edge_iterator e = edge_pair.first; e != edge_pair.second; e++) {
     if(graph[*e].used_capacity > graph[*e].max_capacity) {
-      LLVM_DEBUG(llvm::dbgs() << "Too much capacity on Edge (" << 
-        graph[source(*e, graph)].col << ", " << graph[source(*e, graph)].row << 
-        ") -> " << stringifyWireBundle(graph[*e].bundle) << "\t: used_capacity = " << 
-        graph[*e].used_capacity<<"\t: Demand = " << graph[*e].demand << "\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Too much capacity on Edge ("
+                 << graph[source(*e, graph)].col << ", "
+                 << graph[source(*e, graph)].row << ") -> "
+                 << stringifyWireBundle(graph[*e].bundle)
+                 << "\t: used_capacity = " << graph[*e].used_capacity
+                 << "\t: Demand = " << graph[*e].demand << "\n");
       graph[*e].over_capacity_count++;
-      LLVM_DEBUG(llvm::dbgs() << "over_capacity_count = " << graph[*e].over_capacity_count << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "over_capacity_count = "
+                              << graph[*e].over_capacity_count << "\n");
       legal = false;
     }
   }
