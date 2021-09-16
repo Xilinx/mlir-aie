@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "AIEDialect.h"
+#include "aie/AIEDialect.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
@@ -150,7 +150,7 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx,
   //addTypes<AIEListType>();
   addOperations<
 #define GET_OP_LIST
-#include "AIE.cpp.inc"
+#include "aie/AIE.cpp.inc"
     >();
   addInterfaces<AIEInlinerInterface>();
 }
@@ -476,12 +476,12 @@ static LogicalResult verify(xilinx::AIE::UseLockOp op) {
   return success();
 }
 
-#include "AIEEnums.cpp.inc"
-#include "AIEInterfaces.cpp.inc"
+#include "aie/AIEEnums.cpp.inc"
+#include "aie/AIEInterfaces.cpp.inc"
 
 namespace xilinx {
 #define GET_OP_CLASSES
-#include "AIE.cpp.inc"
+#include "aie/AIE.cpp.inc"
   namespace AIE {
 
     // void CoreOp::build(Builder *odsBuilder, OperationState &odsState, Type resultType0, int col, int row) {

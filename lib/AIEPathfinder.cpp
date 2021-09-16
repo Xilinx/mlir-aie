@@ -14,7 +14,7 @@ bool PathDEBUG = false;
 #include "llvm/Support/raw_os_ostream.h"
 #define DBG if(PathDEBUG) llvm::dbgs() // for printing dbg messages
 
-#include <AIEPathfinder.h>
+#include <aie/AIEPathfinder.h>
 
 using namespace xilinx;
 using namespace xilinx::AIE;

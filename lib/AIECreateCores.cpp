@@ -16,8 +16,8 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "AIEDialect.h"
-#include "AIETokenAnalysis.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIETokenAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;

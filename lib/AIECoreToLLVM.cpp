@@ -18,8 +18,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "AIEDialect.h"
-#include "AIENetlistAnalysis.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIENetlistAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;

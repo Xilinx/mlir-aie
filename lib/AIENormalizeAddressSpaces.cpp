@@ -13,7 +13,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "AIEDialect.h"
+#include "aie/AIEDialect.h"
 
 #define DEBUG_TYPE "aie-normalize-address-spaces"
 
@@ -32,7 +32,7 @@ Type memRefToDefaultAddressSpace(Type t) {
     return t;
 }
 
-#include "AIENormalizeAddressSpaces.inc"
+#include "aie/AIENormalizeAddressSpaces.inc"
 
 struct AIENormalizeAddressSpacesPass : public PassWrapper<AIENormalizeAddressSpacesPass,
                                              OperationPass<ModuleOp>> {

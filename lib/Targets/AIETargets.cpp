@@ -25,8 +25,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 
-#include "AIEDialect.h"
-#include "AIENetlistAnalysis.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIENetlistAnalysis.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 
 using namespace mlir;

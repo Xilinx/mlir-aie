@@ -15,7 +15,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "AIEDialect.h"
+#include "aie/AIEDialect.h"
 #include "llvm/Support/Debug.h"
 
 using namespace mlir;

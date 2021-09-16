@@ -29,7 +29,7 @@
 
 using namespace mlir;
 
-#include "AIEEnums.h.inc"
+#include "aie/AIEEnums.h.inc"
 
 namespace mlir {
 namespace OpTrait {
@@ -40,7 +40,7 @@ class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {
 }
 
 /// Include the generated interface declarations.
-#include "AIEInterfaces.h.inc"
+#include "aie/AIEInterfaces.h.inc"
 
 namespace xilinx {
 namespace AIE {
@@ -144,12 +144,12 @@ bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
-#include "AIE.h.inc"
+#include "aie/AIE.h.inc"
 
 namespace AIE {
 
 #define GEN_PASS_CLASSES
-#include "AIEPasses.h.inc"
+#include "aie/AIEPasses.h.inc"
 
 std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignBufferAddressesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToLLVMPass();
@@ -167,7 +167,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
-#include "AIEPasses.h.inc"
+#include "aie/AIEPasses.h.inc"
 
 } // AIE
 } // xilinx

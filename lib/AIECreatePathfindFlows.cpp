@@ -15,11 +15,11 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "AIEDialect.h"
+#include "aie/AIEDialect.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
 
-#include <AIEPathfinder.h>
+#include <aie/AIEPathfinder.h>
 
 using namespace mlir;
 using namespace xilinx;

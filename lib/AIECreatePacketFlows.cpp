@@ -14,8 +14,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "AIEDialect.h"
-#include "AIENetlistAnalysis.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIENetlistAnalysis.h"
 #include "llvm/ADT/Twine.h"
 
 #define DEBUG_TYPE "aie-create-packet-flows"

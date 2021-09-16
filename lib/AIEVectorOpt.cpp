@@ -17,7 +17,7 @@
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/Dialect/Vector/VectorTransforms.h"
 
-#include "AIEDialect.h"
+#include "aie/AIEDialect.h"
 
 #define DEBUG_TYPE "aie-vector-opt"
 

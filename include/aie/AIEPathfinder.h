@@ -21,7 +21,7 @@
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 
-#include "AIEDialect.h" // for WireBundle and Port
+#include "aie/AIEDialect.h" // for WireBundle and Port
 
 namespace xilinx {
 namespace AIE {

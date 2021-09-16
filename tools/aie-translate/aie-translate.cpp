@@ -21,7 +21,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
-#include "AIEDialect.h"
+#include "aie/AIEDialect.h"
 
 using namespace mlir;
 
