@@ -8,16 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-bool PathDEBUG = false;
 #include <iostream>
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
-#define DBG if(PathDEBUG) llvm::dbgs() // for printing dbg messages
 
 #include <aie/AIEPathfinder.h>
 
 using namespace xilinx;
 using namespace xilinx::AIE;
+
+#define DEBUG_TYPE "aie-pathfinder"
 
 WireBundle getConnectingBundle(WireBundle dir) {
   switch(dir) {
@@ -143,7 +143,7 @@ void Pathfinder::addFixedConnection(Coord coords, Port port) {
 // if no legal routing can be found after MAX_ITERATIONS, returns empty vector
 std::map< PathEndPoint, SwitchSettings >
 Pathfinder::findPaths(const int MAX_ITERATIONS) {
-  DBG << "Begin Pathfinder::findPaths\n";
+  LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths\n");
   int iteration_count = 0;
   std::map< PathEndPoint, SwitchSettings > routing_solution; 
 
@@ -157,13 +157,13 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
   #define over_capacity_coeff 0.02
   #define used_capacity_coeff 0.02 
   do {
-    DBG << "Begin findPaths iteration #" << iteration_count << "\n";
+    LLVM_DEBUG(llvm::dbgs() << "Begin findPaths iteration #" << iteration_count << "\n");
     // update demand on all channels
     edge_pair = edges(graph);
     for(edge_iterator it = edge_pair.first; it != edge_pair.second; it++) {
       Channel *ch = &graph[*it];
-      //DBG << "Pre update:\tEdge " << *it << "\t: used = " << ch->used_capacity << 
-      //  "\t demand = " << ch->demand << "\t over_capacity_count= " << ch->over_capacity_count<< "\t";
+      //LLVM_DEBUG(llvm::dbgs() << "Pre update:\tEdge " << *it << "\t: used = " << ch->used_capacity << 
+      //  "\t demand = " << ch->demand << "\t over_capacity_count= " << ch->over_capacity_count<< "\t");
       if(ch->fixed_capacity.size() >= ch->max_capacity) {
         ch->demand = std::numeric_limits<float>::max();
       } else {
@@ -176,8 +176,8 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
     // if reach MAX_ITERATIONS, throw an error since no routing can be found
     // TODO: add error throwing mechanism
     if(++iteration_count > MAX_ITERATIONS) {
-      DBG << "Pathfinder: MAX_ITERATIONS has been exceeded (" << 
-        MAX_ITERATIONS << " iterations)...unable to find routing for flows.\n";
+      LLVM_DEBUG(llvm::dbgs() << "Pathfinder: MAX_ITERATIONS has been exceeded (" << 
+        MAX_ITERATIONS << " iterations)...unable to find routing for flows.\n");
       //return {};
       // return the invalid solution for debugging purposes
       return routing_solution;
@@ -278,12 +278,12 @@ bool Pathfinder::isLegal() {
   bool legal = true; // assume legal until found otherwise
   for(edge_iterator e = edge_pair.first; e != edge_pair.second; e++) {
     if(graph[*e].used_capacity > graph[*e].max_capacity) {
-      DBG << "Too much capacity on Edge (" << 
+      LLVM_DEBUG(llvm::dbgs() << "Too much capacity on Edge (" << 
         graph[source(*e, graph)].col << ", " << graph[source(*e, graph)].row << 
         ") -> " << stringifyWireBundle(graph[*e].bundle) << "\t: used_capacity = " << 
-        graph[*e].used_capacity<<"\t: Demand = " << graph[*e].demand << "\n";
+        graph[*e].used_capacity<<"\t: Demand = " << graph[*e].demand << "\n");
       graph[*e].over_capacity_count++;
-      DBG << "over_capacity_count = " << graph[*e].over_capacity_count << "\n";
+      LLVM_DEBUG(llvm::dbgs() << "over_capacity_count = " << graph[*e].over_capacity_count << "\n");
       legal = false;
     }
   }
