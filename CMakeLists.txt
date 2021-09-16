@@ -70,6 +70,10 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
 
+# Make sure we generate the headers
+add_custom_target(aie-headers)
+set_target_properties(aie-headers PROPERTIES FOLDER "Misc")
+add_dependencies(aie-headers mlir-headers)
 # Make sure we build the docs
 add_custom_target(docs ALL)
 add_dependencies(docs mlir-doc)
@@ -79,4 +83,37 @@ add_subdirectory(lib)
 add_subdirectory(test)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
+
+if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
+  install(DIRECTORY include/aie
+    DESTINATION include
+    COMPONENT aie-headers
+    FILES_MATCHING
+    PATTERN "*.def"
+    PATTERN "*.h"
+    PATTERN "*.inc"
+    PATTERN "*.td"
+    PATTERN "LICENSE.TXT"
+    )
+
+  install(DIRECTORY ${PROJECT_BINARY_DIR}/include/aie
+    DESTINATION include
+    COMPONENT aie-headers
+    FILES_MATCHING
+    PATTERN "*.def"
+    PATTERN "*.h"
+    PATTERN "*.gen"
+    PATTERN "*.inc"
+    PATTERN "*.td"
+    PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "config.h" EXCLUDE
+    )
+
+  if (NOT LLVM_ENABLE_IDE)
+    add_llvm_install_targets(install-aie-headers
+                             DEPENDS aie-headers
+                             COMPONENT aie-headers)
+  endif()
+endif()
+
 add_subdirectory(cmake/modules)
