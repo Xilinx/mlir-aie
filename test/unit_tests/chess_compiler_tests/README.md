@@ -8,6 +8,6 @@ You can modify and recompile the *kernel.cc* without recompiling the host.
 
 ## 2) Precompiled core function (tests 01, 03, 05, and 07)
 
-The *kernel.cc* does not manage the locks in this method and is compiled to an objective file.
+In this method, locks are managed in aie.mlir and the *kernel.cc* is compiled to an objective file.
 
 Both the host and the *kernel.cc* should be recompiled after modifying the *kernel.cc*. 
