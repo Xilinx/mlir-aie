@@ -52,9 +52,8 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
 
-# Look for LibXAIE in the sysroot
-#set(LibXAIE_ROOT ${VitisSysroot}/opt/xaiengine CACHE STRING "Default libxaie location.")
-set(LibXAIE_ROOT ${VitisSysroot}/usr CACHE STRING "Default libxaie location.")
+# Look for LibXAIE in the sysroot.  Depending on the sysroot, this might live in multiple locations.
+set(LibXAIE_ROOT ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine STRING "Default libxaie location.")
 find_package(LibXAIE)
 
 if(NOT AIE_BINARY_DIR)
