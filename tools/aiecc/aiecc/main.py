@@ -68,7 +68,7 @@ def run_flow(opts, tmpdirname):
     # do this, so we have to explicitly specify included files on the link line.
     def extract_input_files(file_core_bcf):
         t = do_run(['awk', '/_include _file/ {print($3)}', file_core_bcf])
-        return link_with_obj = ' '.join(t.stdout.split())
+        return ' '.join(t.stdout.split())
 
     def process_core(core):
         (corecol, corerow) = core
