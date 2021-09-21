@@ -62,7 +62,14 @@ def run_flow(opts, tmpdirname):
 
     def tmpcorefile(core, ext):
         return corefile(tmpdirname, core, ext)
-        
+
+    # Extract included files from the given Chess linker script.
+    # We rely on gnu linker scripts to stuff object files into a compile.  However, the Chess compiler doesn't 
+    # do this, so we have to explicitly specify included files on the link line.
+    def extract_input_files(file_core_bcf):
+        t = do_run(['awk', '/_include _file/ {print($3)}', file_core_bcf])
+        return link_with_obj = ' '.join(t.stdout.split())
+
     def process_core(core):
         (corecol, corerow) = core
         file_core = tmpcorefile(core, "mlir")
@@ -97,14 +104,16 @@ def run_flow(opts, tmpdirname):
           do_call(['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/mustprogress//g', file_core_llvmir_chesslinked])
           if(opts.xbridge):
-            do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '+l', file_core_bcf, '-o', file_core_elf])
+            link_with_obj = extract_input_files(file_core_bcf)
+            do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
             do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           if(opts.xbridge):
-            do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, '+l', file_core_bcf, '-o', file_core_elf])
+            link_with_obj = extract_input_files(file_core_bcf)
+            do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
