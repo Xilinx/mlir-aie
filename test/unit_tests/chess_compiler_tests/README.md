@@ -1,13 +1,13 @@
-There are two ways to use precompiled functions in your code.
+Using precompiled functions:
 
-## 1) Precompiled core function (tests 01, 03, 05, and 07)
+## Precompiled core function
 
-In this method, locks are managed in aie.mlir and the *kernel.cc* is compiled to an objective file.
+Users should interact with the flow at the highest level. The way the flow works, the *kernel.cc* is compiled to an objective file, and the flow manages low-level details (i.e., locks).
 
-Both the host and the *kernel.cc* should be recompiled after modifying the *kernel.cc*. 
+Tests 01, 03, 05, and 07 show different examples of this method.
 
-## 2) Precompiled kernel (tests 02 and 04)
+## Precompiled kernel (tests 02 and 04)
 
-In this method, the *kernel.cc* manages the locks and is compiled to an elf file, which can be used to program the AIE.
+In this method, users have to administer low-level details in the *kernel.cc* (i.e., controlling the locks). This can lead to information replication in multiple places. For instance, the code for both processors that access a particular buffer needs to be kept synchronized.
 
-You can modify and recompile the *kernel.cc* without recompiling the host.
+As shown in tests 02 and 04, *kernel.cc* can be modified and recompiled without recompiling the host.
