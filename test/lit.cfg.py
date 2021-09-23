@@ -9,6 +9,7 @@
 import os
 import platform
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -54,21 +55,41 @@ config.excludes = ['Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENS
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
-if(config.vitis_root):
-    config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
+def prepend_path(path):
+    global llvm_config
+    paths = [path]
 
-# Tweak the PATH to include the tools dir.
-llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
+    current_paths = llvm_config.config.environment.get('PATH', None)
+    if current_paths:
+        current_paths = current_paths.split(os.path.pathsep)
+        paths = [os.path.normcase(os.path.normpath(p)) for p in current_paths]
+    else:
+        paths = []
+
+    llvm_config.config.environment['PATH'] = os.pathsep.join(paths)
+
+# Setup the path.
+prepend_path(config.llvm_tools_dir)
+prepend_path(config.aie_tools_dir)
 #llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
 #llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
-
 if(config.vitis_root):
+  config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
+  prepend_path(config.vitis_aietools_bin)
   llvm_config.with_environment('CARDANO', config.vitis_aietools_dir)
   llvm_config.with_environment('VITIS', config.vitis_root)
 
+# Test to see if we have the peano backend.
+result = subprocess.run([os.path.join(config.llvm_tools_dir, 'llc'),'-mtriple=aie','--version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+if (re.search("Xilinx AI Engine", result.stdout.decode('utf-8')) is not None):
+    config.available_features.add('peano')
+    print("Peano found: " + shutil.which("llc"))
+else:
+    print("Peano not found")
+
+print("Looking for Chess...")
 #test if LM_LICENSE_FILE valid
 if(config.enable_chess_tests):
-    import shutil
     result = None
     if(config.vitis_root):
         result = shutil.which("xchesscc")
@@ -78,7 +99,9 @@ if(config.enable_chess_tests):
     if result != None:
         result = subprocess.run(['xchesscc','+v'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         validLMLicense = (len(result.stderr.decode('utf-8')) == 0)
+        print("Chess found")
     else:
+        print("Chess not found")
         validLMLicense = False
 
     if validLMLicense:
