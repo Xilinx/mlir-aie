@@ -254,14 +254,16 @@ SECTIONS
       NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
       NL.collectTiles(tiles);
       NL.collectBuffers(buffers);
-// _entry_point _main_init
-// _symbol      _main _after _main_init
-// _symbol      _main_init 0
-// _reserved DMb      0x00000 0x20000
-// _symbol   a        0x38000 0x2000
-// _extern   a
-// _stack    DM_stack 0x20000  0x400 //stack for core
-// _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+      // _entry_point _main_init
+      // _symbol      _main _after _main_init
+      // _symbol      _main_init 0
+      // _reserved DMb      0x00000 0x20000
+      // _symbol   a        0x38000 0x2000
+      // _extern   a
+      // _stack    DM_stack 0x20000  0x400 //stack for core
+      // _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+      // // Include all symbols from rom.c
+      // _include _file rom.o
       for (auto tile : module.getOps<TileOp>())
         if(tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
           output << "_entry_point _main_init\n";
@@ -281,6 +283,13 @@ SECTIONS
           if(auto tile = getMemEast(srcCoord))  doBuffer(tile, 0x00038000);
           output << "_stack    DM_stack 0x20000  0x400 //stack for core\n";
           output << "_reserved DMb 0x40000 0xc0000 // And everything else the core can't see\n";
+          if (auto coreOp = tile.getCoreOp()) {
+            if (auto fileAttr =
+                    coreOp->getAttrOfType<StringAttr>("link_with")) {
+              auto fileName = std::string(fileAttr.getValue());
+              output << "_include _file " << fileName << "\n";
+            }
+          }
         }
       return success();
     },
