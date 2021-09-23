@@ -20,12 +20,12 @@ First compile LLVM, with the ability to target AArch64 as a cross-compiler, and 
 In addition, we make some common build optimizations to use a linker ('lld' or 'gold') other than
 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
 so.  You may find that other options are also useful.  Note that due to changing MLIR APIs, only a
-particular revision is expected to work.
+particular revision is expected to work.  See utils/clone-llvm.sh for the correct commithash.
 
 ```sh
 git clone https://github.com/llvm/llvm-project
 cd llvm-project
-git checkout ebe408ad8003
+git checkout ${commithash}
 mkdir ${LLVMBUILD}; cd ${LLVMBUILD}
 cmake -GNinja \
     -DLLVM_LINK_LLVM_DYLIB=ON \
@@ -48,7 +48,7 @@ mkdir build; cd build
 cmake -GNinja \
     -DLLVM_DIR=${absolute path to LLVMBUILD}/lib/cmake/llvm \
     -DMLIR_DIR=${absolute path to LLVMBUILD}/lib/cmake/mlir \
-    -DCMAKE_MODULE_PATH=/absolute/path/to/cmakeModules/ \
+    -DCMAKE_MODULE_PATH=${absolute path to cmakeModules}/ \
     -DVitisSysroot=${SYSROOT} \
     -DCMAKE_BUILD_TYPE=Debug \
     ..
