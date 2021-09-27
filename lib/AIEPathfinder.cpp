@@ -43,7 +43,7 @@ void Pathfinder::initializeGraph(int maxcol, int maxrow) {
       graph[id].row = row;
       graph[id].col = col;
       graph[id].pred = 0;
-      graph[id].processed = NULL;
+      graph[id].processed = false;
       if(row > 0) { // if not in row 0 add channel to North/South 
         auto north_edge = add_edge(id-maxcol-1, id, graph).first;
         graph[north_edge].bundle = WireBundle::North;
