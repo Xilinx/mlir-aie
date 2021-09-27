@@ -42,6 +42,8 @@ void Pathfinder::initializeGraph(int maxcol, int maxrow) {
       int id = add_vertex(graph);
       graph[id].row = row;
       graph[id].col = col;
+      graph[id].pred = 0;
+      graph[id].processed = NULL;
       if(row > 0) { // if not in row 0 add channel to North/South 
         auto north_edge = add_edge(id-maxcol-1, id, graph).first;
         graph[north_edge].bundle = WireBundle::North;
@@ -62,9 +64,13 @@ void Pathfinder::initializeGraph(int maxcol, int maxrow) {
   }
 
   // initialize weights of all Channels to 1
+  // initialize other variables
   auto edge_pair = edges(graph);
   for(auto edge = edge_pair.first; edge != edge_pair.second; edge++) {
     graph[*edge].demand = 1;
+    graph[*edge].used_capacity = 0;
+    graph[*edge].fixed_capacity.clear();
+    graph[*edge].over_capacity_count = 0;
   }
 }
 
