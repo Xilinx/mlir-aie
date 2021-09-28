@@ -217,7 +217,8 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
   }
   return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
 }
-struct AIERoutePacketFlowsPass : public AIERoutePacketFlowsBase<AIERoutePacketFlowsPass> {
+struct AIERoutePacketFlowsPass
+    : public AIERoutePacketFlowsBase<AIERoutePacketFlowsPass> {
   // Map from tile coordinates to TileOp
   DenseMap<std::pair<int, int>, Operation *> tiles;
   Operation *getOrCreateTile(OpBuilder &builder, int col, int row) {

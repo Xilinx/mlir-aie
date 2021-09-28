@@ -25,8 +25,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-
-
 struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
     registry.insert<StandardOpsDialect>();
