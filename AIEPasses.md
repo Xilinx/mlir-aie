@@ -55,14 +55,6 @@ routing.
 ### `-aie-herd-routing`: Lowering herds with place and route ops to AIE cores, mems, and switchboxes
 An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
 into an explicit representation (e.g. aie.core, aie.mem, etc.).
-### `-aie-llvm-lowering`: Lowering operations in AIE cores' regions to LLVM
-Outline code inside a particular AIE.core operation into the llvm dialect.
-
-#### Options
-```
--tilecol : X coordinate of tile to generate code for
--tilerow : Y coordinate of tile to generate code for
-```
 ### `-aie-lower-memcpy`: Lower aie.memcpy operations to Flows and DMA programs
 aie.memcpy operations are an experimental high-level abstraction which
 move data from one buffer to another.
