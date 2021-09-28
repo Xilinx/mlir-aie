@@ -80,6 +80,7 @@ def run_flow(opts, tmpdirname):
                             '--cse',
                             '--aie-vector-opt',
                             '--convert-vector-to-llvm',
+                            '--convert-memref-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
