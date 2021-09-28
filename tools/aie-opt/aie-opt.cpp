@@ -30,7 +30,6 @@ int main(int argc, char **argv) {
 
   registerAllPasses();
   xilinx::AIE::registerAIEAssignBufferAddressesPass();
-  xilinx::AIE::registerAIECoreToLLVMPass();
   xilinx::AIE::registerAIECoreToStandardPass();
   xilinx::AIE::registerAIECreateCoresPass();
   xilinx::AIE::registerAIECreateLocksPass();

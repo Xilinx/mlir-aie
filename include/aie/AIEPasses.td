@@ -27,28 +27,6 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 }
 
-def AIECoreToLLVM : Pass<"aie-llvm-lowering", "ModuleOp"> {
-  let summary = "Lowering operations in AIE cores' regions to LLVM";
-  let description = [{
-
-    Outline code inside a particular AIE.core operation into the llvm dialect.
-  }];
-  let options = [
-    Option<"tileCol", "tilecol", "unsigned",
-           /*default=*/"-1", "X coordinate of tile to generate code for">,
-    Option<"tileRow", "tilerow", "unsigned",
-           /*default=*/"-1", "Y coordinate of tile to generate code for">
-  ];
-
-  let constructor = "xilinx::AIE::createAIECoreToLLVMPass()";
-  let dependentDialects = [
-    "StandardOpsDialect",
-    "memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-    "mlir::LLVM::LLVMDialect"
-  ];
-}
-
 def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
