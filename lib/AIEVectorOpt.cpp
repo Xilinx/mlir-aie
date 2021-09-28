@@ -27,8 +27,7 @@ using namespace xilinx::AIE;
 
 
 
-struct AIEVectorOptPass : public PassWrapper<AIEVectorOptPass,
-                                             OperationPass<FuncOp>> {
+struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
     registry.insert<StandardOpsDialect>();
     registry.insert<memref::MemRefDialect>();
