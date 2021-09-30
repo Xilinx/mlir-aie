@@ -723,12 +723,11 @@ static std::string clear_range(int col, int row, int low, int high) {
           // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
           // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
           for (auto connectOp : b.getOps<ConnectOp>()) {
-            if(connectOp.sourceBundle() == WireBundle::South) {
+            if(connectOp.destBundle() == WireBundle::DMA) { // TODO PLIO 
               // demux!
               output << "XAieTile_ShimStrmDemuxConfig(" <<
                         tileInstStr("x", "y") << ",\n";
-              output << "\tXAIETILE_SHIM_STRM_DEM_" <<
-                        stringifyWireBundle(connectOp.sourceBundle()).upper() <<
+              output << "\tXAIETILE_SHIM_STRM_DEM_SOUTH" << // NOTE hardcoded to SOUTH to match definitions from libxaie 
                         connectOp.sourceIndex() << ",\n" <<
                         "\tXAIETILE_SHIM_STRM_DEM_" <<
                         stringifyWireBundle(connectOp.destBundle()).upper() << ");\n";
@@ -736,8 +735,7 @@ static std::string clear_range(int col, int row, int low, int high) {
               // mux
               output << "XAieTile_ShimStrmMuxConfig(" <<
                         tileInstStr("x", "y") << ",\n";
-              output << "\tXAIETILE_SHIM_STRM_MUX_" <<
-                        stringifyWireBundle(connectOp.destBundle()).upper() <<
+              output << "\tXAIETILE_SHIM_STRM_MUX_SOUTH" << // NOTE hardcoded to SOUTH to match definitions from libxaie
                         connectOp.destIndex() << ",\n" <<
                         "\tXAIETILE_SHIM_STRM_MUX_" <<
                         stringifyWireBundle(connectOp.sourceBundle()).upper() << ");\n";
