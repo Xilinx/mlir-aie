@@ -723,7 +723,7 @@ static std::string clear_range(int col, int row, int low, int high) {
           // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
           // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
           for (auto connectOp : b.getOps<ConnectOp>()) {
-            if(connectOp.destBundle() == WireBundle::DMA) { // TODO PLIO 
+            if(connectOp.destBundle() == WireBundle::DMA) {
               // demux!
               output << "XAieTile_ShimStrmDemuxConfig(" <<
                         tileInstStr("x", "y") << ",\n";
