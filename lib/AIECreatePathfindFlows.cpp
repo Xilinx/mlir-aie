@@ -210,16 +210,16 @@ public:
       ShimMuxOp switchboxOp =
         builder.create<ShimMuxOp>(builder.getUnknownLoc(),
                                     getTile(builder, col, row));
+      // check if the shim tile has noc connection
+      if (!getTile(builder, col, row).isShimNOCTile())
+        switchboxOp.emitError("Attempting to route to or from ShimTile (")
+            << col << ", " << row << "), which has no NOC connection";
       switchboxOp.ensureTerminator(switchboxOp.connections(),
                                    builder,
                                    builder.getUnknownLoc());
       coordToShimMux[std::make_pair(col, row)] = switchboxOp;
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
-      // check if the shim tile has noc connection
-      if (!getTile(builder, col, row).isShimNOCTile())
-        switchboxOp.emitError("Attempting to route to or from ShimTile (")
-            << col << ", " << row << "), which has no NOC connection";
       return switchboxOp;
     }
   }
