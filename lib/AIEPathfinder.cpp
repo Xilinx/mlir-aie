@@ -72,6 +72,9 @@ void Pathfinder::initializeGraph(int maxcol, int maxrow) {
     graph[*edge].fixed_capacity.clear();
     graph[*edge].over_capacity_count = 0;
   }
+
+  // initialize maximum iterations flag
+  Pathfinder::maxIterReached = false;
 }
 
 
@@ -191,6 +194,7 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
                  << " iterations)...unable to find routing for flows.\n");
       //return {};
       // return the invalid solution for debugging purposes
+      maxIterReached = true;
       return routing_solution;
     }
 
@@ -287,6 +291,9 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
 bool Pathfinder::isLegal() {
   auto edge_pair = edges(graph);
   bool legal = true; // assume legal until found otherwise
+  // check if maximum number of iterations has been reached
+  if (maxIterReached)
+    legal = false;
   for(edge_iterator e = edge_pair.first; e != edge_pair.second; e++) {
     if(graph[*e].used_capacity > graph[*e].max_capacity) {
       LLVM_DEBUG(llvm::dbgs()
