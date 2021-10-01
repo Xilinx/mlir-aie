@@ -69,12 +69,12 @@ typedef std::pair< PathEndPoint, std::vector<PathEndPoint> > Flow;
 
 
 class Pathfinder {
-  private:
+private:
   SwitchboxGraph graph;
   std::vector< Flow > flows;
   bool maxIterReached;
 
-  public:
+public:
   Pathfinder();
   Pathfinder(int maxcol, int maxrow);
   void initializeGraph(int maxcol, int maxrow);

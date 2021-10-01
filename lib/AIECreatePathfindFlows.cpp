@@ -129,11 +129,11 @@ public:
       }
     }
 
-    // all flows are now populated, call the congestion-aware pathfinder 
+    // all flows are now populated, call the congestion-aware pathfinder
     // algorithm
     // check whether the pathfinder algorithm creates a legal routing
     flow_solutions = pathfinder.findPaths(MAX_ITERATIONS);
-    if (!pathfinder.isLegal()) 
+    if (!pathfinder.isLegal())
       m.emitError("Unable to find a legal routing");
 
     //initialize all flows as unprocessed to prep for rewrite
