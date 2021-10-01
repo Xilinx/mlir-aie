@@ -72,6 +72,7 @@ class Pathfinder {
   private:
   SwitchboxGraph graph;
   std::vector< Flow > flows;
+  bool maxIterReached;
 
   public:
   Pathfinder();
