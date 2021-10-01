@@ -292,7 +292,8 @@ bool Pathfinder::isLegal() {
   auto edge_pair = edges(graph);
   bool legal = true; // assume legal until found otherwise
   // check if maximum number of iterations has been reached
-  if (maxIterReached) legal = false;
+  if (maxIterReached) 
+    legal = false;
   for(edge_iterator e = edge_pair.first; e != edge_pair.second; e++) {
     if(graph[*e].used_capacity > graph[*e].max_capacity) {
       LLVM_DEBUG(llvm::dbgs()
