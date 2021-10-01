@@ -715,6 +715,7 @@ static std::string clear_range(int col, int row, int low, int high) {
             int row = op.rowIndex();
             if (!isEmpty) {
               output << "// ShimMux column " << col << " row " << row << "\n";
+              output << "// NOTE ShimMux always connects from the south as directions are defined relative to the tile stream switch\n";
               output << "x = " << col << ";\n";
               output << "y = " << row << ";\n";
             }
@@ -723,7 +724,7 @@ static std::string clear_range(int col, int row, int low, int high) {
           // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
           // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]), XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
           for (auto connectOp : b.getOps<ConnectOp>()) {
-            if(connectOp.destBundle() == WireBundle::DMA) {
+            if(connectOp.sourceBundle() == WireBundle::North) { 
               // demux!
               output << "XAieTile_ShimStrmDemuxConfig(" <<
                         tileInstStr("x", "y") << ",\n";
@@ -731,7 +732,7 @@ static std::string clear_range(int col, int row, int low, int high) {
                         connectOp.sourceIndex() << ",\n" <<
                         "\tXAIETILE_SHIM_STRM_DEM_" <<
                         stringifyWireBundle(connectOp.destBundle()).upper() << ");\n";
-            } else {
+            } else if (connectOp.destBundle() == WireBundle::North) {
               // mux
               output << "XAieTile_ShimStrmMuxConfig(" <<
                         tileInstStr("x", "y") << ",\n";
