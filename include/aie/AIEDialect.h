@@ -16,6 +16,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
@@ -141,11 +142,13 @@ bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
 bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
 }
+}
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/AIE.h.inc"
 
+namespace xilinx{
 namespace AIE {
 
 #define GEN_PASS_CLASSES

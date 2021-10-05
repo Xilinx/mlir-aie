@@ -19,6 +19,7 @@
 #include "mlir/Translation.h"
 #include "mlir/Target/LLVMIR/Import.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 

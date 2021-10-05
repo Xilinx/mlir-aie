@@ -25,6 +25,7 @@ include "AIEInterfaces.td"
 
 def AIE_Dialect : Dialect {
   let name = "AIE";
+  let cppNamespace = "::xilinx::AIE";
   let description = [{
 
 This is a dialect for describing netlists of AIE components in a

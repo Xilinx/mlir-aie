@@ -479,9 +479,10 @@ static LogicalResult verify(xilinx::AIE::UseLockOp op) {
 #include "aie/AIEEnums.cpp.inc"
 #include "aie/AIEInterfaces.cpp.inc"
 
-namespace xilinx {
 #define GET_OP_CLASSES
 #include "aie/AIE.cpp.inc"
+
+namespace xilinx {
   namespace AIE {
 
     // void CoreOp::build(Builder *odsBuilder, OperationState &odsState, Type resultType0, int col, int row) {
