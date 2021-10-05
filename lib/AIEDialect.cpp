@@ -12,6 +12,7 @@
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -46,6 +47,19 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
     return;
   }
 };
+
+struct AIEDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
+
+  /// Registered hook to check if the given region, which is attached to an
+  /// operation that is *not* isolated from above, should be used when
+  /// materializing constants.
+  bool shouldMaterializeInto(Region *region) const final {
+    // If this is an AIE::CoreOp region, then insert into it.
+    return isa<xilinx::AIE::CoreOp>(region->getParentOp());
+  }
+};
+
 } // end anonymous namespace
 
 namespace xilinx {
@@ -152,7 +166,7 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx) : mlir::Dialect("AIE", ctx,
 #define GET_OP_LIST
 #include "aie/AIE.cpp.inc"
     >();
-  addInterfaces<AIEInlinerInterface>();
+  addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
 
 } // namespace AIE
