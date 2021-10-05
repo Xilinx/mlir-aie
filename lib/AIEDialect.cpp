@@ -483,42 +483,59 @@ static LogicalResult verify(xilinx::AIE::UseLockOp op) {
 #include "aie/AIE.cpp.inc"
 
 namespace xilinx {
-  namespace AIE {
+namespace AIE {
 
-    // void CoreOp::build(Builder *odsBuilder, OperationState &odsState, Type resultType0, int col, int row) {
-    //   odsState.addOperands(colValue);
-    //   odsState.addOperands(rowValue);
-    //   odsState.addTypes(resultType0);
-    // }
+// void CoreOp::build(Builder *odsBuilder, OperationState &odsState, Type
+// resultType0, int col, int row) {
+//   odsState.addOperands(colValue);
+//   odsState.addOperands(rowValue);
+//   odsState.addTypes(resultType0);
+// }
 
-  //#include "ATenOpInterfaces.cpp.inc"
+//#include "ATenOpInterfaces.cpp.inc"
 
-    int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
-      if(getTileOp().isShimTile())
-        switch(bundle) {
-        //case WireBundle::Core: return 0;
-        //case WireBundle::DMA: return 2;
-        //case WireBundle::PLIO: return 4;
-        case WireBundle::FIFO: return 2;
-        case WireBundle::North: return 4;
-        case WireBundle::West: return 4;
-        case WireBundle::South: return 8;
-        case WireBundle::East: return 4;
-	case WireBundle::Trace: return 1;			
-        default: return 0;
-        }
-      else
-        switch(bundle) {
-        case WireBundle::Core: return 2;
-        case WireBundle::DMA: return 2;
-        case WireBundle::FIFO: return 2;
-        case WireBundle::North: return 4;
-        case WireBundle::West: return 4;
-        case WireBundle::South: return 6;
-        case WireBundle::East: return 4;
-	case WireBundle::Trace: return 2;
-        default: return 0;
-        }
+int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
+  if (getTileOp().isShimTile())
+    switch (bundle) {
+    // case WireBundle::Core: return 0;
+    // case WireBundle::DMA: return 2;
+    // case WireBundle::PLIO: return 4;
+    case WireBundle::FIFO:
+      return 2;
+    case WireBundle::North:
+      return 4;
+    case WireBundle::West:
+      return 4;
+    case WireBundle::South:
+      return 8;
+    case WireBundle::East:
+      return 4;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 2;
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::FIFO:
+      return 2;
+    case WireBundle::North:
+      return 4;
+    case WireBundle::West:
+      return 4;
+    case WireBundle::South:
+      return 6;
+    case WireBundle::East:
+      return 4;
+    case WireBundle::Trace:
+      return 2;
+    default:
+      return 0;
+    }
     }
     int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
       if(getTileOp().isShimTile())
@@ -571,4 +588,4 @@ namespace xilinx {
     }
     bool TileOp::isShimNOCorPLTile() { return isShimTile() && (col() > 0); }
   } // namespace AIE
-} // namespace xilinx
+  } // namespace xilinx
