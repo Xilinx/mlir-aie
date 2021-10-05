@@ -13,7 +13,7 @@ switch is referred to as 'switchbox' to avoid confusion with the
 
 ## Operation definition
 
-### `AIE.amsel` (AIE::AMSelOp)
+### `AIE.amsel` (::xilinx::AIE::AMSelOp)
 
 Declare an arbiter of a switchbox with a master select value (arbiter + msel)
 
@@ -54,7 +54,7 @@ See also [MasterSetOp](#aiemasterset-aiemastersetop),
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.buffer` (AIE::BufferOp)
+### `AIE.buffer` (::xilinx::AIE::BufferOp)
 
 Declare a buffer
 
@@ -86,7 +86,7 @@ This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit
 | :----: | ----------- |
 `buffer` | memref of any type values
 
-### `AIE.connect` (AIE::ConnectOp)
+### `AIE.connect` (::xilinx::AIE::ConnectOp)
 
 A circuit-switched connection inside a switchbox
 
@@ -121,7 +121,7 @@ aie.switchbox(%tile) {
 `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
 `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
-### `AIE.connection` (AIE::ConnectionOp)
+### `AIE.connection` (::xilinx::AIE::ConnectionOp)
 
 A logical circuit-switched connection between cores
 
@@ -162,7 +162,7 @@ Example:
 `source` | index
 `dest` | index
 
-### `AIE.core` (AIE::CoreOp)
+### `AIE.core` (::xilinx::AIE::CoreOp)
 
 Declare a core module
 
@@ -209,7 +209,7 @@ AIE.core(%tile) {
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.dmaBd` (AIE::DMABDOp)
+### `AIE.dmaBd` (::xilinx::AIE::DMABDOp)
 
 Declare a dma block descriptor op
 
@@ -258,7 +258,7 @@ There are 16 block descriptors per Memory Module. They are shared by four DMA ch
 | :-----: | ----------- |
 `buffer` | memref of any type values
 
-### `AIE.dmaBdPacket` (AIE::DMABDPACKETOp)
+### `AIE.dmaBdPacket` (::xilinx::AIE::DMABDPACKETOp)
 
 Enable packet headers for a dma block descriptor
 
@@ -295,7 +295,7 @@ Example:
 `packet_type` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 `packet_id` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
-### `AIE.dmaStart` (AIE::DMAStartOp)
+### `AIE.dmaStart` (::xilinx::AIE::DMAStartOp)
 
 An op to start DMA
 
@@ -344,7 +344,7 @@ or to a basic block for another dmaStart, to an AIE.end operation.
 `dest` | any successor
 `chain` | any successor
 
-### `AIE.debug` (AIE::DebugOp)
+### `AIE.debug` (::xilinx::AIE::DebugOp)
 
 Capture a value for debugging
 
@@ -363,7 +363,7 @@ Output the given value for debugging.  This is primarily used for simulation.
 | :-----: | ----------- |
 `arg` | any type
 
-### `AIE.end` (AIE::EndOp)
+### `AIE.end` (::xilinx::AIE::EndOp)
 
 end op
 
@@ -376,7 +376,7 @@ operation ::= `AIE.end` attr-dict
 
 A generic terminator operation for AIE ops' regions.
 
-### `AIE.external_buffer` (AIE::ExternalBufferOp)
+### `AIE.external_buffer` (::xilinx::AIE::ExternalBufferOp)
 
 Declare a buffer in external memory
 
@@ -408,7 +408,7 @@ This operation represents a buffer living at physical address 0x200000.
 | :----: | ----------- |
 `buffer` | memref of any type values
 
-### `AIE.flow` (AIE::FlowOp)
+### `AIE.flow` (::xilinx::AIE::FlowOp)
 
 A logical circuit-switched connection between cores
 
@@ -448,7 +448,7 @@ Example:
 `source` | index
 `dest` | index
 
-### `AIE.getCascade` (AIE::GetCascadeOp)
+### `AIE.getCascade` (::xilinx::AIE::GetCascadeOp)
 
 An op to read from a cascading stream from a neighboring core
 
@@ -467,7 +467,7 @@ An op to read from a cascading stream from a neighboring core.
 | :----: | ----------- |
 `cascadeValue` | 384-bit integer
 
-### `AIE.getStream` (AIE::GetStreamOp)
+### `AIE.getStream` (::xilinx::AIE::GetStreamOp)
 
 An op to read from a stream channel/port of a switchbox
 
@@ -492,7 +492,7 @@ An op to read from a stream channel/port of a switchbox.
 | :----: | ----------- |
 `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
-### `AIE.getTile` (AIE::GetTileOp)
+### `AIE.getTile` (::xilinx::AIE::GetTileOp)
 
 Get a reference to an AIE tile
 
@@ -518,7 +518,7 @@ Return a reference to an AIE tile, given the column and the row of the tile.
 | :----: | ----------- |
 `result` | index
 
-### `AIE.herd` (AIE::HerdOp)
+### `AIE.herd` (::xilinx::AIE::HerdOp)
 
 Declare a herd which is a bundle of core organized in a rectangular shape
 
@@ -561,7 +561,7 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.iter` (AIE::IterOp)
+### `AIE.iter` (::xilinx::AIE::IterOp)
 
 An iter operation
 
@@ -593,7 +593,7 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.lock` (AIE::LockOp)
+### `AIE.lock` (::xilinx::AIE::LockOp)
 
 Declare a physical lock
 
@@ -631,7 +631,7 @@ This operation represents a lock that lives in the Memory module of Tile(3, 3) w
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.masterset` (AIE::MasterSetOp)
+### `AIE.masterset` (::xilinx::AIE::MasterSetOp)
 
 Packet switched input connection
 
@@ -682,7 +682,7 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.mem` (AIE::MemOp)
+### `AIE.mem` (::xilinx::AIE::MemOp)
 
 Declare a memory op
 
@@ -709,7 +709,7 @@ See DMAOp and DMABdOp for more concrete examples.
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.memcpy` (AIE::MemcpyOp)
+### `AIE.memcpy` (::xilinx::AIE::MemcpyOp)
 
 A memcpy op
 
@@ -750,7 +750,7 @@ the source tile to the dest. tile.
 `dstTile` | index
 `dstBuf` | memref of any type values
 
-### `AIE.plio` (AIE::PLIOOp)
+### `AIE.plio` (::xilinx::AIE::PLIOOp)
 
 Declare an interface to the PL
 
@@ -775,7 +775,7 @@ An interface to the PL.
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.packet_dest` (AIE::PacketDestOp)
+### `AIE.packet_dest` (::xilinx::AIE::PacketDestOp)
 
 A destination port
 
@@ -805,7 +805,7 @@ See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
 | :-----: | ----------- |
 `tile` | index
 
-### `AIE.packet_flow` (AIE::PacketFlowOp)
+### `AIE.packet_flow` (::xilinx::AIE::PacketFlowOp)
 
 Packet switched flow
 
@@ -835,7 +835,7 @@ Example:
 | :-------: | :-------: | ----------- |
 `ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
 
-### `AIE.rule` (AIE::PacketRuleOp)
+### `AIE.rule` (::xilinx::AIE::PacketRuleOp)
 
 Packet switched routing rule
 
@@ -888,7 +888,7 @@ Example:
 | :-----: | ----------- |
 `amsel` | index
 
-### `AIE.packetrules` (AIE::PacketRulesOp)
+### `AIE.packetrules` (::xilinx::AIE::PacketRulesOp)
 
 Packet switched routing rules
 
@@ -913,7 +913,7 @@ See [AIE.rule](#aierule-aiepacketruleop) for an example.
 `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
 `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
-### `AIE.packet_source` (AIE::PacketSourceOp)
+### `AIE.packet_source` (::xilinx::AIE::PacketSourceOp)
 
 A sourceport
 
@@ -942,7 +942,7 @@ See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
 | :-----: | ----------- |
 `tile` | index
 
-### `AIE.place` (AIE::PlaceOp)
+### `AIE.place` (::xilinx::AIE::PlaceOp)
 
 A place operation that specifies the relative placement (XY) of one herd to another
 
@@ -969,7 +969,7 @@ A place operation that specifies the relative placement (XY) of one herd to anot
 `sourceHerd` | index
 `destHerd` | index
 
-### `AIE.putCascade` (AIE::PutCascadeOp)
+### `AIE.putCascade` (::xilinx::AIE::PutCascadeOp)
 
 An op to write to a cascading stream from a neighboring core
 
@@ -988,7 +988,7 @@ An op to write to a cascading stream from a neighboring core.
 | :-----: | ----------- |
 `cascadeValue` | 384-bit integer
 
-### `AIE.putStream` (AIE::PutStreamOp)
+### `AIE.putStream` (::xilinx::AIE::PutStreamOp)
 
 An op to write to a stream channel/port of a switchbox
 
@@ -1008,7 +1008,7 @@ An op to write to a stream channel/port of a switchbox.
 `channel` | integer
 `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
-### `AIE.route` (AIE::RouteOp)
+### `AIE.route` (::xilinx::AIE::RouteOp)
 
 A route operation that routes one herd to another
 
@@ -1038,7 +1038,7 @@ A route operation that routes one herd to another.
 `sourceHerds` | index
 `destHerds` | index
 
-### `AIE.select` (AIE::SelectOp)
+### `AIE.select` (::xilinx::AIE::SelectOp)
 
 A select operation
 
@@ -1077,7 +1077,7 @@ The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0]
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.shimDMA` (AIE::ShimDMAOp)
+### `AIE.shimDMA` (::xilinx::AIE::ShimDMAOp)
 
 Declare a DMA in the PL shim
 
@@ -1101,7 +1101,7 @@ operation ::= `AIE.shimDMA` `(` $tile `)` regions attr-dict
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.shimmux` (AIE::ShimMuxOp)
+### `AIE.shimmux` (::xilinx::AIE::ShimMuxOp)
 
 Declare a switch in the PL shim
 
@@ -1136,7 +1136,7 @@ aie.shimmux(%tile) {
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.shimswitchbox` (AIE::ShimSwitchboxOp)
+### `AIE.shimswitchbox` (::xilinx::AIE::ShimSwitchboxOp)
 
 Declare a switch in the PL shim
 
@@ -1171,7 +1171,7 @@ AXI-Stream Master Ports AXI-Stream Slave Ports
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.switchbox` (AIE::SwitchboxOp)
+### `AIE.switchbox` (::xilinx::AIE::SwitchboxOp)
 
 Declare a switch
 
@@ -1205,7 +1205,7 @@ aie.switchbox(%tile) {
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-### `AIE.tile` (AIE::TileOp)
+### `AIE.tile` (::xilinx::AIE::TileOp)
 
 Declare an AIE tile
 
@@ -1239,7 +1239,7 @@ the AIE array proper and the PL.  The South-West/Lower Right most core exists in
 | :----: | ----------- |
 `result` | index
 
-### `AIE.token` (AIE::TokenOp)
+### `AIE.token` (::xilinx::AIE::TokenOp)
 
 Declare a token (a logical lock)
 
@@ -1275,7 +1275,7 @@ Example:
 | :-------: | :-------: | ----------- |
 `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
-### `AIE.useLock` (AIE::UseLockOp)
+### `AIE.useLock` (::xilinx::AIE::UseLockOp)
 
 acquire/release lock op
 
@@ -1303,7 +1303,7 @@ This should be understood as a "blocking" operation.
 | :-----: | ----------- |
 `lock` | index
 
-### `AIE.useToken` (AIE::UseTokenOp)
+### `AIE.useToken` (::xilinx::AIE::UseTokenOp)
 
 acquire/release a logical lock
 
@@ -1325,7 +1325,7 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.
 `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 `action` | xilinx::AIE::LockActionAttr | lock acquire/release
 
-### `AIE.wire` (AIE::WireOp)
+### `AIE.wire` (::xilinx::AIE::WireOp)
 
 A bundle of physical wires between components
 
