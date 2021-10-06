@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --aie-create-pathfinder-flows --aie-find-flows %s |& FileCheck %s
-// CHECK: error: Attempting to route to or from ShimTile (4, 0), which has no NOC connection
-// CHECK: error: Attempting to route to or from ShimTile (5, 0), which has no NOC connection
+// CHECK: error: 'AIE.flow' op attempts to route to ShimTile (4, 0), which has no NOC connection
+// CHECK: error: 'AIE.flow' op attempts to route from ShimTile (5, 0), which has no NOC connection
 
 module {
 %t20 = AIE.tile(2, 0)

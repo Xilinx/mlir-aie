@@ -108,6 +108,13 @@ public:
     for(FlowOp flowOp : module.getOps<FlowOp>()) {
       TileOp srcTile = cast<TileOp>(flowOp.source().getDefiningOp());
       TileOp dstTile = cast<TileOp>(flowOp.dest().getDefiningOp());
+      // emit error if source/destination is a shim tile without noc connection
+      if (srcTile.rowIndex() == 0 && !srcTile.isShimNOCTile())
+        flowOp.emitOpError("attempts to route from ShimTile (")
+            << srcTile.colIndex() << ", " << srcTile.rowIndex() << "), which has no NOC connection";
+      if (dstTile.rowIndex() == 0 && !dstTile.isShimNOCTile())
+        flowOp.emitOpError("attempts to route to ShimTile (")
+            << dstTile.colIndex() << ", " << dstTile.rowIndex() << "), which has no NOC connection";
       Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
       Coord dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
       Port srcPort = std::make_pair(flowOp.sourceBundle(), flowOp.sourceChannel());
@@ -210,10 +217,6 @@ public:
       ShimMuxOp switchboxOp =
         builder.create<ShimMuxOp>(builder.getUnknownLoc(),
                                     getTile(builder, col, row));
-      // check if the shim tile has noc connection
-      if (!getTile(builder, col, row).isShimNOCTile())
-        switchboxOp.emitError("Attempting to route to or from ShimTile (")
-            << col << ", " << row << "), which has no NOC connection";
       switchboxOp.ensureTerminator(switchboxOp.connections(),
                                    builder,
                                    builder.getUnknownLoc());
