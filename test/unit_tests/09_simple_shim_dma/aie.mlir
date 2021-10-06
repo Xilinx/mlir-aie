@@ -23,7 +23,7 @@ module @test09_simple_shim_dma {
     AIE.connect<"South" : 3, "North" : 3>
   }
   %mux = AIE.shimmux(%t70) {
-    AIE.connect<"DMA" : 0, "South": 3>
+    AIE.connect<"DMA" : 0, "North": 3>
   }
 
   %dma = AIE.shimDMA(%t70) {
