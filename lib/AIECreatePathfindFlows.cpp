@@ -111,10 +111,12 @@ public:
       // emit error if source/destination is a shim tile without noc connection
       if (srcTile.rowIndex() == 0 && !srcTile.isShimNOCTile())
         flowOp.emitOpError("attempts to route from ShimTile (")
-            << srcTile.colIndex() << ", " << srcTile.rowIndex() << "), which has no NOC connection";
+            << srcTile.colIndex() << ", " << srcTile.rowIndex()
+            << "), which has no NOC connection";
       if (dstTile.rowIndex() == 0 && !dstTile.isShimNOCTile())
         flowOp.emitOpError("attempts to route to ShimTile (")
-            << dstTile.colIndex() << ", " << dstTile.rowIndex() << "), which has no NOC connection";
+            << dstTile.colIndex() << ", " << dstTile.rowIndex()
+            << "), which has no NOC connection";
       Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
       Coord dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
       Port srcPort = std::make_pair(flowOp.sourceBundle(), flowOp.sourceChannel());
