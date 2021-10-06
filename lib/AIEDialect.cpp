@@ -536,7 +536,7 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
     default:
       return 0;
     }
-    }
+}
     int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
       if(getTileOp().isShimTile())
         switch(bundle) {
@@ -587,5 +587,5 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
       return isShimNOCorPLTile() && !isShimNOCTile();
     }
     bool TileOp::isShimNOCorPLTile() { return isShimTile() && (col() > 0); }
-  } // namespace AIE
-  } // namespace xilinx
+    } // namespace AIE
+    } // namespace xilinx
