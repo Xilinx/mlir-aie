@@ -320,8 +320,9 @@ ConvertFlowsToInterconnect(
           if(srcBundle == WireBundle::DMA)
             shim_ch = (srcChannel == 0 ? 3 : 7); // must be either DMA0 -> N3 or DMA1 -> N7
           else if(srcChannel >= 3) shim_ch = srcChannel + 1;
-          addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-            srcBundle, srcChannel, WireBundle::North, shim_ch);
+          addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                        flowOp, srcBundle, srcChannel, WireBundle::North,
+                        shim_ch);
         }
         for(auto it = s.second.begin(); it != s.second.end(); it++) {
           WireBundle bundle = (*it).first;
@@ -340,8 +341,9 @@ ConvertFlowsToInterconnect(
             else if(srcChannel >= 3) shim_ch = srcChannel + 1;
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), flowOp,
               s.first.first, s.first.second, WireBundle::South, shim_ch);
-            addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-              WireBundle::North, shim_ch, bundle, channel);
+            addConnection(rewriter,
+                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
+                          WireBundle::North, shim_ch, bundle, channel);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), flowOp,
