@@ -40,7 +40,7 @@ as long as we don't have duplicate destinations.
 
 ## AIE Shimmux 
 
-Shim tiles are special tiles at row 0 of the AIE array. You can configure a switch in the PL Shim using 'shimmux' in addition to the switchbox operations.  
+Shim tiles are special tiles at row 0 of the AIE array. You can configure a switch in the Shim tile using 'shimmux' in addition to the switchbox operations:
 
  ```
 %sw70 = AIE.shimmux(%t70) {
@@ -48,7 +48,7 @@ Shim tiles are special tiles at row 0 of the AIE array. You can configure a swit
 }
 ```
 
-then we can connect the DMA to the rest of the array like so:
+Then, we can connect the DMA to the rest of the array like so:
 
  ```
 %s70 = AIE.switchbox(%t70) {
@@ -56,17 +56,18 @@ then we can connect the DMA to the rest of the array like so:
 }
 ```
 
-In order to read and write from the DDR, a shimmux must be created like so:
+In order to read and write from the DDR using all available channels, a shimmux can be created like so:
 
 ```
 %sw70 = AIE.shimmux(%t70) { 
   AIE.connect<"DMA" : 0, "North" : 3> \\ read
+  AIE.connect<"DMA" : 1, "North" : 7> \\ read
   AIE.connect<"North" : 2, "DMA" : 0> \\ write
+  AIE.connect<"North" : 3, "DMA" : 1> \\ write
 }
 ```
 
-The shimmux always connects to a stream switch to its north, located within the same tile. The shimmux connects the Shim DMA channels to specific channels: i.e. exiting the array, streams 2 and 3 from the stream switch connect to the Shim DMA, but entering the array, streams 3 and 7 from the stream switch connect to the Shim DMA. 
-
+The shimmux always connects to a switchbox to its north, located within the same tile. The shimmux connects the Shim DMA channels to specific stream channels: i.e. exiting the array (write), streams 2 and 3 from the switchbox connect to Shim DMA channels, but entering the array (read), streams 3 and 7 to the switchbox connect from Shim DMA channels. The shimmux is then connected to the switchbox to route the streams to/from the array as shown above. 
 
 It is important to note how the shimmux is modeled in MLIR compared to libXAIEV1. While the shimmux is modeled in MLIR matching the convention of a switchbox, due to the fact that it exists in the same tile as the switchbox, the channel directions are inverted (North to South) when lowered to libXAIEV1. 
 
