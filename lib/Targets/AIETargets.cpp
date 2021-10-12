@@ -333,6 +333,17 @@ SECTIONS
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });                
+    TranslateFromMLIRRegistration
+    registrationXAIE("aie-generate-xaiev2", [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToXAIEV2(module, output);
+    },
+    [](DialectRegistry &registry) {
+      registry.insert<xilinx::AIE::AIEDialect>();
+      registry.insert<StandardOpsDialect>();
+      registry.insert<memref::MemRefDialect>();
+      registry.insert<VectorDialect>();
+      registry.insert<LLVM::LLVMDialect>();
+    });                
 
     TranslateFromMLIRRegistration
     registrationXJSON("aie-flows-to-json", [](ModuleOp module, raw_ostream &output) {
