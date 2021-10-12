@@ -322,29 +322,43 @@ SECTIONS
       registry.insert<VectorDialect>();
       registry.insert<LLVM::LLVMDialect>();
     });
-    TranslateFromMLIRRegistration
-    registrationXAIE("aie-generate-xaie", [](ModuleOp module, raw_ostream &output) {
+  TranslateFromMLIRRegistration registrationXAIE(
+      "aie-generate-xaie",
+      [](ModuleOp module, raw_ostream &output) {
         return AIETranslateToXAIEV1(module, output);
-    },
-    [](DialectRegistry &registry) {
-      registry.insert<xilinx::AIE::AIEDialect>();
-      registry.insert<StandardOpsDialect>();
-      registry.insert<memref::MemRefDialect>();
-      registry.insert<VectorDialect>();
-      registry.insert<LLVM::LLVMDialect>();
-    });                
+      },
+      [](DialectRegistry &registry) {
+        registry.insert<xilinx::AIE::AIEDialect>();
+        registry.insert<StandardOpsDialect>();
+        registry.insert<memref::MemRefDialect>();
+        registry.insert<VectorDialect>();
+        registry.insert<LLVM::LLVMDialect>();
+      });
+  TranslateFromMLIRRegistration registrationXAIEv2(
+      "aie-generate-xaiev2",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToXAIEV2(module, output);
+      },
+      [](DialectRegistry &registry) {
+        registry.insert<xilinx::AIE::AIEDialect>();
+        registry.insert<StandardOpsDialect>();
+        registry.insert<memref::MemRefDialect>();
+        registry.insert<VectorDialect>();
+        registry.insert<LLVM::LLVMDialect>();
+      });
 
-    TranslateFromMLIRRegistration
-    registrationXJSON("aie-flows-to-json", [](ModuleOp module, raw_ostream &output) {
-      return AIEFlowsToJSON(module, output);
-    },
-    [](DialectRegistry &registry) {
-      registry.insert<xilinx::AIE::AIEDialect>();
-      registry.insert<StandardOpsDialect>();
-      registry.insert<memref::MemRefDialect>();
-      registry.insert<VectorDialect>();
-      registry.insert<LLVM::LLVMDialect>();
-    });                
+  TranslateFromMLIRRegistration registrationXJSON(
+      "aie-flows-to-json",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIEFlowsToJSON(module, output);
+      },
+      [](DialectRegistry &registry) {
+        registry.insert<xilinx::AIE::AIEDialect>();
+        registry.insert<StandardOpsDialect>();
+        registry.insert<memref::MemRefDialect>();
+        registry.insert<VectorDialect>();
+        registry.insert<LLVM::LLVMDialect>();
+      });
   }
 }
 }
