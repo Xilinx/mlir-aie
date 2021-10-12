@@ -13,6 +13,8 @@
 namespace xilinx {
 namespace AIE {
 mlir::LogicalResult AIETranslateToXAIEV1(mlir::ModuleOp module, llvm::raw_ostream &output);
+mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
+                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIEFlowsToJSON(mlir::ModuleOp module, llvm::raw_ostream &output);
 }
 }

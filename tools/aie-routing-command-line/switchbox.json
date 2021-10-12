@@ -1,135 +1,366 @@
 {
- "switchbox00": {
- "row": 0,
- "col": 0,
- "southbound": 3,
- "northbound": 3,
- "eastbound": 2,
- "westbound": 2
- },
- "switchbox01": {
- "row": 0,
- "col": 1,
- "southbound": 3,
- "northbound": 0,
- "eastbound": 3,
- "westbound": 0
- },
- "switchbox02": {
- "row": 0,
- "col": 2,
- "southbound": 3,
- "northbound": 2,
- "eastbound": 3,
- "westbound": 3
- },
- "switchbox10": {
- "row": 1,
- "col": 0,
- "southbound": 2,
- "northbound": 4,
- "eastbound": 2,
- "westbound": 1
- },
- "switchbox11": {
- "row": 1,
- "col": 1,
- "southbound": 0,
- "northbound": 1,
- "eastbound": 4,
- "westbound": 3
- },
- "switchbox12": {
- "row": 1,
- "col": 2,
- "southbound": 4,
- "northbound": 1,
- "eastbound": 4,
- "westbound": 3
- },
- "switchbox20": {
- "row": 2,
- "col": 0,
- "southbound": 2,
- "northbound": 1,
- "eastbound": 1,
- "westbound": 3
- },
- "switchbox21": {
- "row": 2,
- "col": 1,
- "southbound": 3,
- "northbound": 2,
- "eastbound": 2,
- "westbound": 3
- },
- "switchbox22": {
- "row": 2,
- "col": 2,
- "southbound": 4,
- "northbound": 4,
- "eastbound": 3,
- "westbound": 3
- },
- "switchbox03": {
- "row": 0,
- "col": 3,
- "southbound": 4,
- "northbound": 1,
- "eastbound": -4,
- "westbound": -3
- },
- "switchbox13": {
- "row": 1,
- "col": 3,
- "southbound": 4,
- "northbound": 1,
- "eastbound": -4,
- "westbound": -3
- },
- "switchbox23": {
- "row": 2,
- "col": 3,
- "southbound": 4,
- "northbound": 1,
- "eastbound": -4,
- "westbound": -3
- },
- "switchbox30": {
- "row": 3,
- "col": 0,
- "southbound": 4,
- "northbound": 1,
- "eastbound": 1,
- "westbound": 3
- },
- "switchbox31": {
- "row": 3,
- "col": 1,
- "southbound": 4,
- "northbound": 1,
- "eastbound": 1,
- "westbound": 3
- },
- "switchbox32": {
- "row": 3,
- "col": 2,
- "southbound": 4,
- "northbound": 1,
- "eastbound": 1,
- "westbound": 2
- },
- "switchbox33": {
- "row": 3,
- "col": 3,
- "southbound": 4,
- "northbound": 1,
- "eastbound": -2,
- "westbound": -3
- },
+"switchbox00": {
+"col": 0,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox01": {
+"col": 0,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox02": {
+"col": 0,
+"row": 2,
+"source_count": 0,
+"destination_count": 1,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox03": {
+"col": 0,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox10": {
+"col": 1,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox11": {
+"col": 1,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox12": {
+"col": 1,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox13": {
+"col": 1,
+"row": 3,
+"source_count": 0,
+"destination_count": 1,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox20": {
+"col": 2,
+"row": 0,
+"source_count": 4,
+"destination_count": 0,
+"northbound": 2,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox21": {
+"col": 2,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox22": {
+"col": 2,
+"row": 2,
+"source_count": 0,
+"destination_count": 1,
+"northbound": 1,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox23": {
+"col": 2,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox30": {
+"col": 3,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox31": {
+"col": 3,
+"row": 1,
+"source_count": 0,
+"destination_count": 2,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox32": {
+"col": 3,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox33": {
+"col": 3,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox40": {
+"col": 4,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox41": {
+"col": 4,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox42": {
+"col": 4,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox43": {
+"col": 4,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox50": {
+"col": 5,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox51": {
+"col": 5,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox52": {
+"col": 5,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox53": {
+"col": 5,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox60": {
+"col": 6,
+"row": 0,
+"source_count": 4,
+"destination_count": 0,
+"northbound": 2,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 1
+},
+"switchbox61": {
+"col": 6,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 2,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox62": {
+"col": 6,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 2,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox63": {
+"col": 6,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox70": {
+"col": 7,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox71": {
+"col": 7,
+"row": 1,
+"source_count": 0,
+"destination_count": 1,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox72": {
+"col": 7,
+"row": 2,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 1,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox73": {
+"col": 7,
+"row": 3,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 1,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox80": {
+"col": 8,
+"row": 0,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox81": {
+"col": 8,
+"row": 1,
+"source_count": 0,
+"destination_count": 0,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox82": {
+"col": 8,
+"row": 2,
+"source_count": 0,
+"destination_count": 1,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"switchbox83": {
+"col": 8,
+"row": 3,
+"source_count": 0,
+"destination_count": 1,
+"northbound": 0,
+"eastbound": 0,
+"southbound": 0,
+"westbound": 0
+},
+"route0": [ [[2, 0], ["North", "East"]], [[2, 1], ["North", "East"]], [[3, 0], ["East"]], [[2, 2], ["North"]], [[3, 1], ["DMA"]], [[4, 0], ["East"]], [[2, 3], ["West"]], [[5, 0], ["East"]], [[1, 3], ["DMA"]], [[6, 0], ["North", "East"]], [[6, 1], ["North"]], [[7, 0], ["North"]], [[6, 2], ["East"]], [[7, 1], ["DMA"]], [[7, 2], ["East"]], [[8, 2], ["DMA"]], [] ],
+"route1": [ [[6, 0], ["West", "North"]], [[5, 0], ["West", "North"]], [[6, 1], ["North"]], [[4, 0], ["West"]], [[5, 1], ["West"]], [[6, 2], ["East"]], [[3, 0], ["West", "North"]], [[4, 1], ["North"]], [[7, 2], ["North"]], [[2, 0], ["North"]], [[3, 1], ["DMA"]], [[4, 2], ["West"]], [[7, 3], ["East"]], [[2, 1], ["West"]], [[3, 2], ["West"]], [[8, 3], ["DMA"]], [[1, 1], ["West"]], [[2, 2], ["DMA"]], [[0, 1], ["North"]], [[0, 2], ["DMA"]], [] ],
 
-"route0": [ [[0,0], ["East"]], [[1,0], ["East"]], [[2,0], ["North"]], [[2,1], ["North"]], [[2,2], ["West", "East"]], [[1,2], ["South"]], [[3,2], ["North", "South"]] ],
-"route1": [ [[2,2], ["West"]], [[1,2], ["North", "West"]], [[1,3], ["West"]], [[0,2], ["North", "South"]], [[0,1], ["South", "West", "East", "North"]] ],
-
-"":1
+"end json": 0
 }

@@ -11,20 +11,21 @@
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
 
-#include "mlir/IR/Dialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include <map>
 
 using namespace mlir;
@@ -141,11 +142,13 @@ bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
 bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
 }
+} // namespace xilinx
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/AIE.h.inc"
 
+namespace xilinx {
 namespace AIE {
 
 #define GEN_PASS_CLASSES
@@ -169,6 +172,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 #include "aie/AIEPasses.h.inc"
 
 } // AIE
-} // xilinx
+} // namespace xilinx
 
 #endif

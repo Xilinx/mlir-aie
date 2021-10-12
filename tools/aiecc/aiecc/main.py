@@ -80,6 +80,7 @@ def run_flow(opts, tmpdirname):
                             '--cse',
                             '--aie-vector-opt',
                             '--convert-vector-to-llvm',
+                            '--convert-memref-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
@@ -107,7 +108,8 @@ def run_flow(opts, tmpdirname):
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
             do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
-            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
+            '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           if(opts.xbridge):

@@ -64,7 +64,7 @@ module {
     AIE.connect<North : 0, South : 2>
   }
   %mux = AIE.shimmux(%t20)  {
-    AIE.connect<South : 2, DMA : 0>
+    AIE.connect<North : 2, DMA : 0>
   }
   %dma = AIE.shimDMA(%t20)  {
       %lock0 = AIE.lock(%t20, 0)

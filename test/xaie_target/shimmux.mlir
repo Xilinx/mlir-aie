@@ -18,6 +18,6 @@
 module {
   %t20 = AIE.tile(2, 0)
   %mux = AIE.shimmux(%t20)  {
-    AIE.connect<DMA : 0, South : 3>
+    AIE.connect<DMA : 0, North : 3>
   }
 }
