@@ -334,7 +334,7 @@ SECTIONS
       registry.insert<LLVM::LLVMDialect>();
     });                
     TranslateFromMLIRRegistration
-    registrationXAIE("aie-generate-xaiev2", [](ModuleOp module, raw_ostream &output) {
+    registrationXAIEv2("aie-generate-xaiev2", [](ModuleOp module, raw_ostream &output) {
         return AIETranslateToXAIEV2(module, output);
     },
     [](DialectRegistry &registry) {
