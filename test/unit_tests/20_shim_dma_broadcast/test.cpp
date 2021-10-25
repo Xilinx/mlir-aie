@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
     printf("PASS!\n");
     return 0;
   } else {
-    printf("fail %d/%d.\n", (2*DMA_COUNT - errors), DMA_COUNT);
+    printf("fail %d/%d.\n", (2 * DMA_COUNT - errors), DMA_COUNT);
     return -1;
   }
 }
