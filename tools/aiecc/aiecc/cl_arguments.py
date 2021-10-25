@@ -56,6 +56,11 @@ def parse_args():
             default=not aie_compile_with_xchesscc,
             action='store_false',
             help='Compile using peano')
+    parser.add_argument('--pathfinder',
+            dest="pathfinder",
+            default=False,
+            action='store_true',
+            help='Compile using pathfinder router')
     parser.add_argument("arm_args",
             action='store',
             help='arguments for ARM compiler',
