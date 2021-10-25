@@ -14,6 +14,27 @@
 #define ACDC_check(s, r, v, errors) if(r != v) {printf("ERROR %s: %s expected %d, but was %d!\n", s, #r, v, r); errors++;}
 #define ACDC_check_float(s, r, v, errors) if(r != v) {printf("ERROR %s: %s expected %f, but was %f!\n", s, #r, v, r); errors++;}
 
+#ifdef LIBXAIENGINEV2
+
+/// Dump the contents of the memory associated with the given tile.
+void ACDC_dump_tile_memory(XAie_DevInst *DevInst, XAie_LocType loc);
+
+/// Clear the contents of the memory associated with the given tile.
+void ACDC_clear_tile_memory(XAie_DevInst *DevInst, XAie_LocType loc);
+
+/// Print the status of a dma represented by the given tile.
+void ACDC_print_dma_status(XAie_DevInst *DevInst, XAie_LocType loc);
+
+/// Print the status of a core represented by the given tile.
+void ACDC_print_tile_status(XAie_DevInst *DevInst, XAie_LocType loc);
+
+/// Zero out the program and configuration memory of the tile.
+void ACDC_clear_config(XAie_DevInst *DevInst, XAie_LocType loc);
+
+/// Zero out the configuration memory of the shim tile.
+void ACDC_clear_shim_config(XAie_DevInst *DevInst, XAie_LocType loc);
+
+#else
 /// Dump the contents of the memory associated with the given tile.
 void ACDC_dump_tile_memory(struct XAieGbl_Tile &tile);
 
@@ -31,3 +52,4 @@ void ACDC_clear_config(struct XAieGbl_Tile &tile);
 
 /// Zero out the configuration memory of the shim tile.
 void ACDC_clear_shim_config(struct XAieGbl_Tile &tile);
+#endif
