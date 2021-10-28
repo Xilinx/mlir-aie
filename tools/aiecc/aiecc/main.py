@@ -15,11 +15,12 @@ import platform
 import sys
 import time
 from subprocess import PIPE, run, call
-# from joblib import Parallel, delayed
+from multiprocessing.pool import ThreadPool
+
 import tempfile
 import shutil
-
 import aiecc.cl_arguments
+
 
 def do_call(command):
     global opts
@@ -37,7 +38,7 @@ def do_run(command):
     ret = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True)
     return ret
 
-def run_flow(opts, tmpdirname):
+def run_flow(tmpdirname):
     thispath = os.path.dirname(os.path.realpath(__file__))
     me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
     libc = os.path.join(thispath, '..','..','runtime_lib', 'libc.a')
@@ -80,9 +81,8 @@ def run_flow(opts, tmpdirname):
                             '--cse',
                             '--aie-vector-opt',
                             '--convert-vector-to-llvm',
-                            '--convert-memref-to-llvm',
-                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
-                            '--canonicalize', '--cse', file_core, '-o', file_opt_core])
+                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_core, '-o', file_opt_core])
+        #do_call(['aie-opt', '--aie-llvm-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
         file_core_ldscript = tmpcorefile(core, "ld.script")
@@ -109,8 +109,7 @@ def run_flow(opts, tmpdirname):
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           else:
             do_call(['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
-            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
-            '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+            do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           if(opts.xbridge):
@@ -120,28 +119,32 @@ def run_flow(opts, tmpdirname):
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
-    # Compile each core in parallel
-    # Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
-    for core in cores:
-      process_core(core)
 
-    # Generate the included host interface
-    file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
-    do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
-    file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-    do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+    def process_arm_cgen():
+      file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
+      do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+      file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
+      do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
 
-    # Lastly, compile the generated host interface with any ARM code.
-    cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
-    if(opts.sysroot):
-      cmd += ['--sysroot=%s' % opts.sysroot]
-    cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
-    cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
-    cmd += ['-I%s' % tmpdirname]
-    cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+      # Lastly, compile the generated host interface with any ARM code.
+      cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+      if(opts.sysroot):
+        cmd += ['--sysroot=%s' % opts.sysroot]
+      cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
+      cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
+      cmd += ['-I%s' % tmpdirname]
+      cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
 
-    if(len(opts.arm_args) > 0):
-      do_call(cmd + opts.arm_args)
+      if(len(opts.arm_args) > 0):
+        do_call(cmd + opts.arm_args)
+    
+    # multi-threaded by multiprocess.pool.ThreadPool, it shares the same API as multiprocess pool
+    with ThreadPool() as thdpool:
+      thdpool.map(process_core, (cores))
+      thdpool.apply_async(process_arm_cgen)
+      thdpool.close()
+      thdpool.join()
+
 
 def main(builtin_params={}):
     thispath = os.path.dirname(os.path.realpath(__file__))
@@ -189,7 +192,9 @@ def main(builtin_params={}):
       if(opts.verbose):
         print('created temporary directory', tmpdirname)
 
-      run_flow(opts, tmpdirname)
+      run_flow(tmpdirname)
     else:
       with tempfile.TemporaryDirectory() as tmpdirname:
-        run_flow(opts, tmpdirname)
+        run_flow(tmpdirname)
+
+    
