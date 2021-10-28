@@ -61,8 +61,8 @@ def prepend_path(path):
 
     current_paths = llvm_config.config.environment.get('PATH', None)
     if current_paths:
-        current_paths = current_paths.split(os.path.pathsep)
-        paths = [os.path.normcase(os.path.normpath(p)) for p in current_paths]
+        paths.extend(current_paths.split(os.path.pathsep))
+        paths = [os.path.normcase(os.path.normpath(p)) for p in paths]
     else:
         paths = []
 
