@@ -6,6 +6,11 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
+//
+// Note:
+// this large prime-sieve pattern is generated from code_gen.py,
+// it contains 360 cores in this pattern, user could change the core numbers
+// by specifying different rows and cols value in code_gen.py
 
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf 

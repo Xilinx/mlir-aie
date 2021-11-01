@@ -146,8 +146,8 @@ def run_flow(opts, tmpdirname):
 
     if (opts.nthreads == True):
       with ThreadPool() as thdpool:
-          thdpool.map(process_core, (cores))
           thdpool.apply_async(process_arm_cgen)
+          thdpool.map(process_core, (cores))
           thdpool.close()
           thdpool.join()
     else:
