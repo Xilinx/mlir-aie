@@ -122,23 +122,26 @@ def run_flow(opts, tmpdirname):
 
 
     def process_arm_cgen():
-        # Generate the included host interface
-        file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
+      # Generate the included host interface
+      file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
+      if(opts.pathfinder):
+        do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+      else:
         do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
-        file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-        do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+      file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
+      do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
 
-        # Lastly, compile the generated host interface with any ARM code.
-        cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
-        if(opts.sysroot):
-          cmd += ['--sysroot=%s' % opts.sysroot]
-        cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
-        cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
-        cmd += ['-I%s' % tmpdirname]
-        cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+      # Lastly, compile the generated host interface with any ARM code.
+      cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+      if(opts.sysroot):
+        cmd += ['--sysroot=%s' % opts.sysroot]
+      cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
+      cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
+      cmd += ['-I%s' % tmpdirname]
+      cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
 
-        if(len(opts.arm_args) > 0):
-          do_call(cmd + opts.arm_args)
+      if(len(opts.arm_args) > 0):
+        do_call(cmd + opts.arm_args)
 
 
     if (opts.nthreads == True):
@@ -151,6 +154,7 @@ def run_flow(opts, tmpdirname):
       for core in cores:
         process_core(core)
       process_arm_cgen()
+
 
 
 def main(builtin_params={}):
