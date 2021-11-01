@@ -127,7 +127,10 @@ def run_flow(opts, tmpdirname):
 
     # Generate the included host interface
     file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
-    do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+    if(opts.pathfinder):
+      do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+    else:
+      do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
     file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
     do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
 
