@@ -60,6 +60,11 @@ def parse_args():
             action='store',
             help='arguments for ARM compiler',
             nargs=argparse.REMAINDER)
+    parser.add_argument('--nthreads',
+            dest="nthreads",
+            default=False,
+            action='store_false',
+            help='Compile with multi-thread pool')
 
     opts = parser.parse_args(sys.argv[1:])
 
