@@ -132,7 +132,11 @@ def run_flow(opts, tmpdirname):
     else:
       do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
     file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-    do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+    if(opts.xaie == 2):
+        do_call(['aie-translate', '--aie-generate-xaiev2', file_physical, '-o', file_inc_cpp])
+    else:
+        do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+
 
     # Lastly, compile the generated host interface with any ARM code.
     cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
