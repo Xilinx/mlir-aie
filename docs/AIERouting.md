@@ -96,7 +96,7 @@ Here is an example of how users can route the `test/create-flows/broadcase.mlir`
 cd ${path-to-mlir-aie}/tools/aie-routing-command-line
 aie-opt --aie-create-pathfinder-flows --aie-find-flows ${path-to-mlir-aie}/test/create-flows/broadcast.mlir \
     | aie-translate --aie-flows-to-json > example.json
-python3 print.py -j example.json
+python3 visualize.py -j example.json
 ```
 
 This script creates a new directory `${path-to-mlir-aie}/tools/aie-routing-command-line/example` containing a set of text files each visualizing one flow in the design.
@@ -154,3 +154,5 @@ Each text file visualizes all flows in the design, while highlighting the curren
 Number on connection indicates the traffic in current direction.
 'S' and 'D' annotate the sources and destinations of flows.
 Asterisks indicate the tiles in use.
+
+For details on the usage of `visualize.py` please check out `python3 visualize.py --help`.
