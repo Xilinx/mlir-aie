@@ -81,7 +81,8 @@ def run_flow(opts, tmpdirname):
                             '--aie-vector-opt',
                             '--convert-vector-to-llvm',
                             '--convert-memref-to-llvm',
-                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv', file_core, '-o', file_opt_core])
+                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
+                            '--canonicalize', '--cse', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
         file_core_ldscript = tmpcorefile(core, "ld.script")
@@ -126,9 +127,16 @@ def run_flow(opts, tmpdirname):
 
     # Generate the included host interface
     file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
-    do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+    if(opts.pathfinder):
+      do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+    else:
+      do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
     file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-    do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+    if(opts.xaie == 2):
+        do_call(['aie-translate', '--aie-generate-xaiev2', file_physical, '-o', file_inc_cpp])
+    else:
+        do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+
 
     # Lastly, compile the generated host interface with any ARM code.
     cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']

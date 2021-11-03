@@ -46,6 +46,11 @@ class canvas:
         
     def draw_character(self, point, character):
         self.characters.append([point, character]);
+
+    def replace_character(self, point, character, replacement):
+        if (self.characters.count([point, character])):
+            self.characters.remove([point, character]);
+        self.characters.append([point, replacement]);
         
     def draw_line(self, start, finish):
         if (self.direction([start,finish]) == Direction.Vert):
@@ -236,11 +241,6 @@ def draw_switchbox(canvas, xoffset, yoffset, source_count, destination_count,
     # draw source and destination count
     if(source_count > 0 or destination_count > 0):
         c.draw_character((xoffset+7,yoffset+5), '*')
-    if(source_count > 0):
-        c.draw_character((xoffset+5,yoffset+5), 'S')
-    if(destination_count > 0):
-        c.draw_character((xoffset+9,yoffset+5), 'D')
-    
 
     # left of the switchbox (south)
     if northbound > 0: 
@@ -302,6 +302,13 @@ def draw_route(c, route):
         yoffset = SB_HEIGHT*col
         if len(route[i]) == 1: continue
         dirs = route[i][1]
+
+        # draw source and destination
+        if(i == 0):
+            c.draw_character((xoffset+5,yoffset+5), 'S')
+        if(i == (len(route)-2)):
+            c.draw_character((xoffset+9,yoffset+5), 'D')
+
         if(i == 0): 
             if(row == 0): # for routes starting in the shim, draw arrows coming from PL
                 c.draw_character((xoffset+1, yoffset+4), right_arrow)
@@ -309,6 +316,8 @@ def draw_route(c, route):
                 c.draw_character((xoffset+3, yoffset+4), right_arrow)
 
         for j in range(len(dirs)):
+            # draw indications for cores the route passes through
+            c.replace_character((xoffset+7,yoffset+5), '*', '#')
             # 0 = North, 1 = East, 2 = South, 3 = West
             if(dirs[j] == "North"):
                 c.draw_character((xoffset+11, yoffset+4), right_arrow)
@@ -326,6 +335,9 @@ def draw_route(c, route):
             elif(dirs[j] == "West"):
                 c.draw_character((xoffset+8, yoffset+2), up_arrow)
                 col = col-1
+            elif(dirs[j] == "DMA"):
+                # draw destination
+                c.draw_character((xoffset+9,yoffset+5), 'D')
 
 
 

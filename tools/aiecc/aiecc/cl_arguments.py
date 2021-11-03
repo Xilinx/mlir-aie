@@ -56,6 +56,21 @@ def parse_args():
             default=not aie_compile_with_xchesscc,
             action='store_false',
             help='Compile using peano')
+    parser.add_argument('--pathfinder',
+            dest="pathfinder",
+            default=False,
+            action='store_true',
+            help='Compile using pathfinder router')
+    parser.add_argument('--aie-generate-xaie',
+            dest="xaie",
+            default=1,
+            action='store_const', const=1,
+            help='Generate libxaie v1 drivers (default is v1)')
+    parser.add_argument('--aie-generate-xaiev2',
+            dest="xaie",
+            default=1,
+            action='store_const', const=2,
+            help='Generate libxaie v2 drivers (default is v1)')
     parser.add_argument("arm_args",
             action='store',
             help='arguments for ARM compiler',
