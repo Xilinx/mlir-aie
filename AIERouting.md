@@ -86,3 +86,73 @@ AIE.flow(%t70, "DMA" : 0, %t73, "DMA" : 0)
 AIE.flow(%t73, "DMA" : 1, %t70, "DMA" : 0)
 ```
 
+## Visualizing Routing
+
+We support the visualization of routed modules in json format. 
+
+Here is an example of how users can route the `test/create-flows/broadcase.mlir` test, followed by converting the routed module into json format for visualization.
+
+```
+cd ${path-to-mlir-aie}/tools/aie-routing-command-line
+aie-opt --aie-create-pathfinder-flows --aie-find-flows ${path-to-mlir-aie}/test/create-flows/broadcast.mlir \
+    | aie-translate --aie-flows-to-json > example.json
+python3 visualize.py -j example.json
+```
+
+This script creates a new directory `${path-to-mlir-aie}/tools/aie-routing-command-line/example` containing a set of text files each visualizing one flow in the design.
+Below is an example of visualizing the first flow of `test/create-flows/broadcast.mlir`.
+
+```
+    ┌─────┐   ┌─────┐ ₁ ┌─────┐   ┌─────┐       
+    │ 0,0 │   │ 0,1 ├───┤ 0,2 │   │ 0,3 │       
+    │     │   │     │   │  * D│   │     │       
+    └─────┘   └───┬─┘   └─────┘   └─────┘       
+                  │¹                            
+    ┌─────┐   ┌───┴─┐   ┌─────┐   ┌─────┐       
+    │ 1,0 │   │ 1,1 │   │ 1,2 │   │ 1,3 │       
+    │     │   │     │   │     │   │  * D│       
+    └─────┘   └───┬─┘   └─────┘   └───┬─┘       
+                  │¹                  ↑¹        
+    ┌─────┐ ₂ ┌───┴─┐ ₁ ┌─────┐ ₁ ┌───┴─┐       
+ →→→│ 2,0 ├→→→┤ 2,1 ├→→→┤ 2,2 ├→→→┤ 2,3 │       
+    │S *  │   │     │   │  * D│   │     │       
+    └─┬─┬─┘   └─┬───┘   └───┬─┘   └─────┘       
+     ¹↓ │¹     ¹↓           │¹                  
+    ┌─┴─┴─┐ ₁ ┌─┴───┐   ┌───┴─┐   ┌─────┐       
+    │ 3,0 ├───┤ 3,1 │   │ 3,2 │   │ 3,3 │       
+    │     │   │  * D│   │     │   │     │       
+    └─┬─┬─┘   └─────┘   └───┬─┘   └─────┘       
+     ¹↓ │¹                  │¹                  
+    ┌─┴─┴─┐   ┌─────┐ ₁ ┌───┴─┐   ┌─────┐       
+    │ 4,0 │   │ 4,1 ├───┤ 4,2 │   │ 4,3 │       
+    │     │   │     │   │     │   │     │       
+    └─┬─┬─┘   └───┬─┘   └─────┘   └─────┘       
+     ¹↓ │¹        │¹                            
+    ┌─┴─┴─┐ ₁ ┌───┴─┐   ┌─────┐   ┌─────┐       
+    │ 5,0 ├───┤ 5,1 │   │ 5,2 │   │ 5,3 │       
+    │     │   │     │   │     │   │     │       
+    └─┬─┬─┘   └─────┘   └─────┘   └─────┘       
+     ¹↓ │¹                                      
+    ┌─┴─┴─┐ ₂ ┌─────┐ ₂ ┌─────┐   ┌─────┐       
+    │ 6,0 ├→→→┤ 6,1 ├→→→┤ 6,2 │   │ 6,3 │       
+    │S *  │   │     │   │     │   │     │       
+    └─┬───┘   └─────┘   └─┬───┘   └─────┘       
+     ¹↓                  ²↓                     
+    ┌─┴───┐ ₁ ┌─────┐   ┌─┴───┐ ₁ ┌─────┐       
+    │ 7,0 ├→→→┤ 7,1 │   │ 7,2 ├───┤ 7,3 │       
+    │     │   │  * D│   │     │   │     │       
+    └─────┘   └─────┘   └─┬───┘   └─┬───┘       
+                         ¹↓        ¹│           
+    ┌─────┐   ┌─────┐   ┌─┴───┐   ┌─┴───┐       
+    │ 8,0 │   │ 8,1 │   │ 8,2 │   │ 8,3 │       
+    │     │   │     │   │  * D│   │  * D│       
+    └─────┘   └─────┘   └─────┘   └─────┘      
+    
+```
+
+Each text file visualizes all flows in the design, while highlighting the current flow with arrows.
+Number on connection indicates the traffic in current direction.
+'S' and 'D' annotate the sources and destinations of flows.
+Asterisks indicate the tiles in use.
+
+For details on the usage of `visualize.py` please check out `python3 visualize.py --help`.
