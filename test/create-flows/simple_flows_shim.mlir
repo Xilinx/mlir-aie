@@ -18,10 +18,6 @@
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T21]])  {
 // CHECK:    AIE.connect<North : 0, South : 0>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.shimmux(%[[T20]])  {
-// CHECK:    AIE.connect<North : 0, PLIO : 0>
-// CHECK:  }
-
 module {
   %t23 = AIE.tile(2, 1)
   %t22 = AIE.tile(2, 0)
