@@ -1,0 +1,13 @@
+/build*
+.vscode
+__pycache__
+
+/platforms/vck190_bare/petalinux/build
+/platforms/vck190_bare/petalinux/components
+/platforms/vck190_bare/petalinux/images
+/platforms/vck190_bare/petalinux/project-spec/configs/*.old
+/platforms/vck190_bare/petalinux/sysroot
+
+/platforms/vck190_bare/vivado/*.xpe
+/platforms/vck190_bare/vivado/*.xsa
+/platforms/vck190_bare/vivado/vck190_bare_proj
