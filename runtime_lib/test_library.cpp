@@ -469,4 +469,29 @@ void ACDC_clear_shim_config(struct XAieGbl_Tile &tile) {
     clear_range(TileAddr, 0x3F200, 0x3F37C);
 }
 
+
+void computeStats(u32 performance_counter[], int n){
+  u32 total_0 = 0;
+
+  for (int i = 0; i < n; i ++)
+  {
+    total_0 += performance_counter[i];
+  }
+
+  //printf("Totals: %u \n", total_0);
+  float mean_0 = (float)total_0 / n;
+
+  float sdev_0 = 0;
+
+  for (int i = 0; i < n; i ++)
+  {
+    sdev_0 += std::pow(((float)performance_counter[i] - mean_0), 2);
+  }
+
+  sdev_0 = std::sqrt(sdev_0 / n);
+
+  printf("Mean and Standard Devation: %f, %f \n", mean_0, sdev_0);
+  
+}
+
 #endif
