@@ -712,9 +712,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         output << "\tXAIETILE_SHIM_STRM_DEM_SOUTH"
                << // NOTE hardcoded to SOUTH to match definitions
                   //      from libxaie
-            connectOp.sourceIndex() << ",\n"
-               << "\tXAIETILE_SHIM_STRM_DEM_"
-               << stringifyWireBundle(connectOp.destBundle()).upper() << ");\n";
+            connectOp.sourceIndex() << ",\n";
+        if (connectOp.destBundle() == WireBundle::PLIO) {
+          output << "\tXAIETILE_SHIM_STRM_DEM_PL);\n";
+        } else {
+          output << "\tXAIETILE_SHIM_STRM_DEM_"
+                 << stringifyWireBundle(connectOp.destBundle()).upper()
+                 << ");\n";
+        }
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
         output << "XAieTile_ShimStrmMuxConfig(" << tileInstStr("x", "y")
@@ -722,10 +727,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         output << "\tXAIETILE_SHIM_STRM_MUX_SOUTH"
                << // NOTE hardcoded to SOUTH to match definitions
                   //      from libxaie
-            connectOp.destIndex() << ",\n"
-               << "\tXAIETILE_SHIM_STRM_MUX_"
-               << stringifyWireBundle(connectOp.sourceBundle()).upper()
-               << ");\n";
+            connectOp.destIndex() << ",\n";
+        if (connectOp.sourceBundle() == WireBundle::PLIO) {
+          output << "\tXAIETILE_SHIM_STRM_MUX_PL);\n";
+        } else {
+          output << "\tXAIETILE_SHIM_STRM_MUX_"
+                 << stringifyWireBundle(connectOp.sourceBundle()).upper()
+                 << ");\n";
+        }
       }
     }
   }

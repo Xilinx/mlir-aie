@@ -314,15 +314,33 @@ ConvertFlowsToInterconnect(
         SwitchboxOp swOp = analyzer.getSwitchbox(rewriter, curr->col, curr->row);
         int shim_ch = srcChannel;
         //TODO: must reserve N3, N7, S2, S3 for DMA connections
-        if(curr == srcSB && srcSB->row == 0) {
+        if (curr == srcSB && srcSB->row == 0 &&
+            analyzer.getTile(rewriter, srcSB->col, 0).isShimNOCTile()) {
           // shim DMAs at start of flows
-          ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
-          if(srcBundle == WireBundle::DMA)
+          if (srcBundle == WireBundle::DMA) {
             shim_ch = (srcChannel == 0 ? 3 : 7); // must be either DMA0 -> N3 or DMA1 -> N7
-          else if(srcChannel >= 3) shim_ch = srcChannel + 1;
-          addConnection(rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                        flowOp, srcBundle, srcChannel, WireBundle::North,
-                        shim_ch);
+            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+            addConnection(rewriter,
+                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
+                          srcBundle, srcChannel, WireBundle::North, shim_ch);
+          } else if (srcBundle ==
+                     WireBundle::NOC) { // must be NOC0/NOC1 -> N2/N3 or
+                                        // NOC2/NOC3 -> N6/N7
+            shim_ch = (srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2);
+            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+            addConnection(rewriter,
+                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
+                          srcBundle, srcChannel, WireBundle::North, shim_ch);
+          } else if (srcBundle ==
+                     WireBundle::PLIO) { // PLIO at start of flows with mux
+            if ((srcChannel == 2) || (srcChannel == 3) || (srcChannel == 6) ||
+                (srcChannel == 7)) { // Only some PLIO requrie mux
+              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+              addConnection(
+                  rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                  flowOp, srcBundle, srcChannel, WireBundle::North, shim_ch);
+            }
+          }
         }
         for(auto it = s.second.begin(); it != s.second.end(); it++) {
           WireBundle bundle = (*it).first;
@@ -331,19 +349,37 @@ ConvertFlowsToInterconnect(
           if(curr == srcSB && srcSB->row == 0) {
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), flowOp,
               WireBundle::South, shim_ch, bundle, channel);
-          } else if ( curr->row == 0 && 
-                    (bundle == WireBundle::DMA ||
-                     bundle == WireBundle::PLIO) ) {
-            // shim DMAs at end of flows
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
-            if(bundle == WireBundle::DMA)
-              shim_ch = (channel == 0 ? 2 : 3); // must be either N2 -> DMA0 or N3 -> DMA1
-            else if(srcChannel >= 3) shim_ch = srcChannel + 1;
+          } else if (curr->row == 0 &&
+                     (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
+                      bundle == WireBundle::NOC)) {
+            shim_ch = channel;
+            if (analyzer.getTile(rewriter, curr->col, 0).isShimNOCTile()) {
+              // shim DMAs at end of flows
+              if (bundle == WireBundle::DMA) {
+                shim_ch = (channel == 0
+                               ? 2
+                               : 3); // must be either N2 -> DMA0 or N3 -> DMA1
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                addConnection(
+                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                    flowOp, WireBundle::North, shim_ch, bundle, channel);
+              } else if (bundle == WireBundle::NOC) {
+                shim_ch =
+                    (channel + 2); // must be either N2/3/4/5 -> NOC0/1/2/3
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                addConnection(
+                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                    flowOp, WireBundle::North, shim_ch, bundle, channel);
+              } else if (channel >=
+                         2) { // must be PLIO...only PLIO >= 2 require mux
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                addConnection(
+                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                    flowOp, WireBundle::North, shim_ch, bundle, channel);
+              }
+            }
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), flowOp,
               s.first.first, s.first.second, WireBundle::South, shim_ch);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          WireBundle::North, shim_ch, bundle, channel);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()), flowOp,
