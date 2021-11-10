@@ -8,6 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// This tests the lowering from AIE.switchbox ops to configuration register
+// writes for LibXAIEV1. This test targets NoC shim tiles that must configure
+// stream switches, and for some PLIOs the shimmux, to connect AIE array 
+// streams to PL.
+//
+
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: mlir_configure_switchboxes

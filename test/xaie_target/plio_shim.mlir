@@ -8,6 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+//
+// This tests the lowering from AIE.switchbox ops to configuration register
+// writes for LibXAIEV1. This test targets PL shim tiles that only contain
+// stream switches that connect the AIE array to PL.
+//
+
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: mlir_configure_switchboxes
