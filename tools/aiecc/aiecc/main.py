@@ -78,7 +78,6 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-opt', '--aie-normalize-address-spaces',
                             '--canonicalize',
                             '--cse',
-                            '--aie-vector-opt',
                             '--convert-vector-to-llvm',
                             '--convert-memref-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
