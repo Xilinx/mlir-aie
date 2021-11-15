@@ -739,6 +739,53 @@ def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
   let cppNamespace = "xilinx::AIE";
 }
 
+def AIE_DMABD2DOp: AIE_Op<"dmaBd2D", []> {
+  let summary = "Enable 2D (X and Y) addressing scheme for a dma block descriptor";
+  let description = [{
+    This operation enables 2 dimensional address generation for a block descriptor for DMA operations. 
+    In particular, it specifies the offset, increment and wrap in the X and Y dimension.
+    
+    This operation must be used in an MLIR block that lives inside a MemOp's region, and before AIE.dmaBd.
+    The block descriptor specifies what lock to use and the buffer configuration.
+
+    Example:
+    ```
+      // this defines a BD that uses lock %lck0 and buffer %buf0
+      ^bd5:
+        AIE.useLock(%lck, "Acquire", 0, 0)
+        AIE.dmaBd2D(4, 1, 8, 1, 8, 4)
+        AIE.dmaBd(<$buf0 : memref<8x4xi32>, 0, 32>, 1)
+        AIE.useLock(%lck, "Release", 1, 0)
+        br ^bd6 // point to the next Block, which is also a different Block Descriptor
+
+    ```
+    
+  }];
+
+  let arguments = (
+    ins I32Attr:$X_offset,
+        I32Attr:$X_increment,
+        I32Attr:$X_wrap,
+        I32Attr:$Y_offset,
+        I32Attr:$Y_increment,
+        I32Attr:$Y_wrap
+  );
+
+  let assemblyFormat = [{
+    `(` $X_offset `,` $X_increment `,` $X_wrap `,` $Y_offset `,` $Y_increment `,` $Y_wrap  `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    int getXOffset() { return X_offset(); }
+    int getXIncrement() { return X_increment(); }
+    int getXWrap() { return X_wrap(); }
+    int getYOffset() { return Y_offset(); }
+    int getYIncrement() { return Y_increment(); }
+    int getYWrap() { return Y_wrap(); }
+  }];
+
+}
+
 def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   let summary = "Enable packet headers for a dma block descriptor";
   let description = [{

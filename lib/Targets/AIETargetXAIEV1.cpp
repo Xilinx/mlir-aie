@@ -229,6 +229,13 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       }
     }
     for (auto &block : memOp.body()) {
+      bool foundBd2D = false;
+      int offsetX = 1;
+      int incrementX = 0;
+      int wrapX = 255;
+      int offsetY = 256;
+      int incrementY = 255;
+      int wrapY = 255;
       bool foundBdPacket = false;
       int packetType = 0;
       int packetID = 0;
@@ -298,6 +305,16 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         packetID = op.getPacketID();
       }
 
+      for (auto op : block.getOps<DMABD2DOp>()) {
+        foundBd2D = true;
+        offsetX = op.getXOffset();
+        incrementX = op.getXIncrement();
+        wrapX = op.getXWrap();
+        offsetY = op.getYOffset();
+        incrementY = op.getYIncrement();
+        wrapY = op.getYWrap();
+      }
+
       int bdNum = blockMap[&block];
       if (foundBd) {
         if (hasA) {
@@ -333,6 +350,20 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
           output << "XAieDma_TileBdSetNext(" << tileDMAInstStr(col, row) << ", "
                  << " /* bd */ " << bdNum << ", "
                  << " /* nextbd */ " << nextBdNum << ");\n";
+        }
+        if (foundBd2D) {
+          output << "XAieDma_TileBdSetXy2d(" << tileDMAInstStr(col, row) << ", "
+                 << " /* bd */ " << bdNum << ", "
+                 << " /* xyType */ XAIEDMA_TILE_BD_2DDMA_X, "
+                 << " /* incr */ " << incrementX << ", "
+                 << " /* wrap */ " << wrapX << ", "
+                 << " /* ofst */ " << offsetX << ");\n";
+          output << "XAieDma_TileBdSetXy2d(" << tileDMAInstStr(col, row) << ", "
+                 << " /* bd */ " << bdNum << ", "
+                 << " /* xyType */ XAIEDMA_TILE_BD_2DDMA_Y, "
+                 << " /* incr */ " << incrementY << ", "
+                 << " /* wrap */ " << wrapY << ", "
+                 << " /* ofst */ " << offsetY << ");\n";
         }
         if (foundBdPacket) {
           output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
