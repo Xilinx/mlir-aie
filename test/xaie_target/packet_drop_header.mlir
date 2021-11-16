@@ -20,10 +20,10 @@
 // CHECK:   XAIETILE_STRSW_MPORT_SOUTH(&(TileInst[x][y]), 0),
 // CHECK:     XAIETILE_STRSW_MPORT_SOUTH(&(TileInst[x][y]), 0),
 // CHECK:     XAIE_DISABLE /*drop_header*/,
+
 //
-// This test configures the tile DMA buffer descriptor to transpose an 8x4xi32
-// input matrix as it is writted to the tile's local memory. It returns the
-// matrix to its original arrangement when it is output to the stream.
+// This tests the switchbox configuration lowering for packet switched routing
+// to drop headers when the packet's destination is a DMA.
 //
 module @aie_module  {
   %t70 = AIE.tile(7, 0)
