@@ -12,7 +12,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-export commithash=984e270a9a7063c370bcc80ee1fb3ec874d92b93
+export commithash=966b72098363d44adf2882b9c34fcdbe344ff913 
 
 git clone --depth 1 https://github.com/llvm/llvm-project.git llvm
 pushd llvm

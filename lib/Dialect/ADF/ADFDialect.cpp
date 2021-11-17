@@ -43,7 +43,7 @@ mlir::Type ADFDialect::parseType(mlir::DialectAsmParser &parser) const {
   {
     Type genType;
     auto parseResult =
-        generatedTypeParser(getContext(), parser, typeTag, genType);
+        generatedTypeParser(parser, typeTag, genType);
     if (parseResult.hasValue())
       return genType;
   }
@@ -59,17 +59,17 @@ void ADFDialect::printType(mlir::Type type,
     return;
 }
 
-Type InterfaceType::parse(MLIRContext *ctxt, DialectAsmParser &parser) {
+Type InterfaceType::parse(AsmParser &parser) {
   Type oneType;
   if (parser.parseLess() || parser.parseType(oneType) || parser.parseGreater())
     return Type();
 
-  return get(ctxt, oneType);
+  return get(parser.getContext(), oneType);
 }
-void InterfaceType::print(DialectAsmPrinter &printer) const {
+void InterfaceType::print(AsmPrinter &printer) const {
   printer << "interface<" << getType() << ">";
 }
-Type WindowType::parse(MLIRContext *ctxt, DialectAsmParser &parser) {
+Type WindowType::parse(AsmParser &parser) {
   Type oneType;
   int size;
   int overlap;
@@ -78,30 +78,30 @@ Type WindowType::parse(MLIRContext *ctxt, DialectAsmParser &parser) {
       parser.parseInteger(overlap) || parser.parseGreater())
     return Type();
 
-  return get(ctxt, oneType, size, overlap);
+  return get(parser.getContext(), oneType, size, overlap);
 }
-void WindowType::print(DialectAsmPrinter &printer) const {
+void WindowType::print(AsmPrinter &printer) const {
   printer << "window<" << getType() << ", " << getSize() << ", " << getOverlap()
           << ">";
 }
-Type StreamType::parse(MLIRContext *ctxt, DialectAsmParser &parser) {
+Type StreamType::parse(AsmParser &parser) {
   Type oneType;
   if (parser.parseLess() || parser.parseType(oneType) || parser.parseGreater())
     return Type();
 
-  return get(ctxt, oneType);
+  return get(parser.getContext(), oneType);
 }
-void StreamType::print(DialectAsmPrinter &printer) const {
+void StreamType::print(AsmPrinter &printer) const {
   printer << "stream<" << getType() << ">";
 }
-Type ParameterType::parse(MLIRContext *ctxt, DialectAsmParser &parser) {
+Type ParameterType::parse(AsmParser &parser) {
   Type oneType;
   if (parser.parseLess() || parser.parseType(oneType) || parser.parseGreater())
     return Type();
 
-  return get(ctxt, oneType);
+  return get(parser.getContext(), oneType);
 }
-void ParameterType::print(DialectAsmPrinter &printer) const {
+void ParameterType::print(AsmPrinter &printer) const {
   printer << "interface<" << getType() << ">";
 }
 

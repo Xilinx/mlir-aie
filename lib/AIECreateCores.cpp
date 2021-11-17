@@ -18,6 +18,10 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "aie/AIEDialect.h"
+#include "aie/AIETokenAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -34,9 +38,8 @@ struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
       : OpConversionPattern<FuncOp>(context, benefit), module(m), funcs(funcs) {
   }
 
-  LogicalResult
-  matchAndRewrite(FuncOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(FuncOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (funcs.find(op) == funcs.end())
       return failure();
@@ -53,9 +56,8 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
   RemoveAIECalls(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<CallOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(CallOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(CallOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (!op->getAttr("aie.x") || !op->getAttr("aie.y"))
       return failure();
@@ -178,15 +180,11 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
             Value arg = func.getArgument(operandID);
             Value buf = buffers[callOperands[operandID]];
             if (arg.getType().isIntOrFloat()) {
-              assert(t.getShape().size() == 1 &&
-                     "Expected MemRefType of shape 1");
-              assert(t.getShape()[0] == 1 &&
-                     "Expected MemRefType of single element");
+              assert(t.getShape().size() == 1 && "Expected MemRefType of shape 1");
+              assert(t.getShape()[0] == 1 && "Expected MemRefType of single element");
 
-              Value zero =
-                  builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
-              auto loadOp = builder.create<memref::LoadOp>(
-                  builder.getUnknownLoc(), arg.getType(), buf, zero);
+              Value zero = builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), 0);
+              auto loadOp = builder.create<memref::LoadOp>(builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
             } else {
               mapper.map(arg, buf);

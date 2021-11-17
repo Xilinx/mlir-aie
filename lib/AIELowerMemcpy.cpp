@@ -65,9 +65,8 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     rewriter.create<BranchOp>(rewriter.getUnknownLoc(), &endBlock);
   }
 
-  LogicalResult
-  matchAndRewrite(MemcpyOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(MemcpyOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Value srcBuf = op.srcBuf();
     Value dstBuf = op.dstBuf();

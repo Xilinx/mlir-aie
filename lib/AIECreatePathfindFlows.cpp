@@ -264,12 +264,17 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
   using OpConversionPattern<AIE::FlowOp>::OpConversionPattern;
   ModuleOp &module;
   DynamicTileAnalysis &analyzer;
-  ConvertFlowsToInterconnect(MLIRContext *context, ModuleOp &m,
-                             DynamicTileAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern<AIE::FlowOp>(context, benefit), module(m),
-        analyzer(a) {}
+ConvertFlowsToInterconnect(
+    MLIRContext * context, 
+    ModuleOp &m, 
+    DynamicTileAnalysis &a,  
+    PatternBenefit benefit = 1) 
+    : OpConversionPattern<AIE::FlowOp>(context, benefit), 
+    module(m), analyzer(a) {}
 
-  LogicalResult match(Operation *op) const override { return success(); }
+  LogicalResult match(AIE::FlowOp op) const override {
+    return success();
+  }
 
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
@@ -293,8 +298,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
                << outIndex << "\n");
   }
 
-  void rewrite(AIE::FlowOp flowOp, ArrayRef<Value> operands,
-               ConversionPatternRewriter &rewriter) const override {
+  void rewrite(AIE::FlowOp flowOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
 
     TileOp srcTile = cast<TileOp>(flowOp.source().getDefiningOp());

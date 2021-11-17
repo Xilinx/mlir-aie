@@ -26,11 +26,8 @@
 using namespace mlir;
 
 int main(int argc, char **argv) {
-  // DialectRegistry registry;
-  // registerAllDialects(registry);
-  DialectRegistry registry;
-  registerAllDialects(registry);
-  registry.insert<scf::SCFDialect>();
+//  registerAllDialects(getContext());
+//#  registry.insert<scf::SCFDialect>();
 
   registerAllTranslations();
   xilinx::AIE::registerAIETranslations();

@@ -34,8 +34,8 @@ module {
   } { link_with="kernel.o" }
   
   %core14 = AIE.core(%tile14) {
-    %val1 = constant 7 : i32
-    %idx1 = constant 0 : index
+    %val1 = arith.constant 7 : i32
+    %idx1 = arith.constant 0 : index
     memref.store %val1, %buf14_0[%idx1] : memref<256xi32>
     // AIE.useLock(%lock14_7, "Acquire", 0) // acquire for write
     call @do_mac(%buf14_0) : (memref<256xi32>) -> ()

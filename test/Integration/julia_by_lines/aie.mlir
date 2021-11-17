@@ -25,26 +25,26 @@ module @test {
   func private @do_line(%A: memref<32x32xi32>, %MinRe : f32, %StepRe : f32, %Im : f32, %cols : i32) -> ()
 
   %core13 = AIE.core(%tile13) {
-    %MinRe = constant -1.5 : f32
-    %MaxRe = constant 0.5 : f32
-    %MinIm = constant -1.0 : f32
-    %MaxIm = constant 1.0 : f32
-    %size = constant 1024 : i32
+    %MinRe = arith.constant -1.5 : f32
+    %MaxRe = arith.constant 0.5 : f32
+    %MinIm = arith.constant -1.0 : f32
+    %MaxIm = arith.constant 1.0 : f32
+    %size = arith.constant 1024 : i32
 
-    %Frac = constant 1024.0 : f32
+    %Frac = arith.constant 1024.0 : f32
     %DiffRe = std.subf %MaxRe, %MinRe : f32
     %StepRe = std.divf %DiffRe, %Frac : f32
     %DiffIm = std.subf %MaxIm, %MinIm : f32
     %StepIm = std.divf %DiffIm, %Frac : f32
 
-    %lb = constant 0 : index
-    %ub = constant 1024 : index
-    %step = constant 1 : index
-    %c0 = constant 0 : index
+    %lb = arith.constant 0 : index
+    %ub = arith.constant 1024 : index
+    %step = arith.constant 1 : index
+    %c0 = arith.constant 0 : index
 
     %sum = scf.for %iv = %lb to %ub step %step
       iter_args(%Im = %MinIm) -> (f32) {
-      %Im_next = std.addf %Im, %StepIm : f32
+      %Im_next = addf %Im, %StepIm : f32
       AIE.useLock(%lock13_3, "Acquire", 1) // acquire
       call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
       AIE.useLock(%lock13_3, "Release", 0) // release for write

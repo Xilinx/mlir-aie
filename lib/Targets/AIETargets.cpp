@@ -29,6 +29,7 @@
 #include "aie/AIENetlistAnalysis.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 
 using namespace mlir;
 using namespace mlir::vector;
@@ -131,6 +132,7 @@ void registerAIETranslations() {
       [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -249,6 +251,7 @@ SECTIONS
       [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -326,6 +329,7 @@ SECTIONS
       [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -352,6 +356,7 @@ SECTIONS
       [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -365,6 +370,7 @@ SECTIONS
         registry.insert<xilinx::ADF::ADFDialect>();
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -380,6 +386,7 @@ SECTIONS
       [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -392,6 +399,7 @@ SECTIONS
       [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
+        registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();

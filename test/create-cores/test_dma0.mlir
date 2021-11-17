@@ -57,7 +57,7 @@
 // memcpy is a logical op represents memory transfer of buffers from one core's memory region to
 // a different core's memory region
 // When lowering, we need to insert the DMA ops on both the sender and receiver
-// In addition, we want to model the block descriptions for DMA transfers.
+// In arith.addition, we want to model the block descriptions for DMA transfers.
 // In the AIE array device, each DMA (of a Core Tile) has 16 Block Descriptions (BD) that are shared
 // among four DMA channels (MM2S0, MM2S1, S2MM0, S2MM1). The BDs can be chained together so that
 // a DMA channel can process one transfer after another

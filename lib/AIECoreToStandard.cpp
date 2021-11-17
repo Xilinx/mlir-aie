@@ -12,6 +12,7 @@
 #include "aie/AIENetlistAnalysis.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 #include "mlir/IR/Attributes.h"
@@ -31,14 +32,14 @@ using namespace xilinx::AIE;
 template <typename MyAIEOp>
 struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
+  using OpAdaptor = typename MyAIEOp::Adaptor;
   ModuleOp &module;
 
   AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<MyAIEOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(MyAIEOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(MyAIEOp op, OpAdaptor adaptor,
+                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     rewriter.eraseOp(Op);
@@ -54,9 +55,8 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
                           PatternBenefit benefit = 1)
       : OpConversionPattern<DebugOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(DebugOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(DebugOp op, OpAdaptor adaptor,
+                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     std::string funcName = "debug_i32";
@@ -78,9 +78,8 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
                             PatternBenefit benefit = 1)
       : OpConversionPattern<PutStreamOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(PutStreamOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
+                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     std::string funcName = "llvm.aie.put.";
@@ -111,9 +110,8 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
                             PatternBenefit benefit = 1)
       : OpConversionPattern<GetStreamOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(GetStreamOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GetStreamOp op, OpAdaptor adaptor,
+                                 ConversionPatternRewriter &rewriter) const override {
     std::string funcName = "llvm.aie.get.";
     if (op.isWideStream())
       funcName += "wss";
@@ -141,9 +139,8 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
                              PatternBenefit benefit = 1)
       : OpConversionPattern<PutCascadeOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(PutCascadeOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
+                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     std::string funcName = "llvm.aie.put.mcd";
@@ -165,9 +162,8 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
                              PatternBenefit benefit = 1)
       : OpConversionPattern<GetCascadeOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(GetCascadeOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GetCascadeOp op, OpAdaptor adaptor,
+                                 ConversionPatternRewriter &rewriter) const override {
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<FuncOp>(funcName);
     assert(getSCDFunc && "Could not find the intrinsic function!");
@@ -194,9 +190,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         mapper(mapper), tileToBuffers(tileToBuffers), tileCol(tileCol),
         tileRow(tileRow) {}
 
-  LogicalResult
-  matchAndRewrite(CoreOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(CoreOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
 
     Operation *Op = op.getOperation();
     int col = op.colIndex();
@@ -241,9 +236,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPoint(coreFunc);
       for (auto buffer : buffers) {
         auto symName = buffer.name().getValue();
-        rewriter.create<memref::GlobalOp>(rewriter.getUnknownLoc(), symName,
-                                          rewriter.getStringAttr("public"),
-                                          buffer.getType(), nullptr, false);
+        rewriter.create<memref::GlobalOp>(rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
+                                          buffer.getType(), nullptr, false, nullptr);
       }
       rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
       for (auto buffer : buffers) {
@@ -295,12 +289,12 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         auto useLockFunc = module.lookupSymbol<FuncOp>(funcName);
         assert(useLockFunc && "Could not find the intrinsic function!");
         SmallVector<Value, 2> args;
-        Value lockValue = rewriter.create<ConstantOp>(
+        Value lockValue = rewriter.create<arith::ConstantOp>(
             rewriter.getUnknownLoc(),
             IntegerType::get(rewriter.getContext(), 32),
             rewriter.getI32IntegerAttr(useLock.getLockValue()));
 
-        Value coreLockIDValue = rewriter.create<ConstantOp>(
+        Value coreLockIDValue = rewriter.create<arith::ConstantOp>(
             rewriter.getUnknownLoc(),
             IntegerType::get(rewriter.getContext(), 32),
             rewriter.getI32IntegerAttr(coreLockID));
@@ -443,25 +437,33 @@ struct AIECoreToStandardPass
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 
-    OwningRewritePatternList patterns(&getContext());
-    patterns.insert<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
-                    AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                    AIEDebugOpToStdLowering>(m.getContext(), m);
+    RewritePatternSet patterns(&getContext());
+    patterns.add<AIEPutStreamToStdLowering,
+                 AIEGetStreamToStdLowering,
+                 AIEPutCascadeToStdLowering,
+                 AIEGetCascadeToStdLowering,
+                 AIEDebugOpToStdLowering
+                >(m.getContext(), m);
 
-    patterns.insert<AIECoreToStandardFunc>(m.getContext(), m, mapper,
-                                           tileToBuffers, 1, tileCol, tileRow);
+    patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper, tileToBuffers, 1,
+        tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
 
-    OwningRewritePatternList removepatterns(&getContext());
-    removepatterns
-        .insert<AIEOpRemoval<AIE::TileOp>, AIEOpRemoval<AIE::FlowOp>,
-                AIEOpRemoval<AIE::MemOp>, AIEOpRemoval<AIE::ShimDMAOp>,
-                AIEOpRemoval<AIE::ShimMuxOp>, AIEOpRemoval<AIE::SwitchboxOp>,
-                AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::BufferOp>,
-                AIEOpRemoval<AIE::ExternalBufferOp>>(m.getContext(), m);
+    RewritePatternSet removepatterns(&getContext());
+    removepatterns.add<AIEOpRemoval<AIE::TileOp>,
+                       AIEOpRemoval<AIE::FlowOp>,
+                       AIEOpRemoval<AIE::MemOp>,
+                       AIEOpRemoval<AIE::ShimDMAOp>,
+                       AIEOpRemoval<AIE::ShimMuxOp>,
+                       AIEOpRemoval<AIE::SwitchboxOp>,
+                       AIEOpRemoval<AIE::LockOp>,
+                       AIEOpRemoval<AIE::BufferOp>,
+                       AIEOpRemoval<AIE::ExternalBufferOp>
+                      >(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();

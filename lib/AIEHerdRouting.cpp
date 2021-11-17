@@ -24,14 +24,14 @@ using namespace xilinx::AIE;
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
+  using OpAdaptor = typename MyOp::Adaptor;
   ModuleOp &module;
 
   AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
-  LogicalResult
-  matchAndRewrite(MyOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(MyOp op, OpAdaptor operands,
+                                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     rewriter.eraseOp(Op);

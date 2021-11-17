@@ -27,22 +27,18 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   ModuleOp &module;
   DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks;
   DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks;
-  DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
-      &lockChains;
+  DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>> &lockChains;
 
-  Token2LockLowering(
-      MLIRContext *context, ModuleOp &m,
-      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
-      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
-      DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
-          &lockChains,
-      PatternBenefit benefit = 1)
-      : OpConversionPattern<UseTokenOp>(context, benefit), module(m),
-        acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
+  Token2LockLowering(MLIRContext *context, ModuleOp &m,
+    DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
+    DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
+    DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>> &lockChains,
+    PatternBenefit benefit = 1
+  ) : OpConversionPattern<UseTokenOp>(context, benefit),
+    module(m), acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
 
-  LogicalResult
-  matchAndRewrite(UseTokenOp op, ArrayRef<Value> operands,
-                  ConversionPatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(UseTokenOp op, OpAdaptor adaptor,
+                                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Operation *parentOp = op->getParentOp();
 

@@ -21,11 +21,11 @@
 // CHECK-NEXT:    func @host_task() {
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }
-// CHECK-NEXT:    %c0_i32 = constant 0 : i32
+// CHECK-NEXT:    %c0_i32 = arith.constant 0 : i32
 // CHECK-NEXT:    %5 = AIE.core(%0) {
-// CHECK-NEXT:      %c0 = constant 0 : index
+// CHECK-NEXT:      %c0 = arith.constant 0 : index
 // CHECK-NEXT:      %6 = memref.load %2[%c0] : memref<1xi32>
-// CHECK-NEXT:      %c10 = constant 10 : index
+// CHECK-NEXT:      %c10 = arith.constant 10 : index
 // CHECK-NEXT:      memref.store %6, %1[%c10] : memref<256xi32>
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
@@ -41,7 +41,7 @@ module @test_core1 {
   %buf = memref.alloc() : memref<256xi32>
 
   func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
-    %i = constant 10 : index
+    %i = arith.constant 10 : index
     memref.store %arg1, %arg0[%i] : memref<256xi32>
     return
   }
@@ -50,7 +50,7 @@ module @test_core1 {
     return
   }
 
-  %a = constant 0 : i32
+  %a = arith.constant 0 : i32
   call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
   call @host_task() : () -> ()
 }

@@ -33,9 +33,9 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
   %c13 = AIE.core(%t73) { 
     
-    %lb = constant 0 : index
-    %ub = constant 1 : index
-    %step = constant 1 : index
+    %lb = arith.constant 0 : index
+    %ub = arith.constant 1 : index
+    %step = arith.constant 1 : index
     
     scf.for %iv = %lb to %ub step %step {
       

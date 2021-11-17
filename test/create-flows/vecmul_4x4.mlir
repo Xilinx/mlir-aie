@@ -139,7 +139,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %10[%arg0] : memref<64xi32, 2>
       %201 = affine.load %8[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %6[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%5, Release, 1)
@@ -193,7 +193,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %23[%arg0] : memref<64xi32, 2>
       %201 = affine.load %21[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %19[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%18, Release, 1)
@@ -247,7 +247,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %36[%arg0] : memref<64xi32, 2>
       %201 = affine.load %34[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %32[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%31, Release, 1)
@@ -301,7 +301,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %49[%arg0] : memref<64xi32, 2>
       %201 = affine.load %47[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %45[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%44, Release, 1)
@@ -354,7 +354,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %61[%arg0] : memref<64xi32, 2>
       %201 = affine.load %59[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %57[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%56, Release, 1)
@@ -407,7 +407,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %73[%arg0] : memref<64xi32, 2>
       %201 = affine.load %71[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %69[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%68, Release, 1)
@@ -461,7 +461,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %86[%arg0] : memref<64xi32, 2>
       %201 = affine.load %84[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %82[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%81, Release, 1)
@@ -515,7 +515,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %99[%arg0] : memref<64xi32, 2>
       %201 = affine.load %97[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %95[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%94, Release, 1)
@@ -568,7 +568,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %111[%arg0] : memref<64xi32, 2>
       %201 = affine.load %109[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %107[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%106, Release, 1)
@@ -621,7 +621,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %123[%arg0] : memref<64xi32, 2>
       %201 = affine.load %121[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %119[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%118, Release, 1)
@@ -675,7 +675,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %136[%arg0] : memref<64xi32, 2>
       %201 = affine.load %134[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %132[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%131, Release, 1)
@@ -728,7 +728,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %148[%arg0] : memref<64xi32, 2>
       %201 = affine.load %146[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %144[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%143, Release, 1)
@@ -780,7 +780,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %159[%arg0] : memref<64xi32, 2>
       %201 = affine.load %157[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %155[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%154, Release, 1)
@@ -833,7 +833,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %171[%arg0] : memref<64xi32, 2>
       %201 = affine.load %169[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %167[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%166, Release, 1)
@@ -887,7 +887,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %184[%arg0] : memref<64xi32, 2>
       %201 = affine.load %182[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %180[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%179, Release, 1)
@@ -941,7 +941,7 @@ module @vecmul_4x4  {
     affine.for %arg0 = 0 to 64 {
       %200 = affine.load %197[%arg0] : memref<64xi32, 2>
       %201 = affine.load %195[%arg0] : memref<64xi32, 2>
-      %202 = muli %200, %201 : i32
+      %202 = arith.muli %200, %201 : i32
       affine.store %202, %193[%arg0] : memref<64xi32, 2>
     }
     AIE.useLock(%192, Release, 1)

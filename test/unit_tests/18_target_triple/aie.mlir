@@ -32,7 +32,7 @@ module attributes {llvm.target_triple = "x86_64-unknown-linux-gnu"}  {
     %val0 = affine.load %buf_b[] : memref<i32>
     affine.for %arg0 = 0 to 16 {
       %val1 = affine.load %buf_a[%arg0] : memref<16xi32>
-      %val2 = addi %val0, %val1 : i32
+      %val2 = arith.addi %val0, %val1 : i32
       affine.store %val2, %buf_a[%arg0] : memref<16xi32>
     }
     AIE.end

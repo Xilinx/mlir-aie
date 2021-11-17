@@ -68,17 +68,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   // func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
-    %buffer_size =  constant 64 : i32
+    %buffer_size =  arith.constant 64 : i32
 
-    %lb = constant 0 : index
-    %ub = constant 4 : index
-    %step = constant 1 : index
+    %lb = arith.constant 0 : index
+    %ub = arith.constant 4 : index
+    %step = arith.constant 1 : index
     
-    %sum_0 = constant 0 : i32
-    %inc = constant 1 : i32
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
+    %sum_0 = arith.constant 0 : i32
+    %inc = arith.constant 1 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
       
       AIE.useLock(%lock_73_a_ping, "Acquire", 1) // acquire for read
@@ -100,17 +100,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
 
     %c74 = AIE.core(%t74) { 
-    %buffer_size =  constant 64 : i32
+    %buffer_size =  arith.constant 64 : i32
 
-    %lb = constant 0 : index
-    %ub = constant 4 : index
-    %step = constant 1 : index
+    %lb = arith.constant 0 : index
+    %ub = arith.constant 4 : index
+    %step = arith.constant 1 : index
     
-    %sum_0 = constant 0 : i32
-    %inc = constant 1 : i32
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
+    %sum_0 = arith.constant 0 : i32
+    %inc = arith.constant 1 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
       
       AIE.useLock(%lock_74_a_ping, "Acquire", 1) // acquire for read
@@ -132,17 +132,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
   
     %c75 = AIE.core(%t75) { 
-    %buffer_size =  constant 64 : i32
+    %buffer_size =  arith.constant 64 : i32
 
-    %lb = constant 0 : index
-    %ub = constant 4 : index
-    %step = constant 1 : index
+    %lb = arith.constant 0 : index
+    %ub = arith.constant 4 : index
+    %step = arith.constant 1 : index
     
-    %sum_0 = constant 0 : i32
-    %inc = constant 1 : i32
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
+    %sum_0 = arith.constant 0 : i32
+    %inc = arith.constant 1 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
       
       AIE.useLock(%lock_75_a_ping, "Acquire", 1) // acquire for read

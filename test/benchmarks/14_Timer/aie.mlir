@@ -15,9 +15,9 @@ module @benchmark14_timer {
   %buf73_0 = AIE.buffer(%t73) { sym_name = "a" } : memref<256xi32>
 
   %core73 = AIE.core(%t73) {
-    %val1 = constant 7 : i32
-    %idx1 = constant 3 : index
-    %2 = addi %val1, %val1 : i32
+    %val1 = arith.constant 7 : i32
+    %idx1 = arith.constant 3 : index
+    %2 = arith.addi %val1, %val1 : i32
     memref.store %2, %buf73_0[%idx1] : memref<256xi32>
 
     AIE.end

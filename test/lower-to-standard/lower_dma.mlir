@@ -69,11 +69,11 @@ module @example0 {
   %c33 = AIE.core(%t33) {
     AIE.useLock(%l33_0, Acquire, 0)
     // code
-    %val0 = constant 16 : i32
-    %0 = constant 0 : i32
+    %val0 = arith.constant 16 : i32
+    %0 = arith.constant 0 : i32
     AIE.putStream(%0 : i32, %val0 : i32)
     %val1 = AIE.getStream(%0 : i32) : i128
-    %val2 = constant 1 : i384
+    %val2 = arith.constant 1 : i384
     AIE.putCascade(%val2: i384)
     AIE.useLock(%l33_0, Release, 1)
     AIE.end
