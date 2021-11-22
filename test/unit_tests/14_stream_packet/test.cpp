@@ -20,87 +20,74 @@
 #include <xaiengine.h>
 #include "test_library.h"
 
-#define XAIE_NUM_ROWS            8
-#define XAIE_NUM_COLS           50
-#define XAIE_ADDR_ARRAY_OFF     0x800
-
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr;	                          /**< AIE configuration pointer */
-XAieGbl AieInst;	                                      /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
-
 #include "aie_inc.cpp"
-
-}
-
 
 int
 main(int argc, char *argv[])
 {
   auto col = 7;
 
-  size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-  XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS, XAIE_ADDR_ARRAY_OFF);
-  XAieGbl_HwInit(&AieConfig);
-  AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-  XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+  aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+  mlir_aie_init_device(_xaie);
 
   // Run auto generated config functions
 
-  mlir_configure_cores();
+  mlir_aie_configure_cores(_xaie);
 
   // get locks
-  XAieTile_LockAcquire(&(TileInst[7][3]), 0, 0, 0);
-  XAieTile_LockAcquire(&(TileInst[7][1]), 0, 0, 0);
+  mlir_aie_acquire_lock(_xaie, 7, 3, 0, 0, 0);
+  mlir_aie_acquire_lock(_xaie, 7, 1, 0, 0, 0);
 
-  mlir_configure_switchboxes();
-  mlir_initialize_locks();
-  mlir_configure_dmas();
+  mlir_aie_configure_switchboxes(_xaie);
+  mlir_aie_initialize_locks(_xaie);
+  mlir_aie_configure_dmas(_xaie);
 
   usleep(10000);
 
   uint32_t bd_ctrl, bd_pckt;
-  bd_ctrl = XAieTile_DmReadWord(&(TileInst[7][1]), 0x0001D018); 
-  bd_pckt = XAieTile_DmReadWord(&(TileInst[7][1]), 0x0001D010); 
+  bd_ctrl = mlir_aie_data_mem_rd_word(_xaie, 7, 1, 0x0001D018);
+  bd_pckt = mlir_aie_data_mem_rd_word(_xaie, 7, 1, 0x0001D010);
   printf("BD0_71: pckt: %x, ctrl: %x \n", bd_pckt, bd_ctrl);
-  bd_ctrl = XAieTile_DmReadWord(&(TileInst[7][3]), 0x0001D018); 
-  bd_pckt = XAieTile_DmReadWord(&(TileInst[7][3]), 0x0001D010); 
+  bd_ctrl = mlir_aie_data_mem_rd_word(_xaie, 7, 3, 0x0001D018);
+  bd_pckt = mlir_aie_data_mem_rd_word(_xaie, 7, 3, 0x0001D010);
   printf("BD0_73: pckt: %x, ctrl: %x \n", bd_pckt, bd_ctrl);
 
   int count = 256;
 
   // We're going to stamp over the memory
   for (int i=0; i<count; i++) {
-      mlir_write_buffer_buf73(i, 73);
-      mlir_write_buffer_buf71(i, 71);
-      mlir_write_buffer_buf62(i, 1);
-      mlir_write_buffer_buf62(i+count, 1);
+    mlir_aie_write_buffer_buf73(_xaie, i, 73);
+    mlir_aie_write_buffer_buf71(_xaie, i, 71);
+    mlir_aie_write_buffer_buf62(_xaie, i, 1);
+    mlir_aie_write_buffer_buf62(_xaie, i + count, 1);
   }
 
   usleep(10000);
 
-  XAieTile_LockRelease(&(TileInst[7][3]), 0, 0, 0); // Release lock
-  XAieTile_LockRelease(&(TileInst[7][1]), 0, 0, 0); // Release lock
+  mlir_aie_release_lock(_xaie, 7, 3, 0, 0, 0); // Release lock
+  mlir_aie_release_lock(_xaie, 7, 1, 0, 0, 0); // Release lock
 
   int errors = 0;
   for (int i=0; i<count; i++) {
-    uint32_t d73 = mlir_read_buffer_buf62(i);
-    uint32_t d71 = mlir_read_buffer_buf62(i+count);
+    uint32_t d73 = mlir_aie_read_buffer_buf62(_xaie, i);
+    uint32_t d71 = mlir_aie_read_buffer_buf62(_xaie, i + count);
     printf("73[%d]: %x\n", i, d73);
     printf("71[%d]: %x\n", i, d71);
   }
 
+  int res = 0;
   if (!errors) {
-    printf("PASS!\n"); return 0;
+    printf("PASS!\n");
+    res = 0;
+  } else {
+    printf("fail %d/%d.\n", (count - errors), count);
+    res = -1;
   }
-  else {
-    printf("fail %d/%d.\n", (count-errors), count); return -1;
-  }
+  mlir_aie_deinit_libxaie(_xaie);
 
+  printf("test done.\n");
+  return res;
 }

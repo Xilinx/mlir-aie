@@ -79,7 +79,7 @@ def run_flow(opts, tmpdirname):
                             '--canonicalize',
                             '--cse',
                             '--convert-vector-to-llvm',
-                            '--convert-memref-to-llvm',
+#                            '--convert-memref-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
                             '--canonicalize', '--cse', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
@@ -132,9 +132,9 @@ def run_flow(opts, tmpdirname):
       do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
     file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
     if(opts.xaie == 2):
-        do_call(['aie-translate', '--aie-generate-xaiev2', file_physical, '-o', file_inc_cpp])
+        do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
     else:
-        do_call(['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
+        do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
 
 
     # Lastly, compile the generated host interface with any ARM code.
