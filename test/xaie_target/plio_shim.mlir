@@ -16,14 +16,14 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: mlir_configure_switchboxes
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK:   XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 4),
-// CHECK:   XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 0),
+// CHECK: mlir_aie_configure_switchboxes
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK:   XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 4),
+// CHECK:   XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 0),
 // CHECK:   XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK:   XAIETILE_STRSW_SPORT_NORTH(&(TileInst[x][y]), 0),
-// CHECK:   XAIETILE_STRSW_MPORT_SOUTH(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK:   XAIETILE_STRSW_SPORT_NORTH(&(ctx->TileInst[x][y]), 0),
+// CHECK:   XAIETILE_STRSW_MPORT_SOUTH(&(ctx->TileInst[x][y]), 2),
 // CHECK:   XAIE_ENABLE);
 
 module {

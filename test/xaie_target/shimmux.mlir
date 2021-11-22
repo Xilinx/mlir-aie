@@ -10,8 +10,8 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: mlir_configure_switchboxes
-// CHECK: XAieTile_ShimStrmMuxConfig(&(TileInst[x][y]),
+// CHECK: mlir_aie_configure_switchboxes
+// CHECK: XAieTile_ShimStrmMuxConfig(&(ctx->TileInst[x][y]),
 // CHECK:        XAIETILE_SHIM_STRM_MUX_SOUTH3,
 // CHECK:        XAIETILE_SHIM_STRM_MUX_DMA);
 

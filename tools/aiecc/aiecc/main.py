@@ -79,7 +79,7 @@ def run_flow(opts, tmpdirname):
                             '--canonicalize',
                             '--cse',
                             '--convert-vector-to-llvm',
-#                            '--convert-memref-to-llvm',
+                            '--convert-memref-to-llvm',
                             '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
                             '--canonicalize', '--cse', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
