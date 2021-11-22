@@ -41,9 +41,10 @@ static llvm::cl::opt<int> tileRow("tilerow",
                                   llvm::cl::desc("row coordinate of core to translate"),
                                   llvm::cl::init(0));
 
-static llvm::cl::opt<std::string> xaieTarget("xaie-target",
-                                  llvm::cl::desc("target of aie-generate-xaie option: v1|v2"),
-                                  llvm::cl::init("v1"));
+static llvm::cl::opt<std::string>
+    xaieTarget("xaie-target",
+               llvm::cl::desc("target of aie-generate-xaie option: v1|v2"),
+               llvm::cl::init("v1"));
 
 namespace xilinx {
 namespace AIE {
@@ -329,7 +330,7 @@ SECTIONS
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie",
       [](ModuleOp module, raw_ostream &output) {
-        if(xaieTarget == "v2")
+        if (xaieTarget == "v2")
           return AIETranslateToXAIEV2(module, output);
         else
           return AIETranslateToXAIEV1(module, output);

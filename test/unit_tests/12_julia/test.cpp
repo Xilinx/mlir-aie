@@ -45,30 +45,34 @@ main(int argc, char *argv[])
 
     printf("Acquire lock first.\n");
     mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
-    mlir_aie_write_buffer_a(_xaie, 3,7);
+    mlir_aie_write_buffer_a(_xaie, 3, 7);
 
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
 
-    mlir_aie_check("Before release lock:", mlir_aie_read_buffer_b(_xaie, 5), 0, errors);
+    mlir_aie_check("Before release lock:", mlir_aie_read_buffer_b(_xaie, 5), 0,
+                   errors);
 
     printf("Release lock.\n");
     mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
 
     int tries = 1;
     printf("Waiting to acquire lock ...\n");
-    while(tries < 1000 && !mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0)) {
-        tries++;
+    while (tries < 1000 && !mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0)) {
+      tries++;
     }
     printf("It took %d tries.\n", tries);
 
-    mlir_aie_check("After release lock:", mlir_aie_read_buffer_b(_xaie, 5), 35, errors);
+    mlir_aie_check("After release lock:", mlir_aie_read_buffer_b(_xaie, 5), 35,
+                   errors);
 
     int res = 0;
     if (!errors) {
-        printf("PASS!\n"); res = 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); res = -1;
+      printf("Fail!\n");
+      res = -1;
     }
     mlir_aie_deinit_libxaie(_xaie);
 

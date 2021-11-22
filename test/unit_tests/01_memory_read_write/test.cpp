@@ -35,8 +35,8 @@ main(int argc, char *argv[])
     aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
     mlir_aie_init_device(_xaie);
 
-    mlir_aie_clear_tile_memory(_xaie, 1,3);
-    
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+
     mlir_aie_configure_cores(_xaie);
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
@@ -45,15 +45,20 @@ main(int argc, char *argv[])
 
     int errors = 0;
 
-    mlir_aie_check("After memory writes. Check [3]=14", mlir_aie_read_buffer_a(_xaie, 3),14,errors);
-    mlir_aie_check("After memory writes. Check [3]=14", mlir_aie_read_buffer_a(_xaie, 5),8,errors);
-    mlir_aie_check("After memory writes. Check [3]=14", mlir_aie_read_buffer_a(_xaie, 9),14,errors);
+    mlir_aie_check("After memory writes. Check [3]=14",
+                   mlir_aie_read_buffer_a(_xaie, 3), 14, errors);
+    mlir_aie_check("After memory writes. Check [3]=14",
+                   mlir_aie_read_buffer_a(_xaie, 5), 8, errors);
+    mlir_aie_check("After memory writes. Check [3]=14",
+                   mlir_aie_read_buffer_a(_xaie, 9), 14, errors);
 
     int res = 0;
     if (!errors) {
-        printf("PASS!\n"); res = 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); res = -1;
+      printf("Fail!\n");
+      res = -1;
     }
     mlir_aie_deinit_libxaie(_xaie);
 

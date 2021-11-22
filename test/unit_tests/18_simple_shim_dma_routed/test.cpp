@@ -29,8 +29,7 @@
 
 #include "aie_inc.cpp"
 
-int main(int argc, char *argv[]) 
-{
+int main(int argc, char *argv[]) {
   printf("test start.\n");
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
@@ -69,7 +68,7 @@ int main(int argc, char *argv[])
   }
 
   mlir_aie_release_lock(_xaie, 7, 0, 1, 1,
-                       0); // Release lock for reading from DDR
+                        0); // Release lock for reading from DDR
 
   mlir_aie_print_tile_status(_xaie, 7, 2);
 
@@ -84,9 +83,11 @@ int main(int argc, char *argv[])
 
   int res = 0;
   if (!errors) {
-      printf("PASS!\n"); res = 0;
+    printf("PASS!\n");
+    res = 0;
   } else {
-      printf("fail %d/%d.\n", (DMA_COUNT - errors), DMA_COUNT); res = -1;
+    printf("fail %d/%d.\n", (DMA_COUNT - errors), DMA_COUNT);
+    res = -1;
   }
   mlir_aie_deinit_libxaie(_xaie);
 

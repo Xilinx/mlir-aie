@@ -46,15 +46,20 @@ main(int argc, char *argv[])
 
     int errors = 0;
 
-    mlir_aie_check_float("After memory writes", mlir_aie_read_buffer_a(_xaie, 3), 1.0, errors);
-    mlir_aie_check_float("After memory writes", mlir_aie_read_buffer_a(_xaie, 5), 8.0, errors);
-    mlir_aie_check_float("After memory writes", mlir_aie_read_buffer_a(_xaie, 9), 14.0, errors);
+    mlir_aie_check_float("After memory writes",
+                         mlir_aie_read_buffer_a(_xaie, 3), 1.0, errors);
+    mlir_aie_check_float("After memory writes",
+                         mlir_aie_read_buffer_a(_xaie, 5), 8.0, errors);
+    mlir_aie_check_float("After memory writes",
+                         mlir_aie_read_buffer_a(_xaie, 9), 14.0, errors);
 
     int res = 0;
     if (!errors) {
-        printf("PASS!\n"); res = 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); res = -1;
+      printf("Fail!\n");
+      res = -1;
     }
     mlir_aie_deinit_libxaie(_xaie);
 

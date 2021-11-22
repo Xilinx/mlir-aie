@@ -45,20 +45,25 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Waiting for the result ...\n");
-    if(!mlir_aie_acquire_lock(_xaie, 1, 6, 0, 1, 100)) {
-        printf("ERROR: timeout hit!\n");
+    if (!mlir_aie_acquire_lock(_xaie, 1, 6, 0, 1, 100)) {
+      printf("ERROR: timeout hit!\n");
     }
 
     mlir_aie_dump_tile_memory(_xaie, 1, 6);
-    mlir_aie_check("prime5[0]", mlir_aie_read_buffer_prime5(_xaie, 0), 7, errors);
-    mlir_aie_check("prime5[1]", mlir_aie_read_buffer_prime5(_xaie, 1), 11, errors);
-    mlir_aie_check("prime5[2]", mlir_aie_read_buffer_prime5(_xaie, 2), 13, errors);
+    mlir_aie_check("prime5[0]", mlir_aie_read_buffer_prime5(_xaie, 0), 7,
+                   errors);
+    mlir_aie_check("prime5[1]", mlir_aie_read_buffer_prime5(_xaie, 1), 11,
+                   errors);
+    mlir_aie_check("prime5[2]", mlir_aie_read_buffer_prime5(_xaie, 2), 13,
+                   errors);
 
     int res = 0;
     if (!errors) {
-        printf("PASS!\n"); res = 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); res = -1;
+      printf("Fail!\n");
+      res = -1;
     }
     mlir_aie_deinit_libxaie(_xaie);
 

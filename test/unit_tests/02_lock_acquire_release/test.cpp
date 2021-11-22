@@ -31,7 +31,6 @@ main(int argc, char *argv[])
 {
     printf("test start.\n");
 
-
     aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
     mlir_aie_init_device(_xaie);
 
@@ -49,21 +48,25 @@ main(int argc, char *argv[])
     //
     mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0);
     usleep(1000);
-    u32 l = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
+    u32 l = mlir_aie_read32(_xaie,
+                            mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
     u32 s = (l >> 6) & 0x3;
     printf("Lock acquire 3: 0 is %x\n",s);
     mlir_aie_acquire_lock(_xaie, 1, 3, 5, 0, 0);
     usleep(1000);
-    l = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
+    l = mlir_aie_read32(_xaie,
+                        mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
     s = (l >> 10) & 0x3;
     printf("Lock acquire 5: 0 is %x\n",s);
     mlir_aie_release_lock(_xaie, 1, 3, 5, 1, 0);
     usleep(1000);
-    l = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
+    l = mlir_aie_read32(_xaie,
+                        mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
     s = (l >> 10) & 0x3;
     printf("Lock release 5: 0 is %x\n",s);
 
-    u32 locks = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
+    u32 locks = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 3, 1) +
+                                           0x0001EF00);
     for (int lock=0;lock<16;lock++) {
         u32 two_bits = (locks >> (lock*2)) & 0x3;
         if (two_bits) {
@@ -83,7 +86,8 @@ main(int argc, char *argv[])
     mlir_aie_start_cores(_xaie);
     usleep(1000);
 
-    locks = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
+    locks = mlir_aie_read32(_xaie,
+                            mlir_aie_get_tile_addr(_xaie, 3, 1) + 0x0001EF00);
     for (int lock=0;lock<16;lock++) {
         u32 two_bits = (locks >> (lock*2)) & 0x3;
         if (two_bits) {
@@ -101,9 +105,11 @@ main(int argc, char *argv[])
 
     int res = 0;
     if (!errors) {
-        printf("PASS!\n"); res = 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); res = -1;
+      printf("Fail!\n");
+      res = -1;
     }
     mlir_aie_deinit_libxaie(_xaie);
 

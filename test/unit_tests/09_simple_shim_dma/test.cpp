@@ -52,16 +52,17 @@ main(int argc, char *argv[])
     bram_ptr = (uint32_t *)mmap(NULL, 0x8000, PROT_READ|PROT_WRITE, MAP_SHARED, fd, BRAM_ADDR);
     for (int i=0; i<DMA_COUNT; i++) {
       bram_ptr[i] = i+1;
-        //printf("%p %llx\n", &bram_ptr[i], bram_ptr[i]);
+      // printf("%p %llx\n", &bram_ptr[i], bram_ptr[i]);
     }
   }
 
   // We're going to stamp over the memory
   for (int i=0; i<DMA_COUNT; i++) {
-      mlir_aie_write_buffer_buf72_0(_xaie, i, 0xdeadbeef);
+    mlir_aie_write_buffer_buf72_0(_xaie, i, 0xdeadbeef);
   }
 
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0); // Release lock for reading from DDR
+  mlir_aie_release_lock(_xaie, 7, 0, 1, 1,
+                        0); // Release lock for reading from DDR
 
   mlir_aie_print_tile_status(_xaie, 7, 2);
 
@@ -76,9 +77,11 @@ main(int argc, char *argv[])
 
   int res = 0;
   if (!errors) {
-      printf("PASS!\n"); res = 0;
+    printf("PASS!\n");
+    res = 0;
   } else {
-      printf("fail %d/%d.\n", (DMA_COUNT-errors), DMA_COUNT); res = -1;
+    printf("fail %d/%d.\n", (DMA_COUNT - errors), DMA_COUNT);
+    res = -1;
   }
   mlir_aie_deinit_libxaie(_xaie);
 

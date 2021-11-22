@@ -74,7 +74,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
   StringRef resetDisable = "XAIE_RESETDISABLE";
-//  StringRef ctx   = "ctx";
+  //  StringRef ctx   = "ctx";
   StringRef ctx_p = "aie_libxaie_ctx_t* ctx";
 
   DenseMap<std::pair<int, int>, Operation *> tiles;
@@ -805,7 +805,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
 
       output << "const int " << bufName
              << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-      output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p << ", int index) {\n";
+      output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p
+             << ", int index) {\n";
       output << "  int32_t value = XAieTile_DmReadWord(" << tileInst << ", "
              << bufName << "_offset + (index*4));\n";
       if (et.isInteger(32))
@@ -816,8 +817,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         output << "  return c.f;\n";
       }
       output << "}\n";
-      output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p << ", int index, "
-             << typestr << " value) {\n";
+      output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p
+             << ", int index, " << typestr << " value) {\n";
       if (et.isInteger(32))
         output << "  int32_t int_value = value;\n";
       else if (et.isF32()) {
