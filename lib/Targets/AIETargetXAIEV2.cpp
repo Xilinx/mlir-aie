@@ -35,12 +35,13 @@ using namespace xilinx::AIE;
 namespace xilinx {
 namespace AIE {
 
+/*
 static std::string shimDMAInstStr(StringRef col, StringRef index) {
   std::string str;
   llvm::raw_string_ostream rss(str);
   rss << "ShimDMAInst_" << col << "_" << index;
   return str;
-}
+}*/
 static std::string tileLocStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
@@ -95,9 +96,11 @@ static std::string packetStr(int id, int type) {
 mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
-  StringRef resetDisable = "XAIE_RESETDISABLE";
-  StringRef deviceInst = "DevInst";       // TODO
-  StringRef deviceInstRef = "&(DevInst)"; // TODO
+//  StringRef resetDisable = "XAIE_RESETDISABLE";
+//  StringRef ctx   = "ctx";                     // TODO
+  StringRef ctx_p = "aie_libxaie_ctx_t* ctx";  // TODO
+//  StringRef deviceInst = "ctx->DevInst";       // TODO
+  StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
 
   DenseMap<std::pair<int, int>, Operation *> tiles;
   DenseMap<Operation *, CoreOp> cores;
@@ -111,9 +114,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   NL.collectBuffers(buffers);
 
   //---------------------------------------------------------------------------
-  // mlir_configure_cores
+  // mlir_aie_configure_cores
   //---------------------------------------------------------------------------
-  output << "void mlir_configure_cores() {\n";
+  output << "void mlir_aie_configure_cores(" << ctx_p << ") {\n";
   // Reset each core.  Load the corresponding ELF file, if necessary.
   for (auto tileOp : module.getOps<TileOp>()) {
     int col = tileOp.colIndex();
@@ -144,12 +147,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
   }
-  output << "} // mlir_configure_cores\n\n";
+  output << "} // mlir_aie_configure_cores\n\n";
 
   //---------------------------------------------------------------------------
-  // mlir_start_cores
+  // mlir_aie_start_cores
   //---------------------------------------------------------------------------
-  output << "void mlir_start_cores() {\n";
+  output << "void mlir_aie_start_cores(" << ctx_p << ") {\n";
   // Start execution of all the cores.
   for (auto tileOp : module.getOps<TileOp>()) {
     int col = tileOp.colIndex();
@@ -161,12 +164,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
              << tileLocStr(col, row) << ");\n";
     }
   }
-  output << "} // mlir_start_cores\n\n";
+  output << "} // mlir_aie_start_cores\n\n";
 
   //---------------------------------------------------------------------------
-  // mlir_configure_dmas
+  // mlir_aie_configure_dmas
   //---------------------------------------------------------------------------
-  output << "void mlir_configure_dmas() {\n";
+  output << "void mlir_aie_configure_dmas(" << ctx_p << ") {\n";
 
   // DMA configuration
   // AieRC XAie_DmaDescInit(XAie_DevInst *DevInst, XAie_DmaDesc *DmaDesc,
@@ -235,7 +238,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       StringRef bufA = "0";
       StringRef bufB = "0";
       StringRef AbMode = disable;
-      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
+//      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
         ShapedType bufferType =
@@ -355,7 +358,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
   }
   // ShimDMA Config
-  int index = 0;
+//  int index = 0;
   for (auto op : module.getOps<ShimDMAOp>()) {
     int col = op.colIndex();
     int row = op.rowIndex();
@@ -409,6 +412,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
       int bdNum = blockMap[&block];
       if (foundBd) {
+        output << "XAie_DmaDesc " << tileDMAInstStr(col, row, bdNum) << ";\n";
         output << "XAie_DmaDescInit(" << deviceInstRef << ", "
                << tileDMAInstRefStr(col, row, bdNum) << ", "
                << tileLocStr(col, row) << ");\n";
@@ -425,7 +429,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                << "0x" << llvm::utohexstr(address) << ", "
                << " /* len */ " << len << " * " << bytes << ");\n";
 
-        output << "XAie_DmaSetAxi(" << deviceInstRef << ", "
+        output << "XAie_DmaSetAxi(" << tileDMAInstRefStr(col, row, bdNum) << ", "
                << "/* smid */ 0, "
                << "/* burstlen */ 4, "
                << "/* QoS */ 0 , "
@@ -476,12 +480,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
   }
-  output << "} // mlir_configure_dmas\n\n";
+  output << "} // mlir_aie_configure_dmas\n\n";
 
   //---------------------------------------------------------------------------
-  // mlir_initialize_locks
+  // mlir_aie_initialize_locks
   //---------------------------------------------------------------------------
-  output << "void mlir_initialize_locks() {\n";
+  output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
   for (auto op : module.getOps<UseLockOp>()) {
     int lockVal = op.getLockValue();
@@ -501,12 +505,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
              << ", " << timeOut << ");\n";
     }
   }
-  output << "} // mlir_initialize_locks\n";
+  output << "} // mlir_aie_initialize_locks\n";
 
   //---------------------------------------------------------------------------
-  // mlir_configure_switchboxes
+  // mlir_aie_configure_switchboxes
   //---------------------------------------------------------------------------
-  output << "void mlir_configure_switchboxes() {\n";
+  output << "void mlir_aie_configure_switchboxes(" << ctx_p << ") {\n";
   output << "  int x, y;\n";
 
   // StreamSwitch (switchbox) configuration
@@ -640,15 +644,17 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourceBundle() == WireBundle::North) {
         // demux!
-        output << "XAie_EnableShimDmaToAieStrmPort(" << deviceInstRef << ", "
+        output << "XAie_EnableAieToShimDmaStrmPort(" << deviceInstRef << ", "
                << tileLocStr("x", "y") << ", "
-               << stringifyWireBundle(connectOp.sourceBundle()).back()
+//               << stringifyWireBundle(connectOp.sourceBundle()).upper()
+               << connectOp.sourceIndex()
                << ");\n";
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
-        output << "XAie_EnableShimAieToDmaStrmPort(" << deviceInstRef << ", "
+        output << "XAie_EnableShimDmaToAieStrmPort(" << deviceInstRef << ", "
                << tileLocStr("x", "y") << ", "
-               << stringifyWireBundle(connectOp.sourceBundle()).back()
+//               << stringifyWireBundle(connectOp.sourceBundle()).upper()
+               << connectOp.destIndex()
                << ");\n";
       }
     }
@@ -671,7 +677,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
   }
 
-  output << "} // mlir_configure_switchboxes\n\n";
+  output << "} // mlir_aie_configure_switchboxes\n\n";
 
   //---------------------------------------------------------------------------
   // Output Buffer Accessors
@@ -684,8 +690,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     auto loc = tileLocStr(col, row);
 
     auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
-      // int32_t mlir_read_buffer_a13(int index) {
-      // void mlir_write_buffer_a13(int index, int32_t value) {
+      // int32_t mlir_aie_read_buffer_a13(int index) {
+      // void mlir_aie_write_buffer_a13(int index, int32_t value) {
       std::string bufName(buf.name().getValue());
       Type t = buf.getType();
       Type et;
@@ -710,7 +716,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
       output << "const int " << bufName
              << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-      output << typestr << " mlir_read_buffer_" << bufName << "(int index) {\n";
+      output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p << ", int index) {\n";
       output << "u32 value; auto rc = XAie_DataMemRdWord(" << deviceInstRef
              << ", " << loc << ", " << bufName
              << "_offset + (index*4), &value);\n";
@@ -722,7 +728,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         output << "  return c.f;\n";
       }
       output << "}\n";
-      output << "void mlir_write_buffer_" << bufName << "(int index, "
+      output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p << ", int index, "
              << typestr << " value) {\n";
       if (et.isInteger(32))
         output << "  int32_t int_value = value;\n";
@@ -741,6 +747,76 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       bufferAccessor(coord, buf);
     // };
   }
+
+  //---------------------------------------------------------------------------
+  // ShimDMA Address Accessors
+  //---------------------------------------------------------------------------
+  for (auto tile : tiles) {
+    Operation *tileOp = tile.second;
+    std::pair<int, int> coord = NL.getCoord(tileOp);
+    int col = coord.first;
+    int row = coord.second;
+    auto loc = tileLocStr(col, row);
+
+    auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
+      // int32_t mlir_aie_read_buffer_a13(int index) {
+      // void mlir_aie_write_buffer_a13(int index, int32_t value) {
+      std::string bufName(buf.name().getValue());
+      Type t = buf.getType();
+      Type et;
+      std::string typestr;
+      if (auto memrefType = t.dyn_cast<MemRefType>()) {
+        et = memrefType.getElementType();
+        if (et.isInteger(32))
+          typestr = "int32_t";
+        else if (et.isF32())
+          typestr = "float";
+        else {
+          output << "// buffer " << bufName << " with unsupported type " << t
+                 << ";\n";
+          return; // Unsupported type
+        }
+
+      } else {
+        output << "// buffer " << bufName << " with unsupported type " << t
+               << ";\n";
+        return; // Unsupported type
+      }
+
+      output << "const int " << bufName
+             << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
+      output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p << ", int index) {\n";
+      output << "u32 value; auto rc = XAie_DataMemRdWord(" << deviceInstRef
+             << ", " << loc << ", " << bufName
+             << "_offset + (index*4), &value);\n";
+      if (et.isInteger(32))
+        output << "  return value;\n";
+      else if (et.isF32()) {
+        output << "  union caster { int32_t i; float f; };\n";
+        output << "  caster c; c.i = value;\n";
+        output << "  return c.f;\n";
+      }
+      output << "}\n";
+      output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p << ", int index, "
+             << typestr << " value) {\n";
+      if (et.isInteger(32))
+        output << "  int32_t int_value = value;\n";
+      else if (et.isF32()) {
+        output << "  union caster { int32_t i; float f; };\n";
+        output << "  caster c; c.f = value;\n";
+        output << "  int32_t int_value = c.i;\n";
+      }
+      output << "u32 rc =    XAie_DataMemWrWord(" << deviceInstRef << ", "
+             << loc << ", " << bufName << "_offset + (index*4), int_value);\n";
+      output << "}\n";
+    };
+
+    // if(tiles.count(tile.getValue()))
+    for (auto buf : buffers[tileOp])
+      bufferAccessor(coord, buf);
+    // };
+  }
+
   return success();
 }
 } // namespace AIE

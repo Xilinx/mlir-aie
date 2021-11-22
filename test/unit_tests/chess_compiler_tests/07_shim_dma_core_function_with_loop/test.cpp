@@ -20,53 +20,35 @@
 #include <xaiengine.h>
 #include "test_library.h"
 
-#define XAIE_NUM_ROWS            8
-#define XAIE_NUM_COLS           50
-#define XAIE_ADDR_ARRAY_OFF     0x800
-
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
-
 #define MLIR_STACK_OFFSET 4096
-
-namespace {
-
-XAieGbl_Config *AieConfigPtr;	                          /**< AIE configuration pointer */
-XAieGbl AieInst;	                                      /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
 #include "aie_inc.cpp"
 
-}
 
 int
 main(int argc, char *argv[])
 {
-
     printf("test start.\n");
 
-    size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-    XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS, XAIE_ADDR_ARRAY_OFF);
-    XAieGbl_HwInit(&AieConfig);
-    AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
-    
-    mlir_configure_cores();    
-    mlir_configure_switchboxes();
-    mlir_initialize_locks();
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
+
+    mlir_aie_configure_cores(_xaie);    
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
 
     u32 sleep_u = 100000; 
     usleep(sleep_u);
     printf("before DMA config\n");
-    ACDC_print_tile_status(TileInst[7][3]);
+    mlir_aie_print_tile_status(_xaie, 7, 3);
     
-    mlir_configure_dmas();
+    mlir_aie_configure_dmas(_xaie);
 
     usleep(sleep_u);
     printf("after DMA config\n");
-    ACDC_print_tile_status(TileInst[7][3]);
+    mlir_aie_print_tile_status(_xaie, 7, 3);
 
     int errors = 0;
 
@@ -85,7 +67,7 @@ main(int argc, char *argv[])
         }
     }
 
-    ACDC_clear_tile_memory(TileInst[7][3]);  
+    mlir_aie_clear_tile_memory(_xaie, 7, 3);  
 /*
     // TODO Check for completion of shimdma
     int shimdma_stat_mm2s0, shimdma_stat_s2mm0;
@@ -98,32 +80,32 @@ main(int argc, char *argv[])
 
     usleep(sleep_u);
     printf("before core start\n");
-    ACDC_print_tile_status(TileInst[7][3]);
+    mlir_aie_print_tile_status(_xaie, 7, 3);
 
     printf("Start cores\n");
-    mlir_start_cores();
+    mlir_aie_start_cores(_xaie);
 
     usleep(sleep_u);
     printf("after core start\n");
-    ACDC_print_tile_status(TileInst[7][3]);
+    mlir_aie_print_tile_status(_xaie, 7, 3);
     u32 locks70;
-    locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
+    locks70 = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
     printf("Locks70 = %08X\n", locks70);
 
     printf("Release lock for accessing DDR.\n");
-    XAieTile_LockRelease(&(TileInst[7][0]), /*lockid*/ 1, /*r/w*/ 1, 0); 
-    XAieTile_LockRelease(&(TileInst[7][0]), /*lockid*/ 2, /*r/w*/ 1, 0); 
+    mlir_aie_release_lock(_xaie, 7, 0, /*lockid*/ 1, /*r/w*/ 1, 0); 
+    mlir_aie_release_lock(_xaie, 7, 0, /*lockid*/ 2, /*r/w*/ 1, 0); 
 
     usleep(sleep_u);
     printf("after lock release\n");
-    ACDC_print_tile_status(TileInst[7][3]);
-    locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
+    mlir_aie_print_tile_status(_xaie, 7, 3);
+    locks70 = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
     printf("Locks70 = %08X\n", locks70);
 
-    ACDC_check("After", mlir_read_buffer_a_ping(0), 384, errors);
-    ACDC_check("After", mlir_read_buffer_a_pong(0), 448, errors);
-    ACDC_check("After", mlir_read_buffer_b_ping(0), 385, errors);
-    ACDC_check("After", mlir_read_buffer_b_pong(0), 449, errors);    
+    mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 0), 384, errors);
+    mlir_aie_check("After", mlir_aie_read_buffer_a_pong(_xaie, 0), 448, errors);
+    mlir_aie_check("After", mlir_aie_read_buffer_b_ping(_xaie, 0), 385, errors);
+    mlir_aie_check("After", mlir_aie_read_buffer_b_pong(_xaie, 0), 449, errors);    
 
     // Dump contents of ddr_ptr_out
     for (int i=0; i<16; i++) {
@@ -132,7 +114,7 @@ main(int argc, char *argv[])
     }
 
     for (int i=0; i<512; i++)
-        ACDC_check("DDR out",ddr_ptr_out[i],i+1, errors);
+        mlir_aie_check("DDR out",ddr_ptr_out[i],i+1, errors);
 
     /*
     XAieDma_Shim ShimDmaInst1;
@@ -142,9 +124,14 @@ main(int argc, char *argv[])
     XAieDma_ShimChControl((&ShimDmaInst1), XAIEDMA_SHIM_CHNUM_S2MM0, XAIE_DISABLE, XAIE_DISABLE, XAIE_DISABLE);
     */
 
+    int res = 0;
     if (!errors) {
-        printf("PASS!\n"); return 0;
+        printf("PASS!\n"); res = 0;
     } else {
-        printf("Fail!\n"); return -1;
+        printf("Fail!\n"); res = -1;
     }
+    mlir_aie_deinit_libxaie(_xaie);
+
+    printf("test done.\n");
+    return res;
 }

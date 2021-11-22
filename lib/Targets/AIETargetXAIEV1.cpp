@@ -44,7 +44,7 @@ static std::string shimDMAInstStr(StringRef col, StringRef index) {
 static std::string tileInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
-  rss << "&(TileInst"
+  rss << "&(ctx->TileInst"
       << "[" << col << "][" << row << "])";
   return str;
 }
@@ -54,7 +54,7 @@ static std::string tileInstStr(int col, int row) {
 static std::string tileDMAInstStr(StringRef col, StringRef row) {
   std::string str;
   llvm::raw_string_ostream rss(str);
-  rss << "&(TileDMAInst"
+  rss << "&(ctx->TileDMAInst"
       << "[" << col << "][" << row << "])";
   return str;
 }
@@ -74,6 +74,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
   StringRef resetDisable = "XAIE_RESETDISABLE";
+//  StringRef ctx   = "ctx";
+  StringRef ctx_p = "aie_libxaie_ctx_t* ctx";
 
   DenseMap<std::pair<int, int>, Operation *> tiles;
   DenseMap<Operation *, CoreOp> cores;
@@ -86,7 +88,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   NL.collectTiles(tiles);
   NL.collectBuffers(buffers);
 
-  output << "void mlir_configure_cores() {\n";
+  output << "void mlir_aie_configure_cores(" << ctx_p << ") {\n";
   // Reset each core.  Load the corresponding ELF file, if necessary.
   for (auto tileOp : module.getOps<TileOp>()) {
     int col = tileOp.colIndex();
@@ -166,9 +168,9 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       }
     }
   }
-  output << "} // mlir_configure_cores\n\n";
+  output << "} // mlir_aie_configure_cores\n\n";
 
-  output << "void mlir_start_cores() {\n";
+  output << "void mlir_aie_start_cores(" << ctx_p << ") {\n";
   // Start execution of all the cores.
   // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8
   // Reset); auto ret =
@@ -182,9 +184,9 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
              << enable << ", " << disable << ");\n";
     }
   }
-  output << "} // mlir_start_cores\n\n";
+  output << "} // mlir_aie_start_cores\n\n";
 
-  output << "void mlir_configure_dmas() {\n";
+  output << "void mlir_aie_configure_dmas(" << ctx_p << ") {\n";
 
   // DMA configuration
   // XAieDma_TileSetStartBd(DmaInstPtr, ChNum, BdStart)
@@ -503,9 +505,9 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       }
     }
   }
-  output << "} // mlir_configure_dmas\n\n";
+  output << "} // mlir_aie_configure_dmas\n\n";
 
-  output << "void mlir_initialize_locks() {\n";
+  output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
   // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal,
   // u32 TimeOut); u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8 LockId,
@@ -526,9 +528,9 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
              << lockID << ", " << lockVal << ", " << timeOut << ");\n";
     }
   }
-  output << "} // mlir_initialize_locks\n";
+  output << "} // mlir_aie_initialize_locks\n";
 
-  output << "void mlir_configure_switchboxes() {\n";
+  output << "void mlir_aie_configure_switchboxes(" << ctx_p << ") {\n";
   output << "  int x, y;\n";
 
   // StreamSwitch (switchbox) configuration
@@ -720,6 +722,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
                  << stringifyWireBundle(connectOp.destBundle()).upper()
                  << ");\n";
         }
+
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
         output << "XAieTile_ShimStrmMuxConfig(" << tileInstStr("x", "y")
@@ -759,7 +762,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     }
   }
 
-  output << "} // mlir_configure_switchboxes\n\n";
+  output << "} // mlir_aie_configure_switchboxes\n\n";
 
   // Output Buffer Accessors
   for (auto tile : tiles) {
@@ -770,11 +773,11 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     auto tileInst = tileInstStr(col, row);
 
     auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
-      // int32_t mlir_read_buffer_a13(int index) {
+      // int32_t mlir_aie_read_buffer_a13(int index) {
       //     return XAieTile_DmReadWord(&(TileInst[1][3]), a13_offset +
       //     (index*4));
       // }
-      // void mlir_write_buffer_a13(int index, int32_t value) {
+      // void mlir_aie_write_buffer_a13(int index, int32_t value) {
       //     XAieTile_DmWriteWord(&(TileInst[1][3]), a13_offset + (index*4),
       //     value);
       // }
@@ -802,7 +805,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
 
       output << "const int " << bufName
              << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-      output << typestr << " mlir_read_buffer_" << bufName << "(int index) {\n";
+      output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p << ", int index) {\n";
       output << "  int32_t value = XAieTile_DmReadWord(" << tileInst << ", "
              << bufName << "_offset + (index*4));\n";
       if (et.isInteger(32))
@@ -813,7 +816,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         output << "  return c.f;\n";
       }
       output << "}\n";
-      output << "void mlir_write_buffer_" << bufName << "(int index, "
+      output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p << ", int index, "
              << typestr << " value) {\n";
       if (et.isInteger(32))
         output << "  int32_t int_value = value;\n";
