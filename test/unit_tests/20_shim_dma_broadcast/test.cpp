@@ -28,8 +28,8 @@
 int main(int argc, char *argv[]) {
   printf("test start.\n");
 
-  aie_libxaie_ctx_t *_xaie = mlir_aie_aie_init_libxaie();
-  mlir_aie_aie_init_device(_xaie);
+  aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+  mlir_aie_init_device(_xaie);
 
   auto col = 7;
 

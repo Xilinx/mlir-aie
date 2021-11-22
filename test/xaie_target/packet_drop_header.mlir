@@ -10,15 +10,15 @@
 
 // RUN: aie-opt --aie-create-packet-flows --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
 
-// CHECK: void mlir_configure_switchboxes() {
+// CHECK: void mlir_aie_configure_switchboxes(aie_libxaie_ctx_t* ctx) {
 // CHECK: // Core Stream Switch column 7 row 1
-// CHECK: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
-// CHECK:   XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK:     XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConfigMstr(&(ctx->TileInst[x][y]),
+// CHECK:   XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK:     XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 0),
 // CHECK:     XAIE_ENABLE /*drop_header*/,
-// CHECK: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
-// CHECK:   XAIETILE_STRSW_MPORT_SOUTH(&(TileInst[x][y]), 0),
-// CHECK:     XAIETILE_STRSW_MPORT_SOUTH(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConfigMstr(&(ctx->TileInst[x][y]),
+// CHECK:   XAIETILE_STRSW_MPORT_SOUTH(&(ctx->TileInst[x][y]), 0),
+// CHECK:     XAIETILE_STRSW_MPORT_SOUTH(&(ctx->TileInst[x][y]), 0),
 // CHECK:     XAIE_DISABLE /*drop_header*/,
 
 //

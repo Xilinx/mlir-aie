@@ -10,15 +10,15 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: XAieTile_CoreControl(&(TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieDma_TileInitialize(&(TileInst[3][3]), &(TileDMAInst[3][3]));
-// CHECK: XAieDma_TileBdClearAll(&(TileDMAInst[3][3]));
-// CHECK: XAieDma_TileChResetAll(&(TileDMAInst[3][3]));
-// CHECK: XAieDma_TileBdSetLock(&(TileDMAInst[3][3]), {{.*}}0, XAIEDMA_TILE_BD_ADDRA, {{.*}}0, XAIE_ENABLE, {{.*}}1, XAIE_ENABLE, {{.*}}0);
-// CHECK: XAieDma_TileBdSetAdrLenMod(&(TileDMAInst[3][3]), {{.*}}0, {{.*}}0x1400, {{.*}}0x0, {{.*}}256 * 4, {{.*}}XAIE_DISABLE, {{.*}}XAIE_DISABLE);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[3][3]), {{.*}}0);
-// CHECK: XAieDma_TileSetStartBd((&(TileDMAInst[3][3])), XAIEDMA_TILE_CHNUM_MM2S0, {{.*}}0);
-// CHECK: XAieDma_TileChControl(&(TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_MM2S0, XAIE_RESETDISABLE, XAIE_ENABLE);
+// CHECK: XAieTile_CoreControl(&(ctx->TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieDma_TileInitialize(&(ctx->TileInst[3][3]), &(ctx->TileDMAInst[3][3]));
+// CHECK: XAieDma_TileBdClearAll(&(ctx->TileDMAInst[3][3]));
+// CHECK: XAieDma_TileChResetAll(&(ctx->TileDMAInst[3][3]));
+// CHECK: XAieDma_TileBdSetLock(&(ctx->TileDMAInst[3][3]), {{.*}}0, XAIEDMA_TILE_BD_ADDRA, {{.*}}0, XAIE_ENABLE, {{.*}}1, XAIE_ENABLE, {{.*}}0);
+// CHECK: XAieDma_TileBdSetAdrLenMod(&(ctx->TileDMAInst[3][3]), {{.*}}0, {{.*}}0x1400, {{.*}}0x0, {{.*}}256 * 4, {{.*}}XAIE_DISABLE, {{.*}}XAIE_DISABLE);
+// CHECK: XAieDma_TileBdWrite(&(ctx->TileDMAInst[3][3]), {{.*}}0);
+// CHECK: XAieDma_TileSetStartBd((&(ctx->TileDMAInst[3][3])), XAIEDMA_TILE_CHNUM_MM2S0, {{.*}}0);
+// CHECK: XAieDma_TileChControl(&(ctx->TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_MM2S0, XAIE_RESETDISABLE, XAIE_ENABLE);
 
 module @test_xaie1 {
   %t33 = AIE.tile(3, 3)

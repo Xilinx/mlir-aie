@@ -17,8 +17,8 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: mlir_configure_switchboxes
-// CHECK: XAieTile_ShimStrmDemuxConfig(&(TileInst[x][y]),
+// CHECK: mlir_aie_configure_switchboxes
+// CHECK: XAieTile_ShimStrmDemuxConfig(&(ctx->TileInst[x][y]),
 // CHECK:        XAIETILE_SHIM_STRM_DEM_SOUTH2,
 // CHECK:        XAIETILE_SHIM_STRM_DEM_PL);
 
