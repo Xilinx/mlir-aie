@@ -632,7 +632,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
              << stringifyWireBundle(connectOp.destBundle()).upper() << "("
              << tileInstStr("x", "y") << ", " << connectOp.destIndex()
              << "),\n";
-      output << "\t\t" << disable << " /*drop_header*/,\n";
+      bool isdma = (connectOp.destBundle() == WireBundle::DMA);
+      output << "\t\t" << (isdma ? enable : disable) << " /*drop_header*/,\n";
       output << "\t\t"
              << "0x" << llvm::utohexstr(mask)
              << " /*mask*/,\n"; // FIXME: compute mask for msel
