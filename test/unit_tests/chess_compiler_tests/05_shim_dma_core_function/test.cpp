@@ -60,9 +60,9 @@ main(int argc, char *argv[])
                                               0x0001D000 + (bd * 0x14) + ofst);
           if (rb != 0) {
             printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
-            }
-            // mlir_aie_write32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
-            // 0x0001D000+(bd*0x14)+ofst, 0x0);
+          }
+          // mlir_aie_write32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
+          // 0x0001D000+(bd*0x14)+ofst, 0x0);
         }
     }
 
@@ -72,9 +72,9 @@ main(int argc, char *argv[])
                                               0x0001D140 + (dma * 0x8) + ofst);
           if (rb != 0) {
             printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
-            }
-            // mlir_aie_write32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
-            // 0x0001D140+(dma*0x8)+ofst, 0x0);
+          }
+          // mlir_aie_write32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
+          // 0x0001D140+(dma*0x8)+ofst, 0x0);
         }
     }
 

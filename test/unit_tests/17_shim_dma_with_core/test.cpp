@@ -61,7 +61,7 @@ main(int argc, char *argv[])
                                               0x0001D000 + (bd * 0x14) + ofst);
           if (rb != 0) {
             printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
-            }
+          }
             //XAieGbl_Write32(TileInst[7][0].TileAddr + 0x0001D000+(bd*0x14)+ofst, 0x0);
         }
     }
@@ -72,7 +72,7 @@ main(int argc, char *argv[])
                                               0x0001D140 + (dma * 0x8) + ofst);
           if (rb != 0) {
             printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
-            }
+          }
             //XAieGbl_Write32(TileInst[7][0].TileAddr + 0x0001D140+(dma*0x8)+ofst, 0x0);
         }
     }
