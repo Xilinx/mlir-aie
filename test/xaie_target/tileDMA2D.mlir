@@ -10,17 +10,17 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: void mlir_configure_dmas() {
-// CHECK: XAieDma_TileBdSetXy2d(&(TileDMAInst[7][2]),  /* bd */ 0,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_X, /* incr */ 1, /* wrap */ 8, /* ofst */ 4);
-// CHECK: XAieDma_TileBdSetXy2d(&(TileDMAInst[7][2]),  /* bd */ 0,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_Y, /* incr */ 8, /* wrap */ 4, /* ofst */ 1);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[7][2]),  /* bd */ 0);
-// CHECK: XAieDma_TileBdSetXy2d(&(TileDMAInst[7][2]),  /* bd */ 1,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_X, /* incr */ 1, /* wrap */ 8, /* ofst */ 4);
-// CHECK: XAieDma_TileBdSetXy2d(&(TileDMAInst[7][2]),  /* bd */ 1,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_Y, /* incr */ 8, /* wrap */ 4, /* ofst */ 1);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[7][2]),  /* bd */ 1);
+// CHECK: void mlir_aie_configure_dmas(aie_libxaie_ctx_t* ctx) {
+// CHECK: XAieDma_TileBdSetXy2d(&(ctx->TileDMAInst[7][2]),  /* bd */ 0,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_X, /* incr */ 1, /* wrap */ 8, /* ofst */ 4);
+// CHECK: XAieDma_TileBdSetXy2d(&(ctx->TileDMAInst[7][2]),  /* bd */ 0,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_Y, /* incr */ 8, /* wrap */ 4, /* ofst */ 1);
+// CHECK: XAieDma_TileBdWrite(&(ctx->TileDMAInst[7][2]),  /* bd */ 0);
+// CHECK: XAieDma_TileBdSetXy2d(&(ctx->TileDMAInst[7][2]),  /* bd */ 1,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_X, /* incr */ 1, /* wrap */ 8, /* ofst */ 4);
+// CHECK: XAieDma_TileBdSetXy2d(&(ctx->TileDMAInst[7][2]),  /* bd */ 1,  /* xyType */ XAIEDMA_TILE_BD_2DDMA_Y, /* incr */ 8, /* wrap */ 4, /* ofst */ 1);
+// CHECK: XAieDma_TileBdWrite(&(ctx->TileDMAInst[7][2]),  /* bd */ 1);
 
 //
 // This test configures the tile DMA buffer descriptor to transpose an 8x4xi32
-// input matrix as it is writted to the tile's local memory. It returns the
+// input matrix as it is written to the tile's local memory. It returns the
 // matrix to its original arrangement when it is output to the stream.
 //
 module @aie_module  {
