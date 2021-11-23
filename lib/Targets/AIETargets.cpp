@@ -314,7 +314,11 @@ SECTIONS
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
           if (auto coreOp = tileOp.getCoreOp()) {
-            output << '(' << std::to_string(col) << ',' << std::to_string(row) << "),";
+            std::string elf_file = "None";
+            if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
+              elf_file = "\"" + std::string(fileAttr.getValue()) + "\"";
+            output << '(' << std::to_string(col) << ',' << std::to_string(row)
+                   << ',' << elf_file << "),";
           }
         }
         output << "]\n";

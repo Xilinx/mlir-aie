@@ -57,7 +57,7 @@ def run_flow(opts, tmpdirname):
       do_call(['sed', '-i', 's/noalias_sidechannel[^,]*,//', chess_intrinsic_wrapper])
 
     def corefile(dirname, core, ext):
-        (corecol, corerow) = core
+        (corecol, corerow, _) = core
         return os.path.join(dirname, 'core_%d_%d.%s' % (corecol, corerow, ext))
 
     def tmpcorefile(core, ext):
@@ -71,9 +71,9 @@ def run_flow(opts, tmpdirname):
         return ' '.join(t.stdout.split())
 
     def process_core(core):
-        (corecol, corerow) = core
+        (corecol, corerow, elf_file) = core
         file_core = tmpcorefile(core, "mlir")
-        do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core, file_with_addresses, '-o', file_core])
+        do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2], file_with_addresses, '-o', file_core])
         file_opt_core = tmpcorefile(core, "opt.mlir")
         do_call(['aie-opt', '--aie-normalize-address-spaces',
                             '--canonicalize',
@@ -90,7 +90,7 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
         file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
         do_call(['opt', '-O2', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
-        file_core_elf = corefile(".", core, "elf")
+        file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
