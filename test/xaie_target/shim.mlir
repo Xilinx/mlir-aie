@@ -10,21 +10,21 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
-// CHECK: mlir_configure_cores
-// CHECK: XAieTile_CoreControl(&(TileInst[2][1]), XAIE_DISABLE, XAIE_ENABLE);
-// CHECK-NOT: XAieTile_CoreControl(&(TileInst[2][0])
+// CHECK: mlir_aie_configure_cores
+// CHECK: XAieTile_CoreControl(&(ctx->TileInst[2][1]), XAIE_DISABLE, XAIE_ENABLE);
+// CHECK-NOT: XAieTile_CoreControl(&(ctx->TileInst[2][0])
 // CHECK: for (int l=0; l<16; l++)
-// CHECK:   XAieTile_LockRelease(&(TileInst[2][1]), l, 0x0, 0);
-// CHECK: XAieTile_ShimColumnReset(&(TileInst[2][0]), XAIE_RESETENABLE);
-// CHECK: XAieTile_ShimColumnReset(&(TileInst[2][0]), XAIE_RESETDISABLE);
+// CHECK:   XAieTile_LockRelease(&(ctx->TileInst[2][1]), l, 0x0, 0);
+// CHECK: XAieTile_ShimColumnReset(&(ctx->TileInst[2][0]), XAIE_RESETENABLE);
+// CHECK: XAieTile_ShimColumnReset(&(ctx->TileInst[2][0]), XAIE_RESETDISABLE);
 
-// CHECK: mlir_start_cores
-// CHECK: XAieTile_CoreControl(&(TileInst[2][1]), XAIE_ENABLE, XAIE_DISABLE);
-// CHECK-NOT: XAieTile_CoreControl(&(TileInst[2][0])
+// CHECK: mlir_aie_start_cores
+// CHECK: XAieTile_CoreControl(&(ctx->TileInst[2][1]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK-NOT: XAieTile_CoreControl(&(ctx->TileInst[2][0])
 
-// CHECK: mlir_configure_dmas
+// CHECK: mlir_aie_configure_dmas
 // CHECK: XAieDma_Shim ShimDMAInst_2_0;
-// CHECK: XAieDma_ShimInitialize(&(TileInst[2][0]), &ShimDMAInst_2_0);
+// CHECK: XAieDma_ShimInitialize(&(ctx->TileInst[2][0]), &ShimDMAInst_2_0);
 // CHECK: XAieDma_ShimBdSetLock(&ShimDMAInst_2_0,  /* bd */ 0,  /* lockID */ 0, XAIE_ENABLE,  /* release */ 1, XAIE_ENABLE,  /* acquire */ 0);
 // CHECK: XAieDma_ShimBdSetAddr(&ShimDMAInst_2_0,  /* bd */ 0, HIGH_ADDR((u64)0x1234567890), LOW_ADDR((u64)0x1234567890),  /* len */ 16 * 4);
 // CHECK: XAieDma_ShimBdSetAxi(&ShimDMAInst_2_0, /* bd */ 0, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
@@ -40,10 +40,10 @@
 // CHECK: XAieDma_ShimSetStartBd(&ShimDMAInst_2_0, XAIEDMA_SHIM_CHNUM_MM2S0,  /* bd */ 1);
 // CHECK: XAieDma_ShimChControl(&ShimDMAInst_2_0, XAIEDMA_TILE_CHNUM_MM2S0, /* PauseStream */ XAIE_DISABLE, /* PauseMM */ XAIE_DISABLE, /* Enable */ XAIE_ENABLE);
 
-// CHECK: mlir_configure_switchboxes
+// CHECK: mlir_aie_configure_switchboxes
 // CHECK: x = 2;
 // CHECK: y = 0;
-// CHECK: XAieTile_ShimStrmDemuxConfig(&(TileInst[x][y]),
+// CHECK: XAieTile_ShimStrmDemuxConfig(&(ctx->TileInst[x][y]),
 // CHECK:        XAIETILE_SHIM_STRM_DEM_SOUTH2,
 // CHECK:        XAIETILE_SHIM_STRM_DEM_DMA);
 

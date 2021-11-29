@@ -10,64 +10,64 @@
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck --match-full-lines %s
 
-// CHECK: XAieTile_CoreControl(&(TileInst[0][1]), XAIE_ENABLE, XAIE_DISABLE);
-// CHECK: XAieTile_CoreControl(&(TileInst[1][1]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieTile_CoreControl(&(ctx->TileInst[0][1]), XAIE_ENABLE, XAIE_DISABLE);
+// CHECK: XAieTile_CoreControl(&(ctx->TileInst[1][1]), XAIE_ENABLE, XAIE_DISABLE);
 // CHECK: // Core Stream Switch column 0 row 1
 // CHECK-NEXT: x = 0;
 // CHECK-NEXT: y = 1;
-// CHECK-NEXT: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_EAST(&(TileInst[x][y]), 0),
+// CHECK-NEXT: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_EAST(&(ctx->TileInst[x][y]), 0),
 // CHECK-NEXT: 	XAIE_ENABLE);
-// CHECK-NEXT: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 1),
-// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_EAST(&(TileInst[x][y]), 1),
+// CHECK-NEXT: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 1),
+// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_EAST(&(ctx->TileInst[x][y]), 1),
 // CHECK-NEXT: 	XAIE_ENABLE);
 // CHECK-NEXT: // Core Stream Switch column 1 row 1
 // CHECK-NEXT: x = 1;
 // CHECK-NEXT: y = 1;
-// CHECK-NEXT: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
-// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 0),
+// CHECK-NEXT: XAieTile_StrmConfigMstr(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CORE(&(ctx->TileInst[x][y]), 0),
 // CHECK-NEXT: 	XAIE_ENABLE,
 // CHECK-NEXT: 	XAIE_ENABLE,
-// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
-// CHECK-NEXT: 		XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 0),
+// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CFGPKT(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 		XAIETILE_STRSW_MPORT_CORE(&(ctx->TileInst[x][y]), 0),
 // CHECK-NEXT: 		XAIE_DISABLE /*drop_header*/,
 // CHECK-NEXT: 		0x1 /*mask*/,
 // CHECK-NEXT: 		0 /*arbiter*/));
-// CHECK-NEXT: XAieTile_StrmConfigMstr(&(TileInst[x][y]),
-// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 1),
+// CHECK-NEXT: XAieTile_StrmConfigMstr(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CORE(&(ctx->TileInst[x][y]), 1),
 // CHECK-NEXT: 	XAIE_ENABLE,
 // CHECK-NEXT: 	XAIE_ENABLE,
-// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CFGPKT(&(TileInst[x][y]),
-// CHECK-NEXT: 		XAIETILE_STRSW_MPORT_CORE(&(TileInst[x][y]), 1),
+// CHECK-NEXT: 	XAIETILE_STRSW_MPORT_CFGPKT(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 		XAIETILE_STRSW_MPORT_CORE(&(ctx->TileInst[x][y]), 1),
 // CHECK-NEXT: 		XAIE_DISABLE /*drop_header*/,
 // CHECK-NEXT: 		0x3 /*mask*/,
 // CHECK-NEXT: 		0 /*arbiter*/));
-// CHECK-NEXT: XAieTile_StrmConfigSlv(&(TileInst[x][y]),
-// CHECK-NEXT:	  XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
+// CHECK-NEXT: XAieTile_StrmConfigSlv(&(ctx->TileInst[x][y]),
+// CHECK-NEXT:	  XAIETILE_STRSW_SPORT_WEST(&(ctx->TileInst[x][y]), 0),
 // CHECK-NEXT:	  XAIE_ENABLE, XAIE_ENABLE);
-// CHECK-NEXT: XAieTile_StrmConfigSlvSlot(&(TileInst[x][y]),
-// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0),
+// CHECK-NEXT: XAieTile_StrmConfigSlvSlot(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_WEST(&(ctx->TileInst[x][y]), 0),
 // CHECK-NEXT: 	0 /*slot*/,
 // CHECK-NEXT: 	XAIE_ENABLE,
-// CHECK-NEXT: 	XAIETILE_STRSW_SLVSLOT_CFG(&(TileInst[x][y]),
-// CHECK-NEXT: 		(XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 0)),
+// CHECK-NEXT: 	XAIETILE_STRSW_SLVSLOT_CFG(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 		(XAIETILE_STRSW_SPORT_WEST(&(ctx->TileInst[x][y]), 0)),
 // CHECK-NEXT: 		0 /*slot*/,
 // CHECK-NEXT: 		0x0 /*ID value*/,
 // CHECK-NEXT: 		0x1F /*mask*/,
 // CHECK-NEXT: 		XAIE_ENABLE,
 // CHECK-NEXT: 		0 /*msel*/,
 // CHECK-NEXT: 		0 /*arbiter*/));
-// CHECK-NEXT: XAieTile_StrmConfigSlv(&(TileInst[x][y]),
-// CHECK-NEXT:	  XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 1),
+// CHECK-NEXT: XAieTile_StrmConfigSlv(&(ctx->TileInst[x][y]),
+// CHECK-NEXT:	  XAIETILE_STRSW_SPORT_WEST(&(ctx->TileInst[x][y]), 1),
 // CHECK-NEXT:	  XAIE_ENABLE, XAIE_ENABLE);
-// CHECK-NEXT: XAieTile_StrmConfigSlvSlot(&(TileInst[x][y]),
-// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 1),
+// CHECK-NEXT: XAieTile_StrmConfigSlvSlot(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 	XAIETILE_STRSW_SPORT_WEST(&(ctx->TileInst[x][y]), 1),
 // CHECK-NEXT: 	0 /*slot*/,
 // CHECK-NEXT: 	XAIE_ENABLE,
-// CHECK-NEXT: 	XAIETILE_STRSW_SLVSLOT_CFG(&(TileInst[x][y]),
-// CHECK-NEXT: 		(XAIETILE_STRSW_SPORT_WEST(&(TileInst[x][y]), 1)),
+// CHECK-NEXT: 	XAIETILE_STRSW_SLVSLOT_CFG(&(ctx->TileInst[x][y]),
+// CHECK-NEXT: 		(XAIETILE_STRSW_SPORT_WEST(&(ctx->TileInst[x][y]), 1)),
 // CHECK-NEXT: 		0 /*slot*/,
 // CHECK-NEXT: 		0x1 /*ID value*/,
 // CHECK-NEXT: 		0x1F /*mask*/,
