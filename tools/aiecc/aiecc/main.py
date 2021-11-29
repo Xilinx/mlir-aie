@@ -15,7 +15,7 @@ import platform
 import sys
 import time
 from subprocess import PIPE, run, call
-# from joblib import Parallel, delayed
+from multiprocessing.pool import ThreadPool
 import tempfile
 import shutil
 
@@ -119,35 +119,47 @@ def run_flow(opts, tmpdirname):
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
-    # Compile each core in parallel
-    # Parallel(n_jobs=8, require='sharedmem')(delayed(process_core)(core) for core in cores)
-    for core in cores:
-      process_core(core)
 
-    # Generate the included host interface
-    file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
-    if(opts.pathfinder):
-      do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+    def process_arm_cgen():
+      # Generate the included host interface
+      file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
+      if(opts.pathfinder):
+        do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+      else:
+        do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+      file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
+      if(opts.xaie == 2):
+          do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
+      else:
+          do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
+
+
+      # Lastly, compile the generated host interface with any ARM code.
+      cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+      if(opts.sysroot):
+        cmd += ['--sysroot=%s' % opts.sysroot]
+      cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
+      cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
+      cmd += ['-I%s' % tmpdirname]
+      cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+
+      if(len(opts.arm_args) > 0):
+        do_call(cmd + opts.arm_args)
+
+
+
+    if (opts.nthreads == True):
+      with ThreadPool() as thdpool:
+          # prefer to dispatch and process_arm_cgen() first, it typically takse longer than process_core()
+          thdpool.apply_async(process_arm_cgen)
+          thdpool.map(process_core, (cores))
+          thdpool.close()
+          thdpool.join()
     else:
-      do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
-    file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-    if(opts.xaie == 2):
-        do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
-    else:
-        do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
+      for core in cores:
+        process_core(core)
+      process_arm_cgen()
 
-
-    # Lastly, compile the generated host interface with any ARM code.
-    cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
-    if(opts.sysroot):
-      cmd += ['--sysroot=%s' % opts.sysroot]
-    cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
-    cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
-    cmd += ['-I%s' % tmpdirname]
-    cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
-
-    if(len(opts.arm_args) > 0):
-      do_call(cmd + opts.arm_args)
 
 def main(builtin_params={}):
     thispath = os.path.dirname(os.path.realpath(__file__))
