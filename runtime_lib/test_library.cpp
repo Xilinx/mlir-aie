@@ -648,7 +648,6 @@ void computeStats(u32 performance_counter[], int n){
   
 }
 
-
 void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int col = tile.ColId;
   // int row = tile.RowId;
