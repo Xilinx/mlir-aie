@@ -20,109 +20,117 @@
 #include <xaiengine.h>
 #include "test_library.h"
 
-#define XAIE_NUM_ROWS            8
-#define XAIE_NUM_COLS           50
-#define XAIE_ADDR_ARRAY_OFF     0x800
-
 #define LOCK_TIMEOUT 100
-
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
-
 #define MLIR_STACK_OFFSET 4096
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr;	                          /**< AIE configuration pointer */
-XAieGbl AieInst;	                                      /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
-
 #include "aie_inc.cpp"
-
-}
-
 
 int
 main(int argc, char *argv[])
 {
     printf("test start.\n");
 
-    size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-    XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS, XAIE_ADDR_ARRAY_OFF);
-    XAieGbl_HwInit(&AieConfig);
-    AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_configure_dmas();
-    mlir_initialize_locks();
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_configure_dmas(_xaie);
+    mlir_aie_initialize_locks(_xaie);
 
     int errors = 0;
 
     printf("Acquire input buffer lock first.\n");
-    XAieTile_LockAcquire(&(TileInst[1][3]), 3, 0, 0); // Should this part of setup???
+    mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    ACDC_clear_tile_memory(TileInst[3][2]);
-    ACDC_clear_tile_memory(TileInst[3][3]);
-    ACDC_clear_tile_memory(TileInst[3][4]);
-    mlir_write_buffer_a13(3,7);
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+    mlir_aie_clear_tile_memory(_xaie, 3, 2);
+    mlir_aie_clear_tile_memory(_xaie, 3, 3);
+    mlir_aie_clear_tile_memory(_xaie, 3, 4);
+    mlir_aie_write_buffer_a13(_xaie, 3, 7);
 
-    ACDC_check("Before start cores:", mlir_read_buffer_a13(3), 7, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_b13(5), 0, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_a32(5), 0, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_b32(5), 0, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_a33(5), 0, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_b33(5), 0, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_a34(5), 0, errors);
-    ACDC_check("Before start cores:", mlir_read_buffer_b34(5), 0, errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a13(_xaie, 3), 7,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_b13(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a32(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_b32(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a33(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_b33(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_b34(_xaie, 5), 0,
+                   errors);
 
     printf("Start cores\n");
-    mlir_start_cores();
+    mlir_aie_start_cores(_xaie);
 
-    ACDC_check("After start cores:", mlir_read_buffer_b13(5), 0, errors);
-    ACDC_check("After start cores:", mlir_read_buffer_a32(5), 0, errors);
-    ACDC_check("After start cores:", mlir_read_buffer_b32(5), 0, errors);
-    ACDC_check("After start cores:", mlir_read_buffer_a33(5), 0, errors);
-    ACDC_check("After start cores:", mlir_read_buffer_b33(5), 0, errors);
-    ACDC_check("After start cores:", mlir_read_buffer_a34(5), 0, errors);
-    ACDC_check("After start cores:", mlir_read_buffer_b34(5), 0, errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_b13(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a32(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_b32(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a33(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_b33(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
+                   errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_b34(_xaie, 5), 0,
+                   errors);
 
     printf("Release input buffer lock.\n");
-    XAieTile_LockRelease(&(TileInst[1][3]), 3, 1, 0);
+    mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
 
     printf("Waiting to acquire output lock for read tile[3][2]...\n");
-    if(!XAieTile_LockAcquire(&(TileInst[3][2]), 7, 1, LOCK_TIMEOUT)) {
-        printf("ERROR: timeout hit!\n");
+    if (!mlir_aie_acquire_lock(_xaie, 3, 2, 7, 1, LOCK_TIMEOUT)) {
+      printf("ERROR: timeout hit!\n");
     }
 
-    ACDC_print_dma_status(TileInst[3][2]);
-    
-    ACDC_check("After acquire lock:", mlir_read_buffer_b13(5), 35, errors);
-    ACDC_check("After acquire lock:", mlir_read_buffer_a32(5), 35, errors);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b32(5), 105, errors);
+    mlir_aie_print_dma_status(_xaie, 3, 2);
+
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b13(_xaie, 5),
+                   35, errors);
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_a32(_xaie, 5),
+                   35, errors);
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b32(_xaie, 5),
+                   105, errors);
 
     printf("Waiting to acquire output lock for read tile[3][3]...\n");
-    if(!XAieTile_LockAcquire(&(TileInst[3][3]), 7, 1, LOCK_TIMEOUT)) {
-        printf("ERROR: timeout hit!\n");
+    if (!mlir_aie_acquire_lock(_xaie, 3, 3, 7, 1, LOCK_TIMEOUT)) {
+      printf("ERROR: timeout hit!\n");
     }
-    ACDC_check("After acquire lock:", mlir_read_buffer_a33(5), 35, errors);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b33(5), 140, errors);
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_a33(_xaie, 5),
+                   35, errors);
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b33(_xaie, 5),
+                   140, errors);
 
     printf("Waiting to acquire output lock for read tile[3][4]...\n");
-    if(!XAieTile_LockAcquire(&(TileInst[3][4]), 7, 1, LOCK_TIMEOUT)) {
-        printf("ERROR: timeout hit!\n");
+    if (!mlir_aie_acquire_lock(_xaie, 3, 4, 7, 1, LOCK_TIMEOUT)) {
+      printf("ERROR: timeout hit!\n");
     }
-    ACDC_check("After acquire lock:", mlir_read_buffer_a34(5), 35, errors);
-    ACDC_check("After acquire lock:", mlir_read_buffer_b34(5), 175, errors);
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_a34(_xaie, 5),
+                   35, errors);
+    mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b34(_xaie, 5),
+                   175, errors);
 
+    int res = 0;
     if (!errors) {
-        printf("PASS!\n"); return 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); return -1;
+      printf("Fail!\n");
+      res = -1;
     }
+    mlir_aie_deinit_libxaie(_xaie);
+
     printf("test done.\n");
+    return res;
 }

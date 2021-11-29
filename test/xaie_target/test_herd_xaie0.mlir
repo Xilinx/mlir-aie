@@ -13,169 +13,169 @@
 
 // CHECK: for (x = ifm_X + 0; x < ifm_X + 1; x += 1) {
 // CHECK: for (y = ifm_Y + 0; y < ifm_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = compute_X + 0; x < compute_X + 3; x += 1) {
 // CHECK: for (y = compute_Y + 0; y < compute_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_NORTH(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_NORTH(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_NORTH(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_SOUTH(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_NORTH(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_SOUTH(&(ctx->TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = compute_X + 3; x < compute_X + 4; x += 1) {
 // CHECK: for (y = compute_Y + 0; y < compute_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_NORTH(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_NORTH(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = pp_X + 0; x < pp_X + 1; x += 1) {
 // CHECK: for (y = pp_Y + 0; y < pp_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 0),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = pp_X + 0; x < pp_X + 1; x += 1) {
 // CHECK: for (y = pp_Y + 0; y < pp_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 2),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 3),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 3),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 4),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 4),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = pp_X + 0; x < pp_X + 1; x += 1) {
 // CHECK: for (y = pp_Y + 1; y < pp_Y + 2; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 2),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 3),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 3),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 3),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 3),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 4),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 4),
-// CHECK: 	XAIE_ENABLE);
-// CHECK: }
-// CHECK: }
-// CHECK: for (x = pp_X + 0; x < pp_X + 1; x += 1) {
-// CHECK: for (y = pp_Y + 0; y < pp_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(TileInst[x][y]), 0),
-// CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(TileInst[x][y]), 1),
-// CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 4),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 4),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = pp_X + 0; x < pp_X + 1; x += 1) {
 // CHECK: for (y = pp_Y + 0; y < pp_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(ctx->TileInst[x][y]), 0),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIE_ENABLE);
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIE_ENABLE);
+// CHECK: }
+// CHECK: }
+// CHECK: for (x = pp_X + 0; x < pp_X + 1; x += 1) {
+// CHECK: for (y = pp_Y + 0; y < pp_Y + 1; y += 1) {
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIE_ENABLE);
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_EAST(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(ctx->TileInst[x][y]), 2),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = pp_X + 3; x < pp_X + 4; x += 1) {
 // CHECK: for (y = pp_Y + 0; y < pp_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(TileInst[x][y]), 0),
-// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_DMA(&(ctx->TileInst[x][y]), 0),
+// CHECK: 	XAIETILE_STRSW_MPORT_WEST(&(ctx->TileInst[x][y]), 2),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = compute_X + 0; x < compute_X + 1; x += 1) {
 // CHECK: for (y = compute_Y + 0; y < compute_Y + 1; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 3),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 3),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 2),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 4),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 3),
-// CHECK: 	XAIE_ENABLE);
-// CHECK: }
-// CHECK: }
-// CHECK: for (x = compute_X + 0; x < compute_X + 1; x += 1) {
-// CHECK: for (y = compute_Y + 1; y < compute_Y + 2; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 1),
-// CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 1),
-// CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 3),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 2),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 4),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 3),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = compute_X + 0; x < compute_X + 1; x += 1) {
 // CHECK: for (y = compute_Y + 1; y < compute_Y + 2; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE);
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 2),
-// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIE_ENABLE);
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 3),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 2),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }
 // CHECK: for (x = compute_X + 0; x < compute_X + 1; x += 1) {
 // CHECK: for (y = compute_Y + 1; y < compute_Y + 2; y += 1) {
-// CHECK: XAieTile_StrmConnectCct(&(TileInst[x][y]),
-// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(TileInst[x][y]), 1),
-// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(TileInst[x][y]), 1),
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIE_ENABLE);
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 2),
+// CHECK: 	XAIETILE_STRSW_MPORT_NORTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIE_ENABLE);
+// CHECK: }
+// CHECK: }
+// CHECK: for (x = compute_X + 0; x < compute_X + 1; x += 1) {
+// CHECK: for (y = compute_Y + 1; y < compute_Y + 2; y += 1) {
+// CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),
+// CHECK: 	XAIETILE_STRSW_SPORT_SOUTH(&(ctx->TileInst[x][y]), 1),
+// CHECK: 	XAIETILE_STRSW_MPORT_DMA(&(ctx->TileInst[x][y]), 1),
 // CHECK: 	XAIE_ENABLE);
 // CHECK: }
 // CHECK: }

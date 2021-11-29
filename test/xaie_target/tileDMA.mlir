@@ -12,10 +12,10 @@
 
 // AIE.end is not the last block.
 
-// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[8][3]),  /* bd */ 0,  /* nextbd */ 0);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[8][3]),  /* bd */ 0);
-// CHECK: XAieDma_TileBdSetNext(&(TileDMAInst[8][3]),  /* bd */ 1,  /* nextbd */ 1);
-// CHECK: XAieDma_TileBdWrite(&(TileDMAInst[8][3]),  /* bd */ 1);
+// CHECK: XAieDma_TileBdSetNext(&(ctx->TileDMAInst[8][3]),  /* bd */ 0,  /* nextbd */ 0);
+// CHECK: XAieDma_TileBdWrite(&(ctx->TileDMAInst[8][3]),  /* bd */ 0);
+// CHECK: XAieDma_TileBdSetNext(&(ctx->TileDMAInst[8][3]),  /* bd */ 1,  /* nextbd */ 1);
+// CHECK: XAieDma_TileBdWrite(&(ctx->TileDMAInst[8][3]),  /* bd */ 1);
 
 module @aie_module  {
   %0 = AIE.tile(8, 3)
