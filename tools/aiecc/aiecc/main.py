@@ -103,6 +103,7 @@ def run_flow(opts, tmpdirname):
           # Formal function argument names not used in older LLVM
           do_call(['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/mustprogress//g', file_core_llvmir_chesslinked])
+          do_call(['sed', '-i', '-E', 's/poison/undef/g', file_core_llvmir_chesslinked])
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
