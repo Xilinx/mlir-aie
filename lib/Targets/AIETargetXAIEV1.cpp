@@ -708,7 +708,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
     // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (connectOp.sourceBundle() == WireBundle::South) {
+      if (connectOp.sourceBundle() == WireBundle::North) {
         // demux!
         output << "XAieTile_ShimStrmDemuxConfig(" << tileInstStr("x", "y")
                << ",\n";
@@ -724,7 +724,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
                  << ");\n";
         }
 
-      } else if (connectOp.destBundle() == WireBundle::South) {
+      } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
         output << "XAieTile_ShimStrmMuxConfig(" << tileInstStr("x", "y")
                << ",\n";
