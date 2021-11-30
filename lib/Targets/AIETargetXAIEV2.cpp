@@ -643,7 +643,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
 
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (connectOp.sourceBundle() == WireBundle::North) {
+      if (connectOp.sourceBundle() == WireBundle::South) {
         // demux!
         output
             << "XAie_EnableAieToShimDmaStrmPort(" << deviceInstRef << ", "
@@ -652,7 +652,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
             //               <<
             //               stringifyWireBundle(connectOp.sourceBundle()).upper()
             << connectOp.sourceIndex() << ");\n";
-      } else if (connectOp.destBundle() == WireBundle::North) {
+      } else if (connectOp.destBundle() == WireBundle::South) {
         // mux
         output
             << "XAie_EnableShimDmaToAieStrmPort(" << deviceInstRef << ", "
