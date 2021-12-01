@@ -788,7 +788,7 @@ def AIE_DMABD2DOp: AIE_Op<"dmaBd2D", []> {
 
     Offset = value to add to the address for each increment
     Wrap = how many increments before wrapping
-    Offset = how many stream beats before increment
+    Increment = how many stream beats before increment
 
     The address is generated according to the following formulas: 
       Address = Base Address + Xn + Yn
