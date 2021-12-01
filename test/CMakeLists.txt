@@ -104,7 +104,7 @@ set(TEST_DEPENDS
   aiecc.py
   aie-opt
   aie-translate
-  copy-runtime-libs
+  aie-copy-runtime-libs
   )
 
 add_lit_testsuite(check-aie "Running the aie regression tests"

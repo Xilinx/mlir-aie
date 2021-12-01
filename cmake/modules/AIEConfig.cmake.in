@@ -21,3 +21,7 @@ include("@AIE_CONFIG_EXPORTS_FILE@")
 if(NOT TARGET aiecc.py)
   add_custom_target(aiecc.py)
 endif()
+
+if(NOT TARGET aie-copy-runtime-libs)
+  add_custom_target(aie-copy-runtime-libs)
+endif()
