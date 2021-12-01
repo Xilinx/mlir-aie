@@ -203,7 +203,7 @@ In the host code, lets write to the buffer 71:
 // We're going to stamp over the memory
 
 for (int i = 0; i < DMA_COUNT; i++){
-	mlir_write_buffer_a71(i, 0xdeadbeef);
+	mlir_aie_write_buffer_a71(ctx, i, 0xdeadbeef);
 }
 ```
 
@@ -322,7 +322,7 @@ We can write to buffer a and program the SHIM DMA using the XAIE API:
 
 for (int i=0; i<DMA_COUNT; i++) {
 	uint32_t d = i+1;
-	mlir_write_buffer_a(i, d);
+	mlir_aie_write_buffer_a(ctx, i, d);
 }
 
 // Program the ShimDMA to write from stream to memory

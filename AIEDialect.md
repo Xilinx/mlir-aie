@@ -176,9 +176,8 @@ operation ::= `AIE.core` `(` $tile `)` regions attr-dict
 This operation represents an AIEngine processor core belonging to a tile.
 The region of a CoreOp contains code that gets run on the AIE core.  This code will
 typically be outlined into the LLVM dialect, eventually resulting in a binary file
-for each core.  If an elf file already exists for a core, the name of this file can
-be specified using the 'elf_file' attribute, in which case the contents of the region
-are ignored.
+for each core.  The name of this file can be be specified using the 'elf_file'
+attribute.
 
 Examples:
 ```
