@@ -7,10 +7,13 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
-
+#ifndef AIE_TEST_LIBRARY_H
+#define AIE_TEST_LIBRARY_H
 #include <stdio.h>
 #include <stdlib.h>
 #include <xaiengine.h>
+
+extern "C" {
 
 #define mlir_aie_check(s, r, v, errors)                                        \
   if (r != v) {                                                                \
@@ -128,3 +131,6 @@ void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row);
 
 /// Zero out the configuration memory of the shim tile.
 void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row);
+
+} // extern "C"
+#endif
