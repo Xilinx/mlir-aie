@@ -77,9 +77,9 @@ def parse_args():
             nargs=argparse.REMAINDER)
     parser.add_argument('-j',
             dest="nthreads",
-            default=False,
-            action='store_false',
-            help='Compile with max n-threads in the machine')
+            default=1,
+            action='store',
+            help='Compile with max n-threads in the machine (default is 1).  An argument of zero corresponds to the maximum number of threads on the machine.')
 
 
     opts = parser.parse_args(sys.argv[1:])

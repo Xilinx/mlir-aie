@@ -147,10 +147,12 @@ def run_flow(opts, tmpdirname):
         do_call(cmd + opts.arm_args)
 
 
-
-    if (opts.nthreads == True):
-      with ThreadPool() as thdpool:
-          # prefer to dispatch and process_arm_cgen() first, it typically takse longer than process_core()
+    nthreads = int(opts.nthreads)
+    if (nthreads == 0 or nthreads > 1):
+      if(nthreads == 0):
+        nthreads = None
+      with ThreadPool(nthreads) as thdpool:
+          # prefer to dispatch and process_arm_cgen() first, it typically takes longer than process_core()
           thdpool.apply_async(process_arm_cgen)
           thdpool.map(process_core, (cores))
           thdpool.close()
