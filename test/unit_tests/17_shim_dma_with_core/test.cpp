@@ -57,7 +57,7 @@ main(int argc, char *argv[])
         // Take no prisoners.  No regerts
         // Overwrites the DMA_BDX_Control registers
         for(int ofst=0;ofst<0x14;ofst+=0x4){
-          u32 rb = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 0, 7) +
+          u32 rb = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
                                               0x0001D000 + (bd * 0x14) + ofst);
           if (rb != 0) {
             printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
@@ -68,7 +68,7 @@ main(int argc, char *argv[])
 
     for (int dma=0;dma<4;dma++) {
         for(int ofst=0;ofst<0x8;ofst+=0x4){
-          u32 rb = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 0, 7) +
+          u32 rb = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
                                               0x0001D140 + (dma * 0x8) + ofst);
           if (rb != 0) {
             printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
@@ -150,7 +150,7 @@ main(int argc, char *argv[])
     mlir_aie_print_tile_status(_xaie, 7, 3);
     u32 locks70;
     locks70 = mlir_aie_read32(_xaie,
-                              mlir_aie_get_tile_addr(_xaie, 0, 7) + 0x00014F00);
+                              mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
     printf("Locks70 = %08X\n", locks70);
 
     printf("Release lock for accessing DDR.\n");
@@ -162,7 +162,7 @@ main(int argc, char *argv[])
     printf("after lock release\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
     locks70 = mlir_aie_read32(_xaie,
-                              mlir_aie_get_tile_addr(_xaie, 0, 7) + 0x00014F00);
+                              mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
     printf("Locks70 = %08X\n", locks70);
 
     mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 0), 384, errors);
@@ -193,7 +193,7 @@ main(int argc, char *argv[])
             //u32 rb = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x0001D000+(bd*0x14)+ofst);
             //printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
             mlir_aie_write32(_xaie,
-                             mlir_aie_get_tile_addr(_xaie, 0, 7) + 0x0001D000 +
+                             mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x0001D000 +
                                  (bd * 0x14) + ofst,
                              0x0);
         }
@@ -204,7 +204,7 @@ main(int argc, char *argv[])
             //u32 rb = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x0001D140+(dma*0x8)+ofst);
             //printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
             mlir_aie_write32(_xaie,
-                             mlir_aie_get_tile_addr(_xaie, 0, 7) + 0x0001D140 +
+                             mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x0001D140 +
                                  (dma * 0x8) + ofst,
                              0x0);
         }
