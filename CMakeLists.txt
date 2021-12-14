@@ -30,6 +30,8 @@ set(AIE_LINKER "XCHESSCC" CACHE STRING "Backend linker selection")
 
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS "Build the LLVM tools. If OFF, just generate build targets." ON)
+option(AIE_INCLUDE_INTEGRATION_TESTS
+       "Generate build targets for the mlir-aie integration tests." OFF)
 
 find_package(MLIR REQUIRED CONFIG)
 

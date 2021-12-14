@@ -7,7 +7,8 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
-
+#ifndef AIE_TEST_LIBRARY_H
+#define AIE_TEST_LIBRARY_H
 #include <stdio.h>
 #include <stdlib.h>
 #include <xaiengine.h>
@@ -17,8 +18,7 @@
 #define MODE_MEM 2
 
 
-#define MAP_SIZE 16UL
-#define MAP_MASK (MAP_SIZE - 1)
+extern "C" {
 
 #define mlir_aie_check(s, r, v, errors)                                        \
   if (r != v) {                                                                \
@@ -192,3 +192,6 @@ class EventMon{
 };
 
 void computeStats(u32 performance_counter[], int n);
+  
+} // extern "C"
+#endif

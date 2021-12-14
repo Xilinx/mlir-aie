@@ -97,8 +97,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     AIE.connect<"North" : 2, "South" : 2>
   }
   %mux1 = AIE.shimmux  (%t70) {
-    AIE.connect<"DMA"   : 0, "South" : 3> 
-    AIE.connect<"South" : 2, "DMA" : 0>
+    AIE.connect<"DMA"   : 0, "North" : 3> 
+    AIE.connect<"North" : 2, "DMA" : 0>
   }
 
   // Shim DMA loads large buffer to local memory
