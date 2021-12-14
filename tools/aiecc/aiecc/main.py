@@ -142,7 +142,7 @@ def run_flow(opts, tmpdirname):
       cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
       cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
       cmd += ['-I%s' % tmpdirname]
-      cmd += ['-fuse-ld=lld','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+      cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
 
       if(len(opts.arm_args) > 0):
         do_call(cmd + opts.arm_args)
