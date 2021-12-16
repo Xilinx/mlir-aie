@@ -88,8 +88,10 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
         file_core_llvmir = tmpcorefile(core, "ll")
         do_call(['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
+        file_core_llvmir_opted = tmpcorefile(core, "opted.ll")
+        do_call(['opt', '-O2', '-S', file_core_llvmir, '-o', file_core_llvmir_opted])
         file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
-        do_call(['opt', '-O2', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
+        do_call(['opt', '-strip', '-S', file_core_llvmir_opted, '-o', file_core_llvmir_stripped])
         file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc):
