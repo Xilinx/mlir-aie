@@ -31,17 +31,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   // func private @func(%A: memref<256xi32>, %B: memref<256xi32>, %C: i32) -> ()
 
   %c13 = AIE.core(%t73) { 
-    %buffer_size =  constant 256 : i32
+    %buffer_size =  arith.constant 256 : i32
 
-    %lb = constant 0 : index
-    %ub = constant 4 : index
-    %step = constant 1 : index
+    %lb = arith.constant 0 : index
+    %ub = arith.constant 4 : index
+    %step = arith.constant 1 : index
     
-    %sum_0 = constant 0 : i32
-    %inc = constant 1 : i32
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
+    %sum_0 = arith.constant 0 : i32
+    %inc = arith.constant 1 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
       
       AIE.useLock(%lock_a_ping, "Acquire", 1) // acquire for read
@@ -50,7 +50,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       scf.for %arg0 = %c0 to %c64 step %c1
         iter_args(%sum_iter = %sum_0) -> (i32) {
         %i = memref.load %buf_a_ping[%arg0] : memref<64xi32>
-        %i2 = addi %i, %inc : i32
+        %i2 = arith.addi %i, %inc : i32
         memref.store %i2, %buf_b_ping[%arg0] : memref<64xi32>
         scf.yield %i : i32
       }
@@ -63,7 +63,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       scf.for %arg0 = %c0 to %c64 step %c1
         iter_args(%sum_iter = %sum_0) -> (i32) {
         %i = memref.load %buf_a_pong[%arg0] : memref<64xi32>
-        %i2 = addi %i, %inc : i32
+        %i2 = arith.addi %i, %inc : i32
         memref.store %i2, %buf_b_pong[%arg0] : memref<64xi32>
         scf.yield %i : i32
       }

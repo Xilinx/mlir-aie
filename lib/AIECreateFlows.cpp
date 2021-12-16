@@ -139,7 +139,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
              PatternBenefit benefit = 1)
       : OpConversionPattern<FlowOp>(context, benefit), module(m), analysis(a) {}
 
-  LogicalResult match(Operation *op) const override { return success(); }
+  LogicalResult match(AIE::FlowOp op) const override { return success(); }
 
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
@@ -238,7 +238,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
     }
   }
 
-  void rewrite(AIE::FlowOp op, ArrayRef<Value> operands,
+  void rewrite(AIE::FlowOp op, OpAdaptor adaptor,
                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     WireBundle sourceBundle = op.sourceBundle();

@@ -16,9 +16,9 @@ module @test00_itsalive {
   %buf12_0 = AIE.buffer(%tile12) { sym_name = "a", address = 0 } : memref<256xi32>
 
   %core12 = AIE.core(%tile12) {
-    %val1 = constant 1 : i32
-    %idx1 = constant 3 : index
-    %2 = addi %val1, %val1 : i32
+    %val1 = arith.constant 1 : i32
+    %idx1 = arith.constant 3 : index
+    %2 = arith.addi %val1, %val1 : i32
     AIE.end
   }
 }

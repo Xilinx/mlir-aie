@@ -25,7 +25,7 @@ Type memRefToDefaultAddressSpace(Type t) {
   auto memRefType = t.dyn_cast<MemRefType>();
   if (memRefType && memRefType.getMemorySpace() != 0)
     return MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                           memRefType.getAffineMaps(), 0 /* Address Space */);
+                           memRefType.getLayout(), 0 /* Address Space */);
   else
     return t;
 }

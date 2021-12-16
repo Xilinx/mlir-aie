@@ -19,8 +19,8 @@ def toDefaultAddressSpace : NativeCodeCall<"TypeAttr::get(memRefToDefaultAddress
 def hasNonDefaultAddressSpace : Constraint<
     CPred<"$0.getValue().cast<MemRefType>().getMemorySpace() != 0">,
     "has non-default address space">;
-def : Pat<(MemRef_GlobalOp $sym_name, $sym_visibility, $type, $initial_value, $constant),
-        (MemRef_GlobalOp $sym_name, $sym_visibility, (toDefaultAddressSpace $type), $initial_value, $constant),
+def : Pat<(MemRef_GlobalOp $sym_name, $sym_visibility, $type, $initial_value, $constant, $alignment),
+        (MemRef_GlobalOp $sym_name, $sym_visibility, (toDefaultAddressSpace $type), $initial_value, $constant, $alignment),
         [(hasNonDefaultAddressSpace $type)],
         (addBenefit 20)>;
 

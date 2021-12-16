@@ -13,8 +13,8 @@
 // CHECK33:    memref.global "public" @a : memref<4xi32>
 // CHECK33-LABEL:  func @core33() {
 // CHECK33:    %0 = memref.get_global @a : memref<4xi32>
-// CHECK33:    %c0 = constant 0 : index
-// CHECK33:    %c377_i32 = constant 377 : i32
+// CHECK33:    %c0 = arith.constant 0 : index
+// CHECK33:    %c377_i32 = arith.constant 377 : i32
 // CHECK33:    memref.store %c377_i32, %0[%c0] : memref<4xi32>
 // CHECK33:    return
 // CHECK33:  }
@@ -22,7 +22,7 @@
 // CHECK43:    memref.global "public" @a : memref<4xi32>
 // CHECK43-LABEL:  func @core43() {
 // CHECK43:    %0 = memref.get_global @a : memref<4xi32>
-// CHECK43:    %c0 = constant 0 : index
+// CHECK43:    %c0 = arith.constant 0 : index
 // CHECK43:    %1 = memref.load %0[%c0] : memref<4xi32>
 // CHECK43:    return
 // CHECK43:  }
@@ -31,15 +31,15 @@ module @codegen1 {
   %t33 = AIE.tile(3, 3)
   %a = AIE.buffer(%t33) { sym_name = "a" } : memref<4xi32>
   %core33 = AIE.core(%t33) {
-    %0 = constant 0 : index
-    %377 = constant 377 : i32
+    %0 = arith.constant 0 : index
+    %377 = arith.constant 377 : i32
     memref.store %377, %a[%0] : memref<4xi32>
     AIE.end
   }
   %t34 = AIE.tile(4, 3)
 
   %core34 = AIE.core(%t34) {
-    %0 = constant 0 : index
+    %0 = arith.constant 0 : index
     %1 = memref.load %a[%0] : memref<4xi32>
 //    AIE.debug(%1 : i32)
     AIE.end

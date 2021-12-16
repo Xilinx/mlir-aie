@@ -40,15 +40,15 @@
 // CHECK:   AIE.token(0) {sym_name = "token0"}
 // CHECK:   %8 = AIE.core(%0) {
 // CHECK:     AIE.useToken @token0(Acquire, 0)
-// CHECK:     %c16 = constant 16 : index
-// CHECK:     %c1_i32 = constant 1 : i32
+// CHECK:     %c16 = arith.constant 16 : index
+// CHECK:     %c1_i32 = arith.constant 1 : i32
 // CHECK:     memref.store %c1_i32, %1[%c16] : memref<512xi32>
 // CHECK:     AIE.useToken @token0(Release, 1)
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %9 = AIE.core(%3) {
 // CHECK:     AIE.useToken @token0(Acquire, 2)
-// CHECK:     %c16 = constant 16 : index
+// CHECK:     %c16 = arith.constant 16 : index
 // CHECK:     %10 = memref.load %4[%c16] : memref<512xi32>
 // CHECK:     AIE.useToken @token0(Release, 3)
 // CHECK:     AIE.end
@@ -68,8 +68,8 @@ module @hello_world {
 
   func @producer(%arg0: memref<512xi32>) -> () {
     AIE.useToken @token0(Acquire, 0)
-    %i = constant 16 : index
-    %val = constant 1 : i32
+    %i = arith.constant 16 : index
+    %val = arith.constant 1 : i32
     memref.store %val, %arg0[%i] : memref<512xi32>
     AIE.useToken @token0(Release, 1)
     return
@@ -77,7 +77,7 @@ module @hello_world {
 
   func @consumer(%arg0: memref<512xi32>) -> () {
     AIE.useToken @token0(Acquire, 2)
-    %i = constant 16 : index
+    %i = arith.constant 16 : index
     %val = memref.load %arg0[%i] : memref<512xi32>
     AIE.useToken @token0(Release, 3)
     return

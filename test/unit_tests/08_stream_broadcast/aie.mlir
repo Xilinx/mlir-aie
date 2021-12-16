@@ -43,13 +43,13 @@ module @test08_stream_broadcast {
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock13_5, "Acquire", 0) // acquire for write
-    %idx1 = constant 3 : index
+    %idx1 = arith.constant 3 : index
     %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
-    %2    = addi %val1, %val1 : i32
-    %3 = addi %2, %val1 : i32
-    %4 = addi %3, %val1 : i32
-    %5 = addi %4, %val1 : i32
-    %idx2 = constant 5 : index
+    %2    = arith.addi %val1, %val1 : i32
+    %3 = arith.addi %2, %val1 : i32
+    %4 = arith.addi %3, %val1 : i32
+    %5 = arith.addi %4, %val1 : i32
+    %idx2 = arith.constant 5 : index
     memref.store %5, %buf13_1[%idx2] : memref<256xi32>
     AIE.useLock(%lock13_3, "Release", 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1) // release for read
@@ -79,13 +79,13 @@ module @test08_stream_broadcast {
   %core32 = AIE.core(%tile32) {
     AIE.useLock(%lock32_6, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock32_7, "Acquire", 0) // acquire for write
-    %idx1 = constant 5 : index
+    %idx1 = arith.constant 5 : index
     %val1 = memref.load %buf32_0[%idx1] : memref<256xi32>
-    %2    = addi %val1, %val1 : i32
-    %3 = addi %2, %val1 : i32
-//    %4 = addi %3, %val1 : i32
-//    %5 = addi %4, %val1 : i32
-    %idx2 = constant 5 : index
+    %2    = arith.addi %val1, %val1 : i32
+    %3 = arith.addi %2, %val1 : i32
+//    %4 = arith.addi %3, %val1 : i32
+//    %5 = arith.addi %4, %val1 : i32
+    %idx2 = arith.constant 5 : index
     memref.store %3, %buf32_1[%idx2] : memref<256xi32>
     AIE.useLock(%lock32_6, "Release", 0) // release for write
     AIE.useLock(%lock32_7, "Release", 1) // release for read
@@ -114,13 +114,13 @@ module @test08_stream_broadcast {
   %core33 = AIE.core(%tile33) {
     AIE.useLock(%lock33_6, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock33_7, "Acquire", 0) // acquire for write
-    %idx1 = constant 5 : index
+    %idx1 = arith.constant 5 : index
     %val1 = memref.load %buf33_0[%idx1] : memref<256xi32>
-    %2    = addi %val1, %val1 : i32
-    %3 = addi %2, %val1 : i32
-    %4 = addi %3, %val1 : i32
-//    %5 = addi %4, %val1 : i32
-    %idx2 = constant 5 : index
+    %2    = arith.addi %val1, %val1 : i32
+    %3 = arith.addi %2, %val1 : i32
+    %4 = arith.addi %3, %val1 : i32
+//    %5 = arith.addi %4, %val1 : i32
+    %idx2 = arith.constant 5 : index
     memref.store %4, %buf33_1[%idx2] : memref<256xi32>
     AIE.useLock(%lock33_6, "Release", 0) // release for write
     AIE.useLock(%lock33_7, "Release", 1) // release for read
@@ -149,13 +149,13 @@ module @test08_stream_broadcast {
   %core34 = AIE.core(%tile34) {
     AIE.useLock(%lock34_6, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock34_7, "Acquire", 0) // acquire for write
-    %idx1 = constant 5 : index
+    %idx1 = arith.constant 5 : index
     %val1 = memref.load %buf34_0[%idx1] : memref<256xi32>
-    %2    = addi %val1, %val1 : i32
-    %3 = addi %2, %val1 : i32
-    %4 = addi %3, %val1 : i32
-    %5 = addi %4, %val1 : i32
-    %idx2 = constant 5 : index
+    %2    = arith.addi %val1, %val1 : i32
+    %3 = arith.addi %2, %val1 : i32
+    %4 = arith.addi %3, %val1 : i32
+    %5 = arith.addi %4, %val1 : i32
+    %idx2 = arith.constant 5 : index
     memref.store %5, %buf34_1[%idx2] : memref<256xi32>
     AIE.useLock(%lock34_6, "Release", 0) // release for write
     AIE.useLock(%lock34_7, "Release", 1) // release for read

@@ -64,7 +64,7 @@ def AIECreateCores : Pass<"aie-create-cores", "ModuleOp"> {
       ...
       return
     }
-    %a = constant 0 : i32
+    %a = arith.constant 0 : i32
     call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
 
     ```
@@ -73,7 +73,7 @@ def AIECreateCores : Pass<"aie-create-cores", "ModuleOp"> {
     %0 = AIE.tile(1, 1)
     %1 = AIE.buffer(%0) : memref<256xi32>
     %2 = AIE.buffer(%0) : memref<1xi32>
-    %c0_i32 = constant 0 : i32
+    %c0_i32 = arith.constant 0 : i32
     %5 = AIE.core(%0) {
       ...
     }

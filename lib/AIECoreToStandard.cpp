@@ -31,13 +31,14 @@ using namespace xilinx::AIE;
 template <typename MyAIEOp>
 struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
+  using OpAdaptor = typename MyAIEOp::Adaptor;
   ModuleOp &module;
 
   AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<MyAIEOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(MyAIEOp op, ArrayRef<Value> operands,
+  matchAndRewrite(MyAIEOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
@@ -55,7 +56,7 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
       : OpConversionPattern<DebugOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(DebugOp op, ArrayRef<Value> operands,
+  matchAndRewrite(DebugOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
@@ -79,7 +80,7 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
       : OpConversionPattern<PutStreamOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(PutStreamOp op, ArrayRef<Value> operands,
+  matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
@@ -112,7 +113,7 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
       : OpConversionPattern<GetStreamOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(GetStreamOp op, ArrayRef<Value> operands,
+  matchAndRewrite(GetStreamOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     std::string funcName = "llvm.aie.get.";
     if (op.isWideStream())
@@ -142,7 +143,7 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
       : OpConversionPattern<PutCascadeOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(PutCascadeOp op, ArrayRef<Value> operands,
+  matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
@@ -166,7 +167,7 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
       : OpConversionPattern<GetCascadeOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(GetCascadeOp op, ArrayRef<Value> operands,
+  matchAndRewrite(GetCascadeOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<FuncOp>(funcName);
@@ -195,7 +196,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         tileRow(tileRow) {}
 
   LogicalResult
-  matchAndRewrite(CoreOp op, ArrayRef<Value> operands,
+  matchAndRewrite(CoreOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
     Operation *Op = op.getOperation();
@@ -241,9 +242,9 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPoint(coreFunc);
       for (auto buffer : buffers) {
         auto symName = buffer.name().getValue();
-        rewriter.create<memref::GlobalOp>(rewriter.getUnknownLoc(), symName,
-                                          rewriter.getStringAttr("public"),
-                                          buffer.getType(), nullptr, false);
+        rewriter.create<memref::GlobalOp>(
+            rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
+            buffer.getType(), nullptr, false, nullptr);
       }
       rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
       for (auto buffer : buffers) {
@@ -295,12 +296,12 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         auto useLockFunc = module.lookupSymbol<FuncOp>(funcName);
         assert(useLockFunc && "Could not find the intrinsic function!");
         SmallVector<Value, 2> args;
-        Value lockValue = rewriter.create<ConstantOp>(
+        Value lockValue = rewriter.create<arith::ConstantOp>(
             rewriter.getUnknownLoc(),
             IntegerType::get(rewriter.getContext(), 32),
             rewriter.getI32IntegerAttr(useLock.getLockValue()));
 
-        Value coreLockIDValue = rewriter.create<ConstantOp>(
+        Value coreLockIDValue = rewriter.create<arith::ConstantOp>(
             rewriter.getUnknownLoc(),
             IntegerType::get(rewriter.getContext(), 32),
             rewriter.getI32IntegerAttr(coreLockID));
@@ -442,6 +443,7 @@ struct AIECoreToStandardPass
     ConversionTarget target(getContext());
     target.addLegalDialect<StandardOpsDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
+    target.addLegalDialect<arith::ArithmeticDialect>();
     target.addLegalDialect<VectorDialect>();
     target.addLegalOp<FuncOp, ModuleOp>();
 

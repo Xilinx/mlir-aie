@@ -133,6 +133,7 @@ void registerAIETranslations() {
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
+        registry.insert<arith::ArithmeticDialect>();
       });
 
   ///// ld.script format:
@@ -251,6 +252,7 @@ SECTIONS
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
+        registry.insert<arith::ArithmeticDialect>();
       });
 
   //   _entry_point _main_init
@@ -328,6 +330,7 @@ SECTIONS
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
+        registry.insert<arith::ArithmeticDialect>();
       });
 
   TranslateFromMLIRRegistration registrationCoreList(
@@ -354,6 +357,7 @@ SECTIONS
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
+        registry.insert<arith::ArithmeticDialect>();
       });
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie",
@@ -369,6 +373,7 @@ SECTIONS
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
+        registry.insert<arith::ArithmeticDialect>();
       });
   TranslateFromMLIRRegistration registrationXJSON(
       "aie-flows-to-json",
@@ -381,6 +386,7 @@ SECTIONS
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
+        registry.insert<arith::ArithmeticDialect>();
       });
 }
 } // namespace AIE

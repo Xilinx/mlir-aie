@@ -35,7 +35,7 @@ struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
   }
 
   LogicalResult
-  matchAndRewrite(FuncOp op, ArrayRef<Value> operands,
+  matchAndRewrite(FuncOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (funcs.find(op) == funcs.end())
@@ -54,7 +54,7 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
       : OpConversionPattern<CallOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(CallOp op, ArrayRef<Value> operands,
+  matchAndRewrite(CallOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (!op->getAttr("aie.x") || !op->getAttr("aie.y"))
@@ -183,8 +183,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
               assert(t.getShape()[0] == 1 &&
                      "Expected MemRefType of single element");
 
-              Value zero =
-                  builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
+              Value zero = builder.create<arith::ConstantIndexOp>(
+                  builder.getUnknownLoc(), 0);
               auto loadOp = builder.create<memref::LoadOp>(
                   builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);

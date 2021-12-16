@@ -41,7 +41,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
         acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
 
   LogicalResult
-  matchAndRewrite(UseTokenOp op, ArrayRef<Value> operands,
+  matchAndRewrite(UseTokenOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Operation *parentOp = op->getParentOp();

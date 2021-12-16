@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
   registry.insert<memref::MemRefDialect>();
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
+  registry.insert<mlir::arith::ArithmeticDialect>();
 
   return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
                             registry,

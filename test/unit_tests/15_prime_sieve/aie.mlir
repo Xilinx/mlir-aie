@@ -27,16 +27,16 @@ module @test15_prime_sieve {
   %buf16_0 = AIE.buffer(%tile16) { sym_name = "prime5" } : memref<256xi32>
 
   %core13 = AIE.core(%tile13) {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
-    %sum_0 = constant 2 : i32
-    %t = constant 1 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c64 = arith.constant 64 : index
+    %sum_0 = arith.constant 2 : i32
+    %t = arith.constant 1 : i32
 
     // output integers starting with 2...
     scf.for %arg0 = %c0 to %c64 step %c1
       iter_args(%sum_iter = %sum_0) -> (i32) {
-      %sum_next = addi %sum_iter, %t : i32
+      %sum_next = arith.addi %sum_iter, %t : i32
       memref.store %sum_iter, %buf13_0[%arg0] : memref<256xi32>
       scf.yield %sum_next : i32
     }
@@ -44,10 +44,10 @@ module @test15_prime_sieve {
     AIE.end
   }
   func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
-    %count_0 = constant 0 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c64 = arith.constant 64 : index
+    %count_0 = arith.constant 0 : i32
 
     // The first number we receive is prime
     %prime = memref.load %bufin[%c0] : memref<256xi32>
@@ -59,19 +59,19 @@ module @test15_prime_sieve {
       %in_val = memref.load %bufin[%in_iter] : memref<256xi32>
 
       // Potential next counters
-      %count_inc = addi %count_iter, %prime: i32
-      %in_inc = addi %in_iter, %c1 : index
-      %out_inc = addi %out_iter, %c1 : index
+      %count_inc = arith.addi %count_iter, %prime: i32
+      %in_inc = arith.addi %in_iter, %c1 : index
+      %out_inc = arith.addi %out_iter, %c1 : index
 
       // Compare the input value with the counter
-      %b = cmpi "slt", %in_val, %count_iter : i32
+      %b = arith.cmpi "slt", %in_val, %count_iter : i32
       %count_next, %in_next, %out_next = scf.if %b -> (i32, index, index) {
         // Input is less than counter.
         // Pass along the input and continue to the next one.
         memref.store %in_val, %bufout[%out_iter] : memref<256xi32>
         scf.yield %count_iter, %in_inc, %out_inc : i32, index, index
       } else {
-        %b2 = cmpi "eq", %in_val, %count_iter : i32
+        %b2 = arith.cmpi "eq", %in_val, %count_iter : i32
         %in_next = scf.if %b2 -> (index) {
           // Input is equal to the counter.
           // Increment the counter and continue to the next input.

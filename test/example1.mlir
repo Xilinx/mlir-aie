@@ -39,8 +39,8 @@ module @example1 {
     AIE.useToken @token1(Acquire, 0)
 
     // code
-    %i = constant 8: index
-    //%k = constant 1: i32
+    %i = arith.constant 8: index
+    //%k = arith.constant 1: i32
     memref.store %arg1, %arg0[%i] : memref<256xi32>
     //store %k, %arg0[%i] : memref<256xi32>
 
@@ -71,7 +71,7 @@ module @example1 {
     return
   }
 
-  %t0 = constant 19 : i32
+  %t0 = arith.constant 19 : i32
   call @task0(%buf0, %t0) { aie.x = 3, aie.y = 3 } : (memref<256xi32>, i32) -> ()
   call @task1(%buf1) { aie.x = 4, aie.y = 2 } : (memref<256xi32>) -> ()
   call @task2(%buf2) { aie.x = 4, aie.y = 4 } : (memref<256xi32>) -> ()

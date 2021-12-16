@@ -269,7 +269,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
       : OpConversionPattern<AIE::FlowOp>(context, benefit), module(m),
         analyzer(a) {}
 
-  LogicalResult match(Operation *op) const override { return success(); }
+  LogicalResult match(AIE::FlowOp op) const override { return success(); }
 
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
@@ -293,7 +293,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
                << outIndex << "\n");
   }
 
-  void rewrite(AIE::FlowOp flowOp, ArrayRef<Value> operands,
+  void rewrite(AIE::FlowOp flowOp, OpAdaptor adaptor,
                ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
 
