@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/AIENetlistAnalysis.h"
-#include "aie/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
