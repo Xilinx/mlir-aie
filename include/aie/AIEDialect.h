@@ -35,10 +35,9 @@ using namespace mlir;
 namespace mlir {
 namespace OpTrait {
 template <typename ConcreteType>
-class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {
-};
-}
-}
+class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {};
+} // namespace OpTrait
+} // namespace mlir
 
 /// Include the generated interface declarations.
 #include "aie/AIEInterfaces.h.inc"
@@ -48,9 +47,6 @@ namespace AIE {
 
 void registerAIETranslations();
 
-
-
-
 // FIXME: use this
 //#include "AIEDialect.h.inc"
 
@@ -59,7 +55,6 @@ class AIEDialect : public mlir::Dialect {
 public:
   explicit AIEDialect(mlir::MLIRContext *ctx);
   static StringRef getDialectNamespace() { return "AIE"; }
-
 
   // /// Parse a type registered to this dialect. Overridding this method is
   // /// required for dialects that have custom types.
@@ -93,7 +88,8 @@ public:
 // /// instance of `AIEListTypeStorage` (defined in our implementation file) and
 // /// provides the public facade API to interact with the type.
 // class AIEListType : public mlir::Type::TypeBase<AIEListType, mlir::Type,
-//                                                  detail::AIEListTypeStorage> {
+//                                                  detail::AIEListTypeStorage>
+//                                                  {
 // public:
 //   using Base::Base;
 
@@ -106,7 +102,6 @@ public:
 //   /// Support method to enable LLVM-style RTTI type casting.
 //   static bool kindof(unsigned kind) { return kind == AIETypeKind::AIE_LIST; }
 // };
-
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
@@ -124,9 +119,11 @@ bool isValidTile(TileID src);
 Optional<TileID> getMemWest(TileID src);
 // Return the tile ID of the memory to the east of the given tile, if it exists.
 Optional<TileID> getMemEast(TileID src);
-// Return the tile ID of the memory to the north of the given tile, if it exists.
+// Return the tile ID of the memory to the north of the given tile, if it
+// exists.
 Optional<TileID> getMemNorth(TileID src);
-// Return the tile ID of the memory to the south of the given tile, if it exists.
+// Return the tile ID of the memory to the south of the given tile, if it
+// exists.
 Optional<TileID> getMemSouth(TileID src);
 
 bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
@@ -141,7 +138,7 @@ bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
 bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
-}
+} // namespace AIE
 } // namespace xilinx
 
 // include TableGen generated Op definitions
@@ -171,7 +168,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 #define GEN_PASS_REGISTRATION
 #include "aie/AIEPasses.h.inc"
 
-} // AIE
+} // namespace AIE
 } // namespace xilinx
 
 #endif

@@ -8,14 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIETokenAnalysis.h"
+#include "aie/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "aie/AIEDialect.h"
-#include "aie/AIETokenAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -25,8 +25,9 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
 
   // Collecting token symbols
   for (auto op : module.getOps<TokenOp>()) {
-      StringRef tokenName = op->getAttrOfType<StringAttr>(
-                            ::mlir::SymbolTable::getSymbolAttrName()).getValue();
+    StringRef tokenName =
+        op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
+            .getValue();
     int value = op.getTokenValue();
     tokenSymbols[tokenName] = value;
   }
@@ -36,7 +37,8 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
   module.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseTokenOp>(Op)) {
       StringRef tokenName = op.tokenName();
-      assert(tokenSymbols.find(tokenName) != tokenSymbols.end() && "Token not found!");
+      assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
+             "Token not found!");
       if (op.acquire()) {
         tokenAcqMap[tokenName].push_back(op.getOperation());
         visitors[tokenName].push_back(op);
@@ -49,7 +51,8 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
       }
     } else if (auto op = dyn_cast<MemcpyOp>(Op)) {
       StringRef tokenName = op.tokenName();
-      assert(tokenSymbols.find(tokenName) != tokenSymbols.end() && "Token not found!");
+      assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
+             "Token not found!");
       Operation *Op = op.getOperation();
       tokenAcqMap[tokenName].push_back(Op);
       tokenRelMap[tokenName].push_back(Op);
@@ -57,7 +60,8 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
     }
   });
 
-  // sanity check: ensure that acquiring a token is followed by releasing a token
+  // sanity check: ensure that acquiring a token is followed by releasing a
+  // token
   for (auto map : tokenAcqMap) {
     StringRef tokenName = map.first;
     for (auto Op : map.second) {
@@ -79,10 +83,10 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
     }
   }
 
-  // Look for a pair of UseTokenOps (or UseTokenOp and MemcpyOp) such that one releases and
-  // one acquires the same token + value.
-  // They form a chain of releasing and acquiring a token.
-  // From the chains of tokens collected, we can infer the dependency of the parentOps
+  // Look for a pair of UseTokenOps (or UseTokenOp and MemcpyOp) such that one
+  // releases and one acquires the same token + value. They form a chain of
+  // releasing and acquiring a token. From the chains of tokens collected, we
+  // can infer the dependency of the parentOps
   for (auto map : tokenRelMap) {
     StringRef tokenName = map.first;
     auto tokenRels = map.second;
@@ -104,8 +108,9 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
           acquireValue = op.getAcquireTokenValue();
         else
           continue;
-        
-        // Release and Acquire form a chain if they set/get the token with the same value
+
+        // Release and Acquire form a chain if they set/get the token with the
+        // same value
         if (releaseValue != acquireValue)
           continue;
 
@@ -148,11 +153,13 @@ std::pair<int, int> xilinx::AIE::TokenAnalysis::getCoord(Operation *Op) {
   return std::make_pair(colIndex, rowIndex);
 }
 
-Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1, Operation *Op2) {
+Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1,
+                                                          Operation *Op2) {
   bool IsOp1Mem = isa<MemOp>(Op1);
   bool IsOp2Mem = isa<MemOp>(Op2);
 
-  assert((!IsOp1Mem || !IsOp2Mem) && "Op1 and Op2 cannot be both Mem operation!");
+  assert((!IsOp1Mem || !IsOp2Mem) &&
+         "Op1 and Op2 cannot be both Mem operation!");
 
   std::pair<int, int> coord1 = getCoord(Op1);
   std::pair<int, int> coord2 = getCoord(Op2);
@@ -162,8 +169,10 @@ Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1, Operat
   int col2 = coord2.first;
   int row2 = coord2.second;
 
-  bool IsOp1ShareableMem = IsOp1Mem && isLegalMemAffinity(col2, row2, col1, row1);
-  bool IsOp2ShareableMem = IsOp2Mem && isLegalMemAffinity(col1, row1, col2, row2);
+  bool IsOp1ShareableMem =
+      IsOp1Mem && isLegalMemAffinity(col2, row2, col1, row1);
+  bool IsOp2ShareableMem =
+      IsOp2Mem && isLegalMemAffinity(col1, row1, col2, row2);
 
   if (IsOp1ShareableMem)
     return tiles[coord1];
@@ -176,7 +185,7 @@ Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1, Operat
     bool IsW = isWest(col1, row1, col2, row2);
     bool IsN = isNorth(col1, row1, col2, row2);
     bool IsE = isEast(col1, row1, col2, row2);
-    //bool IsInternal = isInternal(col1, row1, col2, row2);
+    // bool IsInternal = isInternal(col1, row1, col2, row2);
     bool IsEvenRow = ((row1 % 2) == 0);
 
     if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))

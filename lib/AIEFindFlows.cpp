@@ -8,12 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "aie/AIEDialect.h"
 
 #define DEBUG_TYPE "aie-find-flows"
 
@@ -34,25 +34,25 @@ public:
 
 private:
   llvm::Optional<PortConnection>
-  getConnectionThroughWire(Operation *op,
-                           Port masterPort) const {
-    LLVM_DEBUG(llvm::dbgs() << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first) << " " << masterPort.second << "\n");
+  getConnectionThroughWire(Operation *op, Port masterPort) const {
+    LLVM_DEBUG(llvm::dbgs()
+               << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first)
+               << " " << masterPort.second << "\n");
     for (auto wireOp : module.getOps<WireOp>()) {
-      if(wireOp.source().getDefiningOp() == op &&
-         wireOp.sourceBundle() == masterPort.first) {
+      if (wireOp.source().getDefiningOp() == op &&
+          wireOp.sourceBundle() == masterPort.first) {
         Operation *other = wireOp.dest().getDefiningOp();
-        Port otherPort = std::make_pair(wireOp.destBundle(),
-                                        masterPort.second);
+        Port otherPort = std::make_pair(wireOp.destBundle(), masterPort.second);
         LLVM_DEBUG(llvm::dbgs() << "Connects To:" << *other << " "
                                 << stringifyWireBundle(otherPort.first) << " "
                                 << otherPort.second << "\n");
         return std::make_pair(other, otherPort);
       }
-      if(wireOp.dest().getDefiningOp() == op &&
-         wireOp.destBundle() == masterPort.first) {
+      if (wireOp.dest().getDefiningOp() == op &&
+          wireOp.destBundle() == masterPort.first) {
         Operation *other = wireOp.source().getDefiningOp();
-        Port otherPort = std::make_pair(wireOp.sourceBundle(),
-                                        masterPort.second);
+        Port otherPort =
+            std::make_pair(wireOp.sourceBundle(), masterPort.second);
         LLVM_DEBUG(llvm::dbgs() << "Connects To:" << *other << " "
                                 << stringifyWireBundle(otherPort.first) << " "
                                 << otherPort.second << "\n");
@@ -64,28 +64,38 @@ private:
   }
 
   std::vector<PortMaskValue>
-  getConnectionsThroughSwitchbox(Region &r,
-                                       Port sourcePort) const {
+  getConnectionsThroughSwitchbox(Region &r, Port sourcePort) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
     Block &b = r.front();
     std::vector<PortMaskValue> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if(connectOp.sourcePort() == sourcePort) {
+      if (connectOp.sourcePort() == sourcePort) {
         MaskValue maskValue = std::make_pair(0, 0);
         portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
-        LLVM_DEBUG(llvm::dbgs() << "To:" << stringifyWireBundle(connectOp.destPort().first) << " " << connectOp.destPort().second << "\n");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "To:" << stringifyWireBundle(connectOp.destPort().first)
+                   << " " << connectOp.destPort().second << "\n");
       }
     }
     for (auto connectOp : b.getOps<PacketRulesOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
-        LLVM_DEBUG(llvm::dbgs() << "Packet From: " << stringifyWireBundle(connectOp.sourcePort().first) << " " << (int)sourcePort.first << "\n");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Packet From: "
+                   << stringifyWireBundle(connectOp.sourcePort().first) << " "
+                   << (int)sourcePort.first << "\n");
         for (auto masterSetOp : b.getOps<MasterSetOp>())
           for (Value amsel : masterSetOp.amsels())
-            for (auto ruleOp : connectOp.rules().front().getOps<PacketRuleOp>()) {
-               if (ruleOp.amsel() == amsel) {
-                LLVM_DEBUG(llvm::dbgs() << "To:" << stringifyWireBundle(masterSetOp.destPort().first) << " " << masterSetOp.destPort().second << "\n");
-                MaskValue maskValue = std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
-                portSet.push_back(std::make_pair(masterSetOp.destPort(), maskValue));
+            for (auto ruleOp :
+                 connectOp.rules().front().getOps<PacketRuleOp>()) {
+              if (ruleOp.amsel() == amsel) {
+                LLVM_DEBUG(llvm::dbgs()
+                           << "To:"
+                           << stringifyWireBundle(masterSetOp.destPort().first)
+                           << " " << masterSetOp.destPort().second << "\n");
+                MaskValue maskValue =
+                    std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
+                portSet.push_back(
+                    std::make_pair(masterSetOp.destPort(), maskValue));
               }
             }
       }
@@ -134,11 +144,12 @@ public:
   // Get the tiles connected to the given tile, starting from the given
   // output port of the tile.  This is 1:N relationship because each
   // switchbox can broadcast.
-  std::vector<PacketConnection>
-  getConnectedTiles(TileOp tileOp,
-                    Port port) const {
+  std::vector<PacketConnection> getConnectedTiles(TileOp tileOp,
+                                                  Port port) const {
 
-    LLVM_DEBUG(llvm::dbgs() << "getConnectedTile(" << stringifyWireBundle(port.first) << " " << (int)port.second << ")");
+    LLVM_DEBUG(llvm::dbgs()
+               << "getConnectedTile(" << stringifyWireBundle(port.first) << " "
+               << (int)port.second << ")");
     LLVM_DEBUG(tileOp.dump());
 
     // The accumulated result;
@@ -151,23 +162,23 @@ public:
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
 
     // If there is no wire to traverse, then just return no connection
-    if(!t.hasValue()) return connectedTiles;
-    worklist.push_back(std::make_pair(t.getValue(),
-                                      std::make_pair(0, 0)));
+    if (!t.hasValue())
+      return connectedTiles;
+    worklist.push_back(std::make_pair(t.getValue(), std::make_pair(0, 0)));
 
-    while(!worklist.empty()) {
+    while (!worklist.empty()) {
       PacketConnection t = worklist.back();
       worklist.pop_back();
       PortConnection portConnection = t.first;
       MaskValue maskValue = t.second;
       Operation *other = portConnection.first;
       Port otherPort = portConnection.second;
-      if(isa<FlowEndPoint>(other)) {
+      if (isa<FlowEndPoint>(other)) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
-      } else if(auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
+      } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues =
-          getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
+            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
         std::vector<PacketConnection> newWorkList =
             maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
         // append to the worklist
@@ -178,9 +189,9 @@ public:
           LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
           LLVM_DEBUG(other->dump());
         }
-     } else if(auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
+      } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues =
-          getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
+            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
         std::vector<PacketConnection> newWorkList =
             maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
         // append to the worklist
@@ -192,7 +203,8 @@ public:
           LLVM_DEBUG(other->dump());
         }
       } else {
-        LLVM_DEBUG(llvm::dbgs() << "*** Connection Terminated at unknown operation: ");
+        LLVM_DEBUG(llvm::dbgs()
+                   << "*** Connection Terminated at unknown operation: ");
         LLVM_DEBUG(other->dump());
       }
     }
@@ -201,56 +213,45 @@ public:
 };
 
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
-                         OpBuilder &rewriter) {
-    Operation *Op = op.getOperation();
-    rewriter.setInsertionPointToEnd(Op->getBlock());
+                          OpBuilder &rewriter) {
+  Operation *Op = op.getOperation();
+  rewriter.setInsertionPointToEnd(Op->getBlock());
 
-    std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
-    for(WireBundle bundle: bundles) {
-      for(int i = 0; i < op.getNumSourceConnections(bundle); i++) {
-        std::vector<PacketConnection> tiles =
-          analysis.getConnectedTiles(op,
-                                     std::make_pair(bundle, i));
-        LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
+  std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
+  for (WireBundle bundle : bundles) {
+    for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
+      std::vector<PacketConnection> tiles =
+          analysis.getConnectedTiles(op, std::make_pair(bundle, i));
+      LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
 
-        for(PacketConnection &c: tiles) {
-          PortConnection portConnection = c.first;
-          MaskValue maskValue = c.second;
-          Operation *destOp = portConnection.first;
-          Port destPort = portConnection.second;
-          if(maskValue.first == 0) {
-            rewriter.create<FlowOp>(Op->getLoc(),
-                                    Op->getResult(0),
-                                    bundle,
-                                    i,
-                                    destOp->getResult(0),
-                                    destPort.first,
-                                    destPort.second);
-          } else {
-            PacketFlowOp flowOp = rewriter.create<PacketFlowOp>(Op->getLoc(),
-                                                       maskValue.second);
-            flowOp.ensureTerminator(flowOp.ports(),
-                                    rewriter,
-                                    Op->getLoc());
-            OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-            rewriter.setInsertionPoint(flowOp.ports().front().getTerminator());
-            rewriter.create<PacketSourceOp>(Op->getLoc(),
-                                            Op->getResult(0),
-                                            bundle,
-                                            (int)i);
-            rewriter.create<PacketDestOp>(Op->getLoc(),
-                                          destOp->getResult(0),
-                                          destPort.first,
-                                          (int)destPort.second);
-            rewriter.restoreInsertionPoint(ip);
-          }
+      for (PacketConnection &c : tiles) {
+        PortConnection portConnection = c.first;
+        MaskValue maskValue = c.second;
+        Operation *destOp = portConnection.first;
+        Port destPort = portConnection.second;
+        if (maskValue.first == 0) {
+          rewriter.create<FlowOp>(Op->getLoc(), Op->getResult(0), bundle, i,
+                                  destOp->getResult(0), destPort.first,
+                                  destPort.second);
+        } else {
+          PacketFlowOp flowOp =
+              rewriter.create<PacketFlowOp>(Op->getLoc(), maskValue.second);
+          flowOp.ensureTerminator(flowOp.ports(), rewriter, Op->getLoc());
+          OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+          rewriter.setInsertionPoint(flowOp.ports().front().getTerminator());
+          rewriter.create<PacketSourceOp>(Op->getLoc(), Op->getResult(0),
+                                          bundle, (int)i);
+          rewriter.create<PacketDestOp>(Op->getLoc(), destOp->getResult(0),
+                                        destPort.first, (int)destPort.second);
+          rewriter.restoreInsertionPoint(ip);
         }
       }
     }
+  }
 }
 
 struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<StandardOpsDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
   }
@@ -266,8 +267,6 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIEFindFlowsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIEFindFlowsPass() {
   return std::make_unique<AIEFindFlowsPass>();
 }
-

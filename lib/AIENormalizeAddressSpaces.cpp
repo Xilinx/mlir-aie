@@ -8,12 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "aie/AIEDialect.h"
 
 #define DEBUG_TYPE "aie-normalize-address-spaces"
 
@@ -24,11 +24,9 @@ using namespace xilinx::AIE;
 Type memRefToDefaultAddressSpace(Type t) {
   auto memRefType = t.dyn_cast<MemRefType>();
   if (memRefType && memRefType.getMemorySpace() != 0)
-    return MemRefType::get(memRefType.getShape(),
-                            memRefType.getElementType(),
-                            memRefType.getAffineMaps(),
-                            0 /* Address Space */);
-  else 
+    return MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
+                           memRefType.getAffineMaps(), 0 /* Address Space */);
+  else
     return t;
 }
 
@@ -36,19 +34,19 @@ Type memRefToDefaultAddressSpace(Type t) {
 
 struct AIENormalizeAddressSpacesPass
     : public AIENormalizeAddressSpacesBase<AIENormalizeAddressSpacesPass> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {  
+  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<StandardOpsDialect>();
   }
   void runOnOperation() override {
     ModuleOp m = getOperation();
-    
+
     ConversionTarget target(getContext());
     target.addDynamicallyLegalOp<memref::GlobalOp>([](memref::GlobalOp op) {
       return op.type().cast<MemRefType>().getMemorySpace() == 0;
     });
     OwningRewritePatternList patterns(&getContext());
     populateWithGenerated(patterns);
-    
+
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
 
