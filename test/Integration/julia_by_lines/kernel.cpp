@@ -40,36 +40,37 @@ int error;
 #define NUM_BITS 16
 #define MAX_ITER 255
 
+__attribute__((noinline)) void do_line(int32_t *line_start_address, float MinRe,
+                                       float StepRe, float Im, int cols) {
+  int index = 0;
+  float Re = MinRe;
+  int x;
+  for (x = 0; x < cols /*Re <= MaxRe*/; x++) {
+    int32_t color;
+    int done = 0;
+    float zr = Re, zi = Im;
+    Re += StepRe;
+    int n = 0;
+    float cr = zr;
+    float ci = zi; // For Mandelbrot
+    color = 0xBEEF;
+    for (n = 0; n < MAX_ITER && !done; n++) {
+      float a, b;
 
-__attribute__((noinline)) void do_line(int32_t *line_start_address, float MinRe, float StepRe, float Im, int cols) {
-	int index = 0;
-	float Re = MinRe;
-	int x;
-	for (x=0; x < cols /*Re <= MaxRe*/; x++) {
-		int32_t color;
-		int done = 0;
-	    float zr = Re, zi = Im;
-		Re += StepRe;
-		int n = 0;
-		float cr = zr; float ci = zi; // For Mandelbrot
-        color = 0xBEEF;
-		for (n = 0; n < MAX_ITER && !done; n++) {
-			float a, b;
-
-			a=zr*zr;
-			b=zi*zi;
-			if (((a+b) > 2.0f) && (done == 0)) {
-				done = 1;
-			}
-			zi = zr*zi;
-			zi = zi*2.0f + ci;
-			zr = a-b + cr;
-		}
-		if(n >= MAX_ITER) {
-			color = 0xff;
-		} else {
-			color = n*(255/MAX_ITER);
-		}
-		line_start_address[x] = n;
-	}
+      a = zr * zr;
+      b = zi * zi;
+      if (((a + b) > 2.0f) && (done == 0)) {
+        done = 1;
+      }
+      zi = zr * zi;
+      zi = zi * 2.0f + ci;
+      zr = a - b + cr;
+    }
+    if (n >= MAX_ITER) {
+      color = 0xff;
+    } else {
+      color = n * (255 / MAX_ITER);
+    }
+    line_start_address[x] = n;
+  }
 }
