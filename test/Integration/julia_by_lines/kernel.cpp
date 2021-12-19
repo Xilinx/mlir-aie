@@ -41,8 +41,6 @@ int error;
 #define MAX_ITER 255
 
 
-extern float *debuf;
-
 __attribute__((noinline)) void do_line(int32_t *line_start_address, float MinRe, float StepRe, float Im, int cols) {
 	int index = 0;
 	float Re = MinRe;
@@ -50,13 +48,11 @@ __attribute__((noinline)) void do_line(int32_t *line_start_address, float MinRe,
 	for (x=0; x < cols /*Re <= MaxRe*/; x++) {
 		int32_t color;
 		int done = 0;
-		// struct pipe_state p = {};
 	    float zr = Re, zi = Im;
 		Re += StepRe;
 		int n = 0;
 		float cr = zr; float ci = zi; // For Mandelbrot
         color = 0xBEEF;
-//		debuf[x] = Re;
 		for (n = 0; n < MAX_ITER && !done; n++) {
 			float a, b;
 
@@ -68,7 +64,6 @@ __attribute__((noinline)) void do_line(int32_t *line_start_address, float MinRe,
 			zi = zr*zi;
 			zi = zi*2.0f + ci;
 			zr = a-b + cr;
-		//	_b[x] = Im;
 		}
 		if(n >= MAX_ITER) {
 			color = 0xff;
@@ -78,24 +73,3 @@ __attribute__((noinline)) void do_line(int32_t *line_start_address, float MinRe,
 		line_start_address[x] = n;
 	}
 }
-
-// __attribute__((noinline)) static void julia(int32_t *framebuffer, float MinRe, float MinIm, float StepRe, float StepIm, float cr, float ci)
-// {
-//   // Fractal Julia code
-//   int32_t *line_start_address;
-//   line_start_address = framebuffer;
-//   float Im = MinIm;
-//   for (int y = 0; y < lines; Im += StepIm, y++) {
-// //	  do_line(line_start_address, MinRe, StepRe, cr, ci, Im);
-// 	  line_start_address += VIDEO_LINE_WORDS;
-// 	  framebuffer[0] = y;
-//   }
-//   framebuffer[0] = lines;
-// }
-
-// void func(int32_t *a, float MinRe, float MaxRe, float MinIm, float MaxIm)
-// {
-//   float StepRe = (MaxRe-MinRe)/cols;
-//   float StepIm = (MaxIm-MinIm)/lines;
-//   julia(a, MinRe, MinIm, StepRe, StepIm, 0.3f, 0.3f);
-// }

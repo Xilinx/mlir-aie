@@ -85,9 +85,6 @@ main(int argc, char *argv[])
             exit(1);
         }
 
-        // for(int c = 0; c < 8; c++) {
-        //   printf("%f\n", mlir_aie_read_buffer_debuf(_xaie, c));
-        // }
         for(int c = 0; c < framecols; c++) {
           frame[framecols * i + c] = mlir_aie_read_buffer_a(_xaie, c);
         }
@@ -129,9 +126,6 @@ main(int argc, char *argv[])
     printf("%f AIE seconds \n", t);
     printf("  %f compute seconds \n", computetime);
     printf("  %f copy seconds \n", copytime);
-
-    // mlir_aie_check_float("After release lock:", mlir_aie_read_buffer_debuf(_xaie, 5), 35.0f,
-    //                errors);
 
     ofstream myfile;
     myfile.open ("julia.pgm");

@@ -12,6 +12,5 @@
 #include <stdint.h>
 
 extern "C" {
-void func(int32_t *a, float MinRe, float MaxRe, float MinIm, float MaxIm);
 void do_line(int32_t *a, float MinRe, float StepRe, float Im, int size);
 }

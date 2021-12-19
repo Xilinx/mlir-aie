@@ -46,26 +46,10 @@ module @test {
       iter_args(%Im = %MinIm) -> (f32) {
       %Im_next = std.addf %Im, %StepIm : f32
       AIE.useLock(%lock13_3, "Acquire", 1, 1) // acquire
-      // memref.store %Im, %buf13_1[%c0, %iv] : memref<32x32xf32>
        call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
       AIE.useLock(%lock13_3, "Release", 0, 1) // release for write
       scf.yield %Im_next : f32
     }
-    // AIE.useLock(%lock13_3, "Acquire", 1, 1) // acquire
-    // call @func(%buf13_0, %MinRe, %MaxRe, %MinIm, %MaxIm) : (memref<32x32xi32>, f32, f32, f32, f32) -> ()
-    // AIE.useLock(%lock13_3, "Release", 0, 1) // release for write
-    // AIE.useLock(%lock13_3, "Acquire", 1, 1) // acquire
-    // call @func(%buf13_0, %MinRe, %center, %MinIm, %center) : (memref<32x32xi32>, f32, f32, f32, f32) -> ()
-    // AIE.useLock(%lock13_3, "Release", 0, 1) // release for write
-    // AIE.useLock(%lock13_3, "Acquire", 1, 1) // acquire
-    // call @func(%buf13_0, %center, %MaxRe, %MinIm, %center) : (memref<32x32xi32>, f32, f32, f32, f32) -> ()
-    // AIE.useLock(%lock13_3, "Release", 0, 1) // release for write
-    // AIE.useLock(%lock13_3, "Acquire", 1, 1) // acquire
-    // call @func(%buf13_0, %MinRe, %center, %center, %MaxIm) : (memref<32x32xi32>, f32, f32, f32, f32) -> ()
-    // AIE.useLock(%lock13_3, "Release", 0, 1) // release for write
-    // AIE.useLock(%lock13_3, "Acquire", 1, 1) // acquire
-    // call @func(%buf13_0, %center, %MaxRe, %center, %MaxIm) : (memref<32x32xi32>, f32, f32, f32, f32) -> ()
-    // AIE.useLock(%lock13_3, "Release", 0, 1) // release for write
     AIE.end
   } { link_with="kernel.o" }
 }
