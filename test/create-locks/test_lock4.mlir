@@ -25,9 +25,9 @@
 // CHECK-NEXT:  %10 = AIE.mem(%5) {
 // CHECK-NEXT:    %16 = AIE.dmaStart(MM2S0, ^bb1, ^bb2)
 // CHECK-NEXT:  ^bb1:
-// CHECK-NEXT:    AIE.useLock(%6, Acquire, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%6, Acquire, 1)
 // CHECK-NEXT:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%6, Release, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%6, Release, 0)
 // CHECK-NEXT:    br ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
@@ -37,14 +37,14 @@
 // CHECK:       ^bb1
 // CHECK-NEXT:    %17 = AIE.dmaStart(MM2S0, ^bb3, ^bb4)
 // CHECK-NEXT:  ^bb2:
-// CHECK-NEXT:    AIE.useLock(%4, Acquire, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%4, Acquire, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%4, Release, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%4, Release, 1)
 // CHECK-NEXT:    br ^bb4
 // CHECK-NEXT:  ^bb3:
-// CHECK-NEXT:    AIE.useLock(%3, Acquire, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Acquire, 1)
 // CHECK-NEXT:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%3, Release, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Release, 0)
 // CHECK-NEXT:    br ^bb4
 // CHECK-NEXT:  ^bb4:
 // CHECK-NEXT:    AIE.end
@@ -52,28 +52,28 @@
 // CHECK-NEXT:  %12 = AIE.mem(%0) {
 // CHECK-NEXT:    %16 = AIE.dmaStart(S2MM0, ^bb1, ^bb2)
 // CHECK-NEXT:  ^bb1:
-// CHECK-NEXT:    AIE.useLock(%1, Acquire, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%1, Acquire, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%9 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%1, Release, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%1, Release, 1)
 // CHECK-NEXT:    br ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %13 = AIE.core(%5) {
-// CHECK-NEXT:    AIE.useLock(%6, Acquire, 0, 0)
-// CHECK-NEXT:    AIE.useLock(%6, Release, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%6, Acquire, 0)
+// CHECK-NEXT:    AIE.useLock(%6, Release, 1)
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %14 = AIE.core(%2) {
-// CHECK-NEXT:    AIE.useLock(%3, Acquire, 0, 0)
-// CHECK-NEXT:    AIE.useLock(%4, Acquire, 1, 0)
-// CHECK-NEXT:    AIE.useLock(%4, Release, 0, 0)
-// CHECK-NEXT:    AIE.useLock(%3, Release, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Acquire, 0)
+// CHECK-NEXT:    AIE.useLock(%4, Acquire, 1)
+// CHECK-NEXT:    AIE.useLock(%4, Release, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Release, 1)
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %15 = AIE.core(%0) {
-// CHECK-NEXT:    AIE.useLock(%1, Acquire, 1, 0)
-// CHECK-NEXT:    AIE.useLock(%1, Release, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%1, Acquire, 1)
+// CHECK-NEXT:    AIE.useLock(%1, Release, 0)
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  AIE.flow(%5, DMA : 0, %2, DMA : 0)

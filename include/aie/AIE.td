@@ -952,9 +952,16 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
 def Release: I32EnumAttrCase<"Release", 1>;
+def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
+def Blocking: I32EnumAttrCase<"Blocking", 1>;
 
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [Acquire, Release]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
+  [NonBlocking, Blocking]> {
 
   let cppNamespace = "xilinx::AIE";
 }
@@ -969,19 +976,24 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     ins Index:$lock,
         Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
         LockAction:$action,
-        I32Attr:$timeout
+        OptionalAttr<LockBlocking>:$blocking
   );
   let assemblyFormat = [{
-    `(` $lock `,` $action `,` $value `,` $timeout `)` attr-dict
+    `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
   }];
-
+  let builders = [
+    OpBuilder<(ins "::mlir::Value":$lock, "uint32_t":$value, "xilinx::AIE::LockAction":$action),
+    [{
+      build($_builder, $_state, lock, value, action, nullptr);
+    }]>
+  ];
   let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }
     bool release() { return (action() == LockAction::Release); }
     int getLockValue() { return value(); }
-    int getTimeout() { return timeout(); }
+    int getTimeout() { if(auto val = blocking()) return (int)*val; else return 1;}
   }];
 }
 

@@ -18,18 +18,18 @@
 // CHECK:  %4 = AIE.tile(4, 3)
 // CHECK:  AIE.token(0) {sym_name = "token0"}
 // CHECK:  %8 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%3, Release, 1, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 0)
+// CHECK:    AIE.useLock(%3, Release, 1)
 // CHECK:  }
 // CHECK:  %9 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%1, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%3, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%3, Release, 0, 0)
-// CHECK:    AIE.useLock(%1, Release, 1, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 1)
+// CHECK:    AIE.useLock(%3, Release, 0)
+// CHECK:    AIE.useLock(%1, Release, 1)
 // CHECK:  }
 // CHECK:  %10 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%1, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%1, Release, 0, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 1)
+// CHECK:    AIE.useLock(%1, Release, 0)
 // CHECK:  }
 // CHECK:}
 

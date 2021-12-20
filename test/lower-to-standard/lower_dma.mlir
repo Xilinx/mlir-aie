@@ -39,9 +39,9 @@ module @example0 {
   %m33 = AIE.mem(%t33) {
       %dmaSt0 = AIE.dmaStart(MM2S0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l33_0, Acquire, 1, 0)
+      AIE.useLock(%l33_0, Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l33_0, Release, 0, 0)
+      AIE.useLock(%l33_0, Release, 0)
       br ^end
     ^end:
       AIE.end
@@ -50,9 +50,9 @@ module @example0 {
   %m43 = AIE.mem(%t43) {
       %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
     ^bd0:
-      AIE.useLock(%l43_0, Acquire, 0, 0)
+      AIE.useLock(%l43_0, Acquire, 0)
       AIE.dmaBd(<%buf43 : memref<256xi32>, 0, 256>, 0)
-      AIE.useLock(%l43_0, Release, 1, 0)
+      AIE.useLock(%l43_0, Release, 1)
       br ^end
     ^end:
       AIE.end
@@ -67,7 +67,7 @@ module @example0 {
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useLock(%l33_0, Acquire, 0, 0)
+    AIE.useLock(%l33_0, Acquire, 0)
     // code
     %val0 = constant 16 : i32
     %0 = constant 0 : i32
@@ -75,16 +75,16 @@ module @example0 {
     %val1 = AIE.getStream(%0 : i32) : i128
     %val2 = constant 1 : i384
     AIE.putCascade(%val2: i384)
-    AIE.useLock(%l33_0, Release, 1, 0)
+    AIE.useLock(%l33_0, Release, 1)
     AIE.end
   }
 
   %c43 = AIE.core(%t43) {
-    AIE.useLock(%l43_0, Acquire, 1, 0)
+    AIE.useLock(%l43_0, Acquire, 1)
 
     // code
 
-    AIE.useLock(%l43_0, Release, 0, 0)
+    AIE.useLock(%l43_0, Release, 0)
     AIE.end
   }
 }

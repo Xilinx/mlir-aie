@@ -25,9 +25,9 @@ module @test {
   func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
 
   %core13 = AIE.core(%tile13) {
-//    AIE.useLock(%lock13_3, "Acquire", 1, 0) // acquire
+//    AIE.useLock(%lock13_3, "Acquire", 1) // acquire
     call @func(%buf13_0, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
-//    AIE.useLock(%lock13_3, "Release", 0, 0) // release for write
+//    AIE.useLock(%lock13_3, "Release", 0) // release for write
     AIE.end
   } { link_with="kernel.o" }
 }

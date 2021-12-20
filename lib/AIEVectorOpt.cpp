@@ -46,7 +46,8 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
     });
     OwningRewritePatternList patterns(&getContext());
     vector::populateVectorTransferLoweringPatterns(patterns);
-    
+    vector::populateVectorMaskMaterializationPatterns(patterns, true);
+
     if (failed(applyPartialConversion(f, target, std::move(patterns))))
       signalPassFailure();
   }

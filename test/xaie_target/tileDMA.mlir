@@ -26,18 +26,18 @@ module @aie_module  {
   %28 = AIE.mem(%0)  {
     %38 = AIE.dmaStart(S2MM0, ^bb1, ^bb3)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    AIE.useLock(%25, Acquire, 0, 0)
+    AIE.useLock(%25, Acquire, 0)
     AIE.dmaBd(<%24 : memref<64xi32, 2>, 0, 64>, 0)
-    AIE.useLock(%25, Release, 1, 0)
+    AIE.useLock(%25, Release, 1)
     br ^bb1
   ^bb2:  // pred: ^bb3
     AIE.end
   ^bb3:  // pred: ^bb0
     %39 = AIE.dmaStart(MM2S0, ^bb4, ^bb2)
   ^bb4:  // 2 preds: ^bb3, ^bb4
-    AIE.useLock(%27, Acquire, 1, 0)
+    AIE.useLock(%27, Acquire, 1)
     AIE.dmaBd(<%26 : memref<64xi32, 2>, 0, 64>, 0)
-    AIE.useLock(%27, Release, 0, 0)
+    AIE.useLock(%27, Release, 0)
     br ^bb4
   }
 }

@@ -19,40 +19,40 @@
 // CHECK:  %5 = AIE.lock(%4, 1)
 // CHECK:  %6 = AIE.lock(%4, 0)
 // CHECK:  %10 = AIE.mem(%4) {
-// CHECK:    AIE.useLock(%5, Acquire, 1, 0)
+// CHECK:    AIE.useLock(%5, Acquire, 1)
 // CHECK:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock(%5, Release, 0, 0)
-// CHECK:    AIE.useLock(%6, Acquire, 1, 0)
+// CHECK:    AIE.useLock(%5, Release, 0)
+// CHECK:    AIE.useLock(%6, Acquire, 1)
 // CHECK:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock(%6, Release, 0, 0)
+// CHECK:    AIE.useLock(%6, Release, 0)
 // CHECK:  }
 // CHECK:  %11 = AIE.mem(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 0, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 0)
 // CHECK:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock(%3, Release, 1, 0)
+// CHECK:    AIE.useLock(%3, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %12 = AIE.mem(%0) {
-// CHECK:    AIE.useLock(%1, Acquire, 0, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 0)
 // CHECK:    AIE.dmaBd(<%9 : memref<256xi32>, 0, 256>, 0)
-// CHECK:    AIE.useLock(%1, Release, 1, 0)
+// CHECK:    AIE.useLock(%1, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %13 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%6, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%5, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%5, Release, 1, 0)
-// CHECK:    AIE.useLock(%6, Release, 1, 0)
+// CHECK:    AIE.useLock(%6, Acquire, 0)
+// CHECK:    AIE.useLock(%5, Acquire, 0)
+// CHECK:    AIE.useLock(%5, Release, 1)
+// CHECK:    AIE.useLock(%6, Release, 1)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %14 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%3, Release, 0, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 1)
+// CHECK:    AIE.useLock(%3, Release, 0)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  %15 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%1, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%1, Release, 0, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 1)
+// CHECK:    AIE.useLock(%1, Release, 0)
 // CHECK:    AIE.end
 // CHECK:  }
 // CHECK:  AIE.flow(%4, DMA : 0, %2, DMA : 0)

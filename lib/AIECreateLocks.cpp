@@ -55,9 +55,6 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       llvm_unreachable("A parent operation of UseTokenOp must be either CoreOp or MemOp");
     }
 
-    // Default timeout value
-    int timeout = 0;
-
     if (op.acquire()) {
       // Acquire lock from pair
       LLVM_DEBUG(llvm::dbgs() << "Replacing Acquire: " << op << "\n");
@@ -65,7 +62,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
         Value lockFromPair    = acqLock.first;
         int lockValueFromPair = acqLock.second;
         rewriter.create<UseLockOp>(op.getLoc(), lockFromPair, lockValueFromPair,
-                                   LockAction::Acquire, timeout);
+                                   LockAction::Acquire);
         LLVM_DEBUG(llvm::dbgs() << "Acquire from pair " << lockFromPair << " with " << lockValueFromPair << "\n");
       }
 
@@ -78,7 +75,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
           continue;
 
         rewriter.create<UseLockOp>(op.getLoc(), lockFromChain, lockValueFromChain,
-                                   LockAction::Acquire, timeout);
+                                   LockAction::Acquire);
         LLVM_DEBUG(llvm::dbgs() << "Acquire from chain " << lockFromChain << " with " << lockValueFromChain << "\n");
       }
     } else if (op.release()) {
@@ -88,7 +85,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
         Value lockFromPair    = relLock.first;
         int lockValueFromPair = relLock.second;
         rewriter.create<UseLockOp>(op.getLoc(), lockFromPair, lockValueFromPair,
-                                   LockAction::Release, timeout);
+                                   LockAction::Release);
         LLVM_DEBUG(llvm::dbgs() << "Release from pair " << lockFromPair << " with " << lockValueFromPair << "\n");
       }
 
@@ -101,7 +98,7 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
           continue;
 
         rewriter.create<UseLockOp>(op.getLoc(), lockFromChain, lockValueFromChain,
-                                   LockAction::Release, timeout);
+                                   LockAction::Release);
         LLVM_DEBUG(llvm::dbgs() << "Release from chain " << lockFromChain << " with " << lockValueFromChain << "\n");
      }
     }

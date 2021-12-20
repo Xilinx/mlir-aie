@@ -29,19 +29,19 @@ module @test_core_llvm1 {
   %buf11_0  = AIE.buffer(%tile11) { sym_name = "a" } : memref<256xi32>
 
   %core11 = AIE.core(%tile11) {
-    AIE.useLock(%lock11_8, Acquire, 0, 0)
+    AIE.useLock(%lock11_8, Acquire, 0)
     %0 = constant 1 : i32
     %i = constant 16 : index
     memref.store %0, %buf11_0[%i] : memref<256xi32>
-    AIE.useLock(%lock11_8, Release, 1, 0)
+    AIE.useLock(%lock11_8, Release, 1)
     AIE.end
   }
 
   %core12 = AIE.core(%tile12) {
-    AIE.useLock(%lock11_8, Acquire, 1, 0)
+    AIE.useLock(%lock11_8, Acquire, 1)
     %i = constant 16 : index
     %0 = memref.load %buf11_0[%i] : memref<256xi32>
-    AIE.useLock(%lock11_8, Release, 0, 0)
+    AIE.useLock(%lock11_8, Release, 0)
     AIE.end
   }
 }

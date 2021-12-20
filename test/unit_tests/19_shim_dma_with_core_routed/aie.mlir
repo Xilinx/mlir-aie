@@ -42,8 +42,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     %c64 = constant 64 : index
     scf.for %iv = %lb to %ub step %step {
       
-      AIE.useLock(%lock_a_ping, "Acquire", 1, 0) // acquire for read
-      AIE.useLock(%lock_b_ping, "Acquire", 0, 0) // acquire for write
+      AIE.useLock(%lock_a_ping, "Acquire", 1) // acquire for read
+      AIE.useLock(%lock_b_ping, "Acquire", 0) // acquire for write
       // copy loop
       scf.for %arg0 = %c0 to %c64 step %c1
         iter_args(%sum_iter = %sum_0) -> (i32) {
@@ -53,11 +53,11 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
         scf.yield %i : i32
       }
 //      call @func(%buf_a_ping, %buf_b_ping,%buffer_size) : (memref<256xi32>, memref<256xi32>,i32) -> ()
-      AIE.useLock(%lock_a_ping, "Release", 0, 0) // release for write
-      AIE.useLock(%lock_b_ping, "Release", 1, 0) // release for read
+      AIE.useLock(%lock_a_ping, "Release", 0) // release for write
+      AIE.useLock(%lock_b_ping, "Release", 1) // release for read
 
-      AIE.useLock(%lock_a_pong, "Acquire", 1, 0) // acquire for read
-      AIE.useLock(%lock_b_pong, "Acquire", 0, 0) // acquire for write
+      AIE.useLock(%lock_a_pong, "Acquire", 1) // acquire for read
+      AIE.useLock(%lock_b_pong, "Acquire", 0) // acquire for write
       scf.for %arg0 = %c0 to %c64 step %c1
         iter_args(%sum_iter = %sum_0) -> (i32) {
         %i = memref.load %buf_a_pong[%arg0] : memref<64xi32>
@@ -65,8 +65,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
         memref.store %i2, %buf_b_pong[%arg0] : memref<64xi32>
         scf.yield %i : i32
       }
-      AIE.useLock(%lock_a_pong, "Release", 0, 0) // release for write
-      AIE.useLock(%lock_b_pong, "Release", 1, 0) // release for read      
+      AIE.useLock(%lock_a_pong, "Release", 0) // release for write
+      AIE.useLock(%lock_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
@@ -78,24 +78,24 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     ^dma0:
       %dstDma = AIE.dmaStart("MM2S1", ^bd2, ^end)
     ^bd0:
-      AIE.useLock(%lock_a_ping, "Acquire", 0, 0)
+      AIE.useLock(%lock_a_ping, "Acquire", 0)
       AIE.dmaBd(<%buf_a_ping : memref<64xi32>, 0, 64>, 0)
-      AIE.useLock(%lock_a_ping, "Release", 1, 0)
+      AIE.useLock(%lock_a_ping, "Release", 1)
       br ^bd1
     ^bd1:
-      AIE.useLock(%lock_a_pong, "Acquire", 0, 0)
+      AIE.useLock(%lock_a_pong, "Acquire", 0)
       AIE.dmaBd(<%buf_a_pong : memref<64xi32>, 0, 64>, 0)
-      AIE.useLock(%lock_a_pong, "Release", 1, 0)
+      AIE.useLock(%lock_a_pong, "Release", 1)
       br ^bd0
     ^bd2:
-      AIE.useLock(%lock_b_ping, "Acquire", 1, 0)
+      AIE.useLock(%lock_b_ping, "Acquire", 1)
       AIE.dmaBd(<%buf_b_ping : memref<64xi32>, 0, 64>, 0)
-      AIE.useLock(%lock_b_ping, "Release", 0, 0)
+      AIE.useLock(%lock_b_ping, "Release", 0)
       br ^bd3
     ^bd3:
-      AIE.useLock(%lock_b_pong, "Acquire", 1, 0)
+      AIE.useLock(%lock_b_pong, "Acquire", 1)
       AIE.dmaBd(<%buf_b_pong : memref<64xi32>, 0, 64>, 0)
-      AIE.useLock(%lock_b_pong, "Release", 0, 0)
+      AIE.useLock(%lock_b_pong, "Release", 0)
       br ^bd2
     ^end:
       AIE.end
@@ -117,14 +117,14 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     ^dma:
       AIE.dmaStart(S2MM0, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1, 0)
+      AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 512>, 0)
-      AIE.useLock(%lock1, Release, 0, 0)
+      AIE.useLock(%lock1, Release, 0)
       br ^bd0
     ^bd1:
-      AIE.useLock(%lock2, Acquire, 1, 0)
+      AIE.useLock(%lock2, Acquire, 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 512>, 0)
-      AIE.useLock(%lock2, Release, 0, 0)
+      AIE.useLock(%lock2, Release, 0)
       br ^bd1
     ^end:
       AIE.end

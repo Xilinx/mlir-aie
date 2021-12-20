@@ -21,9 +21,9 @@
 // CHECK-NEXT:  %6 = AIE.mem(%2) {
 // CHECK-NEXT:    %10 = AIE.dmaStart(MM2S0, ^bb1, ^bb2)
 // CHECK-NEXT:  ^bb1:
-// CHECK-NEXT:    AIE.useLock(%3, Acquire, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Acquire, 1)
 // CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%3, Release, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Release, 0)
 // CHECK-NEXT:    br ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
@@ -31,21 +31,21 @@
 // CHECK-NEXT:  %7 = AIE.mem(%0) {
 // CHECK-NEXT:    %10 = AIE.dmaStart(S2MM0, ^bb1, ^bb2)
 // CHECK-NEXT:  ^bb1:
-// CHECK-NEXT:    AIE.useLock(%1, Acquire, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%1, Acquire, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%1, Release, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%1, Release, 1)
 // CHECK-NEXT:    br ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %8 = AIE.core(%2) {
-// CHECK-NEXT:    AIE.useLock(%3, Acquire, 0, 0)
-// CHECK-NEXT:    AIE.useLock(%3, Release, 1, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Acquire, 0)
+// CHECK-NEXT:    AIE.useLock(%3, Release, 1)
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  %9 = AIE.core(%0) {
-// CHECK-NEXT:    AIE.useLock(%1, Acquire, 1, 0)
-// CHECK-NEXT:    AIE.useLock(%1, Release, 0, 0)
+// CHECK-NEXT:    AIE.useLock(%1, Acquire, 1)
+// CHECK-NEXT:    AIE.useLock(%1, Release, 0)
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
 // CHECK-NEXT:  AIE.flow(%2, DMA : 0, %0, DMA : 0)

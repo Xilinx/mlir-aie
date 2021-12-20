@@ -25,30 +25,30 @@
 // CHECK:  AIE.token(0) {sym_name = "token2"}
 // CHECK:  AIE.token(0) {sym_name = "token3"}
 // CHECK:  %14 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%3, Release, 0, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 1)
+// CHECK:    AIE.useLock(%3, Release, 0)
 // CHECK:  }
 // CHECK:  %15 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%8, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%1, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%5, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%3, Acquire, 0, 0)
-// CHECK:    AIE.useLock(%3, Release, 1, 0)
-// CHECK:    AIE.useLock(%5, Release, 1, 0)
-// CHECK:    AIE.useLock(%1, Release, 1, 0)
-// CHECK:    AIE.useLock(%8, Release, 1, 0)
+// CHECK:    AIE.useLock(%8, Acquire, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 0)
+// CHECK:    AIE.useLock(%5, Acquire, 0)
+// CHECK:    AIE.useLock(%3, Acquire, 0)
+// CHECK:    AIE.useLock(%3, Release, 1)
+// CHECK:    AIE.useLock(%5, Release, 1)
+// CHECK:    AIE.useLock(%1, Release, 1)
+// CHECK:    AIE.useLock(%8, Release, 1)
 // CHECK:  }
 // CHECK:  %16 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%5, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%5, Release, 0, 0)
+// CHECK:    AIE.useLock(%5, Acquire, 1)
+// CHECK:    AIE.useLock(%5, Release, 0)
 // CHECK:  }
 // CHECK:  %17 = AIE.core(%6) {
-// CHECK:    AIE.useLock(%1, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%1, Release, 0, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 1)
+// CHECK:    AIE.useLock(%1, Release, 0)
 // CHECK:  }
 // CHECK:  %18 = AIE.core(%7) {
-// CHECK:    AIE.useLock(%8, Acquire, 1, 0)
-// CHECK:    AIE.useLock(%8, Release, 0, 0)
+// CHECK:    AIE.useLock(%8, Acquire, 1)
+// CHECK:    AIE.useLock(%8, Release, 0)
 // CHECK:  }
 // CHECK:}
 
