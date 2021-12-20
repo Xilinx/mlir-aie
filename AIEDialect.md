@@ -1282,7 +1282,7 @@ acquire/release lock op
 Syntax:
 
 ```
-operation ::= `AIE.useLock` `(` $lock `,` $action `,` $value `,` $timeout `)` attr-dict
+operation ::= `AIE.useLock` `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
 ```
 
 This operation uses a lock. A lock can be acquired with a value, or release with a value.
@@ -1294,7 +1294,7 @@ This should be understood as a "blocking" operation.
 | :-------: | :-------: | ----------- |
 `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 2
 `action` | xilinx::AIE::LockActionAttr | lock acquire/release
-`timeout` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+`blocking` | xilinx::AIE::LockBlockingAttr | lock operation is blocking
 
 #### Operands:
 
