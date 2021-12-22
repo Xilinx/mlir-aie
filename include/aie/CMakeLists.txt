@@ -33,3 +33,5 @@ add_public_tablegen_target(MLIRAIENormalizeAddressSpacesIncGen)
 # mlir_tablegen(LLVMConversionEnumsToLLVM.inc -gen-enum-to-llvmir-conversions)
 # mlir_tablegen(LLVMConversionEnumsFromLLVM.inc -gen-enum-from-llvmir-conversions)
 # add_public_tablegen_target(MLIRLLVMConversionsIncGen)
+
+add_subdirectory(Dialect)

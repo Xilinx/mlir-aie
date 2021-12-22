@@ -27,6 +27,7 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
+#include "aie/Dialect/ADF/ADFDialect.h"
 #include "mlir/Dialect/Vector/VectorOps.h"
 
 using namespace mlir;
@@ -349,6 +350,19 @@ SECTIONS
         return success();
       },
       [](DialectRegistry &registry) {
+        registry.insert<xilinx::AIE::AIEDialect>();
+        registry.insert<StandardOpsDialect>();
+        registry.insert<memref::MemRefDialect>();
+        registry.insert<VectorDialect>();
+        registry.insert<LLVM::LLVMDialect>();
+      });
+  TranslateFromMLIRRegistration registrationXADF(
+      "adf-generate-cpp-graph",
+      [](ModuleOp module, raw_ostream &output) {
+        return ADFGenerateCPPGraph(module, output);
+      },
+      [](DialectRegistry &registry) {
+        registry.insert<xilinx::ADF::ADFDialect>();
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<StandardOpsDialect>();
         registry.insert<memref::MemRefDialect>();

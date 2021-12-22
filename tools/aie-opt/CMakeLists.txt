@@ -11,6 +11,7 @@ llvm_map_components_to_libnames(llvm_libs support core irreader)
 add_llvm_executable(aie-opt aie-opt.cpp)
 llvm_update_compile_flags(aie-opt)
 add_dependencies(aie-opt 
+  MLIRADFIncGen
   MLIRAIEIncGen
   MLIRAIEEnumsIncGen
   MLIRAIEPassIncGen
@@ -26,6 +27,7 @@ set(LIBS
   ${dialect_libs}
   ${conversion_libs}
   MLIROptLib
+  ADF
   AIE
   )
 target_link_libraries(aie-opt PRIVATE ${LIBS})

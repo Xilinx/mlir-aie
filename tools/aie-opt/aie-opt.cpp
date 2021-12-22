@@ -22,6 +22,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "aie/AIEDialect.h"
+#include "aie/Dialect/ADF/ADFDialect.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -47,6 +48,7 @@ int main(int argc, char **argv) {
   registry.insert<scf::SCFDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<xilinx::AIE::AIEDialect>();
+  registry.insert<xilinx::ADF::ADFDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
 
   return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
