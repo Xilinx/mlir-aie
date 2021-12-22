@@ -39,3 +39,4 @@ add_mlir_dialect_library(AIE
   )
 
 add_subdirectory(Targets)
+add_subdirectory(Dialect)
