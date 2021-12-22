@@ -184,8 +184,8 @@ Examples:
 %tile = aie.tile(1, 1)
 %lock11_8 = AIE.lock(%tile, 8)
 aie.core(%tile) {
-  AIE.useLock(%lock11_8, "Acquire", 1, 0)
-  AIE.useLock(%lock11_8, "Release", 0, 0)
+  AIE.useLock(%lock11_8, "Acquire", 1)
+  AIE.useLock(%lock11_8, "Release", 0)
   AIE.end
 }
 ```
@@ -229,9 +229,9 @@ Example:
 ```
   // this defines a BD that uses lock %lck0 and buffer %buf0
   ^bd5:
-    AIE.useLock(%lck, "Acquire", 0, 0)
+    AIE.useLock(%lck, "Acquire", 0)
     AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
-    AIE.useLock(%lck, "Release", 1, 0)
+    AIE.useLock(%lck, "Release", 1)
     br ^bd6 // point to the next Block, which is also a different Block Descriptor
 
   ...
@@ -278,10 +278,10 @@ Example:
 ```
   // this defines a BD that uses lock %lck0 and buffer %buf0
   ^bd5:
-    AIE.useLock(%lck, "Acquire", 0, 0)
+    AIE.useLock(%lck, "Acquire", 0)
     AIE.dmaBdPacket(0x4, 0xD)
     AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
-    AIE.useLock(%lck, "Release", 1, 0)
+    AIE.useLock(%lck, "Release", 1)
     br ^bd6 // point to the next Block, which is also a different Block Descriptor
 
 ```
@@ -312,9 +312,9 @@ Example:
 ```
     AIE.dmaStart("MM2S0", ^bd0, ^end)
   ^bd0:
-    AIE.useLock(%lock0, "Acquire", 0, 0)
+    AIE.useLock(%lock0, "Acquire", 0)
     AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 16>, 0)
-    AIE.useLock(%lock0, "Release", 1, 0)
+    AIE.useLock(%lock0, "Release", 1)
     br ^bd0
   ^end:
     AIE.end
