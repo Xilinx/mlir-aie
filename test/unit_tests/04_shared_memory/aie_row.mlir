@@ -40,15 +40,9 @@ module @test4_row_shared_memory {
 
 
   %core23 = AIE.core(%tile23) {
-<<<<<<< HEAD
     AIE.useLock(%lock13_5, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock23_7, "Acquire", 0) // acquire for write
-    %idx1 = constant 3 : index
-=======
-    AIE.useLock(%lock13_5, "Acquire", 1, 0) // acquire for read(e.g. input ping)
-    AIE.useLock(%lock23_7, "Acquire", 0, 0) // acquire for write
     %idx1 = arith.constant 3 : index
->>>>>>> Bump LLVM to 4b553297ef3ee4dc2119d5429adf3072e90fac38
     %val1 = memref.load %buf13_1[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
     %3 = arith.addi %2, %val1 : i32
