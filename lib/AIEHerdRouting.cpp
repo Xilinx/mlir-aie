@@ -8,14 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEDialect.h"
+#include "aie/AIENetlistAnalysis.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "aie/AIEDialect.h"
-#include "aie/AIENetlistAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -26,13 +26,12 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   ModuleOp &module;
 
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m,
-    PatternBenefit benefit = 1
-  ) : OpConversionPattern<MyOp>(context, benefit),
-    module(m) {}
+  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
-  LogicalResult matchAndRewrite(MyOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MyOp op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     rewriter.eraseOp(Op);
@@ -40,10 +39,8 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-int getAvailableDestChannel(
-  SmallVector<Connect, 8> &connects,
-  Port sourcePort,
-  WireBundle destBundle) {
+int getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
+                            WireBundle destBundle) {
 
   if (connects.size() == 0)
     return 0;
@@ -52,8 +49,7 @@ int getAvailableDestChannel(
 
   if (destBundle == WireBundle::North)
     numChannels = 6;
-  else if (destBundle == WireBundle::South ||
-           destBundle == WireBundle::East  ||
+  else if (destBundle == WireBundle::South || destBundle == WireBundle::East ||
            destBundle == WireBundle::West)
     numChannels = 4;
   else
@@ -62,7 +58,8 @@ int getAvailableDestChannel(
   // look for existing connect
   for (int i = 0; i < numChannels; i++) {
     Port port = std::make_pair(destBundle, i);
-    if (std::find(connects.begin(), connects.end(), std::make_pair(sourcePort, port)) != connects.end())
+    if (std::find(connects.begin(), connects.end(),
+                  std::make_pair(sourcePort, port)) != connects.end())
       return i;
   }
 
@@ -81,10 +78,10 @@ int getAvailableDestChannel(
 }
 
 void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
-  WireBundle sourceBundle, int sourceChannel,
-  WireBundle destBundle, int destChannel,
-  Operation *herdOp,
-  DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<Connect, 8>> &switchboxes) {
+                WireBundle sourceBundle, int sourceChannel,
+                WireBundle destBundle, int destChannel, Operation *herdOp,
+                DenseMap<std::pair<Operation *, std::pair<int, int>>,
+                         SmallVector<Connect, 8>> &switchboxes) {
 
   int xCur = xSrc;
   int yCur = ySrc;
@@ -96,7 +93,8 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
 
   SmallVector<std::pair<int, int>, 4> congestion;
 
-  llvm::dbgs() << "Build route: " << xSrc << " " << ySrc << " --> " << xDest << " " << yDest << '\n';
+  llvm::dbgs() << "Build route: " << xSrc << " " << ySrc << " --> " << xDest
+               << " " << yDest << '\n';
   // traverse horizontally, then vertically
   while (!((xCur == xDest) && (yCur == yDest))) {
     llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
@@ -128,7 +126,7 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
     for (unsigned i = 0; i < moves.size(); i++) {
       WireBundle move = moves[i];
       curChannel = getAvailableDestChannel(
-                     switchboxes[std::make_pair(herdOp, curCoord)], lastPort, move);
+          switchboxes[std::make_pair(herdOp, curCoord)], lastPort, move);
       if (curChannel == -1)
         continue;
 
@@ -149,42 +147,55 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
         yCur = yCur - 1;
       }
 
-      if (std::find(congestion.begin(), congestion.end(), std::make_pair(xCur, yCur)) != congestion.end())
+      if (std::find(congestion.begin(), congestion.end(),
+                    std::make_pair(xCur, yCur)) != congestion.end())
         continue;
 
       curBundle = move;
-      lastBundle = (move == WireBundle::East)  ? WireBundle::West :
-                   (move == WireBundle::West)  ? WireBundle::East :
-                   (move == WireBundle::North) ? WireBundle::South :
-                   (move == WireBundle::South) ? WireBundle::North : lastBundle;
+      lastBundle = (move == WireBundle::East)    ? WireBundle::West
+                   : (move == WireBundle::West)  ? WireBundle::East
+                   : (move == WireBundle::North) ? WireBundle::South
+                   : (move == WireBundle::South) ? WireBundle::North
+                                                 : lastBundle;
       break;
     }
 
     assert(curChannel >= 0 && "Could not find available destination port!");
 
     if (curChannel == -1) {
-      congestion.push_back(std::make_pair(xLast, yLast)); // this switchbox is congested
-      switchboxes[std::make_pair(herdOp, curCoord)].pop_back(); // back up, remove the last connection
+      congestion.push_back(
+          std::make_pair(xLast, yLast)); // this switchbox is congested
+      switchboxes[std::make_pair(herdOp, curCoord)]
+          .pop_back(); // back up, remove the last connection
     } else {
-      llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : " << lastPort.second << "], "
-                      "[" << stringifyWireBundle(curBundle) << " : " << curChannel << "]\n";
+      llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : "
+                   << lastPort.second
+                   << "], "
+                      "["
+                   << stringifyWireBundle(curBundle) << " : " << curChannel
+                   << "]\n";
 
       Port curPort = std::make_pair(curBundle, curChannel);
       Connect connect = std::make_pair(lastPort, curPort);
       if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
                     switchboxes[std::make_pair(herdOp, curCoord)].end(),
-                    connect) == switchboxes[std::make_pair(herdOp, curCoord)].end())
+                    connect) ==
+          switchboxes[std::make_pair(herdOp, curCoord)].end())
         switchboxes[std::make_pair(herdOp, curCoord)].push_back(connect);
       lastPort = std::make_pair(lastBundle, curChannel);
     }
   }
 
   llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
-  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : " << lastPort.second << "], "
-                  "[" << stringifyWireBundle(destBundle) << " : " << destChannel << "]\n";
+  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : "
+               << lastPort.second
+               << "], "
+                  "["
+               << stringifyWireBundle(destBundle) << " : " << destChannel
+               << "]\n";
 
   switchboxes[std::make_pair(herdOp, std::make_pair(xCur, yCur))].push_back(
-    std::make_pair(lastPort, std::make_pair(destBundle, destChannel)));
+      std::make_pair(lastPort, std::make_pair(destBundle, destChannel)));
 }
 
 struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
@@ -196,9 +207,12 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
     SmallVector<HerdOp, 4> herds;
     SmallVector<Operation *, 4> placeOps;
     SmallVector<Operation *, 4> routeOps;
-    DenseMap<std::pair<Operation *, Operation *>, std::pair<int, int>> distances;
+    DenseMap<std::pair<Operation *, Operation *>, std::pair<int, int>>
+        distances;
     SmallVector<std::pair<std::pair<int, int>, std::pair<int, int>>, 4> routes;
-    DenseMap<std::pair<Operation *, std::pair<int, int>>, SmallVector<Connect, 8>> switchboxes;
+    DenseMap<std::pair<Operation *, std::pair<int, int>>,
+             SmallVector<Connect, 8>>
+        switchboxes;
 
     for (auto herd : m.getOps<HerdOp>()) {
       herds.push_back(herd);
@@ -210,51 +224,59 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       Operation *destHerd = placeOp.destHerd().getDefiningOp();
       int distX = placeOp.getDistXValue();
       int distY = placeOp.getDistYValue();
-      distances[std::make_pair(sourceHerd, destHerd)] = std::make_pair(distX, distY);
+      distances[std::make_pair(sourceHerd, destHerd)] =
+          std::make_pair(distX, distY);
     }
 
-    // FIXME: multiple route ops with different sourceHerds does not seem to be aware of
-    // the routes done before
+    // FIXME: multiple route ops with different sourceHerds does not seem to be
+    // aware of the routes done before
     for (auto routeOp : m.getOps<RouteOp>()) {
       routeOps.push_back(routeOp);
 
-      AIE::SelectOp sourceHerds = dyn_cast<AIE::SelectOp>(routeOp.sourceHerds().getDefiningOp());
-      AIE::SelectOp destHerds = dyn_cast<AIE::SelectOp>(routeOp.destHerds().getDefiningOp());
+      AIE::SelectOp sourceHerds =
+          dyn_cast<AIE::SelectOp>(routeOp.sourceHerds().getDefiningOp());
+      AIE::SelectOp destHerds =
+          dyn_cast<AIE::SelectOp>(routeOp.destHerds().getDefiningOp());
       WireBundle sourceBundle = routeOp.sourceBundle();
       WireBundle destBundle = routeOp.destBundle();
       int sourceChannel = routeOp.getSourceChannelValue();
       int destChannel = routeOp.getDestChannelValue();
 
-      HerdOp sourceHerd = dyn_cast<HerdOp>(sourceHerds.startHerd().getDefiningOp());
-      IterOp sourceIterX = dyn_cast<IterOp>(sourceHerds.iterX().getDefiningOp());
-      IterOp sourceIterY = dyn_cast<IterOp>(sourceHerds.iterY().getDefiningOp());
+      HerdOp sourceHerd =
+          dyn_cast<HerdOp>(sourceHerds.startHerd().getDefiningOp());
+      IterOp sourceIterX =
+          dyn_cast<IterOp>(sourceHerds.iterX().getDefiningOp());
+      IterOp sourceIterY =
+          dyn_cast<IterOp>(sourceHerds.iterY().getDefiningOp());
 
       HerdOp destHerd = dyn_cast<HerdOp>(destHerds.startHerd().getDefiningOp());
       IterOp destIterX = dyn_cast<IterOp>(destHerds.iterX().getDefiningOp());
       IterOp destIterY = dyn_cast<IterOp>(destHerds.iterY().getDefiningOp());
 
-      int sourceStartX  = sourceIterX.getStartValue();
-      int sourceEndX    = sourceIterX.getEndValue();
+      int sourceStartX = sourceIterX.getStartValue();
+      int sourceEndX = sourceIterX.getEndValue();
       int sourceStrideX = sourceIterX.getStrideValue();
-      int sourceStartY  = sourceIterY.getStartValue();
-      int sourceEndY    = sourceIterY.getEndValue();
+      int sourceStartY = sourceIterY.getStartValue();
+      int sourceEndY = sourceIterY.getEndValue();
       int sourceStrideY = sourceIterY.getStrideValue();
 
-      int destStartX  = destIterX.getStartValue();
-      int destEndX    = destIterX.getEndValue();
+      int destStartX = destIterX.getStartValue();
+      int destEndX = destIterX.getEndValue();
       int destStrideX = destIterX.getStrideValue();
-      int destStartY  = destIterY.getStartValue();
-      int destEndY    = destIterY.getEndValue();
+      int destStartY = destIterY.getStartValue();
+      int destEndY = destIterY.getEndValue();
       int destStrideY = destIterY.getStrideValue();
 
       assert(distances.count(std::make_pair(sourceHerd, destHerd)) == 1);
 
-      std::pair<int, int> distance = distances[std::make_pair(sourceHerd, destHerd)];
+      std::pair<int, int> distance =
+          distances[std::make_pair(sourceHerd, destHerd)];
       int distX = distance.first;
       int distY = distance.second;
       // FIXME: this looks like it can be improved further ...
       for (int xSrc = sourceStartX; xSrc < sourceEndX; xSrc += sourceStrideX) {
-        for (int ySrc = sourceStartY; ySrc < sourceEndY; ySrc += sourceStrideY) {
+        for (int ySrc = sourceStartY; ySrc < sourceEndY;
+             ySrc += sourceStrideY) {
           for (int xDst = destStartX; xDst < destEndX; xDst += destStrideX) {
             for (int yDst = destStartY; yDst < destEndY; yDst += destStrideY) {
               // Build route (x0, y0) --> (x1, y1)
@@ -271,16 +293,16 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
               if (destIterY == sourceIterY)
                 y1 = y0;
 
-              auto route = std::make_pair(std::make_pair(x0, y0),
-                                          std::make_pair(distX + x1 - x0, distY + y1 - y0));
-              if (std::find(routes.begin(), routes.end(), route) != routes.end())
+              auto route = std::make_pair(
+                  std::make_pair(x0, y0),
+                  std::make_pair(distX + x1 - x0, distY + y1 - y0));
+              if (std::find(routes.begin(), routes.end(), route) !=
+                  routes.end())
                 continue;
 
-              buildRoute(x0, y0, x1 + distX, y1 + distY,
-                sourceBundle, sourceChannel,
-                destBundle, destChannel,
-                sourceHerd,
-                switchboxes);
+              buildRoute(x0, y0, x1 + distX, y1 + distY, sourceBundle,
+                         sourceChannel, destBundle, destChannel, sourceHerd,
+                         switchboxes);
 
               routes.push_back(route);
             }
@@ -298,11 +320,16 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
       builder.setInsertionPoint(m.getBody()->getTerminator());
 
-      IterOp iterx = builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
-      IterOp itery = builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
-      AIE::SelectOp sel = builder.create<AIE::SelectOp>(builder.getUnknownLoc(), herd, iterx, itery);
-      SwitchboxOp swbox = builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
-      swbox.ensureTerminator(swbox.connections(), builder, builder.getUnknownLoc());
+      IterOp iterx =
+          builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
+      IterOp itery =
+          builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
+      AIE::SelectOp sel = builder.create<AIE::SelectOp>(builder.getUnknownLoc(),
+                                                        herd, iterx, itery);
+      SwitchboxOp swbox =
+          builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
+      swbox.ensureTerminator(swbox.connections(), builder,
+                             builder.getUnknownLoc());
       Block &b = swbox.connections().front();
       builder.setInsertionPoint(b.getTerminator());
 
@@ -314,19 +341,16 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
         WireBundle destBundle = destPort.first;
         int destChannel = destPort.second;
 
-        builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                  sourceBundle, sourceChannel,
-                                  destBundle, destChannel);
-
+        builder.create<ConnectOp>(builder.getUnknownLoc(), sourceBundle,
+                                  sourceChannel, destBundle, destChannel);
       }
     }
 
     ConversionTarget target(getContext());
 
     OwningRewritePatternList patterns(&getContext());
-    patterns.insert<AIEOpRemoval<PlaceOp>,
-                    AIEOpRemoval<RouteOp>
-                   >(m.getContext(), m);
+    patterns.insert<AIEOpRemoval<PlaceOp>, AIEOpRemoval<RouteOp>>(
+        m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

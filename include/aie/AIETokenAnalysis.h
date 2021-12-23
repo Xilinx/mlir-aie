@@ -11,15 +11,15 @@
 #ifndef MLIR_AIE_LOCKANALYSIS_H
 #define MLIR_AIE_LOCKANALYSIS_H
 
-#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/FunctionImplementation.h"
 #include "llvm/ADT/StringSwitch.h"
 
 #include <map>
@@ -43,29 +43,17 @@ public:
 
   void runAnalysis();
 
-  auto getTokenSymbols() const {
-    return tokenSymbols;
-  }
+  auto getTokenSymbols() const { return tokenSymbols; }
 
-  auto getTokenAcqMap() const {
-    return tokenAcqMap;
-  }
+  auto getTokenAcqMap() const { return tokenAcqMap; }
 
-  auto getTokenRelMap() const {
-    return tokenRelMap;
-  }
+  auto getTokenRelMap() const { return tokenRelMap; }
 
-  auto getTokenChains() const {
-    return tokenChains;
-  }
+  auto getTokenChains() const { return tokenChains; }
 
-  auto getTokenPairs() const {
-    return tokenPairs;
-  }
+  auto getTokenPairs() const { return tokenPairs; }
 
-  auto getTiles() const {
-    return tiles;
-  }
+  auto getTiles() const { return tiles; }
 
   // CoreOp or MemOp
   Operation *getTokenUserOp(Operation *Op);
@@ -75,7 +63,7 @@ public:
   void print(raw_ostream &os);
 };
 
-} // AIE
-} // xilinx
+} // namespace AIE
+} // namespace xilinx
 
 #endif

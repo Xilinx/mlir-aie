@@ -8,16 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEDialect.h"
+#include "aie/AIETokenAnalysis.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "aie/AIEDialect.h"
-#include "aie/AIETokenAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -29,12 +29,14 @@ struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
   DenseMap<FuncOp, std::pair<int, int>> &funcs;
 
   RemoveAIEFuncs(MLIRContext *context, ModuleOp &m,
-    DenseMap<FuncOp, std::pair<int, int>> &funcs,
-    PatternBenefit benefit = 1) :
-    OpConversionPattern<FuncOp>(context, benefit), module(m), funcs(funcs) {}
+                 DenseMap<FuncOp, std::pair<int, int>> &funcs,
+                 PatternBenefit benefit = 1)
+      : OpConversionPattern<FuncOp>(context, benefit), module(m), funcs(funcs) {
+  }
 
-  LogicalResult matchAndRewrite(FuncOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(FuncOp op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (funcs.find(op) == funcs.end())
       return failure();
@@ -48,12 +50,12 @@ struct RemoveAIECalls : public OpConversionPattern<CallOp> {
   using OpConversionPattern<CallOp>::OpConversionPattern;
   ModuleOp &module;
 
-  RemoveAIECalls(MLIRContext *context, ModuleOp &m,
-    PatternBenefit benefit = 1) :
-    OpConversionPattern<CallOp>(context, benefit), module(m) {}
+  RemoveAIECalls(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
+      : OpConversionPattern<CallOp>(context, benefit), module(m) {}
 
-  LogicalResult matchAndRewrite(CallOp op, ArrayRef<Value> operands,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(CallOp op, ArrayRef<Value> operands,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (!op->getAttr("aie.x") || !op->getAttr("aie.y"))
       return failure();
@@ -98,7 +100,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       // get or create TileOp
       if (!tiles[std::make_pair(colIndex, rowIndex)]) {
         builder.setInsertionPointToStart(m.getBody());
-        TileOp tile = builder.create<TileOp>(builder.getUnknownLoc(), colIndex, rowIndex);
+        TileOp tile =
+            builder.create<TileOp>(builder.getUnknownLoc(), colIndex, rowIndex);
         tiles[std::make_pair(colIndex, rowIndex)] = tile;
       }
       Operation *tileOp = tiles[std::make_pair(colIndex, rowIndex)];
@@ -120,13 +123,16 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
           assert(t && "Unsupported type!");
           coreBufTypes.push_back(std::make_pair(t, i));
-          BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t, tile);
-//          buf.setAttr("sym_name", builder.getStringAttr("test_name"));
+          BufferOp buf =
+              builder.create<BufferOp>(builder.getUnknownLoc(), t, tile);
+          //          buf.setAttr("sym_name",
+          //          builder.getStringAttr("test_name"));
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }
 
-        MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(), builder.getIndexType(), tile);
+        MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(),
+                                          builder.getIndexType(), tile);
         Region &r = mem.body();
         Block *endBlock = builder.createBlock(&r);
 
@@ -137,7 +143,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       }
 
       // create CoreOp with buffer reference
-      if (CallOpInterface call = dyn_cast<CallOpInterface>(callOp.getOperation())) {
+      if (CallOpInterface call =
+              dyn_cast<CallOpInterface>(callOp.getOperation())) {
         Operation *callable = call.resolveCallable();
         if (FuncOp func = dyn_cast<FuncOp>(callable)) {
           funcs[func] = std::make_pair(colIndex, rowIndex);
@@ -148,9 +155,10 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
           CoreOp core;
           Block *currentBlock;
-          
+
           if (!cores[tileOp]) {
-            core = builder.create<CoreOp>(builder.getUnknownLoc(), builder.getIndexType(), tile);
+            core = builder.create<CoreOp>(builder.getUnknownLoc(),
+                                          builder.getIndexType(), tile);
             Region &r = core.body();
             currentBlock = builder.createBlock(&r);
             builder.setInsertionPointToStart(currentBlock);
@@ -160,21 +168,25 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
             builder.setInsertionPoint(currentBlock->getTerminator());
           }
 
-          // Mapping between function arguments (FuncOp) and AIE buffers (CoreOp)
-          // We will create one buffer for each function argument
-          // If the function argument's type is a scalar, we promote it to a one-element memref,
-          // and do a load to the buffer at index 0
+          // Mapping between function arguments (FuncOp) and AIE buffers
+          // (CoreOp) We will create one buffer for each function argument If
+          // the function argument's type is a scalar, we promote it to a
+          // one-element memref, and do a load to the buffer at index 0
           for (auto pair : coreBufTypes) {
             MemRefType t = pair.first;
             int operandID = pair.second;
             Value arg = func.getArgument(operandID);
             Value buf = buffers[callOperands[operandID]];
             if (arg.getType().isIntOrFloat()) {
-              assert(t.getShape().size() == 1 && "Expected MemRefType of shape 1");
-              assert(t.getShape()[0] == 1 && "Expected MemRefType of single element");
+              assert(t.getShape().size() == 1 &&
+                     "Expected MemRefType of shape 1");
+              assert(t.getShape()[0] == 1 &&
+                     "Expected MemRefType of single element");
 
-              Value zero = builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
-              auto loadOp = builder.create<memref::LoadOp>(builder.getUnknownLoc(), arg.getType(), buf, zero);
+              Value zero =
+                  builder.create<ConstantIndexOp>(builder.getUnknownLoc(), 0);
+              auto loadOp = builder.create<memref::LoadOp>(
+                  builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
             } else {
               mapper.map(arg, buf);

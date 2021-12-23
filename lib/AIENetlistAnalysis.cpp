@@ -8,21 +8,20 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIENetlistAnalysis.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Translation.h"
-#include "aie/AIEDialect.h"
-#include "aie/AIENetlistAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
 void xilinx::AIE::NetlistAnalysis::runAnalysis() {
-  
+
   // Collect op instances
   collectTiles(tiles);
   collectCores(cores);
@@ -32,7 +31,8 @@ void xilinx::AIE::NetlistAnalysis::runAnalysis() {
   collectSwitchboxes(switchboxes);
 }
 
-void xilinx::AIE::NetlistAnalysis::collectTiles(DenseMap<std::pair<int, int>, Operation *> &tiles) {
+void xilinx::AIE::NetlistAnalysis::collectTiles(
+    DenseMap<std::pair<int, int>, Operation *> &tiles) {
   for (auto tile : module.getOps<TileOp>()) {
     int colIndex = tile.colIndex();
     int rowIndex = tile.rowIndex();
@@ -40,23 +40,28 @@ void xilinx::AIE::NetlistAnalysis::collectTiles(DenseMap<std::pair<int, int>, Op
   }
 }
 
-void xilinx::AIE::NetlistAnalysis::collectCores(DenseMap<Operation *, CoreOp> &cores) {
+void xilinx::AIE::NetlistAnalysis::collectCores(
+    DenseMap<Operation *, CoreOp> &cores) {
   for (auto core : module.getOps<CoreOp>()) {
     Operation *tileOp = core.tile().getDefiningOp();
-    assert(cores.count(tileOp) == 0 && "Invalid netlist! Expected 1-1 mapping of tile and core");
+    assert(cores.count(tileOp) == 0 &&
+           "Invalid netlist! Expected 1-1 mapping of tile and core");
     cores[tileOp] = core;
   }
 }
 
-void xilinx::AIE::NetlistAnalysis::collectMems(DenseMap<Operation *, MemOp> &mems) {
+void xilinx::AIE::NetlistAnalysis::collectMems(
+    DenseMap<Operation *, MemOp> &mems) {
   for (auto mem : module.getOps<MemOp>()) {
     Operation *tileOp = mem.tile().getDefiningOp();
-    assert(mems.count(tileOp) == 0 && "Invalid netlist! Expected 1-1 mapping of tile and mem");
+    assert(mems.count(tileOp) == 0 &&
+           "Invalid netlist! Expected 1-1 mapping of tile and mem");
     mems[tileOp] = mem;
   }
 }
 
-void xilinx::AIE::NetlistAnalysis::collectLocks(DenseMap<std::pair<Operation *, int>, LockOp> &locks) {
+void xilinx::AIE::NetlistAnalysis::collectLocks(
+    DenseMap<std::pair<Operation *, int>, LockOp> &locks) {
   for (auto lock : module.getOps<LockOp>()) {
     Operation *tileOp = lock.tile().getDefiningOp();
     int lockID = lock.getLockID();
@@ -67,7 +72,7 @@ void xilinx::AIE::NetlistAnalysis::collectLocks(DenseMap<std::pair<Operation *, 
 }
 
 void xilinx::AIE::NetlistAnalysis::collectBuffers(
-  DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers) {
+    DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers) {
 
   for (auto buffer : module.getOps<BufferOp>()) {
     Operation *tileOp = buffer.tile().getDefiningOp();
@@ -76,16 +81,18 @@ void xilinx::AIE::NetlistAnalysis::collectBuffers(
 }
 
 void xilinx::AIE::NetlistAnalysis::collectSwitchboxes(
-  DenseMap<Operation *, SwitchboxOp> &switchboxes) {
+    DenseMap<Operation *, SwitchboxOp> &switchboxes) {
 
   for (auto switchbox : module.getOps<SwitchboxOp>()) {
     Operation *tileOp = switchbox.tile().getDefiningOp();
-    assert(switchboxes.count(tileOp) == 0 && "Invalid netlist! Expected 1-1 mapping of tile and switchbox");
+    assert(switchboxes.count(tileOp) == 0 &&
+           "Invalid netlist! Expected 1-1 mapping of tile and switchbox");
     switchboxes[tileOp] = switchbox;
   }
 }
 
-std::pair<int, int> xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const {
+std::pair<int, int>
+xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const {
   if (TileOp op = dyn_cast<TileOp>(Op))
     return std::make_pair(op.colIndex(), op.rowIndex());
 
@@ -110,7 +117,8 @@ std::pair<int, int> xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const 
 
 // item: Lock, Buffer
 // user: Core, Mem
-bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item, Operation *user) const {
+bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item,
+                                                   Operation *user) const {
   std::pair<int, int> itemCoord = getCoord(item);
   std::pair<int, int> userCoord = getCoord(user);
   int itemCol = itemCoord.first;
@@ -126,7 +134,8 @@ bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item, Operation *u
   return isLegalMemAffinity(userCol, userRow, itemCol, itemRow);
 }
 
-bool xilinx::AIE::NetlistAnalysis::validateCoreOrMemRegion(Operation *CoreOrMemOp) {
+bool xilinx::AIE::NetlistAnalysis::validateCoreOrMemRegion(
+    Operation *CoreOrMemOp) {
   Region *r = nullptr;
   if (CoreOp core = dyn_cast<CoreOp>(CoreOrMemOp))
     r = &core.body();
@@ -164,11 +173,11 @@ bool xilinx::AIE::NetlistAnalysis::validateCoreOrMemRegion(Operation *CoreOrMemO
         assert(IsValid && "Illegal use of buffer in region");
         bufferUsers[buf].push_back(CoreOrMemOp);
       } else {
-        // except for (legal) lock and buffer, operand should be defined within the region
+        // except for (legal) lock and buffer, operand should be defined within
+        // the region
         IsValid = CoreOrMemOp->isProperAncestor(operand.getDefiningOp());
       }
     }
-
   });
 
   return IsValid;
@@ -209,7 +218,8 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
     Region &r = mem.body();
     Block *endBlock = &r.back();
     for (auto op : r.getOps<CondBranchOp>()) {
-      DMAStartOp dmaSt = dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
+      DMAStartOp dmaSt =
+          dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
       int channelNum = dmaSt.getChannelNum();
       dmas[std::make_pair(mem, channelNum)] = dmaSt;
       Block *firstBd = op.getTrueDest();
@@ -218,8 +228,8 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
       while (curBd != endBlock) {
         for (auto bdOp : curBd->getOps<DMABDOp>()) {
           Operation *buf = bdOp.buffer().getDefiningOp();
-          if (std::find(dma2BufMap[dmaSt].begin(),
-                        dma2BufMap[dmaSt].end(), buf) != dma2BufMap[dmaSt].end())
+          if (std::find(dma2BufMap[dmaSt].begin(), dma2BufMap[dmaSt].end(),
+                        buf) != dma2BufMap[dmaSt].end())
             continue;
 
           dma2BufMap[dmaSt].push_back(bdOp.buffer().getDefiningOp());
@@ -230,7 +240,8 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
   }
 }
 
-uint64_t xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
+uint64_t
+xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
   uint64_t memUsage = 0;
   for (auto buf : buffers[tileOp]) {
     MemRefType t = buf.getType().cast<MemRefType>();
@@ -241,7 +252,8 @@ uint64_t xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) con
 
 // FIXME: make address assignment for buffers explicit and move this function to
 // an interface
-uint64_t xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
+uint64_t
+xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
   if (auto buf = dyn_cast<BufferOp>(bufOp)) {
     return buf.address();
   } else if (auto buf = dyn_cast<ExternalBufferOp>(bufOp)) {
@@ -252,7 +264,7 @@ uint64_t xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) co
 }
 
 SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
-  ConnectOp currentConnect) const {
+    ConnectOp currentConnect) const {
 
   SmallVector<Operation *, 4> nextConnectOps;
 
@@ -285,14 +297,16 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
     return nextConnectOps;
   }
 
-  assert((nextCol >= 0 && nextRow >= 0) && "Invalid ConnectOp! Could not find next tile!");
+  assert((nextCol >= 0 && nextRow >= 0) &&
+         "Invalid ConnectOp! Could not find next tile!");
 
   Operation *nextTileOp = tiles[std::make_pair(nextCol, nextRow)];
   Operation *nextSwboxOp = switchboxes[nextTileOp];
   SwitchboxOp nextSwbox = dyn_cast<SwitchboxOp>(nextSwboxOp);
 
   for (auto connect : nextSwbox.getOps<ConnectOp>()) {
-    if (connect.sourceBundle() == nextSrcBundle && connect.sourceIndex() == nextSrcIndex) {
+    if (connect.sourceBundle() == nextSrcBundle &&
+        connect.sourceIndex() == nextSrcIndex) {
       nextConnectOps.push_back(connect);
     }
   }
@@ -300,8 +314,9 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
   return nextConnectOps;
 }
 
-SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::findRoutes(
-  Operation *sourceConnectOp, Operation *destConnectOp) const {
+SmallVector<Operation *, 4>
+xilinx::AIE::NetlistAnalysis::findRoutes(Operation *sourceConnectOp,
+                                         Operation *destConnectOp) const {
 
   SmallVector<Operation *, 4> routes;
   routes.push_back(sourceConnectOp);
@@ -311,7 +326,8 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::findRoutes(
     if (destConnectOp == nextConnectOp) {
       return routes;
     } else {
-      SmallVector<Operation *, 4> workList(findRoutes(nextConnectOp, destConnectOp));
+      SmallVector<Operation *, 4> workList(
+          findRoutes(nextConnectOp, destConnectOp));
       if (workList.size() > 0) {
         routes.push_back(destConnectOp);
         routes.insert(routes.end(), workList.begin(), workList.end());
@@ -323,8 +339,9 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::findRoutes(
   return routes;
 }
 
-SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::findDestConnectOps(
-  ConnectOp source, WireBundle destBundle) const {
+SmallVector<Operation *, 4>
+xilinx::AIE::NetlistAnalysis::findDestConnectOps(ConnectOp source,
+                                                 WireBundle destBundle) const {
 
   SmallVector<Operation *, 4> dests;
   SmallVector<Operation *, 4> workList;
@@ -339,15 +356,15 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::findDestConnectOps(
         workList.push_back(nextConnect);
       else
         dests.push_back(nextConnect);
-
     }
   }
-  
+
   return dests;
 }
 
 void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
-  // Source(DMAChannel, <Buffer0, Buffer1, ...>) --> Dest(DMAChannel, <Buffer0, Buffer1, ...>)
+  // Source(DMAChannel, <Buffer0, Buffer1, ...>) --> Dest(DMAChannel, <Buffer0,
+  // Buffer1, ...>)
   collectDMAUsage();
 
   for (auto map : dma2BufMap) {
@@ -369,13 +386,16 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
 
       dma2ConnectsMap[srcDmaOp].push_back(connect);
 
-      ArrayRef<Operation *> destConnectOps(findDestConnectOps(connect, WireBundle::DMA));
+      ArrayRef<Operation *> destConnectOps(
+          findDestConnectOps(connect, WireBundle::DMA));
       for (auto destConnectOp : destConnectOps) {
         ConnectOp destConnect = dyn_cast<ConnectOp>(destConnectOp);
-        SwitchboxOp destSwbox = dyn_cast<SwitchboxOp>(destConnect->getParentOp());
+        SwitchboxOp destSwbox =
+            dyn_cast<SwitchboxOp>(destConnect->getParentOp());
         Operation *destMemOp = mems[destSwbox.tile().getDefiningOp()];
         int destChannelIndex = destConnect.destIndex();
-        Operation *destDmaOp = dmas[std::make_pair(destMemOp, destChannelIndex)];
+        Operation *destDmaOp =
+            dmas[std::make_pair(destMemOp, destChannelIndex)];
         dmaConnections[srcDma].push_back(destDmaOp);
         dma2ConnectsMap[destDmaOp].push_back(destConnect);
       }
@@ -413,7 +433,7 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
 
   for (auto pair1 : lockPairs) {
     Operation *srcRelLockOp = pair1.second;
-    for (auto pair2 :  lockPairs) {
+    for (auto pair2 : lockPairs) {
       Operation *dstAcqLockOp = pair2.first;
 
       if (pair1 == pair2)
