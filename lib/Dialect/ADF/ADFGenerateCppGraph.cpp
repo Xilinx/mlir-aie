@@ -30,9 +30,10 @@ struct GraphInfo {
   std::string dataAccessMechanism;
   uint32_t windowSize;
   // maps kernel symbol to kernel cnt, kcnt is used for adf c++ kernel instantiation name
-  std::unordered_map<std::string, std::string> kSymbol2KCntName; 
-  std::unordered_map<std::string, int> kName2InpPortOrders; 
-  std::unordered_map<std::string, int> kName2OutPortOrders; 
+  // std::unordered_map<std::string, std::string> kernelSymbol2KernelCntName; 
+  std::unordered_map<std::string, std::string> kernelSymbol2KernelCntName; 
+  std::unordered_map<std::string, int> kernelName2InputPortOrders; 
+  std::unordered_map<std::string, int> kernelName2OutputPortOrders; 
 };
 
 
@@ -43,13 +44,9 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
   // Entry point for the pass.
   void runOnOperation() override {
     Operation *op = getOperation();
-    processModuleOpInfo(op);
-  }
 
-
-  void processModuleOpInfo(Operation *module_op) {
     // should have a better way in llvm/mlir
-    for (Region &region : module_op->getRegions()) {
+    for (Region &region : op->getRegions()) {
       for (Block &block : region.getBlocks()) {
         int kcnt = 1;
         for (Operation &op : block.getOperations()) {
@@ -59,10 +56,10 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
             // collect and initialize some kernel info 
             if (auto attr = op.getAttrOfType<StringAttr>("sym_name")) {
               std::string s = attr.getValue().str();
-              info.kSymbol2KCntName[s] = "k" + std::to_string(kcnt);
+              info.kernelSymbol2KernelCntName[s] = "k" + std::to_string(kcnt);
               kcnt++;
-              info.kName2InpPortOrders[s] = 0; //initialize
-              info.kName2OutPortOrders[s] = 0; //initialize
+              info.kernelName2InputPortOrders[s] = 0; //initialize
+              info.kernelName2OutputPortOrders[s] = 0; //initialize
             }
 
           } else if (op.getName().getStringRef() == "ADF.graph") {
@@ -88,6 +85,7 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
     }
     llvm::outs() << "-----------------------------------------------------------------------------\n\n\n\n\n";
   }
+
 
   void dumpKernelFunctions(Operation *kernelOp) {
     if (!kernelHeaderDumped) {
@@ -168,7 +166,7 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
     llvm::outs() << "using namespace adf;\n";
     llvm::outs() << "class " << info.graphName << "Graph : public graph {\n";
     llvm::outs() << "private:\n";
-    for (const auto &itr : info.kSymbol2KCntName) {
+    for (const auto &itr : info.kernelSymbol2KernelCntName) {
       llvm::outs() << "  kernel "
                    << itr.second 
                    << ";\n";
@@ -186,7 +184,7 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
                  << info.graphName
                  << "Graph() {\n";
     // initialize the kernel instances in the adf c++ graph
-    for (const auto &itr : info.kSymbol2KCntName) {
+    for (const auto &itr : info.kernelSymbol2KernelCntName) {
       llvm::outs()  << "    "
                     << itr.second 
                     << " = kernel::create("
@@ -238,8 +236,8 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
           if (userOp->getName().getStringRef() == "ADF.create_kernel") {
             if (auto attr = userOp->getAttrOfType<FlatSymbolRefAttr>("callee")) {
               std::string s = attr.getValue().str();
-              std::string userKernelName = info.kSymbol2KCntName[s];
-              int kInpPortOrders = info.kName2InpPortOrders[s]++;
+              std::string userKernelName = info.kernelSymbol2KernelCntName[s];
+              int kInpPortOrders = info.kernelName2InputPortOrders[s]++;
               llvm::outs()   << "    connect<"
                              << info.dataAccessMechanism;
               if (info.isStream) {
@@ -261,7 +259,7 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
             netCnt++;
           } 
 
-          assert(false); // FIXME: graph input should not drive graph output directly?
+          // todo: kernel should not drive graph input, add an mlir verifier condition
         }
       }
     } else { // the driver is another Kernel
@@ -271,8 +269,8 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
       int kOutPortOrders;
       if (auto attr = driverOp->getAttrOfType<FlatSymbolRefAttr>("callee")) {
         std::string s = attr.getValue().str();
-        driverKernelName = info.kSymbol2KCntName[s];
-        kOutPortOrders = info.kName2OutPortOrders[s]++;
+        driverKernelName = info.kernelSymbol2KernelCntName[s];
+        kOutPortOrders = info.kernelName2OutputPortOrders[s]++;
       }
 
       // step-2: get all the users and print out the c++
@@ -282,8 +280,8 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
           if (userOp->getName().getStringRef() == "ADF.create_kernel") {
             if (auto attr = userOp->getAttrOfType<FlatSymbolRefAttr>("callee")) {
               std::string s = attr.getValue().str();
-              auto userKernelName = info.kSymbol2KCntName[s];
-              int  kInpPortOrders = info.kName2InpPortOrders[s]++;
+              auto userKernelName = info.kernelSymbol2KernelCntName[s];
+              int  kInpPortOrders = info.kernelName2InputPortOrders[s]++;
               llvm::outs()   << "    connect<"
                              << info.dataAccessMechanism;
               if (info.isStream) {
@@ -328,7 +326,7 @@ struct ADFGenerateCppGraphPass : public ADFGenerateCppGraphBase<ADFGenerateCppGr
             netCnt++;
           }
 
-          assert(false); // kernel should not drive graph input 
+          // todo: kernel should not drive graph input, add an mlir verifier condition
         }
       }
     }

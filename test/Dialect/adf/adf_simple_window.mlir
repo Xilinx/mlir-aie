@@ -1,3 +1,5 @@
+// RUN: path_to_build/aie/bin/aie-opt --adf-generate-cpp-graph %s
+
 // "blk" is block, it could be window or stream form in ADF graph.
 module {
     func private @kfunc1(%in1 : !ADF.itf<i1, i32> {ADF.data_access = "window", ADF.blk_form = "int",  ADF.blk_unit = 8})  
