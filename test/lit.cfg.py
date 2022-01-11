@@ -51,7 +51,7 @@ llvm_config.use_default_substitutions()
 # excludes: A list of directories to exclude from the testsuite. The 'Inputs'
 # subdirectories contain auxiliary inputs for various tests in their parent
 # directories.
-config.excludes = ['Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt']
+config.excludes = ['benchmarks', 'Inputs', 'Examples', 'CMakeLists.txt', 'README.txt', 'LICENSE.txt']
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, 'bin')
 
