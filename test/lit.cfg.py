@@ -70,6 +70,7 @@ def prepend_path(path):
 
 # Setup the path.
 prepend_path(config.llvm_tools_dir)
+prepend_path(config.peano_tools_dir)
 prepend_path(config.aie_tools_dir)
 #llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
 #llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
@@ -80,7 +81,7 @@ if(config.vitis_root):
   llvm_config.with_environment('VITIS', config.vitis_root)
 
 # Test to see if we have the peano backend.
-result = subprocess.run([os.path.join(config.llvm_tools_dir, 'llc'),'-mtriple=aie','--version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+result = subprocess.run([os.path.join(config.peano_tools_dir, 'llc'),'-mtriple=aie','--version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 if (re.search("Xilinx AI Engine", result.stdout.decode('utf-8')) is not None):
     config.available_features.add('peano')
     print("Peano found: " + shutil.which("llc"))
@@ -116,7 +117,7 @@ if(config.enable_chess_tests):
         print("WARNING: no valid xchess license that is required by some of the lit tests")
 
 
-tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+tool_dirs = [config.aie_tools_dir, config.peano_tools_dir, config.llvm_tools_dir]
 tools = [
     'aie-opt',
     'aie-translate',
