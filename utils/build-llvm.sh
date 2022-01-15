@@ -19,6 +19,7 @@ mkdir -p llvm/$BUILD_DIR
 mkdir -p llvm/$INSTALL_DIR
 cd llvm/$BUILD_DIR
 cmake ../llvm \
+  -GNinja \
   -DLLVM_BUILD_EXAMPLES=OFF \
   -DLLVM_TARGETS_TO_BUILD="host" \
   -DCMAKE_INSTALL_PREFIX=../$INSTALL_DIR \
@@ -29,6 +30,7 @@ cmake ../llvm \
   -DLLVM_INSTALL_UTILS=ON \
   -DCMAKE_C_COMPILER=clang \
   -DCMAKE_CXX_COMPILER=clang++ \
+  -DLLVM_CCACHE_BUILD=ON \
   -DLLVM_ENABLE_LLD=ON \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLVM_ENABLE_ASSERTIONS=ON
