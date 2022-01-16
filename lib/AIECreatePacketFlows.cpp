@@ -406,7 +406,7 @@ struct AIERoutePacketFlowsPass
       }
 
       if (!foundMatchedDest) {
-        bool foundAMSelValue;
+        bool foundAMSelValue = false;
         for (int a = 0; a < numArbiters; a++) {
           for (int i = 0; i < numMsels; i++) {
             amselValue = a + i * numArbiters;
