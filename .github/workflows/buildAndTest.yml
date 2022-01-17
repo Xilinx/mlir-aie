@@ -72,6 +72,7 @@ jobs:
           mkdir build_assert
           cd build_assert
           cmake .. \
+            -GNinja
             -DCMAKE_BUILD_TYPE=Debug \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmakeModules \
@@ -82,7 +83,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          make -j$(nproc)
+          ninja
 
       # Build the repo test target in release mode to build and test.
       - name: Build (Release)
