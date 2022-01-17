@@ -14,6 +14,9 @@
 
 export commithash=966b72098363d44adf2882b9c34fcdbe344ff913 
 
+git clone --depth 1 https://github.com/Xilinx/cmakeModules cmakeModules/cmakeModulesXilinx
+export CMAKE_MODULE_PATH=`pwd`/cmakeModules/cmakeModulesXilinx
+
 git clone --depth 1 https://github.com/llvm/llvm-project.git llvm
 pushd llvm
 git fetch --depth=1 origin $commithash
