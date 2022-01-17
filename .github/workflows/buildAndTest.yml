@@ -70,7 +70,7 @@ jobs:
           mkdir build_assert
           cd build_assert
           cmake .. \
-            -GNinja
+            -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmakeModules \
