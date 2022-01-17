@@ -41,12 +41,14 @@ See also [MasterSetOp](#aiemasterset-aiemastersetop),
 [PacketRulesOp](#aiepacketrules-aiepacketrulesop), and
 [PacketRuleOp](#aierule-aiepacketruleop) for more information.
 
+Traits: HasParent<SwitchboxOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`arbiterID` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose minimum value is 0 whose maximum value is 5
-`msel` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose minimum value is 0 whose maximum value is 3
+| `arbiterID` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose minimum value is 0 whose maximum value is 5
+| `msel` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose minimum value is 0 whose maximum value is 3
 
 #### Results:
 
@@ -78,13 +80,13 @@ This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`buffer` | memref of any type values
+| `buffer` | memref of any type values
 
 ### `AIE.connect` (::xilinx::AIE::ConnectOp)
 
@@ -112,14 +114,16 @@ aie.switchbox(%tile) {
 }
 ```
 
+Traits: HasParent<SwitchboxOp, ShimMuxOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 ### `AIE.connection` (::xilinx::AIE::ConnectionOp)
 
@@ -150,17 +154,17 @@ Example:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`source` | index
-`dest` | index
+| `source` | index
+| `dest` | index
 
 ### `AIE.core` (::xilinx::AIE::CoreOp)
 
@@ -196,11 +200,13 @@ AIE.core(%tile) {
 } { elf_file = "core_33.elf" }
 ```
 
+Interfaces: FlowEndPoint
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
@@ -247,15 +253,15 @@ There are 16 block descriptors per Memory Module. They are shared by four DMA ch
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`offset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`len` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`AB` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1
+| `offset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `len` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `AB` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`buffer` | memref of any type values
+| `buffer` | memref of any type values
 
 ### `AIE.dmaBdPacket` (::xilinx::AIE::DMABDPACKETOp)
 
@@ -291,8 +297,8 @@ Example:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`packet_type` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`packet_id` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `packet_type` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `packet_id` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 ### `AIE.dmaStart` (::xilinx::AIE::DMAStartOp)
 
@@ -324,24 +330,26 @@ Comceptually, the AIE.dmaStart operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
 or to a basic block for another dmaStart, to an AIE.end operation.
 
+Traits: HasParent<MemOp, FuncOp, ShimDMAOp>, Terminator
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`dmaChan` | xilinx::AIE::DMAChanAttr | DMA Channel number
+| `dmaChan` | xilinx::AIE::DMAChanAttr | DMA Channel number
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`valid` | 1-bit signless integer
+| `valid` | 1-bit signless integer
 
 #### Successors:
 
 | Successor | Description |
 | :-------: | ----------- |
-`dest` | any successor
-`chain` | any successor
+| `dest` | any successor
+| `chain` | any successor
 
 ### `AIE.debug` (::xilinx::AIE::DebugOp)
 
@@ -360,7 +368,7 @@ Output the given value for debugging.  This is primarily used for simulation.
 
 | Operand | Description |
 | :-----: | ----------- |
-`arg` | any type
+| `arg` | any type
 
 ### `AIE.end` (::xilinx::AIE::EndOp)
 
@@ -374,6 +382,8 @@ operation ::= `AIE.end` attr-dict
 ```
 
 A generic terminator operation for AIE ops' regions.
+
+Traits: Terminator
 
 ### `AIE.external_buffer` (::xilinx::AIE::ExternalBufferOp)
 
@@ -399,13 +409,13 @@ This operation represents a buffer living at physical address 0x200000.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`address` | ::mlir::IntegerAttr | 64-bit signless integer attribute
+| `address` | ::mlir::IntegerAttr | 64-bit signless integer attribute
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`buffer` | memref of any type values
+| `buffer` | memref of any type values
 
 ### `AIE.flow` (::xilinx::AIE::FlowOp)
 
@@ -435,17 +445,17 @@ Example:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`source` | index
-`dest` | index
+| `source` | index
+| `dest` | index
 
 ### `AIE.getCascade` (::xilinx::AIE::GetCascadeOp)
 
@@ -460,11 +470,13 @@ operation ::= `AIE.getCascade` `(` `)` attr-dict `:` type($cascadeValue)
 
 An op to read from a cascading stream from a neighboring core.
 
+Traits: HasParent<CoreOp>
+
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`cascadeValue` | 384-bit integer
+| `cascadeValue` | 384-bit integer
 
 ### `AIE.getStream` (::xilinx::AIE::GetStreamOp)
 
@@ -479,17 +491,19 @@ operation ::= `AIE.getStream` `(` $channel `:` type($channel) `)` attr-dict `:` 
 
 An op to read from a stream channel/port of a switchbox.
 
+Traits: HasParent<CoreOp>
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`channel` | integer
+| `channel` | integer
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
+| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
 ### `AIE.getTile` (::xilinx::AIE::GetTileOp)
 
@@ -508,14 +522,14 @@ Return a reference to an AIE tile, given the column and the row of the tile.
 
 | Operand | Description |
 | :-----: | ----------- |
-`col` | index
-`row` | index
+| `col` | index
+| `row` | index
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`result` | index
+| `result` | index
 
 ### `AIE.herd` (::xilinx::AIE::HerdOp)
 
@@ -551,8 +565,8 @@ Example:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`width` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`height` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `width` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `height` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Results:
 
@@ -582,9 +596,9 @@ Example:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`start` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`end` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`stride` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `start` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `end` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `stride` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Results:
 
@@ -616,13 +630,13 @@ This operation represents a lock that lives in the Memory module of Tile(3, 3) w
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`lockID` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 15
+| `lockID` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 15
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
@@ -662,18 +676,20 @@ Example:
   AIE.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
   AIE.masterset("West" : 3, %a1_0, %a1_1) // this is OK
 
+Traits: HasParent<SwitchboxOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`amsels` | index
+| `amsels` | index
 
 #### Results:
 
@@ -696,11 +712,13 @@ This operation creates a Memory module that belongs to a tile.
 The region of a MemOp is used to setup the DMAs and Block Descriptors.
 See DMAOp and DMABdOp for more concrete examples.
 
+Interfaces: CallableOpInterface, FlowEndPoint
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
@@ -732,22 +750,22 @@ the source tile to the dest. tile.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
-`acqValue` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`relValue` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`srcOffset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`srcLen` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`dstOffset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`dstLen` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+| `acqValue` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `relValue` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `srcOffset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `srcLen` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `dstOffset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `dstLen` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`srcTile` | index
-`srcBuf` | memref of any type values
-`dstTile` | index
-`dstBuf` | memref of any type values
+| `srcTile` | index
+| `srcBuf` | memref of any type values
+| `dstTile` | index
+| `dstBuf` | memref of any type values
 
 ### `AIE.plio` (::xilinx::AIE::PLIOOp)
 
@@ -766,7 +784,7 @@ An interface to the PL.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`col` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `col` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Results:
 
@@ -791,18 +809,20 @@ Must be unique within a design.
 
 See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
 
+Traits: HasParent<PacketFlowOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 ### `AIE.packet_flow` (::xilinx::AIE::PacketFlowOp)
 
@@ -828,11 +848,13 @@ Example:
   }
 ```
 
+Traits: SingleBlockImplicitTerminator<EndOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
+| `ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
 
 ### `AIE.rule` (::xilinx::AIE::PacketRuleOp)
 
@@ -874,18 +896,20 @@ Example:
   }
 ```
 
+Traits: HasParent<PacketRulesOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`mask` | ::mlir::IntegerAttr | 8-bit signless integer attribute
-`value` | ::mlir::IntegerAttr | 8-bit signless integer attribute
+| `mask` | ::mlir::IntegerAttr | 8-bit signless integer attribute
+| `value` | ::mlir::IntegerAttr | 8-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`amsel` | index
+| `amsel` | index
 
 ### `AIE.packetrules` (::xilinx::AIE::PacketRulesOp)
 
@@ -905,12 +929,14 @@ It contains a region of up to 4 [AIE.rule](#aierule-aiepacketruleop) operations.
 
 See [AIE.rule](#aierule-aiepacketruleop) for an example.
 
+Traits: SingleBlockImplicitTerminator<EndOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 ### `AIE.packet_source` (::xilinx::AIE::PacketSourceOp)
 
@@ -928,18 +954,20 @@ within an [AIE.packet_flow](#aiepacketflow-aiepacketflowop) operation.
 
 See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
 
+Traits: HasParent<PacketFlowOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 ### `AIE.place` (::xilinx::AIE::PlaceOp)
 
@@ -958,15 +986,15 @@ A place operation that specifies the relative placement (XY) of one herd to anot
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`distX` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`distY` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `distX` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `distY` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`sourceHerd` | index
-`destHerd` | index
+| `sourceHerd` | index
+| `destHerd` | index
 
 ### `AIE.putCascade` (::xilinx::AIE::PutCascadeOp)
 
@@ -981,11 +1009,13 @@ operation ::= `AIE.putCascade` `(` $cascadeValue `:` type($cascadeValue) `)` att
 
 An op to write to a cascading stream from a neighboring core.
 
+Traits: HasParent<CoreOp>
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`cascadeValue` | 384-bit integer
+| `cascadeValue` | 384-bit integer
 
 ### `AIE.putStream` (::xilinx::AIE::PutStreamOp)
 
@@ -1000,12 +1030,14 @@ operation ::= `AIE.putStream` `(` $streamValue `:` type($streamValue) `,` $chann
 
 An op to write to a stream channel/port of a switchbox.
 
+Traits: HasParent<CoreOp>
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`channel` | integer
-`streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
+| `channel` | integer
+| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
 ### `AIE.route` (::xilinx::AIE::RouteOp)
 
@@ -1025,17 +1057,17 @@ A route operation that routes one herd to another.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`sourceHerds` | index
-`destHerds` | index
+| `sourceHerds` | index
+| `destHerds` | index
 
 ### `AIE.select` (::xilinx::AIE::SelectOp)
 
@@ -1066,9 +1098,9 @@ The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0]
 
 | Operand | Description |
 | :-----: | ----------- |
-`startHerd` | index
-`iterX` | index
-`iterY` | index
+| `startHerd` | index
+| `iterX` | index
+| `iterY` | index
 
 #### Results:
 
@@ -1088,11 +1120,13 @@ operation ::= `AIE.shimDMA` `(` $tile `)` regions attr-dict
 ```
 
 
+Interfaces: FlowEndPoint
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
@@ -1123,11 +1157,15 @@ aie.shimmux(%tile) {
 }
 ```
 
+Traits: SingleBlockImplicitTerminator<EndOp>
+
+Interfaces: Interconnect
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
@@ -1158,11 +1196,13 @@ AXI-Stream Master Ports AXI-Stream Slave Ports
 1 Port for trace packet from Shim
 
 
+Traits: SingleBlockImplicitTerminator<EndOp>
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`col` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `col` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Results:
 
@@ -1192,11 +1232,15 @@ aie.switchbox(%tile) {
 }
 ```
 
+Traits: SingleBlockImplicitTerminator<EndOp>
+
+Interfaces: Interconnect
+
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`tile` | index
+| `tile` | index
 
 #### Results:
 
@@ -1225,18 +1269,20 @@ to it.
 Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
 the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
 
+Interfaces: FlowEndPoint
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`col` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
-`row` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+| `col` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+| `row` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`result` | index
+| `result` | index
 
 ### `AIE.token` (::xilinx::AIE::TokenOp)
 
@@ -1268,11 +1314,13 @@ Example:
   AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
 
+Interfaces: Symbol
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 ### `AIE.useLock` (::xilinx::AIE::UseLockOp)
 
@@ -1292,15 +1340,15 @@ This should be understood as a "blocking" operation.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`value` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 2
-`action` | xilinx::AIE::LockActionAttr | lock acquire/release
-`blocking` | xilinx::AIE::LockBlockingAttr | lock operation is blocking
+| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 2
+| `action` | xilinx::AIE::LockActionAttr | lock acquire/release
+| `blocking` | xilinx::AIE::LockBlockingAttr | lock operation is blocking
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`lock` | index
+| `lock` | index
 
 ### `AIE.useToken` (::xilinx::AIE::UseTokenOp)
 
@@ -1320,9 +1368,9 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
-`value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-`action` | xilinx::AIE::LockActionAttr | lock acquire/release
+| `tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `action` | xilinx::AIE::LockActionAttr | lock acquire/release
 
 ### `AIE.wire` (::xilinx::AIE::WireOp)
 
@@ -1343,13 +1391,13 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-`destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`source` | index
-`dest` | index
+| `source` | index
+| `dest` | index
 

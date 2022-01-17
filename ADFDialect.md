@@ -75,17 +75,21 @@ This is usually used to represent inout parameter val=ues
   %2 = ADF.inout_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
 ```
 
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`name` | ::mlir::StringAttr | string attribute
+| `name` | ::mlir::StringAttr | string attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`inp` | 
+| `inp` | 
 
 #### Results:
 
@@ -124,18 +128,24 @@ interface values defined by the argument array attributes.
   %1 = ADF.input_port("name")  [0:i1, 128:i32] -> !ADF.interface<!ADF.int32> // for ADF window access mechanism 
 ```
 
+Traits: ConstantLike
+
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`value` | ::mlir::ArrayAttr | array attribute
-`name` | ::mlir::StringAttr | string attribute
+| `value` | ::mlir::ArrayAttr | array attribute
+| `name` | ::mlir::StringAttr | string attribute
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-`output` | 
+| `output` | 
 
 ### `ADF.graph` (::xilinx::ADF::GraphOp)
 
@@ -158,11 +168,17 @@ ADF.graph("name") {
 }
 ```
 
+Traits: NoTerminator, SingleBlock
+
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`name` | ::mlir::StringAttr | string attribute
+| `name` | ::mlir::StringAttr | string attribute
 
 ### `ADF.output_port` (::xilinx::ADF::GraphOutputOp)
 
@@ -183,17 +199,21 @@ The operation takes an argument with "window" type and also returns an
   %2 = ADF.output_port("name") %3 : (!ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>                                           
 ```
 
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`name` | ::mlir::StringAttr | string attribute
+| `name` | ::mlir::StringAttr | string attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`inp` | 
+| `inp` | 
 
 #### Results:
 
@@ -222,17 +242,21 @@ window size through entire ADF graph.
           (!ADF.interface<!ADF.int32>, !ADF.interface<!ADF.int32>) -> !ADF.interface<!ADF.int32>
 ```
 
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-`callee` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+| `callee` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-`kernel_inputs` | 
+| `kernel_inputs` | 
 
 #### Results:
 
