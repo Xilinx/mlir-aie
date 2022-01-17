@@ -44,10 +44,12 @@ jobs:
         id: get-submodule-hash
         run: echo "::set-output name=hash::$(md5sum $(echo utils/clone-llvm.sh))"
         shell: bash
+
       - name: Ccache for C++ compilation
         uses: hendrikmuhs/ccache-action@4687d037e4d7cf725512d9b819137a3af34d39b3
         with:
           key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
+          max-size: 1G
 
       - name: Get cmakeModules
         id: clone-cmakeModules
@@ -59,31 +61,27 @@ jobs:
         run: utils/clone-llvm.sh
         shell: bash
         
-      # Build LLVM if we didn't hit in the cache. Even though we build it in
-      # the previous job, there is a low chance that it'll have been evicted by
-      # the time we get here.
       - name: Rebuild and Install LLVM
         run: utils/build-llvm.sh
 
-
-      # # Build the repo test target in debug mode to build and test.
-      # - name: Build (Assert)
-      #   run: |
-      #     mkdir build_assert
-      #     cd build_assert
-      #     cmake .. \
-      #       -GNinja
-      #       -DCMAKE_BUILD_TYPE=Debug \
-      #       -DLLVM_ENABLE_ASSERTIONS=ON \
-      #       -DCMAKE_MODULE_PATH=`pwd`/../cmakeModules \
-      #       -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
-      #       -DLLVM_DIR=../llvm/install/lib/cmake/llvm/ \
-      #       -DCMAKE_LINKER=lld \
-      #       -DCMAKE_C_COMPILER=clang \
-      #       -DCMAKE_CXX_COMPILER=clang++ \
-      #       -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
-      #       -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-      #     ninja
+      # Build the repo test target in debug mode to build and test.
+      - name: Build (Assert)
+        run: |
+          mkdir build_assert
+          cd build_assert
+          cmake .. \
+            -GNinja
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmakeModules \
+            -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
+            -DLLVM_DIR=../llvm/install/lib/cmake/llvm/ \
+            -DCMAKE_LINKER=lld \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          ninja
 
       # # Build the repo test target in release mode to build and test.
       # - name: Build (Release)
