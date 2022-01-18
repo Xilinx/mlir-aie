@@ -81,12 +81,15 @@ if(config.vitis_root):
   llvm_config.with_environment('VITIS', config.vitis_root)
 
 # Test to see if we have the peano backend.
-result = subprocess.run([os.path.join(config.peano_tools_dir, 'llc'),'-mtriple=aie','--version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-if (re.search("Xilinx AI Engine", result.stdout.decode('utf-8')) is not None):
-    config.available_features.add('peano')
-    print("Peano found: " + shutil.which("llc"))
-else:
-    print("Peano not found")
+try:
+    result = subprocess.run([os.path.join(config.peano_tools_dir, 'llc'),'-mtriple=aie','--version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    if (re.search("Xilinx AI Engine", result.stdout.decode('utf-8')) is not None):
+        config.available_features.add('peano')
+        print("Peano found: " + shutil.which("llc"))
+    else:
+        print("Peano not found, but expected at ", config.peano_tools_dir)
+except Exception as e:
+    print("Peano not found, but expected at ", config.peano_tools_dir)
 
 print("Looking for Chess...")
 #test if LM_LICENSE_FILE valid
