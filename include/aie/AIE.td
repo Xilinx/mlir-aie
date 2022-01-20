@@ -1015,6 +1015,13 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
   let extraClassDeclaration = [{
+    bool hasName() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return true;
+      } else {
+        return false;
+      }
+    }
     StringAttr name() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
         return attr;
