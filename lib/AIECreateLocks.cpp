@@ -27,18 +27,22 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   ModuleOp &module;
   DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks;
   DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks;
-  DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>> &lockChains;
+  DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
+      &lockChains;
 
-  Token2LockLowering(MLIRContext *context, ModuleOp &m,
-    DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
-    DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
-    DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>> &lockChains,
-    PatternBenefit benefit = 1
-  ) : OpConversionPattern<UseTokenOp>(context, benefit),
-    module(m), acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
+  Token2LockLowering(
+      MLIRContext *context, ModuleOp &m,
+      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
+      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
+      DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
+          &lockChains,
+      PatternBenefit benefit = 1)
+      : OpConversionPattern<UseTokenOp>(context, benefit), module(m),
+        acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
 
-  LogicalResult matchAndRewrite(UseTokenOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(UseTokenOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Operation *parentOp = op->getParentOp();
 
@@ -51,9 +55,12 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       srcCol = mem.colIndex();
       srcRow = mem.rowIndex();
       IsParentMemOp = true;
+    } else if (auto shimDma = dyn_cast<ShimDMAOp>(parentOp)) {
+      srcCol = shimDma.colIndex();
+      srcRow = shimDma.rowIndex();
     } else {
-      llvm_unreachable(
-          "A parent operation of UseTokenOp must be either CoreOp or MemOp");
+      llvm_unreachable("A parent operation of UseTokenOp must be either CoreOp "
+                       "or MemOp or ShimDMAOp");
     }
 
     if (op.acquire()) {

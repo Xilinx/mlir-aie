@@ -130,7 +130,8 @@ Operation *xilinx::AIE::TokenAnalysis::getTokenUserOp(Operation *Op) {
 
   if (UseTokenOp op = dyn_cast<UseTokenOp>(Op)) {
     while (Operation *parentOp = op->getParentOp()) {
-      if (isa<CoreOp>(parentOp) || isa<MemOp>(parentOp))
+      if (isa<CoreOp>(parentOp) || isa<MemOp>(parentOp) ||
+          isa<ShimDMAOp>(parentOp))
         return parentOp;
     }
   }
@@ -148,6 +149,9 @@ std::pair<int, int> xilinx::AIE::TokenAnalysis::getCoord(Operation *Op) {
   } else if (MemOp mem = dyn_cast<MemOp>(Op)) {
     colIndex = mem.colIndex();
     rowIndex = mem.rowIndex();
+  } else if (ShimDMAOp shimDma = dyn_cast<ShimDMAOp>(Op)) {
+    colIndex = shimDma.colIndex();
+    rowIndex = shimDma.rowIndex();
   }
 
   return std::make_pair(colIndex, rowIndex);
@@ -155,8 +159,8 @@ std::pair<int, int> xilinx::AIE::TokenAnalysis::getCoord(Operation *Op) {
 
 Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1,
                                                           Operation *Op2) {
-  bool IsOp1Mem = isa<MemOp>(Op1);
-  bool IsOp2Mem = isa<MemOp>(Op2);
+  bool IsOp1Mem = isa<MemOp>(Op1) || isa<ShimDMAOp>(Op1);
+  bool IsOp2Mem = isa<MemOp>(Op2) || isa<ShimDMAOp>(Op2);
 
   assert((!IsOp1Mem || !IsOp2Mem) &&
          "Op1 and Op2 cannot be both Mem operation!");
