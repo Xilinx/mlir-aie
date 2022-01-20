@@ -73,7 +73,9 @@ def run_flow(opts, tmpdirname):
     def process_core(core):
         (corecol, corerow, elf_file) = core
         file_core = tmpcorefile(core, "mlir")
-        do_call(['aie-opt', '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2], file_with_addresses, '-o', file_core])
+        do_call(['aie-opt', '--aie-localize-locks',
+                            '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2],
+                            file_with_addresses, '-o', file_core])
         file_opt_core = tmpcorefile(core, "opt.mlir")
         do_call(['aie-opt', '--aie-normalize-address-spaces',
                             '--canonicalize',

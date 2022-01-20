@@ -260,26 +260,6 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         rewriter.create<ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
         rewriter.eraseOp(childOp);
       } else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
-        LockOp lock = dyn_cast<LockOp>(useLock.lock().getDefiningOp());
-        TileOp tile = dyn_cast<TileOp>(lock.tile().getDefiningOp());
-        int dstCol = tile.colIndex();
-        int dstRow = tile.rowIndex();
-
-        int cardinalMemOffset = 0;
-
-        if (isMemSouth(col, row, dstCol, dstRow))
-          cardinalMemOffset = 0;
-        else if (isMemWest(col, row, dstCol, dstRow))
-          cardinalMemOffset = 16;
-        else if (isMemNorth(col, row, dstCol, dstRow))
-          cardinalMemOffset = 32;
-        else if (isMemEast(col, row, dstCol, dstRow))
-          cardinalMemOffset = 48;
-        else
-          llvm_unreachable("Found illegal lock user!");
-
-        int coreLockID = cardinalMemOffset + lock.getLockID();
-
         std::string funcName = "llvm.aie.lock.";
         if (useLock.acquire())
           funcName += "acquire.reg";
@@ -288,22 +268,17 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
 
         auto useLockFunc = module.lookupSymbol<FuncOp>(funcName);
         assert(useLockFunc && "Could not find the intrinsic function!");
+
         SmallVector<Value, 2> args;
-        Value lockValue = rewriter.create<arith::ConstantOp>(
-            rewriter.getUnknownLoc(),
-            IntegerType::get(rewriter.getContext(), 32),
-            rewriter.getI32IntegerAttr(useLock.getLockValue()));
 
-        Value coreLockIDValue = rewriter.create<arith::ConstantOp>(
-            rewriter.getUnknownLoc(),
-            IntegerType::get(rewriter.getContext(), 32),
-            rewriter.getI32IntegerAttr(coreLockID));
-
-        args.push_back(coreLockIDValue);
-        args.push_back(lockValue);
+        args.push_back(rewriter.create<arith::IndexCastOp>(
+            useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+            useLock.lock()));
+        args.push_back(rewriter.create<arith::ConstantOp>(
+            useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+            rewriter.getI32IntegerAttr(useLock.getLockValue())));
 
         rewriter.create<CallOp>(rewriter.getUnknownLoc(), useLockFunc, args);
-
         rewriter.eraseOp(childOp);
       }
     });

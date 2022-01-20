@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-standard-lowering="tilecol=1 tilerow=1" %s | FileCheck --check-prefix=CHECK11 %s
-// RUN: aie-opt --aie-standard-lowering="tilecol=1 tilerow=2" %s | FileCheck --check-prefix=CHECK12 %s
+// RUN: aie-opt --aie-localize-locks --aie-standard-lowering="tilecol=1 tilerow=1" %s | FileCheck --check-prefix=CHECK11 %s
+// RUN: aie-opt --aie-localize-locks --aie-standard-lowering="tilecol=1 tilerow=2" %s | FileCheck --check-prefix=CHECK12 %s
 
 // Test LLVM lowering for lock accesses and memory accesses (LockOp, UseLockOp, and BufferOp)
 // Things to make sure:
@@ -18,10 +18,38 @@
 //   - Buffer: depending on which tile (or memory module) a buffer is instantiated, create an LLVM
 //             static allocation (for now) for each core that can access to the buffer
 module @test_core_llvm1 {
-// CHECK11:    call @llvm.aie.lock.acquire.reg(%c56_i32, %c0_i32) : (i32, i32) -> ()
-// CHECK11:    call @llvm.aie.lock.release.reg(%c56_i32_1, %c1_i32_0) : (i32, i32) -> ()
-// CHECK12:    call @llvm.aie.lock.acquire.reg(%c8_i32, %c1_i32) : (i32, i32) -> ()
-// CHECK12:    call @llvm.aie.lock.release.reg(%c8_i32_0, %c0_i32) : (i32, i32) -> ()
+// CHECK11:  memref.global "public" @a : memref<256xi32>
+// CHECK11:  func @core11() {
+// CHECK11:    %0 = memref.get_global @a : memref<256xi32>
+// CHECK11:    memref.assume_alignment %0, 32 : memref<256xi32>
+// CHECK11:    %c56 = arith.constant 56 : index
+// CHECK11:    %1 = arith.index_cast %c56 : index to i32
+// CHECK11:    %c0_i32 = arith.constant 0 : i32
+// CHECK11:    call @llvm.aie.lock.acquire.reg(%1, %c0_i32) : (i32, i32) -> ()
+// CHECK11:    %c1_i32 = arith.constant 1 : i32
+// CHECK11:    %c16 = arith.constant 16 : index
+// CHECK11:    memref.store %c1_i32, %0[%c16] : memref<256xi32>
+// CHECK11:    %2 = arith.index_cast %c56 : index to i32
+// CHECK11:    %c1_i32_0 = arith.constant 1 : i32
+// CHECK11:    call @llvm.aie.lock.release.reg(%2, %c1_i32_0) : (i32, i32) -> ()
+// CHECK11:    return
+// CHECK11:  }
+
+// CHECK12:  memref.global "public" @a : memref<256xi32>
+// CHECK12:  func @core12() {
+// CHECK12:    %0 = memref.get_global @a : memref<256xi32>
+// CHECK12:    memref.assume_alignment %0, 32 : memref<256xi32>
+// CHECK12:    %c8 = arith.constant 8 : index
+// CHECK12:    %1 = arith.index_cast %c8 : index to i32
+// CHECK12:    %c1_i32 = arith.constant 1 : i32
+// CHECK12:    call @llvm.aie.lock.acquire.reg(%1, %c1_i32) : (i32, i32) -> ()
+// CHECK12:    %c16 = arith.constant 16 : index
+// CHECK12:    %2 = memref.load %0[%c16] : memref<256xi32>
+// CHECK12:    %3 = arith.index_cast %c8 : index to i32
+// CHECK12:    %c0_i32 = arith.constant 0 : i32
+// CHECK12:    call @llvm.aie.lock.release.reg(%3, %c0_i32) : (i32, i32) -> ()
+// CHECK12:    return
+// CHECK12:  }
   %tile11 = AIE.tile(1, 1)
   %tile12 = AIE.tile(1, 2)
 

@@ -970,7 +970,8 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let summary = "acquire/release lock op";
   let description = [{
     This operation uses a lock. A lock can be acquired with a value, or release with a value.
-    This should be understood as a "blocking" operation.
+    This should be understood as a "blocking" operation.  This lock must appear in a parent op
+    where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).
   }];
   let arguments = (
     ins Index:$lock,

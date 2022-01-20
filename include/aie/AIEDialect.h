@@ -157,6 +157,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIECreateCoresPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLocksPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEHerdRoutingPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMemcpyPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
