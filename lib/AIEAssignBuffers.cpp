@@ -45,13 +45,14 @@ struct AIEAssignBufferAddressesPass
     // Make sure all the buffers have a name
     int counter = 0;
     for (auto buffer : m.getOps<BufferOp>()) {
-      if(!buffer.hasName()) {
+      if (!buffer.hasName()) {
         std::string name = "_anonymous";
         name += std::to_string(counter++);
-        buffer->setAttr(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
+        buffer->setAttr(SymbolTable::getSymbolAttrName(),
+                        builder.getStringAttr(name));
       }
     }
-  
+
     for (auto tile : m.getOps<TileOp>()) {
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
