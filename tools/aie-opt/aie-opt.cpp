@@ -22,6 +22,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "aie/AIEDialect.h"
+#include "aie/AIEPasses.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
 
 using namespace llvm;
@@ -30,18 +31,7 @@ using namespace mlir;
 int main(int argc, char **argv) {
 
   registerAllPasses();
-  xilinx::AIE::registerAIEAssignBufferAddressesPass();
-  xilinx::AIE::registerAIECoreToStandardPass();
-  xilinx::AIE::registerAIECreateCoresPass();
-  xilinx::AIE::registerAIECreateLocksPass();
-  xilinx::AIE::registerAIEFindFlowsPass();
-  xilinx::AIE::registerAIEHerdRoutingPass();
-  xilinx::AIE::registerAIELowerMemcpyPass();
-  xilinx::AIE::registerAIENormalizeAddressSpacesPass();
-  xilinx::AIE::registerAIERouteFlowsPass();
-  xilinx::AIE::registerAIERoutePathfinderFlowsPass();
-  xilinx::AIE::registerAIERoutePacketFlowsPass();
-  xilinx::AIE::registerAIEVectorOptPass();
+  aie::registerAIEPasses();
 
   DialectRegistry registry;
   registerAllDialects(registry);

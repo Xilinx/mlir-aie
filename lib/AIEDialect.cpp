@@ -487,7 +487,25 @@ xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
 int xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
+template <typename... ParentOpTypes> struct HasSomeParent {
+  static LogicalResult verifyTrait(Operation *op) {
+    Operation *operation = op;
+    while (operation) {
+      if (llvm::isa<ParentOpTypes...>(operation->getParentOp()))
+        return success();
+      operation = operation->getParentOp();
+    }
+    return op->emitOpError()
+           << "expects some parent op "
+           << (sizeof...(ParentOpTypes) != 1 ? "to be one of '" : "'")
+           << llvm::makeArrayRef({ParentOpTypes::getOperationName()...}) << "'";
+  }
+};
+
 static LogicalResult verify(xilinx::AIE::UseLockOp op) {
+  return HasSomeParent<xilinx::AIE::CoreOp, xilinx::AIE::MemOp,
+                       xilinx::AIE::ShimDMAOp>::verifyTrait(op);
+
   //  xilinx::AIE::LockOp lockOp =
   //  dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
   //   if (!lockOp) {

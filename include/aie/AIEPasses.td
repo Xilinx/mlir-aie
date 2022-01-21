@@ -108,7 +108,29 @@ def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIEHerdRoutingPass()";
 }
+def AIELocalizeLocks : Pass<"aie-localize-locks", "ModuleOp"> {
+  let summary = "Convert global locks to a core-relative index";
+  let description = [{
+    An individual lock can be referenced by 4 different AIE cores.  However, each individual core
+    accesses the lock through a different 'lock address space'.  This pass converts a lock in the
+    conceptual global address space into a local index.  e.g.:
+    ```
+    %lock = AIE.lock(%tile, 2)
+    AIE.core(%tile) {
+      AIE.useLock(%lock, "Acquire", 1)
+    }
+    ```
+    becomes
+    ```
+    AIE.core(%tile) {
+      %lockindex = arith.constant ? : index
+      AIE.useLock(%lockindex, "Acquire", 1)
+    }
+    ```
+  }];
 
+  let constructor = "xilinx::AIE::createAIELocalizeLocksPass()";
+}
 def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp"> {
   let summary = "Remove non-default address spaces";
   let description = [{

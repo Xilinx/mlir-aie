@@ -20,6 +20,7 @@ add_mlir_dialect_library(AIE
   AIEHerdRouting.cpp
   AIECreatePacketFlows.cpp
   AIELowerMemcpy.cpp
+  AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp
   ADDITIONAL_HEADER_DIRS
