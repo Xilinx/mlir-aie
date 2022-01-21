@@ -461,14 +461,14 @@ struct AIERoutePacketFlowsPass
     // Merging as many stream flows as possible
     // The flows must originate from the same source port and have different IDs
     // Two flows can be merged if they share the same destinations
-    SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slavesGroups;
+    SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
     SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
       Port slavePort1 = slave1.first.second;
 
       bool foundgroup = false;
-      for (auto &group : slavesGroups) {
+      for (auto &group : slaveGroups) {
         auto slave2 = group.front();
         Port slavePort2 = slave2.first.second;
         if (slavePort1 != slavePort2)
@@ -496,12 +496,12 @@ struct AIERoutePacketFlowsPass
 
       if (!foundgroup) {
         SmallVector<std::pair<PhysPort, int>, 4> group({slave1});
-        slavesGroups.push_back(group);
+        slaveGroups.push_back(group);
       }
     }
 
     DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
-    for (auto group : slavesGroups) {
+    for (auto group : slaveGroups) {
       // Iterate over all the ID values in a group
       // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
       // value, the bit position should be "don't care", and we will set the
@@ -545,6 +545,11 @@ struct AIERoutePacketFlowsPass
                               << "0x" << llvm::Twine::utohexstr(mask) << '\n');
       LLVM_DEBUG(llvm::dbgs() << "ID "
                               << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+      for (int i = 0; i < 31; i++) {
+        if ((i & mask) == (ID & mask))
+          LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
+                                  << "0x" << llvm::Twine::utohexstr(i) << '\n');
+      }
     }
 
     // Realize the routes in MLIR
@@ -606,8 +611,9 @@ struct AIERoutePacketFlowsPass
                                     amsels);
       }
 
+      // Generate the packet rules
       DenseMap<Port, PacketRulesOp> slaveRules;
-      for (auto group : slavesGroups) {
+      for (auto group : slaveGroups) {
         builder.setInsertionPoint(b.getTerminator());
 
         auto port = group.front().first;
@@ -618,8 +624,13 @@ struct AIERoutePacketFlowsPass
         int channel = port.second.second;
         auto slave = port.second;
 
-        int ID = group.front().second;
         int mask = slaveMasks[group.front()];
+        int ID = group.front().second & mask;
+
+        // Verify that we actually map all the ID's correctly.
+        for (auto slave : group) {
+          assert((slave.second & mask) == ID);
+        }
         Value amsel = amselOps[slaveAMSels[group.front()]];
 
         PacketRulesOp packetrules;

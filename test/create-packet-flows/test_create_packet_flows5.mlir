@@ -19,7 +19,7 @@
 // CHECK:       AIE.rule(31, 2, %2)
 // CHECK:     }
 // CHECK:     AIE.packetrules(West : 0) {
-// CHECK:       AIE.rule(30, 1, %2)
+// CHECK:       AIE.rule(30, 0, %2)
 // CHECK:     }
 // CHECK:   }
 // CHECK: }
