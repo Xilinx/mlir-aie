@@ -55,6 +55,23 @@ routing.
 ### `-aie-herd-routing`: Lowering herds with place and route ops to AIE cores, mems, and switchboxes
 An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
 into an explicit representation (e.g. aie.core, aie.mem, etc.).
+### `-aie-localize-locks`: Convert global locks to a core-relative index
+An individual lock can be referenced by 4 different AIE cores.  However, each individual core
+accesses the lock through a different 'lock address space'.  This pass converts a lock in the
+conceptual global address space into a local index.  e.g.:
+```
+%lock = AIE.lock(%tile, 2)
+AIE.core(%tile) {
+  AIE.useLock(%lock, "Acquire", 1)
+}
+```
+becomes
+```
+AIE.core(%tile) {
+  %lockindex = arith.constant ? : index
+  AIE.useLock(%lockindex, "Acquire", 1)
+}
+```
 ### `-aie-lower-memcpy`: Lower aie.memcpy operations to Flows and DMA programs
 aie.memcpy operations are an experimental high-level abstraction which
 move data from one buffer to another.
