@@ -487,7 +487,8 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
           AIE.rule(0x1F, 0x10, %a0_0)
         }
     ```
-    This code associates arbiter 5 with msel=3.  A packet-switched connection is made routing traffic from the South:0 port to the East:0 port using this arbiter.
+    This code associates arbiter 5 with msel=3.  A packet-switched connection is made routing
+    traffic from the South:0 port to the East:0 port using this arbiter.
     There are 6 arbiters per switchbox and 4 possible master select values.
     See also [MasterSetOp](#aiemasterset-aiemastersetop),
     [PacketRulesOp](#aiepacketrules-aiepacketrulesop), and
