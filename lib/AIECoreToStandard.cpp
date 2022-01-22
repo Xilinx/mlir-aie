@@ -295,6 +295,12 @@ struct AIECoreToStandardPass
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
+    // Ensure that we don't have an incorrect target triple.  This may override
+    // some bogus target triple in the original mlir.  In reality this should
+    // pick the 'aie' target triple.
+    m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(), 
+               builder.getStringAttr(""));
+
     // Extract all CoreOps
     // Create an LLVM func for each CoreOp
     // Clone the region body of each CoreOp to the newly created LLVM func
