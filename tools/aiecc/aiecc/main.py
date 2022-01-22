@@ -171,6 +171,7 @@ def main(builtin_params={}):
 
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
+    peano_path = os.path.join(thispath, '..', '..', 'peano', 'bin')
 
     if('VITIS' not in os.environ):
       # Try to find vitis in the path
@@ -194,7 +195,9 @@ def main(builtin_params={}):
       aietools_bin_path = os.path.join(aietools_path, "bin")
       os.environ['PATH'] = os.pathsep.join([aietools_bin_path, os.environ['PATH']])
 
+    # This path should be generated from cmake
     os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])
+    os.environ['PATH'] = os.pathsep.join([peano_path, os.environ['PATH']])
     
     global opts
     opts = aiecc.cl_arguments.parse_args()
