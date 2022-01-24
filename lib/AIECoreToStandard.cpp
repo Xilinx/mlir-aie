@@ -298,7 +298,7 @@ struct AIECoreToStandardPass
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.  In reality this should
     // pick the 'aie' target triple.
-    m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(), 
+    m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
                builder.getStringAttr("aie"));
 
     // Extract all CoreOps
