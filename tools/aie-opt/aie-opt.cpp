@@ -24,6 +24,8 @@
 #include "aie/AIEDialect.h"
 #include "aie/AIEPasses.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+#include "aie/Dialect/AIEVec/Transforms/Passes.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -32,12 +34,15 @@ int main(int argc, char **argv) {
 
   registerAllPasses();
   aie::registerAIEPasses();
+  xilinx::aievec::registerAIEVecPasses();
+
 
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert<scf::SCFDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<xilinx::AIE::AIEDialect>();
+  registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<xilinx::ADF::ADFDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
 

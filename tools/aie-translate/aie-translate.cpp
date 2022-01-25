@@ -22,6 +22,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 
 #include "aie/AIEDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 
 using namespace mlir;
 
@@ -31,6 +32,7 @@ int main(int argc, char **argv) {
 
   registerAllTranslations();
   xilinx::AIE::registerAIETranslations();
+  xilinx::aievec::registerAIEVecToCppTranslation();
 
   return failed(mlirTranslateMain(argc, argv, "MLIR Translation Testing Tool"));
 }

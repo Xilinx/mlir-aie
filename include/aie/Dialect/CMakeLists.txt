@@ -6,3 +6,4 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 add_subdirectory(ADF)
+add_subdirectory(AIEVec)
