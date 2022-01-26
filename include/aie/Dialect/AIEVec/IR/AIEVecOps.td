@@ -1,6 +1,6 @@
 //===- AIEVecOps.td - AIE vector op definitions -----------*- tablegen -*-====//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -275,9 +275,9 @@ def AIEVec_UPSOp:
   Results<(outs AIEVec_Acc:$result)> {
   let summary = "AIE ups";
   let description = [{
-    Xilinx-specific ups intrinsic. Moves data from AIE vector data type
-    to accumulator data type. The adjustment in precision is controlled
-    by the shift parameter.
+    Xilinx-specific upshift intrinsic. Moves data from AIE vector data type
+    to accumulator data type. The adjustment in precision is controlled by
+    the shift parameter.
     `$result = ups($source, $shift)`
   }];
   let builders = [
@@ -299,9 +299,9 @@ def AIEVec_SRSOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE srs";
   let description = [{
-    Xilinx-specific srs intrinsic. Moves values from accumulator data 
-    type to AIE vector data types. The adjustment in precision is 
-    controlled by the shift parameter.
+    Xilinx-specific shift-round-saturate intrinsic. Moves values from 
+    accumulator data type to AIE vector data types. The adjustment in 
+    precision is controlled by the shift parameter.
     `$result = srs($source, $shift)`
   }];
   let extraClassDeclaration = [{
@@ -324,7 +324,7 @@ def AIEVec_UPDOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE upd";
   let description = [{
-    Xilinx-specific upd intrinsic. General upd intrinsic updates contiguous 
+    Xilinx-specific update intrinsic. General upd intrinsic updates contiguous
     lanes of the result vector from a smaller source vector. This form of 
     upd intrinsic combines the load of data from memory into a vector 
     register, and then updating the lanes of the result vector using it. 
@@ -371,8 +371,8 @@ def AIEVec_ExtOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE ext";
   let description = [{
-    Xilinx-specific ext intrinsic. Selects contiguous lanes from the 
-    source vector, and transfers the data from those lanes to the 
+    Xilinx-specific vector extract intrinsic. Selects contiguous lanes from 
+    the source vector, and transfers the data from those lanes to the 
     result. The lane selection is controlled by index.
     `$result = ext($source, $index)`
   }];

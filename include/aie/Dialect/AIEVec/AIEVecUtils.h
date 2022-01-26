@@ -1,11 +1,11 @@
 //===- AIEVecUtils.h - AIE Vector Utility Operations ------------*- C++ -*-===// 
-// 
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 
+//
 // (c) Copyright 2022 Xilinx Inc.
-// 
+//
 //===----------------------------------------------------------------------===// 
 // Utility functions for AIE vectorization
 //===----------------------------------------------------------------------===// 
@@ -67,8 +67,7 @@ inline int32_t getVectorSizeInBits(VectorType type) {
 
 // Given a vector value, retun its type
 inline VectorType getVectorType(Value val) {
-  assert(val.getType().isa<VectorType>());
-  return val.getType().cast<VectorType>();
+  return val.getType().dyn_cast<VectorType>();
 }
 
 // Return true if the incoming type is accumulator type

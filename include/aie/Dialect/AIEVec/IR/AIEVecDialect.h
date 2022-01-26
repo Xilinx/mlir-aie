@@ -1,6 +1,6 @@
 //===- AIEVecDialect.h - AIE Vector Dialect ---------------------*- C++ -*-===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
@@ -17,9 +17,11 @@
 
 namespace xilinx {
 namespace aievec {
+
 class AIEVecDialect;
 // Translation from AIE vector code to C++
 void registerAIEVecToCppTranslation();   
+
 } // end namespace aievec
 } // end namespace xilinx 
 
