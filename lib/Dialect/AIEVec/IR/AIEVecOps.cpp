@@ -168,21 +168,8 @@ static LogicalResult verify(SRSOp srs) {
   // The datatype of accumulator must have greater width
   Type stype = resultType.getElementType();
   Type atype = sourceType.getValueType();
-  unsigned stypeWidth = 0, atypeWidth = 0;
-
-  if (IntegerType itype = stype.dyn_cast<IntegerType>())
-    stypeWidth = itype.getWidth();
-  else if (FloatType ftype = stype.dyn_cast<FloatType>())
-    stypeWidth = ftype.getWidth();
-
-  if (IntegerType itype = atype.dyn_cast<IntegerType>())
-    atypeWidth = itype.getWidth();
-  else if (FloatType ftype = atype.dyn_cast<FloatType>())
-    atypeWidth = ftype.getWidth();
-
-  if (stypeWidth == 0 || atypeWidth == 0)
-    return srs.emitError("failed to find width of the underlying datatype "
-                         "of result vector or source accumulator");
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
+  unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return srs.emitError("the element type of source accumulator must be "
@@ -269,21 +256,8 @@ static LogicalResult verify(UPSOp ups) {
   // The datatype of accumulator must always be greater width
   Type stype = sourceType.getElementType();
   Type atype = resultType.getValueType();
-  unsigned stypeWidth = 0, atypeWidth = 0;
-
-  if (IntegerType itype = stype.dyn_cast<IntegerType>())
-    stypeWidth = itype.getWidth();
-  else if (FloatType ftype = stype.dyn_cast<FloatType>())
-    stypeWidth = ftype.getWidth();
-
-  if (IntegerType itype = atype.dyn_cast<IntegerType>())
-    atypeWidth = itype.getWidth();
-  else if (FloatType ftype = atype.dyn_cast<FloatType>())
-    atypeWidth = ftype.getWidth();
-
-  if (stypeWidth == 0 || atypeWidth == 0)
-    return ups.emitError("failed to find width of the "
-                         "source vector or result accumulator");
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
+  unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return ups.emitError("the element type of result accumulator "
@@ -390,25 +364,9 @@ static LogicalResult verify(aievec::FMAOp fma) {
   Type ltype = lhsType.getElementType();
   Type rtype = rhsType.getElementType();
   Type atype = resultType.getValueType();
-  unsigned ltypeWidth = 0, rtypeWidth = 0, atypeWidth = 0;
-
-  if (IntegerType itype = ltype.dyn_cast<IntegerType>())
-    ltypeWidth = itype.getWidth();
-  else if (FloatType ftype = ltype.dyn_cast<FloatType>())
-    ltypeWidth = ftype.getWidth();
-
-  if (IntegerType itype = rtype.dyn_cast<IntegerType>())
-    rtypeWidth = itype.getWidth();
-  else if (FloatType ftype = rtype.dyn_cast<FloatType>())
-    rtypeWidth = ftype.getWidth();
-
-  if (IntegerType itype = atype.dyn_cast<IntegerType>())
-    atypeWidth = itype.getWidth();
-  else if (FloatType ftype = atype.dyn_cast<FloatType>())
-    atypeWidth = ftype.getWidth();
-
-  if (ltypeWidth == 0 || rtypeWidth == 0 || atypeWidth == 0)
-    return fma.emitError("failed to find width of the vector or accumulator");
+  unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth(); 
+  unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
   unsigned accLanes = resultType.getLanes();
@@ -538,25 +496,9 @@ static LogicalResult verify(aievec::MulOp mul) {
   Type ltype = lhsType.getElementType();
   Type rtype = rhsType.getElementType();
   Type atype = resultType.getValueType();
-  unsigned ltypeWidth = 0, rtypeWidth = 0, atypeWidth = 0;
-
-  if (IntegerType itype = ltype.dyn_cast<IntegerType>())
-    ltypeWidth = itype.getWidth();
-  else if (FloatType ftype = ltype.dyn_cast<FloatType>())
-    ltypeWidth = ftype.getWidth();
-
-  if (IntegerType itype = rtype.dyn_cast<IntegerType>())
-    rtypeWidth = itype.getWidth();
-  else if (FloatType ftype = rtype.dyn_cast<FloatType>())
-    rtypeWidth = ftype.getWidth();
-
-  if (IntegerType itype = atype.dyn_cast<IntegerType>())
-    atypeWidth = itype.getWidth();
-  else if (FloatType ftype = atype.dyn_cast<FloatType>())
-    atypeWidth = ftype.getWidth();
-
-  if (ltypeWidth == 0 || rtypeWidth == 0 || atypeWidth == 0)
-    return mul.emitError("failed to find width of the vector or accumulator");
+  unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
+  unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on number of lanes
   unsigned accLanes = resultType.getLanes();
@@ -1143,17 +1085,13 @@ static LogicalResult verify(PackOp pack) {
 
   // The datatype of source must be i16
   Type stype = sourceType.getElementType();
-  unsigned stypeWidth = 0;
-  if (IntegerType itype = stype.dyn_cast<IntegerType>())
-    stypeWidth = itype.getWidth();
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   if (stypeWidth != 16)
     return pack.emitError("input must be an int16 vector");
 
   // The datatype of result must be i8
   Type rtype = resultType.getElementType();
-  unsigned rtypeWidth = 0;
-  if (IntegerType itype = rtype.dyn_cast<IntegerType>())
-    rtypeWidth = itype.getWidth();
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
   if (rtypeWidth != 8)
     return pack.emitError("output must be an int8 vector");
 
@@ -1231,17 +1169,13 @@ static LogicalResult verify(UnpackOp unpack) {
 
   // The datatype of source must be i8
   Type stype = sourceType.getElementType();
-  unsigned stypeWidth = 0;
-  if (IntegerType itype = stype.dyn_cast<IntegerType>())
-    stypeWidth = itype.getWidth();
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   if (stypeWidth != 8)
     return unpack.emitError("input must be an int8 vector");
 
   // The datatype of result must be i16
   Type rtype = resultType.getElementType();
-  unsigned rtypeWidth = 0;
-  if (IntegerType itype = rtype.dyn_cast<IntegerType>())
-    rtypeWidth = itype.getWidth();
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
   if (rtypeWidth != 16)
     return unpack.emitError("output must be an int16 vector");
 
