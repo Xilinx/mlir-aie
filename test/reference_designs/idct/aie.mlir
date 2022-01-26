@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-//  clang -O2 --target=aie -c %S/kernel.cc
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
