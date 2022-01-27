@@ -319,32 +319,35 @@ template <> inline void printAccumulator(OpAsmPrinter &p, aievec::FMAOp op) {
 }
 template <> inline void printAccumulator(OpAsmPrinter &p, aievec::MulOp op) {}
 
-// Mark fmsub indicator as elided if the FMA op is not fmsub 
+// Mark fmsub indicator as elided if the FMA op is not fmsub
 template <typename T>
 inline void elideFMSubAttr(T op, SmallVector<StringRef, 10> &elidedAttrs);
-template <> inline void elideFMSubAttr(aievec::FMAOp op,
-                                SmallVector<StringRef, 10> &elidedAttrs) {
+template <>
+inline void elideFMSubAttr(aievec::FMAOp op,
+                           SmallVector<StringRef, 10> &elidedAttrs) {
   if (!op.fmsub())
     elidedAttrs.push_back(op.getSubAttrName());
 }
-template <> inline void elideFMSubAttr(aievec::MulOp, 
-                                SmallVector<StringRef, 10> &elidedAttrs) {}
+template <>
+inline void elideFMSubAttr(aievec::MulOp,
+                           SmallVector<StringRef, 10> &elidedAttrs) {}
 
 // Verification checks for accumulator field of FMA op
 template <typename T>
 inline LogicalResult verifyAccType(T op, aievec::AccType resultType);
-template <> inline LogicalResult verifyAccType(aievec::FMAOp op, 
-                                               aievec::AccType resultType) {
-  aievec::AccType accType =
-        op.acc().getType().dyn_cast<aievec::AccType>();
+template <>
+inline LogicalResult verifyAccType(aievec::FMAOp op,
+                                   aievec::AccType resultType) {
+  aievec::AccType accType = op.acc().getType().dyn_cast<aievec::AccType>();
   if (!accType)
     return op.emitError("requires accumulator type");
   if (resultType != accType)
     return op.emitError("the result type and accumulator type must match");
   return success();
 }
-template <> inline LogicalResult verifyAccType(aievec::MulOp op, 
-                                               aievec::AccType resultType) {
+template <>
+inline LogicalResult verifyAccType(aievec::MulOp op,
+                                   aievec::AccType resultType) {
   return success();
 }
 
@@ -356,7 +359,7 @@ template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
   p << ", " << op.rhs();
   // For fma op, print the accumulator
   printAccumulator(p, op);
- 
+
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
   for (int idx = 0; idx < 2; ++idx) {
@@ -423,26 +426,26 @@ template <typename T> static LogicalResult verifyMulFMAOp(T op) {
       return op.emitError("incorrect rhs operand vector lanes");
     if (lhsLanes < 2 * rhsLanes)
       return op.emitError("The number of lanes in lhs operand "
-                           "must be at least twice that of rhs operand");
+                          "must be at least twice that of rhs operand");
     if (accLanes > rhsLanes)
       return op.emitError("The number of lanes in accumulator "
-                           "must be less than that of rhs operand");
+                          "must be less than that of rhs operand");
   }
 
   // lhs and rhs vector's element type must match
   if (ltype != rtype)
     return op.emitError("The element type of lhs and rhs "
-                         "operand vectors must match");
+                        "operand vectors must match");
 
   // The datatype of accumulator must always be greater width
   if (atype.isa<IntegerType>()) {
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return op.emitError("the element type of accumulator must have "
-                           "wider width than that of the operand vectors");
+                          "wider width than that of the operand vectors");
   } else if (atype.isa<FloatType>()) {
     if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
       return op.emitError("the element type of accumulator must be "
-                           "same width as the operand vectors");
+                          "same width as the operand vectors");
   }
 
   return success();
@@ -457,7 +460,7 @@ static LogicalResult verify(aievec::FMAOp op) {
 }
 
 // Parse Mul and FMA op.
-static ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result, 
+static ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
                                  bool isFMAOp = true) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
@@ -467,13 +470,13 @@ static ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
   if (parser.parseOperand(lhs) || parser.parseComma() ||
       parser.parseOperand(rhs))
     return failure();
- 
+
   // Parse the acc for FMA op
   if (isFMAOp) {
     if (parser.parseComma() || parser.parseOperand(acc))
       return failure();
   }
- 
+
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
@@ -504,7 +507,7 @@ static ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
     if (parser.resolveOperand(acc, accType, result.operands))
       return failure();
   }
- 
+
   return parser.addTypeToList(accType, result.types);
 }
 
@@ -547,11 +550,11 @@ template <typename T> static void printAddSubOp(OpAsmPrinter &p, T op) {
 }
 
 static void print(OpAsmPrinter &p, aievec::AddOp add) {
-  printAddSubOp<aievec::AddOp>(p, add);  
+  printAddSubOp<aievec::AddOp>(p, add);
 }
 
 static void print(OpAsmPrinter &p, aievec::SubOp sub) {
-  printAddSubOp<aievec::SubOp>(p, sub);  
+  printAddSubOp<aievec::SubOp>(p, sub);
 }
 
 // Verify Add and Sub op.
@@ -920,8 +923,8 @@ static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 // Print out Pack and Unpack op.
-template <typename T> static void printPackUnpackOp(OpAsmPrinter &p,T op) {
-  // Print the source vector 
+template <typename T> static void printPackUnpackOp(OpAsmPrinter &p, T op) {
+  // Print the source vector
   p << " " << op.source();
 
   // Print the attributes
@@ -952,7 +955,7 @@ template <typename T> static LogicalResult verifyPackUnpackOp(T op) {
   unsigned resultLanes = getVectorLaneSize(resultType);
   if (sourceLanes != resultLanes)
     return op.emitError("The number of lanes in input and "
-                          "output vector must match");
+                        "output vector must match");
 
   Type stype = sourceType.getElementType();
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
@@ -965,8 +968,7 @@ template <typename T> static LogicalResult verifyPackUnpackOp(T op) {
       return op.emitError("input must be an int16 vector");
     if (rtypeWidth != 8)
       return op.emitError("output must be an int8 vector");
-  }
-  else {
+  } else {
     if (stypeWidth != 8)
       return op.emitError("input must be an int8 vector");
     if (rtypeWidth != 16)
@@ -985,7 +987,7 @@ static LogicalResult verify(UnpackOp unpack) {
 }
 
 // Parse Pack and Unpack op.
-static ParseResult parsePackUnpackOp(OpAsmParser &parser, 
+static ParseResult parsePackUnpackOp(OpAsmParser &parser,
                                      OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
