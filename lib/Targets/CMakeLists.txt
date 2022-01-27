@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
+add_subdirectory(AIEVecToCpp)
+
 add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetXAIEV1.cpp

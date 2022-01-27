@@ -15,6 +15,7 @@ add_dependencies(aie-opt
   MLIRAIEIncGen
   MLIRAIEEnumsIncGen
   MLIRAIEPassIncGen
+  MLIRAIEVecPassIncGen
 )
 install(TARGETS aie-opt
 EXPORT AIETargets
@@ -29,5 +30,7 @@ set(LIBS
   MLIROptLib
   ADF
   AIE
+  MLIRAIEVec
+  MLIRAIEVecTransforms
   )
 target_link_libraries(aie-opt PRIVATE ${LIBS})
