@@ -217,7 +217,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
     ConversionTarget target(getContext());
     target.addLegalOp<UseLockOp>();
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<Token2LockLowering>(m.getContext(), m, acqLocks, relLocks,
                                         lockChains);
 

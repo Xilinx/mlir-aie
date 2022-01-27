@@ -649,7 +649,7 @@ struct AIERoutePacketFlowsPass
       }
     }
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.add<AIEOpRemoval<PacketFlowOp>
                   >(m.getContext(), m);
 
