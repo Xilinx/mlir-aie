@@ -305,57 +305,104 @@ static ParseResult parseUPSOp(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
-// FMAOp
+// MulOp and FMAOp
 //===----------------------------------------------------------------------===//
 
-// Print out FMA op.
-static void print(OpAsmPrinter &p, aievec::FMAOp fma) {
-  // Print the left operand
-  p << " " << fma.lhs();
-  // Print the right operand
-  p << ", " << fma.rhs();
-  // Print the accumulator
-  p << ", " << fma.acc();
+// MulOp and FMAOp are structurally similar, except that FMA op has few extra
+// fields (accumulator, bool flag to indicate if it is fmsub, etc.). We create
+// some specializations to print those fields specifically for FMA op.
 
+// Print the accumulator
+template <typename T> inline void printAccumulator(OpAsmPrinter &p, T op);
+template <> inline void printAccumulator(OpAsmPrinter &p, aievec::FMAOp op) {
+  p << ", " << op.acc();
+}
+template <> inline void printAccumulator(OpAsmPrinter &p, aievec::MulOp op) {}
+
+// Mark fmsub indicator as elided if the FMA op is not fmsub 
+template <typename T>
+inline void elideFMSubAttr(T op, SmallVector<StringRef, 10> &elidedAttrs);
+template <> inline void elideFMSubAttr(aievec::FMAOp op,
+                                SmallVector<StringRef, 10> &elidedAttrs) {
+  if (!op.fmsub())
+    elidedAttrs.push_back(op.getSubAttrName());
+}
+template <> inline void elideFMSubAttr(aievec::MulOp, 
+                                SmallVector<StringRef, 10> &elidedAttrs) {}
+
+// Verification checks for accumulator field of FMA op
+template <typename T>
+inline LogicalResult verifyAccType(T op, aievec::AccType resultType);
+template <> inline LogicalResult verifyAccType(aievec::FMAOp op, 
+                                               aievec::AccType resultType) {
+  aievec::AccType accType =
+        op.acc().getType().dyn_cast<aievec::AccType>();
+  if (!accType)
+    return op.emitError("requires accumulator type");
+  if (resultType != accType)
+    return op.emitError("the result type and accumulator type must match");
+  return success();
+}
+template <> inline LogicalResult verifyAccType(aievec::MulOp op, 
+                                               aievec::AccType resultType) {
+  return success();
+}
+
+// Print out Mul and FMA op.
+template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
+  // Print the left operand
+  p << " " << op.lhs();
+  // Print the right operand
+  p << ", " << op.rhs();
+  // For fma op, print the accumulator
+  printAccumulator(p, op);
+ 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
   for (int idx = 0; idx < 2; ++idx) {
-    if (fma.getStart(idx).empty())
-      elidedAttrs.push_back(fma.getStartAttrName(idx));
-    if (fma.getOffset(idx).empty())
-      elidedAttrs.push_back(fma.getOffsetAttrName(idx));
-    if (fma.getOffsetHi(idx).empty())
-      elidedAttrs.push_back(fma.getOffsetHiAttrName(idx));
-    if (fma.getStep(idx).empty())
-      elidedAttrs.push_back(fma.getStepAttrName(idx));
-    if (fma.getSquare(idx).empty())
-      elidedAttrs.push_back(fma.getSquareAttrName(idx));
-    if (!fma.fmsub())
-      elidedAttrs.push_back(fma.getSubAttrName());
+    if (op.getStart(idx).empty())
+      elidedAttrs.push_back(op.getStartAttrName(idx));
+    if (op.getOffset(idx).empty())
+      elidedAttrs.push_back(op.getOffsetAttrName(idx));
+    if (op.getOffsetHi(idx).empty())
+      elidedAttrs.push_back(op.getOffsetHiAttrName(idx));
+    if (op.getStep(idx).empty())
+      elidedAttrs.push_back(op.getStepAttrName(idx));
+    if (op.getSquare(idx).empty())
+      elidedAttrs.push_back(op.getSquareAttrName(idx));
+    elideFMSubAttr(op, elidedAttrs);
   }
-  p.printOptionalAttrDict(fma->getAttrs(), elidedAttrs);
+  p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 
-  assert(fma.acc().getType() == fma.result().getType());
   // And now print the types
-  p << " : " << fma.lhs().getType() << ", " << fma.rhs().getType();
-  p << ", " << fma.result().getType();
+  p << " : " << op.lhs().getType() << ", " << op.rhs().getType();
+  p << ", " << op.result().getType();
 }
 
-// Verify FMA op.
-static LogicalResult verify(aievec::FMAOp fma) {
+static void print(OpAsmPrinter &p, aievec::MulOp mul) {
+  printMulFMAOp<aievec::MulOp>(p, mul);
+}
+
+static void print(OpAsmPrinter &p, aievec::FMAOp fma) {
+  printMulFMAOp<aievec::FMAOp>(p, fma);
+}
+
+// Verify Mul and FMA op.
+template <typename T> static LogicalResult verifyMulFMAOp(T op) {
   // Verify the types
-  aievec::AccType accType = fma.acc().getType().dyn_cast<aievec::AccType>();
   aievec::AccType resultType =
-      fma.result().getType().dyn_cast<aievec::AccType>();
-  VectorType lhsType = fma.lhs().getType().dyn_cast<VectorType>();
-  VectorType rhsType = fma.rhs().getType().dyn_cast<VectorType>();
+      op.result().getType().template dyn_cast<aievec::AccType>();
+  VectorType lhsType = op.lhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.rhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
-    return fma.emitError("requires vector type");
-  if (!resultType || !accType)
-    return fma.emitError("requires accumulator type");
-  if (resultType != accType)
-    return fma.emitError("the result type and accumulator type must match");
+    return op.emitError("requires vector type");
+  if (!resultType)
+    return op.emitError("requires accumulator type");
+
+  // Additional checks for FMA op
+  if (failed(verifyAccType(op, resultType)))
+    return failure();
 
   // Get the width of the underlying scalars of all the vectors
   Type ltype = lhsType.getElementType();
@@ -373,44 +420,60 @@ static LogicalResult verify(aievec::FMAOp fma) {
   // If this is not a simple scheme, perform complex checks
   if (accLanes != rhsLanes || accLanes != lhsLanes) {
     if (rhsLanes != 256 / rtypeWidth)
-      return fma.emitError("incorrect rhs operand vector lanes");
+      return op.emitError("incorrect rhs operand vector lanes");
     if (lhsLanes < 2 * rhsLanes)
-      return fma.emitError("The number of lanes in lhs operand "
+      return op.emitError("The number of lanes in lhs operand "
                            "must be at least twice that of rhs operand");
     if (accLanes > rhsLanes)
-      return fma.emitError("The number of lanes in accumulator "
+      return op.emitError("The number of lanes in accumulator "
                            "must be less than that of rhs operand");
   }
+
   // lhs and rhs vector's element type must match
   if (ltype != rtype)
-    return fma.emitError("The element type of lhs and rhs "
+    return op.emitError("The element type of lhs and rhs "
                          "operand vectors must match");
 
   // The datatype of accumulator must always be greater width
   if (atype.isa<IntegerType>()) {
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
-      return fma.emitError("the element type of accumulator must have "
+      return op.emitError("the element type of accumulator must have "
                            "wider width than that of the operand vectors");
   } else if (atype.isa<FloatType>()) {
     if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
-      return fma.emitError("the element type of accumulator must be "
+      return op.emitError("the element type of accumulator must be "
                            "same width as the operand vectors");
   }
+
   return success();
 }
 
-// Parse FMA op.
-static ParseResult parseFMAOp(OpAsmParser &parser, OperationState &result) {
+static LogicalResult verify(aievec::MulOp op) {
+  return verifyMulFMAOp<aievec::MulOp>(op);
+}
+
+static LogicalResult verify(aievec::FMAOp op) {
+  return verifyMulFMAOp<aievec::FMAOp>(op);
+}
+
+// Parse Mul and FMA op.
+static ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result, 
+                                 bool isFMAOp = true) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType lhs, rhs, acc;
 
-  // Parse the lhs, rhs, and accumulator
+  // Parse the lhs and rhs
   if (parser.parseOperand(lhs) || parser.parseComma() ||
-      parser.parseOperand(rhs) || parser.parseComma() ||
-      parser.parseOperand(acc))
+      parser.parseOperand(rhs))
     return failure();
-
+ 
+  // Parse the acc for FMA op
+  if (isFMAOp) {
+    if (parser.parseComma() || parser.parseOperand(acc))
+      return failure();
+  }
+ 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
@@ -431,278 +494,93 @@ static ParseResult parseFMAOp(OpAsmParser &parser, OperationState &result) {
   if (!accType)
     return parser.emitError(typesLoc, "requires accumulator type");
 
-  // Populate the lhs, rhs, and accumulator in the result
+  // Populate the lhs and rhs operands, and result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands) ||
-      parser.resolveOperand(acc, accType, result.operands))
+      parser.resolveOperand(rhs, rhsType, result.operands))
     return failure();
 
+  // Populate acc operand for FMA op
+  if (isFMAOp) {
+    if (parser.resolveOperand(acc, accType, result.operands))
+      return failure();
+  }
+ 
   return parser.addTypeToList(accType, result.types);
 }
 
-//===----------------------------------------------------------------------===//
-// MulOp
-//===----------------------------------------------------------------------===//
-
-// Print out Mul op.
-static void print(OpAsmPrinter &p, aievec::MulOp mul) {
-  // Print the lhs operand
-  p << " " << mul.lhs();
-  // Print the rhs operand
-  p << ", " << mul.rhs();
-
-  // Print the attributes, but don't print attributes that are empty strings
-  SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx = 0; idx < 2; ++idx) {
-    if (mul.getStart(idx).empty())
-      elidedAttrs.push_back(mul.getStartAttrName(idx));
-    if (mul.getOffset(idx).empty())
-      elidedAttrs.push_back(mul.getOffsetAttrName(idx));
-    if (mul.getOffsetHi(idx).empty())
-      elidedAttrs.push_back(mul.getOffsetHiAttrName(idx));
-    if (mul.getStep(idx).empty())
-      elidedAttrs.push_back(mul.getStepAttrName(idx));
-    if (mul.getSquare(idx).empty())
-      elidedAttrs.push_back(mul.getSquareAttrName(idx));
-  }
-  p.printOptionalAttrDict(mul->getAttrs(), elidedAttrs);
-
-  // And now print the types
-  p << " : " << mul.lhs().getType() << ", " << mul.rhs().getType();
-  p << ", " << mul.result().getType();
-}
-
-// Verify Mul op.
-static LogicalResult verify(aievec::MulOp mul) {
-  // Verify the types
-  aievec::AccType resultType =
-      mul.result().getType().dyn_cast<aievec::AccType>();
-  VectorType lhsType = mul.lhs().getType().dyn_cast<VectorType>();
-  VectorType rhsType = mul.rhs().getType().dyn_cast<VectorType>();
-
-  if (!lhsType || !rhsType)
-    return mul.emitError("requires vector type");
-  if (!resultType)
-    return mul.emitError("requires accumulator type");
-
-  // Get the width of the underlying scalars of all the vectors
-  Type ltype = lhsType.getElementType();
-  Type rtype = rhsType.getElementType();
-  Type atype = resultType.getValueType();
-  unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
-  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
-  unsigned atypeWidth = atype.getIntOrFloatBitWidth();
-
-  // Checks on number of lanes
-  unsigned accLanes = resultType.getLanes();
-  unsigned rhsLanes = getVectorLaneSize(rhsType);
-  unsigned lhsLanes = getVectorLaneSize(lhsType);
-
-  // If this is not a simple scheme, perform complex checks
-  if (accLanes != rhsLanes || accLanes != lhsLanes) {
-    if (rhsLanes != 256 / rtypeWidth)
-      return mul.emitError("incorrect rhs operand vector lanes");
-    if (lhsLanes < 2 * rhsLanes)
-      return mul.emitError("The number of lanes in lhs operand "
-                           "must be at least twice that of rhs operand");
-    if (accLanes > rhsLanes)
-      return mul.emitError("The number of lanes in accumulator "
-                           "must be less than that of rhs operand");
-  }
-
-  // lhs and rhs vector's element type must match
-  if (ltype != rtype)
-    return mul.emitError("The element type of lhs and rhs "
-                         "operand vectors must match");
-
-  // The datatype of accumulator must always be greater width
-  if (atype.isa<IntegerType>()) {
-    if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
-      return mul.emitError("the element type of accumulator must have "
-                           "wider width than that of the operand vectors");
-  } else if (atype.isa<FloatType>()) {
-    if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
-      return mul.emitError("the element type of accumulator must be "
-                           "same width as the operand vectors");
-  }
-
-  return success();
-}
-
-// Parse Mul op.
 static ParseResult parseMulOp(OpAsmParser &parser, OperationState &result) {
-  llvm::SMLoc typesLoc;
-  SmallVector<Type, 3> types;
-  OpAsmParser::OperandType lhs, rhs;
+  return parseMulFMAOp(parser, result, false);
+}
 
-  // Parse the lhs and rhs
-  if (parser.parseOperand(lhs) || parser.parseComma() ||
-      parser.parseOperand(rhs))
-    return failure();
-
-  // Parse all the attributes and types
-  if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
-    return failure();
-
-  // Assert that there are three types: lhs, rhs, and acc
-  if (types.size() != 3)
-    return parser.emitError(typesLoc, "requires three types");
-
-  // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
-  if (!lhsType)
-    return parser.emitError(typesLoc, "requires vector type");
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
-  if (!rhsType)
-    return parser.emitError(typesLoc, "requires vector type");
-  aievec::AccType accType = types[2].dyn_cast<aievec::AccType>();
-  if (!accType)
-    return parser.emitError(typesLoc, "requires accumulator type");
-
-  // Populate the lhs, rhs, and accumulator in the result
-  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands))
-    return failure();
-
-  return parser.addTypeToList(accType, result.types);
+static ParseResult parseFMAOp(OpAsmParser &parser, OperationState &result) {
+  return parseMulFMAOp(parser, result, true);
 }
 
 //===----------------------------------------------------------------------===//
-// AddOp
+// AddOp and SubOp
 //===----------------------------------------------------------------------===//
 
-// Print out Add op.
+// Print out Add and Sub op.
+template <typename T> static void printAddSubOp(OpAsmPrinter &p, T op) {
+  // Print the lhs operand
+  p << " " << op.lhs();
+  // Print the rhs operand
+  p << ", " << op.rhs();
+
+  // Print the attributes, but don't print attributes that are empty strings
+  SmallVector<StringRef, 10> elidedAttrs;
+  for (int idx = 0; idx < 2; ++idx) {
+    if (op.getStart(idx).empty())
+      elidedAttrs.push_back(op.getStartAttrName(idx));
+    if (op.getOffset(idx).empty())
+      elidedAttrs.push_back(op.getOffsetAttrName(idx));
+    if (op.getOffsetHi(idx).empty())
+      elidedAttrs.push_back(op.getOffsetHiAttrName(idx));
+    if (op.getSquare(idx).empty())
+      elidedAttrs.push_back(op.getSquareAttrName(idx));
+  }
+  p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+
+  // And now print the types
+  p << " : " << op.lhs().getType() << ", " << op.rhs().getType();
+  p << ", " << op.result().getType();
+}
+
 static void print(OpAsmPrinter &p, aievec::AddOp add) {
-  // Print the lhs operand
-  p << " " << add.lhs();
-  // Print the rhs operand
-  p << ", " << add.rhs();
-
-  // Print the attributes, but don't print attributes that are empty strings
-  SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx = 0; idx < 2; ++idx) {
-    if (add.getStart(idx).empty())
-      elidedAttrs.push_back(add.getStartAttrName(idx));
-    if (add.getOffset(idx).empty())
-      elidedAttrs.push_back(add.getOffsetAttrName(idx));
-    if (add.getOffsetHi(idx).empty())
-      elidedAttrs.push_back(add.getOffsetHiAttrName(idx));
-    if (add.getSquare(idx).empty())
-      elidedAttrs.push_back(add.getSquareAttrName(idx));
-  }
-  p.printOptionalAttrDict(add->getAttrs(), elidedAttrs);
-
-  // And now print the types
-  p << " : " << add.lhs().getType() << ", " << add.rhs().getType();
-  p << ", " << add.result().getType();
+  printAddSubOp<aievec::AddOp>(p, add);  
 }
 
-// Verify Add op.
-static LogicalResult verify(aievec::AddOp add) {
-  // Verify the types
-  VectorType resultType = add.result().getType().dyn_cast<VectorType>();
-  VectorType lhsType = add.lhs().getType().dyn_cast<VectorType>();
-  VectorType rhsType = add.rhs().getType().dyn_cast<VectorType>();
-
-  if (!lhsType || !rhsType || !resultType)
-    return add.emitError("requires vector type");
-
-  // All the vector types must match
-  if (lhsType != rhsType || rhsType != resultType)
-    return add.emitError("all vectors must be of same type");
-
-  return success();
-}
-
-// Parse Add op.
-static ParseResult parseAddOp(OpAsmParser &parser, OperationState &result) {
-  llvm::SMLoc typesLoc;
-  SmallVector<Type, 3> types;
-  OpAsmParser::OperandType lhs, rhs;
-
-  // Parse the lhs and rhs
-  if (parser.parseOperand(lhs) || parser.parseComma() ||
-      parser.parseOperand(rhs))
-    return failure();
-
-  // Parse all the attributes and types
-  if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
-    return failure();
-
-  // Assert that there are three types: lhs, rhs, and result
-  if (types.size() != 3)
-    return parser.emitError(typesLoc, "requires three types");
-
-  // Some verification
-  VectorType lhsType = types[0].dyn_cast<VectorType>();
-  if (!lhsType)
-    return parser.emitError(typesLoc, "requires vector type");
-  VectorType rhsType = types[1].dyn_cast<VectorType>();
-  if (!rhsType)
-    return parser.emitError(typesLoc, "requires vector type");
-  VectorType resultType = types[2].dyn_cast<VectorType>();
-  if (!resultType)
-    return parser.emitError(typesLoc, "requires vector type");
-
-  // Populate the lhs, rhs, and accumulator in the result
-  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands))
-    return failure();
-
-  return parser.addTypeToList(resultType, result.types);
-}
-
-//===----------------------------------------------------------------------===//
-// SubOp
-//===----------------------------------------------------------------------===//
-
-// Print out Sub op.
 static void print(OpAsmPrinter &p, aievec::SubOp sub) {
-  // Print the lhs operand
-  p << " " << sub.lhs();
-  // Print the rhs operand
-  p << ", " << sub.rhs();
-
-  // Print the attributes, but don't print attributes that are empty strings
-  SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx = 0; idx < 2; ++idx) {
-    if (sub.getStart(idx).empty())
-      elidedAttrs.push_back(sub.getStartAttrName(idx));
-    if (sub.getOffset(idx).empty())
-      elidedAttrs.push_back(sub.getOffsetAttrName(idx));
-    if (sub.getOffsetHi(idx).empty())
-      elidedAttrs.push_back(sub.getOffsetHiAttrName(idx));
-    if (sub.getSquare(idx).empty())
-      elidedAttrs.push_back(sub.getSquareAttrName(idx));
-  }
-  p.printOptionalAttrDict(sub->getAttrs(), elidedAttrs);
-
-  // And now print the types
-  p << " : " << sub.lhs().getType() << ", " << sub.rhs().getType();
-  p << ", " << sub.result().getType();
+  printAddSubOp<aievec::SubOp>(p, sub);  
 }
 
-// Verify Sub op.
-static LogicalResult verify(aievec::SubOp sub) {
+// Verify Add and Sub op.
+template <typename T> static LogicalResult verifyAddSubOp(T op) {
   // Verify the types
-  VectorType resultType = sub.result().getType().dyn_cast<VectorType>();
-  VectorType lhsType = sub.lhs().getType().dyn_cast<VectorType>();
-  VectorType rhsType = sub.rhs().getType().dyn_cast<VectorType>();
+  VectorType resultType = op.result().getType().template dyn_cast<VectorType>();
+  VectorType lhsType = op.lhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.rhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType || !resultType)
-    return sub.emitError("requires vector type");
+    return op.emitError("requires vector type");
 
   // All the vector types must match
   if (lhsType != rhsType || rhsType != resultType)
-    return sub.emitError("all vectors must be of same type");
+    return op.emitError("all vectors must be of same type");
 
   return success();
 }
 
-// Parse Sub op.
-static ParseResult parseSubOp(OpAsmParser &parser, OperationState &result) {
+static LogicalResult verify(aievec::AddOp add) {
+  return verifyAddSubOp<aievec::AddOp>(add);
+}
+
+static LogicalResult verify(aievec::SubOp sub) {
+  return verifyAddSubOp<aievec::SubOp>(sub);
+}
+
+// Parse Add and Sub op.
+static ParseResult parseAddSubOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType lhs, rhs;
@@ -738,6 +616,14 @@ static ParseResult parseSubOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
+}
+
+static ParseResult parseAddOp(OpAsmParser &parser, OperationState &result) {
+  return parseAddSubOp(parser, result);
+}
+
+static ParseResult parseSubOp(OpAsmParser &parser, OperationState &result) {
+  return parseAddSubOp(parser, result);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1030,135 +916,77 @@ static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
-// PackOp
+// PackOp and UnpackOp
 //===----------------------------------------------------------------------===//
 
-// Print out Pack op.
-static void print(OpAsmPrinter &p, PackOp pack) {
-  // Print the source accumulator
-  p << " " << pack.source();
+// Print out Pack and Unpack op.
+template <typename T> static void printPackUnpackOp(OpAsmPrinter &p,T op) {
+  // Print the source vector 
+  p << " " << op.source();
 
   // Print the attributes
-  p.printOptionalAttrDict(pack->getAttrs());
+  p.printOptionalAttrDict(op->getAttrs());
 
   // And now print the types
-  p << " : " << pack.source().getType() << ", " << pack.result().getType();
+  p << " : " << op.source().getType() << ", " << op.result().getType();
 }
 
-// Verify Pack op.
-static LogicalResult verify(PackOp pack) {
+static void print(OpAsmPrinter &p, PackOp pack) {
+  printPackUnpackOp<PackOp>(p, pack);
+}
+
+static void print(OpAsmPrinter &p, UnpackOp unpack) {
+  printPackUnpackOp<UnpackOp>(p, unpack);
+}
+
+// Verify Pack and Unpack op.
+template <typename T> static LogicalResult verifyPackUnpackOp(T op) {
   // Verify the types
-  VectorType sourceType = pack.source().getType().dyn_cast<VectorType>();
-  VectorType resultType = pack.result().getType().dyn_cast<VectorType>();
+  VectorType sourceType = op.source().getType().template dyn_cast<VectorType>();
+  VectorType resultType = op.result().getType().template dyn_cast<VectorType>();
   if (!sourceType || !resultType)
-    return pack.emitError("requires vector type");
+    return op.emitError("requires vector type");
 
   // The number of lanes must match
   unsigned sourceLanes = getVectorLaneSize(sourceType);
   unsigned resultLanes = getVectorLaneSize(resultType);
   if (sourceLanes != resultLanes)
-    return pack.emitError("The number of lanes in input and "
+    return op.emitError("The number of lanes in input and "
                           "output vector must match");
 
-  // The datatype of source must be i16
   Type stype = sourceType.getElementType();
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
-  if (stypeWidth != 16)
-    return pack.emitError("input must be an int16 vector");
-
-  // The datatype of result must be i8
   Type rtype = resultType.getElementType();
   unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
-  if (rtypeWidth != 8)
-    return pack.emitError("output must be an int8 vector");
+
+  if (isa<PackOp>(op)) {
+    // The datatype of source must be i16, and datatype of result must be i8
+    if (stypeWidth != 16)
+      return op.emitError("input must be an int16 vector");
+    if (rtypeWidth != 8)
+      return op.emitError("output must be an int8 vector");
+  }
+  else {
+    if (stypeWidth != 8)
+      return op.emitError("input must be an int8 vector");
+    if (rtypeWidth != 16)
+      return op.emitError("output must be an int16 vector");
+  }
 
   return success();
 }
 
-// Parse Pack op.
-static ParseResult parsePackOp(OpAsmParser &parser, OperationState &result) {
-  llvm::SMLoc typesLoc;
-  SmallVector<Type, 2> types;
-  OpAsmParser::OperandType source;
-
-  // Parse the source vector
-  if (parser.parseOperand(source))
-    return failure();
-
-  // Parse all the attributes and types
-  if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
-    return failure();
-
-  // Currently there are no attributes in pack op
-  if (!result.attributes.getAttrs().empty())
-    return parser.emitError(typesLoc, "expects no attributes");
-
-  // Assert that there are two types (source and result vectors)
-  if (types.size() != 2)
-    return parser.emitError(typesLoc, "requires two types");
-
-  // Some verification
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
-  VectorType resultType = types[1].dyn_cast<VectorType>();
-  if (!sourceType || !resultType)
-    return parser.emitError(typesLoc, "requires vector type");
-
-  // Populate the source in result
-  if (parser.resolveOperand(source, sourceType, result.operands))
-    return failure();
-
-  return parser.addTypeToList(resultType, result.types);
+static LogicalResult verify(PackOp pack) {
+  return verifyPackUnpackOp<PackOp>(pack);
 }
 
-//===----------------------------------------------------------------------===//
-// UnpackOp
-//===----------------------------------------------------------------------===//
-
-// Print out Unpack op.
-static void print(OpAsmPrinter &p, UnpackOp unpack) {
-  // Print the source accumulator
-  p << " " << unpack.source();
-
-  // Print the attributes
-  p.printOptionalAttrDict(unpack->getAttrs());
-
-  // And now print the types
-  p << " : " << unpack.source().getType() << ", " << unpack.result().getType();
-}
-
-// Verify Unpack op.
 static LogicalResult verify(UnpackOp unpack) {
-  // Verify the types
-  VectorType sourceType = unpack.source().getType().dyn_cast<VectorType>();
-  VectorType resultType = unpack.result().getType().dyn_cast<VectorType>();
-  if (!sourceType || !resultType)
-    return unpack.emitError("requires vector type");
-
-  // The number of lanes must match
-  unsigned sourceLanes = getVectorLaneSize(sourceType);
-  unsigned resultLanes = getVectorLaneSize(resultType);
-  if (sourceLanes != resultLanes)
-    return unpack.emitError("The number of lanes in input and "
-                            "output vector must match");
-
-  // The datatype of source must be i8
-  Type stype = sourceType.getElementType();
-  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
-  if (stypeWidth != 8)
-    return unpack.emitError("input must be an int8 vector");
-
-  // The datatype of result must be i16
-  Type rtype = resultType.getElementType();
-  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
-  if (rtypeWidth != 16)
-    return unpack.emitError("output must be an int16 vector");
-
-  return success();
+  return verifyPackUnpackOp<UnpackOp>(unpack);
 }
 
-// Parse Unpack op.
-static ParseResult parseUnpackOp(OpAsmParser &parser, OperationState &result) {
+// Parse Pack and Unpack op.
+static ParseResult parsePackUnpackOp(OpAsmParser &parser, 
+                                     OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source;
@@ -1172,7 +1000,7 @@ static ParseResult parseUnpackOp(OpAsmParser &parser, OperationState &result) {
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  // Currently there are no attributes in unpack op
+  // Currently there are no attributes in pack/unpack op
   if (!result.attributes.getAttrs().empty())
     return parser.emitError(typesLoc, "expects no attributes");
 
@@ -1191,6 +1019,14 @@ static ParseResult parseUnpackOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
+}
+
+static ParseResult parsePackOp(OpAsmParser &parser, OperationState &result) {
+  return parsePackUnpackOp(parser, result);
+}
+
+static ParseResult parseUnpackOp(OpAsmParser &parser, OperationState &result) {
+  return parsePackUnpackOp(parser, result);
 }
 
 #define GET_OP_CLASSES
