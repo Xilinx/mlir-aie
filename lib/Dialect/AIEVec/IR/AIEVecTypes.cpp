@@ -36,31 +36,6 @@ void AIEVecDialect::registerTypes() {
 // AIE Vector Types
 //===----------------------------------------------------------------------===//
 
-static Type parseAIEVecType(DialectAsmParser &parser) {
-  StringRef typeTag;
-  if (parser.parseKeyword(&typeTag))
-    return Type();
-  {
-    Type genType;
-    auto parseResult = generatedTypeParser(parser, typeTag, genType);
-    if (parseResult.hasValue())
-      return genType;
-  }
-
-  parser.emitError(parser.getNameLoc(), "invalid 'aie' type: `")
-      << typeTag << "'";
-  return Type();
-}
-
-Type AIEVecDialect::parseType(DialectAsmParser &parser) const {
-  return parseAIEVecType(parser);
-}
-
-void AIEVecDialect::printType(Type type, DialectAsmPrinter &printer) const {
-  if (failed(generatedTypePrinter(type, printer)))
-    llvm_unreachable("unknown 'aie' type");
-}
-
 bool AIEVecType::classof(Type type) {
   return llvm::isa<AIEVecDialect>(type.getDialect());
 }
