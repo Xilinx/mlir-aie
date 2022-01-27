@@ -741,7 +741,7 @@ static Operation* generateMulOp(T mulOp,
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
-  Value lhs = mulOp.lhs();
+  Value lhs = mulOp.getLhs();
   if (!isSimpleVectIntrinsic(mulOp, state)) {
     AIEVecAttributes lstat = getOperandVecStats(mulOp, state, 0);
     assert(lstat.vecSizeInBits % 256 == 0);
@@ -755,7 +755,7 @@ static Operation* generateMulOp(T mulOp,
 
   // Create AIE dialect mul op
   Operation* xmulOp = state->builder.create<aievec::MulOp>(
-                mulOp->getLoc(), lhs, mulOp.rhs(), opType,
+                mulOp->getLoc(), lhs, mulOp.getRhs(), opType,
                 opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0], 
                 opAttr.step[0], opAttr.square[0],
                 opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], 
@@ -2093,7 +2093,7 @@ static void insertSRSOpsInFunc(FuncOp func,
 // framework. 
 template <typename TransferOp>
 static void setInBounds(TransferOp op) {
-  if (op.isZeroD())
+  if (op.getTransferRank() == 0)
     return;
   SmallVector<bool, 4> bools(op.getTransferRank(), true);
   OpBuilder b(op.getContext());

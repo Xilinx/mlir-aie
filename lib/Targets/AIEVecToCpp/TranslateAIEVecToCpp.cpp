@@ -407,8 +407,8 @@ static bool isReadOnly(Value read) {
 static std::pair<bool, int64_t>
 getTripCount(scf::ForOp forOp) {
   //If the upper and lower bounds are constant values, return the difference.
-  auto lb = forOp.lowerBound().getDefiningOp<arith::ConstantOp>();
-  auto ub = forOp.upperBound().getDefiningOp<arith::ConstantOp>();
+  auto lb = forOp.getLowerBound().getDefiningOp<arith::ConstantOp>();
+  auto ub = forOp.getUpperBound().getDefiningOp<arith::ConstantOp>();
   if (lb && ub) {
     llvm::APInt ubValue = ub.getValue().cast<IntegerAttr>().getValue();
     llvm::APInt lbValue = lb.getValue().cast<IntegerAttr>().getValue();
@@ -420,7 +420,7 @@ getTripCount(scf::ForOp forOp) {
 //Get the loop step size of the for operator
 static std::pair<bool, int64_t>
 getStep(scf::ForOp forOp) {
-  if (auto step = forOp.step().getDefiningOp<arith::ConstantOp>()) {
+  if (auto step = forOp.getStep().getDefiningOp<arith::ConstantOp>()) {
     llvm::APInt stepValue = step.getValue().cast<IntegerAttr>().getValue();
     return std::make_pair(true, stepValue.getSExtValue());
   }
@@ -447,12 +447,12 @@ static LogicalResult printOperation(CppEmitter &emitter, T binOp) {
   if (failed(emitter.emitAssignPrefix(*binOp)))
     return failure();
   raw_indented_ostream &os = emitter.ostream();
-  auto lhs = binOp.lhs();
+  auto lhs = binOp.getLhs();
   if (!emitter.hasValueInScope(lhs))
     return failure();
   os << emitter.getOrCreateName(lhs);
   os << getOperator(binOp);
-  auto rhs = binOp.rhs();
+  auto rhs = binOp.getRhs();
   if (!emitter.hasValueInScope(rhs))
     return failure();
   os << emitter.getOrCreateName(rhs);
@@ -1365,15 +1365,15 @@ static LogicalResult printOperation(CppEmitter &emitter, scf::ForOp forOp) {
   os << " ";
   os << emitter.getOrCreateName(forOp.getInductionVar());
   os << " = ";
-  os << emitter.getOrCreateName(forOp.lowerBound());
+  os << emitter.getOrCreateName(forOp.getLowerBound());
   os << "; ";
   os << emitter.getOrCreateName(forOp.getInductionVar());
   os << " < ";
-  os << emitter.getOrCreateName(forOp.upperBound());
+  os << emitter.getOrCreateName(forOp.getUpperBound());
   os << "; ";
   os << emitter.getOrCreateName(forOp.getInductionVar());
   os << " += ";
-  os << emitter.getOrCreateName(forOp.step());
+  os << emitter.getOrCreateName(forOp.getStep());
   os << ")\n";
   os << "chess_prepare_for_pipelining\n";
   //Try to find the upper bound and step of the for operator.
@@ -1448,7 +1448,7 @@ static LogicalResult printOperation(CppEmitter &emitter, scf::IfOp ifOp) {
   os << ") {\n";
   os.indent();
 
-  Region &thenRegion = ifOp.thenRegion();
+  Region &thenRegion = ifOp.getThenRegion();
   for (Operation &op : thenRegion.getOps()) {
     // Note: This prints a superfluous semicolon if the terminating yield op has
     // zero results.
@@ -1458,7 +1458,7 @@ static LogicalResult printOperation(CppEmitter &emitter, scf::IfOp ifOp) {
 
   os.unindent() << "}";
 
-  Region &elseRegion = ifOp.elseRegion();
+  Region &elseRegion = ifOp.getElseRegion();
   if (!elseRegion.empty()) {
     os << " else {\n";
     os.indent();
