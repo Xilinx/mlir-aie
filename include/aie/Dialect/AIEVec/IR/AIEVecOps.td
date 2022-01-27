@@ -322,8 +322,9 @@ def AIEVec_ConcatOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE concat";
   let description = [{
-    Xilinx-specific concat intrinsic. Concatenates two or more
-    smaller vectors into a bigger vector.
+    Xilinx-specific concat intrinsic. Concatenates two or more smaller
+    vectors into a bigger vector. The verifier confirms that all the
+    input vectors have the same number of lanes.
     `$result = concat($sources[0], $sources[1], ...)`
   }];
 }
@@ -410,8 +411,8 @@ def AIEVec_PackOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE pack";
   let description = [{
-    Xilinx-specific pack intrinsic. Pack a vector of 16-bit values 
-    into a vector of 8-bit values.
+    Xilinx-specific pack intrinsic. Pack a vector of 16-bit values into
+    a vector of 8-bit values.
     `$result = pack($source)`
   }];
 }
@@ -424,8 +425,8 @@ def AIEVec_UnpackOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE unpack";
   let description = [{
-    Xilinx-specific unpack intrinsic. Unpack a vector of 8-bit values 
-    into a vector of 16-bit values.
+    Xilinx-specific unpack intrinsic. Unpack a vector of 8-bit values into
+    a vector of 16-bit values.
     `$result = unpack($source)`
   }];
 }

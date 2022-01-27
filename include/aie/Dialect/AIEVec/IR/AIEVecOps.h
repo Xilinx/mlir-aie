@@ -14,6 +14,7 @@
 #define AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H
 
 #include "AIEVecDialect.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h.inc"
