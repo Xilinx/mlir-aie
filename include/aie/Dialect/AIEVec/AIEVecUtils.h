@@ -43,7 +43,7 @@ inline VectorType createVectorType(unsigned lanes, Type elementType) {
 
 // Return the size (in bits) of the underlying element type of the vector
 inline int32_t getElementSizeInBits(VectorType type) {
-  return type.getSizeInBits()/type.getNumElements();
+  return type.cast<ShapedType>().getSizeInBits()/type.getNumElements();
 }
 
 // Return the number of lanes along the vectorized dimension for the vector
@@ -63,11 +63,6 @@ inline int32_t getVectorSizeInBits(VectorType type) {
   assert(veclen >= 128 && 
          "AIE vector size should be greater than 128 bits");
   return veclen; 
-}
-
-// Given a vector value, retun its type
-inline VectorType getVectorType(Value val) {
-  return val.getType().dyn_cast<VectorType>();
 }
 
 // Return true if the incoming type is accumulator type

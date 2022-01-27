@@ -50,16 +50,16 @@ static void print(OpAsmPrinter &p, UPDOp upd) {
   p.printOptionalAttrDict(upd->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << upd.getSourceType() << ", " << upd.getResultType(); 
+  p << " : " << upd.source().getType() << ", " << upd.result().getType(); 
 }
 
 // Verify UPD op.
 static LogicalResult verify(UPDOp upd) {
   // Verify the types: source is memref, and result is vector
-  ShapedType sourceType = upd.getSourceType().dyn_cast<ShapedType>();
-  VectorType resultType = upd.getResultType().dyn_cast<VectorType>();
-  if (!sourceType || !sourceType.isa<MemRefType, RankedTensorType>())
-    return upd.emitError("requires memref or ranked tensor type");
+  MemRefType sourceType = upd.source().getType().dyn_cast<MemRefType>();
+  VectorType resultType = upd.result().getType().dyn_cast<VectorType>();
+  if (!sourceType)
+    return upd.emitError("requires memref type");
   if (!resultType)
     return upd.emitError("requires vector type");
   if (upd.indices().empty()) 
@@ -106,16 +106,16 @@ static ParseResult parseUPDOp(OpAsmParser &parser,
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification 
-  auto shapedType = types[0].dyn_cast<ShapedType>(); 
-  if (!shapedType || !shapedType.isa<MemRefType, RankedTensorType>())
-    return parser.emitError(typesLoc, "requires memref or ranked tensor type");
+  auto memrefType = types[0].dyn_cast<MemRefType>(); 
+  if (!memrefType)
+    return parser.emitError(typesLoc, "requires memref type");
   VectorType vectorType = types[1].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
   auto indicesType = builder.getIndexType();
  
   // Populate the source and indices in result 
-  if (parser.resolveOperand(source, shapedType, result.operands) ||
+  if (parser.resolveOperand(source, memrefType, result.operands) ||
       parser.resolveOperands(indices, indicesType, result.operands))
     return failure();
   // Populate optional vector in result 
@@ -145,14 +145,14 @@ static void print(OpAsmPrinter &p, SRSOp srs) {
   p.printOptionalAttrDict(srs->getAttrs());
 
   // And now print the types
-  p << " : " << srs.getSourceType() << ", " << srs.getResultType(); 
+  p << " : " << srs.source().getType() << ", " << srs.result().getType(); 
 }
 
 // Verify SRS op.
 static LogicalResult verify(SRSOp srs) {
   // Verify the types
-  aievec::AccType sourceType = srs.getSourceType().dyn_cast<aievec::AccType>();
-  VectorType resultType = srs.getResultType().dyn_cast<VectorType>();
+  aievec::AccType sourceType = srs.source().getType().dyn_cast<aievec::AccType>();
+  VectorType resultType = srs.result().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return srs.emitError("requires accumulator type");
   if (!resultType)
@@ -233,14 +233,14 @@ static void print(OpAsmPrinter &p, UPSOp ups) {
   p.printOptionalAttrDict(ups->getAttrs());
 
   // And now print the types
-  p << " : " << ups.getSourceType() << ", " << ups.getResultType(); 
+  p << " : " << ups.source().getType() << ", " << ups.result().getType(); 
 }
 
 // Verify UPS op.
 static LogicalResult verify(UPSOp ups) {
   // Verify the types
-  VectorType sourceType = ups.getSourceType().dyn_cast<VectorType>();
-  aievec::AccType resultType = ups.getResultType().dyn_cast<aievec::AccType>();
+  VectorType sourceType = ups.source().getType().dyn_cast<VectorType>();
+  aievec::AccType resultType = ups.result().getType().dyn_cast<aievec::AccType>();
   if (!sourceType)
     return ups.emitError("requires vector type");
   if (!resultType)
@@ -339,19 +339,19 @@ static void print(OpAsmPrinter &p, aievec::FMAOp fma) {
   }
   p.printOptionalAttrDict(fma->getAttrs(), elidedAttrs);
 
-  assert(fma.getAccType() == fma.getResultType());
+  assert(fma.acc().getType() == fma.result().getType());
   // And now print the types
-  p << " : " << fma.getLHSType() << ", " << fma.getRHSType();
-  p << ", " << fma.getResultType();
+  p << " : " << fma.lhs().getType() << ", " << fma.rhs().getType();
+  p << ", " << fma.result().getType();
 }
 
 // Verify FMA op.
 static LogicalResult verify(aievec::FMAOp fma) {
   // Verify the types
-  aievec::AccType accType = fma.getAccType().dyn_cast<aievec::AccType>();
-  aievec::AccType resultType = fma.getResultType().dyn_cast<aievec::AccType>();
-  VectorType lhsType = fma.getLHSType().dyn_cast<VectorType>();
-  VectorType rhsType = fma.getRHSType().dyn_cast<VectorType>();
+  aievec::AccType accType = fma.acc().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType resultType = fma.result().getType().dyn_cast<aievec::AccType>();
+  VectorType lhsType = fma.lhs().getType().dyn_cast<VectorType>();
+  VectorType rhsType = fma.rhs().getType().dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return fma.emitError("requires vector type");
@@ -476,16 +476,16 @@ static void print(OpAsmPrinter &p, aievec::MulOp mul) {
   p.printOptionalAttrDict(mul->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << mul.getLHSType() << ", " << mul.getRHSType();
-  p << ", " << mul.getResultType();
+  p << " : " << mul.lhs().getType() << ", " << mul.rhs().getType();
+  p << ", " << mul.result().getType();
 }
 
 // Verify Mul op.
 static LogicalResult verify(aievec::MulOp mul) {
   // Verify the types
-  aievec::AccType resultType = mul.getResultType().dyn_cast<aievec::AccType>();
-  VectorType lhsType = mul.getLHSType().dyn_cast<VectorType>();
-  VectorType rhsType = mul.getRHSType().dyn_cast<VectorType>();
+  aievec::AccType resultType = mul.result().getType().dyn_cast<aievec::AccType>();
+  VectorType lhsType = mul.lhs().getType().dyn_cast<VectorType>();
+  VectorType rhsType = mul.rhs().getType().dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return mul.emitError("requires vector type");
@@ -605,16 +605,16 @@ static void print(OpAsmPrinter &p, aievec::AddOp add) {
   p.printOptionalAttrDict(add->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << add.getLHSType() << ", " << add.getRHSType();
-  p << ", " << add.getResultType();
+  p << " : " << add.lhs().getType() << ", " << add.rhs().getType();
+  p << ", " << add.result().getType();
 }
 
 // Verify Add op.
 static LogicalResult verify(aievec::AddOp add) {
   // Verify the types
-  VectorType resultType = add.getResultType().dyn_cast<VectorType>();
-  VectorType lhsType = add.getLHSType().dyn_cast<VectorType>();
-  VectorType rhsType = add.getRHSType().dyn_cast<VectorType>();
+  VectorType resultType = add.result().getType().dyn_cast<VectorType>();
+  VectorType lhsType = add.lhs().getType().dyn_cast<VectorType>();
+  VectorType rhsType = add.rhs().getType().dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType || !resultType)
     return add.emitError("requires vector type");
@@ -695,16 +695,16 @@ static void print(OpAsmPrinter &p, aievec::SubOp sub) {
   p.printOptionalAttrDict(sub->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << sub.getLHSType() << ", " << sub.getRHSType();
-  p << ", " << sub.getResultType();
+  p << " : " << sub.lhs().getType() << ", " << sub.rhs().getType();
+  p << ", " << sub.result().getType();
 }
 
 // Verify Sub op.
 static LogicalResult verify(aievec::SubOp sub) {
   // Verify the types
-  VectorType resultType = sub.getResultType().dyn_cast<VectorType>();
-  VectorType lhsType = sub.getLHSType().dyn_cast<VectorType>();
-  VectorType rhsType = sub.getRHSType().dyn_cast<VectorType>();
+  VectorType resultType = sub.result().getType().dyn_cast<VectorType>();
+  VectorType lhsType = sub.lhs().getType().dyn_cast<VectorType>();
+  VectorType rhsType = sub.rhs().getType().dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType || !resultType)
     return sub.emitError("requires vector type");
@@ -773,18 +773,18 @@ static void print(OpAsmPrinter &p, ConcatOp concat) {
   p.printOptionalAttrDict(concat->getAttrs());
 
   // And now print the types
-  p << " : " << concat.getSourceType() << ", " << concat.getResultType();
+  p << " : " << concat.sources().getTypes().front() << ", " << concat.result().getType();
 }
 
 // Verify Concat op.
 static LogicalResult verify(ConcatOp concat) {
   // Must be concatenating at least two sources
-  if (concat.getSourceSize() < 2)
+  if (concat.sources().size() < 2)
     return concat.emitError("Must concatenate at least two vectors");
 
   // Verify the types
-  VectorType sourceType = concat.getSourceType().dyn_cast<VectorType>();
-  VectorType resultType = concat.getResultType().dyn_cast<VectorType>();
+  VectorType sourceType = concat.sources().getTypes().front().dyn_cast<VectorType>();
+  VectorType resultType = concat.result().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return concat.emitError("requires vector type");
 
@@ -863,14 +863,14 @@ static void print(OpAsmPrinter &p, ExtOp ext) {
   p.printOptionalAttrDict(ext->getAttrs());
 
   // And now print the types
-  p << " : " << ext.getSourceType() << ", " << ext.getResultType(); 
+  p << " : " << ext.source().getType() << ", " << ext.result().getType(); 
 }
 
 // Verify Ext op.
 static LogicalResult verify(ExtOp ext) {
   // Verify the types
-  VectorType sourceType = ext.getSourceType().dyn_cast<VectorType>();
-  VectorType resultType = ext.getResultType().dyn_cast<VectorType>();
+  VectorType sourceType = ext.source().getType().dyn_cast<VectorType>();
+  VectorType resultType = ext.result().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return ext.emitError("requires vector type");
 
@@ -964,17 +964,17 @@ static void print(OpAsmPrinter &p, aievec::SelectOp sop) {
   p.printOptionalAttrDict(sop->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << sop.getXbuffType();
+  p << " : " << sop.xbuff().getType();
   if (sop.ybuff())
-    p << ", " << sop.getYbuffType();
-  p << ", " << sop.getResultType();
+    p << ", " << sop.ybuff().getType();
+  p << ", " << sop.result().getType();
 }
 
 // Verify select op.
 static LogicalResult verify(aievec::SelectOp sop) {
   // Verify the types
-  VectorType resultType = sop.getResultType().dyn_cast<VectorType>();
-  VectorType xbuffType = sop.getXbuffType().dyn_cast<VectorType>();
+  VectorType resultType = sop.result().getType().dyn_cast<VectorType>();
+  VectorType xbuffType = sop.xbuff().getType().dyn_cast<VectorType>();
   
   if (!resultType || !xbuffType)
     return sop.emitError("requires vector type");
@@ -987,7 +987,7 @@ static LogicalResult verify(aievec::SelectOp sop) {
 
   // If yuff is present, its vector type should be same as xbuff
   if (sop.ybuff()) {
-    VectorType ybuffType = sop.getYbuffType().dyn_cast<VectorType>();
+    VectorType ybuffType = sop.ybuff().getType().dyn_cast<VectorType>();
     if (xbuffType != ybuffType)
       return sop.emitError("types of xbuff and ybuff must match");
   }
@@ -1065,14 +1065,14 @@ static void print(OpAsmPrinter &p, PackOp pack) {
   p.printOptionalAttrDict(pack->getAttrs());
 
   // And now print the types
-  p << " : " << pack.getSourceType() << ", " << pack.getResultType(); 
+  p << " : " << pack.source().getType() << ", " << pack.result().getType(); 
 }
 
 // Verify Pack op.
 static LogicalResult verify(PackOp pack) {
   // Verify the types
-  VectorType sourceType = pack.getSourceType().dyn_cast<VectorType>();
-  VectorType resultType = pack.getResultType().dyn_cast<VectorType>();
+  VectorType sourceType = pack.source().getType().dyn_cast<VectorType>();
+  VectorType resultType = pack.result().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return pack.emitError("requires vector type");
 
@@ -1149,14 +1149,14 @@ static void print(OpAsmPrinter &p, UnpackOp unpack) {
   p.printOptionalAttrDict(unpack->getAttrs());
 
   // And now print the types
-  p << " : " << unpack.getSourceType() << ", " << unpack.getResultType(); 
+  p << " : " << unpack.source().getType() << ", " << unpack.result().getType();
 }
 
 // Verify Unpack op.
 static LogicalResult verify(UnpackOp unpack) {
   // Verify the types
-  VectorType sourceType = unpack.getSourceType().dyn_cast<VectorType>();
-  VectorType resultType = unpack.getResultType().dyn_cast<VectorType>();
+  VectorType sourceType = unpack.source().getType().dyn_cast<VectorType>();
+  VectorType resultType = unpack.result().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return unpack.emitError("requires vector type");
 

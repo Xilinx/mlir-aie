@@ -174,7 +174,7 @@ static inline AIEVecAttributes getVectorStats(VectorType type) {
 // Get the vector stats for an operation's result.
 static inline AIEVecAttributes getResultVecStats(Operation *op, 
                                                  unsigned idx=0) {
-  VectorType vtype = getVectorType(op->getResult(idx));
+  VectorType vtype = op->getResult(idx).getType().cast<VectorType>();
   return getVectorStats(vtype);
 }
 
@@ -184,7 +184,7 @@ static inline AIEVecAttributes getOperandVecStats(Operation *op,
                                            unsigned idx=0) {
   assert(op->getNumOperands() > idx);
   Operation *defOp = op->getOperand(idx).getDefiningOp();
-  VectorType vtype = getVectorType(defOp->getResult(0));
+  VectorType vtype = defOp->getResult(0).getType().cast<VectorType>();
   auto ret = getVectorStats(vtype);
   // if the defining op is a transfer read, get the extent read from source
   if (auto readOp = dyn_cast<TransferReadOp>(defOp)) {
@@ -206,12 +206,12 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op) {
   Operation *right = op->getOperand(1).getDefiningOp();
 
   // Get the number of lanes
-  VectorType vtype = getVectorType(op->getResult(0));
+  VectorType vtype = op->getResult(0).getType().cast<VectorType>();
   int32_t lanes = getVectorLaneSize(vtype);
  
   // Get the data sizes for left and right operands
-  VectorType ltype = getVectorType(left->getResult(0));
-  VectorType rtype = getVectorType(right->getResult(0));
+  VectorType ltype = left->getResult(0).getType().cast<VectorType>();
+  VectorType rtype = right->getResult(0).getType().cast<VectorType>();
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
@@ -315,11 +315,11 @@ static bool isWellFormedVectorOp(Operation *Op) {
       return false; 
   }
  
-  VectorType refType = getVectorType(operandsAndResults.back());
+  VectorType refType = operandsAndResults.back().getType().cast<VectorType>();
   Type scalarType = refType.getElementType();
   unsigned refSize = getVectorLaneSize(refType);
   for (auto val : operandsAndResults) {
-    VectorType vtype = getVectorType(val);
+    VectorType vtype = val.getType().cast<VectorType>();
     // Check 2. All the vector sizes must be same
     if (refSize != getVectorLaneSize(vtype))
       return false;
@@ -531,10 +531,10 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
                                       VectorType concatType = nullptr) {
   assert(sources.size() > 1 && "must concat at least two vectors");
 
-  VectorType vecType = getVectorType(sources.back());
+  VectorType vecType = sources.back().getType().cast<VectorType>();
 
   for (auto source : sources) {
-    VectorType type = getVectorType(source);
+    VectorType type = source.getType().cast<VectorType>();
     assert(type == vecType && "sources of concat op not of same type");
   }
   
@@ -567,7 +567,7 @@ static aievec::SelectOp generateSelectOp(Value xbuff,
   assert(opAttr.start.size() == opAttr.offset.size() && 
          opAttr.start.size() == 2);
 
-  VectorType xtype = getVectorType(xbuff);
+  VectorType xtype = xbuff.getType().cast<VectorType>();
   // Verify that lanes is <= xtype lanes
   assert(lanes <= getVectorLaneSize(xtype));
   // Create the result type
@@ -593,7 +593,7 @@ static aievec::ExtOp generateExtOp(Value source,
                                 int8_t idx,
                                 VectState *state,
                                 Location loc) {
-  VectorType stype = getVectorType(source);
+  VectorType stype = source.getType().cast<VectorType>();
   // Verify that lanes*idx is <= stype lanes
   assert(lanes*(idx+1) <= getVectorLaneSize(stype));
   // Create the result type
@@ -612,7 +612,7 @@ static aievec::PackOp generatePackOp(Value source,
                                   VectState *state,
                                   Location loc) {
   // Create the result type
-  VectorType stype = getVectorType(source);
+  VectorType stype = source.getType().cast<VectorType>();
   unsigned lanes = getVectorLaneSize(stype);
   Type i8Type = mlir::IntegerType::get(source.getContext(), 8);
   VectorType resultType = createVectorType(lanes, i8Type);
@@ -785,7 +785,7 @@ static aievec::UPDOp generateUPDOp(TransferReadOp readOp,
   // Create the upd vector type. To do so, we need the underlying element type.
   // We can divide the interval size by that to get the number of lanes in the
   // result vector of upd op.
-  VectorType vecType = getVectorType(readOp.vector());
+  VectorType vecType = readOp.vector().getType().cast<VectorType>();
   Type elementType = vecType.getElementType();
   int32_t elementSizeInBits = getElementSizeInBits(vecType);
   int intervalWidthInBytes = intervalWidth/elementSizeInBits;
@@ -902,7 +902,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op,
 
   int32_t step = 0;
   bool found = false;
-  VectorType vectorType = getVectorType(readOp.getResult());
+  VectorType vectorType = readOp.getResult().getType().cast<VectorType>();
   SmallVector<Value, 4> indices(readOp.indices().begin(), 
                                 readOp.indices().end());
   assert(vectorType && !indices.empty());
@@ -954,7 +954,7 @@ int32_t computeStartInAIEVec(Operation *op,
   auto readOp = cast<TransferReadOp>(op);
 
   // Get the scalar element type's size in bits 
-  VectorType vtype = getVectorType(readOp.vector());
+  VectorType vtype = readOp.vector().getType().cast<VectorType>();
   int32_t scalarSizeInBits = getElementSizeInBits(vtype);
  
   // Get the linearized access expr for this read
@@ -1081,9 +1081,9 @@ static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op) {
      return false;
 
    // Check 7. All the vector sizes must be same
-   VectorType lhsType = getVectorType(lhs);
-   VectorType rhsType = getVectorType(rhs);
-   VectorType accType = getVectorType(acc);
+   VectorType lhsType = lhs.getType().cast<VectorType>();
+   VectorType rhsType = rhs.getType().cast<VectorType>();
+   VectorType accType = acc.getType().cast<VectorType>();
 
    unsigned lhsVecSize = getVectorLaneSize(lhsType);
    unsigned rhsVecSize = getVectorLaneSize(rhsType);
@@ -1727,8 +1727,8 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op,
   int32_t lanes, cols;
   std::tie(lanes, cols) = getNumRowsAndCols(Op);
   // Get the data sizes for left and right operands of mul/fma
-  int32_t xbits = getElementSizeInBits(getVectorType(Op->getOperand(0)));
-  int32_t zbits = getElementSizeInBits(getVectorType(Op->getOperand(1)));
+  int32_t xbits = getElementSizeInBits(Op->getOperand(0).getType().cast<VectorType>());
+  int32_t zbits = getElementSizeInBits(Op->getOperand(1).getType().cast<VectorType>());
   Scheme scheme(lanes, cols, xbits, zbits);
 
   // If element size is < 32 bits ,we can fuse multiple FMAs together to

@@ -139,7 +139,7 @@ computeAccessExtent(vector::TransferReadOp readOp,
                        int32_t loopStepSize, 
                        bool isSplat,
                        unsigned minVecSize) {
-  VectorType vType = getVectorType(readOp.getResult());
+  VectorType vType = readOp.getResult().getType().cast<VectorType>();
   unsigned vecSize = getVectorLaneSize(vType);
   int32_t elementSizeInBits = getElementSizeInBits(vType);
   // Create chunks greater in size than minVecSize

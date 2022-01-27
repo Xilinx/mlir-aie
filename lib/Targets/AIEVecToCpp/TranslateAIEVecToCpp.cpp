@@ -229,9 +229,9 @@ static bool skippedOp(Operation *op,
   //skip op 2 : some aievec::srs for float types
   if (auto srsOp = dyn_cast<aievec::SRSOp>(op)) {
     //Get the datatype of the source accumulator and result vector
-    aievec::AccType accType = srsOp.getSourceType().cast<aievec::AccType>();
+    aievec::AccType accType = srsOp.source().getType().cast<aievec::AccType>();
     Type eltType = accType.getValueType();
-    VectorType vecType = srsOp.getResultType().cast<VectorType>();
+    VectorType vecType = srsOp.result().getType().cast<VectorType>();
     Value source = srsOp.source();
     //If the underlying element types are float, then we do not really need an
     //srs op if source of srsOp has only one use.
@@ -246,9 +246,9 @@ static bool skippedOp(Operation *op,
   //skip op 3 : some aievec::ups for float ops
   else if (auto upsOp = dyn_cast<aievec::UPSOp>(op)) {
     //Get the datatype of the source vector and result accumulator 
-    aievec::AccType accType = upsOp.getResultType().cast<aievec::AccType>();
+    aievec::AccType accType = upsOp.result().getType().cast<aievec::AccType>();
     Type eltType = accType.getValueType();
-    VectorType vecType = upsOp.getSourceType().cast<VectorType>();
+    VectorType vecType = upsOp.source().getType().cast<VectorType>();
     Value source = upsOp.source();
     //If the underlying element types are float, then we do not really need a
     //ups op if the source accumulator has only one use.
@@ -480,7 +480,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
 
   raw_indented_ostream &os = emitter.ostream();
   Value result = updOp.result();
-  VectorType resultType = updOp.getResultType().cast<VectorType>();
+  VectorType resultType = updOp.result().getType().cast<VectorType>();
   int32_t vecSizeInBits = getVectorSizeInBits(resultType);
   int32_t elementSizeInBits = getElementSizeInBits(resultType);
 
@@ -589,9 +589,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   if (!emitter.hasValueInScope(source))
     return failure();
 
-  aievec::AccType accType = upsOp.getResultType().cast<aievec::AccType>();
+  aievec::AccType accType = upsOp.result().getType().cast<aievec::AccType>();
   Type eltType = accType.getValueType();
-  VectorType vecType = upsOp.getSourceType().cast<VectorType>();
+  VectorType vecType = upsOp.source().getType().cast<VectorType>();
 
   //If the underlying element types are float, then we do not really need a
   //ups op. We can simply generate an assignment 
@@ -621,9 +621,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   int32_t shift = srsOp.shift();
 
   //Get the datatype of the source accumulator and result vector
-  aievec::AccType accType = srsOp.getSourceType().cast<aievec::AccType>();
+  aievec::AccType accType = srsOp.source().getType().cast<aievec::AccType>();
   Type eltType = accType.getValueType();
-  VectorType vecType = srsOp.getResultType().cast<VectorType>();
+  VectorType vecType = srsOp.result().getType().cast<VectorType>();
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -676,7 +676,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   if (failed(emitter.emitAssignPrefix(*extOp)))
       return failure();
   //Print the version of ext
-  VectorType resultType = extOp.getResultType().cast<VectorType>();
+  VectorType resultType = extOp.result().getType().cast<VectorType>();
   int32_t vecSizeInBits = getVectorSizeInBits(resultType);
   assert(vecSizeInBits == 128 || 
          vecSizeInBits == 256 || 
@@ -735,7 +735,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
       return failure();
 
   //Determine if we want to geneate select32, or select16, or select8
-  VectorType xbuffType = selectOp.getXbuffType().cast<VectorType>();
+  VectorType xbuffType = selectOp.xbuff().getType().cast<VectorType>();
   int32_t elementSizeInBits = getElementSizeInBits(xbuffType);
   assert (elementSizeInBits == 16 || 
           elementSizeInBits == 32 || 
@@ -798,7 +798,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
       return failure();
 
   //Determine the flavor of result
-  VectorType sourceType = packOp.getSourceType().cast<VectorType>();
+  VectorType sourceType = packOp.source().getType().cast<VectorType>();
   Type scalarType = sourceType.getElementType();
   os << (scalarType.isUnsignedInteger() ? "upack" : "pack");
   os << "(";
@@ -897,7 +897,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   std::string opname;
   //Create opname based on the result type 
-  aievec::AccType accType = mulOp.getResultType().cast<aievec::AccType>();
+  aievec::AccType accType = mulOp.result().getType().cast<aievec::AccType>();
   unsigned lanes = accType.getLanes();
   Type eltType = accType.getValueType();
   if (!simpleScheme) {
@@ -947,7 +947,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::AddOp addOp) {
       return failure();
 
   //Get the scalar type of result vector
-  VectorType resultType = addOp.getResultType().cast<VectorType>();
+  VectorType resultType = addOp.result().getType().cast<VectorType>();
   unsigned lanes = getVectorLaneSize(resultType);
   Type elementType = resultType.getElementType();  
   bool floatType = elementType.isa<FloatType>();
@@ -1002,7 +1002,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
       return failure();
 
   //Get the scalar type of result vector
-  VectorType resultType = subOp.getResultType().cast<VectorType>();
+  VectorType resultType = subOp.result().getType().cast<VectorType>();
   unsigned lanes = getVectorLaneSize(resultType);
   Type elementType = resultType.getElementType();  
   bool floatType = elementType.isa<FloatType>();
@@ -1057,7 +1057,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
 
   std::string opname;
   //Create opname based on the result type 
-  aievec::AccType accType = fmaOp.getResultType().cast<aievec::AccType>();
+  aievec::AccType accType = fmaOp.result().getType().cast<aievec::AccType>();
   unsigned lanes = accType.getLanes();
   Type eltType = accType.getValueType();
   if (!simpleScheme) {

@@ -46,7 +46,7 @@ namespace aievec {
 // The linearized expression for A[i][j] is i*N+j. We decompose it into base
 // (i*N+j), and offset 0. In contrast, the linearized expression for
 // A[i+1][j+2] is (i+1)*N+j+2, and we decompose it into base (i+1)*N+j, and
-// offset 2.  Basically, we abstract away the constant offset from the
+// offset 2. Basically, we abstract away the constant offset from the
 // linearized access expression to form the base. 
 // Given a vector of IntervalReuse objects, we just search for an object with
 // matching 'memref' and 'base' to group the read ops that can potentially
@@ -54,16 +54,20 @@ namespace aievec {
 //
 // 'extentMap' stores the extent of data that an op reads. We store the extent
 // in bits. For example, the extent for operation reading A[i][j:j+8] is
-// [0,256], and that of an operation reading A[i][j+1:j+9] is [32,288].
+// [0,256].
+// The 'read access extent' corresponds to the aligned chunk of data that an 
+// operation loads. For example, an 8-lane, 32-bit vector load from A[i+7:i+15]
+// would have read access extent [0:512], whereas under same conditions, the
+// vector load from A[i+9:i+17] would have read access extent [512:768]. Note
+// how the extents are aligned to vector size boundary. 
 //
 // 'intervals' merges overlapping intervals to give the view of actual AIE
 // vectors that need to be created. Since AIE only allows aligned vector loads,
 // each interval is aligned to vector size. Continuing with the previous
-// example, the two extents [0,256] and [32,288] overlap. Therefore these will
-// be merged together to form a single interval [0,288]. After aligning to
-// vector size, the entry into 'intervals' will be [0,512]. The entries into
+// example, the two extents [0,256] and [128,512] overlap. Therefore these will
+// be merged together to form a single interval [0,512]. The entries into
 // 'intervals' are sorted, so given an op, we can find its interval by doing
-// binary search with the op's extent as key (e.g, searching for [32,288] in
+// binary search with the op's extent as key (e.g, searching for [128,256] in
 // {[0,512],[512,1024]}).
 
 class IntervalReuse {
@@ -113,10 +117,11 @@ public:
   // belongs to. The interval width corresponds to the size of the vector that
   // will hold the load from read operation. 
   int32_t getIntervalWidth(Operation *op);
-  // Set the read access extent of this read operation 
-  void setAccessExtent(Operation *op, std::pair<int32_t,int32_t> &extent);
-  // Get the read access extent of this read operation 
+  // Get the read access extent of this read operation. The returned value
+  // indicates the start and end offsets of the access from the base (in bits).
   std::pair<int32_t,int32_t> getAccessExtent(Operation *op);
+  // Set the read access extent of this read operation. 
+  void setAccessExtent(Operation *op, std::pair<int32_t,int32_t> &extent);
   // Get the interval that contains this read operation's extent 
   std::pair<int32_t,int32_t> getInterval(Operation *op);
   // Given that the read operation 'op' is only LHS operand of some mul/mac

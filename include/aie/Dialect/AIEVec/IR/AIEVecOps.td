@@ -69,10 +69,6 @@ def AIEVec_AddOp:
                             return idx==0 ? "xoffsets_hi" : "zoffsets_hi"; } 
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xsquare" : "zsquare"; }
-    // Get operand types
-    Type getLHSType() { return lhs().getType(); }
-    Type getRHSType() { return rhs().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -115,10 +111,6 @@ def AIEVec_SubOp:
                             return idx==0 ? "xoffsets_hi" : "zoffsets_hi"; } 
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xsquare" : "zsquare"; }
-    // Get operand types
-    Type getLHSType() { return lhs().getType(); }
-    Type getRHSType() { return rhs().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -190,11 +182,6 @@ def AIEVec_FMAOp :
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                         return idx==0 ? "xsquare" : "zsquare"; }
     StringRef getSubAttrName() { return "fmsub"; }
-    // Get operand types
-    Type getLHSType() { return lhs().getType(); }
-    Type getRHSType() { return rhs().getType(); }
-    Type getAccType() { return acc().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -259,10 +246,6 @@ def AIEVec_MulOp:
                             return idx==0 ? "xstep" : "zstep"; }
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xsquare" : "zsquare"; }
-    // Get operand types
-    Type getLHSType() { return lhs().getType(); }
-    Type getRHSType() { return rhs().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -284,10 +267,6 @@ def AIEVec_UPSOp:
     OpBuilder<(ins "Value":$source, "int8_t":$shift),
     [{build($_builder, $_state, source.getType(), source, shift);}]>
   ];
-  let extraClassDeclaration = [{
-    Type getSourceType() { return source().getType(); }
-    Type getResultType() { return result().getType(); }
-  }];
 }
 
 def AIEVec_SRSOp:
@@ -303,10 +282,6 @@ def AIEVec_SRSOp:
     accumulator data type to AIE vector data types. The adjustment in 
     precision is controlled by the shift parameter.
     `$result = srs($source, $shift)`
-  }];
-  let extraClassDeclaration = [{
-    Type getSourceType() { return source().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -337,10 +312,6 @@ def AIEVec_UPDOp:
     [{build($_builder, $_state, resultType, source, indices, 
                    offset, index, nullptr);}]>
   ];
-  let extraClassDeclaration = [{
-    Type getSourceType() { return source().getType(); }
-    Type getResultType() { return result().getType(); }
-  }];
 }
 
 def AIEVec_ConcatOp:
@@ -354,11 +325,6 @@ def AIEVec_ConcatOp:
     Xilinx-specific concat intrinsic. Concatenates two or more
     smaller vectors into a bigger vector.
     `$result = concat($sources[0], $sources[1], ...)`
-  }];
-  let extraClassDeclaration = [{
-    size_t getSourceSize() { return sources().size(); }
-    Type getSourceType() { return sources().getTypes().front(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -375,10 +341,6 @@ def AIEVec_ExtOp:
     the source vector, and transfers the data from those lanes to the 
     result. The lane selection is controlled by index.
     `$result = ext($source, $index)`
-  }];
-  let extraClassDeclaration = [{
-    Type getSourceType() { return source().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -437,10 +399,6 @@ def AIEVec_SelectOp:
                         return idx==0 ? "xoffsets_hi" : "yoffsets_hi"; } 
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                         return idx==0 ? "xsquare" : "ysquare"; }
-    // Get operand types
-    Type getXbuffType() { return xbuff().getType(); }
-    Type getYbuffType() { assert (ybuff()); return ybuff().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
@@ -456,10 +414,6 @@ def AIEVec_PackOp:
     into a vector of 8-bit values.
     `$result = pack($source)`
   }];
-  let extraClassDeclaration = [{
-    Type getSourceType() { return source().getType(); }
-    Type getResultType() { return result().getType(); }
-  }];
 }
 
 def AIEVec_UnpackOp:
@@ -473,10 +427,6 @@ def AIEVec_UnpackOp:
     Xilinx-specific unpack intrinsic. Unpack a vector of 8-bit values 
     into a vector of 16-bit values.
     `$result = unpack($source)`
-  }];
-  let extraClassDeclaration = [{
-    Type getSourceType() { return source().getType(); }
-    Type getResultType() { return result().getType(); }
   }];
 }
 
