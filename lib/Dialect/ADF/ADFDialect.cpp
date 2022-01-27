@@ -35,30 +35,6 @@ using namespace ADF;
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/ADF/ADFTypes.cpp.inc"
 
-mlir::Type ADFDialect::parseType(mlir::DialectAsmParser &parser) const {
-  StringRef typeTag;
-  if (failed(parser.parseKeyword(&typeTag)))
-    return Type();
-
-  {
-    Type genType;
-    auto parseResult =
-        generatedTypeParser(parser, typeTag, genType);
-    if (parseResult.hasValue())
-      return genType;
-  }
-
-  parser.emitError(parser.getNameLoc()) << "unknown type!";
-  return Type();
-}
-
-/// Print an instance of a type registered to the toy dialect.
-void ADFDialect::printType(mlir::Type type,
-                           mlir::DialectAsmPrinter &printer) const {
-  if (succeeded(generatedTypePrinter(type, printer)))
-    return;
-}
-
 Type InterfaceType::parse(AsmParser &parser) {
   Type oneType;
   if (parser.parseLess() || parser.parseType(oneType) || parser.parseGreater())

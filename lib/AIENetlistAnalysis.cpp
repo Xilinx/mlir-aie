@@ -244,7 +244,7 @@ uint64_t
 xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
   uint64_t memUsage = 0;
   for (auto buf : buffers[tileOp]) {
-    MemRefType t = buf.getType().cast<MemRefType>();
+    auto t = buf.getType().cast<ShapedType>();
     memUsage += t.getSizeInBits();
   }
   return memUsage / 8;
