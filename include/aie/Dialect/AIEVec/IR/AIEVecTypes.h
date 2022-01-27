@@ -11,9 +11,9 @@
 #ifndef AIE_DIALECT_AIEVEC_IR_AIEVECTYPES_H
 #define AIE_DIALECT_AIEVEC_IR_AIEVECTYPES_H
 
-#include "mlir/IR/Types.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/Types.h"
 
 //===----------------------------------------------------------------------===//
 // AIE Vector Dialect Types
@@ -33,7 +33,7 @@ public:
 };
 
 } // end namespace aievec
-} // end namespace xilinx 
+} // end namespace xilinx
 
 //===----------------------------------------------------------------------===//
 // Tablegen Type Declarations

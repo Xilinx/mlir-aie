@@ -11,9 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecOpsDialect.h.inc"
 #include "mlir/IR/DialectImplementation.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecOpsDialect.h.inc"
 
 using namespace mlir;
 using namespace xilinx::aievec;
@@ -65,7 +65,6 @@ bool AIEVecType::classof(Type type) {
   return llvm::isa<AIEVecDialect>(type.getDialect());
 }
 
-
 //===----------------------------------------------------------------------===//
 // AIE Accumulator Types
 //===----------------------------------------------------------------------===//
@@ -73,10 +72,8 @@ bool AIEVecType::classof(Type type) {
 mlir::Type AccType::parse(mlir::AsmParser &parser) {
   int32_t lanes;
   Type ty;
-  if (parser.parseLess() || 
-      parser.parseInteger(lanes) || 
-      parser.parseXInDimensionList() || 
-      parser.parseType(ty) || 
+  if (parser.parseLess() || parser.parseInteger(lanes) ||
+      parser.parseXInDimensionList() || parser.parseType(ty) ||
       parser.parseGreater()) {
     parser.emitError(parser.getNameLoc(), "failed to parse AccType");
     return Type();

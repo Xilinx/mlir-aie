@@ -23,7 +23,7 @@ class StandardOpsDialect;
 
 namespace arith {
 class ArithmeticDialect;
-} // end namespace arith 
+} // end namespace arith
 
 namespace memref {
 class MemRefDialect;
@@ -56,6 +56,6 @@ std::unique_ptr<Pass> createAIEVectorizePass();
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 
 } // end namespace aievec
-} // end namespace xilinx 
+} // end namespace xilinx
 
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES_H

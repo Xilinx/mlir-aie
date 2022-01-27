@@ -20,10 +20,10 @@ namespace aievec {
 
 class AIEVecDialect;
 // Translation from AIE vector code to C++
-void registerAIEVecToCppTranslation();   
+void registerAIEVecToCppTranslation();
 
 } // end namespace aievec
-} // end namespace xilinx 
+} // end namespace xilinx
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOpsDialect.h.inc"

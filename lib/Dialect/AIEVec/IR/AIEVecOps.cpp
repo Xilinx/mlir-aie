@@ -10,8 +10,8 @@
 // This file implements AIE vector op printing, pasing, and verification.
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "mlir/IR/AffineMap.h"
 
 using namespace mlir;
@@ -38,7 +38,7 @@ void AIEVecDialect::initialize() {
 
 // Print out UPD op.
 static void print(OpAsmPrinter &p, UPDOp upd) {
-  // Print the source memref 
+  // Print the source memref
   p << " " << upd.source() << "[" << upd.indices() << "]";
   // Now print the optional vector that links upd idx=1 with idx=0
   if (upd.vector())
@@ -50,7 +50,7 @@ static void print(OpAsmPrinter &p, UPDOp upd) {
   p.printOptionalAttrDict(upd->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << upd.source().getType() << ", " << upd.result().getType(); 
+  p << " : " << upd.source().getType() << ", " << upd.result().getType();
 }
 
 // Verify UPD op.
@@ -62,7 +62,7 @@ static LogicalResult verify(UPDOp upd) {
     return upd.emitError("requires memref type");
   if (!resultType)
     return upd.emitError("requires vector type");
-  if (upd.indices().empty()) 
+  if (upd.indices().empty())
     return upd.emitError("upd source cannot come from scalar value");
 
   // If this UPD op is linked to another UPD op, then verify that the linked
@@ -76,26 +76,24 @@ static LogicalResult verify(UPDOp upd) {
 }
 
 // Parse UPD op.
-static ParseResult parseUPDOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseUPDOp(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source, vector;
   SmallVector<OpAsmParser::OperandType, 8> indices;
 
-  // Parse the source, indices, and optional vector 
+  // Parse the source, indices, and optional vector
   if (parser.parseOperand(source) ||
       parser.parseOperandList(indices, OpAsmParser::Delimiter::Square))
     return failure();
   ParseResult hasVector = parser.parseOptionalComma();
-  if (hasVector.succeeded() && parser.parseOperand(vector)) 
+  if (hasVector.succeeded() && parser.parseOperand(vector))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   if (result.attributes.getAttrs().size() != 2)
@@ -105,29 +103,29 @@ static ParseResult parseUPDOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification 
-  auto memrefType = types[0].dyn_cast<MemRefType>(); 
+  // Some verification
+  auto memrefType = types[0].dyn_cast<MemRefType>();
   if (!memrefType)
     return parser.emitError(typesLoc, "requires memref type");
   VectorType vectorType = types[1].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
   auto indicesType = builder.getIndexType();
- 
-  // Populate the source and indices in result 
+
+  // Populate the source and indices in result
   if (parser.resolveOperand(source, memrefType, result.operands) ||
       parser.resolveOperands(indices, indicesType, result.operands))
     return failure();
-  // Populate optional vector in result 
-  if (hasVector.succeeded()) 
+  // Populate optional vector in result
+  if (hasVector.succeeded())
     if (parser.resolveOperand(vector, vectorType, result.operands))
-      return failure(); 
+      return failure();
 
   // Populate operand size attribute in result
   result.addAttribute(
-    UPDOp::getOperandSegmentSizeAttr(),
-    builder.getI32VectorAttr({1, static_cast<int32_t>(indices.size()),
-                              static_cast<int32_t>(hasVector.succeeded())}));
+      UPDOp::getOperandSegmentSizeAttr(),
+      builder.getI32VectorAttr({1, static_cast<int32_t>(indices.size()),
+                                static_cast<int32_t>(hasVector.succeeded())}));
 
   return parser.addTypeToList(vectorType, result.types);
 }
@@ -138,20 +136,21 @@ static ParseResult parseUPDOp(OpAsmParser &parser,
 
 // Print out SRS op.
 static void print(OpAsmPrinter &p, SRSOp srs) {
-  // Print the source accumulator 
+  // Print the source accumulator
   p << " " << srs.source();
 
   // Print the attributes
   p.printOptionalAttrDict(srs->getAttrs());
 
   // And now print the types
-  p << " : " << srs.source().getType() << ", " << srs.result().getType(); 
+  p << " : " << srs.source().getType() << ", " << srs.result().getType();
 }
 
 // Verify SRS op.
 static LogicalResult verify(SRSOp srs) {
   // Verify the types
-  aievec::AccType sourceType = srs.source().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType sourceType =
+      srs.source().getType().dyn_cast<aievec::AccType>();
   VectorType resultType = srs.result().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return srs.emitError("requires accumulator type");
@@ -182,20 +181,18 @@ static LogicalResult verify(SRSOp srs) {
 }
 
 // Parse SRS op.
-static ParseResult parseSRSOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseSRSOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source;
 
   // Parse the source accumulator
-  if (parser.parseOperand(source)) 
+  if (parser.parseOperand(source))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   if (result.attributes.getAttrs().size() != 1)
@@ -205,16 +202,16 @@ static ParseResult parseSRSOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification of types 
-  aievec::AccType accType = types[0].dyn_cast<aievec::AccType>(); 
+  // Some verification of types
+  aievec::AccType accType = types[0].dyn_cast<aievec::AccType>();
   if (!accType)
     return parser.emitError(typesLoc, "requires accumulator type");
   VectorType vectorType = types[1].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
- 
-  // Populate the source in result 
-  if (parser.resolveOperand(source, accType, result.operands)) 
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, accType, result.operands))
     return failure();
 
   return parser.addTypeToList(vectorType, result.types);
@@ -226,21 +223,22 @@ static ParseResult parseSRSOp(OpAsmParser &parser,
 
 // Print out UPS op.
 static void print(OpAsmPrinter &p, UPSOp ups) {
-  // Print the source vector 
+  // Print the source vector
   p << " " << ups.source();
 
   // Print the attributes
   p.printOptionalAttrDict(ups->getAttrs());
 
   // And now print the types
-  p << " : " << ups.source().getType() << ", " << ups.result().getType(); 
+  p << " : " << ups.source().getType() << ", " << ups.result().getType();
 }
 
 // Verify UPS op.
 static LogicalResult verify(UPSOp ups) {
   // Verify the types
   VectorType sourceType = ups.source().getType().dyn_cast<VectorType>();
-  aievec::AccType resultType = ups.result().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType resultType =
+      ups.result().getType().dyn_cast<aievec::AccType>();
   if (!sourceType)
     return ups.emitError("requires vector type");
   if (!resultType)
@@ -261,7 +259,7 @@ static LogicalResult verify(UPSOp ups) {
 
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return ups.emitError("the element type of result accumulator "
-             "must be wider than that of the source vector");
+                         "must be wider than that of the source vector");
   else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
     return ups.emitError("the element type of result accumulator must "
                          "be same as the source vector");
@@ -270,20 +268,18 @@ static LogicalResult verify(UPSOp ups) {
 }
 
 // Parse UPS op.
-static ParseResult parseUPSOp(OpAsmParser &parser,
-                               OperationState &result) {
+static ParseResult parseUPSOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source;
 
-  // Parse the source vector 
-  if (parser.parseOperand(source)) 
+  // Parse the source vector
+  if (parser.parseOperand(source))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   if (result.attributes.getAttrs().size() != 1)
@@ -293,16 +289,16 @@ static ParseResult parseUPSOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification 
+  // Some verification
   VectorType vectorType = types[0].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
-  aievec::AccType accType = types[1].dyn_cast<aievec::AccType>(); 
+  aievec::AccType accType = types[1].dyn_cast<aievec::AccType>();
   if (!accType)
     return parser.emitError(typesLoc, "requires accumulator type");
- 
-  // Populate the source in result 
-  if (parser.resolveOperand(source, vectorType, result.operands)) 
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, vectorType, result.operands))
     return failure();
 
   return parser.addTypeToList(accType, result.types);
@@ -323,7 +319,7 @@ static void print(OpAsmPrinter &p, aievec::FMAOp fma) {
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx=0; idx<2; ++idx) {
+  for (int idx = 0; idx < 2; ++idx) {
     if (fma.getStart(idx).empty())
       elidedAttrs.push_back(fma.getStartAttrName(idx));
     if (fma.getOffset(idx).empty())
@@ -349,7 +345,8 @@ static void print(OpAsmPrinter &p, aievec::FMAOp fma) {
 static LogicalResult verify(aievec::FMAOp fma) {
   // Verify the types
   aievec::AccType accType = fma.acc().getType().dyn_cast<aievec::AccType>();
-  aievec::AccType resultType = fma.result().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType resultType =
+      fma.result().getType().dyn_cast<aievec::AccType>();
   VectorType lhsType = fma.lhs().getType().dyn_cast<VectorType>();
   VectorType rhsType = fma.rhs().getType().dyn_cast<VectorType>();
 
@@ -365,7 +362,7 @@ static LogicalResult verify(aievec::FMAOp fma) {
   Type rtype = rhsType.getElementType();
   Type atype = resultType.getValueType();
   unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
-  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth(); 
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
@@ -375,11 +372,11 @@ static LogicalResult verify(aievec::FMAOp fma) {
 
   // If this is not a simple scheme, perform complex checks
   if (accLanes != rhsLanes || accLanes != lhsLanes) {
-    if (rhsLanes != 256/rtypeWidth)
+    if (rhsLanes != 256 / rtypeWidth)
       return fma.emitError("incorrect rhs operand vector lanes");
-    if (lhsLanes < 2*rhsLanes)
+    if (lhsLanes < 2 * rhsLanes)
       return fma.emitError("The number of lanes in lhs operand "
-                        "must be at least twice that of rhs operand");
+                           "must be at least twice that of rhs operand");
     if (accLanes > rhsLanes)
       return fma.emitError("The number of lanes in accumulator "
                            "must be less than that of rhs operand");
@@ -393,55 +390,50 @@ static LogicalResult verify(aievec::FMAOp fma) {
   if (atype.isa<IntegerType>()) {
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return fma.emitError("the element type of accumulator must have "
-                          "wider width than that of the operand vectors");
-  }
-  else if (atype.isa<FloatType>()) {
+                           "wider width than that of the operand vectors");
+  } else if (atype.isa<FloatType>()) {
     if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
       return fma.emitError("the element type of accumulator must be "
-                          "same width as the operand vectors");
+                           "same width as the operand vectors");
   }
   return success();
 }
 
 // Parse FMA op.
-static ParseResult parseFMAOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseFMAOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType lhs, rhs, acc;
 
   // Parse the lhs, rhs, and accumulator
-  if (parser.parseOperand(lhs) ||
-      parser.parseComma() ||
-      parser.parseOperand(rhs) ||
-      parser.parseComma() ||
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs) || parser.parseComma() ||
       parser.parseOperand(acc))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   // Assert that there are three types: lhs, rhs, and acc
   if (types.size() != 3)
     return parser.emitError(typesLoc, "requires three types");
 
-  // Some verification 
+  // Some verification
   VectorType lhsType = types[0].dyn_cast<VectorType>();
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
   VectorType rhsType = types[1].dyn_cast<VectorType>();
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  aievec::AccType accType = types[2].dyn_cast<aievec::AccType>(); 
+  aievec::AccType accType = types[2].dyn_cast<aievec::AccType>();
   if (!accType)
     return parser.emitError(typesLoc, "requires accumulator type");
 
   // Populate the lhs, rhs, and accumulator in the result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands) || 
+      parser.resolveOperand(rhs, rhsType, result.operands) ||
       parser.resolveOperand(acc, accType, result.operands))
     return failure();
 
@@ -449,7 +441,7 @@ static ParseResult parseFMAOp(OpAsmParser &parser,
 }
 
 //===----------------------------------------------------------------------===//
-// MulOp 
+// MulOp
 //===----------------------------------------------------------------------===//
 
 // Print out Mul op.
@@ -461,7 +453,7 @@ static void print(OpAsmPrinter &p, aievec::MulOp mul) {
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx=0; idx<2; ++idx) {
+  for (int idx = 0; idx < 2; ++idx) {
     if (mul.getStart(idx).empty())
       elidedAttrs.push_back(mul.getStartAttrName(idx));
     if (mul.getOffset(idx).empty())
@@ -483,7 +475,8 @@ static void print(OpAsmPrinter &p, aievec::MulOp mul) {
 // Verify Mul op.
 static LogicalResult verify(aievec::MulOp mul) {
   // Verify the types
-  aievec::AccType resultType = mul.result().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType resultType =
+      mul.result().getType().dyn_cast<aievec::AccType>();
   VectorType lhsType = mul.lhs().getType().dyn_cast<VectorType>();
   VectorType rhsType = mul.rhs().getType().dyn_cast<VectorType>();
 
@@ -507,11 +500,11 @@ static LogicalResult verify(aievec::MulOp mul) {
 
   // If this is not a simple scheme, perform complex checks
   if (accLanes != rhsLanes || accLanes != lhsLanes) {
-    if (rhsLanes != 256/rtypeWidth)
+    if (rhsLanes != 256 / rtypeWidth)
       return mul.emitError("incorrect rhs operand vector lanes");
-    if (lhsLanes < 2*rhsLanes)
+    if (lhsLanes < 2 * rhsLanes)
       return mul.emitError("The number of lanes in lhs operand "
-                        "must be at least twice that of rhs operand");
+                           "must be at least twice that of rhs operand");
     if (accLanes > rhsLanes)
       return mul.emitError("The number of lanes in accumulator "
                            "must be less than that of rhs operand");
@@ -526,61 +519,57 @@ static LogicalResult verify(aievec::MulOp mul) {
   if (atype.isa<IntegerType>()) {
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return mul.emitError("the element type of accumulator must have "
-                          "wider width than that of the operand vectors");
-  }
-  else if (atype.isa<FloatType>()) {
+                           "wider width than that of the operand vectors");
+  } else if (atype.isa<FloatType>()) {
     if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
       return mul.emitError("the element type of accumulator must be "
-                          "same width as the operand vectors");
+                           "same width as the operand vectors");
   }
 
   return success();
 }
 
 // Parse Mul op.
-static ParseResult parseMulOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseMulOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType lhs, rhs;
 
   // Parse the lhs and rhs
-  if (parser.parseOperand(lhs) ||
-      parser.parseComma() ||
-      parser.parseOperand(rhs)) 
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   // Assert that there are three types: lhs, rhs, and acc
   if (types.size() != 3)
     return parser.emitError(typesLoc, "requires three types");
 
-  // Some verification 
+  // Some verification
   VectorType lhsType = types[0].dyn_cast<VectorType>();
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
   VectorType rhsType = types[1].dyn_cast<VectorType>();
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  aievec::AccType accType = types[2].dyn_cast<aievec::AccType>(); 
+  aievec::AccType accType = types[2].dyn_cast<aievec::AccType>();
   if (!accType)
     return parser.emitError(typesLoc, "requires accumulator type");
 
   // Populate the lhs, rhs, and accumulator in the result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands)) 
+      parser.resolveOperand(rhs, rhsType, result.operands))
     return failure();
 
   return parser.addTypeToList(accType, result.types);
 }
 
 //===----------------------------------------------------------------------===//
-// AddOp 
+// AddOp
 //===----------------------------------------------------------------------===//
 
 // Print out Add op.
@@ -592,7 +581,7 @@ static void print(OpAsmPrinter &p, aievec::AddOp add) {
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx=0; idx<2; ++idx) {
+  for (int idx = 0; idx < 2; ++idx) {
     if (add.getStart(idx).empty())
       elidedAttrs.push_back(add.getStartAttrName(idx));
     if (add.getOffset(idx).empty())
@@ -620,57 +609,53 @@ static LogicalResult verify(aievec::AddOp add) {
     return add.emitError("requires vector type");
 
   // All the vector types must match
-  if (lhsType != rhsType || 
-      rhsType != resultType)
+  if (lhsType != rhsType || rhsType != resultType)
     return add.emitError("all vectors must be of same type");
 
   return success();
 }
 
 // Parse Add op.
-static ParseResult parseAddOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseAddOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType lhs, rhs;
 
   // Parse the lhs and rhs
-  if (parser.parseOperand(lhs) ||
-      parser.parseComma() ||
-      parser.parseOperand(rhs)) 
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  // Assert that there are three types: lhs, rhs, and result 
+  // Assert that there are three types: lhs, rhs, and result
   if (types.size() != 3)
     return parser.emitError(typesLoc, "requires three types");
 
-  // Some verification 
+  // Some verification
   VectorType lhsType = types[0].dyn_cast<VectorType>();
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
   VectorType rhsType = types[1].dyn_cast<VectorType>();
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType resultType = types[2].dyn_cast<VectorType>(); 
+  VectorType resultType = types[2].dyn_cast<VectorType>();
   if (!resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Populate the lhs, rhs, and accumulator in the result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands)) 
+      parser.resolveOperand(rhs, rhsType, result.operands))
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
 }
 
 //===----------------------------------------------------------------------===//
-// SubOp 
+// SubOp
 //===----------------------------------------------------------------------===//
 
 // Print out Sub op.
@@ -682,7 +667,7 @@ static void print(OpAsmPrinter &p, aievec::SubOp sub) {
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx=0; idx<2; ++idx) {
+  for (int idx = 0; idx < 2; ++idx) {
     if (sub.getStart(idx).empty())
       elidedAttrs.push_back(sub.getStartAttrName(idx));
     if (sub.getOffset(idx).empty())
@@ -710,57 +695,53 @@ static LogicalResult verify(aievec::SubOp sub) {
     return sub.emitError("requires vector type");
 
   // All the vector types must match
-  if (lhsType != rhsType || 
-      rhsType != resultType)
+  if (lhsType != rhsType || rhsType != resultType)
     return sub.emitError("all vectors must be of same type");
 
   return success();
 }
 
 // Parse Sub op.
-static ParseResult parseSubOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseSubOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType lhs, rhs;
 
   // Parse the lhs and rhs
-  if (parser.parseOperand(lhs) ||
-      parser.parseComma() ||
-      parser.parseOperand(rhs)) 
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  // Assert that there are three types: lhs, rhs, and result 
+  // Assert that there are three types: lhs, rhs, and result
   if (types.size() != 3)
     return parser.emitError(typesLoc, "requires three types");
 
-  // Some verification 
+  // Some verification
   VectorType lhsType = types[0].dyn_cast<VectorType>();
   if (!lhsType)
     return parser.emitError(typesLoc, "requires vector type");
   VectorType rhsType = types[1].dyn_cast<VectorType>();
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType resultType = types[2].dyn_cast<VectorType>(); 
+  VectorType resultType = types[2].dyn_cast<VectorType>();
   if (!resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Populate the lhs, rhs, and accumulator in the result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
-      parser.resolveOperand(rhs, rhsType, result.operands)) 
+      parser.resolveOperand(rhs, rhsType, result.operands))
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
 }
 
 //===----------------------------------------------------------------------===//
-// ConcatOp 
+// ConcatOp
 //===----------------------------------------------------------------------===//
 
 // Print out Concat op.
@@ -773,7 +754,8 @@ static void print(OpAsmPrinter &p, ConcatOp concat) {
   p.printOptionalAttrDict(concat->getAttrs());
 
   // And now print the types
-  p << " : " << concat.sources().getTypes().front() << ", " << concat.result().getType();
+  p << " : " << concat.sources().getTypes().front() << ", "
+    << concat.result().getType();
 }
 
 // Verify Concat op.
@@ -783,20 +765,21 @@ static LogicalResult verify(ConcatOp concat) {
     return concat.emitError("Must concatenate at least two vectors");
 
   // Verify the types
-  VectorType sourceType = concat.sources().getTypes().front().dyn_cast<VectorType>();
+  VectorType sourceType =
+      concat.sources().getTypes().front().dyn_cast<VectorType>();
   VectorType resultType = concat.result().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return concat.emitError("requires vector type");
 
-  SmallVector<Value, 8> sources(concat.sources().begin(), 
+  SmallVector<Value, 8> sources(concat.sources().begin(),
                                 concat.sources().end());
   // All the sources must have the same type
   for (auto source : sources) {
-     VectorType type = source.getType().dyn_cast<VectorType>();
-     if (!type)
-       return concat.emitError("requires vector type");
-     if (type != sourceType)
-       return concat.emitError("All sources must have same type");
+    VectorType type = source.getType().dyn_cast<VectorType>();
+    if (!type)
+      return concat.emitError("requires vector type");
+    if (type != sourceType)
+      return concat.emitError("All sources must have same type");
   }
 
   // The lanes in concatenated type must be the sum of lanes of source vector
@@ -813,8 +796,7 @@ static LogicalResult verify(ConcatOp concat) {
 }
 
 // Parse Concat op.
-static ParseResult parseConcatOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseConcatOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   SmallVector<OpAsmParser::OperandType, 8> sources;
@@ -825,8 +807,7 @@ static ParseResult parseConcatOp(OpAsmParser &parser,
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   // Currently there are no attributes in concat op
@@ -837,13 +818,13 @@ static ParseResult parseConcatOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification 
+  // Some verification
   VectorType sourceType = types[0].dyn_cast<VectorType>();
   VectorType resultType = types[1].dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
-  // Populate the source vectors in result 
+  // Populate the source vectors in result
   if (parser.resolveOperands(sources, sourceType, result.operands))
     return failure();
 
@@ -856,14 +837,14 @@ static ParseResult parseConcatOp(OpAsmParser &parser,
 
 // Print out Ext op.
 static void print(OpAsmPrinter &p, ExtOp ext) {
-  // Print the source vector 
+  // Print the source vector
   p << " " << ext.source();
 
   // Print the attributes
   p.printOptionalAttrDict(ext->getAttrs());
 
   // And now print the types
-  p << " : " << ext.source().getType() << ", " << ext.result().getType(); 
+  p << " : " << ext.source().getType() << ", " << ext.result().getType();
 }
 
 // Verify Ext op.
@@ -878,16 +859,16 @@ static LogicalResult verify(ExtOp ext) {
   unsigned sourceLanes = getVectorLaneSize(sourceType);
   unsigned resultLanes = getVectorLaneSize(resultType);
   // Source lanes must be greater than result lanes
-  if (sourceLanes/resultLanes <= 1) 
+  if (sourceLanes / resultLanes <= 1)
     return ext.emitError("lanes in source vector must be at least "
                          "twice that of result vector");
   // Source lanes must be a multiple of result lanes
-  if (sourceLanes%resultLanes != 0) 
+  if (sourceLanes % resultLanes != 0)
     return ext.emitError("lanes in result vector must be a multiple "
                          "of source vector lanes");
 
   // Verify validity of index
-  unsigned factor = sourceLanes/resultLanes;
+  unsigned factor = sourceLanes / resultLanes;
   if (ext.index() >= factor)
     return ext.emitError("index out of bounds");
 
@@ -901,20 +882,18 @@ static LogicalResult verify(ExtOp ext) {
 }
 
 // Parse Ext op.
-static ParseResult parseExtOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseExtOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source;
 
-  // Parse the source vector 
-  if (parser.parseOperand(source)) 
+  // Parse the source vector
+  if (parser.parseOperand(source))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   if (result.attributes.getAttrs().size() != 1)
@@ -924,13 +903,13 @@ static ParseResult parseExtOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification 
+  // Some verification
   VectorType sourceType = types[0].dyn_cast<VectorType>();
   VectorType resultType = types[1].dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
- 
-  // Populate the source in result 
+
+  // Populate the source in result
   if (parser.resolveOperand(source, sourceType, result.operands))
     return failure();
 
@@ -951,7 +930,7 @@ static void print(OpAsmPrinter &p, aievec::SelectOp sop) {
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
-  for (int idx=0; idx<2; ++idx) {
+  for (int idx = 0; idx < 2; ++idx) {
     if (sop.getStart(idx).empty())
       elidedAttrs.push_back(sop.getStartAttrName(idx));
     if (sop.getOffset(idx).empty())
@@ -975,7 +954,7 @@ static LogicalResult verify(aievec::SelectOp sop) {
   // Verify the types
   VectorType resultType = sop.result().getType().dyn_cast<VectorType>();
   VectorType xbuffType = sop.xbuff().getType().dyn_cast<VectorType>();
-  
+
   if (!resultType || !xbuffType)
     return sop.emitError("requires vector type");
 
@@ -997,13 +976,12 @@ static LogicalResult verify(aievec::SelectOp sop) {
   unsigned resultLanes = getVectorLaneSize(resultType);
   if (sourceLanes < resultLanes)
     return sop.emitError("xbuff cannot be smaller than result");
-  
+
   return success();
 }
 
 // Parse select op.
-static ParseResult parseSelectOp(OpAsmParser &parser,
-                                 OperationState &result) {
+static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::OperandType xbuff, ybuff;
@@ -1014,20 +992,19 @@ static ParseResult parseSelectOp(OpAsmParser &parser,
 
   // Parse optional ybuff
   ParseResult hasYbuff = parser.parseOptionalComma();
-  if (hasYbuff.succeeded() && parser.parseOperand(ybuff)) 
+  if (hasYbuff.succeeded() && parser.parseOperand(ybuff))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   // Assert that there is at least two types
   if (types.size() < 2)
     return parser.emitError(typesLoc, "requires at least two type");
 
-  // Some verification 
+  // Some verification
   VectorType xbuffType = types[0].dyn_cast<VectorType>();
   if (!xbuffType)
     return parser.emitError(typesLoc, "requires vector type");
@@ -1038,7 +1015,7 @@ static ParseResult parseSelectOp(OpAsmParser &parser,
       return parser.emitError(typesLoc, "requires vector type");
   }
   VectorType resultType = types.back().dyn_cast<VectorType>();
-   if (!resultType)
+  if (!resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Populate the xbuff
@@ -1047,25 +1024,25 @@ static ParseResult parseSelectOp(OpAsmParser &parser,
   // Populate optional ybuff in result
   if (hasYbuff.succeeded())
     if (parser.resolveOperand(ybuff, ybuffType, result.operands))
-      return failure(); 
+      return failure();
 
   return parser.addTypeToList(resultType, result.types);
 }
 
 //===----------------------------------------------------------------------===//
-// PackOp 
+// PackOp
 //===----------------------------------------------------------------------===//
 
 // Print out Pack op.
 static void print(OpAsmPrinter &p, PackOp pack) {
-  // Print the source accumulator 
+  // Print the source accumulator
   p << " " << pack.source();
 
   // Print the attributes
   p.printOptionalAttrDict(pack->getAttrs());
 
   // And now print the types
-  p << " : " << pack.source().getType() << ", " << pack.result().getType(); 
+  p << " : " << pack.source().getType() << ", " << pack.result().getType();
 }
 
 // Verify Pack op.
@@ -1081,7 +1058,7 @@ static LogicalResult verify(PackOp pack) {
   unsigned resultLanes = getVectorLaneSize(resultType);
   if (sourceLanes != resultLanes)
     return pack.emitError("The number of lanes in input and "
-                         "output vector must match");
+                          "output vector must match");
 
   // The datatype of source must be i16
   Type stype = sourceType.getElementType();
@@ -1099,20 +1076,18 @@ static LogicalResult verify(PackOp pack) {
 }
 
 // Parse Pack op.
-static ParseResult parsePackOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parsePackOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source;
 
-  // Parse the source vector 
-  if (parser.parseOperand(source)) 
+  // Parse the source vector
+  if (parser.parseOperand(source))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   // Currently there are no attributes in pack op
@@ -1123,26 +1098,26 @@ static ParseResult parsePackOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification 
+  // Some verification
   VectorType sourceType = types[0].dyn_cast<VectorType>();
   VectorType resultType = types[1].dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
- 
-  // Populate the source in result 
-  if (parser.resolveOperand(source, sourceType, result.operands)) 
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, sourceType, result.operands))
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
 }
 
 //===----------------------------------------------------------------------===//
-// UnpackOp 
+// UnpackOp
 //===----------------------------------------------------------------------===//
 
 // Print out Unpack op.
 static void print(OpAsmPrinter &p, UnpackOp unpack) {
-  // Print the source accumulator 
+  // Print the source accumulator
   p << " " << unpack.source();
 
   // Print the attributes
@@ -1165,7 +1140,7 @@ static LogicalResult verify(UnpackOp unpack) {
   unsigned resultLanes = getVectorLaneSize(resultType);
   if (sourceLanes != resultLanes)
     return unpack.emitError("The number of lanes in input and "
-                         "output vector must match");
+                            "output vector must match");
 
   // The datatype of source must be i8
   Type stype = sourceType.getElementType();
@@ -1183,20 +1158,18 @@ static LogicalResult verify(UnpackOp unpack) {
 }
 
 // Parse Unpack op.
-static ParseResult parseUnpackOp(OpAsmParser &parser,
-                              OperationState &result) {
+static ParseResult parseUnpackOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::OperandType source;
 
-  // Parse the source vector 
-  if (parser.parseOperand(source)) 
+  // Parse the source vector
+  if (parser.parseOperand(source))
     return failure();
 
   // Parse all the attributes and types
   if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || 
-      parser.parseColonTypeList(types))
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
   // Currently there are no attributes in unpack op
@@ -1207,14 +1180,14 @@ static ParseResult parseUnpackOp(OpAsmParser &parser,
   if (types.size() != 2)
     return parser.emitError(typesLoc, "requires two types");
 
-  // Some verification 
+  // Some verification
   VectorType sourceType = types[0].dyn_cast<VectorType>();
   VectorType resultType = types[1].dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
- 
-  // Populate the source in result 
-  if (parser.resolveOperand(source, sourceType, result.operands)) 
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, sourceType, result.operands))
     return failure();
 
   return parser.addTypeToList(resultType, result.types);

@@ -36,7 +36,6 @@ int main(int argc, char **argv) {
   aie::registerAIEPasses();
   xilinx::aievec::registerAIEVecPasses();
 
-
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert<scf::SCFDialect>();

@@ -24,10 +24,10 @@ namespace xilinx {
 namespace aievec {
 using namespace mlir;
 
-/// Translates the AIE vector dialect MLIR to C++ code. 
+/// Translates the AIE vector dialect MLIR to C++ code.
 LogicalResult translateAIEVecToCpp(Operation *op, raw_ostream &os);
 
-} // namespace aievec 
+} // namespace aievec
 } // namespace xilinx
 
 #endif // TARGET_TRANSLATEAIEVECTOCPP_H

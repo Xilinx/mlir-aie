@@ -34,8 +34,7 @@ void registerAIEVecToCppTranslation() {
   TranslateFromMLIRRegistration reg(
       "aievec-to-cpp",
       [](ModuleOp module, raw_ostream &output) {
-        return aievec::translateAIEVecToCpp(
-            module, output);
+        return aievec::translateAIEVecToCpp(module, output);
       },
       [](DialectRegistry &registry) {
         // clang-format off
@@ -52,4 +51,4 @@ void registerAIEVecToCppTranslation() {
 }
 
 } // namespace aievec
-} // namespace xilinx 
+} // namespace xilinx
