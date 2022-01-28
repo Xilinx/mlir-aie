@@ -438,7 +438,7 @@ struct AIERouteFlowsPass : public AIERouteFlowsBase<AIERouteFlowsPass> {
     target.addLegalOp<ShimMuxOp>();
     target.addLegalOp<EndOp>();
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<RouteFlows>(m.getContext(), m, analysis);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

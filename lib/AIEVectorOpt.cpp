@@ -43,7 +43,7 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
     // that can be converted to load + broadcast
     target.addDynamicallyLegalOp<vector::TransferReadOp>(
         [](vector::TransferReadOp op) { return false; });
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     vector::populateVectorTransferLoweringPatterns(patterns);
     vector::populateVectorMaskMaterializationPatterns(patterns, true);
 

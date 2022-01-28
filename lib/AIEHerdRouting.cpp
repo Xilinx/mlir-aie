@@ -348,7 +348,7 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
     ConversionTarget target(getContext());
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<AIEOpRemoval<PlaceOp>, AIEOpRemoval<RouteOp>>(
         m.getContext(), m);
 

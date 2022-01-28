@@ -232,7 +232,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     // }
 
     ConversionTarget target(getContext());
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();

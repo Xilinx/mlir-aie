@@ -526,7 +526,7 @@ struct AIEPathfinderPass
     target.addLegalOp<ShimMuxOp>();
     target.addLegalOp<EndOp>();
 
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     patterns.insert<ConvertFlowsToInterconnect>(m.getContext(), m, analyzer);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

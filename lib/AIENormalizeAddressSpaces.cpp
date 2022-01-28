@@ -46,7 +46,7 @@ struct AIENormalizeAddressSpacesPass
     target.addDynamicallyLegalOp<memref::GlobalOp>([](memref::GlobalOp op) {
       return op.type().cast<MemRefType>().getMemorySpace() == 0;
     });
-    OwningRewritePatternList patterns(&getContext());
+    RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
