@@ -61,6 +61,8 @@ module @test_lock_shimdma {
 
   %t60 = AIE.tile(6, 0)
   %c60 = AIE.core(%t60) {
+    // TODO: This represents the token uses on the host CPU. A representation of
+    // the host CPU in MLIR might be a better place for holding this.
     AIE.useToken @token0(Acquire, 2)
     AIE.useToken @token0(Release, 3)
     AIE.end
