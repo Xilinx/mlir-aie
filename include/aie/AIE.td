@@ -1105,6 +1105,7 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
         I32Attr:$value,
         LockAction:$action
   );
+  let verifier = [{ return ::verify(*this); }];
   let assemblyFormat = [{ $tokenName `(` $action `,` $value `)` attr-dict }];
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }

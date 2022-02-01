@@ -338,6 +338,16 @@ static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
   }
   return success();
 }
+
+static LogicalResult verify(xilinx::AIE::UseTokenOp op) {
+  auto parentOp = op->getParentOp();
+  if (isa<FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
+      isa<xilinx::AIE::MemOp>(parentOp) ||
+      isa<xilinx::AIE::ShimDMAOp>(parentOp))
+    return success();
+  return failure();
+}
+
 int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   switch (bundle) {
   case WireBundle::DMA:
