@@ -11,8 +11,9 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for X
 [Github sources](https://github.com/Xilinx/mlir-aie)
 
 Generated code documentation
-- [AIE Dialect](AIEDialect.md)
-- [AIE Passes](AIEPasses.md)
+- [AIE Dialect](AIEDialect.md) [AIE Passes](AIEPasses.md)
+- [AIEVec Dialect](AIEVecDialect.md) [AIEVec Passes](AIEVecPasses.md)
+- [ADF Dialect](ADFDialect.md) [ADF Passes](ADFPasses.md)
 
 Tutorials
 - [AIE Design Patterns](AIEDesignPatterns)
