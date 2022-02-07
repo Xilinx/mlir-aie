@@ -237,6 +237,7 @@ SECTIONS
             if (auto tile = getMemEast(srcCoord))
               doBuffer(tile, 0x00038000);
             output << "  .bss : { *(.bss) } > data\n";
+            output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
             output << "}\n";
             if (auto coreOp = tile.getCoreOp()) {
               if (auto fileAttr =

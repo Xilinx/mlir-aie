@@ -41,14 +41,7 @@ main(int argc, char *argv[])
 
     int errors = 0;
 
-    printf("Acquire input buffer lock first.\n");
-    mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
-    mlir_aie_write_buffer_a(_xaie, 0, 1);
-    mlir_aie_write_buffer_a(_xaie, 1, 1);
-    mlir_aie_write_buffer_a(_xaie, 2, 2);
-    mlir_aie_write_buffer_a(_xaie, 3, 3);
-    mlir_aie_write_buffer_a(_xaie, 4, 4);
-    mlir_aie_write_buffer_a(_xaie, 5, 8);
+    mlir_aie_write_buffer_a(_xaie, 3, 7);
 
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
