@@ -70,6 +70,7 @@ struct aie_libxaie_ctx_t {
     XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
     XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
   */
+  XAie_MemInst **buffers;
 };
 
 /*
@@ -99,43 +100,7 @@ struct aie_libxaie_ctx_t {
   XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
   XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
 };
-#endif
 
-aie_libxaie_ctx_t *mlir_aie_init_libxaie();
-void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *);
-
-int mlir_aie_init_device(aie_libxaie_ctx_t *ctx);
-
-int mlir_aie_acquire_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
-                          int lockval, int timeout);
-int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
-                          int lockval, int timeout);
-u32 mlir_aie_read32(aie_libxaie_ctx_t *ctx, u64 addr);
-void mlir_aie_write32(aie_libxaie_ctx_t *ctx, u64 addr, u32 val);
-u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
-                              u64 addr);
-void mlir_aie_data_mem_wr_word(aie_libxaie_ctx_t *ctx, int col, int row,
-                               u64 addr, u32 data);
-
-u64 mlir_aie_get_tile_addr(aie_libxaie_ctx_t *ctx, int col, int row);
-
-/// Dump the contents of the memory associated with the given tile.
-void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row);
-
-/// Clear the contents of the memory associated with the given tile.
-void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row);
-
-/// Print the status of a dma represented by the given tile.
-void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row);
-
-/// Print the status of a core represented by the given tile.
-void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row);
-
-/// Zero out the program and configuration memory of the tile.
-void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row);
-
-/// Zero out the configuration memory of the shim tile.
-void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row);
 
 // class for using events and PF cpounters
 class EventMonitor {
@@ -197,5 +162,52 @@ private:
 
 void computeStats(u32 performance_counter[], int n);
 
+#endif
+
+aie_libxaie_ctx_t *mlir_aie_init_libxaie();
+void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *);
+
+int mlir_aie_init_device(aie_libxaie_ctx_t *ctx);
+
+int mlir_aie_acquire_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
+                          int lockval, int timeout);
+int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
+                          int lockval, int timeout);
+u32 mlir_aie_read32(aie_libxaie_ctx_t *ctx, u64 addr);
+void mlir_aie_write32(aie_libxaie_ctx_t *ctx, u64 addr, u32 val);
+u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
+                              u64 addr);
+void mlir_aie_data_mem_wr_word(aie_libxaie_ctx_t *ctx, int col, int row,
+                               u64 addr, u32 data);
+
+u64 mlir_aie_get_tile_addr(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Dump the contents of the memory associated with the given tile.
+void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Clear the contents of the memory associated with the given tile.
+void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Print the status of a dma represented by the given tile.
+void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Print the status of a shimdma represented by the given location (row = 0).
+void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Print the status of a core represented by the given tile.
+void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Zero out the program and configuration memory of the tile.
+void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row);
+
+/// Zero out the configuration memory of the shim tile.
+void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row);
+
+void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs);
+int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr, int size);
+void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx);
+void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx);
+
 } // extern "C"
+
 #endif

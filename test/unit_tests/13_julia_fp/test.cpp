@@ -25,6 +25,7 @@
 #define MLIR_STACK_OFFSET 4096
 
 #include "aie_inc.cpp"
+#include "golden.h"
 
 int
 main(int argc, char *argv[])
@@ -45,13 +46,15 @@ main(int argc, char *argv[])
 
     printf("Acquire lock first.\n");
     mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
-    mlir_aie_write_buffer_a(_xaie, 3, 7);
+    mlir_aie_write_buffer_a(_xaie, 0, 20480);
+    mlir_aie_write_buffer_a(_xaie, 1, 20480);
 
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
 
-    mlir_aie_check("Before release lock:", mlir_aie_read_buffer_b(_xaie, 5), 0,
-                   errors);
+    //    mlir_aie_check("Before release lock:", mlir_aie_read_buffer_b(_xaie,
+    //    5), 0,
+    //                   errors);
 
     printf("Release lock.\n");
     mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
@@ -63,11 +66,14 @@ main(int argc, char *argv[])
     }
     printf("It took %d tries.\n", tries);
 
-    mlir_aie_check("After release lock:", mlir_aie_read_buffer_b(_xaie, 5), 35,
-                   errors);
+    mlir_aie_check("After release lock:", mlir_aie_read_buffer_a(_xaie, 0),
+                   20480, errors);
+    mlir_aie_check("After release lock:", mlir_aie_read_buffer_a(_xaie, 1),
+                   20480, errors);
 
-    for(int i = 0; i < 8; i++) {
-      printf("%d %d\n", i, mlir_aie_read_buffer_a(_xaie, i));
+    for (int i = 0; i < 4096; i++) {
+      mlir_aie_check("After release lock:", mlir_aie_read_buffer_b(_xaie, i),
+                     golden[i], errors);
     }
 
     int res = 0;

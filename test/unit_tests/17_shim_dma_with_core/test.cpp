@@ -91,21 +91,37 @@ main(int argc, char *argv[])
     mlir_aie_print_tile_status(_xaie, 7, 3);
 
     int errors = 0;
+    /*
+        uint32_t *ddr_ptr_in, *ddr_ptr_out;
+        #define DDR_ADDR_IN  (0x4000+0x020100000000LL)
+        #define DDR_ADDR_OUT (0x6000+0x020100000000LL)
+        #define DMA_COUNT 512
 
-    uint32_t *ddr_ptr_in, *ddr_ptr_out;
-    #define DDR_ADDR_IN  (0x4000+0x020100000000LL)
-    #define DDR_ADDR_OUT (0x6000+0x020100000000LL)
-    #define DMA_COUNT 512
-
-    int fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (fd != -1) {
-        ddr_ptr_in  = (uint32_t *)mmap(NULL, 0x800, PROT_READ|PROT_WRITE, MAP_SHARED, fd, DDR_ADDR_IN);
-        ddr_ptr_out = (uint32_t *)mmap(NULL, 0x800, PROT_READ|PROT_WRITE, MAP_SHARED, fd, DDR_ADDR_OUT);
-        for (int i=0; i<DMA_COUNT; i++) {
-            ddr_ptr_in[i] = i;
-            ddr_ptr_out[i] = 0;
+        int fd = open("/dev/mem", O_RDWR | O_SYNC);
+        if (fd != -1) {
+            ddr_ptr_in  = (uint32_t *)mmap(NULL, 0x800, PROT_READ|PROT_WRITE,
+       MAP_SHARED, fd, DDR_ADDR_IN); ddr_ptr_out = (uint32_t *)mmap(NULL, 0x800,
+       PROT_READ|PROT_WRITE, MAP_SHARED, fd, DDR_ADDR_OUT); for (int i=0;
+       i<DMA_COUNT; i++) { ddr_ptr_in[i] = i; ddr_ptr_out[i] = 0;
+            }
         }
+    */
+    mlir_aie_init_mems(_xaie, 2);
+#define DMA_COUNT 512
+    int *ddr_ptr_in =
+        mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+    int *ddr_ptr_out =
+        mlir_aie_mem_alloc(_xaie, 1, 0x6000 + 0x020100000000LL, DMA_COUNT);
+    for (int i = 0; i < DMA_COUNT; i++) {
+      *(ddr_ptr_in + i) = i;
+      *(ddr_ptr_out + i) = 0;
     }
+    mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+    mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+
+    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
+    mlir_aie_external_set_addr_myBuffer_70_1((u64)ddr_ptr_out);
+    mlir_aie_configure_shimdma_70(_xaie);
 
     mlir_aie_clear_tile_memory(_xaie, 7, 3);
 
@@ -148,6 +164,7 @@ main(int argc, char *argv[])
     usleep(sleep_u);
     printf("after core start\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
+
     u32 locks70;
     locks70 = mlir_aie_read32(_xaie,
                               mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
@@ -169,6 +186,8 @@ main(int argc, char *argv[])
     mlir_aie_check("After", mlir_aie_read_buffer_a_pong(_xaie, 0), 448, errors);
     mlir_aie_check("After", mlir_aie_read_buffer_b_ping(_xaie, 0), 385, errors);
     mlir_aie_check("After", mlir_aie_read_buffer_b_pong(_xaie, 0), 449, errors);
+
+    mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
     // Dump contents of ddr_ptr_out
     for (int i=0; i<16; i++) {
