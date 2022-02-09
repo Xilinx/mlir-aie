@@ -59,6 +59,16 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 class AIE_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
+def AIE_ObjectFifoType :
+    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoType>()">,
+                "AIE objectFifo type">;
+
+def AIE_ObjectFifoSubviewType :
+    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoSubviewType>()">,
+                "AIE ObjectFifoSubview type">;
+
+def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
+
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
                                            AnyTensor.predicate]>,
@@ -1366,3 +1376,164 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
+  let summary = "Create a circular buffer or channel between two tiles";
+  let description = [{
+    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
+    a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+    buffers (of given output type) and their locks in the Memory Module of the producer tile.
+
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
+    locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
+    not adjacent.
+
+    Example:
+    ```
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>> 
+    ```
+    This operation creates an objectFifo between tiles 12 and 13 of 4 elements, each a buffer of 16 32-bit integers.
+  }];
+
+  let arguments = (
+    ins Index:$producerTile,
+        Index:$consumerTile,
+        Confined<I32Attr, [IntMinValue<0>]>:$elemNumber
+  );
+
+  let results = (outs AIE_ObjectFifoType:$fifo);
+
+  let assemblyFormat = [{
+    `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    int size() { return elemNumber(); }
+    TileOp getProducerTileOp();
+    TileOp getConsumerTileOp();
+  }];
+}
+
+def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
+  let summary = "Acquire operation to lock and return objects of an ObjectFifo";
+  let description = [{
+    The "aie.objectFifo.acquire" operation first acquires the locks of the next given number of objects 
+    in the objectFifo. The mode it acquires the locks in is chosen based on the "port" attribute 
+    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of the acquired 
+    objects which can be used to access them.
+
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations on 
+    the locks of the objectFifo objects that will be acquired. Under the hood, the operation only performs
+    new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
+    to be released by the same process, then performing another acquire operation on the same objectFifo 
+    within the same process of size two or less will not result in any new useLock operations (and for size 
+    greater than two, only (size - 2) useLock operations will be performed).
+
+    Example:
+    ```
+      %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.subview<memref<16xi32>>
+    ```
+    This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
+  }];
+
+  let arguments = (
+    ins AIE_ObjectFifoType:$fifo,
+        Confined<I32Attr, [IntMinValue<0>]>:$size
+  );
+
+  let results = (outs AIE_ObjectFifoSubviewType:$subview);
+
+  let assemblyFormat = [{
+    attr-dict `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    StringAttr port() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>("port")) {
+        return attr;
+      } else {
+        emitOpError("does not have 'port' attribute specified");
+      }
+      llvm_unreachable("unreachable");
+    }
+    Value getAIEObjectFifo() { return fifo(); }
+    AIEObjectFifoType getAIEObjectFifoType() {
+      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
+    }
+    int acqNumber() { return size(); }
+  }];
+}
+
+def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
+  let summary = "Release operation for object locks in an ObjectFifo";
+  let description = [{
+    The "aie.objectFifo.release" operation releases the locks of the given number of objects in the
+    objectFifo. The mode it releases the locks in is chosen based on the "port" attribute 
+    (producer: release for read, consumer: release for write). 
+
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
+
+    Example:
+    ```
+      AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+    ```
+    This operation releases the lock of the next object in objFifo from producer port.
+  }];
+
+  let arguments = (
+    ins AIE_ObjectFifoType:$fifo,
+        Confined<I32Attr, [IntMinValue<0>]>:$size
+  );
+
+  let assemblyFormat = [{
+    attr-dict `(` $fifo `:` type($fifo) `,` $size `)` 
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    StringAttr port() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>("port")) {
+        return attr;
+      } else {
+        emitOpError("does not have 'port' attribute specified");
+      }
+      llvm_unreachable("unreachable");
+    }
+    Value getAIEObjectFifo() { return fifo(); }
+    AIEObjectFifoType getAIEObjectFifoType() {
+      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
+    }
+    int relNumber() { return size(); }
+  }];
+}
+
+def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
+  let summary = "ObjectFifoSubview type accessor method";
+  let description = [{
+    Access the Nth element of a value of ObjectFifoSubview type.
+  }];
+
+  let arguments = (
+    ins AIE_ObjectFifoSubviewType:$subview, 
+        Confined<I32Attr, [IntMinValue<0>]>:$index
+  );
+
+  let results = (outs AnyMemRef:$output);
+
+  let assemblyFormat = [{
+    $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+  }];
+
+  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
+  let builders = [
+    OpBuilder<(ins "Value":$subview, "size_t":$index)>
+  ];
+
+  let extraClassDeclaration = [{
+    int getIndex() { return index(); }
+  }];
+}

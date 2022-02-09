@@ -56,15 +56,15 @@ public:
   explicit AIEDialect(mlir::MLIRContext *ctx);
   static StringRef getDialectNamespace() { return "AIE"; }
 
-  // /// Parse a type registered to this dialect. Overridding this method is
-  // /// required for dialects that have custom types.
-  // /// Technically this is only needed to be able to round-trip to textual IR.
-  // mlir::Type parseType(DialectAsmParser &parser) const override;
+  /// Parse a type registered to this dialect. Overridding this method is
+  /// required for dialects that have custom types.
+  /// Technically this is only needed to be able to round-trip to textual IR.
+  mlir::Type parseType(DialectAsmParser &parser) const override;
 
-  // /// Print a type registered to this dialect. Overridding this method is
-  // /// only required for dialects that have custom types.
-  // /// Technically this is only needed to be able to round-trip to textual IR.
-  // void printType(mlir::Type type, DialectAsmPrinter &os) const override;
+  /// Print a type registered to this dialect. Overridding this method is
+  /// only required for dialects that have custom types.
+  /// Technically this is only needed to be able to round-trip to textual IR.
+  void printType(mlir::Type type, DialectAsmPrinter &os) const override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -102,6 +102,50 @@ public:
 //   /// Support method to enable LLVM-style RTTI type casting.
 //   static bool kindof(unsigned kind) { return kind == AIETypeKind::AIE_LIST; }
 // };
+
+namespace detail {
+  struct AIEObjectFifoTypeStorage;
+}
+
+/// This class defines the AIE ObjectFifo type.
+class AIEObjectFifoType : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
+                                               detail::AIEObjectFifoTypeStorage> {
+public:
+  /// Inherit some necessary constructors from 'TypeBase'.
+  using Base::Base;
+
+  /// Create an instance of a `ObjectFifoType` with the given element type.
+  static AIEObjectFifoType get(mlir::Type elementType);
+
+  /// This method is used to verify the construction invariants.
+  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
+                              mlir::Type elementType);
+
+  /// Returns the element type of this ObjectFifoType.
+  mlir::Type getElementType();
+};
+
+namespace detail {
+  struct AIEObjectFifoSubviewTypeStorage;
+}
+
+/// This class defines the AIE ObjectFifoSubview type.
+class AIEObjectFifoSubviewType : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
+                                               detail::AIEObjectFifoSubviewTypeStorage> {
+public:
+  /// Inherit some necessary constructors from 'TypeBase'.
+  using Base::Base;
+
+  /// Create an instance of a `SubviewType` with the given element type.
+  static AIEObjectFifoSubviewType get(mlir::Type elementType);
+
+  /// This method is used to verify the construction invariants.
+  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
+                              mlir::Type elementType);
+
+  /// Returns the element type of this SubviewType.
+  mlir::Type getElementType();
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
@@ -164,6 +208,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoStatefulTransformPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
@@ -171,5 +216,43 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 
 } // namespace AIE
 } // namespace xilinx
+
+namespace llvm {
+  // Functions hash just like pointers.
+template <>
+struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
+  static xilinx::AIE::ObjectFifoAcquireOp getEmptyKey() {
+    auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
+  }
+  static xilinx::AIE::ObjectFifoAcquireOp getTombstoneKey() {
+    auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
+  }
+  static unsigned getHashValue(xilinx::AIE::ObjectFifoAcquireOp val) {
+    return hash_value(val.getAsOpaquePointer());
+  }
+  static bool isEqual(xilinx::AIE::ObjectFifoAcquireOp lhs, xilinx::AIE::ObjectFifoAcquireOp rhs) { return lhs == rhs; }
+};
+}
+
+namespace llvm {
+  // Functions hash just like pointers.
+template <>
+struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
+  static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
+    auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
+  }
+  static xilinx::AIE::ObjectFifoCreateOp getTombstoneKey() {
+    auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
+  }
+  static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
+    return hash_value(val.getAsOpaquePointer());
+  }
+  static bool isEqual(xilinx::AIE::ObjectFifoCreateOp lhs, xilinx::AIE::ObjectFifoCreateOp rhs) { return lhs == rhs; }
+};
+}
 
 #endif

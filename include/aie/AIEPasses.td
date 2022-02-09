@@ -227,4 +227,22 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "FuncOp"> {
   let dependentDialects = [
   ];
 }
+
+def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "ModuleOp"> {
+  let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
+  let description = [{
+    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
+    producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
+    operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
+    each process.
+
+    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
+    pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
 #endif

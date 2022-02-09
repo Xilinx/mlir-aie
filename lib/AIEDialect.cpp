@@ -163,10 +163,211 @@ bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
 
+namespace detail {
+/// This class represents the internal storage of the AIE `ObjectFifoType`.
+struct AIEObjectFifoTypeStorage : public mlir::TypeStorage {
+  /// The `KeyTy` is a required type that provides an interface for the storage
+  /// instance. This type will be used when uniquing an instance of the type
+  /// storage.
+  using KeyTy = mlir::Type;
+
+  /// A constructor for the objectFifo type storage instance.
+  AIEObjectFifoTypeStorage(mlir::Type elementType)
+      : elementType(elementType) {}
+
+  /// Define the comparison function for the key type with the current storage
+  /// instance. This is used when constructing a new instance to ensure that we
+  /// haven't already uniqued an instance of the given key.
+  bool operator==(const KeyTy &key) const { return key == KeyTy(elementType); }
+
+  /// Define a construction method for creating a new instance of this storage.
+  /// This method takes an instance of a storage allocator, and an instance of a
+  /// `KeyTy`.
+  static AIEObjectFifoTypeStorage *construct(mlir::TypeStorageAllocator &allocator,
+                                      const KeyTy &key) {
+    // Allocate the storage instance and construct it.
+    return new (allocator.allocate<AIEObjectFifoTypeStorage>())
+        AIEObjectFifoTypeStorage(key);
+  }
+
+  mlir::Type elementType;
+};
+}
+
+AIEObjectFifoType AIEObjectFifoType::get(mlir::Type elementType) {
+  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
+  // of this type.
+  mlir::MLIRContext *ctx = elementType.getContext();
+  return Base::get(ctx, elementType);
+}
+
+LogicalResult AIEObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                        mlir::Type elementType) {
+  // Memref element type expected.
+  if (!elementType.isa<MemRefType>())
+    return emitError() << "non memref-type passed to 'ObjectFifoType'";
+  return success();
+}
+
+mlir::Type AIEObjectFifoType::getElementType() {
+  // 'getImpl' returns a pointer to the internal storage instance.
+  return getImpl()->elementType;
+}
+
+namespace detail {
+/// This class represents the internal storage of the AIE `ObjectFifoSubviewType`.
+struct AIEObjectFifoSubviewTypeStorage : public mlir::TypeStorage {
+  /// The `KeyTy` is a required type that provides an interface for the storage
+  /// instance. This type will be used when uniquing an instance of the type
+  /// storage.
+  using KeyTy = mlir::Type;
+
+  /// A constructor for the subview type storage instance.
+  AIEObjectFifoSubviewTypeStorage(mlir::Type elementType)
+      : elementType(elementType) {}
+
+  /// Define the comparison function for the key type with the current storage
+  /// instance. This is used when constructing a new instance to ensure that we
+  /// haven't already uniqued an instance of the given key.
+  bool operator==(const KeyTy &key) const { return key == elementType; }
+
+  /// Define a construction method for creating a new instance of this storage.
+  /// This method takes an instance of a storage allocator, and an instance of a
+  /// `KeyTy`.
+  static AIEObjectFifoSubviewTypeStorage *construct(mlir::TypeStorageAllocator &allocator,
+                                      const KeyTy &key) {
+    // Allocate the storage instance and construct it.
+    return new (allocator.allocate<AIEObjectFifoSubviewTypeStorage>())
+        AIEObjectFifoSubviewTypeStorage(key);
+  }
+
+  mlir::Type elementType;
+};
+}
+
+AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(mlir::Type elementType) {
+  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
+  // of this type.
+  mlir::MLIRContext *ctx = elementType.getContext();
+  return Base::get(ctx, elementType);
+}
+
+  /// This method is used to verify the construction invariants.
+LogicalResult AIEObjectFifoSubviewType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                     mlir::Type elementType) {
+  // Memref element type expected.
+  if (!elementType.isa<MemRefType>())
+    return emitError() << "non memref-type passed to 'ObjectFifoSubviewType'";
+  return success();
+}
+
+mlir::Type AIEObjectFifoSubviewType::getElementType() {
+  return getImpl()->elementType;
+}
+
+/// Parse an instance of a type registered to the AIE dialect.
+/// Parse an AIE type in the following forms:
+///   AIE-type 
+///         ::= `objectFifo` `<` type `>`
+///         ::= `objectFifoSubview` `<` type `>`
+static OptionalParseResult aieTypeParser(MLIRContext *context,
+                                            DialectAsmParser &parser,
+                                            StringRef name, Type &result) {
+  if (name.equals("objectFifo")) {
+    mlir::Type elementType;
+    llvm::SMLoc typeLoc = parser.getCurrentLocation();
+    if (parser.parseLess() || parser.parseType(elementType) || 
+        parser.parseGreater())
+      return failure();
+
+    // Check that the type is a MemRef type.
+    if (!elementType.isa<mlir::MemRefType>()) {
+      parser.emitError(typeLoc, "element type for an objectFifo must be "
+                                "a MemRefType, got: ")
+          << elementType;
+      return failure();
+    }
+
+    return result = AIEObjectFifoType::get(elementType), success();
+  }
+
+  if (name.equals("objectFifoSubview")) {
+    if (parser.parseLess())
+      return failure();
+
+    // Parse the element type of the struct.
+    mlir::Type elementType;
+    // Parse the current element type.
+    llvm::SMLoc typeLoc = parser.getCurrentLocation();
+    if (parser.parseType(elementType))
+      return failure();
+
+    // Check that the type is a MemRefType.
+    if (!elementType.isa<mlir::MemRefType>()) {
+      parser.emitError(typeLoc, "element type for a subview must be "
+                                "a MemRefType, got: ")
+          << elementType;
+      return failure();
+    }
+
+    // Parse: `>`
+    if (parser.parseGreater())
+      return failure();
+
+    return result = AIEObjectFifoSubviewType::get(elementType), success();
+  }
+
+  return {};
+}
+
+/// Parse a type defined by this dialect.
+/// Emits an error and returns failure if `name` does not
+/// refer to a type defined in this dialect.
+static ParseResult parse(Type &result, StringRef name,
+                             DialectAsmParser &parser) {
+  auto *context = parser.getBuilder().getContext();
+  OptionalParseResult parseResult;
+
+  parseResult = aieTypeParser(context, parser, name, result);
+  if (parseResult.hasValue())
+    return parseResult.getValue();
+
+  parser.emitError(parser.getNameLoc(), "unknown AIE dialect type: \"")
+      << name << "\"";
+  return failure();
+}
+
+/// Parse an instance of a type registered to the AIE dialect.
+mlir::Type AIEDialect::parseType(mlir::DialectAsmParser &parser) const {
+  StringRef name;
+  Type result;
+  if (parser.parseKeyword(&name) || parse(result, name, parser))
+    return Type();
+  return result;
+}
+
+/// Print an instance of a type registered to the AIE dialect.
+void AIEDialect::printType(mlir::Type type, mlir::DialectAsmPrinter &printer) const {
+  if (type.isa<AIEObjectFifoType>()) {
+    AIEObjectFifoType objectFifoType = type.cast<AIEObjectFifoType>();
+    printer << "objectFifo<";
+    printer << objectFifoType.getElementType();
+    printer << '>';
+
+  } else if (type.isa<AIEObjectFifoSubviewType>()) {
+    AIEObjectFifoSubviewType subviewType = type.cast<AIEObjectFifoSubviewType>();
+    printer << "objectFifoSubview<";
+    printer << subviewType.getElementType();
+    printer << '>';
+
+  }
+}
+
 // FIXME: use Tablegen'd dialect class
 AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
     : mlir::Dialect("AIE", ctx, ::mlir::TypeID::get<AIEDialect>()) {
   // addTypes<AIEListType>();
+  addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addOperations<
 #define GET_OP_LIST
 #include "aie/AIE.cpp.inc"
@@ -176,6 +377,46 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
 
 } // namespace AIE
 } // namespace xilinx
+
+// ObjectFifoCreateOp
+xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
+  return cast<xilinx::AIE::TileOp>(producerTile().getDefiningOp());
+}
+
+xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getConsumerTileOp() {
+  return cast<xilinx::AIE::TileOp>(consumerTile().getDefiningOp());
+}
+
+static LogicalResult verify(xilinx::AIE::ObjectFifoCreateOp op) {
+  if (op.size() < 2)
+    return op.emitError("Number of elements of AIE ObjectFifoCreateOp operation must be >= 2");
+
+  return success();
+}
+
+// ObjectFifoAcquireOp
+static LogicalResult verify(xilinx::AIE::ObjectFifoAcquireOp op) {
+  if (op.acqNumber() < 1)
+    return op.emitError("ObjectFifoAcquireOp must acquire at least one element");
+  
+  auto port = op.port().getValue();
+  if (port != "produce" && port != "consume")
+    return op.emitError("ObjectFifoAcquireOp port must be either 'produce' or 'consume'");
+
+  return success();
+}
+
+// ObjectFifoReleaseOp
+static LogicalResult verify(xilinx::AIE::ObjectFifoReleaseOp op) {
+  if (op.relNumber() < 1)
+    return op.emitError("ObjectFifoReleaseOp must release at least one element");
+  
+  auto port = op.port().getValue();
+  if (port != "produce" && port != "consume")
+    return op.emitError("ObjectFifoReleaseOp port must be either 'produce' or 'consume'");
+
+  return success();
+}
 
 static LogicalResult verify(xilinx::AIE::TileOp op) {
   auto users = op.result().getUsers();
