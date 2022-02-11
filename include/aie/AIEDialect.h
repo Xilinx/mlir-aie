@@ -14,6 +14,8 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -209,6 +211,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoStatefulTransformPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoLoopUnrollPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

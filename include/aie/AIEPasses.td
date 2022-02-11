@@ -245,4 +245,22 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "xilinx::AIE::AIEDialect",
   ];
 }
+
+def AIEObjectFifoLoopUnroll : Pass<"aie-unroll-objectFifos", "ModuleOp"> {
+  let summary = "Identify and unroll loops that contain operations on objectFifos based on their number of elements";
+  let description = [{
+    Extend the body of each loop that contains operations on objectFifos such that it is unrolled
+    based on the number of elements in the objectFifos. If the number of iterations of the loop 
+    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
+    the original loop.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLoopUnrollPass()";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "arith::ArithmeticDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif

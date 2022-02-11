@@ -18,6 +18,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Translation.h"
 #include "llvm/Support/Debug.h"
 #include "aie/AIEDialect.h"
