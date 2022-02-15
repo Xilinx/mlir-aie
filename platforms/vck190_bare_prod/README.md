@@ -16,7 +16,7 @@ To run these build scripts, you should only need Vitis/Vivado/Petalinux 2021.2 (
 `sudo apt-get install graphwiz`
 
 Once you've run the top level make, you should have sd_card/sd_card.img along with a sysroot which should be found at:
-`/sw_comp/sysroots/cortexa72-cortexa53-xilinx-linux`
+`aie_platform/sw_comp/sysroots/cortexa72-cortexa53-xilinx-linux`
 
 ## Build custom mlir designs
 You can then follow the commands like those in the unit tests by calling the python wrapped build script like:
@@ -26,12 +26,12 @@ aiecc.py -v --aie-generate-xaiev2 --sysroot=<sysroot from the build> ./aie.mlir 
 Note that `--aie-generate-xaiev2` is needed in order to generate the v2 drivers which vitis 2021.2 require.
 
 ## Copy files to the board
-You can then copy the generated host and AIE elf files to the board:
+You can then copy the generated host and AIE elf files from your application to the board via an ethernet connection (check ip addr of board):
 ```
-scp *elf root@192.168.0.101:/home/root/.
+scp *elf root@192.168.0.101:/home/root/.  <-- check for the ip address of your board
 ```
 Finally, you can then run the execuable on the board to verify functionality and performance!
 ```
-ssh root@192.168.0.101 <-- check for the ip address of your board
+ssh root@192.168.0.101
 ./test.elf
 ```
