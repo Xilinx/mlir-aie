@@ -13,6 +13,8 @@
 #include "test_library.h"
 #include <cmath>
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 extern "C" {
 extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
@@ -883,14 +885,14 @@ void computeStats(u32 performance_counter[], int n) {
 void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {} // Placeholder
 
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr,
-                        int size) {}
-int fd = open("/dev/mem", O_RDWR | O_SYNC);
-int *mem_ptr;
-if (fd != -1) {
-  mem_ptr =
-      (int *)mmap(NULL, 0x8000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, addr);
-}
-return mem_ptr;
+                        int size) {
+  int fd = open("/dev/mem", O_RDWR | O_SYNC);
+  int *mem_ptr;
+  if (fd != -1) {
+    mem_ptr =
+        (int *)mmap(NULL, 0x8000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, addr);
+  }
+  return mem_ptr;
 }
 
 void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
