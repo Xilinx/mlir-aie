@@ -741,6 +741,9 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
+void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
+} // Placeholder
+
 /// Print the status of a core represented by the given tile, at the given
 /// coordinates.
 void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
