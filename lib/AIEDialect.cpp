@@ -418,6 +418,17 @@ static LogicalResult verify(xilinx::AIE::ObjectFifoReleaseOp op) {
   return success();
 }
 
+// ObjectFifoRegisterProcessOp
+static LogicalResult verify(xilinx::AIE::ObjectFifoRegisterProcessOp op) {
+  if (op.getProcessLength() < 1)
+    return op.emitError("Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
+
+  if (op.getAcquirePattern().size() != op.getReleasePattern().size())
+    return op.emitError("Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp must be of equal length");
+
+  return success();
+}
+
 static LogicalResult verify(xilinx::AIE::TileOp op) {
   auto users = op.result().getUsers();
   bool found = false;

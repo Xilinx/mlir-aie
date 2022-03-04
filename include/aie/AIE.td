@@ -1432,7 +1432,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.subview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
     ```
     This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
   }];
@@ -1515,6 +1515,15 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   let summary = "ObjectFifoSubview type accessor method";
   let description = [{
     Access the Nth element of a value of ObjectFifoSubview type.
+
+  Example:
+    ```
+      %subview = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+      %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+    ```
+    In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
+    the objectFifo if other acquire operations took place beforehand.
+
   }];
 
   let arguments = (
@@ -1535,5 +1544,60 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
   let extraClassDeclaration = [{
     int getIndex() { return index(); }
+  }];
+}
+
+def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
+  let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
+  let description = [{
+    The "aie.registerProcess" operation allows the user to register a function to an objectFifo along with its 
+    acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
+    on the objectFifo elements. This generated sequence is often in the form of a for loop, however, in the case 
+    of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
+    This may result in multiple for loops of different sizes being generated. If there is no repetition, then no 
+    loops will be generated.
+
+    Example:
+    ```
+      %length = arith.constant 10 : index
+      %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
+      %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
+      func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
+
+      AIE.objectFifo.registerProcess{port = "produce"}(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+    ```
+    This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
+    @producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
+
+    If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
+    If the input patterns are cyclo-static then they must be of the same size.
+  }];
+
+  let arguments = (
+    ins AIE_ObjectFifoType:$fifo,
+        I32Tensor:$acquirePattern,
+        I32Tensor:$releasePattern,
+        FlatSymbolRefAttr:$callee,
+        Index:$length
+  );
+
+  let assemblyFormat = [{
+    attr-dict `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)` 
+  }];
+
+  let verifier = [{ return ::verify(*this); }];
+
+  let extraClassDeclaration = [{
+    StringAttr port() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>("port")) {
+        return attr;
+      } else {
+        emitOpError("does not have 'port' attribute specified");
+      }
+      llvm_unreachable("unreachable");
+    }
+    DenseIntElementsAttr getAcquirePattern() { return acquirePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
+    DenseIntElementsAttr getReleasePattern() { return releasePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
+    int getProcessLength() { return length().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
   }];
 }

@@ -212,6 +212,7 @@ std::unique_ptr<OperationPass<FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoLoopUnrollPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoRegisterProcessPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
