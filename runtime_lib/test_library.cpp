@@ -567,6 +567,7 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {
   XAie_MemSyncForDev(ctx->buffers[bufIdx]);
 }
 
+
 /*
  ******************************************************************************
  * LIBXAIENGIENV1
@@ -945,6 +946,31 @@ void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
   clear_range(TileAddr, 0x3F200, 0x3F37C);
 }
 
+
+void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {} // Placeholder
+
+int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr,
+                        int size) {
+  int fd = open("/dev/mem", O_RDWR | O_SYNC);
+  int *mem_ptr;
+  if (fd != -1) {
+    mem_ptr =
+        (int *)mmap(NULL, 0x8000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, addr);
+  }
+  return mem_ptr;
+}
+
+void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
+void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
+
+#endif
+
+/*
+ ******************************************************************************
+ * COMMON
+ ******************************************************************************
+ */
+
 void computeStats(u32 performance_counter[], int n) {
   u32 total_0 = 0;
 
@@ -964,21 +990,3 @@ void computeStats(u32 performance_counter[], int n) {
 
   printf("Mean and Standard Devation: %f, %f \n", mean_0, sdev_0);
 }
-
-void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {} // Placeholder
-
-int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr,
-                        int size) {
-  int fd = open("/dev/mem", O_RDWR | O_SYNC);
-  int *mem_ptr;
-  if (fd != -1) {
-    mem_ptr =
-        (int *)mmap(NULL, 0x8000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, addr);
-  }
-  return mem_ptr;
-}
-
-void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
-void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
-
-#endif
