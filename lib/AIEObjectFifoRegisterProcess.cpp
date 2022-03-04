@@ -74,30 +74,34 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
         }
 
         // acquires
-        auto acqType = AIEObjectFifoSubviewType::get(elementType);
-        auto acqOp = builder.create<ObjectFifoAcquireOp>(builder.getUnknownLoc(), acqType, regOp.fifo(), acqNumber);
-        acqOp.getOperation()->setAttr("port", builder.getStringAttr(port));
+            if (acqNumber.getInt() > 0) {
+            auto acqType = AIEObjectFifoSubviewType::get(elementType);
+            auto acqOp = builder.create<ObjectFifoAcquireOp>(builder.getUnknownLoc(), acqType, regOp.fifo(), acqNumber);
+            acqOp.getOperation()->setAttr("port", builder.getStringAttr(port));
 
-        // subview accesses
-        ObjectFifoSubviewAccessOp acc;
-        for (int i = 0; i < acqNumber.getInt(); i++) {
-            acc = builder.create<ObjectFifoSubviewAccessOp>(builder.getUnknownLoc(), elementType, acqOp.subview(), builder.getIntegerAttr(builder.getI32Type(), i));
-        }
-
-        // apply kernel
-        FuncOp func;
-        for (auto funcOp : m.getOps<FuncOp>()) {
-            if (funcOp.sym_name() == regOp.callee()) {
-                func = funcOp;
-                break;
+            // subview accesses
+            ObjectFifoSubviewAccessOp acc;
+            for (int i = 0; i < acqNumber.getInt(); i++) {
+                acc = builder.create<ObjectFifoSubviewAccessOp>(builder.getUnknownLoc(), elementType, acqOp.subview(), builder.getIntegerAttr(builder.getI32Type(), i));
             }
+
+            // apply kernel
+            FuncOp func;
+            for (auto funcOp : m.getOps<FuncOp>()) {
+                if (funcOp.sym_name() == regOp.callee()) {
+                    func = funcOp;
+                    break;
+                }
+            }
+            builder.create<CallOp>(builder.getUnknownLoc(), func/*, acc.output()*/);
         }
-        builder.create<CallOp>(builder.getUnknownLoc(), func/*, acc.output()*/);
 
         // releases
-        auto relOp = builder.create<ObjectFifoReleaseOp>(builder.getUnknownLoc(), regOp.fifo(), relNumber);
-        relOp.getOperation()->setAttr("port", builder.getStringAttr(port));
-        builder.setInsertionPointAfter(relOp);
+            if (relNumber.getInt() > 0) {
+            auto relOp = builder.create<ObjectFifoReleaseOp>(builder.getUnknownLoc(), regOp.fifo(), relNumber);
+            relOp.getOperation()->setAttr("port", builder.getStringAttr(port));
+            builder.setInsertionPointAfter(relOp);
+        }
 
         if (length > 1)
             builder.setInsertionPointAfter(forLoop);

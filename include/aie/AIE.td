@@ -59,6 +59,10 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 class AIE_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
+def AIE_ArrayType :
+    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEArrayType>()">,
+                "AIE array type">;
+
 def AIE_ObjectFifoType :
     DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoType>()">,
                 "AIE objectFifo type">;
@@ -67,7 +71,7 @@ def AIE_ObjectFifoSubviewType :
     DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoSubviewType>()">,
                 "AIE ObjectFifoSubview type">;
 
-def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
+def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType, AIE_ArrayType]>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
@@ -1374,6 +1378,51 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
             startHerd, iterX, iterY);
       }]>
   ];
+}
+
+def AIE_CreateArrayOp : AIE_Op<"createArray", []> {
+  let summary = "Create an aie array";
+  let description = [{
+    Creates an aie.array with the input values of given type
+  }];
+
+  let arguments = (
+    ins Variadic<AnyType>:$operands
+  );
+
+  let results = (outs AIE_ArrayType:$output);
+
+  let assemblyFormat = [{
+    attr-dict `(` $operands `:` type($operands) `)` `:` type($output)
+  }];
+
+  //let extraClassDeclaration = [{
+  //  int size();
+  //}];
+}
+
+def AIE_ArrayLoadOp : AIE_Op<"array.load", []> {
+  let summary = "Load operation for aie arrays";
+  let description = [{
+    Given an aie.array and an index value, outputs the element at that position from the array
+  }];
+
+  let arguments = (
+    ins AIE_ArrayType:$array, 
+        Index:$index
+  );
+
+  let results = (outs AnyType:$output);
+
+  let assemblyFormat = [{
+    attr-dict `(` $array `:` type($array) `,` $index `)` `:` type($output)
+  }];
+
+  //let verifier = [{ return ::verify(*this); }];
+
+  //let extraClassDeclaration = [{
+  //  int getIndex();
+  //}];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {

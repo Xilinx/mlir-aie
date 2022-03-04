@@ -106,6 +106,28 @@ public:
 // };
 
 namespace detail {
+  struct AIEArrayTypeStorage;
+}
+
+/// This class defines the AIE array type.
+class AIEArrayType : public mlir::Type::TypeBase<AIEArrayType, mlir::Type,
+                                               detail::AIEArrayTypeStorage> {
+public:
+  /// Inherit some necessary constructors from 'TypeBase'.
+  using Base::Base;
+
+  /// Create an instance of an `ArrayType` with the given element type.
+  static AIEArrayType get(mlir::Type elementType);
+
+  /// This method is used to verify the construction invariants.
+  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
+                              mlir::Type elementType);
+
+  /// Returns the element type of this ArrayType.
+  mlir::Type getElementType();
+};
+
+namespace detail {
   struct AIEObjectFifoTypeStorage;
 }
 
