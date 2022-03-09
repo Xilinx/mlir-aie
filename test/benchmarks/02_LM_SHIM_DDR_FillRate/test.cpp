@@ -30,13 +30,15 @@
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
-  int n = 1;
+  int n = 100;
   u32 pc0_times[n];
   u32 pc1_times[n];
 
+  printf("02_LM_SHIM_DDR_FillRate test start.\n");
+  printf("Running %d times ...\n", n);
+
   for (int iters = 0; iters < n; iters++) {
 
-    printf("02_LM_SHIM_DDR_FillRate test start.\n");
 
     aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
     mlir_aie_init_device(_xaie);
@@ -48,20 +50,20 @@ int main(int argc, char *argv[]) {
 
     #define DMA_COUNT 7168
 
-    printf("Acquired before\n");
+    // printf("Acquired before\n");
     mlir_aie_configure_dmas(_xaie);
     mlir_aie_init_mems(_xaie, 1);
 
     int *ddr_ptr = mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
     for(int i=0; i<DMA_COUNT; i++) {
-      *(ddr_ptr + i) = i + 1;
+      *(ddr_ptr + i) = 0xdeadbeef;
     }
     mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
 
-    printf("Start address of ddr buffer = %p\n", ddr_ptr);
+    // printf("Start address of ddr buffer = %p\n", ddr_ptr);
 
     for (int i = 0; i < DMA_COUNT; i++) {
-      mlir_aie_write_buffer_buf71_0(_xaie, i, 0x04);
+      mlir_aie_write_buffer_buf71_0(_xaie, i, i+1);
     }
 
     // XAie_DmaDesc dma_tile70_bd0;
@@ -100,15 +102,20 @@ int main(int argc, char *argv[]) {
     usleep(2000);
     pc0_times[iters] = pc0.diff();
 
-    printf("After Lock Release \n");
-    mlir_aie_print_tile_status(_xaie, 7, 1);
+    // printf("After Lock Release \n");
+    // mlir_aie_print_tile_status(_xaie, 7, 1);
 
     mlir_aie_sync_mem_cpu(_xaie, 0); // only used in libaiev2
 
     for (int i = 0; i < DMA_COUNT; i++) {
-      printf("%x \n", *(ddr_ptr + i));
-      break;
+      // int i = 0
+      uint32_t d = *(ddr_ptr + i);
+      if(d != (i + 1)) {
+        printf("mismatch %x != 1 + %x\n", d, i);
+      }
     }
+
+    mlir_aie_deinit_libxaie(_xaie);
   }
 
   computeStats(pc0_times, n);

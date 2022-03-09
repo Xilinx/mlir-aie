@@ -29,18 +29,18 @@
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
-  int n = 1;
+  int n = 100;
   u32 pc2_times[n];
 
   printf("01_DDR_SHIM_LM_FillRate test start\n");
-  printf("NEW\n");
+  printf("Running %d times ...\n", n);
 
   for (int iters = 0; iters < n; iters++) {
 
     aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
     mlir_aie_init_device(_xaie);
 
-    mlir_aie_print_tile_status(_xaie, 7, 1);
+    // mlir_aie_print_tile_status(_xaie, 7, 1);
 
     // Run auto generated config functions
     mlir_aie_configure_cores(_xaie);

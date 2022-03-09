@@ -68,6 +68,10 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
   //  if (xaie == _air_host_active_libxaie1)
   //    _air_host_active_libxaie1 = nullptr;
+  AieRC RC = XAie_Finish(&(ctx->DevInst));
+  if (RC != XAIE_OK) {
+    printf("Failed to finish tiles.\n");
+  }
   free(ctx);
 }
 
