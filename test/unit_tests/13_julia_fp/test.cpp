@@ -46,8 +46,8 @@ main(int argc, char *argv[])
 
     printf("Acquire lock first.\n");
     mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
-    mlir_aie_write_buffer_a(_xaie, 0, 20480);
-    mlir_aie_write_buffer_a(_xaie, 1, 20480);
+    mlir_aie_write_buffer_a(_xaie, 0, .0025f);
+    mlir_aie_write_buffer_a(_xaie, 1, .0025f);
 
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);

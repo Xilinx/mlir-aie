@@ -92,4 +92,4 @@ void julia(unsigned *framebuffer, float cr, float ci)
   }
 }
 
-void func(int32_t *a, int32_t *b) { julia((unsigned *)b, a[0], a[1]); }
+void func(float *a, float *b) { julia((unsigned *)b, a[0], a[1]); }
