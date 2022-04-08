@@ -742,7 +742,87 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
 }
 
 void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
-} // Placeholder
+  // int col = loc.Col;
+  // int row = loc.Row;
+  struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
+
+  u32 dma_mm2s_status = XAieGbl_Read32(tile->TileAddr + 0x0001D164);
+  u32 dma_s2mm_status = XAieGbl_Read32(tile->TileAddr + 0x0001D160);
+
+  u32 dma_mm2s0_control = XAieGbl_Read32(tile->TileAddr + 0x0001D150);
+  u32 dma_mm2s1_control = XAieGbl_Read32(tile->TileAddr + 0x0001D158);
+
+  u32 dma_s2mm0_control = XAieGbl_Read32(tile->TileAddr + 0x0001D140);
+  u32 dma_s2mm1_control = XAieGbl_Read32(tile->TileAddr + 0x0001D148);
+
+  u32 dma_bd0_a = XAieGbl_Read32(tile->TileAddr + 0x0001D000);
+  u32 dma_bd0_control = XAieGbl_Read32(tile->TileAddr + 0x0001D008);
+
+  u32 s2mm_ch0_running = dma_s2mm_status & 0x3;
+  u32 s2mm_ch1_running = (dma_s2mm_status >> 2) & 0x3;
+  u32 mm2s_ch0_running = dma_mm2s_status & 0x3;
+  u32 mm2s_ch1_running = (dma_mm2s_status >> 2) & 0x3;
+
+  printf("DMA [%d, %d] mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
+         "s2mm_status/0ctrl/1ctrl is %08X %02X %02X, BD0_Addr_A is %08X, "
+         "BD0_control is %08X\n",
+         col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
+         dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control, dma_bd0_a,
+         dma_bd0_control);
+  for (int bd = 0; bd < 8; bd++) {
+    u32 dma_bd_addr_a =
+        XAieGbl_Read32(tile->TileAddr + 0x0001D000 + (0x14 * bd));
+    u32 dma_bd_buffer_length =
+        XAieGbl_Read32(tile->TileAddr + 0x0001D004 + (0x14 * bd));
+    u32 dma_bd_control =
+        XAieGbl_Read32(tile->TileAddr + 0x0001D008 + (0x14 * bd));
+    if (dma_bd_control & 0x1) {
+      printf("BD %d valid\n", bd);
+      int current_s2mm_ch0 = (dma_s2mm_status >> 16) & 0xf;
+      int current_s2mm_ch1 = (dma_s2mm_status >> 20) & 0xf;
+      int current_mm2s_ch0 = (dma_mm2s_status >> 16) & 0xf;
+      int current_mm2s_ch1 = (dma_mm2s_status >> 20) & 0xf;
+
+      if (s2mm_ch0_running && bd == current_s2mm_ch0) {
+        printf(" * Current BD for s2mm channel 0\n");
+      }
+      if (s2mm_ch1_running && bd == current_s2mm_ch1) {
+        printf(" * Current BD for s2mm channel 1\n");
+      }
+      if (mm2s_ch0_running && bd == current_mm2s_ch0) {
+        printf(" * Current BD for mm2s channel 0\n");
+      }
+      if (mm2s_ch1_running && bd == current_mm2s_ch1) {
+        printf(" * Current BD for mm2s channel 1\n");
+      }
+      //      int words_to_transfer = 1 + (dma_bd_control & 0x1FFF);
+      int words_to_transfer = dma_bd_buffer_length;
+      //      int base_address = dma_bd_addr_a & 0x1FFF;
+      u64 base_address =
+          (u64)dma_bd_addr_a + ((u64)((dma_bd_control >> 16) & 0xFFFF) << 32);
+      printf("   Transfering %d 32 bit words to/from %06X\n", words_to_transfer,
+             (unsigned int)base_address);
+
+      int use_next_bd = ((dma_bd_control >> 15) & 0x1);
+      int next_bd = ((dma_bd_control >> 11) & 0xF);
+      int lockID = ((dma_bd_control >> 7) & 0xF);
+      int enable_lock_release = ((dma_bd_control >> 6) & 0x1);
+      int lock_release_val = ((dma_bd_control >> 5) & 0x1);
+      int use_release_val = ((dma_bd_control >> 4) & 0x1);
+      int enable_lock_acquire = ((dma_bd_control >> 3) & 0x1);
+      int lock_acquire_val = ((dma_bd_control >> 2) & 0x1);
+      int use_acquire_val = ((dma_bd_control >> 1) & 0x1);
+
+      printf("next_bd: %d, use_next_bd: %d\n", next_bd, use_next_bd);
+      printf("lock: %d, acq(en: %d, val: %d, use: %d), rel(en: %d, val: %d, "
+             "use: %d)\n",
+             lockID, enable_lock_acquire, lock_acquire_val, use_acquire_val,
+             enable_lock_release, lock_release_val, use_release_val);
+
+      printf("   ");
+    }
+  }
+}
 
 /// Print the status of a core represented by the given tile, at the given
 /// coordinates.
