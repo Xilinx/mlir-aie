@@ -56,7 +56,7 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 }
 
 
-class AIE_Op<string mnemonic, list<OpTrait> traits = []> :
+class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
