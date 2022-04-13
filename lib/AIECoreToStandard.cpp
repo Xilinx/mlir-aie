@@ -10,18 +10,18 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/Dialect/Vector/VectorOps.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Translation.h"
 
 using namespace mlir;
 using namespace mlir::vector;
@@ -64,7 +64,7 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
     assert(func && "Could not find the intrinsic function!");
     SmallVector<Value, 1> args;
     args.push_back(op.arg());
-    rewriter.create<CallOp>(rewriter.getUnknownLoc(), func, args);
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -96,7 +96,7 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
     SmallVector<Value, 2> args;
     args.push_back(op.channel());
     args.push_back(op.streamValue());
-    rewriter.create<CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -124,8 +124,8 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
     assert(getSSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.channel());
-    auto getSSCall =
-        rewriter.create<CallOp>(rewriter.getUnknownLoc(), getSSFunc, args);
+    auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
+                                                   getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
     return success();
   }
@@ -148,7 +148,7 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
     assert(putMCDFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.cascadeValue());
-    rewriter.create<CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
     rewriter.eraseOp(Op);
     return success();
   }
@@ -167,8 +167,8 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<FuncOp>(funcName);
     assert(getSCDFunc && "Could not find the intrinsic function!");
-    auto getSCDCall = rewriter.create<CallOp>(rewriter.getUnknownLoc(),
-                                              getSCDFunc, ValueRange({}));
+    auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
+                                                    getSCDFunc, ValueRange({}));
     rewriter.replaceOp(op, getSCDCall.getResult(0));
     return success();
   }
@@ -217,9 +217,10 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         FunctionType::get(rewriter.getContext(), {}, {}));
     rewriter.setInsertionPointToStart(mainFunc.addEntryBlock());
     SmallVector<Value, 8> args;
-    rewriter.create<CallOp>(rewriter.getUnknownLoc(), coreFunc,
-                            args); // call with no args.
-    rewriter.create<ReturnOp>(rewriter.getUnknownLoc(), args); // return nothing
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), coreFunc,
+                                  args); // call with no args.
+    rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
+                                    args); // return nothing
 
     DenseMap<Operation *, Value> newAllocated;
 
@@ -257,7 +258,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       rewriter.setInsertionPointAfter(childOp);
 
       if (EndOp end = dyn_cast<EndOp>(childOp)) {
-        rewriter.create<ReturnOp>(rewriter.getUnknownLoc(), ValueRange({}));
+        rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
+                                        ValueRange({}));
         rewriter.eraseOp(childOp);
       } else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
         std::string funcName = "llvm.aie.lock.";
@@ -278,7 +280,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
             useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
             rewriter.getI32IntegerAttr(useLock.getLockValue())));
 
-        rewriter.create<CallOp>(rewriter.getUnknownLoc(), useLockFunc, args);
+        rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
+                                      args);
         rewriter.eraseOp(childOp);
       }
     });
@@ -415,7 +418,8 @@ struct AIECoreToStandardPass
 
     BlockAndValueMapping mapper;
     ConversionTarget target(getContext());
-    target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<func::FuncDialect>();
+    target.addLegalDialect<cf::ControlFlowDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
     target.addLegalDialect<arith::ArithmeticDialect>();

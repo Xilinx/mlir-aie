@@ -14,10 +14,5 @@ add_mlir_translation_library(MLIRTargetAIEVecCpp
   MLIRArithmetic
   MLIREmitC
   MLIRIR
-  MLIRMath
-  MLIRMemRef
-  MLIRSCF
-  MLIRStandard
   MLIRSupport
-  MLIRTranslation
   )

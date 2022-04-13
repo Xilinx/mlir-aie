@@ -26,7 +26,7 @@
 // CHECK:     AIE.useLock(%2, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%0 : memref<256xi32>, 0, 256>, 0)
 // CHECK:     AIE.useLock(%2, Release, 1)
-// CHECK:     br ^bb2
+// CHECK:     cf.br ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
 // CHECK:     AIE.end
 // CHECK:   }
@@ -44,7 +44,7 @@
 // CHECK:     AIE.useLock(%6, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
 // CHECK:     AIE.useLock(%6, Release, 0)
-// CHECK:     br ^bb2
+// CHECK:     cf.br ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
 // CHECK:     AIE.end
 // CHECK:   }
@@ -73,7 +73,7 @@ module @test_lock_shimdma {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf_ext : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }
@@ -91,7 +91,7 @@ module @test_lock_shimdma {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }

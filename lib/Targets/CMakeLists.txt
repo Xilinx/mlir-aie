@@ -26,6 +26,4 @@ add_mlir_library(AIETargets
   AIE
   ADF
   MLIRLLVMIR
-  MLIRSupport
-  MLIRTranslation
 )

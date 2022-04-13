@@ -11,7 +11,7 @@
 #include "AIETargets.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/ADF/ADFOps.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
@@ -166,7 +166,7 @@ struct GraphWriter {
     output << "#ifndef FUNCTION_KERNELS_H\n";
     output << "#define FUNCTION_KERNELS_H\n\n";
 
-    for (Block &block : module.body())
+    for (Block &block : module.bodyRegion())
       for (auto funcOp : block.getOps<FuncOp>()) {
         output << "void " << funcOp.sym_name() << "(";
 
@@ -271,7 +271,7 @@ mlir::LogicalResult xilinx::AIE::ADFGenerateCPPGraph(ModuleOp module,
 
   writer.writeKernelFunctions(module);
 
-  for (Block &block : module.body())
+  for (Block &block : module.bodyRegion())
     for (auto graphOp : block.getOps<GraphOp>()) {
       writer.writeClass(graphOp);
     }

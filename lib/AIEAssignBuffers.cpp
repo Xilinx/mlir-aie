@@ -36,7 +36,7 @@ static int64_t assignAddress(AIE::BufferOp op, int64_t lastAddress,
 struct AIEAssignBufferAddressesPass
     : public AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<func::FuncDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
   }
   void runOnOperation() override {

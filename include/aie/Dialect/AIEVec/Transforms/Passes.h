@@ -19,7 +19,10 @@
 namespace mlir {
 
 class AffineDialect;
-class StandardOpsDialect;
+
+namespace func {
+class FuncDialect;
+} // end namespace func
 
 namespace arith {
 class ArithmeticDialect;
