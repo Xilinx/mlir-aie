@@ -252,7 +252,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
 
 struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<func::FuncDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
   }
   void runOnOperation() override {

@@ -11,9 +11,9 @@
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -116,15 +116,15 @@ typedef std::pair<int, int> TileID;
 bool isValidTile(TileID src);
 
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> getMemWest(TileID src);
+mlir::Optional<TileID> getMemWest(TileID src);
 // Return the tile ID of the memory to the east of the given tile, if it exists.
-Optional<TileID> getMemEast(TileID src);
+mlir::Optional<TileID> getMemEast(TileID src);
 // Return the tile ID of the memory to the north of the given tile, if it
 // exists.
-Optional<TileID> getMemNorth(TileID src);
+mlir::Optional<TileID> getMemNorth(TileID src);
 // Return the tile ID of the memory to the south of the given tile, if it
 // exists.
-Optional<TileID> getMemSouth(TileID src);
+mlir::Optional<TileID> getMemSouth(TileID src);
 
 bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
 bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);

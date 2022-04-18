@@ -37,7 +37,7 @@ Type memRefToDefaultAddressSpace(Type t) {
 struct AIENormalizeAddressSpacesPass
     : public AIENormalizeAddressSpacesBase<AIENormalizeAddressSpacesPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<func::FuncDialect>();
   }
   void runOnOperation() override {
     ModuleOp m = getOperation();

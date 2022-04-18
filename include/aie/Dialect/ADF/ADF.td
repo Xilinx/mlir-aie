@@ -35,7 +35,7 @@ def ADF_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 // Base ADF operation definition.
 //===----------------------------------------------------------------------===//
-class ADF_Op<string mnemonic, list<OpTrait> traits = []> :
+class ADF_Op<string mnemonic, list<Trait> traits = []> :
     Op<ADF_Dialect, mnemonic, traits>;
 
 

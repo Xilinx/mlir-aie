@@ -33,8 +33,6 @@ target_link_libraries(aie-translate
   MLIRIR
   MLIRParser
   MLIRPass
-  MLIRTranslation
-  MLIRSupport
   MLIRTargetAIEVecCpp
   MLIRTargetLLVMIRExport
   MLIRTargetLLVMIRImport

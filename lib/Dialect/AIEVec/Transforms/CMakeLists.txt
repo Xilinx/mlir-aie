@@ -21,8 +21,5 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   MLIRIR
   MLIRMemRef
   MLIRPass
-  MLIRSCF
-  MLIRStandard
-  MLIRTransforms
   MLIRVector
   )

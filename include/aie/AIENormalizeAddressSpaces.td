@@ -12,7 +12,6 @@
 #define AIE_NORMALIZE_ADDRESS_SPACES
 
 include "AIE.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "mlir/Dialect/MemRef/IR/MemRefOps.td"
 
 def toDefaultAddressSpace : NativeCodeCall<"TypeAttr::get(memRefToDefaultAddressSpace($0.getValue()))">;

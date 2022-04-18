@@ -30,7 +30,7 @@ module @test_xaie3 {
       AIE.useLock(%l33_0, Acquire, 1)
       AIE.dmaBd(<%buf33_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l33_0, Release, 0)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }

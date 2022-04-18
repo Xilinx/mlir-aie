@@ -16,8 +16,8 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Translation.h"
 
 #define DEBUG_TYPE "aie-localize-locks"
 using namespace mlir;

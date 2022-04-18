@@ -45,7 +45,7 @@ def run_flow(opts, tmpdirname):
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
-    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
+    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
     t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
@@ -82,7 +82,8 @@ def run_flow(opts, tmpdirname):
                             '--cse',
                             '--convert-vector-to-llvm',
                             '--convert-memref-to-llvm',
-                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
+                            '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
+                            '--convert-cf-to-llvm',
                             '--canonicalize', '--cse', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])

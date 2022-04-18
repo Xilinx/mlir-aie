@@ -17,7 +17,7 @@ include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for AIE dialect ops.
-class AIEVec_Op<string mnemonic, list<OpTrait> traits = []> :
+class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEVec_Dialect, mnemonic, traits> {
   // For every AIE vector op, there needs to be a:
   //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)

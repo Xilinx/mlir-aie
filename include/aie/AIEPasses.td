@@ -47,7 +47,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIECoreToStandardPass()";
   let dependentDialects = [
-    "StandardOpsDialect",
+    "func::FuncDialect",
     "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
@@ -84,7 +84,7 @@ def AIECreateCores : Pass<"aie-create-cores", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIECreateCoresPass()";
   let dependentDialects = [
-    "StandardOpsDialect",
+    "func::FuncDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -143,7 +143,7 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp">
 
   let constructor = "xilinx::AIE::createAIENormalizeAddressSpacesPass()";
   let dependentDialects = [
-    "StandardOpsDialect",
+    "func::FuncDialect",
     "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];

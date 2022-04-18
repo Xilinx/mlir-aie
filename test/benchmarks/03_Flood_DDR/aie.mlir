@@ -34,7 +34,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l21_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf21_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l21_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -62,7 +62,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l31_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf31_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l31_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -90,7 +90,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l61_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf61_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l61_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -124,7 +124,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l71_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l71_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -157,7 +157,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l101_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf101_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l101_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -185,7 +185,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l111_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf111_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l111_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -215,7 +215,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l181_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf181_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l181_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -245,7 +245,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l191_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf191_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l191_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -273,7 +273,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l261_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf261_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l261_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -301,7 +301,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l271_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf271_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l271_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -329,7 +329,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l341_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf341_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l341_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -358,7 +358,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l351_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf351_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l351_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -386,7 +386,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l421_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf421_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l421_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -414,7 +414,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l431_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf431_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l431_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -442,7 +442,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l461_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf461_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l461_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
@@ -470,7 +470,7 @@ module @benchmark03_Flood_DDR {
         AIE.useLock(%l471_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf471_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l471_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }
