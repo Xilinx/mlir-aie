@@ -55,6 +55,7 @@ def run_flow(opts, tmpdirname):
       do_call(['sed', '-i', 's/^target.*//', chess_intrinsic_wrapper])     
 
       do_call(['sed', '-i', 's/noalias_sidechannel[^,]*,//', chess_intrinsic_wrapper])
+      do_call(['sed', '-i', 's/nocallback[^,]*,//', chess_intrinsic_wrapper])
 
     def corefile(dirname, core, ext):
         (corecol, corerow, _) = core
@@ -91,13 +92,11 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
         file_core_llvmir = tmpcorefile(core, "ll")
         do_call(['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
-        file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
-        do_call(['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
-          do_call(['cp', file_core_llvmir_stripped, file_core_llvmir_chesshack])
+          do_call(['cp', file_core_llvmir, file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noalias_sidechannel[^,],//', file_core_llvmir_chesshack])
           file_core_llvmir_chesslinked = tmpcorefile(core, "chesslinked.ll")
@@ -107,6 +106,7 @@ def run_flow(opts, tmpdirname):
           do_call(['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/mustprogress//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/poison/undef/g', file_core_llvmir_chesslinked])
+          do_call(['sed', '-i', '-E', 's/nocallback//g', file_core_llvmir_chesslinked])
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
@@ -115,6 +115,8 @@ def run_flow(opts, tmpdirname):
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
+          file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
+          do_call(['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
