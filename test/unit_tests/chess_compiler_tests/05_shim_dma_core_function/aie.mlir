@@ -113,14 +113,12 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0)
-//      cf.br ^bd0
-      cf.br ^dma
+      cf.br ^bd0
     ^bd1:
       AIE.useLock(%lock2, Acquire, 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock2, Release, 0)
-//      cf.br ^bd1
-      cf.br ^end
+      cf.br ^bd1
     ^end:
       AIE.end
   }
