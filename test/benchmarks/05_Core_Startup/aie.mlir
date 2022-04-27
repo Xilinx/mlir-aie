@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-module @benchmark03_core_startup {
+module @benchmark05_core_startup {
   %tile13 = AIE.tile(1, 3)
 
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
