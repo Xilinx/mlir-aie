@@ -13,6 +13,7 @@
 #include "TranslateAIEVecToCpp.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -276,7 +277,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
 }
 
 // Print the memref dims, if the memref has dynamic shape
-static LogicalResult parseMemRefDynamicDims(CppEmitter &emitter, FuncOp func) {
+static LogicalResult parseMemRefDynamicDims(CppEmitter &emitter, func::FuncOp func) {
   // Step1: Walk over all the operations that are memref dimOp
   func.walk([&](mlir::Operation *Op) {
     if (auto op = dyn_cast<memref::DimOp>(Op)) {
@@ -1073,8 +1074,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
 // Generate the transfer write op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     vector::TransferWriteOp writeOp) {
-  Value source = writeOp.source();
-  Value vector = writeOp.vector();
+  Value source = writeOp.getSource();
+  Value vector = writeOp.getVector();
 
   // If the aray, or the vector being outputted is not already emitted,
   // error out
@@ -1083,7 +1084,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
   // Construct the access expression using memref shape and indices
   std::string access;
-  auto indices = writeOp.indices();
+  auto indices = writeOp.getIndices();
   if (failed(createLinearizedAccess(emitter, source, indices, access)))
     return failure();
 
@@ -1499,7 +1500,7 @@ static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
   return success();
 }
 
-static LogicalResult printOperation(CppEmitter &emitter, FuncOp functionOp) {
+static LogicalResult printOperation(CppEmitter &emitter, func::FuncOp functionOp) {
   // We need to declare variables at top if the function has multiple blocks.
   if (!emitter.shouldDeclareVariablesAtTop() &&
       functionOp.getBlocks().size() > 1) {
@@ -1515,7 +1516,7 @@ static LogicalResult printOperation(CppEmitter &emitter, FuncOp functionOp) {
 
   raw_indented_ostream &os = emitter.ostream();
   if (failed(emitter.emitTypes(functionOp.getLoc(),
-                               functionOp.getType().getResults())))
+                               functionOp.getFunctionType().getResults())))
     return failure();
   os << " " << functionOp.getName();
 
@@ -1896,7 +1897,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<scf::ForOp, scf::IfOp, scf::YieldOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Standard ops.
-          .Case<cf::BranchOp, func::CallOp, cf::CondBranchOp, FuncOp, ModuleOp,
+          .Case<cf::BranchOp, func::CallOp, cf::CondBranchOp, func::FuncOp, ModuleOp,
                 func::ReturnOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Arithmetic ops.

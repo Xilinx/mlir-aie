@@ -25,18 +25,18 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
-  using OpConversionPattern<FuncOp>::OpConversionPattern;
+struct RemoveAIEFuncs : public OpConversionPattern<func::FuncOp> {
+  using OpConversionPattern<func::FuncOp>::OpConversionPattern;
   ModuleOp &module;
-  DenseMap<FuncOp, std::pair<int, int>> &funcs;
+  DenseMap<func::FuncOp, std::pair<int, int>> &funcs;
 
   RemoveAIEFuncs(MLIRContext *context, ModuleOp &m,
-                 DenseMap<FuncOp, std::pair<int, int>> &funcs,
+                 DenseMap<func::FuncOp, std::pair<int, int>> &funcs,
                  PatternBenefit benefit = 1)
-      : OpConversionPattern<FuncOp>(context, benefit), module(m), funcs(funcs) {
+      : OpConversionPattern<func::FuncOp>(context, benefit), module(m), funcs(funcs) {
   }
 
-  LogicalResult matchAndRewrite(FuncOp op, OpAdaptor adaptor,
+  LogicalResult matchAndRewrite(func::FuncOp op, OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (funcs.find(op) == funcs.end())
@@ -76,7 +76,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     DenseMap<Operation *, CoreOp> cores;
     DenseMap<Operation *, MemOp> mems;
     DenseMap<Value, Value> buffers;
-    DenseMap<FuncOp, std::pair<int, int>> funcs;
+    DenseMap<func::FuncOp, std::pair<int, int>> funcs;
 
     // Collect existing TileOps
     for (auto tile : m.getOps<TileOp>()) {
@@ -147,7 +147,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       if (CallOpInterface call =
               dyn_cast<CallOpInterface>(callOp.getOperation())) {
         Operation *callable = call.resolveCallable();
-        if (FuncOp func = dyn_cast<FuncOp>(callable)) {
+        if (func::FuncOp func = dyn_cast<func::FuncOp>(callable)) {
           funcs[func] = std::make_pair(colIndex, rowIndex);
 
           BlockAndValueMapping mapper;

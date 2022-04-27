@@ -20,14 +20,13 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEVec_Dialect, mnemonic, traits> {
   // For every AIE vector op, there needs to be a:
-  //   * void print(OpAsmPrinter &p, ${C++ class of Op} op)
-  //   * LogicalResult verify(${C++ class of Op} op)
-  //   * ParseResult parse${C++ class of Op}(OpAsmParser &parser,
+  //   * void ${C++ class of Op}::print(OpAsmPrinter &p)
+  //   * LogicalResult ${C++ class of Op}::verify()
+  //   * ParseResult ${C++ class of Op}::parse(OpAsmParser &parser,
   //                                         OperationState &result)
   // functions.
-  let printer = [{ return ::print(p, *this); }];
-  let verifier = [{ return ::verify(*this); }];
-  let parser = [{ return ::parse$cppClass(parser, result); }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 def AIEVec_AddOp:

@@ -31,7 +31,7 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
     registry.insert<memref::MemRefDialect>();
   }
   void runOnOperation() override {
-    FuncOp f = getOperation();
+    func::FuncOp f = getOperation();
 
     // Initial store->load forwarding
     vector::transferOpflowOpt(f);
@@ -52,6 +52,6 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
   }
 };
 
-std::unique_ptr<OperationPass<FuncOp>> xilinx::AIE::createAIEVectorOptPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> xilinx::AIE::createAIEVectorOptPass() {
   return std::make_unique<AIEVectorOptPass>();
 }

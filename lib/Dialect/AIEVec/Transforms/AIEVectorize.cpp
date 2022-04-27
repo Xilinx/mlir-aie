@@ -189,7 +189,7 @@ getOperandVecStats(Operation *op, VectState *state, unsigned idx = 0) {
     // Set load from memory to true
     ret.loadFromMemory = true;
     // Check if the load is splat
-    ret.isSplat = readOp.permutation_map().isConstant();
+    ret.isSplat = readOp.getPermutationMap().isConstant();
   }
   return ret;
 }
@@ -379,9 +379,9 @@ static AffineExpr constructLinearizedAffineExpr(TransferReadOp readOp,
   if (state->linearizedAccess.count(readOp))
     return state->linearizedAccess[readOp];
 
-  SmallVector<Value, 4> indices(readOp.indices().begin(),
-                                readOp.indices().end());
-  MemRefType memRefType = readOp.source().getType().cast<MemRefType>();
+  SmallVector<Value, 4> indices(readOp.getIndices().begin(),
+                                readOp.getIndices().end());
+  MemRefType memRefType = readOp.getSource().getType().cast<MemRefType>();
   MLIRContext *context = memRefType.getContext();
 
   SmallVector<AffineExpr, 8> exprVec;
@@ -646,11 +646,11 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
 
   // If the accumulator is not of type aievec::AccType, we need to generate a
   // ups instruction.
-  Value acc = fmaOp.acc();
+  Value acc = fmaOp.getAcc();
   // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
   // op for i8xi8 scheme. Find the paired accumulator.
   if (i8xi8_pairedOp) {
-    Operation *defOp = fmaOp.acc().getDefiningOp();
+    Operation *defOp = fmaOp.getAcc().getDefiningOp();
     if (state->pairedOp.count(defOp))
       acc = state->pairedOp[defOp]->getResult(0);
   }
@@ -662,7 +662,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   }
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
-  Value lhs = fmaOp.lhs();
+  Value lhs = fmaOp.getLhs();
   if (!isSimpleVectIntrinsic(fmaOp, state)) {
     AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
     assert(lstat.vecSizeInBits % 256 == 0);
@@ -679,7 +679,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
 
   // Create AIE dialect fma/msc op
   Operation *xfmaOp = state->builder.create<aievec::FMAOp>(
-      fmaOp->getLoc(), lhs, fmaOp.rhs(), acc, opAttr.start[0], opAttr.offset[0],
+      fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0], opAttr.offset[0],
       opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
       opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1],
       isSub);
@@ -749,7 +749,7 @@ generateUPDOp(TransferReadOp readOp,
   // Create the upd vector type. To do so, we need the underlying element type.
   // We can divide the interval size by that to get the number of lanes in the
   // result vector of upd op.
-  VectorType vecType = readOp.vector().getType().cast<VectorType>();
+  VectorType vecType = readOp.getVector().getType().cast<VectorType>();
   Type elementType = vecType.getElementType();
   int32_t elementSizeInBits = getElementSizeInBits(vecType);
   int intervalWidthInBytes = intervalWidth / elementSizeInBits;
@@ -784,8 +784,8 @@ generateUPDOp(TransferReadOp readOp,
   // bits) will be A[i][j+2]-2*32, and the second offset will be
   // A[i][j+2]+256-2*32. Essentially, the offsets should make the load well
   // aligned. Below, we compute this (-2*32) offset to make the loads aligned.
-  SmallVector<Value, 4> indices(readOp.indices().begin(),
-                                readOp.indices().end());
+  SmallVector<Value, 4> indices(readOp.getIndices().begin(),
+                                readOp.getIndices().end());
   // Get the linearized access expression for the read to compute the offset
   AffineExpr linearAccess = constructLinearizedAffineExpr(readOp, state);
   AffineExpr base;
@@ -823,7 +823,7 @@ generateUPDOp(TransferReadOp readOp,
       // Generate the upd instruction, and link it with a previous upd op
       // corresponding to the same read.
       updOp = state->builder.create<aievec::UPDOp>(
-          readOp.getLoc(), updVecType, readOp.source(), indices, start - offset,
+          readOp.getLoc(), updVecType, readOp.getSource(), indices, start - offset,
           idx - 1, updOp ? updOp.result() : nullptr);
 
       LLVM_DEBUG(llvm::dbgs() << "\n\nCreated UPD op " << updOp
@@ -866,8 +866,8 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
   int32_t step = 0;
   bool found = false;
   VectorType vectorType = readOp.getResult().getType().cast<VectorType>();
-  SmallVector<Value, 4> indices(readOp.indices().begin(),
-                                readOp.indices().end());
+  SmallVector<Value, 4> indices(readOp.getIndices().begin(),
+                                readOp.getIndices().end());
   assert(vectorType && !indices.empty());
 
   // Verify that enclosing loops have been computed for the read operation
@@ -878,7 +878,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
 
   // The vectorized (i.e., last) index of the permutation must correspond to a
   // loop nest. If not, this is a splat read.
-  AffineExpr expr = readOp.permutation_map().getResults().back();
+  AffineExpr expr = readOp.getPermutationMap().getResults().back();
   if (auto dimExpr = expr.dyn_cast<AffineDimExpr>()) {
     assert(dimExpr.getPosition() <= indices.size() &&
            "Failed to find the permutation index in index map");
@@ -917,7 +917,7 @@ int32_t computeStartInAIEVec(Operation *op, VectState *state) {
   auto readOp = cast<TransferReadOp>(op);
 
   // Get the scalar element type's size in bits
-  VectorType vtype = readOp.vector().getType().cast<VectorType>();
+  VectorType vtype = readOp.getVector().getType().cast<VectorType>();
   int32_t scalarSizeInBits = getElementSizeInBits(vtype);
 
   // Get the linearized access expr for this read
@@ -1725,7 +1725,7 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
 // If the datatype allows it, fuse a mul or fma op with other fma ops to
 // utilize the column topology of the AIE mul/fma intrinsic (e.g., 2 fmas can
 // be fused for i16xi16 scheme, and 8 for i8xi8 scheme).
-static void fuseFMAOpsForColumnTopology(FuncOp func, VectState *state) {
+static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
   // A set of FMA ops that were fused in the column topology
   llvm::SmallSet<Operation *, 8> fusedOpSet;
 
@@ -1755,7 +1755,7 @@ static void fuseFMAOpsForColumnTopology(FuncOp func, VectState *state) {
 // offsets, square, step, etc. based on the scheme; and (2) Once all the
 // attributes are computed, generate appropriate mul/fma operation in AIE
 // dialect.
-static void generateAIEMulOrFMAOpsInFunc(FuncOp func, VectState *state) {
+static void generateAIEMulOrFMAOpsInFunc(func::FuncOp func, VectState *state) {
   // For each mul/fma op, compute the scheme-dependent operand attributes, and
   // generate corresponding AIE dialect ops.
   func.walk([&](mlir::Operation *op) {
@@ -1897,7 +1897,7 @@ static void generateSchemeBasedAddOrSubOp(Operation *Op, VectState *state) {
 // The main focus of this function is to compute the right start/offset fields
 // for the adds involving splat. If none of the operands of the add op is
 // splat, we must generate simple scheme add op.
-static void generateAIEAddOrSubOpsInFunc(FuncOp func, VectState *state) {
+static void generateAIEAddOrSubOpsInFunc(func::FuncOp func, VectState *state) {
   func.walk([&](mlir::Operation *op) {
     if (isa<AddIOp, AddFOp, SubIOp, SubFOp>(op))
       generateSchemeBasedAddOrSubOp(op, state);
@@ -1940,7 +1940,7 @@ static void insertUPDOpsInLoop(AffineForOp forOp, VectState *state) {
 }
 
 // Replace all the transfer_read ops with UPD ops in the function.
-static void insertUPDOpsInFunc(FuncOp func, VectState *state) {
+static void insertUPDOpsInFunc(func::FuncOp func, VectState *state) {
   for (AffineForOp forOp : func.getOps<AffineForOp>()) {
     insertUPDOpsInLoop(forOp, state);
   }
@@ -1984,7 +1984,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
     Type scalarType = nullptr;
     if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
       // Get the element type from the memref output
-      MemRefType memRefType = writeOp.source().getType().cast<MemRefType>();
+      MemRefType memRefType = writeOp.getSource().getType().cast<MemRefType>();
       scalarType = memRefType.getElementType();
     } else
       scalarType = getElementTypeOrSelf(*user->getResultTypes().begin());
@@ -2012,7 +2012,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
 
 // Generate SRS op whenever we move data from an accumulator AIE dialect to a
 // vector.
-static void insertSRSOpsInFunc(FuncOp func, VectState *state) {
+static void insertSRSOpsInFunc(func::FuncOp func, VectState *state) {
   func.walk([&](mlir::Operation *op) {
     // Check if we need to insert an SRS op if (1) the op is in AIE dialect,
     // and (2) the result of the op is accumulator type.
@@ -2042,14 +2042,14 @@ template <typename TransferOp> static void setInBounds(TransferOp op) {
 // work on reads/writes that are within bounds. We safely assume that for AIE
 // vectorization, all the transfer reads/writes are within bounds.
 static void redundantLoadStoreOptimization(ModuleOp module) {
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     // Mark all the transfer ops that have empty in_bounds as inbound
     func.walk([&](Operation *Op) {
       if (auto readOp = dyn_cast<TransferReadOp>(Op)) {
-        if (!readOp.in_bounds())
+        if (!readOp.getInBounds())
           setInBounds<TransferReadOp>(readOp);
       } else if (auto writeOp = dyn_cast<TransferWriteOp>(Op)) {
-        if (!writeOp.in_bounds())
+        if (!writeOp.getInBounds())
           setInBounds<TransferWriteOp>(writeOp);
       }
     });
@@ -2106,7 +2106,7 @@ computeEnclosingLoopsPerBlock(AffineForOp forOp, VectState *state,
 // operand. This allows us to form FMA intrinsic for AIE. The only exception to
 // this rule is the 8x8 bit scheme, where the xbuff is a bit more restrictive,
 // so we prefer splat as left operand of multiplication for 8x8 scheme.
-static void reassociateMulOpInFunc(FuncOp func, VectState *state) {
+static void reassociateMulOpInFunc(func::FuncOp func, VectState *state) {
   func.walk([&](mlir::Operation *op) {
     // Only reassociate vector mul ops that are well formed. This also includes
     // the multiplication component in fma ops.
@@ -2124,7 +2124,7 @@ static void reassociateMulOpInFunc(FuncOp func, VectState *state) {
 // right operand of add op. This is a syntactic transformation that uses the
 // commutativity of add op, and is only applied so that we can leverage the
 // same code functionality for generating mac and msc ops.
-static void reassociateAddOpInFunc(FuncOp func, VectState *state) {
+static void reassociateAddOpInFunc(func::FuncOp func, VectState *state) {
   func.walk([&](mlir::Operation *op) {
     // Only reassociate vector add ops that are well formed.
     if (isa<AddIOp, AddFOp>(op) && isWellFormedVectorOp(op)) {
@@ -2158,7 +2158,7 @@ static void reassociateAddOpInFunc(FuncOp func, VectState *state) {
 // corresponding to it. Then we can try to coalesce two consecutive tagged
 // intervals (i.e., vectors) in each ReuseInterval object. This removes the
 // need of extra vector and two concat ops.
-static void coalesceLHSOpVectorsInFunc(FuncOp func, VectState *state) {
+static void coalesceLHSOpVectorsInFunc(func::FuncOp func, VectState *state) {
   // Iterate over all the transfer read ops in this function
   func.walk([&](TransferReadOp op) {
     // Iterate over all the users of this read operation. We want to identify
@@ -2201,7 +2201,7 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
   int32_t step = computeVecorizedLoopStepSize(readOp, state);
 
   // If the permutation map is 0, the read operation is splat
-  bool isSplat = readOp.permutation_map().isConstant();
+  bool isSplat = readOp.getPermutationMap().isConstant();
 
   // Check if this readOp is the lhs or rhs operand of a mul/fma op. If it is,
   // then the vector size corresponding to its access extent should at least be
@@ -2250,7 +2250,7 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
 // aligned vector loads, we need to compose multiple transfer reads together to
 // form intervals of certain width (128, 256, 512, or 1024), and create an AIE
 // vector from each interval.
-static void computeReuseInFunc(FuncOp func, VectState *state) {
+static void computeReuseInFunc(func::FuncOp func, VectState *state) {
   // First compute the loops surrounding each load/store operation. This is
   // necessary to identify loads/stores that are nested together.
   for (AffineForOp forOp : func.getOps<AffineForOp>()) {
@@ -2266,7 +2266,7 @@ static void computeReuseInFunc(FuncOp func, VectState *state) {
 
 // Rewrite a sequence of mul and add/sub {a = b*c; d = a+e;} as an FMA op {d =
 // b*c+e;}. This step only rewrites the FMA op in vector dialect.
-static void rewriteFMAOpsInFunc(FuncOp func, VectState *state) {
+static void rewriteFMAOpsInFunc(func::FuncOp func, VectState *state) {
   // Find a root add op that is well formed, and start from there
   func.walk([&](Operation *Op) {
     if (isa<AddIOp, AddFOp, SubIOp, SubFOp>(Op) && isWellFormedVectorOp(Op)) {
@@ -2280,7 +2280,7 @@ static void rewriteFMAOpsInFunc(FuncOp func, VectState *state) {
 
 // Assuming commutativity and associativity of add and mul ops, reassociate ops
 // so that code generation becomes feasible/easier.
-static void reassociateOpsInFunc(FuncOp func, VectState *state) {
+static void reassociateOpsInFunc(func::FuncOp func, VectState *state) {
   // We assume that pointwise multiplication is commutative. So correct the
   // order of operands involved in multiplication so that we can form AIE
   // mul/fma intrinsic.
@@ -2316,7 +2316,7 @@ void AIEVectorize::runOnOperation() {
   preCanonicalizeIR(module);
 
   // Iterate over all the functions in this module, and vectorize them
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     // Create a new global state
     VectState *state =
         new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);

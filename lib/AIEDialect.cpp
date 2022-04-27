@@ -341,7 +341,7 @@ static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
 
 static LogicalResult verify(xilinx::AIE::UseTokenOp op) {
   auto parentOp = op->getParentOp();
-  if (isa<FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
+  if (isa<func::FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
       isa<xilinx::AIE::MemOp>(parentOp) ||
       isa<xilinx::AIE::ShimDMAOp>(parentOp))
     return success();
