@@ -33,11 +33,12 @@ struct RemoveAIEFuncs : public OpConversionPattern<func::FuncOp> {
   RemoveAIEFuncs(MLIRContext *context, ModuleOp &m,
                  DenseMap<func::FuncOp, std::pair<int, int>> &funcs,
                  PatternBenefit benefit = 1)
-      : OpConversionPattern<func::FuncOp>(context, benefit), module(m), funcs(funcs) {
-  }
+      : OpConversionPattern<func::FuncOp>(context, benefit), module(m),
+        funcs(funcs) {}
 
-  LogicalResult matchAndRewrite(func::FuncOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(func::FuncOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (funcs.find(op) == funcs.end())
       return failure();

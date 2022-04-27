@@ -52,6 +52,7 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
   }
 };
 
-std::unique_ptr<OperationPass<func::FuncOp>> xilinx::AIE::createAIEVectorOptPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+xilinx::AIE::createAIEVectorOptPass() {
   return std::make_unique<AIEVectorOptPass>();
 }

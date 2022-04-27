@@ -149,8 +149,7 @@ void SRSOp::print(OpAsmPrinter &p) {
 // Verify SRS op.
 LogicalResult SRSOp::verify() {
   // Verify the types
-  aievec::AccType sourceType =
-      source().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType sourceType = source().getType().dyn_cast<aievec::AccType>();
   VectorType resultType = result().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return emitError("requires accumulator type");
@@ -162,7 +161,7 @@ LogicalResult SRSOp::verify() {
   unsigned vecLanes = getVectorLaneSize(resultType);
   if (accLanes != vecLanes)
     return emitError("The number of lanes in result vector "
-                         "and source accumulator must match");
+                     "and source accumulator must match");
 
   // The datatype of accumulator must have greater width
   Type stype = resultType.getElementType();
@@ -172,10 +171,10 @@ LogicalResult SRSOp::verify() {
 
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
-                         "wider than that of the result vector");
+                     "wider than that of the result vector");
   else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
     return emitError("the element type of source accumulator must be "
-                         "same as the result vector");
+                     "same as the result vector");
 
   return success();
 }
@@ -237,8 +236,7 @@ void UPSOp::print(OpAsmPrinter &p) {
 LogicalResult UPSOp::verify() {
   // Verify the types
   VectorType sourceType = source().getType().dyn_cast<VectorType>();
-  aievec::AccType resultType =
-      result().getType().dyn_cast<aievec::AccType>();
+  aievec::AccType resultType = result().getType().dyn_cast<aievec::AccType>();
   if (!sourceType)
     return emitError("requires vector type");
   if (!resultType)
@@ -249,7 +247,7 @@ LogicalResult UPSOp::verify() {
   unsigned accLanes = resultType.getLanes();
   if (vecLanes != accLanes)
     return emitError("The number of lanes in source vector "
-                         "and result accumulator must match");
+                     "and result accumulator must match");
 
   // The datatype of accumulator must always be greater width
   Type stype = sourceType.getElementType();
@@ -259,10 +257,10 @@ LogicalResult UPSOp::verify() {
 
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return emitError("the element type of result accumulator "
-                         "must be wider than that of the source vector");
+                     "must be wider than that of the source vector");
   else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
     return emitError("the element type of result accumulator must "
-                         "be same as the source vector");
+                     "be same as the source vector");
 
   return success();
 }
@@ -382,9 +380,7 @@ template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
   p << ", " << op.result().getType();
 }
 
-void MulOp::print(OpAsmPrinter &p) {
-  printMulFMAOp<aievec::MulOp>(p, *this);
-}
+void MulOp::print(OpAsmPrinter &p) { printMulFMAOp<aievec::MulOp>(p, *this); }
 
 void aievec::FMAOp::print(OpAsmPrinter &p) {
   printMulFMAOp<aievec::FMAOp>(p, *this);
@@ -461,7 +457,7 @@ LogicalResult aievec::FMAOp::verify() {
 
 // Parse Mul and FMA op.
 ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
-                                 bool isFMAOp = true) {
+                          bool isFMAOp = true) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::UnresolvedOperand lhs, rhs, acc;
@@ -643,8 +639,7 @@ void ConcatOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict((*this)->getAttrs());
 
   // And now print the types
-  p << " : " << sources().getTypes().front() << ", "
-    << result().getType();
+  p << " : " << sources().getTypes().front() << ", " << result().getType();
 }
 
 // Verify Concat op.
@@ -654,14 +649,12 @@ LogicalResult ConcatOp::verify() {
     return emitError("Must concatenate at least two vectors");
 
   // Verify the types
-  VectorType sourceType =
-      sources().getTypes().front().dyn_cast<VectorType>();
+  VectorType sourceType = sources().getTypes().front().dyn_cast<VectorType>();
   VectorType resultType = result().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return emitError("requires vector type");
 
-  SmallVector<Value, 8> srcs(sources().begin(),
-                             sources().end());
+  SmallVector<Value, 8> srcs(sources().begin(), sources().end());
   // All the sources must have the same type
   for (auto source : srcs) {
     VectorType type = source.getType().dyn_cast<VectorType>();
@@ -679,7 +672,7 @@ LogicalResult ConcatOp::verify() {
   }
   if (totalLanes != getVectorLaneSize(resultType))
     return emitError("mismatch between vector lanes "
-                            "and sum of source lanes");
+                     "and sum of source lanes");
 
   return success();
 }
@@ -750,11 +743,11 @@ LogicalResult ExtOp::verify() {
   // Source lanes must be greater than result lanes
   if (sourceLanes / resultLanes <= 1)
     return emitError("lanes in source vector must be at least "
-                         "twice that of result vector");
+                     "twice that of result vector");
   // Source lanes must be a multiple of result lanes
   if (sourceLanes % resultLanes != 0)
     return emitError("lanes in result vector must be a multiple "
-                         "of source vector lanes");
+                     "of source vector lanes");
 
   // Verify validity of index
   unsigned factor = sourceLanes / resultLanes;
@@ -934,13 +927,9 @@ template <typename T> static void printPackUnpackOp(OpAsmPrinter &p, T op) {
   p << " : " << op.source().getType() << ", " << op.result().getType();
 }
 
-void PackOp::print(OpAsmPrinter &p) {
-  printPackUnpackOp<PackOp>(p, *this);
-}
+void PackOp::print(OpAsmPrinter &p) { printPackUnpackOp<PackOp>(p, *this); }
 
-void UnpackOp::print(OpAsmPrinter &p) {
-  printPackUnpackOp<UnpackOp>(p, *this);
-}
+void UnpackOp::print(OpAsmPrinter &p) { printPackUnpackOp<UnpackOp>(p, *this); }
 
 // Verify Pack and Unpack op.
 template <typename T> LogicalResult verifyPackUnpackOp(T op) {
@@ -978,17 +967,12 @@ template <typename T> LogicalResult verifyPackUnpackOp(T op) {
   return success();
 }
 
-LogicalResult PackOp::verify() {
-  return verifyPackUnpackOp<PackOp>(*this);
-}
+LogicalResult PackOp::verify() { return verifyPackUnpackOp<PackOp>(*this); }
 
-LogicalResult UnpackOp::verify() {
-  return verifyPackUnpackOp<UnpackOp>(*this);
-}
+LogicalResult UnpackOp::verify() { return verifyPackUnpackOp<UnpackOp>(*this); }
 
 // Parse Pack and Unpack op.
-ParseResult parsePackUnpackOp(OpAsmParser &parser,
-                                     OperationState &result) {
+ParseResult parsePackUnpackOp(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::UnresolvedOperand source;

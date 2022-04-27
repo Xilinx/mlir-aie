@@ -354,8 +354,8 @@ struct AIECoreToStandardPass
     // -> ()
     builder
         .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.put.wms",
-                        FunctionType::get(builder.getContext(),
-                                          {int32Type, int128Type}, {}))
+                              FunctionType::get(builder.getContext(),
+                                                {int32Type, int128Type}, {}))
         .setPrivate();
 
     // llvm.func @llvm.aie.put.mfs(%channel: !llvm.i1, %stream_val: !llvm.float)

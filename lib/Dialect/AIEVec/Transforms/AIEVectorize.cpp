@@ -679,10 +679,10 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
 
   // Create AIE dialect fma/msc op
   Operation *xfmaOp = state->builder.create<aievec::FMAOp>(
-      fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0], opAttr.offset[0],
-      opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
-      opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1],
-      isSub);
+      fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
+      opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
+      opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
+      opAttr.square[1], isSub);
 
   assert(xfmaOp && "could not create fma op");
   return xfmaOp;
@@ -823,8 +823,8 @@ generateUPDOp(TransferReadOp readOp,
       // Generate the upd instruction, and link it with a previous upd op
       // corresponding to the same read.
       updOp = state->builder.create<aievec::UPDOp>(
-          readOp.getLoc(), updVecType, readOp.getSource(), indices, start - offset,
-          idx - 1, updOp ? updOp.result() : nullptr);
+          readOp.getLoc(), updVecType, readOp.getSource(), indices,
+          start - offset, idx - 1, updOp ? updOp.result() : nullptr);
 
       LLVM_DEBUG(llvm::dbgs() << "\n\nCreated UPD op " << updOp
                               << " for read op " << readOp);

@@ -277,7 +277,8 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
 }
 
 // Print the memref dims, if the memref has dynamic shape
-static LogicalResult parseMemRefDynamicDims(CppEmitter &emitter, func::FuncOp func) {
+static LogicalResult parseMemRefDynamicDims(CppEmitter &emitter,
+                                            func::FuncOp func) {
   // Step1: Walk over all the operations that are memref dimOp
   func.walk([&](mlir::Operation *Op) {
     if (auto op = dyn_cast<memref::DimOp>(Op)) {
@@ -1500,7 +1501,8 @@ static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
   return success();
 }
 
-static LogicalResult printOperation(CppEmitter &emitter, func::FuncOp functionOp) {
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    func::FuncOp functionOp) {
   // We need to declare variables at top if the function has multiple blocks.
   if (!emitter.shouldDeclareVariablesAtTop() &&
       functionOp.getBlocks().size() > 1) {
@@ -1897,8 +1899,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<scf::ForOp, scf::IfOp, scf::YieldOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Standard ops.
-          .Case<cf::BranchOp, func::CallOp, cf::CondBranchOp, func::FuncOp, ModuleOp,
-                func::ReturnOp>(
+          .Case<cf::BranchOp, func::CallOp, cf::CondBranchOp, func::FuncOp,
+                ModuleOp, func::ReturnOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Arithmetic ops.
           .Case<arith::ConstantOp>(
