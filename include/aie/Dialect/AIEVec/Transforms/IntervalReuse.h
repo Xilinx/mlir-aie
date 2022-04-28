@@ -133,7 +133,7 @@ public:
   void coalesceIntervals();
   // Constructors
   IntervalReuse(vector::TransferReadOp readOp, AffineExpr b)
-      : memref(readOp.source()), base(b) {}
+      : memref(readOp.getSource()), base(b) {}
   IntervalReuse() : memref(nullptr), base(nullptr) {}
 };
 

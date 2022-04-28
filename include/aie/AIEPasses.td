@@ -216,7 +216,7 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIELowerMemcpyPass()";
 }
 
-def AIEVectorOpt : Pass<"aie-vector-opt", "FuncOp"> {
+def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
   let summary = "optimize vector instructions for AIE";
   let description = [{
     After super-vectorization, some additional optimizations are important

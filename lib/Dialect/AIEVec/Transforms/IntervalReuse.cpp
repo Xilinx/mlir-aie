@@ -124,7 +124,8 @@ int32_t IntervalReuse::getIntervalWidth(Operation *op) {
 bool IntervalReuse::potentialReuse(
     vector::TransferReadOp readOp, AffineExpr invariantBase,
     DenseMap<Block *, SmallVector<Operation *, 8>> &blockToEnclosingLoops) {
-  return sameMemRef(readOp.source()) && sameInvariantIndices(invariantBase) &&
+  return sameMemRef(readOp.getSource()) &&
+         sameInvariantIndices(invariantBase) &&
          sameEnclosingLoops(readOp, blockToEnclosingLoops);
 }
 
