@@ -331,7 +331,7 @@ Comceptually, the AIE.dmaStart operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
 or to a basic block for another dmaStart, to an AIE.end operation.
 
-Traits: HasParent<MemOp, FuncOp, ShimDMAOp>, Terminator
+Traits: HasParent<MemOp, func::FuncOp, ShimDMAOp>, Terminator
 
 #### Attributes:
 

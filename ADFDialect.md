@@ -13,47 +13,91 @@ the C++ syntactic level.
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
-### 
+
 
 ### 
 
+
+
 ### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
+
+### 
+
+
 
 ## Operation definition
 
@@ -270,6 +314,14 @@ Effects: MemoryEffects::Effect{}
 
 
 
+Syntax:
+
+```
+!ADF.interface<
+  Type   # type
+>
+```
+
 
 #### Parameters:
 
@@ -280,6 +332,14 @@ Effects: MemoryEffects::Effect{}
 ### ParameterType
 
 
+
+Syntax:
+
+```
+!ADF.parameter<
+  Type   # type
+>
+```
 
 
 #### Parameters:
@@ -292,6 +352,14 @@ Effects: MemoryEffects::Effect{}
 
 
 
+Syntax:
+
+```
+!ADF.stream<
+  Type   # type
+>
+```
+
 
 #### Parameters:
 
@@ -302,6 +370,16 @@ Effects: MemoryEffects::Effect{}
 ### WindowType
 
 
+
+Syntax:
+
+```
+!ADF.window<
+  Type,   # type
+  int,   # size
+  int   # overlap
+>
+```
 
 
 #### Parameters:
@@ -316,89 +394,125 @@ Effects: MemoryEffects::Effect{}
 
 
 
+Syntax: `!ADF.acc48`
+
 
 ### acc80Type
 
 
+
+Syntax: `!ADF.acc80`
 
 
 ### accfloatType
 
 
 
+Syntax: `!ADF.accfloat`
+
 
 ### cacc48Type
 
 
+
+Syntax: `!ADF.cacc48`
 
 
 ### cacc80Type
 
 
 
+Syntax: `!ADF.cacc80`
+
 
 ### caccfloatType
 
 
+
+Syntax: `!ADF.caccfloat`
 
 
 ### cfloatType
 
 
 
+Syntax: `!ADF.cfloat`
+
 
 ### cint16Type
 
 
+
+Syntax: `!ADF.cint16`
 
 
 ### cint32Type
 
 
 
+Syntax: `!ADF.cint32`
+
 
 ### floatType
 
 
+
+Syntax: `!ADF.float`
 
 
 ### int16Type
 
 
 
+Syntax: `!ADF.int16`
+
 
 ### int32Type
 
 
+
+Syntax: `!ADF.int32`
 
 
 ### int64Type
 
 
 
+Syntax: `!ADF.int64`
+
 
 ### int8Type
 
 
+
+Syntax: `!ADF.int8`
 
 
 ### uint16Type
 
 
 
+Syntax: `!ADF.uint16`
+
 
 ### uint32Type
 
 
+
+Syntax: `!ADF.uint32`
 
 
 ### uint64Type
 
 
 
+Syntax: `!ADF.uint64`
+
 
 ### uint8Type
 
 
+
+Syntax: `!ADF.uint8`
 
 
