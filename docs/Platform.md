@@ -65,4 +65,4 @@ and run on the board as usual.
 
 -----
 
-<p align="center">Copyright&copy; 2019-2021 Xilinx</p>
+<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>

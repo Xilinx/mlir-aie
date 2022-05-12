@@ -20,6 +20,7 @@ Generated code documentation
 Tutorials
 - [AIE Design Patterns](AIEDesignPatterns)
 - [AIE Routing](AIERouting)
+- [AIE Vectorization of Scalar Code](AIEVectorization)
 
 -----
 
