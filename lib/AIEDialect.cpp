@@ -459,44 +459,44 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getConsumerTileOp() {
   return cast<xilinx::AIE::TileOp>(consumerTile().getDefiningOp());
 }
 
-static LogicalResult verify(xilinx::AIE::ObjectFifoCreateOp op) {
-  if (op.size() < 2)
-    return op.emitError("Number of elements of AIE ObjectFifoCreateOp operation must be >= 2");
+LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
+  if (size() < 2)
+    return emitError("Number of elements of AIE ObjectFifoCreateOp operation must be >= 2");
 
   return success();
 }
 
 // ObjectFifoAcquireOp
-static LogicalResult verify(xilinx::AIE::ObjectFifoAcquireOp op) {
-  if (op.acqNumber() < 1)
-    return op.emitError("ObjectFifoAcquireOp must acquire at least one element");
+LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
+  if (acqNumber() < 1)
+    return emitError("ObjectFifoAcquireOp must acquire at least one element");
   
-  auto port = op.port().getValue();
+  auto port = port().getValue();
   if (port != "produce" && port != "consume")
-    return op.emitError("ObjectFifoAcquireOp port must be either 'produce' or 'consume'");
+    return emitError("ObjectFifoAcquireOp port must be either 'produce' or 'consume'");
 
   return success();
 }
 
 // ObjectFifoReleaseOp
-static LogicalResult verify(xilinx::AIE::ObjectFifoReleaseOp op) {
-  if (op.relNumber() < 1)
-    return op.emitError("ObjectFifoReleaseOp must release at least one element");
+LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
+  if (relNumber() < 1)
+    return emitError("ObjectFifoReleaseOp must release at least one element");
   
-  auto port = op.port().getValue();
+  auto port = port().getValue();
   if (port != "produce" && port != "consume")
-    return op.emitError("ObjectFifoReleaseOp port must be either 'produce' or 'consume'");
+    return emitError("ObjectFifoReleaseOp port must be either 'produce' or 'consume'");
 
   return success();
 }
 
 // ObjectFifoRegisterProcessOp
-static LogicalResult verify(xilinx::AIE::ObjectFifoRegisterProcessOp op) {
-  if (op.getProcessLength() < 1)
-    return op.emitError("Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
+LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOpverify() {
+  if (getProcessLength() < 1)
+    return emitError("Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
 
-  if (op.getAcquirePattern().size() != op.getReleasePattern().size())
-    return op.emitError("Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp must be of equal length");
+  if (getAcquirePattern().size() != getReleasePattern().size())
+    return emitError("Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp must be of equal length");
 
   return success();
 }
@@ -665,7 +665,7 @@ static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
 
 static LogicalResult verify(xilinx::AIE::UseTokenOp op) {
   auto parentOp = op->getParentOp();
-  if (isa<FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
+  if (isa<func::FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
       isa<xilinx::AIE::MemOp>(parentOp) ||
       isa<xilinx::AIE::ShimDMAOp>(parentOp))
     return success();

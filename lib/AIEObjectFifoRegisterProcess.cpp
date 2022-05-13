@@ -86,9 +86,9 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
             }
 
             // apply kernel
-            FuncOp func;
-            for (auto funcOp : m.getOps<FuncOp>()) {
-                if (funcOp.sym_name() == regOp.callee()) {
+            func::FuncOp func;
+            for (auto funcOp : m.getOps<func::FuncOp>()) {
+                if (funcOp.getSymName() == regOp.callee()) {
                     func = funcOp;
                     break;
                 }

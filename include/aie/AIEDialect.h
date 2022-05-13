@@ -230,7 +230,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMemcpyPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
-std::unique_ptr<OperationPass<FuncOp>> createAIEVectorOptPass();
+std::unique_ptr<OperationPass<func::ßFuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoLoopUnrollPass();
