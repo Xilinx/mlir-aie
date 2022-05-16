@@ -1421,7 +1421,7 @@ def AIE_ArrayLoadOp : AIE_Op<"array.load", []> {
     attr-dict `(` $array `:` type($array) `,` $index `)` `:` type($output)
   }];
 
-  //let verifier = [{ return ::verify(*this); }];
+  //let hasVerifier = 1;
 
   //let extraClassDeclaration = [{
   //  int getIndex();
@@ -1458,7 +1458,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
     `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
 
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     int size() { return elemNumber(); }
@@ -1500,7 +1500,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
     attr-dict `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
   }];
 
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     StringAttr port() {
@@ -1544,7 +1544,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
     attr-dict `(` $fifo `:` type($fifo) `,` $size `)` 
   }];
 
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     StringAttr port() {
@@ -1637,7 +1637,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
     attr-dict `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)` 
   }];
 
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     StringAttr port() {
