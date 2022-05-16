@@ -45,7 +45,7 @@ def run_flow(opts, tmpdirname):
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
-    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-std', opts.filename, '-o', file_with_addresses])
+    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
     t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
@@ -55,6 +55,7 @@ def run_flow(opts, tmpdirname):
       do_call(['sed', '-i', 's/^target.*//', chess_intrinsic_wrapper])     
 
       do_call(['sed', '-i', 's/noalias_sidechannel[^,]*,//', chess_intrinsic_wrapper])
+      do_call(['sed', '-i', 's/nocallback[^,]*,//', chess_intrinsic_wrapper])
 
     def corefile(dirname, core, ext):
         (corecol, corerow, _) = core
@@ -82,7 +83,8 @@ def run_flow(opts, tmpdirname):
                             '--cse',
                             '--convert-vector-to-llvm',
                             '--convert-memref-to-llvm',
-                            '--convert-std-to-llvm=use-bare-ptr-memref-call-conv',
+                            '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
+                            '--convert-cf-to-llvm',
                             '--canonicalize', '--cse', file_core, '-o', file_opt_core])
         file_core_bcf = tmpcorefile(core, "bcf")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
@@ -90,13 +92,11 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
         file_core_llvmir = tmpcorefile(core, "ll")
         do_call(['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
-        file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
-        do_call(['opt', '-O2', '-strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
         file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
-          do_call(['cp', file_core_llvmir_stripped, file_core_llvmir_chesshack])
+          do_call(['cp', file_core_llvmir, file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
           do_call(['sed', '-i', 's/noalias_sidechannel[^,],//', file_core_llvmir_chesshack])
           file_core_llvmir_chesslinked = tmpcorefile(core, "chesslinked.ll")
@@ -106,6 +106,7 @@ def run_flow(opts, tmpdirname):
           do_call(['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/mustprogress//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/poison/undef/g', file_core_llvmir_chesslinked])
+          do_call(['sed', '-i', '-E', 's/nocallback//g', file_core_llvmir_chesslinked])
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
@@ -114,6 +115,8 @@ def run_flow(opts, tmpdirname):
             do_call(['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
+          file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
+          do_call(['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
@@ -141,10 +144,20 @@ def run_flow(opts, tmpdirname):
       cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
+        if(opts.xaie == 2):
+            cmd += ['-DLIBXAIENGINEV2']
+            cmd += ['-I%s/usr/include/c++/10.2.0' % opts.sysroot]
+            cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
+            cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
+            cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
       cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
       cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
       cmd += ['-I%s' % tmpdirname]
-      cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+      if(opts.xaie == 2):
+        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
+      else:
+        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+    
 
       if(len(opts.arm_args) > 0):
         do_call(cmd + opts.arm_args)

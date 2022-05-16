@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/AIEDialect.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
@@ -501,13 +501,14 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOpverify() {
   return success();
 }
 
-static LogicalResult verify(xilinx::AIE::TileOp op) {
-  auto users = op.result().getUsers();
+
+LogicalResult xilinx::AIE::TileOp::verify() {
+  auto users = result().getUsers();
   bool found = false;
   for (auto user : users) {
     if (llvm::isa<xilinx::AIE::SwitchboxOp>(*user)) {
       if (found)
-        return op.emitError("Tile can only have one switchbox");
+        return emitError("Tile can only have one switchbox");
       found = true;
     }
   }
@@ -515,11 +516,11 @@ static LogicalResult verify(xilinx::AIE::TileOp op) {
   return success();
 }
 
-static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
-  Region &body = op.connections();
+LogicalResult xilinx::AIE::SwitchboxOp::verify() {
+  Region &body = connections();
   DenseSet<xilinx::AIE::Port> sourceset;
   DenseSet<xilinx::AIE::Port> destset;
-  assert(op.getOperation()->getNumRegions());
+  assert(getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
@@ -540,21 +541,21 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
         connectOp.emitOpError("source index cannot be less than zero");
       }
       if (connectOp.sourceIndex() >=
-          op.getNumSourceConnections(connectOp.sourceBundle())) {
+          getNumSourceConnections(connectOp.sourceBundle())) {
         connectOp.emitOpError("source index for source bundle ")
             << stringifyWireBundle(connectOp.sourceBundle())
             << " must be less than "
-            << op.getNumSourceConnections(connectOp.sourceBundle());
+            << getNumSourceConnections(connectOp.sourceBundle());
       }
       if (connectOp.destIndex() < 0) {
         connectOp.emitOpError("dest index cannot be less than zero");
       }
       if (connectOp.destIndex() >=
-          op.getNumDestConnections(connectOp.destBundle())) {
+          getNumDestConnections(connectOp.destBundle())) {
         connectOp.emitOpError("dest index for dest bundle ")
             << stringifyWireBundle(connectOp.destBundle())
             << " must be less than "
-            << op.getNumDestConnections(connectOp.destBundle());
+            << getNumDestConnections(connectOp.destBundle());
       }
     } else if (auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
       xilinx::AIE::Port dest =
@@ -570,11 +571,11 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
         connectOp.emitOpError("dest index cannot be less than zero");
       }
       if (connectOp.destIndex() >=
-          op.getNumDestConnections(connectOp.destBundle())) {
+          getNumDestConnections(connectOp.destBundle())) {
         connectOp.emitOpError("dest index for dest bundle ")
             << stringifyWireBundle(connectOp.destBundle())
             << " must be less than "
-            << op.getNumDestConnections(connectOp.destBundle());
+            << getNumDestConnections(connectOp.destBundle());
       }
 
       int arbiter = -1;
@@ -605,10 +606,10 @@ static LogicalResult verify(xilinx::AIE::SwitchboxOp op) {
   return success();
 }
 
-static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
-  Region &body = op.connections();
+LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
+  Region &body = connections();
   DenseSet<xilinx::AIE::Port> destset;
-  assert(op.getOperation()->getNumRegions());
+  assert(getOperation()->getNumRegions());
   assert(!body.empty());
 
   for (auto &ops : body.front()) {
@@ -631,15 +632,15 @@ static LogicalResult verify(xilinx::AIE::ShimSwitchboxOp op) {
   return success();
 }
 
-static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
-  Region &body = op.connections();
+LogicalResult xilinx::AIE::ShimMuxOp::verify() {
+  Region &body = connections();
   DenseSet<xilinx::AIE::Port> destset;
-  assert(op.getOperation()->getNumRegions());
+  assert(getOperation()->getNumRegions());
   assert(!body.empty());
 
-  auto tileOp = op.getTileOp();
+  auto tileOp = getTileOp();
   if (!tileOp.isShimNOCTile())
-    return op.emitOpError("must be in a ShimTile with a NOC connection");
+    return emitOpError("must be in a ShimTile with a NOC connection");
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
@@ -657,14 +658,14 @@ static LogicalResult verify(xilinx::AIE::ShimMuxOp op) {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
   }
-  if (!op.getTileOp().isShimTile()) {
-    return op.emitOpError("must be in a shim tile, i.e. row == 0.");
+  if (!getTileOp().isShimTile()) {
+    return emitOpError("must be in a shim tile, i.e. row == 0.");
   }
   return success();
 }
 
-static LogicalResult verify(xilinx::AIE::UseTokenOp op) {
-  auto parentOp = op->getParentOp();
+LogicalResult xilinx::AIE::UseTokenOp::verify() {
+  auto parentOp = (*this)->getParentOp();
   if (isa<func::FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
       isa<xilinx::AIE::MemOp>(parentOp) ||
       isa<xilinx::AIE::ShimDMAOp>(parentOp))
@@ -707,13 +708,12 @@ int xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
-static LogicalResult verify(xilinx::AIE::ShimDMAOp op) {
-  assert(op.getOperation()->getNumRegions() == 1 &&
-         "ShimDMAOp has zero region!");
-  assert(!op.body().empty() && "ShimDMAOp should have non-empty body");
-  auto tileOp = op.getTileOp();
+LogicalResult xilinx::AIE::ShimDMAOp::verify() {
+  assert(getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
+  assert(!body().empty() && "ShimDMAOp should have non-empty body");
+  auto tileOp = getTileOp();
   if (!tileOp.isShimNOCTile())
-    return op.emitOpError("must be in a ShimTile with a NOC connection");
+    return emitOpError("must be in a ShimTile with a NOC connection");
 
   return success();
 }
@@ -723,10 +723,10 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
-static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
-  Region &body = op.ports();
+LogicalResult xilinx::AIE::PacketFlowOp::verify() {
+  Region &body = ports();
   // DenseSet<xilinx::AIE::Port> destset;
-  assert(op.getOperation()->getNumRegions());
+  assert(getOperation()->getNumRegions());
   assert(!body.empty());
   for (auto &ops : body.front()) {
     if (auto Op = dyn_cast<xilinx::AIE::PacketSourceOp>(ops)) {
@@ -741,9 +741,9 @@ static LogicalResult verify(xilinx::AIE::PacketFlowOp op) {
 }
 
 // CoreOp
-static LogicalResult verify(xilinx::AIE::CoreOp op) {
-  assert(op.getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
-  assert(!op.body().empty() && "CoreOp should have non-empty body");
+LogicalResult xilinx::AIE::CoreOp::verify() {
+  assert(getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
+  assert(!body().empty() && "CoreOp should have non-empty body");
 
   return success();
 }
@@ -765,14 +765,13 @@ xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
 }
 
 // MemOp
-static LogicalResult verify(xilinx::AIE::MemOp op) {
-  Region &body = op.body();
+LogicalResult xilinx::AIE::MemOp::verify() {
   llvm::SmallSet<xilinx::AIE::DMAChan, 4> used_channels;
 
-  assert(op.getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
-  assert(!body.empty() && "MemOp should have non-empty body");
+  assert(getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
+  assert(!body().empty() && "MemOp should have non-empty body");
 
-  for (auto &bodyOp : body.getOps()) {
+  for (auto &bodyOp : body().getOps()) {
     // check for duplicate DMA channels within the same MemOp
     if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
       auto DMA_chan = DMA_start.dmaChan();
@@ -785,7 +784,7 @@ static LogicalResult verify(xilinx::AIE::MemOp op) {
 
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {
       if (!allocOp->getAttr("id"))
-        op.emitOpError()
+        emitOpError()
             << "allocOp in MemOp region should have an id attribute\n";
     }
   }
@@ -836,9 +835,9 @@ template <typename... ParentOpTypes> struct HasSomeParent {
   }
 };
 
-static LogicalResult verify(xilinx::AIE::UseLockOp op) {
+LogicalResult xilinx::AIE::UseLockOp::verify() {
   return HasSomeParent<xilinx::AIE::CoreOp, xilinx::AIE::MemOp,
-                       xilinx::AIE::ShimDMAOp>::verifyTrait(op);
+                       xilinx::AIE::ShimDMAOp>::verifyTrait(*this);
 
   //  xilinx::AIE::LockOp lockOp =
   //  dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());

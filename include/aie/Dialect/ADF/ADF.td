@@ -15,6 +15,8 @@
 #ifndef ADF_TD
 #define ADF_TD
 
+include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
@@ -35,7 +37,7 @@ def ADF_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 // Base ADF operation definition.
 //===----------------------------------------------------------------------===//
-class ADF_Op<string mnemonic, list<OpTrait> traits = []> :
+class ADF_Op<string mnemonic, list<Trait> traits = []> :
     Op<ADF_Dialect, mnemonic, traits>;
 
 
@@ -45,21 +47,23 @@ class ADF_Op<string mnemonic, list<OpTrait> traits = []> :
 def ADF_InterfaceType : TypeDef<ADF_Dialect, "Interface"> {
   let mnemonic = "interface";
   let parameters = (ins "Type":$type);
-  // FIXME: use this when we update LLVM
-  // let assemblyFormat = "`<` $type `>`";
+  let assemblyFormat = "`<` $type `>`";
 }
 
 def ADF_WindowType : TypeDef<ADF_Dialect, "Window"> {
   let mnemonic = "window";
   let parameters = (ins "Type":$type, "int":$size, "int":$overlap);
+  let assemblyFormat = "`<` $type `,` $size `,` $overlap `>`";
 }
 def ADF_StreamType : TypeDef<ADF_Dialect, "Stream"> {
   let mnemonic = "stream";
   let parameters = (ins "Type":$type);
+  let assemblyFormat = "`<` $type `>`";
 }
 def ADF_ParameterType : TypeDef<ADF_Dialect, "Parameter"> {
   let mnemonic = "parameter";
   let parameters = (ins "Type":$type);
+  let assemblyFormat = "`<` $type `>`";
 }
 
 class ADF_DataType<string name> : TypeDef<ADF_Dialect, name> {

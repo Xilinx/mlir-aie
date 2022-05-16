@@ -17,9 +17,13 @@
 #include <vector>
 
 // builds against at least boost graph 1.7.1
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-local-typedef"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 #include <boost/graph/graph_traits.hpp>
+#pragma GCC diagnostic pop
 
 #include "aie/AIEDialect.h" // for WireBundle and Port
 

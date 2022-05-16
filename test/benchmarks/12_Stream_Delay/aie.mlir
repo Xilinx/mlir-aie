@@ -33,7 +33,7 @@ module @test12_stream_delay {
       AIE.useLock(%lock13_5, "Acquire", 1, 0)
       AIE.dmaBd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%lock13_5, "Release", 0, 0)
-      br ^end 
+      cf.br ^end 
     ^end:
       AIE.end
   }
@@ -51,7 +51,7 @@ module @test12_stream_delay {
       AIE.useLock(%lock43_6, "Acquire", 0, 0)
       AIE.dmaBd(<%buf43_0: memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%lock43_6, "Release", 1, 0)
-      br ^end 
+      cf.br ^end 
     ^end:
       AIE.end
   }

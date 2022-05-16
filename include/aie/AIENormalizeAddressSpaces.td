@@ -12,8 +12,8 @@
 #define AIE_NORMALIZE_ADDRESS_SPACES
 
 include "AIE.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "mlir/Dialect/MemRef/IR/MemRefOps.td"
+include "mlir/IR/PatternBase.td"
 
 def toDefaultAddressSpace : NativeCodeCall<"TypeAttr::get(memRefToDefaultAddressSpace($0.getValue()))">;
 def hasNonDefaultAddressSpace : Constraint<

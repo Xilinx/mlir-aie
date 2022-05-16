@@ -15,6 +15,8 @@
 
 include "aie/Dialect/AIEVec/IR/AIEVecDialect.td"
 
+include "mlir/IR/AttrTypeBase.td"
+
 // Base class for AIE vector types.
 class AIEVec_Type<string name, string typeMnemonic, 
                list<Trait> traits = [],
@@ -36,6 +38,7 @@ def AIEVec_Acc : AIEVec_Type<"Acc", "acc"> {
     }]>
   ];
   let skipDefaultBuilders = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif // AIEVEC_TYPES

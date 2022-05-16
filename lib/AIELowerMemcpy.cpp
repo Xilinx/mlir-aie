@@ -10,14 +10,15 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Translation.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -62,7 +63,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
                              0); // A type for now
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
                                 releaseTknVal, LockAction::Release);
-    rewriter.create<BranchOp>(rewriter.getUnknownLoc(), &endBlock);
+    rewriter.create<cf::BranchOp>(rewriter.getUnknownLoc(), &endBlock);
   }
 
   LogicalResult matchAndRewrite(MemcpyOp op, OpAdaptor adaptor,
@@ -126,8 +127,8 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
-    target.addLegalOp<BranchOp>();
-    target.addLegalOp<CondBranchOp>();
+    target.addLegalOp<cf::BranchOp>();
+    target.addLegalOp<cf::CondBranchOp>();
 
     patterns.insert<LowerAIEMemcpy>(m.getContext(), m);
 

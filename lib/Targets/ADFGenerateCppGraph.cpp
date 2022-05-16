@@ -11,7 +11,7 @@
 #include "AIETargets.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/ADF/ADFOps.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/SymbolTable.h"
@@ -109,9 +109,9 @@ struct GraphWriter {
         Operation *userOp = userOperand.getOwner();
         int targetIndex = userOperand.getOperandNumber();
         if (auto kernel = dyn_cast<KernelOp>(userOp)) {
-          auto funcOp = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+          auto funcOp = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
               driverOp, kernel.calleeAttr());
-          Type opType = funcOp.getType().getInput(targetIndex);
+          Type opType = funcOp.getFunctionType().getInput(targetIndex);
           std::string targetKernelName = kernelOp2VarName[kernel];
           output << indent << "connect<" << getConnectionTypeString(opType)
                  << "> ";
@@ -136,9 +136,9 @@ struct GraphWriter {
         Operation *userOp = userOperand.getOwner();
         int targetIndex = userOperand.getOperandNumber();
         if (auto kernel = dyn_cast<KernelOp>(userOp)) {
-          auto funcOp = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+          auto funcOp = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
               kernel, kernel.calleeAttr());
-          Type opType = funcOp.getType().getInput(targetIndex);
+          Type opType = funcOp.getFunctionType().getInput(targetIndex);
           auto targetKernelName = kernelOp2VarName[kernel];
           output << indent << "connect<" << getConnectionTypeString(opType)
                  << "> ";
@@ -146,9 +146,9 @@ struct GraphWriter {
                  << sourceIndex << "], " << targetKernelName << ".in["
                  << targetIndex << "]);\n";
         } else if (auto outputOp = dyn_cast<GraphOutputOp>(userOp)) {
-          auto funcOp = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+          auto funcOp = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
               source, source.calleeAttr());
-          Type opType = funcOp.getType().getInput(sourceIndex);
+          Type opType = funcOp.getFunctionType().getInput(sourceIndex);
           output << indent << "connect<" << getConnectionTypeString(opType)
                  << "> ";
           output << getTempNetName() << " (" << sourceKernelName << ".out["
@@ -166,11 +166,11 @@ struct GraphWriter {
     output << "#ifndef FUNCTION_KERNELS_H\n";
     output << "#define FUNCTION_KERNELS_H\n\n";
 
-    for (Block &block : module.body())
-      for (auto funcOp : block.getOps<FuncOp>()) {
-        output << "void " << funcOp.sym_name() << "(";
+    for (Block &block : module.getBodyRegion())
+      for (auto funcOp : block.getOps<func::FuncOp>()) {
+        output << "void " << funcOp.getSymName() << "(";
 
-        FunctionType type = funcOp.getType();
+        FunctionType type = funcOp.getFunctionType();
 
         for (unsigned i = 0; i < type.getNumInputs(); i++) {
           output << getKernelTypeString("input", type.getInput(i)) << " in" << i
@@ -271,7 +271,7 @@ mlir::LogicalResult xilinx::AIE::ADFGenerateCPPGraph(ModuleOp module,
 
   writer.writeKernelFunctions(module);
 
-  for (Block &block : module.body())
+  for (Block &block : module.getBodyRegion())
     for (auto graphOp : block.getOps<GraphOp>()) {
       writer.writeClass(graphOp);
     }

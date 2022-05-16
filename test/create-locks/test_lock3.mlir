@@ -24,7 +24,7 @@
 // CHECK-NEXT:    AIE.useLock(%3, Acquire, 1)
 // CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%3, Release, 0)
-// CHECK-NEXT:    br ^bb2
+// CHECK-NEXT:    cf.br ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
@@ -34,7 +34,7 @@
 // CHECK-NEXT:    AIE.useLock(%1, Acquire, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%1, Release, 1)
-// CHECK-NEXT:    br ^bb2
+// CHECK-NEXT:    cf.br ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
@@ -69,7 +69,7 @@ module @test_lock3 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }
@@ -80,7 +80,7 @@ module @test_lock3 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }

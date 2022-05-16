@@ -1,0 +1,58 @@
+digraph G {
+  // Note: Remember to run the circt/utils/update-docs-dialects.sh script after
+  // modifying this file to regenerate the .svg and .png renders of the graph.
+  rankdir = TB
+  splines=spline
+  node [shape=box style=filled fillcolor="white"]
+  nodesep=0.2 // horizontal compression
+  ranksep=0.5 // vertical compression
+  compound=true
+
+  // MLIR dialects
+  subgraph cluster_mlir {
+    label = "Upstream MLIR";
+    node [fillcolor="#beaed4"]
+     Linalg Affine SCF
+  }
+
+  subgraph cluster_aie {
+    style="solid,bold"
+    node [fillcolor="#f5edbc"]
+    label = "mlir_aie"
+
+    ADF [URL="https://circt.llvm.org/docs/Dialects/FSM/"]
+   { rank = same; AIE [URL="https://circt.llvm.org/docs/Dialects/FSM/"]
+    AIEVec [URL="https://circt.llvm.org/docs/Dialects/FSM/"] }
+  }
+
+  subgraph input_formats {
+    node [fillcolor="#7fc97f" shape="note"]
+    CPPFile [label=".cpp"]
+    Pytorch [label=".py"]
+  }
+
+  // File formats
+  subgraph output_formats {
+    node [fillcolor="#7fc97f" shape="note"]
+    ADFCPPFile [label="adf.cpp"]
+    subgraph cluster_configuration {
+      label = "configuration"
+      LLFile [label=".ll"]
+      Conf [label=".cpp"]
+    }
+  }
+
+  Affine -> AIE [ltail=cluster_mlir, style=dashed]
+  ADF -> AIE [style=dashed]
+  ADF -> ADFCPPFile
+  Affine -> AIEVec
+  AIEVec -> ADFCPPFile
+  AIE -> LLFile [lhead=cluster_mlir]
+  AIEVec -> LLFile [style=dashed]
+  ADFCPPFile -> Vitis
+  Pytorch -> torch_mlir -> Affine [lhead=cluster_mlir]
+  CPPFile -> polygeist -> Affine [lhead=cluster_mlir]
+
+  // For layout
+  Affine -> ADF [style=invis]
+}

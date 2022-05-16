@@ -7,7 +7,7 @@ cmake 3.17.5
 ninja 1.8.2
 Xilinx Vitis 2020.1
 sudo pip3 install joblib psutil
-clang/llvm 13+ from source https://github.com/llvm/llvm-project
+clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
@@ -87,4 +87,4 @@ setenv LD_LIBRARY_PATH ${MLIRAIE}/lib:${LD_LIBRARY_PATH}
 
 -----
 
-<p align="center">Copyright&copy; 2019-2021 Xilinx</p>
+<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>

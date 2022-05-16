@@ -9,12 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/AIENetlistAnalysis.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Translation.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -217,7 +218,7 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
     MemOp mem = map.second;
     Region &r = mem.body();
     Block *endBlock = &r.back();
-    for (auto op : r.getOps<CondBranchOp>()) {
+    for (auto op : r.getOps<cf::CondBranchOp>()) {
       DMAStartOp dmaSt =
           dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
       int channelNum = dmaSt.getChannelNum();

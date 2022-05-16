@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Vector/VectorOps.h"
-#include "mlir/Dialect/Vector/VectorTransforms.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -27,11 +27,11 @@ using namespace xilinx::AIE;
 
 struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<StandardOpsDialect>();
+    registry.insert<func::FuncDialect>();
     registry.insert<memref::MemRefDialect>();
   }
   void runOnOperation() override {
-    FuncOp f = getOperation();
+    func::FuncOp f = getOperation();
 
     // Initial store->load forwarding
     vector::transferOpflowOpt(f);
@@ -52,6 +52,7 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
   }
 };
 
-std::unique_ptr<OperationPass<FuncOp>> xilinx::AIE::createAIEVectorOptPass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+xilinx::AIE::createAIEVectorOptPass() {
   return std::make_unique<AIEVectorOptPass>();
 }

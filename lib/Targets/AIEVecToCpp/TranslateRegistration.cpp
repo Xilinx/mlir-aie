@@ -10,15 +10,17 @@
 
 #include "TranslateAIEVecToCpp.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/Vector/VectorOps.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/Translation.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+#include "mlir/Tools/mlir-translate/Translation.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace mlir;
@@ -42,7 +44,8 @@ void registerAIEVecToCppTranslation() {
                         emitc::EmitCDialect,
                         math::MathDialect,
                         memref::MemRefDialect,
-                        StandardOpsDialect,
+                        func::FuncDialect,
+                        cf::ControlFlowDialect,
                         scf::SCFDialect,
                         vector::VectorDialect,
                         xilinx::aievec::AIEVecDialect>();

@@ -8,16 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Target/LLVMIR/Import.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/Translation.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
@@ -317,8 +317,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           int nextBdNum = blockMap[nextBlock];
           output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
                  << ", "
-                 << " /* bd */ " << bdNum << ", "
-                 << " /* nextbd */ " << nextBdNum << ");\n";
+                 << " /* nextbd */ " << nextBdNum << ", "
+                 << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
+                                                 // disable this?
         }
         if (foundBdPacket) {
           output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
@@ -357,6 +358,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
   }
+  output << "} // mlir_aie_configure_dmas\n\n";
+
   // ShimDMA Config
   //  int index = 0;
   for (auto op : module.getOps<ShimDMAOp>()) {
@@ -371,10 +374,38 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       for (auto &block : op.body()) {
         if (!block.getOps<DMABDOp>().empty()) {
           blockMap[&block] = bdNum;
+
+          uint64_t BaseAddr = 0;
+          uint64_t offset = 0;
+          for (auto op : block.getOps<DMABDOp>()) {
+            BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+            offset = op.getOffsetValue();
+          }
+          uint64_t address = BaseAddr + offset;
+
+          output << "static u64 _mlir_aie_external_myBuffer_" << col << row
+                 << "_" << bdNum << " = "
+                 << "0x" << llvm::utohexstr(address) << ";\n";
+
+          output << "void mlir_aie_external_set_addr_myBuffer_" << col << row
+                 << "_" << bdNum << "(u64 addr) {\n"
+                 << "    _mlir_aie_external_myBuffer_" << col << row << "_"
+                 << bdNum << " = addr;\n"
+                 << "}\n";
+
+          output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
+                 << "_" << bdNum << "(void) {\n"
+                 << "    return _mlir_aie_external_myBuffer_" << col << row
+                 << "_" << bdNum << ";\n"
+                 << "}\n";
+
           bdNum++;
         }
       }
     }
+
+    output << "void mlir_aie_configure_shimdma_" << col << row << "(" << ctx_p
+           << ") {\n";
     for (auto &block : op.body()) {
       bool foundBd = false;
       int len = 0;
@@ -426,7 +457,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         output << "XAie_DmaSetAddrLen(" << tileDMAInstRefStr(col, row, bdNum)
                << ", "
                << " /* addr */ "
-               << "0x" << llvm::utohexstr(address) << ", "
+               //               << "0x" << llvm::utohexstr(address) << ", "
+               << "mlir_aie_external_get_addr_myBuffer_" << col << row << "_"
+               << bdNum << "(), "
                << " /* len */ " << len << " * " << bytes << ");\n";
 
         output << "XAie_DmaSetAxi(" << tileDMAInstRefStr(col, row, bdNum)
@@ -445,8 +478,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           // BdNum, u8 NextBd);
           output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
                  << ", "
-                 << " /* bd */ " << bdNum << ", "
-                 << " /* nextbd */ " << nextBdNum << ");\n";
+                 << " /* nextbd */ " << nextBdNum << ", "
+                 << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
+                                                 // disable this?
         }
         output << "XAie_DmaEnableBd(" << tileDMAInstRefStr(col, row, bdNum)
                << ");\n";
@@ -480,8 +514,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                << "/* dmaDir */ DMA_" << dmaDir << ");\n";
       }
     }
+    output << "} // mlir_aie_configure_shimdma\n\n";
   }
-  output << "} // mlir_aie_configure_dmas\n\n";
 
   //---------------------------------------------------------------------------
   // mlir_aie_initialize_locks
@@ -686,76 +720,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
   //---------------------------------------------------------------------------
   // Output Buffer Accessors
-  //---------------------------------------------------------------------------
-  for (auto tile : tiles) {
-    Operation *tileOp = tile.second;
-    std::pair<int, int> coord = NL.getCoord(tileOp);
-    int col = coord.first;
-    int row = coord.second;
-    auto loc = tileLocStr(col, row);
-
-    auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
-      // int32_t mlir_aie_read_buffer_a13(int index) {
-      // void mlir_aie_write_buffer_a13(int index, int32_t value) {
-      std::string bufName(buf.name().getValue());
-      Type t = buf.getType();
-      Type et;
-      std::string typestr;
-      if (auto memrefType = t.dyn_cast<MemRefType>()) {
-        et = memrefType.getElementType();
-        if (et.isInteger(32))
-          typestr = "int32_t";
-        else if (et.isF32())
-          typestr = "float";
-        else {
-          output << "// buffer " << bufName << " with unsupported type " << t
-                 << ";\n";
-          return; // Unsupported type
-        }
-
-      } else {
-        output << "// buffer " << bufName << " with unsupported type " << t
-               << ";\n";
-        return; // Unsupported type
-      }
-
-      output << "const int " << bufName
-             << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-      output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p
-             << ", int index) {\n";
-      output << "u32 value; auto rc = XAie_DataMemRdWord(" << deviceInstRef
-             << ", " << loc << ", " << bufName
-             << "_offset + (index*4), &value);\n";
-      if (et.isInteger(32))
-        output << "  return value;\n";
-      else if (et.isF32()) {
-        output << "  union caster { int32_t i; float f; };\n";
-        output << "  caster c; c.i = value;\n";
-        output << "  return c.f;\n";
-      }
-      output << "}\n";
-      output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p
-             << ", int index, " << typestr << " value) {\n";
-      if (et.isInteger(32))
-        output << "  int32_t int_value = value;\n";
-      else if (et.isF32()) {
-        output << "  union caster { int32_t i; float f; };\n";
-        output << "  caster c; c.f = value;\n";
-        output << "  int32_t int_value = c.i;\n";
-      }
-      output << "u32 rc =    XAie_DataMemWrWord(" << deviceInstRef << ", "
-             << loc << ", " << bufName << "_offset + (index*4), int_value);\n";
-      output << "}\n";
-    };
-
-    // if(tiles.count(tile.getValue()))
-    for (auto buf : buffers[tileOp])
-      bufferAccessor(coord, buf);
-    // };
-  }
-
-  //---------------------------------------------------------------------------
-  // ShimDMA Address Accessors
   //---------------------------------------------------------------------------
   for (auto tile : tiles) {
     Operation *tileOp = tile.second;

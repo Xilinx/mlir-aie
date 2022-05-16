@@ -19,9 +19,9 @@ module @aie.herd_0  {
   %2 = AIE.buffer(%0) {sym_name = "b1"} : memref<32x32xi32>
   %3 = AIE.buffer(%0) {sym_name = "b0"} : memref<32x32xi32>
   %4 = AIE.core(%0)  {
-    br ^bb1
+    cf.br ^bb1
   ^bb1:  // pred: ^bb0
-    br ^bb2
+    cf.br ^bb2
   ^bb2:  // pred: ^bb1
     %c32 = arith.constant 32 : index
     %c0 = arith.constant 0 : index

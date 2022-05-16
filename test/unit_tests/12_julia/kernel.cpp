@@ -29,6 +29,7 @@ this frame buffer can be read by a separate core (such as \ref
 npi64_frame_buffer_output) to display the images.
  */
 
+//#include <stdio.h>
 #include <stdint.h>
 
 /** Video lines are separated by this many 4-byte words in a frame buffer. */
@@ -140,44 +141,40 @@ void do_line(unsigned *line_start_address,
 		Re+= (MaxRe-MinRe)/cols;
 		int n;
         color = 0xBEEF;
-		// for (n = 0; n < MAX_ITER && !done; n++) {
-		// 	int a, b;
+        for (n = 0; n < MAX_ITER && !done; n++) {
+          int a, b;
 
-		// 	int64_t x;
-		// 	a=((int64_t)zr*(int64_t)zr)>>NUM_BITS;
-		// 	b=((int64_t)zi*(int64_t)zi)>>NUM_BITS;
-		// 	if (((a+b) > 0x40000) && (done == 0)) {
-		// 		done = 1;
-		// 	}
-		// 	zi = ((int64_t)zr*(int64_t)zi)>>NUM_BITS;
-		// 	zi = zi*2 + ci;
-		// 	zr = a-b + cr;
-		// }
-		// if(n > MAX_ITER) {
-		// 	color = 0xff;
-		// } else {
-		// 	color = n*(256*2/MAX_ITER);
-		// }
-		line_start_address[x] = color;
-	}
+          int64_t x;
+          a = ((int64_t)zr * (int64_t)zr) >> NUM_BITS;
+          b = ((int64_t)zi * (int64_t)zi) >> NUM_BITS;
+          if (((a + b) > 0x40000) && (done == 0)) {
+            done = 1;
+          }
+          zi = ((int64_t)zr * (int64_t)zi) >> NUM_BITS;
+          zi = zi * 2 + ci;
+          zr = a - b + cr;
+        }
+        if (n > MAX_ITER) {
+          color = 0xff;
+        } else {
+          color = n * (256 * 2 / MAX_ITER);
+        }
+        line_start_address[x] = color;
+        }
 }
 
 void julia(unsigned *framebuffer, int cr, int ci)
 {
   // Fractal Julia code
-//   unsigned *line_start_address;
-//   int MinIm = 0xFFFE0000, MaxIm = 0x00020000;
-//   line_start_address = framebuffer;
-//   int Im = MaxIm;
-//   for (int y=0; y < lines /*Im >= MinIm*/; Im -= (MaxIm-MinIm)/lines, y++) {
-// //	  do_line(line_start_address, cr, ci, Im);
-// 	  line_start_address += VIDEO_LINE_WORDS;
-//   }
+  unsigned *line_start_address;
+  int MinIm = 0xFFFE0000, MaxIm = 0x00020000;
+  line_start_address = framebuffer;
+  int Im = MaxIm;
+  for (int y = 0; y < lines /*Im >= MinIm*/;
+       Im -= (MaxIm - MinIm) / lines, y++) {
+    do_line(line_start_address, cr, ci, Im);
+    line_start_address += VIDEO_LINE_WORDS;
+  }
 }
 
-void func(int32_t *a, int32_t *b)
-{
-//    a[2] = 0xDEAD;
-    // julia((unsigned *)a, 0x5000, 0x5000);
-    a[1] = 0xDEAD;
-}
+void func(int32_t *a, int32_t *b) { julia((unsigned *)b, a[0], a[1]); }

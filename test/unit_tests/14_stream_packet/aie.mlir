@@ -55,7 +55,7 @@ module @test14_stream_packet {
       AIE.dmaBdPacket(0x5, 0xD)
       AIE.dmaBd(<%buf73 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l73, "Release", 1)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }
@@ -67,7 +67,7 @@ module @test14_stream_packet {
       AIE.dmaBdPacket(0x4, 0xC)
       AIE.dmaBd(<%buf71 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l71, "Release", 1)
-      br ^end
+      cf.br ^end
     ^end:
       AIE.end
   }
@@ -87,12 +87,12 @@ module @test14_stream_packet {
       AIE.useLock(%l62, "Acquire", 0)
       AIE.dmaBd(<%buf62 : memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%l62, "Release", 1)
-      br ^end
+      cf.br ^end
     //^bd1:
     //  AIE.useLock(%l62_1, "Acquire", 0)
     //  AIE.dmaBd(<%buf62_1 : memref<256xi32>, 0, 256>, 0)
     //  AIE.useLock(%l62_1, "Release", 1)
-    //  br ^bd0
+    //  cf.br ^bd0
     ^end:
       AIE.end
   }  

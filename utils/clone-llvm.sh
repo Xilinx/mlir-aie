@@ -12,7 +12,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-export commithash=84fe34a0b7fdd7bbf179981d1583693d5d5ec68b 
+export commithash=e1318078a4e160eb723bcbcfcdcc9a1b618f7067
 
 git clone --depth 1 https://github.com/Xilinx/cmakeModules cmakeModules/cmakeModulesXilinx
 export CMAKE_MODULE_PATH=`pwd`/cmakeModules/cmakeModulesXilinx

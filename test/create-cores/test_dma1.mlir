@@ -21,14 +21,14 @@
 // CHECK-NEXT:        AIE.useToken @token0(Acquire, 1)
 // CHECK-NEXT:        AIE.dmaBd(<%1 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:        AIE.useToken @token0(Release, 2)
-// CHECK-NEXT:        br ^bb4
+// CHECK-NEXT:        cf.br ^bb4
 // CHECK-NEXT:      ^bb2:
 // CHECK-NEXT:      %16 = AIE.dmaStart(MM2S0, ^bb3, ^bb4)
 // CHECK-NEXT:      ^bb3:
 // CHECK-NEXT:        AIE.useToken @token1(Acquire, 1)
 // CHECK-NEXT:        AIE.dmaBd(<%1 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:        AIE.useToken @token1(Release, 2)
-// CHECK-NEXT:        br ^bb4
+// CHECK-NEXT:        cf.br ^bb4
 // CHECK-NEXT:      ^bb4:
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }
@@ -40,7 +40,7 @@
 // CHECK-NEXT:        AIE.useToken @token0(Acquire, 1)
 // CHECK-NEXT:        AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:        AIE.useToken @token0(Release, 2)
-// CHECK-NEXT:        br ^bb2
+// CHECK-NEXT:        cf.br ^bb2
 // CHECK-NEXT:      ^bb2:
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }
@@ -52,7 +52,7 @@
 // CHECK-NEXT:        AIE.useToken @token1(Acquire, 1)
 // CHECK-NEXT:        AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:        AIE.useToken @token1(Release, 2)
-// CHECK-NEXT:        br ^bb2
+// CHECK-NEXT:        cf.br ^bb2
 // CHECK-NEXT:      ^bb2:
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }

@@ -47,7 +47,7 @@ module @benchmark01_DDR_SHIM_fill_rate {
         AIE.useLock(%l71_0, "Acquire", 0, 0)
         AIE.dmaBd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
         AIE.useLock(%l71_0, "Release", 1, 0)
-        br ^end
+        cf.br ^end
       ^end:
       AIE.end
    }

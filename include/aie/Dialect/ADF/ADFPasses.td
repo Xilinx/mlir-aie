@@ -24,7 +24,7 @@ include "mlir/Pass/PassBase.td"
 //   let constructor = "xilinx::ADF::createADFGenerateCppGraphPass()";
 //   let dependentDialects = [
 //     "xilinx::ADF::ADFDialect",
-//     "StandardOpsDialect",
+//     "func::FuncDialect",
 //   ];
 // }
 

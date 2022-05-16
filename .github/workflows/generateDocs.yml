@@ -22,8 +22,8 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - name: Install libboost
-        run: sudo apt-get install -y libboost-all-dev
+      - name: Install packages
+        run: sudo apt-get install -y libboost-all-dev graphviz
 
       - name: Install psutil
         run: sudo pip install psutil
@@ -73,6 +73,8 @@ jobs:
           make docs
           popd
           cp -r docs/* build_release/docs
+          dot -Tpng docs/dialects.dot > build_release/docs/dialects.png
+          dot -Tsvg docs/dialects.dot > build_release/docs/dialects.svg
 
       - name: Save LLVM Version
         run: |

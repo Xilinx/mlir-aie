@@ -13,6 +13,9 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
+
 #ifdef AIE_OPS
 #else
 #define AIE_OPS
@@ -56,7 +59,7 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 }
 
 
-class AIE_Op<string mnemonic, list<OpTrait> traits = []> :
+class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
 def AIE_ArrayType :
@@ -102,7 +105,6 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
   }];
 
-  let verifier = [{ return ::verify(*this); }];
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);
@@ -132,6 +134,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let assemblyFormat = [{
     `(` $col `,` $row `)` attr-dict
   }];
+  let hasVerifier = 1;
 
   let builders = [
     OpBuilder<(ins "int":$col, "int":$row),
@@ -185,7 +188,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, SingleBlockImplicitTermi
   }];
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);
@@ -223,7 +226,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   }];
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "Type":$resultType,
                       "int":$col), [{
@@ -254,7 +257,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect,
   }];
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
@@ -279,7 +282,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint/*, CallableOpInterface*/]>,
   }];
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
@@ -318,7 +321,7 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint]>, Results<(outs Index)> {
   }];
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
@@ -690,8 +693,8 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
       }
     ```
   }];
-  let verifier = [{ return ::verify(*this); }];
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int IDInt() { return ID(); }
   }];
@@ -849,7 +852,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   // ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "FuncOp", "ShimDMAOp"]>, Terminator]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
                      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
@@ -919,7 +922,7 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
   );
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
-  let verifier = [{ return ::verify(*this); }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
@@ -997,13 +1000,13 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let assemblyFormat = [{
     `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
   }];
+  let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lock, "uint32_t":$value, "xilinx::AIE::LockAction":$action),
     [{
       build($_builder, $_state, lock, value, action, nullptr);
     }]>
   ];
-  let verifier = [{ return ::verify(*this); }];
 
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }
@@ -1119,8 +1122,8 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
         I32Attr:$value,
         LockAction:$action
   );
-  let verifier = [{ return ::verify(*this); }];
   let assemblyFormat = [{ $tokenName `(` $action `,` $value `)` attr-dict }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     bool acquire() { return (action() == LockAction::Acquire); }
     bool release() { return (action() == LockAction::Release); }

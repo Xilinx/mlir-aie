@@ -10,36 +10,35 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Translation.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "aie/AIEDialect.h"
-#include "aie/AIETokenAnalysis.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
-  using OpConversionPattern<FuncOp>::OpConversionPattern;
+struct RemoveAIEFuncs : public OpConversionPattern<func::FuncOp> {
+  using OpConversionPattern<func::FuncOp>::OpConversionPattern;
   ModuleOp &module;
-  DenseMap<FuncOp, std::pair<int, int>> &funcs;
+  DenseMap<func::FuncOp, std::pair<int, int>> &funcs;
 
   RemoveAIEFuncs(MLIRContext *context, ModuleOp &m,
-                 DenseMap<FuncOp, std::pair<int, int>> &funcs,
+                 DenseMap<func::FuncOp, std::pair<int, int>> &funcs,
                  PatternBenefit benefit = 1)
-      : OpConversionPattern<FuncOp>(context, benefit), module(m), funcs(funcs) {
-  }
+      : OpConversionPattern<func::FuncOp>(context, benefit), module(m),
+        funcs(funcs) {}
 
-  LogicalResult matchAndRewrite(FuncOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(func::FuncOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (funcs.find(op) == funcs.end())
       return failure();
@@ -49,15 +48,16 @@ struct RemoveAIEFuncs : public OpConversionPattern<FuncOp> {
   }
 };
 
-struct RemoveAIECalls : public OpConversionPattern<CallOp> {
-  using OpConversionPattern<CallOp>::OpConversionPattern;
+struct RemoveAIECalls : public OpConversionPattern<func::CallOp> {
+  using OpConversionPattern<func::CallOp>::OpConversionPattern;
   ModuleOp &module;
 
   RemoveAIECalls(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<CallOp>(context, benefit), module(m) {}
+      : OpConversionPattern<func::CallOp>(context, benefit), module(m) {}
 
-  LogicalResult matchAndRewrite(CallOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(func::CallOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     if (!op->getAttr("aie.x") || !op->getAttr("aie.y"))
       return failure();
@@ -77,7 +77,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     DenseMap<Operation *, CoreOp> cores;
     DenseMap<Operation *, MemOp> mems;
     DenseMap<Value, Value> buffers;
-    DenseMap<FuncOp, std::pair<int, int>> funcs;
+    DenseMap<func::FuncOp, std::pair<int, int>> funcs;
 
     // Collect existing TileOps
     for (auto tile : m.getOps<TileOp>()) {
@@ -89,7 +89,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     // Bind FuncOp to an AIE core based on attributes of the CallOp
     // A CoreOp will be created for the core, and the FuncOp body is cloned
     // to the CoreOp region
-    for (auto callOp : m.getOps<CallOp>()) {
+    for (auto callOp : m.getOps<func::CallOp>()) {
       if (!callOp->getAttr("aie.x") || !callOp->getAttr("aie.y"))
         continue;
 
@@ -148,7 +148,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       if (CallOpInterface call =
               dyn_cast<CallOpInterface>(callOp.getOperation())) {
         Operation *callable = call.resolveCallable();
-        if (FuncOp func = dyn_cast<FuncOp>(callable)) {
+        if (func::FuncOp func = dyn_cast<func::FuncOp>(callable)) {
           funcs[func] = std::make_pair(colIndex, rowIndex);
 
           BlockAndValueMapping mapper;
@@ -194,7 +194,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           // Clone ops from the original function to CoreOp's body
           for (auto &childOp : func.getCallableRegion()->getOps()) {
             // skip ReturnOp since it lives only within a funcOp
-            if (auto returnOp = dyn_cast<ReturnOp>(childOp))
+            if (auto returnOp = dyn_cast<func::ReturnOp>(childOp))
               continue;
 
             builder.clone(childOp, mapper);
@@ -236,8 +236,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
-    target.addLegalOp<BranchOp>();
-    target.addLegalOp<CondBranchOp>();
+    target.addLegalOp<cf::BranchOp>();
+    target.addLegalOp<cf::CondBranchOp>();
 
     // Remove standard CallOps and FuncOps that are bound to AIE CoreOps
     patterns.insert<RemoveAIECalls>(m.getContext(), m);

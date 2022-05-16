@@ -27,7 +27,7 @@ module @test09_simple_shim_dma {
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0)
-      br ^bd0
+      cf.br ^bd0
     ^end:
       AIE.end
   }
@@ -46,12 +46,12 @@ module @test09_simple_shim_dma {
       AIE.useLock(%l72_0, "Acquire", 0)
       AIE.dmaBd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l72_0, "Release", 1)
-      br ^bd1
+      cf.br ^bd1
     ^bd1:
       AIE.useLock(%l72_1, "Acquire", 0)
       AIE.dmaBd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l72_1, "Release", 1)
-      br ^bd0
+      cf.br ^bd0
     ^end:
       AIE.end
   }
@@ -70,12 +70,12 @@ module @test09_simple_shim_dma {
       AIE.useLock(%l73_0, "Acquire", 0)
       AIE.dmaBd(<%buf73_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l73_0, "Release", 1)
-      br ^bd1
+      cf.br ^bd1
     ^bd1:
       AIE.useLock(%l73_1, "Acquire", 0)
       AIE.dmaBd(<%buf73_1 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l73_1, "Release", 1)
-      br ^bd0
+      cf.br ^bd0
     ^end:
       AIE.end
   }

@@ -20,9 +20,9 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
+//#define XAIE_NUM_ROWS 8
+//#define XAIE_NUM_COLS 50
+//#define XAIE_ADDR_ARRAY_OFF 0x800
 
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
@@ -47,20 +47,34 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
 
   // XAieDma_Shim ShimDmaInst1;
-  uint32_t *bram_ptr;
+  /*  uint32_t *bram_ptr;
 
-#define BRAM_ADDR (0x4000 + 0x020100000000LL)
-#define DMA_COUNT 512
+  #define BRAM_ADDR (0x4000 + 0x020100000000LL)
+  #define DMA_COUNT 512
 
-  int fd = open("/dev/mem", O_RDWR | O_SYNC);
-  if (fd != -1) {
-    bram_ptr = (uint32_t *)mmap(NULL, 0x8000, PROT_READ | PROT_WRITE,
-                                MAP_SHARED, fd, BRAM_ADDR);
-    for (int i = 0; i < DMA_COUNT; i++) {
-      bram_ptr[i] = i + 1;
-      // printf("%p %llx\n", &bram_ptr[i], bram_ptr[i]);
+    int fd = open("/dev/mem", O_RDWR | O_SYNC);
+    if (fd != -1) {
+      bram_ptr = (uint32_t *)mmap(NULL, 0x8000, PROT_READ | PROT_WRITE,
+                                  MAP_SHARED, fd, BRAM_ADDR);
+      for (int i = 0; i < DMA_COUNT; i++) {
+        bram_ptr[i] = i + 1;
+        // printf("%p %llx\n", &bram_ptr[i], bram_ptr[i]);
+      }
     }
+  */
+  mlir_aie_init_mems(_xaie, 1);
+#define DMA_COUNT 512
+  int *ddr_ptr_in =
+      mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+  for (int i = 0; i < DMA_COUNT; i++) {
+    *(ddr_ptr_in + i) = i + 1;
   }
+  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+
+#ifdef LIBXAIENGINEV2
+  mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
+  mlir_aie_configure_shimdma_70(_xaie);
+#endif
 
   // We're going to stamp over the memory
   for (int i = 0; i < DMA_COUNT; i++) {
