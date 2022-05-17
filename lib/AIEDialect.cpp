@@ -471,7 +471,7 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
     return emitError("ObjectFifoAcquireOp must acquire at least one element");
   
-  auto port = port().getValue();
+  StringRef port = port().getValue();
   if (port != "produce" && port != "consume")
     return emitError("ObjectFifoAcquireOp port must be either 'produce' or 'consume'");
 
@@ -483,7 +483,7 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   if (relNumber() < 1)
     return emitError("ObjectFifoReleaseOp must release at least one element");
   
-  auto port = port().getValue();
+  StringRef port = port().getValue();
   if (port != "produce" && port != "consume")
     return emitError("ObjectFifoReleaseOp port must be either 'produce' or 'consume'");
 
@@ -491,7 +491,7 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
 }
 
 // ObjectFifoRegisterProcessOp
-LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOpverify() {
+LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   if (getProcessLength() < 1)
     return emitError("Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
 
