@@ -94,7 +94,7 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
                     break;
                 }
             }
-            builder.create<CallOp>(builder.getUnknownLoc(), func/*, acc.output()*/);
+            builder.create<func::CallOp>(builder.getUnknownLoc(), func/*, acc.output()*/);
         }
 
         // releases
