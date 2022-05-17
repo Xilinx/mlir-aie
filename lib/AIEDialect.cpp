@@ -471,8 +471,7 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
     return emitError("ObjectFifoAcquireOp must acquire at least one element");
   
-  StringRef port = port().getValue();
-  if (port != "produce" && port != "consume")
+  if (port().getValue() != "produce" && port().getValue() != "consume")
     return emitError("ObjectFifoAcquireOp port must be either 'produce' or 'consume'");
 
   return success();
@@ -483,8 +482,7 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   if (relNumber() < 1)
     return emitError("ObjectFifoReleaseOp must release at least one element");
   
-  StringRef port = port().getValue();
-  if (port != "produce" && port != "consume")
+  if (port().getValue() != "produce" && port().getValue() != "consume")
     return emitError("ObjectFifoReleaseOp port must be either 'produce' or 'consume'");
 
   return success();
