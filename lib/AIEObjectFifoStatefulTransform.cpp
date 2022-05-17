@@ -177,7 +177,7 @@ struct AIEObjectFifoStatefulTransformPass : public AIEObjectFifoStatefulTransfor
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, acqMode, LockAction::Acquire);
     builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0); 
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, relMode, LockAction::Release);
-    builder.create<BranchOp>(builder.getUnknownLoc(), succ);
+    builder.create<cf::BranchOp>(builder.getUnknownLoc(), succ);
   }
 
   /// Function used to create a MemOp region with a DMA channel.
