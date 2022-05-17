@@ -24,6 +24,7 @@
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/CF/CF.h"
 
 using namespace mlir;
 using namespace xilinx;
