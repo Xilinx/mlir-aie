@@ -24,6 +24,7 @@
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
 #include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 
 using namespace mlir;
 using namespace xilinx;
