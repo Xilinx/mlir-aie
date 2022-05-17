@@ -117,8 +117,7 @@ def AIEVec_FMAOp :
   AIEVec_Op<"mac", [
     NoSideEffect
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
-               AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$acc,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -130,7 +129,7 @@ def AIEVec_FMAOp :
                DefaultValuedStrAttr<StrAttr, "">:$zstep,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$result)> {
+  Results<(outs AnyVector:$result)> {
   let summary = "AIE vector fused multiply-add";
   let description = [{
     Xilinx-specific multiply-add operation. It multiplies two 1-D vectors,
@@ -200,7 +199,7 @@ def AIEVec_MulOp:
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
                DefaultValuedStrAttr<StrAttr, "">:$zstep,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare)>,
-  Results<(outs AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$result)> {
+  Results<(outs AnyVector:$result)> {
   let summary = "AIE vector multiply";
   let description = [{
     Xilinx-specific multiply operation that multiplies two 1-D vectors.
@@ -255,7 +254,7 @@ def AIEVec_UPSOp:
   ]>, 
   Arguments<(ins AnyVector:$source, 
           DefaultValuedAttr<Confined<I8Attr, [IntNonNegative]>, "0">:$shift)>,
-  Results<(outs AIEVec_Acc:$result)> {
+  Results<(outs AnyVector:$result)> {
   let summary = "AIE ups";
   let description = [{
     Xilinx-specific upshift intrinsic. Moves data from AIE vector data type
@@ -273,7 +272,7 @@ def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     NoSideEffect
   ]>, 
-  Arguments<(ins AIEVec_Acc:$source, 
+  Arguments<(ins AnyVector:$source,
           DefaultValuedAttr<Confined<I8Attr, [IntNonNegative]>, "0">:$shift)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE srs";
