@@ -10,7 +10,6 @@
 // 
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Pass/Pass.h"
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
 #include "mlir/IR/Attributes.h"
@@ -23,6 +22,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+#include "mlir/Pass/Pass.h"
 #include "llvm/Support/Debug.h"
 
 using namespace mlir;
