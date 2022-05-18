@@ -242,6 +242,7 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
   let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
   let dependentDialects = [
+    "func::FuncDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -258,6 +259,7 @@ def AIEObjectFifoLoopUnroll : Pass<"aie-unroll-objectFifos", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIEObjectFifoLoopUnrollPass()";
   let dependentDialects = [
     "scf::SCFDialect",
+    "func::FuncDialect",
     "arith::ArithmeticDialect",
     "xilinx::AIE::AIEDialect",
   ];
@@ -274,6 +276,7 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "ModuleOp"> 
   let constructor = "xilinx::AIE::createAIEObjectFifoRegisterProcessPass()";
   let dependentDialects = [
     "scf::SCFDialect",
+    "func::FuncDialect",
     "arith::ArithmeticDialect",
     "xilinx::AIE::AIEDialect",
   ];
