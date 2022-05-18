@@ -644,8 +644,10 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  // If the accumulator is not of type aievec::AccType, we need to generate a
-  // ups instruction.
+  // If the accumulator is not of type aievec::AccType for integer FMA
+  // we need to generate a ups instruction.
+  bool isInt = fmaOp.getLhs().getType().cast<VectorType>()
+                    .getElementType().isa<IntegerType>();
   Value acc = fmaOp.getAcc();
   // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
   // op for i8xi8 scheme. Find the paired accumulator.
@@ -654,7 +656,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
     if (state->pairedOp.count(defOp))
       acc = state->pairedOp[defOp]->getResult(0);
   }
-  if (!isAccType(acc.getType())) {
+  if (isInt && !isAccType(acc.getType())) {
     acc = generateUPSOp(acc, state, fmaOp->getLoc());
     LLVM_DEBUG(llvm::dbgs()
                << "\n\nCreated UPS op " << acc << " to move the output of "
@@ -699,9 +701,10 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
          opAttr.start.size() == 2);
 
   // If the return type is not accumulator type already, create a new
-  // accumulator type for return value.
+  // accumulator type for return value of integer types.
   Type opType = mulOp.getType();
-  if (!isAccType(opType))
+  if (!isAccType(opType) &&
+      opType.cast<VectorType>().getElementType().isa<IntegerType>())
     opType = getAccType(opType);
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use

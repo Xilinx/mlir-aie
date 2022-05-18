@@ -336,8 +336,10 @@ inline LogicalResult verifyAccType(T op, aievec::AccType resultType);
 template <>
 inline LogicalResult verifyAccType(aievec::FMAOp op,
                                    aievec::AccType resultType) {
+  bool isInt = op.lhs().getType().dyn_cast<VectorType>()
+                 .getElementType().isa<IntegerType>();
   aievec::AccType accType = op.acc().getType().dyn_cast<aievec::AccType>();
-  if (!accType)
+  if (isInt && !accType)
     return op.emitError("requires accumulator type");
   if (resultType != accType)
     return op.emitError("the result type and accumulator type must match");
@@ -389,30 +391,41 @@ void aievec::FMAOp::print(OpAsmPrinter &p) {
 // Verify Mul and FMA op.
 template <typename T> LogicalResult verifyMulFMAOp(T op) {
   // Verify the types
-  aievec::AccType resultType =
-      op.result().getType().template dyn_cast<aievec::AccType>();
   VectorType lhsType = op.lhs().getType().template dyn_cast<VectorType>();
   VectorType rhsType = op.rhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
-  if (!resultType)
+
+  // Determine if it is an integer or float operation
+  bool isInt = lhsType.getElementType().isa<IntegerType>();
+
+  VectorType resultVecType = op.result().getType()
+                               .template dyn_cast<VectorType>();
+  aievec::AccType resultAccType = op.result().getType()
+                                    .template dyn_cast<aievec::AccType>();
+  if (isInt && !resultAccType)
     return op.emitError("requires accumulator type");
+  else if (!isInt && !resultVecType)
+    return op.emitError("requires vector type");
+
 
   // Additional checks for FMA op
-  if (failed(verifyAccType(op, resultType)))
+  if (!isInt && failed(verifyAccType(op, resultAccType)))
     return failure();
 
   // Get the width of the underlying scalars of all the vectors
   Type ltype = lhsType.getElementType();
   Type rtype = rhsType.getElementType();
-  Type atype = resultType.getValueType();
+  Type atype = isInt ? resultAccType.getValueType() :
+                       resultVecType.getElementType();
   unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
   unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
-  unsigned accLanes = resultType.getLanes();
+  unsigned accLanes = isInt ? resultAccType.getLanes() :
+                              getVectorLaneSize(resultVecType);
   unsigned rhsLanes = getVectorLaneSize(rhsType);
   unsigned lhsLanes = getVectorLaneSize(lhsType);
 
@@ -489,9 +502,15 @@ ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
   VectorType rhsType = types[1].dyn_cast<VectorType>();
   if (!rhsType)
     return parser.emitError(typesLoc, "requires vector type");
-  aievec::AccType accType = types[2].dyn_cast<aievec::AccType>();
-  if (!accType)
-    return parser.emitError(typesLoc, "requires accumulator type");
+
+  // Int ops use the accumulator while float ops use normal vector registers
+  bool isInt = lhsType.getElementType().isa<IntegerType>();
+  aievec::AccType accTypeAcc = types[2].dyn_cast<aievec::AccType>();
+  VectorType accTypeVec = types[2].dyn_cast<VectorType>();
+  if (isInt && !accTypeAcc)
+    return parser.emitError(typesLoc, "integer op requires accumulator type");
+  else if (!isInt && !accTypeVec)
+    return parser.emitError(typesLoc, "float op requires vector type");
 
   // Populate the lhs and rhs operands, and result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
@@ -500,11 +519,17 @@ ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
 
   // Populate acc operand for FMA op
   if (isFMAOp) {
-    if (parser.resolveOperand(acc, accType, result.operands))
-      return failure();
+    if (isInt) {
+      if (parser.resolveOperand(acc, accTypeAcc, result.operands))
+        return failure();
+    } else {
+      if (parser.resolveOperand(acc, accTypeVec, result.operands))
+        return failure();
+    }
   }
 
-  return parser.addTypeToList(accType, result.types);
+  return isInt ? parser.addTypeToList(accTypeAcc, result.types):
+                 parser.addTypeToList(accTypeVec, result.types);
 }
 
 ParseResult MulOp::parse(OpAsmParser &parser, OperationState &result) {

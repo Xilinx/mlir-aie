@@ -117,7 +117,7 @@ def AIEVec_FMAOp :
   AIEVec_Op<"mac", [
     NoSideEffect
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AIEVec_Acc:$acc,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$acc,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -129,7 +129,7 @@ def AIEVec_FMAOp :
                DefaultValuedStrAttr<StrAttr, "">:$zstep,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
-  Results<(outs AIEVec_Acc:$result)> {
+  Results<(outs AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$result)> {
   let summary = "AIE vector fused multiply-add";
   let description = [{
     Xilinx-specific multiply-add operation. It multiplies two 1-D vectors,
@@ -199,7 +199,7 @@ def AIEVec_MulOp:
                DefaultValuedStrAttr<StrAttr, "">:$zoffsets_hi,
                DefaultValuedStrAttr<StrAttr, "">:$zstep,
                DefaultValuedStrAttr<StrAttr, "">:$zsquare)>,
-  Results<(outs AIEVec_Acc:$result)> {
+  Results<(outs AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$result)> {
   let summary = "AIE vector multiply";
   let description = [{
     Xilinx-specific multiply operation that multiplies two 1-D vectors.
