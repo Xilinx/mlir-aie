@@ -1,3 +1,4 @@
+// REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize | aie-translate --aievec-to-cpp -o gen.cc
 // RUN: xchesscc -f -g +s -p me -P ${CARDANO}/data/cervino/lib +w work +o work -I%S -I. %S/float.cc %S/kernel.cc
 // RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P ${CARDANO}/data/cervino/lib -t "%S/../profiling.tcl ./work/a.out"
