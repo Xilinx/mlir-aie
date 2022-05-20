@@ -11,8 +11,10 @@
 #include "TranslateAIEVecToCpp.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/SCF.h"
@@ -42,10 +44,12 @@ void registerAIEVecToCppTranslation() {
         // clang-format off
         registry.insert<arith::ArithmeticDialect,
                         emitc::EmitCDialect,
+                        LLVM::LLVMDialect,
                         math::MathDialect,
                         memref::MemRefDialect,
                         func::FuncDialect,
                         cf::ControlFlowDialect,
+                        DLTIDialect,
                         scf::SCFDialect,
                         vector::VectorDialect,
                         xilinx::aievec::AIEVecDialect>();

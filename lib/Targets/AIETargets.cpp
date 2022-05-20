@@ -11,6 +11,7 @@
 #include "AIETargets.h"
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -135,6 +136,7 @@ void registerAIETranslations() {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
@@ -256,6 +258,7 @@ SECTIONS
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
@@ -335,6 +338,7 @@ SECTIONS
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
@@ -363,6 +367,7 @@ SECTIONS
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
@@ -378,6 +383,7 @@ SECTIONS
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
@@ -395,6 +401,7 @@ SECTIONS
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
@@ -409,6 +416,7 @@ SECTIONS
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
         registry.insert<arith::ArithmeticDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
