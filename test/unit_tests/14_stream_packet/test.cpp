@@ -48,11 +48,15 @@ main(int argc, char *argv[])
   usleep(10000);
 
   uint32_t bd_ctrl, bd_pckt;
-  bd_ctrl = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D018);
-  bd_pckt = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D010);
+  bd_ctrl =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D018);
+  bd_pckt =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D010);
   printf("BD0_71: pckt: %x, ctrl: %x \n", bd_pckt, bd_ctrl);
-  bd_ctrl = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 3) + 0x0001D018);
-  bd_pckt = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 3) + 0x0001D010);
+  bd_ctrl =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 3) + 0x0001D018);
+  bd_pckt =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 3) + 0x0001D010);
   printf("BD0_73: pckt: %x, ctrl: %x \n", bd_pckt, bd_ctrl);
 
   int count = 256;
