@@ -303,6 +303,28 @@ struct AIEObjectFifoStatefulTransformPass : public AIEObjectFifoStatefulTransfor
     }
   }
 
+  /// Function used to find the maximum number of elements (of given objectFifo) 
+  /// acquired by a process running on given tile.
+  int findProcessMaxAcquire(ModuleOp &m, TileOp tile, ObjectFifoCreateOp objFifo) {
+    CoreOp* core = nullptr;
+    for (auto coreOp : m.getOps<CoreOp>()) {
+      if ((coreOp.tile().getDefiningOp<TileOp>()) == tile) {
+        core = &coreOp;
+        break;
+      }
+    }
+
+    int maxAcquire = 0;
+    core->walk([&](ObjectFifoAcquireOp acqOp) { 
+      if (acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo) {
+        if (acqOp.acqNumber() > maxAcquire) 
+          maxAcquire = acqOp.acqNumber();
+      }
+    });
+
+    return maxAcquire + 1; // +1 to account for DMA unit
+  }
+
   void runOnOperation() override {
     ModuleOp m = getOperation();
     LockAnalysis analysis(m);
@@ -318,16 +340,16 @@ struct AIEObjectFifoStatefulTransformPass : public AIEObjectFifoStatefulTransfor
         createObjectFifoElements(builder, analysis, createOp);
 
       } else {
-        // TODO: break the objectFifo into two new objectFifos based on equations in invention disclosure. this changes elemNumber in the two objFifos.
-        //       For now: ping pong buffers only, only two objectFifos of size 2.  
-        int elemNumber = createOp.size();
-        assert(elemNumber <= 2 && "objectFifos between non-adjacent tiles must have size 2 maximum."); // TODO: delete when it can support more than ping pong buffers
+        // Find max acquire number for producer and consumer of objectFifo.
+        int prodMaxAcquire = findProcessMaxAcquire(m, createOp.getProducerTileOp(), createOp);
+        int consMaxAcquire = findProcessMaxAcquire(m, createOp.getConsumerTileOp(), createOp);
+        //int elemNumber = createOp.size();
 
         // objectFifos between non-adjacent tiles must be split into two new ones, their elements will be created in next iterations
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType fifo = createOp.getType().cast<AIEObjectFifoType>();
-        ObjectFifoCreateOp producerFifo = builder.create<ObjectFifoCreateOp>(builder.getUnknownLoc(), fifo, createOp.producerTile(), createOp.producerTile(), elemNumber);
-        ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(builder.getUnknownLoc(), fifo, createOp.consumerTile(), createOp.consumerTile(), elemNumber);
+        ObjectFifoCreateOp producerFifo = builder.create<ObjectFifoCreateOp>(builder.getUnknownLoc(), fifo, createOp.producerTile(), createOp.producerTile(), prodMaxAcquire);
+        ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(builder.getUnknownLoc(), fifo, createOp.consumerTile(), createOp.consumerTile(), consMaxAcquire);
 
         // record that this objectFifo was split
         splitFifos[createOp] = std::make_pair(producerFifo, consumerFifo);

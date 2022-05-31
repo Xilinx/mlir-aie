@@ -6,13 +6,13 @@
 //
 // (c) Copyright 2021 Xilinx Inc.
 //
-// Date: November 22nd 2021
+// Date: November 19th 2021
 // 
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: module @singleCoreMultiFifo  {
+// CHECK-LABEL: module @multiFifo  {
 // CHECK-NEXT:    %0 = AIE.tile(1, 2)
 // CHECK-NEXT:    %1 = AIE.tile(1, 3)
 // CHECK-NEXT:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
@@ -54,12 +54,29 @@
 // CHECK-NEXT:      call @some_work(%12) : (memref<16xi32>) -> ()
 // CHECK-NEXT:      call @some_work(%14) : (memref<16xi32>) -> ()
 // CHECK-NEXT:      AIE.useLock(%13, Release, 1)
-// CHECK-NEXT:      AIE.useLock(%15, Release, 1)
+// CHECK-NEXT:      AIE.end
+// CHECK-NEXT:    }
+// CHECK-NEXT:    %17 = AIE.core(%1)  {
+// CHECK-NEXT:      AIE.useLock(%3, Acquire, 1)
+// CHECK-NEXT:      call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK-NEXT:      AIE.useLock(%11, Acquire, 1)
+// CHECK-NEXT:      AIE.useLock(%13, Acquire, 1)
+// CHECK-NEXT:      call @some_work(%10) : (memref<16xi32>) -> ()
+// CHECK-NEXT:      call @some_work(%12) : (memref<16xi32>) -> ()
+// CHECK-NEXT:      AIE.useLock(%11, Release, 0)
+// CHECK-NEXT:      AIE.useLock(%13, Release, 0)
+// CHECK-NEXT:      AIE.useLock(%3, Release, 0)
+// CHECK-NEXT:      AIE.useLock(%5, Acquire, 1)
+// CHECK-NEXT:      AIE.useLock(%7, Acquire, 1)
+// CHECK-NEXT:      call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK-NEXT:      call @some_work(%6) : (memref<16xi32>) -> ()
+// CHECK-NEXT:      AIE.useLock(%5, Release, 0)
+// CHECK-NEXT:      AIE.useLock(%7, Release, 0)
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 
-module @singleCoreMultiFifo {
+module @multiFifo {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
@@ -97,8 +114,31 @@ module @singleCoreMultiFifo {
         %elem112 = AIE.objectFifo.subview.access %subview12[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         call @some_work(%elem102) : (memref<16xi32>) -> ()
         call @some_work(%elem112) : (memref<16xi32>) -> ()
-        AIE.objectFifo.release{ port = "produce" }(%objFifo2 : !AIE.objectFifo<memref<16xi32>>, 2)
+        AIE.objectFifo.release{ port = "produce" }(%objFifo2 : !AIE.objectFifo<memref<16xi32>>, 1)
         
+        AIE.end
+    }
+
+    %core13 = AIE.core(%tile13) {
+        %subview0 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+        %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+        call @some_work(%elem00) : (memref<16xi32>) -> ()
+
+        %subview02 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+        %elem002 = AIE.objectFifo.subview.access %subview02[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+        %elem012 = AIE.objectFifo.subview.access %subview02[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+        call @some_work(%elem002) : (memref<16xi32>) -> ()
+        call @some_work(%elem012) : (memref<16xi32>) -> ()
+        AIE.objectFifo.release{ port = "consume" }(%objFifo2 : !AIE.objectFifo<memref<16xi32>>, 2)
+
+        AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+        %subview1 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+        %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+        %elem11 = AIE.objectFifo.subview.access %subview1[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+        call @some_work(%elem10) : (memref<16xi32>) -> ()
+        call @some_work(%elem11) : (memref<16xi32>) -> ()
+        AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2)
+
         AIE.end
     }
 }

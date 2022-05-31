@@ -1,4 +1,4 @@
-//===- ping_pong_test.aie.mlir --------------------------*- MLIR -*-===//
+//===- non_adjacency_test_1.aie.mlir --------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -26,12 +26,12 @@
 // CHECK-NEXT:      AIE.useLock(%3, Acquire, 1)
 // CHECK-NEXT:      AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
 // CHECK-NEXT:      AIE.useLock(%3, Release, 0)
-// CHECK-NEXT:      br ^bb2
+// CHECK-NEXT:      cf.br ^bb2
 // CHECK-NEXT:    ^bb2:  // pred: ^bb1
 // CHECK-NEXT:      AIE.useLock(%5, Acquire, 1)
 // CHECK-NEXT:      AIE.dmaBd(<%4 : memref<16xi32>, 0, 16>, 0)
 // CHECK-NEXT:      AIE.useLock(%5, Release, 0)
-// CHECK-NEXT:      br ^bb1
+// CHECK-NEXT:      cf.br ^bb1
 // CHECK-NEXT:    ^bb3:  // pred: ^bb0
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
@@ -45,12 +45,12 @@
 // CHECK-NEXT:      AIE.useLock(%8, Acquire, 0)
 // CHECK-NEXT:      AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)
 // CHECK-NEXT:      AIE.useLock(%8, Release, 1)
-// CHECK-NEXT:      br ^bb2
+// CHECK-NEXT:      cf.br ^bb2
 // CHECK-NEXT:    ^bb2:  // pred: ^bb1
 // CHECK-NEXT:      AIE.useLock(%10, Acquire, 0)
 // CHECK-NEXT:      AIE.dmaBd(<%9 : memref<16xi32>, 0, 16>, 0)
 // CHECK-NEXT:      AIE.useLock(%10, Release, 1)
-// CHECK-NEXT:      br ^bb1
+// CHECK-NEXT:      cf.br ^bb1
 // CHECK-NEXT:    ^bb3:  // pred: ^bb0
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
@@ -59,23 +59,29 @@
 // CHECK-NEXT:    }
 // CHECK-NEXT:    %12 = AIE.core(%0) {
 // CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c1 = arith.constant 1 : index
+// CHECK-NEXT:      %c2 = arith.constant 2 : index
 // CHECK-NEXT:      %c12 = arith.constant 12 : index
-// CHECK-NEXT:      scf.for %arg0 = %c0 to %c12 step %c1 {
+// CHECK-NEXT:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK-NEXT:        AIE.useLock(%3, Acquire, 0)
 // CHECK-NEXT:        call @some_work(%2) : (memref<16xi32>) -> ()
 // CHECK-NEXT:        AIE.useLock(%3, Release, 1)
+// CHECK-NEXT:        AIE.useLock(%5, Acquire, 0)
+// CHECK-NEXT:        call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK-NEXT:        AIE.useLock(%5, Release, 1)
 // CHECK-NEXT:      }
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
 // CHECK-NEXT:    %13 = AIE.core(%1) {
 // CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c1 = arith.constant 1 : index
+// CHECK-NEXT:      %c2 = arith.constant 2 : index
 // CHECK-NEXT:      %c12 = arith.constant 12 : index
-// CHECK-NEXT:      scf.for %arg0 = %c0 to %c12 step %c1 {
+// CHECK-NEXT:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK-NEXT:        AIE.useLock(%8, Acquire, 1)
 // CHECK-NEXT:        call @some_work(%7) : (memref<16xi32>) -> ()
 // CHECK-NEXT:        AIE.useLock(%8, Release, 0)
+// CHECK-NEXT:        AIE.useLock(%10, Acquire, 1)
+// CHECK-NEXT:        call @some_work(%9) : (memref<16xi32>) -> ()
+// CHECK-NEXT:        AIE.useLock(%10, Release, 0)
 // CHECK-NEXT:      }
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
@@ -93,13 +99,18 @@ module @non_adjacency {
 
     %core12 = AIE.core(%tile12) {
         %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
+        %c2 = arith.constant 2 : index
         %height = arith.constant 12 : index
 
-        scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem0) : (memref<16xi32>) -> ()
+        scf.for %indexInHeight = %c0 to %height step %c2 {
+            %subview0 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            call @some_work(%elem00) : (memref<16xi32>) -> ()
+            AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+
+            %subview1 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            call @some_work(%elem10) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
@@ -108,13 +119,18 @@ module @non_adjacency {
 
     %core33 = AIE.core(%tile33) {
         %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
+        %c2 = arith.constant 2 : index
         %height = arith.constant 12 : index
 
-        scf.for %indexInHeight = %c0 to %height step %c1 { 
-            %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem0) : (memref<16xi32>) -> ()
+        scf.for %indexInHeight = %c0 to %height step %c2 { 
+            %subview0 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            call @some_work(%elem00) : (memref<16xi32>) -> ()
+            AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+
+            %subview1 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            call @some_work(%elem10) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         

@@ -12,14 +12,13 @@
 
 // RUN: aie-opt --aie-register-objectFifos %s | FileCheck %s
 
-// CHECK-LABEL: module @loopUnroll {
-// CHECK-NEXT:    %0 = AIE.tile(1, 2)
 // CHECK-LABEL: module @registerPatterns  {
 // CHECK-NEXT:    %0 = AIE.tile(1, 2)
 // CHECK-NEXT:    %1 = AIE.tile(1, 3)
 // CHECK-NEXT:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 4) : !AIE.objectFifo<memref<16xi32>>
 // CHECK-NEXT:    %cst = arith.constant dense<[2, 3, 3, 2]> : tensor<4xi32>
 // CHECK-NEXT:    %cst_0 = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
+// CHECK-NEXT:    %c10 = arith.constant 10 : index
 // CHECK-NEXT:    func @producer_work() {
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }
@@ -54,11 +53,12 @@ module @registerPatterns  {
 
     %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>>
 
-    %acquirePattern = constant dense<[2,3,3,2]> : tensor<4xi32>
-    %releasePattern = constant dense<[0,1,1,2]> : tensor<4xi32>
+    %acquirePattern = arith.constant dense<[2,3,3,2]> : tensor<4xi32>
+    %releasePattern = arith.constant dense<[0,1,1,2]> : tensor<4xi32>
+    %length = arith.constant 10 : index
     func @producer_work() -> () { 
         return
     }
 
-    AIE.objectFifo.registerProcess{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<4xi32>, %releasePattern : tensor<4xi32>, @producer_work, 10) 
+    AIE.objectFifo.registerProcess{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<4xi32>, %releasePattern : tensor<4xi32>, @producer_work, %length) 
 }

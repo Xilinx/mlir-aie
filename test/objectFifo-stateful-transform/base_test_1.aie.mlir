@@ -12,7 +12,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: module @singleCoreSingleFifo  {
+// CHECK-LABEL: module @singleFifo  {
 // CHECK-NEXT:    %0 = AIE.tile(1, 2)
 // CHECK-NEXT:    %1 = AIE.tile(1, 3)
 // CHECK-NEXT:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
@@ -44,9 +44,15 @@
 // CHECK-NEXT:      call @some_work(%8) : (memref<16xi32>) -> ()
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
+// CHECK-NEXT:    %11 = AIE.core(%1) {
+// CHECK-NEXT:      AIE.useLock(%3, Acquire, 1)
+// CHECK-NEXT:      call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK-NEXT:      AIE.useLock(%3, Release, 0)
+// CHECK-NEXT:      AIE.end
+// CHECK-NEXT:    }
 // CHECK-NEXT:  }
 
-module @singleCoreSingleFifo {
+module @singleFifo {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
@@ -64,7 +70,7 @@ module @singleCoreSingleFifo {
         call @some_work(%elem00) : (memref<16xi32>) -> ()
         call @some_work(%elem01) : (memref<16xi32>) -> ()
 
-        // this should only acquire one new element, previous 2 are still acquired
+        // this should only acquire one new element, previous two are still acquired
         %subview1 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         %elem11 = AIE.objectFifo.subview.access %subview1[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
@@ -82,13 +88,22 @@ module @singleCoreSingleFifo {
         call @some_work(%elem20) : (memref<16xi32>) -> () 
         call @some_work(%elem21) : (memref<16xi32>) -> ()
 
-        // no new acquires should take place, elem30 should be thrid element of objFifo (with index 2)
+        // no new acquires should take place, elem30 should be third element of objFifo (with index 2)
         %subview3 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem30 = AIE.objectFifo.subview.access %subview3[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         %elem31 = AIE.objectFifo.subview.access %subview3[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         //%elem32 = AIE.subview.access %subview3[2] : !AIE.subview<memref<16xi32>> -> memref<16xi32> // expected to fail if this line is uncommented
         call @some_work(%elem30) : (memref<16xi32>) -> ()
         call @some_work(%elem31) : (memref<16xi32>) -> ()
+
+        AIE.end
+    }
+
+    %core13 = AIE.core(%tile13) {
+        %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+        %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+        call @some_work(%elem0) : (memref<16xi32>) -> ()
+        AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
         AIE.end
     }

@@ -153,30 +153,28 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
             auto acqSize = registerOp.getAcquirePattern().size();
             auto relSize = registerOp.getReleasePattern().size();
 
-            /*if (acqSize == 1) {
-                auto acqNumber = registerOp.acquirePattern().dyn_cast<DenseIntElementsAttr>().getValue(0).dyn_cast<IntegerAttr>();
-                auto relNumber = registerOp.releasePattern().dyn_cast<DenseIntElementsAttr>().getValue(0).dyn_cast<IntegerAttr>();
+            if (acqSize == 1) {
+                IntegerAttr acqNumber = registerOp.getAcquirePattern().getValues<IntegerAttr>()[0];
+                IntegerAttr relNumber = registerOp.getReleasePattern().getValues<IntegerAttr>()[0];
 
-                auto acqNumber = registerOp.getAcquirePattern().getValue(0).dyn_cast<IntegerAttr>();
-                auto relNumber = registerOp.getReleasePattern().getValue(0).dyn_cast<IntegerAttr>();
-                createPattern(builder, m, registerOp, elementType, acqNumber, relNumber, registerOp.length(), port);
+                createPattern(builder, m, registerOp, elementType, acqNumber, relNumber, registerOp.getProcessLength(), port);
             } else {
                 int length = 1;
                 for (int i = 0; i < acqSize; i++) {
-                    auto curr = registerOp.getAcquirePattern().getValue(i).dyn_cast<IntegerAttr>();
+                    auto curr = registerOp.getAcquirePattern().getValues<IntegerAttr>()[i];
                     if (i < acqSize - 1) {
-                        auto next = registerOp.getAcquirePattern().getValue(i + 1).dyn_cast<IntegerAttr>();
+                        auto next = registerOp.getAcquirePattern().getValues<IntegerAttr>()[i + 1];
 
                         if (curr.getInt() == next.getInt()) {
                             length++;
                             continue;
                         }
                     }
-                    auto rel = registerOp.getReleasePattern().getValue(i).dyn_cast<IntegerAttr>();
+                    auto rel = registerOp.getReleasePattern().getValues<IntegerAttr>()[i];
                     createPattern(builder, m, registerOp, elementType, curr, rel, length, port);
                     length = 1;
                 }
-            }*/
+            }
         }   
 
         //===----------------------------------------------------------------------===//
