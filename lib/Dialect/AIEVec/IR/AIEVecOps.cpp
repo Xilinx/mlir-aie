@@ -336,8 +336,11 @@ inline LogicalResult verifyAccType(T op, aievec::AccType resultType);
 template <>
 inline LogicalResult verifyAccType(aievec::FMAOp op,
                                    aievec::AccType resultType) {
-  bool isInt = op.lhs().getType().dyn_cast<VectorType>()
-                 .getElementType().isa<IntegerType>();
+  bool isInt = op.lhs()
+                   .getType()
+                   .dyn_cast<VectorType>()
+                   .getElementType()
+                   .isa<IntegerType>();
   aievec::AccType accType = op.acc().getType().dyn_cast<aievec::AccType>();
   if (isInt && !accType)
     return op.emitError("requires accumulator type");
@@ -400,15 +403,14 @@ template <typename T> LogicalResult verifyMulFMAOp(T op) {
   // Determine if it is an integer or float operation
   bool isInt = lhsType.getElementType().isa<IntegerType>();
 
-  VectorType resultVecType = op.result().getType()
-                               .template dyn_cast<VectorType>();
-  aievec::AccType resultAccType = op.result().getType()
-                                    .template dyn_cast<aievec::AccType>();
+  VectorType resultVecType =
+      op.result().getType().template dyn_cast<VectorType>();
+  aievec::AccType resultAccType =
+      op.result().getType().template dyn_cast<aievec::AccType>();
   if (isInt && !resultAccType)
     return op.emitError("requires accumulator type");
   else if (!isInt && !resultVecType)
     return op.emitError("requires vector type");
-
 
   // Additional checks for FMA op
   if (!isInt && failed(verifyAccType(op, resultAccType)))
@@ -417,15 +419,15 @@ template <typename T> LogicalResult verifyMulFMAOp(T op) {
   // Get the width of the underlying scalars of all the vectors
   Type ltype = lhsType.getElementType();
   Type rtype = rhsType.getElementType();
-  Type atype = isInt ? resultAccType.getValueType() :
-                       resultVecType.getElementType();
+  Type atype =
+      isInt ? resultAccType.getValueType() : resultVecType.getElementType();
   unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
   unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
-  unsigned accLanes = isInt ? resultAccType.getLanes() :
-                              getVectorLaneSize(resultVecType);
+  unsigned accLanes =
+      isInt ? resultAccType.getLanes() : getVectorLaneSize(resultVecType);
   unsigned rhsLanes = getVectorLaneSize(rhsType);
   unsigned lhsLanes = getVectorLaneSize(lhsType);
 
@@ -528,8 +530,8 @@ ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
     }
   }
 
-  return isInt ? parser.addTypeToList(accTypeAcc, result.types):
-                 parser.addTypeToList(accTypeVec, result.types);
+  return isInt ? parser.addTypeToList(accTypeAcc, result.types)
+               : parser.addTypeToList(accTypeVec, result.types);
 }
 
 ParseResult MulOp::parse(OpAsmParser &parser, OperationState &result) {

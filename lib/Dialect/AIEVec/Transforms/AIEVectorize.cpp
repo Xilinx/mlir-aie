@@ -646,8 +646,11 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
 
   // If the accumulator is not of type aievec::AccType for integer FMA
   // we need to generate a ups instruction.
-  bool isInt = fmaOp.getLhs().getType().cast<VectorType>()
-                    .getElementType().isa<IntegerType>();
+  bool isInt = fmaOp.getLhs()
+                   .getType()
+                   .cast<VectorType>()
+                   .getElementType()
+                   .isa<IntegerType>();
   Value acc = fmaOp.getAcc();
   // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
   // op for i8xi8 scheme. Find the paired accumulator.

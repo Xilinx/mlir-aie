@@ -880,10 +880,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   std::string opname;
   // Create opname based on the result type
-  bool isInt = lhs.getType().cast<VectorType>()
-                  .getElementType().isa<IntegerType>();
-  aievec::AccType accType = mulOp.result().getType()
-                                 .dyn_cast<aievec::AccType>();
+  bool isInt =
+      lhs.getType().cast<VectorType>().getElementType().isa<IntegerType>();
+  aievec::AccType accType =
+      mulOp.result().getType().dyn_cast<aievec::AccType>();
   VectorType vecType = mulOp.result().getType().dyn_cast<VectorType>();
   Type eltType = isInt ? accType.getValueType() : vecType.getElementType();
   if (!simpleScheme) {
@@ -1039,10 +1039,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
 
   std::string opname;
   // Create opname based on the result type
-  bool isInt = lhs.getType().cast<VectorType>()
-                  .getElementType().isa<IntegerType>();
-  aievec::AccType accType = fmaOp.result().getType()
-                                 .dyn_cast<aievec::AccType>();
+  bool isInt =
+      lhs.getType().cast<VectorType>().getElementType().isa<IntegerType>();
+  aievec::AccType accType =
+      fmaOp.result().getType().dyn_cast<aievec::AccType>();
   VectorType vecType = fmaOp.result().getType().dyn_cast<VectorType>();
   Type eltType = isInt ? accType.getValueType() : vecType.getElementType();
   if (!simpleScheme) {
