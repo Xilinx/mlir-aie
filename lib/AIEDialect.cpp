@@ -493,8 +493,11 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   if (getProcessLength() < 1)
     return emitError("Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
 
-  if (getAcquirePattern().size() != getReleasePattern().size())
-    return emitError("Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp must be of equal length");
+  if (getAcquirePattern().size() != getReleasePattern().size()) {
+    // acquire pattern size = process length (i.e., release pattern will be duplicated by process length times) OR the other way around
+    if ( !(getAcquirePattern().size() == getProcessLength()) && !(getProcessLength() == getReleasePattern().size()) )
+      return emitError("Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp must be of equal length, or longest length of one equal to process length of the other");
+  }
 
   return success();
 }

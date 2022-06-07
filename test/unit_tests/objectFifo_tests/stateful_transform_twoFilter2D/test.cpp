@@ -20,26 +20,9 @@
 #include <xaiengine.h>
 #include "test_library.h"
 
-#define XAIE_NUM_ROWS            8
-#define XAIE_NUM_COLS           50
-#define XAIE_ADDR_ARRAY_OFF     0x800
-
-
-#define MLIR_STACK_OFFSET 4096
-
-#define LOCK_TIMEOUT 1000
-
-//define some constants, CAREFUL NEED TO MATCH MLIR
-#define LINE_WIDTH 16
-#define HEIGHT 10
-
-namespace {
-
-XAieGbl_Config *AieConfigPtr;	                          /**< AIE configuration pointer */
-XAieGbl AieInst;	                                      /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;                                /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];  /**< Instantiates AIE array of [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
+#define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
+#define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
+#define mlir_aie_STACK_OFFSET 4096
 
 #include "aie_inc.cpp"
 
@@ -47,36 +30,26 @@ XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
 
 int main(int argc, char *argv[])
 {
-    printf("objectFifoFilter2D test start.\n");
+    printf("test start.\n");
 
-    size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-    XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS, XAIE_ADDR_ARRAY_OFF);
-    XAieGbl_HwInit(&AieConfig);
-    AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
 
-    ACDC_clear_tile_memory(TileInst[1][2]);
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    ACDC_clear_tile_memory(TileInst[1][4]);
+    mlir_aie_clear_tile_memory(_xaie, 1, 2);
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+    mlir_aie_clear_tile_memory(_xaie, 1, 4);
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_configure_dmas();
-    mlir_initialize_locks();
-
-    ACDC_print_tile_status(TileInst[1][2]);
-    ACDC_print_tile_status(TileInst[1][3]);
-    ACDC_print_tile_status(TileInst[1][4]);
-
-    printf("\nStarting cores.\n");
-
-    mlir_start_cores();
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
+    mlir_aie_configure_dmas(_xaie);
+    mlir_aie_start_cores(_xaie);
 
     int errors = 0;
 
     printf("Waiting to acquire output lock for read ...\n");
-    if(!XAieTile_LockAcquire(&(TileInst[1][4]), 0, 1, LOCK_TIMEOUT)) {
-        printf("ERROR: timeout hit!\n");
+    if (!mlir_aie_acquire_lock(_xaie, 1, 4, 0, 1, LOCK_TIMEOUT)) {
+      printf("ERROR: timeout hit!\n");
     }
 
     int test_value = 0;
@@ -87,22 +60,28 @@ int main(int argc, char *argv[])
             if (i == 2) { test_value = 18; }  
             if (i == 8) { test_value = 62; }  
             if (i == 9) { test_value = 41; }  
-            ACDC_check("AFTER", mlir_read_buffer_out(i*LINE_WIDTH+j), test_value, errors);
+            mlir_aie_check("After full exchange. Check [i*LINE_WIDTH+j] = test_value",
+                   mlir_aie_read_buffer_out(_xaie, i*LINE_WIDTH+j), test_value, errors);
         }
         test_value += 9;
     }
 
     for (int i=0; i < HEIGHT; i++){
         for(int j=0; j < LINE_WIDTH; j++)
-            printf("%d ",mlir_read_buffer_out(i*LINE_WIDTH+j));
+            printf("%d ",mlir_aie_read_buffer_out(_xaie, i*LINE_WIDTH+j));
         printf("\n");       
     }
-    
 
+    int res = 0;
     if (!errors) {
-        printf("PASS!\n"); return 0;
+      printf("PASS!\n");
+      res = 0;
     } else {
-        printf("Fail!\n"); return -1;
+      printf("Fail!\n");
+      res = -1;
     }
+    mlir_aie_deinit_libxaie(_xaie);
+
     printf("test done.\n");
+    return res;
 }

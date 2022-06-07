@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.ß
+// (c) Copyright 2021 Xilinx Inc.
 //
 // Date: October 18th 2021
 // 
@@ -74,7 +74,7 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
         }
 
         // acquires
-            if (acqNumber.getInt() > 0) {
+        if (acqNumber.getInt() > 0) {
             auto acqType = AIEObjectFifoSubviewType::get(elementType);
             auto acqOp = builder.create<ObjectFifoAcquireOp>(builder.getUnknownLoc(), acqType, regOp.fifo(), acqNumber);
             acqOp.getOperation()->setAttr("port", builder.getStringAttr(port));
@@ -97,7 +97,7 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
         }
 
         // releases
-            if (relNumber.getInt() > 0) {
+        if (relNumber.getInt() > 0) {
             auto relOp = builder.create<ObjectFifoReleaseOp>(builder.getUnknownLoc(), regOp.fifo(), relNumber);
             relOp.getOperation()->setAttr("port", builder.getStringAttr(port));
             builder.setInsertionPointAfter(relOp);
@@ -114,6 +114,7 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
         // Generate access patterns
         //===----------------------------------------------------------------------===//
         for (auto registerOp : m.getOps<ObjectFifoRegisterProcessOp>()) {
+            builder.setInsertionPointToEnd(m.getBody());
             ObjectFifoCreateOp objFifo = registerOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
             auto port = registerOp.port().getValue();
             auto elementType = objFifo.getType().dyn_cast<AIEObjectFifoType>().getElementType();
@@ -134,7 +135,7 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
                 if ((coreOp.tile().getDefiningOp<TileOp>()) == tile) {
                     core = &coreOp;
                     break;
-                }
+                } 
             }
             if (core == nullptr) {
                 CoreOp coreOp = builder.create<CoreOp>(builder.getUnknownLoc(), builder.getIndexType(), tile);
@@ -153,25 +154,54 @@ struct AIEObjectFifoRegisterProcessPass : public AIEObjectFifoRegisterProcessBas
             auto acqSize = registerOp.getAcquirePattern().size();
             auto relSize = registerOp.getReleasePattern().size();
 
-            if (acqSize == 1) {
+            if (acqSize == 1 && relSize == 1) {
                 IntegerAttr acqNumber = registerOp.getAcquirePattern().getValues<IntegerAttr>()[0];
                 IntegerAttr relNumber = registerOp.getReleasePattern().getValues<IntegerAttr>()[0];
-
                 createPattern(builder, m, registerOp, elementType, acqNumber, relNumber, registerOp.getProcessLength(), port);
+
             } else {
+                auto acqPattern = registerOp.getAcquirePattern().getValues<IntegerAttr>();
+                std::vector<IntegerAttr> acqVector;
+                for (auto i = acqPattern.begin(); i != acqPattern.end(); ++i) {
+                    acqVector.push_back(*i);
+                }
+
+                auto relPattern = registerOp.getReleasePattern().getValues<IntegerAttr>();
+                std::vector<IntegerAttr> relVector;
+                for (auto i = relPattern.begin(); i != relPattern.end(); ++i) {
+                    relVector.push_back(*i);
+                }
+                
+                if (acqSize == 1) {
+                    // duplicate acquire pattern
+                    IntegerAttr acqNumber = registerOp.getAcquirePattern().getValues<IntegerAttr>()[0];
+                    std::vector<IntegerAttr> values(registerOp.getProcessLength(), acqNumber);
+                    acqVector = values;
+                    acqSize = registerOp.getProcessLength();
+                    
+                } else if (relSize == 1) {
+                    // duplicate release pattern
+                    IntegerAttr relNumber = registerOp.getReleasePattern().getValues<IntegerAttr>()[0];
+                    std::vector<IntegerAttr> values(registerOp.getProcessLength(), relNumber);
+                    relVector = values;
+                    relSize = registerOp.getProcessLength();
+
+                }
+
                 int length = 1;
                 for (int i = 0; i < acqSize; i++) {
-                    auto curr = registerOp.getAcquirePattern().getValues<IntegerAttr>()[i];
+                    auto currAcq = acqVector[i];
+                    auto currRel = relVector[i];
                     if (i < acqSize - 1) {
-                        auto next = registerOp.getAcquirePattern().getValues<IntegerAttr>()[i + 1];
+                        auto nextAcq = acqVector[i + 1];
+                        auto nextRel = relVector[i + 1];
 
-                        if (curr.getInt() == next.getInt()) {
+                        if ( (currAcq.getInt() == nextAcq.getInt()) && (currRel.getInt() == nextRel.getInt()) ) {
                             length++;
                             continue;
                         }
                     }
-                    auto rel = registerOp.getReleasePattern().getValues<IntegerAttr>()[i];
-                    createPattern(builder, m, registerOp, elementType, curr, rel, length, port);
+                    createPattern(builder, m, registerOp, elementType, currAcq, currRel, length, port);
                     length = 1;
                 }
             }
