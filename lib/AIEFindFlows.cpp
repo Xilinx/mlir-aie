@@ -77,7 +77,7 @@ public:
     return idx;
   }
 
-  std::vector<int> get_path2root(int start_node) {
+  std::vector<int> get_path_to_root(int start_node) {
     std::vector<int> valid_path;
     std::vector<int> worklist;
 
@@ -92,26 +92,6 @@ public:
       }
     }
     return valid_path;
-  }
-
-  // debug methods
-  void printNode(int idx) {
-    LLVM_DEBUG(llvm::dbgs() << "Graph node: " << idx << "\n");
-    LLVM_DEBUG(llvm::dbgs() << "loc: " << idx << "\n");
-    LLVM_DEBUG(llvm::dbgs() << "par: " << vertices[idx].parent_idx << "\n");
-    LLVM_DEBUG(llvm::dbgs() << "isLeaf: " << vertices[idx].isLeaf << "\n");
-    LLVM_DEBUG(llvm::dbgs()
-               << "isDestination: " << vertices[idx].isDestination << "\n");
-    LLVM_DEBUG(vertices[idx].op_data->dump());
-    LLVM_DEBUG(llvm::dbgs()
-               << stringifyWireBundle(vertices[idx].port_data.first) << " "
-               << (int)vertices[idx].port_data.second << "\n");
-  }
-
-  void printAllNodes() {
-    for (unsigned int i = 0; i < vertices.size(); i++) {
-      printNode(i);
-    }
   }
 };
 
@@ -251,9 +231,9 @@ private:
     std::vector<int> valid_path;
     for (auto &Tile_idx : connectedTilesIndexList) {
       if (valid_path.empty()) {
-        valid_path = g.get_path2root(Tile_idx);
+        valid_path = g.get_path_to_root(Tile_idx);
       } else {
-        path_buffer = g.get_path2root(Tile_idx);
+        path_buffer = g.get_path_to_root(Tile_idx);
         for (auto &node_idx : path_buffer) {
           if (!std::count(valid_path.begin(), valid_path.end(), node_idx)) {
             valid_path.push_back(node_idx);
@@ -266,7 +246,7 @@ private:
     std::vector<int> antenna_valid_path;
     std::vector<int> antenna_nonvalid_path;
     for (auto &antenna_idx : antennaIndexList) {
-      path_buffer = g.get_path2root(antenna_idx);
+      path_buffer = g.get_path_to_root(antenna_idx);
       antenna_valid_path.clear();
       antenna_nonvalid_path.clear();
       for (auto &node_idx : path_buffer) {
