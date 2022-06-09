@@ -73,7 +73,7 @@ main(int argc, char *argv[])
     mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0); // Should this part of setup???
 
     printf("Waiting to acquire output lock for read ...\n");
-    if (!mlir_aie_acquire_lock(_xaie, 1, 3, 7, 1, LOCK_TIMEOUT)) {
+    if (!mlir_aie_acquire_lock(_xaie, 3, 3, 7, 1, LOCK_TIMEOUT)) {
       printf("ERROR: timeout hit!\n");
     }
 

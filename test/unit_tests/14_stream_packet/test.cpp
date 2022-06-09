@@ -48,11 +48,15 @@ main(int argc, char *argv[])
   usleep(10000);
 
   uint32_t bd_ctrl, bd_pckt;
-  bd_ctrl = mlir_aie_data_mem_rd_word(_xaie, 7, 1, 0x0001D018);
-  bd_pckt = mlir_aie_data_mem_rd_word(_xaie, 7, 1, 0x0001D010);
+  bd_ctrl =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D018);
+  bd_pckt =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D010);
   printf("BD0_71: pckt: %x, ctrl: %x \n", bd_pckt, bd_ctrl);
-  bd_ctrl = mlir_aie_data_mem_rd_word(_xaie, 7, 3, 0x0001D018);
-  bd_pckt = mlir_aie_data_mem_rd_word(_xaie, 7, 3, 0x0001D010);
+  bd_ctrl =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 3) + 0x0001D018);
+  bd_pckt =
+      mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 3) + 0x0001D010);
   printf("BD0_73: pckt: %x, ctrl: %x \n", bd_pckt, bd_ctrl);
 
   int count = 256;
@@ -74,6 +78,10 @@ main(int argc, char *argv[])
   for (int i=0; i<count; i++) {
     uint32_t d73 = mlir_aie_read_buffer_buf62(_xaie, i);
     uint32_t d71 = mlir_aie_read_buffer_buf62(_xaie, i + count);
+    if (d73 != 73)
+      errors++;
+    if (d71 != 71)
+      errors++;
     printf("73[%d]: %x\n", i, d73);
     printf("71[%d]: %x\n", i, d71);
   }
@@ -83,7 +91,7 @@ main(int argc, char *argv[])
     printf("PASS!\n");
     res = 0;
   } else {
-    printf("fail %d/%d.\n", (count - errors), count);
+    printf("fail %d/%d.\n", (count * 2 - errors), count * 2);
     res = -1;
   }
   mlir_aie_deinit_libxaie(_xaie);
