@@ -225,9 +225,9 @@ private:
 
   void detect_antenna(Graph &g, std::vector<int> connectedTilesIndexList,
                       std::vector<int> antennaIndexList) const {
-    
+
     std::vector<int> path_buffer;
-    //create valid path from connected tiles
+    // create valid path from connected tiles
     std::vector<int> valid_path;
     for (auto &Tile_idx : connectedTilesIndexList) {
       if (valid_path.empty()) {
@@ -261,30 +261,35 @@ private:
         std::string connectionType = "";
         Operation *op = g.vertices[anvp].op_data;
         if (dyn_cast_or_null<SwitchboxOp>(op)) {
-          if (g.vertices[anvp].isDestination) 
+          if (g.vertices[anvp].isDestination)
             connectionType = "Connection Destination";
           else
             connectionType = "Connection Source";
         }
-        op->emitWarning() << "Antenna\n" << "at Port: " 
-            << "("<<stringifyWireBundle(g.vertices[anvp].port_data.first) 
-            << " " << (int)g.vertices[anvp].port_data.second << ") "
-            << connectionType << "\n";
-      } 
+        op->emitWarning() << "Antenna\n"
+                          << "at Port: "
+                          << "("
+                          << stringifyWireBundle(
+                                 g.vertices[anvp].port_data.first)
+                          << " " << (int)g.vertices[anvp].port_data.second
+                          << ") " << connectionType << "\n";
+      }
       // emit remarks for antenna traceback
       for (auto &vp : antenna_valid_path) {
         std::string connectionType = "";
         Operation *op = g.vertices[vp].op_data;
         if (dyn_cast_or_null<SwitchboxOp>(op)) {
-          if (g.vertices[vp].isDestination) 
+          if (g.vertices[vp].isDestination)
             connectionType = "Connection Destination";
           else
             connectionType = "Connection Source";
         }
-        op->emitRemark() << "Traceback\n" << "at Port: " 
-            << "("<<stringifyWireBundle(g.vertices[vp].port_data.first) 
-            << " " << (int)g.vertices[vp].port_data.second << ") "
-            << connectionType << "\n";
+        op->emitRemark() << "Traceback\n"
+                         << "at Port: "
+                         << "("
+                         << stringifyWireBundle(g.vertices[vp].port_data.first)
+                         << " " << (int)g.vertices[vp].port_data.second << ") "
+                         << connectionType << "\n";
       }
     }
   }
