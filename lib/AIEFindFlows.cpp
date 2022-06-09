@@ -70,7 +70,7 @@ public:
         // destination are the same
         if (checkBundleChannel && vertices[i].isDestination == isDestination)
           idx = i;
-        else
+        else if (!checkBundleChannel)
           idx = i;
       }
     }
