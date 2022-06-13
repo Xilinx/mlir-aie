@@ -137,9 +137,17 @@ private:
   getConnectionsThroughSwitchbox(Graph &g, Operation *op,
                                  Port sourcePort) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
-    SwitchboxOp switchOp = dyn_cast_or_null<SwitchboxOp>(op);
-    Region &r = switchOp.connections();
-    Block &b = r.front();
+
+    Region *r;
+    if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(op))
+      r = &switchOp.connections();
+    else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(op))
+      r = &switchOp.connections();
+    else
+      LLVM_DEBUG(llvm::dbgs()
+                 << "*** Connection Terminated at unknown operation: \n");
+
+    Block &b = r->front();
     std::vector<PortMaskValue> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
@@ -343,7 +351,8 @@ public:
         connectedTiles.push_back(t);
         connectedTilesIndex.push_back(
             g.get_index(other, otherPort, false, true));
-      } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
+      } else if (dyn_cast_or_null<SwitchboxOp>(other) ||
+                 dyn_cast_or_null<ShimMuxOp>(other)) {
         // append to graph included with method
         std::vector<PortMaskValue> nextPortMaskValues =
             getConnectionsThroughSwitchbox(g, other, otherPort);
@@ -354,21 +363,6 @@ public:
         worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
         // worklist.insert(worklist.end(), newWorkList.begin(),
         // newWorkList.end());
-        if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
-          // No rule matched some incoming packet.  This is likely a
-          // configuration error.
-          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
-          LLVM_DEBUG(other->dump());
-        }
-      } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
-        // append to graph included with method
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(g, other, otherPort);
-        // append to graph included with method
-        std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
-            g, antennaIndex, other, nextPortMaskValues, maskValue);
-        // append to the worklist
-        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
         if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
