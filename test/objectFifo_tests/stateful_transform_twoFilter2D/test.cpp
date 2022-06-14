@@ -20,13 +20,15 @@
 #include <xaiengine.h>
 #include "test_library.h"
 
+#define LOCK_TIMEOUT 100
 #define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 #define mlir_aie_STACK_OFFSET 4096
 
-#include "aie_inc.cpp"
+#define LINE_WIDTH 16
+#define HEIGHT 10
 
-}
+#include "aie_inc.cpp"
 
 int main(int argc, char *argv[])
 {
@@ -36,7 +38,8 @@ int main(int argc, char *argv[])
     mlir_aie_init_device(_xaie);
 
     mlir_aie_clear_tile_memory(_xaie, 1, 2);
-    mlir_aie_clear_tile_memory(_xaie, 3, 3);
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+    mlir_aie_clear_tile_memory(_xaie, 1, 4);
 
     mlir_aie_configure_cores(_xaie);
     mlir_aie_configure_switchboxes(_xaie);
@@ -47,23 +50,30 @@ int main(int argc, char *argv[])
     int errors = 0;
 
     printf("Waiting to acquire output lock for read ...\n");
-    if (!mlir_aie_acquire_lock(_xaie, 3, 3, 0, 1, LOCK_TIMEOUT)) {
+    if (!mlir_aie_acquire_lock(_xaie, 1, 4, 0, 1, LOCK_TIMEOUT)) {
       printf("ERROR: timeout hit!\n");
     }
 
+    int test_value = 0;
     for (int i=0; i < HEIGHT; i++){
-        for(int j=0; j < LINE_WIDTH; j++) {  
-            mlir_aie_check("After full ping pong exchange. Check [i*LINE_WIDTH+j] = i",
-                   mlir_aie_read_buffer_out(_xaie, i*LINE_WIDTH+j), i, errors);
+        for(int j=0; j < LINE_WIDTH; j++) {
+            if (i == 0) { test_value = 4; }    
+            if (i == 1) { test_value = 10; }  
+            if (i == 2) { test_value = 18; }  
+            if (i == 8) { test_value = 62; }  
+            if (i == 9) { test_value = 41; }  
+            mlir_aie_check("After full exchange. Check [i*LINE_WIDTH+j] = test_value",
+                   mlir_aie_read_buffer_out(_xaie, i*LINE_WIDTH+j), test_value, errors);
         }
+        test_value += 9;
     }
 
     for (int i=0; i < HEIGHT; i++){
         for(int j=0; j < LINE_WIDTH; j++)
-            printf("%d ", mlir_aie_read_buffer_out(_xaie, i*LINE_WIDTH+j));
+            printf("%d ",mlir_aie_read_buffer_out(_xaie, i*LINE_WIDTH+j));
         printf("\n");       
     }
-    
+
     int res = 0;
     if (!errors) {
       printf("PASS!\n");

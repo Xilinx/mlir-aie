@@ -343,7 +343,6 @@ struct AIEObjectFifoStatefulTransformPass : public AIEObjectFifoStatefulTransfor
         // Find max acquire number for producer and consumer of objectFifo.
         int prodMaxAcquire = findProcessMaxAcquire(m, createOp.getProducerTileOp(), createOp);
         int consMaxAcquire = findProcessMaxAcquire(m, createOp.getConsumerTileOp(), createOp);
-        //int elemNumber = createOp.size();
 
         // objectFifos between non-adjacent tiles must be split into two new ones, their elements will be created in next iterations
         builder.setInsertionPointAfter(createOp);
