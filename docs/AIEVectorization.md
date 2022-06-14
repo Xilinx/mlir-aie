@@ -23,7 +23,7 @@ This code is typical of looped code that vectorizes easily, since the loop acces
 
 The ["Affine Super-Vectorize" pass](https://mlir.llvm.org/docs/Passes/#-affine-super-vectorize-vectorize-to-a-target-independent-n-d-vector-abstraction) in MLIR Upstream is capable of extracting generic vector operations from the above code.  In order to target the AIEngine 8-wide vector floating point unit, we select a vector size of 8:
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=8" < pointwise_mult_f32.mlir
+aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" < pointwise_mult_f32.mlir
 ```
 ```
   func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
@@ -46,7 +46,7 @@ The super-vectorizer blocks the loop by a factor of 8, replacing scalar operatio
 The ['AIE Vectorize' pass](https://xilinx.github.io/mlir-aie/AIEVecPasses.html) in this repository transforms the above vector code into AIEngine-specific vector operations, represented in the [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecOps.html).  These operations use types that are directly implementable in the AIEngine architecture and represent device specific features, such as the vector permute network.
 
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < pointwise_mult_f32.mlir
+aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize < pointwise_mult_f32.mlir
 ```
 ```
   func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
@@ -179,49 +179,101 @@ aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicaliz
 One way to generate the code for Affine loops is using [Polygeist](https://github.com/wsmoses/Polygeist), a clang-based frontend to MLIR.
 
 ```
-mlir-clang conv2d.c --function=conv2d -S
+mlir-clang conv2d.c --function=conv2d -S --raise-scf-to-affine
 ```
 ```
-void conv2d(float img_in[17][272], float kernel_coeff[3][3],
-            float img_out[16][256]) {
- #pragma scop
+void conv2d(int img_in[17][272], int kernel_coeff[3][3], int img_out[16][256]) {
     for(int r = 0; r < 16; r++)
         for(int c = 0; c < 256; c++) {
-            float acc = 0;
+            int acc = 0;
             for(int i = 0; i < 3; i++)
                 for(int j = 0; j < 3; j++) {
                     acc += img_in[r+i][c+j] * kernel_coeff[i][j];
                 }
             img_out[r][c] = acc;
         }
-#pragma endscop
 }
 ```
 
 Resulting in
 ```
-func @conv2d(%arg0: memref<?x272xf32>, %arg1: memref<?x3xf32>, %arg2: memref<?x256xf32>) attributes {llvm.linkage = #llvm.linkage<external>} {
-    %cst = arith.constant 0.000000e+00 : f32
-    %0 = memref.alloca() : memref<1xf32>
-    %1 = llvm.mlir.undef : f32
-    affine.store %1, %0[0] : memref<1xf32>
+  func @conv2d(%arg0: memref<?x272xi32>, %arg1: memref<?x3xi32>, %arg2: memref<?x256xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
+    %c0_i32 = arith.constant 0 : i32
     affine.for %arg3 = 0 to 16 {
       affine.for %arg4 = 0 to 256 {
-        affine.store %cst, %0[0] : memref<1xf32>
-        affine.for %arg5 = 0 to 3 {
-          affine.for %arg6 = 0 to 3 {
-            %3 = affine.load %arg0[%arg3 + %arg5, %arg4 + %arg6] : memref<?x272xf32>
-            %4 = affine.load %arg1[%arg5, %arg6] : memref<?x3xf32>
-            %5 = arith.mulf %3, %4 : f32
-            %6 = affine.load %0[0] : memref<1xf32>
-            %7 = arith.addf %6, %5 : f32
-            affine.store %7, %0[0] : memref<1xf32>
+        %0 = affine.for %arg5 = 0 to 3 iter_args(%arg6 = %c0_i32) -> (i32) {
+          %1 = affine.for %arg7 = 0 to 3 iter_args(%arg8 = %arg6) -> (i32) {
+            %2 = affine.load %arg0[%arg3 + %arg5, %arg4 + %arg7] : memref<?x272xi32>
+            %3 = affine.load %arg1[%arg5, %arg7] : memref<?x3xi32>
+            %4 = arith.muli %2, %3 : i32
+            %5 = arith.addi %arg8, %4 : i32
+            affine.yield %5 : i32
           }
+          affine.yield %1 : i32
         }
-        %2 = affine.load %0[0] : memref<1xf32>
-        affine.store %2, %arg2[%arg3, %arg4] : memref<?x256xf32>
+        affine.store %0, %arg2[%arg3, %arg4] : memref<?x256xi32>
       }
     }
     return
+  }
+```
+
+Running the whole pipeline, we get:
+```
+mlir-clang --function=conv2d conv2d_i32.c -S --raise-scf-to-affine | aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize | aie-translate --aievec-to-cpp
+```
+```
+mlir-clang --function=conv2d conv2d_i32.c -S --raise-scf-to-affine | aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize | aie-translate --aievec-to-cpp
+void conv2d(int32_t * restrict v4, size_t m1, int32_t * restrict v5, size_t m2, int32_t * restrict v6, size_t m3) {
+  size_t v7 = 0;
+  size_t v8 = 2;
+  v8int32 v9 = *(v8int32 *)(v5 + 3*v7+v7);
+  v8int32 v10 = *(v8int32 *)(v5 + 3*v8+v8);
+  size_t v11 = 0;
+  size_t v12 = 16;
+  size_t v13 = 1;
+  for (size_t v14 = v11; v14 < v12; v14 += v13)
+  chess_prepare_for_pipelining
+  chess_loop_range(16, 16)
+  {
+    size_t v15 = 1;
+    size_t v16 = v14 + v15;
+    size_t v17 = 2;
+    size_t v18 = v14 + v17;
+    size_t v19 = 0;
+    size_t v20 = 256;
+    size_t v21 = 8;
+    for (size_t v22 = v19; v22 < v20; v22 += v21)
+    chess_prepare_for_pipelining
+    chess_loop_range(32, 32)
+    {
+      v16int32 v23;
+      int32_t * restrict r_v23_v4 = v4;
+      v23 = upd_w(v23, 0, *(v8int32 *)(r_v23_v4 + 272*v14+v22));
+      v8acc80 v24 = lmul8(v23, 0, 0x76543210, v9, 0, 0x00000000);
+      size_t v25 = 1;
+      size_t v26 = v22 + v25;
+      v23 = upd_w(v23, 1, *(v8int32 *)(r_v23_v4 + 272*v14+v26 + 7));
+      v24 = lmac8(v24, v23, 1, 0x76543210, v9, 1, 0x00000000);
+      v24 = lmac8(v24, v23, 2, 0x76543210, v9, 2, 0x00000000);
+      v16int32 v27;
+      int32_t * restrict r_v27_v4 = v4;
+      v27 = upd_w(v27, 0, *(v8int32 *)(r_v27_v4 + 272*v16+v22));
+      v24 = lmac8(v24, v27, 0, 0x76543210, v9, 3, 0x00000000);
+      v27 = upd_w(v27, 1, *(v8int32 *)(r_v27_v4 + 272*v16+v26 + 7));
+      v24 = lmac8(v24, v27, 1, 0x76543210, v9, 4, 0x00000000);
+      v24 = lmac8(v24, v27, 2, 0x76543210, v9, 5, 0x00000000);
+      v16int32 v28;
+      int32_t * restrict r_v28_v4 = v4;
+      v28 = upd_w(v28, 0, *(v8int32 *)(r_v28_v4 + 272*v18+v22));
+      v24 = lmac8(v24, v28, 0, 0x76543210, v9, 6, 0x00000000);
+      v28 = upd_w(v28, 1, *(v8int32 *)(r_v28_v4 + 272*v18+v26 + 7));
+      v24 = lmac8(v24, v28, 1, 0x76543210, v9, 7, 0x00000000);
+      v24 = lmac8(v24, v28, 2, 0x76543210, v10, 0, 0x00000000);
+      v8int32 v29 = srs(v24, 0);
+      *(v8int32 *)(v6 + 256*v14+v22) = v29;
+    }
+  }
+  return;
 }
 ```

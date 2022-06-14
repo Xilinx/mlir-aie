@@ -59,6 +59,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+#ifdef LIBXAIENGINEV2
+  mlir_aie_configure_shimdma_70(_xaie);
+#endif
+
   // We're going to stamp over the memory
   for (int i = 0; i < DMA_COUNT; i++) {
     mlir_aie_write_buffer_buf72_0(_xaie, i, 0xdeadbeef);
