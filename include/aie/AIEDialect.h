@@ -155,6 +155,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignBufferAddressesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateCoresPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLocksPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLogicalLocksPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEHerdRoutingPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIELocalizeLocksPass();

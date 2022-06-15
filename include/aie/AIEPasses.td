@@ -99,6 +99,16 @@ def AIECreateLocks : Pass<"aie-create-locks", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIECreateLocksPass()";
 }
+
+def AIECreateLogicalLocks : Pass<"aie-create-logical-locks", "ModuleOp"> {
+  let summary = "Generates the absolute lock location numbers.";
+  let description = [{
+    Generates the absolute lock location numbers. 
+  }];
+
+  let constructor = "xilinx::AIE::createAIECreateLogicalLocksPass()";
+}
+
 def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
   let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
   let description = [{
