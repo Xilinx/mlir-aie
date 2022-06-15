@@ -26,6 +26,75 @@ typedef std::pair<Operation *, Port> PortConnection;
 typedef std::pair<Port, MaskValue> PortMaskValue;
 typedef std::pair<PortConnection, MaskValue> PacketConnection;
 
+struct vertex {
+  int parent_idx = -1;
+  bool isLeaf = true;
+  bool isDestination = false;
+
+  Operation *op_data;
+  Port port_data;
+
+  vertex(Operation *op, Port port) {
+    op_data = op;
+    port_data = port;
+  }
+};
+
+class Graph {
+public:
+  std::vector<vertex> vertices;
+  // default root node constructor
+  Graph(Operation *op, Port port) { vertices.push_back(vertex(op, port)); }
+
+  //(parent-op, parent-port, child-op, child-port)
+  void add_child(Operation *op_p, Port port_p, Operation *op_c, Port port_c,
+                 bool isDestination) {
+    int idx = get_index(op_p, port_p, isDestination, false);
+    if (idx == -1) {
+      LLVM_DEBUG(llvm::dbgs() << "No parent in graph\n");
+      return;
+    }
+    vertices.push_back(vertex(op_c, port_c));      // add new node
+    vertices.back().parent_idx = idx;              // link parent
+    vertices[idx].isLeaf = false;                  // link child
+    vertices.back().isDestination = isDestination; // switch connection type
+  }
+
+  int get_index(Operation *op, Port port, bool isDestination,
+                bool checkBundleChannel) {
+    int idx = -1;
+    for (unsigned int i = 0; i < vertices.size(); i++) {
+      if (vertices[i].op_data == op && vertices[i].port_data == port) {
+        // bind to node that is lowest in the hierarchy when checkBundleChannel
+        // false this is for cases when in the same switch source and
+        // destination are the same
+        if (checkBundleChannel && vertices[i].isDestination == isDestination)
+          idx = i;
+        else if (!checkBundleChannel)
+          idx = i;
+      }
+    }
+    return idx;
+  }
+
+  std::vector<int> get_path_to_root(int start_node) {
+    std::vector<int> valid_path;
+    std::vector<int> worklist;
+
+    worklist.push_back(start_node);
+    while (!worklist.empty()) {
+      int child = worklist.back();
+      worklist.pop_back();
+      valid_path.push_back(child);
+      int parent_idx = vertices[child].parent_idx;
+      if (parent_idx != -1) {
+        worklist.push_back(parent_idx);
+      }
+    }
+    return valid_path;
+  }
+};
+
 class ConnectivityAnalysis {
   ModuleOp &module;
 
@@ -35,6 +104,7 @@ public:
 private:
   llvm::Optional<PortConnection>
   getConnectionThroughWire(Operation *op, Port masterPort) const {
+
     LLVM_DEBUG(llvm::dbgs()
                << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first)
                << " " << masterPort.second << "\n");
@@ -64,9 +134,20 @@ private:
   }
 
   std::vector<PortMaskValue>
-  getConnectionsThroughSwitchbox(Region &r, Port sourcePort) const {
+  getConnectionsThroughSwitchbox(Graph &g, Operation *op,
+                                 Port sourcePort) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
-    Block &b = r.front();
+
+    Region *r;
+    if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(op))
+      r = &switchOp.connections();
+    else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(op))
+      r = &switchOp.connections();
+    else
+      LLVM_DEBUG(llvm::dbgs()
+                 << "*** Connection Terminated at unknown operation: \n");
+
+    Block &b = r->front();
     std::vector<PortMaskValue> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
@@ -100,15 +181,20 @@ private:
             }
       }
     }
+    // append to graph
+    for (auto &port : portSet) {
+      g.add_child(op, sourcePort, op, port.first, true);
+    }
     return portSet;
   }
 
   std::vector<PacketConnection>
-  maskSwitchboxConnections(Operation *switchOp,
+  maskSwitchboxConnections(Graph &g, std::vector<int> &antennaIndex,
+                           Operation *switchOp,
                            std::vector<PortMaskValue> nextPortMaskValues,
                            MaskValue maskValue) const {
     std::vector<PacketConnection> worklist;
-    bool matched = false;
+    // bool matched = false;
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.first;
       MaskValue nextMaskValue = nextPortMaskValue.second;
@@ -124,20 +210,96 @@ private:
         // Incoming packets cannot match this rule. Skip it.
         continue;
       }
-      matched = true;
+      // matched = true;
       MaskValue newMaskValue = std::make_pair(
           maskValue.first | nextMaskValue.first,
           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.
-      if (!nextConnection.hasValue())
+      // then add to antenna list
+      if (!nextConnection.hasValue()) {
+        antennaIndex.push_back(g.get_index(switchOp, nextPort, true, true));
         continue;
+      }
 
+      g.add_child(switchOp, nextPort, nextConnection.getValue().first,
+                  nextConnection.getValue().second, false);
       worklist.push_back(
           std::make_pair(nextConnection.getValue(), newMaskValue));
     }
     return worklist;
+  }
+
+  void detect_antenna(Graph &g, std::vector<int> connectedTilesIndexList,
+                      std::vector<int> antennaIndexList) const {
+
+    std::vector<int> path_buffer;
+    // create valid path from connected tiles
+    std::vector<int> valid_path;
+    for (auto &Tile_idx : connectedTilesIndexList) {
+      if (valid_path.empty()) {
+        valid_path = g.get_path_to_root(Tile_idx);
+      } else {
+        path_buffer = g.get_path_to_root(Tile_idx);
+        for (auto &node_idx : path_buffer) {
+          if (!std::count(valid_path.begin(), valid_path.end(), node_idx)) {
+            valid_path.push_back(node_idx);
+          }
+        }
+      }
+    }
+
+    // output antenna path
+    std::vector<int> antenna_valid_path;
+    std::vector<int> antenna_nonvalid_path;
+    for (auto &antenna_idx : antennaIndexList) {
+      path_buffer = g.get_path_to_root(antenna_idx);
+      antenna_valid_path.clear();
+      antenna_nonvalid_path.clear();
+      for (auto &node_idx : path_buffer) {
+        if (std::count(valid_path.begin(), valid_path.end(), node_idx)) {
+          antenna_valid_path.push_back(node_idx);
+        } else {
+          antenna_nonvalid_path.push_back(node_idx);
+        }
+      }
+      // emit warning message for antennas
+      for (auto &anvp : antenna_nonvalid_path) {
+        std::string connectionType = "";
+        Operation *op = g.vertices[anvp].op_data;
+        if (dyn_cast_or_null<SwitchboxOp>(op)) {
+          if (g.vertices[anvp].isDestination)
+            connectionType = "Connection Destination";
+          else
+            connectionType = "Connection Source";
+        }
+        op->emitWarning() << "Antenna\n"
+                          << "at Port: "
+                          << "("
+                          << stringifyWireBundle(
+                                 g.vertices[anvp].port_data.first)
+                          << " " << (int)g.vertices[anvp].port_data.second
+                          << ") " << connectionType << "\n";
+      }
+      // emit remarks for antenna traceback
+      for (auto &vp : antenna_valid_path) {
+        std::string connectionType = "";
+        Operation *op = g.vertices[vp].op_data;
+        if (dyn_cast_or_null<SwitchboxOp>(op)) {
+          if (g.vertices[vp].isDestination)
+            connectionType = "Connection Destination";
+          else
+            connectionType = "Connection Source";
+        }
+        op->emitRemark() << "Traceback\n"
+                         << "at Port: "
+                         << "("
+                         << stringifyWireBundle(g.vertices[vp].port_data.first)
+                         << " " << (int)g.vertices[vp].port_data.second << ") "
+                         << connectionType << "\n";
+      }
+    }
   }
 
 public:
@@ -146,6 +308,9 @@ public:
   // switchbox can broadcast.
   std::vector<PacketConnection> getConnectedTiles(TileOp tileOp,
                                                   Port port) const {
+
+    // create graph and add root node
+    Graph g(tileOp.getOperation(), port);
 
     LLVM_DEBUG(llvm::dbgs()
                << "getConnectedTile(" << stringifyWireBundle(port.first) << " "
@@ -159,12 +324,20 @@ public:
     std::vector<PacketConnection> worklist;
     // Start the worklist by traversing from the tile to its connected
     // switchbox.
+    std::vector<int> connectedTilesIndex;
+    std::vector<int> antennaIndex;
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
 
     // If there is no wire to traverse, then just return no connection
     if (!t.hasValue())
       return connectedTiles;
-    worklist.push_back(std::make_pair(t.getValue(), std::make_pair(0, 0)));
+
+    // add node to graph
+    g.add_child(tileOp.getOperation(), port, t.getValue().first,
+                t.getValue().second, false);
+    PacketConnection connection =
+        std::make_pair(t.getValue(), std::make_pair(0, 0));
+    worklist.push_back(connection);
 
     while (!worklist.empty()) {
       PacketConnection t = worklist.back();
@@ -176,26 +349,20 @@ public:
       if (isa<FlowEndPoint>(other)) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
-      } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
+        connectedTilesIndex.push_back(
+            g.get_index(other, otherPort, false, true));
+      } else if (dyn_cast_or_null<SwitchboxOp>(other) ||
+                 dyn_cast_or_null<ShimMuxOp>(other)) {
+        // append to graph included with method
         std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
+            getConnectionsThroughSwitchbox(g, other, otherPort);
+        // append to graph included with method
+        std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
+            g, antennaIndex, other, nextPortMaskValues, maskValue);
         // append to the worklist
         worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
-          // No rule matched some incoming packet.  This is likely a
-          // configuration error.
-          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
-          LLVM_DEBUG(other->dump());
-        }
-      } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
-        // append to the worklist
-        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
+        // worklist.insert(worklist.end(), newWorkList.begin(),
+        // newWorkList.end());
         if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
@@ -208,6 +375,8 @@ public:
         LLVM_DEBUG(other->dump());
       }
     }
+    detect_antenna(g, connectedTilesIndex, antennaIndex);
+
     return connectedTiles;
   }
 };
