@@ -27,7 +27,13 @@ struct AIECreateLogicalLocksPass : public AIECreateLogicalLocksBase<AIECreateLog
     registry.insert<xilinx::AIE::AIEDialect>();
   }
   void runOnOperation() override {
-    LLVM_DEBUG(llvm::dbgs() << "Test\n");
+
+    ModuleOp m = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+
+    for (auto lock : m.getOps<LockOp>()) {
+      LLVM_DEBUG(lock.dump());
+    }
   }
 };
 
