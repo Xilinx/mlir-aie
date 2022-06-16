@@ -117,7 +117,8 @@ def AIEVec_FMAOp :
   AIEVec_Op<"mac", [
     NoSideEffect
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$acc,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+               AnyTypeOf<[AIEVec_Acc, VectorOf<[F32]>]>:$acc,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets,
                DefaultValuedStrAttr<StrAttr, "">:$xoffsets_hi,
@@ -135,8 +136,8 @@ def AIEVec_FMAOp :
     Xilinx-specific multiply-add operation. It multiplies two 1-D vectors,
     and adds the result to an accumulator. The vector sizes are at least 
     256 bits, and the left operand vector is at least twice the size of 
-    right operand vector. The lhs and rhs are 8/16/32 bits; the result
-    and acc are 48-bit or 80-bit accumulator. 
+    right operand vector. For integers, the lhs and rhs are 8/16/32 bits;
+    the result and acc are 48-bit or 80-bit accumulator.
     `$result = `$lhs * $rhs + $acc`.
     Note: the same operator can be used as fmsub operator by setting the 
     'fmsub' bool to true.
@@ -204,8 +205,8 @@ def AIEVec_MulOp:
   let description = [{
     Xilinx-specific multiply operation that multiplies two 1-D vectors.
     The vector sizes are at least 256 bits, and the left operand vector 
-    is at least twice the size of right operand vector. The lhs and rhs 
-    are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator. 
+    is at least twice the size of right operand vector. For integers, the
+    lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
     `$result = `$lhs * $rhs`.
   }];
   let builders = [
