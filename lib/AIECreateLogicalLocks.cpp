@@ -29,11 +29,17 @@ struct AIECreateLogicalLocksPass : public AIECreateLogicalLocksBase<AIECreateLog
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    OpBuilder rewriter = OpBuilder::atBlockEnd(m.getBody());
 
+    Operation *Op;
     for (auto lock : m.getOps<LockOp>()) {
-      LLVM_DEBUG(lock.dump());
+      LLVM_DEBUG(llvm::dbgs() << "Loop LockID: " << lock.getLockID() << "\n");
+      if (lock.getLockID() == -1) {
+        Op = lock.getOperation();
+      }  
     }
+    rewriter.setInsertionPointAfter(Op);
+    Op->setAttr("lockID", rewriter.getI32IntegerAttr(5));
   }
 };
 

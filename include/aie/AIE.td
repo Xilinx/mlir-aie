@@ -941,10 +941,16 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
         OptionalAttr<Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
         //Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
   );
-  let assemblyFormat = [{ `(` $tile `,` ( $lockID^ )? `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   //let assemblyFormat = [{ `(` $tile `,` $lockID `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getLockID() { if (lockID().hasValue()) return lockID().getValue(); else -1; }
+    int getLockID() { 
+      if (lockID().hasValue()) {
+        return lockID().getValue(); 
+      } else {
+        return -1; 
+      }   
+    }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile, "int":$lockID), [{

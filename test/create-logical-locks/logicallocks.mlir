@@ -61,8 +61,8 @@ module @test_xaie0 {
   %t33 = AIE.tile(3, 3)
   %t43 = AIE.tile(4, 3)
 
-  %l11_8 = AIE.lock(%t11, 0)
-  %l33_8 = AIE.lock(%t33, 8)
+  %l11_8 = AIE.lock(%t11, 1)
+  %l33_8 = AIE.lock(%t33)
   %l43_8 = AIE.lock(%t43, 8)
 
   AIE.core(%t11) {
