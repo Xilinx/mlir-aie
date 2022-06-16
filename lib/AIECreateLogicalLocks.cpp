@@ -31,16 +31,37 @@ struct AIECreateLogicalLocksPass : public AIECreateLogicalLocksBase<AIECreateLog
     ModuleOp m = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(m.getBody());
 
-    Operation *Op;
+    typedef std::pair<Operation*, int> LockOpID;
+    std::vector<LockOpID> unique_tiles;
+
+    //first pass
     for (auto lock : m.getOps<LockOp>()) {
-      LLVM_DEBUG(llvm::dbgs() << "Loop LockID: " << lock.getLockID() << "\n");
-      if (lock.getLockID() == -1) {
-        Op = lock.getOperation();
-      }  
+      Operation *lock_tile = lock.tile().getDefiningOp();
+      
+      bool in_list = false;
+      for (auto &unique_tile : unique_tiles) {
+        if (unique_tile.first == lock_tile) {
+          in_list = true;
+          break;
+        }
+      }
+      if (!in_list) {
+        unique_tiles.push_back(std::make_pair(lock_tile, 0));
+      }
     }
-    rewriter.setInsertionPointAfter(Op);
-    Op->setAttr("lockID", rewriter.getI32IntegerAttr(5));
-  }
+    //second pass
+    for (auto lock : m.getOps<LockOp>()) {
+      Operation *lock_tile = lock.tile().getDefiningOp();
+      if (lock.getLockID() == -1) {
+        for (auto &unique_tile : unique_tiles) {
+          if (unique_tile.first == lock_tile) {
+            lock->setAttr("lockID", rewriter.getI32IntegerAttr(unique_tile.second));
+            unique_tile.second++;
+            break;
+          }
+        }
+      }
+    }
 };
 
 std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIECreateLogicalLocksPass() {
