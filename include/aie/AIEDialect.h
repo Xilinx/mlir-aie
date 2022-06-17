@@ -11,12 +11,12 @@
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
 
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/SCF/SCF.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -107,12 +107,12 @@ public:
 // };
 
 namespace detail {
-  struct AIEArrayTypeStorage;
+struct AIEArrayTypeStorage;
 }
 
 /// This class defines the AIE array type.
 class AIEArrayType : public mlir::Type::TypeBase<AIEArrayType, mlir::Type,
-                                               detail::AIEArrayTypeStorage> {
+                                                 detail::AIEArrayTypeStorage> {
 public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
@@ -129,12 +129,13 @@ public:
 };
 
 namespace detail {
-  struct AIEObjectFifoTypeStorage;
+struct AIEObjectFifoTypeStorage;
 }
 
 /// This class defines the AIE ObjectFifo type.
-class AIEObjectFifoType : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
-                                               detail::AIEObjectFifoTypeStorage> {
+class AIEObjectFifoType
+    : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
+                                  detail::AIEObjectFifoTypeStorage> {
 public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
@@ -151,12 +152,13 @@ public:
 };
 
 namespace detail {
-  struct AIEObjectFifoSubviewTypeStorage;
+struct AIEObjectFifoSubviewTypeStorage;
 }
 
 /// This class defines the AIE ObjectFifoSubview type.
-class AIEObjectFifoSubviewType : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
-                                               detail::AIEObjectFifoSubviewTypeStorage> {
+class AIEObjectFifoSubviewType
+    : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
+                                  detail::AIEObjectFifoSubviewTypeStorage> {
 public:
   /// Inherit some necessary constructors from 'TypeBase'.
   using Base::Base;
@@ -233,9 +235,11 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoStatefulTransformPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoLoopUnrollPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoRegisterProcessPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+createAIEObjectFifoRegisterProcessPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
@@ -245,9 +249,8 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoRegisterProcessPass(
 } // namespace xilinx
 
 namespace llvm {
-  // Functions hash just like pointers.
-template <>
-struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
+// Functions hash just like pointers.
+template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
   static xilinx::AIE::ObjectFifoAcquireOp getEmptyKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
     return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
@@ -259,14 +262,16 @@ struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
   static unsigned getHashValue(xilinx::AIE::ObjectFifoAcquireOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
-  static bool isEqual(xilinx::AIE::ObjectFifoAcquireOp lhs, xilinx::AIE::ObjectFifoAcquireOp rhs) { return lhs == rhs; }
+  static bool isEqual(xilinx::AIE::ObjectFifoAcquireOp lhs,
+                      xilinx::AIE::ObjectFifoAcquireOp rhs) {
+    return lhs == rhs;
+  }
 };
-}
+} // namespace llvm
 
 namespace llvm {
-  // Functions hash just like pointers.
-template <>
-struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
+// Functions hash just like pointers.
+template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
   static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
     return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
@@ -278,8 +283,11 @@ struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
   static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
-  static bool isEqual(xilinx::AIE::ObjectFifoCreateOp lhs, xilinx::AIE::ObjectFifoCreateOp rhs) { return lhs == rhs; }
+  static bool isEqual(xilinx::AIE::ObjectFifoCreateOp lhs,
+                      xilinx::AIE::ObjectFifoCreateOp rhs) {
+    return lhs == rhs;
+  }
 };
-}
+} // namespace llvm
 
 #endif

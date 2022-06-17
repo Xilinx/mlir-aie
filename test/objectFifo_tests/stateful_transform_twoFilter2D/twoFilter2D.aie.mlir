@@ -95,7 +95,7 @@ module @twoFilter2D  {
             %value0 = memref.load %lineIn0[%indexInLine] : memref<16xi32>
             %value1 = memref.load %lineIn1[%indexInLine] : memref<16xi32>
             %value2 = memref.load %lineIn2[%indexInLine] : memref<16xi32>
-            %tmpSum = addi %value0, %value1 : i32
+            %tmpSum = arith.addi %value0, %value1 : i32
             %sum = arith.addi %tmpSum, %value2 : i32
             memref.store %sum, %bufferOut[%row,%indexInLine] : memref<10x16xi32>
         }
