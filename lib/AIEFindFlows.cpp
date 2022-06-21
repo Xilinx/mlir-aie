@@ -79,16 +79,15 @@ public:
 
   std::vector<int> get_path_to_root(int start_node) {
     std::vector<int> valid_path;
-    std::vector<int> worklist;
+    int work = start_node;
 
-    worklist.push_back(start_node);
-    while (!worklist.empty()) {
-      int child = worklist.back();
-      worklist.pop_back();
-      valid_path.push_back(child);
-      int parent_idx = vertices[child].parent_idx;
+    while (true) {
+      valid_path.push_back(work);
+      int parent_idx = vertices[work].parent_idx;
       if (parent_idx != -1) {
-        worklist.push_back(parent_idx);
+        work = parent_idx;
+      } else {
+        break;
       }
     }
     return valid_path;
@@ -194,7 +193,6 @@ private:
                            std::vector<PortMaskValue> nextPortMaskValues,
                            MaskValue maskValue) const {
     std::vector<PacketConnection> worklist;
-    // bool matched = false;
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.first;
       MaskValue nextMaskValue = nextPortMaskValue.second;
@@ -210,7 +208,6 @@ private:
         // Incoming packets cannot match this rule. Skip it.
         continue;
       }
-      // matched = true;
       MaskValue newMaskValue = std::make_pair(
           maskValue.first | nextMaskValue.first,
           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
@@ -237,11 +234,11 @@ private:
     std::vector<int> path_buffer;
     // create valid path from connected tiles
     std::vector<int> valid_path;
-    for (auto &Tile_idx : connectedTilesIndexList) {
+    for (auto &tile_idx : connectedTilesIndexList) {
       if (valid_path.empty()) {
-        valid_path = g.get_path_to_root(Tile_idx);
+        valid_path = g.get_path_to_root(tile_idx);
       } else {
-        path_buffer = g.get_path_to_root(Tile_idx);
+        path_buffer = g.get_path_to_root(tile_idx);
         for (auto &node_idx : path_buffer) {
           if (!std::count(valid_path.begin(), valid_path.end(), node_idx)) {
             valid_path.push_back(node_idx);
@@ -251,12 +248,10 @@ private:
     }
 
     // output antenna path
-    std::vector<int> antenna_valid_path;
-    std::vector<int> antenna_nonvalid_path;
     for (auto &antenna_idx : antennaIndexList) {
+      std::vector<int> antenna_valid_path;
+      std::vector<int> antenna_nonvalid_path;
       path_buffer = g.get_path_to_root(antenna_idx);
-      antenna_valid_path.clear();
-      antenna_nonvalid_path.clear();
       for (auto &node_idx : path_buffer) {
         if (std::count(valid_path.begin(), valid_path.end(), node_idx)) {
           antenna_valid_path.push_back(node_idx);
@@ -265,11 +260,11 @@ private:
         }
       }
       // emit warning message for antennas
-      for (auto &anvp : antenna_nonvalid_path) {
+      for (auto &v : antenna_nonvalid_path) {
         std::string connectionType = "";
-        Operation *op = g.vertices[anvp].op_data;
+        Operation *op = g.vertices[v].op_data;
         if (dyn_cast_or_null<SwitchboxOp>(op)) {
-          if (g.vertices[anvp].isDestination)
+          if (g.vertices[v].isDestination)
             connectionType = "Connection Destination";
           else
             connectionType = "Connection Source";
@@ -278,16 +273,16 @@ private:
                           << "at Port: "
                           << "("
                           << stringifyWireBundle(
-                                 g.vertices[anvp].port_data.first)
-                          << " " << (int)g.vertices[anvp].port_data.second
+                                 g.vertices[v].port_data.first)
+                          << " " << (int)g.vertices[v].port_data.second
                           << ") " << connectionType << "\n";
       }
       // emit remarks for antenna traceback
-      for (auto &vp : antenna_valid_path) {
+      for (auto &v : antenna_valid_path) {
         std::string connectionType = "";
-        Operation *op = g.vertices[vp].op_data;
+        Operation *op = g.vertices[v].op_data;
         if (dyn_cast_or_null<SwitchboxOp>(op)) {
-          if (g.vertices[vp].isDestination)
+          if (g.vertices[v].isDestination)
             connectionType = "Connection Destination";
           else
             connectionType = "Connection Source";
@@ -295,8 +290,8 @@ private:
         op->emitRemark() << "Traceback\n"
                          << "at Port: "
                          << "("
-                         << stringifyWireBundle(g.vertices[vp].port_data.first)
-                         << " " << (int)g.vertices[vp].port_data.second << ") "
+                         << stringifyWireBundle(g.vertices[v].port_data.first)
+                         << " " << (int)g.vertices[v].port_data.second << ") "
                          << connectionType << "\n";
       }
     }
