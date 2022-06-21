@@ -8,6 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+// This pass aims to assign lockIDs to AIE.lock operations. The lockID is
+// numbered from the most recent AIE.lock within the same tile. If the lockID
+// exceeds 15 then the pass generates an error and terminates. AIE.lock
+// operations for different tiles are numbered independently. If there exists an
+// existing lockID this pass overwrites the existing lockID generating a
+// warning.
+
 #include "aie/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -21,7 +28,8 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIECreateLogicalLocksPass : public AIECreateLogicalLocksBase<AIECreateLogicalLocksPass> {
+struct AIECreateLogicalLocksPass
+    : public AIECreateLogicalLocksBase<AIECreateLogicalLocksPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
@@ -31,39 +39,34 @@ struct AIECreateLogicalLocksPass : public AIECreateLogicalLocksBase<AIECreateLog
     ModuleOp m = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(m.getBody());
 
-    typedef std::pair<Operation*, int> LockOpID;
-    std::vector<LockOpID> unique_tiles;
+    // loop through locks
+    // store lockID count in map with operation as key
+    std::map<Operation *, int> unique_tiles;
+    for (auto lock : m.getOps<LockOp>()) {
+      Operation *lock_tile = lock.tile().getDefiningOp();
 
-    //first pass
-    for (auto lock : m.getOps<LockOp>()) {
-      Operation *lock_tile = lock.tile().getDefiningOp();
-      
-      bool in_list = false;
-      for (auto &unique_tile : unique_tiles) {
-        if (unique_tile.first == lock_tile) {
-          in_list = true;
-          break;
-        }
+      if (unique_tiles.find(lock_tile) == unique_tiles.end()) {
+        // if not in map initial LockID = 0
+        unique_tiles[lock_tile] = 0;
+      } else if (unique_tiles[lock_tile] < 15) {
+        // if in map increment LockID
+        unique_tiles[lock_tile] += 1;
+      } else {
+        lock->emitError() << "Exceeded the number of unique LockIDs";
+        return;
       }
-      if (!in_list) {
-        unique_tiles.push_back(std::make_pair(lock_tile, 0));
-      }
+
+      // set LockID: overwrites existing LockID to maintain consistency
+      // generate warning if Lock has an existing LockID and overwrite
+      if (lock.lockID().hasValue())
+        lock->emitWarning() << "The Lock has an existing LockID: Overwriting";
+      lock->setAttr("lockID",
+                    rewriter.getI32IntegerAttr(unique_tiles[lock_tile]));
     }
-    //second pass
-    for (auto lock : m.getOps<LockOp>()) {
-      Operation *lock_tile = lock.tile().getDefiningOp();
-      if (lock.getLockID() == -1) {
-        for (auto &unique_tile : unique_tiles) {
-          if (unique_tile.first == lock_tile) {
-            lock->setAttr("lockID", rewriter.getI32IntegerAttr(unique_tile.second));
-            unique_tile.second++;
-            break;
-          }
-        }
-      }
-    }
+  }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIECreateLogicalLocksPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIECreateLogicalLocksPass() {
   return std::make_unique<AIECreateLogicalLocksPass>();
 }

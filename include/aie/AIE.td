@@ -948,7 +948,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
       if (lockID().hasValue()) {
         return lockID().getValue(); 
       } else {
-        return -1; 
+        llvm::errs() << "Lock has no ID value\n";
       }   
     }
   }];
