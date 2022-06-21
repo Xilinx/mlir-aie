@@ -272,10 +272,9 @@ private:
         op->emitWarning() << "Antenna\n"
                           << "at Port: "
                           << "("
-                          << stringifyWireBundle(
-                                 g.vertices[v].port_data.first)
-                          << " " << (int)g.vertices[v].port_data.second
-                          << ") " << connectionType << "\n";
+                          << stringifyWireBundle(g.vertices[v].port_data.first)
+                          << " " << (int)g.vertices[v].port_data.second << ") "
+                          << connectionType << "\n";
       }
       // emit remarks for antenna traceback
       for (auto &v : antenna_valid_path) {
