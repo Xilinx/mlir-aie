@@ -345,8 +345,7 @@ public:
         connectedTiles.push_back(t);
         connectedTilesIndex.push_back(
             g.get_index(other, otherPort, false, true));
-      } else if (dyn_cast_or_null<SwitchboxOp>(other) ||
-                 dyn_cast_or_null<ShimMuxOp>(other)) {
+      } else if (isa<Interconnect>(other)) {
         // append to graph included with method
         std::vector<PortMaskValue> nextPortMaskValues =
             getConnectionsThroughSwitchbox(g, other, otherPort);
