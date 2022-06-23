@@ -41,12 +41,6 @@ struct vertex {
     this->op_data = op_data;
     this->port_data = port_data;
   }
-
-  // override == operation for unordered_map
-  bool operator==(const vertex &v) const {
-    return op_data == v.op_data && port_data == v.port_data &&
-           isDestination == v.isDestination;
-  }
 };
 
 class Graph {
@@ -142,8 +136,8 @@ private:
   }
 
   std::vector<PortMaskValue>
-  getConnectionsThroughSwitchbox(Graph &g, Operation *op,
-                                 Port sourcePort) const {
+  getConnectionsThroughSwitchbox(Operation *op, Port sourcePort,
+                                 std::set<void *> &connections_set) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
 
     Region *r;
@@ -159,6 +153,13 @@ private:
     std::vector<PortMaskValue> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
+
+        llvm::dbgs() << "RuntimePrint: " << connectOp.getOperation() << "\n";
+        connectOp.getOperation()->dump();
+
+        connections_set.erase((void *)connectOp.getOperation());
+        connections_set.erase((void *)connectOp.getOperation() + 8);
+
         MaskValue maskValue = std::make_pair(0, 0);
         portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
         LLVM_DEBUG(llvm::dbgs()
@@ -190,9 +191,9 @@ private:
       }
     }
     // append to graph
-    for (auto &port : portSet) {
-      g.add_child(op, sourcePort, op, port.first, true);
-    }
+    // for (auto &port : portSet) {
+    //   g.add_child(op, sourcePort, op, port.first, true);
+    // }
     return portSet;
   }
 
@@ -241,8 +242,9 @@ public:
   // Get the tiles connected to the given tile, starting from the given
   // output port of the tile.  This is 1:N relationship because each
   // switchbox can broadcast.
-  std::vector<PacketConnection> getConnectedTiles(TileOp tileOp,
-                                                  Port port) const {
+  std::vector<PacketConnection>
+  getConnectedTiles(TileOp tileOp, Port port,
+                    std::set<void *> &connections_set) const {
 
     // create graph and add root node
     Graph g(tileOp.getOperation(), port);
@@ -289,7 +291,7 @@ public:
       } else if (isa<Interconnect>(other)) {
         // append to graph included with method
         std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(g, other, otherPort);
+            getConnectionsThroughSwitchbox(other, otherPort, connections_set);
         // append to graph included with method
         std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
             g, antennaIndex, other, nextPortMaskValues, maskValue);
@@ -316,15 +318,16 @@ public:
 };
 
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
-                          OpBuilder &rewriter) {
+                          OpBuilder &rewriter,
+                          std::set<void *> &connections_set) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
 
   std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
   for (WireBundle bundle : bundles) {
     for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
-      std::vector<PacketConnection> tiles =
-          analysis.getConnectedTiles(op, std::make_pair(bundle, i));
+      std::vector<PacketConnection> tiles = analysis.getConnectedTiles(
+          op, std::make_pair(bundle, i), connections_set);
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
 
       for (PacketConnection &c : tiles) {
@@ -353,16 +356,36 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
   }
 }
 
-struct hash_function {
-  std::size_t operator()(const vertex &v) const {
-    std::size_t h1 = std::hash<Operation *>()(v.op_data);
-    std::size_t h2 = // type cast "enum class wirebundle" to int
-        std::hash<int>()((int)v.port_data.first + v.port_data.second) << 8;
-    std::size_t h3 = std::hash<bool>()(v.isDestination) << 4;
+std::set<void *> create_connections_set(ModuleOp m) {
+  // We create a set that has elements which are the connections that exist
+  // within the range of a switchbox or shimmux. To distinguish between the
+  // sourcePort and destPort, we cast the address of the ConnectOp to a void*
+  // which represents the sourcePort key of the connection, while we add 8bits
+  // to the (void*)ConnectOp address to represent the destPort key. Due to the
+  // word length of the system being greater than 8bits we can maintain a unique
+  // key for each sourcePort and destPort for the connections.
 
-    return h1 ^ h2 ^ h3;
+  std::set<void *> new_set;
+  for (auto switchbox : m.getOps<SwitchboxOp>()) {
+    Region &r = switchbox.connections();
+    Block &b = r.front();
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+
+      llvm::dbgs() << "RawPrint: " << connectOp.getOperation() << "\n";
+      connectOp.getOperation()->dump();
+
+      new_set.insert((void *)connectOp.getOperation());
+      new_set.insert((void *)connectOp.getOperation() + 8);
+    }
+
+    // print elements of set
+    LLVM_DEBUG(for (auto &k
+                    : new_set) llvm::dbgs()
+                   << "Connections: " << k << "\n";);
   }
-};
+
+  return new_set;
+}
 
 struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
@@ -374,26 +397,22 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
     ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
 
-    std::unordered_map<vertex, bool, hash_function> connections;
-    for (auto switchbox : m.getOps<SwitchboxOp>()) {
-      Region &r = switchbox.connections();
-      Block &b = r.front();
-      for (auto connectOp : b.getOps<ConnectOp>()) {
-
-        connections[vertex(switchbox, connectOp.sourcePort())] = false;
-        connections[vertex(switchbox, connectOp.destPort())] = false;
-      }
-    }
-
-    LLVM_DEBUG( for (auto &kv : connections) {
-      const auto &hashkey = kv.first;
-      bool isExplored = kv.second;
-      llvm::dbgs() << "Connections" << isExplored << "\n";
-    });
+    std::set<void *> connections_set = create_connections_set(m);
 
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
-      findFlowsFrom(tile, analysis, builder);
+      findFlowsFrom(tile, analysis, builder, connections_set);
+    }
+
+    // print elements of set
+    int count = 0;
+    for (auto &k : connections_set) {
+      llvm::dbgs() << "FinalSet: " << k << "\n";
+      if (count % 2 == 0) {
+        Operation *test = (Operation *)k;
+        test->dump();
+      }
+      count++;
     }
   }
 };

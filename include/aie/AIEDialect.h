@@ -26,6 +26,7 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
+#include <set>
 #include <map>
 #include <unordered_map>
 
