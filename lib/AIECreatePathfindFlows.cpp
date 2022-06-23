@@ -453,31 +453,41 @@ struct AIEPathfinderPass
     DynamicTileAnalysis analyzer(m);
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
-    // Populate tiles and switchboxes.
-    for (int col = 0; col <= analyzer.getMaxCol(); col++) {
-      for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-        analyzer.getTile(builder, col, row);
-      }
-    }
-    for (int col = 0; col <= analyzer.getMaxCol(); col++) {
-      for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-        analyzer.getSwitchbox(builder, col, row);
-      }
-    }
-    for (int col = 0; col <= analyzer.getMaxCol(); col++) {
-      analyzer.getPLIO(builder, col);
-    }
+    // Apply rewrite rule to switchboxes to add assignments to every 'connect'
+    // operation inside
+    ConversionTarget target(getContext());
+    target.addLegalOp<TileOp>();
+    target.addLegalOp<ConnectOp>();
+    target.addLegalOp<SwitchboxOp>();
+    target.addLegalOp<ShimMuxOp>();
+    target.addLegalOp<EndOp>();
+
+    RewritePatternSet patterns(&getContext());
+    patterns.insert<ConvertFlowsToInterconnect>(m.getContext(), m, analyzer);
+    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+      signalPassFailure();
 
     // Populate wires between switchboxes and tiles.
     for (int col = 0; col <= analyzer.getMaxCol(); col++) {
       for (int row = 0; row <= analyzer.getMaxRow(); row++) {
-        auto tile = analyzer.getTile(builder, col, row);
-        auto sw = analyzer.getSwitchbox(builder, col, row);
+        TileOp tile;
+        if (analyzer.coordToTile.count(std::make_pair(col, row)))
+          tile = analyzer.coordToTile[std::make_pair(col, row)];
+        else
+          continue;
+        SwitchboxOp sw;
+        if (analyzer.coordToSwitchbox.count(std::make_pair(col, row)))
+          sw = analyzer.coordToSwitchbox[std::make_pair(col, row)];
+        else
+          continue;
         if (col > 0) {
           // connections east-west between stream switches
-          auto westsw = analyzer.getSwitchbox(builder, col - 1, row);
-          builder.create<WireOp>(builder.getUnknownLoc(), westsw,
-                                 WireBundle::East, sw, WireBundle::West);
+          if (analyzer.coordToSwitchbox.count(std::make_pair(col - 1, row))) {
+            auto westsw =
+                analyzer.coordToSwitchbox[std::make_pair(col - 1, row)];
+            builder.create<WireOp>(builder.getUnknownLoc(), westsw,
+                                   WireBundle::East, sw, WireBundle::West);
+          }
         }
         if (row > 0) {
           // connections between abstract 'core' of tile
@@ -488,48 +498,45 @@ struct AIEPathfinderPass
                                  sw, WireBundle::DMA);
           // connections north-south inside array ( including connection to shim
           // row)
-          auto southsw = analyzer.getSwitchbox(builder, col, row - 1);
-          builder.create<WireOp>(builder.getUnknownLoc(), southsw,
-                                 WireBundle::North, sw, WireBundle::South);
+          if (analyzer.coordToSwitchbox.count(std::make_pair(col, row - 1))) {
+            auto southsw =
+                analyzer.coordToSwitchbox[std::make_pair(col, row - 1)];
+            builder.create<WireOp>(builder.getUnknownLoc(), southsw,
+                                   WireBundle::North, sw, WireBundle::South);
+          }
         } else if (row == 0) {
           if (tile.isShimNOCTile()) {
-            auto shimsw = analyzer.getShimMux(builder, col);
-            builder.create<WireOp>(
-                builder.getUnknownLoc(), shimsw,
-                WireBundle::North, // Changed to connect into the north
-                sw, WireBundle::South);
-            // PLIO is attached to shim mux
-            auto plio = analyzer.getPLIO(builder, col);
-            builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                   WireBundle::North, shimsw,
-                                   WireBundle::South);
+            if (analyzer.coordToShimMux.count(std::make_pair(col, 0))) {
+              auto shimsw = analyzer.coordToShimMux[std::make_pair(col, 0)];
+              builder.create<WireOp>(
+                  builder.getUnknownLoc(), shimsw,
+                  WireBundle::North, // Changed to connect into the north
+                  sw, WireBundle::South);
+              // PLIO is attached to shim mux
+              if (analyzer.coordToPLIO.count(col)) {
+                auto plio = analyzer.coordToPLIO[col];
+                builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                       WireBundle::North, shimsw,
+                                       WireBundle::South);
+              }
 
-            // abstract 'DMA' connection on tile is attached to shim mux ( in
-            // row 0 )
-            builder.create<WireOp>(builder.getUnknownLoc(), tile,
-                                   WireBundle::DMA, shimsw, WireBundle::DMA);
+              // abstract 'DMA' connection on tile is attached to shim mux ( in
+              // row 0 )
+              builder.create<WireOp>(builder.getUnknownLoc(), tile,
+                                     WireBundle::DMA, shimsw, WireBundle::DMA);
+            }
           } else if (tile.isShimPLTile()) {
             // PLIO is attached directly to switch
-            auto plio = analyzer.getPLIO(builder, col);
-            builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                   WireBundle::North, sw, WireBundle::South);
+            if (analyzer.coordToPLIO.count(col)) {
+              auto plio = analyzer.coordToPLIO[col];
+              builder.create<WireOp>(builder.getUnknownLoc(), plio,
+                                     WireBundle::North, sw, WireBundle::South);
+            }
           }
         }
       }
     }
 
-    // Apply rewrite rule to switchboxes to add assignments to every 'connect'
-    // operation inside
-    ConversionTarget target(getContext());
-    target.addLegalOp<ConnectOp>();
-    target.addLegalOp<SwitchboxOp>();
-    target.addLegalOp<ShimMuxOp>();
-    target.addLegalOp<EndOp>();
-
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<ConvertFlowsToInterconnect>(m.getContext(), m, analyzer);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
-      signalPassFailure();
     return;
   }
 };

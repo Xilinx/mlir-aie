@@ -880,9 +880,12 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   std::string opname;
   // Create opname based on the result type
-  aievec::AccType accType = mulOp.result().getType().cast<aievec::AccType>();
-  unsigned lanes = accType.getLanes();
-  Type eltType = accType.getValueType();
+  bool isInt =
+      lhs.getType().cast<VectorType>().getElementType().isa<IntegerType>();
+  aievec::AccType accType =
+      mulOp.result().getType().dyn_cast<aievec::AccType>();
+  VectorType vecType = mulOp.result().getType().dyn_cast<VectorType>();
+  Type eltType = isInt ? accType.getValueType() : vecType.getElementType();
   if (!simpleScheme) {
     if (auto iType = eltType.dyn_cast<IntegerType>()) {
       if (iType.getWidth() == 80)
@@ -892,7 +895,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
   }
   opname += "mul";
   if (!simpleScheme && !eltType.isa<FloatType>())
-    opname += std::to_string(lanes);
+    opname += std::to_string(accType.getLanes());
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -1036,9 +1039,12 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
 
   std::string opname;
   // Create opname based on the result type
-  aievec::AccType accType = fmaOp.result().getType().cast<aievec::AccType>();
-  unsigned lanes = accType.getLanes();
-  Type eltType = accType.getValueType();
+  bool isInt =
+      lhs.getType().cast<VectorType>().getElementType().isa<IntegerType>();
+  aievec::AccType accType =
+      fmaOp.result().getType().dyn_cast<aievec::AccType>();
+  VectorType vecType = fmaOp.result().getType().dyn_cast<VectorType>();
+  Type eltType = isInt ? accType.getValueType() : vecType.getElementType();
   if (!simpleScheme) {
     if (auto iType = eltType.dyn_cast<IntegerType>()) {
       if (iType.getWidth() == 80)
@@ -1048,7 +1054,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
   }
   opname += fmaOp.fmsub() ? "msc" : "mac";
   if (!simpleScheme && !eltType.isa<FloatType>())
-    opname += std::to_string(lanes);
+    opname += std::to_string(accType.getLanes());
 
   raw_indented_ostream &os = emitter.ostream();
 
