@@ -137,7 +137,7 @@ private:
 
   std::vector<PortMaskValue>
   getConnectionsThroughSwitchbox(Operation *op, Port sourcePort,
-                                 std::set<void *> &connections_set) const {
+                                 std::set<Operation *> &connections_set) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
 
     Region *r;
@@ -154,7 +154,7 @@ private:
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
         // remove accessed connectOp from set
-        connections_set.erase((void *)connectOp.getOperation());
+        connections_set.erase(connectOp.getOperation());
 
         MaskValue maskValue = std::make_pair(0, 0);
         portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
@@ -240,7 +240,7 @@ public:
   // switchbox can broadcast.
   std::vector<PacketConnection>
   getConnectedTiles(TileOp tileOp, Port port,
-                    std::set<void *> &connections_set) const {
+                    std::set<Operation *> &connections_set) const {
 
     // create graph and add root node
     Graph g(tileOp.getOperation(), port);
@@ -315,7 +315,7 @@ public:
 
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
                           OpBuilder &rewriter,
-                          std::set<void *> &connections_set) {
+                          std::set<Operation *> &connections_set) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
 
@@ -352,39 +352,25 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
   }
 }
 
-std::set<void *> create_connections_set(ModuleOp m) {
-  // We create a set that has elements which are the connections that exist
-  // within the range of a switchbox or shimmux. To distinguish between the
-  // sourcePort and destPort, we cast the address of the ConnectOp to a void*
-  // which represents the sourcePort key of the connection, while we add 8bits
-  // to the (void*)ConnectOp address to represent the destPort key. Due to the
-  // word length of the system being greater than 8bits we can maintain a unique
-  // key for each sourcePort and destPort for the connections.
+std::set<Operation *> create_connections_set(ModuleOp m) {
+  // Dangling island antennas refers to ConnectOps that do not originate from a
+  // FlowEndPoint. To be able to detect these antennas we create a set with the
+  // addresses of the ConnectOp. During traversal from a FlowEndPoint we remove
+  // ConnectOps that have been visited. Thus, remaining ConnectOps in the set
+  // are Dangling Island antennas. We note that for Dangling island antennas,
+  // both sourcePort and destPort are part of the antenna as Dangling island
+  // antennas do not have a sourcePort connection.
 
-  std::set<void *> new_set;
+  std::set<Operation *> new_set;
   for (auto switchbox : m.getOps<SwitchboxOp>()) {
     Region &r = switchbox.connections();
     Block &b = r.front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      new_set.insert((void *)connectOp.getOperation());
+      new_set.insert(connectOp.getOperation());
     }
   }
 
   return new_set;
-}
-
-void dangling_island_error(std::set<void*> &connections_set) {
-  // Dangling Island connections refers to ConnectOps that do not originate from
-  // a FlowEndPoint. To detect these “dangling Island connections” we keep a map
-  // of all ConnectOps, removing ConnectOps that have been visited during
-  // traversal from a FlowEndPoint. Thus, remaining ConnectOps are Dangling
-  // Island connections.
-
-  for (auto &k : connections_set) {
-    Operation *op = (Operation *)k;
-    Operation *parentops = op->getParentOp();
-    op->emitWarning("Dangling Island Antenna\n").attachNote(parentops->getLoc());
-  }
 }
 
 struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
@@ -397,7 +383,7 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
     ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
 
-    std::set<void *> connections_set = create_connections_set(m);
+    std::set<Operation *> connections_set = create_connections_set(m);
 
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
@@ -405,7 +391,12 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
     }
 
     if (connections_set.size()) {
-      dangling_island_error(connections_set);
+      // emit error when connections_set is not empty
+      for (auto &k : connections_set) {
+        Operation *parentops = k->getParentOp();
+        k->emitWarning("Dangling Island Antenna\n")
+            .attachNote(parentops->getLoc());
+      }
     }
   }
 };
