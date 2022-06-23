@@ -135,9 +135,9 @@ private:
     return None;
   }
 
-  std::vector<PortMaskValue> getConnectionsThroughSwitchbox(
-      Operation *op, Port sourcePort,
-      std::map<void *, bool> &connections_map) const {
+  std::vector<PortMaskValue>
+  getConnectionsThroughSwitchbox(Operation *op, Port sourcePort,
+                                 std::set<void *> &connections_set) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
 
     Region *r;
@@ -153,9 +153,8 @@ private:
     std::vector<PortMaskValue> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
-        // remove visited connections
-        connections_map.erase((void *)connectOp.getOperation());
-        connections_map.erase((void *)connectOp.getOperation() + 8);
+        // remove accessed connectOp from set
+        connections_set.erase((void *)connectOp.getOperation());
 
         MaskValue maskValue = std::make_pair(0, 0);
         portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
@@ -241,7 +240,7 @@ public:
   // switchbox can broadcast.
   std::vector<PacketConnection>
   getConnectedTiles(TileOp tileOp, Port port,
-                    std::map<void *, bool> &connections_map) const {
+                    std::set<void *> &connections_set) const {
 
     // create graph and add root node
     Graph g(tileOp.getOperation(), port);
@@ -288,12 +287,14 @@ public:
       } else if (isa<Interconnect>(other)) {
         // append to graph included with method
         std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(other, otherPort, connections_map);
+            getConnectionsThroughSwitchbox(other, otherPort, connections_set);
         // append to graph included with method
         std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
             g, antennaIndex, other, nextPortMaskValues, maskValue);
         // append to the worklist
         worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
+        // worklist.insert(worklist.end(), newWorkList.begin(),
+        // newWorkList.end());
         if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
@@ -314,7 +315,7 @@ public:
 
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
                           OpBuilder &rewriter,
-                          std::map<void *, bool> &connections_map) {
+                          std::set<void *> &connections_set) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
 
@@ -322,7 +323,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
   for (WireBundle bundle : bundles) {
     for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
       std::vector<PacketConnection> tiles = analysis.getConnectedTiles(
-          op, std::make_pair(bundle, i), connections_map);
+          op, std::make_pair(bundle, i), connections_set);
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
 
       for (PacketConnection &c : tiles) {
@@ -351,57 +352,38 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
   }
 }
 
-std::map<void *, bool> create_connections_map(ModuleOp m) {
-  // We create a map that has a key which is the address of the connections that
-  // exist within the range of a switchbox or shimmux. To distinguish between
-  // the sourcePort and destPort, we cast the address of the ConnectOp to a
-  // void* which represents the sourcePort key of the connection, while we add
-  // 8bits to the (void*)ConnectOp address to represent the destPort key. Due to
-  // the word length of the system being greater than 8bits we can maintain a
-  // unique key for each sourcePort and destPort for the connections.
-  // Additionally, we store whether the operation is a sourcePort or a destPort
-  // using a isDestination Boolean variable, which is useful during warning
-  // message generation.
+std::set<void *> create_connections_set(ModuleOp m) {
+  // We create a set that has elements which are the connections that exist
+  // within the range of a switchbox or shimmux. To distinguish between the
+  // sourcePort and destPort, we cast the address of the ConnectOp to a void*
+  // which represents the sourcePort key of the connection, while we add 8bits
+  // to the (void*)ConnectOp address to represent the destPort key. Due to the
+  // word length of the system being greater than 8bits we can maintain a unique
+  // key for each sourcePort and destPort for the connections.
 
-  std::map<void *, bool> new_map;
+  std::set<void *> new_set;
   for (auto switchbox : m.getOps<SwitchboxOp>()) {
     Region &r = switchbox.connections();
     Block &b = r.front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      new_map[(void *)connectOp.getOperation()] = false;
-      new_map[(void *)connectOp.getOperation() + 8] = true;
+      new_set.insert((void *)connectOp.getOperation());
     }
   }
 
-  return new_map;
+  return new_set;
 }
 
-void dangling_island_error(std::map<void *, bool> &connections_map) {
+void dangling_island_error(std::set<void*> &connections_set) {
   // Dangling Island connections refers to ConnectOps that do not originate from
   // a FlowEndPoint. To detect these “dangling Island connections” we keep a map
   // of all ConnectOps, removing ConnectOps that have been visited during
   // traversal from a FlowEndPoint. Thus, remaining ConnectOps are Dangling
   // Island connections.
 
-  for (auto &kv : connections_map) {
-    Operation *op;
-    ConnectOp *connectop;
-    std::string connectionType;
-    if (kv.second) { // if destPort
-      op = (Operation *)(kv.first - 8);
-      connectionType = "Connection Destination";
-    } else {
-      op = (Operation *)kv.first;
-      connectop = (ConnectOp*)(op);
-      Port port = connectop->sourcePort();
-      connectionType = "Connection Source";
-    }
+  for (auto &k : connections_set) {
+    Operation *op = (Operation *)k;
     Operation *parentops = op->getParentOp();
     op->emitWarning("Dangling Island Antenna\n").attachNote(parentops->getLoc());
-                            //  << "at Port: "
-                            //  << "(" << stringifyWireBundle(port.first) << " "
-                            //  << (int)port.second << ") "
-                            //  << connectionType << "\n";
   }
 }
 
@@ -415,15 +397,15 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
     ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
 
-    std::map<void *, bool> connections_map = create_connections_map(m);
+    std::set<void *> connections_set = create_connections_set(m);
 
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
-      findFlowsFrom(tile, analysis, builder, connections_map);
+      findFlowsFrom(tile, analysis, builder, connections_set);
     }
 
-    if (connections_map.size()) {
-      dangling_island_error(connections_map);
+    if (connections_set.size()) {
+      dangling_island_error(connections_set);
     }
   }
 };
