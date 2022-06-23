@@ -26,7 +26,7 @@ module {
     AIE.connect<Core :0, South:1>
     AIE.connect<South:1, Core :1>
     AIE.connect<South:1, North:2> //endpoint antenna
-    AIE.connect<South:2, West :3> //dangling island antenna 
+    AIE.connect<South:3, Core :0> //dangling island antenna 
     %16 = AIE.amsel<0> (0)
     %17 = AIE.masterset(DMA : 1, %16)
     AIE.packetrules(South : 0) {
@@ -37,7 +37,7 @@ module {
     AIE.connect<North:1, Core :1>
     AIE.connect<Core :1, North:1>
     AIE.connect<Core :0, Core :0>
-    AIE.connect<East :1, North :2> //dangling island antenna 
+    AIE.connect<East :1, North :3> //dangling island antenna 
     %18 = AIE.amsel<0> (0)
     %19 = AIE.masterset(North : 0, %18)
     AIE.packetrules(DMA : 0) {
