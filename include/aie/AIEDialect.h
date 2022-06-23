@@ -27,6 +27,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
 #include <map>
+#include <unordered_map>
 
 using namespace mlir;
 

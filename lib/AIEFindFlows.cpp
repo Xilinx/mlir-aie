@@ -27,16 +27,25 @@ typedef std::pair<Port, MaskValue> PortMaskValue;
 typedef std::pair<PortConnection, MaskValue> PacketConnection;
 
 struct vertex {
-  int parent_idx = -1;
-  bool isLeaf = true;
-  bool isDestination = false;
-
+  // defining characteristics
   Operation *op_data;
   Port port_data;
+  bool isDestination = false;
 
-  vertex(Operation *op, Port port) {
-    op_data = op;
-    port_data = port;
+  // graph data
+  int parent_idx = -1;
+  bool isLeaf = true;
+
+  // constructor
+  vertex(Operation *op_data, Port port_data) {
+    this->op_data = op_data;
+    this->port_data = port_data;
+  }
+
+  // override == operation for unordered_map
+  bool operator==(const vertex &v) const {
+    return op_data == v.op_data && port_data == v.port_data &&
+           isDestination == v.isDestination;
   }
 };
 
@@ -228,74 +237,6 @@ private:
     return worklist;
   }
 
-  void detect_antenna(Graph &g, std::vector<int> connectedTilesIndexList,
-                      std::vector<int> antennaIndexList) const {
-
-    std::vector<int> path_buffer;
-    // create valid path from connected tiles
-    std::vector<int> valid_path;
-    for (auto &tile_idx : connectedTilesIndexList) {
-      if (valid_path.empty()) {
-        valid_path = g.get_path_to_root(tile_idx);
-      } else {
-        path_buffer = g.get_path_to_root(tile_idx);
-        for (auto &node_idx : path_buffer) {
-          if (!std::count(valid_path.begin(), valid_path.end(), node_idx)) {
-            valid_path.push_back(node_idx);
-          }
-        }
-      }
-    }
-
-    // output antenna path
-    for (auto &antenna_idx : antennaIndexList) {
-      std::vector<int> antenna_valid_path;
-      std::vector<int> antenna_nonvalid_path;
-      path_buffer = g.get_path_to_root(antenna_idx);
-      for (auto &node_idx : path_buffer) {
-        if (std::count(valid_path.begin(), valid_path.end(), node_idx)) {
-          antenna_valid_path.push_back(node_idx);
-        } else {
-          antenna_nonvalid_path.push_back(node_idx);
-        }
-      }
-      // emit warning message for antennas
-      for (auto &v : antenna_nonvalid_path) {
-        std::string connectionType = "";
-        Operation *op = g.vertices[v].op_data;
-        if (dyn_cast_or_null<SwitchboxOp>(op)) {
-          if (g.vertices[v].isDestination)
-            connectionType = "Connection Destination";
-          else
-            connectionType = "Connection Source";
-        }
-        op->emitWarning() << "Antenna\n"
-                          << "at Port: "
-                          << "("
-                          << stringifyWireBundle(g.vertices[v].port_data.first)
-                          << " " << (int)g.vertices[v].port_data.second << ") "
-                          << connectionType << "\n";
-      }
-      // emit remarks for antenna traceback
-      for (auto &v : antenna_valid_path) {
-        std::string connectionType = "";
-        Operation *op = g.vertices[v].op_data;
-        if (dyn_cast_or_null<SwitchboxOp>(op)) {
-          if (g.vertices[v].isDestination)
-            connectionType = "Connection Destination";
-          else
-            connectionType = "Connection Source";
-        }
-        op->emitRemark() << "Traceback\n"
-                         << "at Port: "
-                         << "("
-                         << stringifyWireBundle(g.vertices[v].port_data.first)
-                         << " " << (int)g.vertices[v].port_data.second << ") "
-                         << connectionType << "\n";
-      }
-    }
-  }
-
 public:
   // Get the tiles connected to the given tile, starting from the given
   // output port of the tile.  This is 1:N relationship because each
@@ -368,7 +309,7 @@ public:
         LLVM_DEBUG(other->dump());
       }
     }
-    detect_antenna(g, connectedTilesIndex, antennaIndex);
+    // detect_antenna(g, connectedTilesIndex, antennaIndex);
 
     return connectedTiles;
   }
@@ -412,6 +353,17 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
   }
 }
 
+struct hash_function {
+  std::size_t operator()(const vertex &v) const {
+    std::size_t h1 = std::hash<Operation *>()(v.op_data);
+    std::size_t h2 = // type cast "enum class wirebundle" to int
+        std::hash<int>()((int)v.port_data.first + v.port_data.second) << 8;
+    std::size_t h3 = std::hash<bool>()(v.isDestination) << 4;
+
+    return h1 ^ h2 ^ h3;
+  }
+};
+
 struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
@@ -421,6 +373,23 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
 
     ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
+
+    std::unordered_map<vertex, bool, hash_function> connections;
+    for (auto switchbox : m.getOps<SwitchboxOp>()) {
+      Region &r = switchbox.connections();
+      Block &b = r.front();
+      for (auto connectOp : b.getOps<ConnectOp>()) {
+
+        connections[vertex(switchbox, connectOp.sourcePort())] = false;
+        connections[vertex(switchbox, connectOp.destPort())] = false;
+      }
+    }
+
+    LLVM_DEBUG( for (auto &kv : connections) {
+      const auto &hashkey = kv.first;
+      bool isExplored = kv.second;
+      llvm::dbgs() << "Connections" << isExplored << "\n";
+    });
 
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
