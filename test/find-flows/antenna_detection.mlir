@@ -50,3 +50,4 @@ module {
   AIE.wire(%1: DMA, %tile1: DMA)
   AIE.wire(%0: South, %1: North)
 }
+  
