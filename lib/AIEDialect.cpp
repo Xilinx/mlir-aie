@@ -497,9 +497,9 @@ int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
-    Operation *operation = op;
+    Operation *operation = op->getParentOp();
     while (operation) {
-      if (llvm::isa<ParentOpTypes...>(operation->getParentOp()))
+      if (llvm::isa<ParentOpTypes...>(operation))
         return success();
       operation = operation->getParentOp();
     }
@@ -511,6 +511,10 @@ template <typename... ParentOpTypes> struct HasSomeParent {
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
+  // AIE.useLock may be used in a module to set the lock's default value
+  if (llvm::isa<mlir::ModuleOp>((*this)->getParentOp()))
+    return success();
+
   return HasSomeParent<xilinx::AIE::CoreOp, xilinx::AIE::MemOp,
                        xilinx::AIE::ShimDMAOp>::verifyTrait(*this);
 
