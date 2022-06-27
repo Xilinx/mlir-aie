@@ -346,9 +346,9 @@ XAieTile_LockRelease(&(TileInst[7][2]), 1, 0x1, 0);
 
 [ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/non_adjacency_test_1.aie.mlir)
 
-An objectFifo can be established between two tiles
+An objectFifo can be established between two tiles.
 
-Define two tiles and create an AIE.objectFifo with two elements of type <memref<16xi32>> between them
+Define two tiles and create an AIE.objectFifo with two elements of type <memref<16xi32>> between them:
 ```
 %tile12 = AIE.tile(1, 2)
 %tile33 = AIE.tile(3, 3)
@@ -387,8 +387,6 @@ Operations can be performed on the objectFifo in the cores: elements can be acqu
 	
 	AIE.end
 }
-
-
 ```
 
 For correct execution, loops that contain objectFifo operations are unrolled based on objectFifo size; the previous code in core12 becomes:
@@ -412,11 +410,9 @@ For correct execution, loops that contain objectFifo operations are unrolled bas
 	
 	AIE.end
 }
-
-
 ```
 
-At a higher abstraction level, a process can be registered to an objectFifo using access patterns and work functions
+At a higher abstraction level, a process can be registered to an objectFifo using access patterns and work functions:
 ```
 module @objectFIFO  {
     %tile12 = AIE.tile(1, 2)
@@ -433,6 +429,4 @@ module @objectFIFO  {
 
     AIE.objectFifo.registerProcess{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
 }
-
-
 ```
