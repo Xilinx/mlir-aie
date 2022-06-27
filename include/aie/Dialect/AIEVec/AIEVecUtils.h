@@ -69,21 +69,21 @@ inline bool isAIEOp(Operation *op) {
 // Determine the output type for a vector operation based on whether
 // it operates on integer or floating point data.
 inline VectorType getVectorOpDestType(VectorType type) {
-    Type stype = type.getElementType();
+  Type stype = type.getElementType();
 
-    if (IntegerType itype = stype.dyn_cast<IntegerType>()) {
-      // Integer vector types are sized for the appropriate accumulators
-      assert(itype.getWidth() <= 64);
-      unsigned width = itype.getWidth() <= 16 ? 48 : 80;
+  if (IntegerType itype = stype.dyn_cast<IntegerType>()) {
+    // Integer vector types are sized for the appropriate accumulators
+    assert(itype.getWidth() <= 64);
+    unsigned width = itype.getWidth() <= 16 ? 48 : 80;
 
-      Type ctype = mlir::IntegerType::get(itype.getContext(), width);
-      return VectorType::get(type.getShape(), ctype);
-    } else if (stype.isa<FloatType>())
-      // Floating point vector types are returned as is since the floating point
-      // operations write back to registers and not accumulators
-      return type;
-    else
-      llvm_unreachable("Unsupported destination type");
+    Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+    return VectorType::get(type.getShape(), ctype);
+  } else if (stype.isa<FloatType>())
+    // Floating point vector types are returned as is since the floating point
+    // operations write back to registers and not accumulators
+    return type;
+  else
+    llvm_unreachable("Unsupported destination type");
 }
 
 } // end namespace aievec

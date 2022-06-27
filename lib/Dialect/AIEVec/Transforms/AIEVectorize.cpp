@@ -330,27 +330,23 @@ static bool isWellFormedVectorOp(Operation *Op) {
 // Given an AIEOp, determines if an operation writes to an accumulator
 // based on operation type and operand types
 static bool writesToAccumulator(Operation *op) {
-    // Integer muls and FMAs write to accumulator
-    if (!isAIEOp(op)) {
-      return false;
-    } else if (isa<aievec::MulOp>(op)) {
-      auto mulOp = dyn_cast<aievec::MulOp>(op);
-      auto lhsType = mulOp.lhs().getType().cast<VectorType>()
-                        .getElementType();
-      auto rhsType = mulOp.rhs().getType().cast<VectorType>()
-                        .getElementType();
-      return !lhsType.isa<FloatType>() && !rhsType.isa<FloatType>();
-    } else if (isa<aievec::FMAOp>(op)) {
-      auto fmaOp = dyn_cast<aievec::FMAOp>(op);
-      auto lhsType = fmaOp.lhs().getType().cast<VectorType>()
-                        .getElementType();
-      auto rhsType = fmaOp.rhs().getType().cast<VectorType>()
-                        .getElementType();
-      return !lhsType.isa<FloatType>() && !rhsType.isa<FloatType>();
-    } else if (isa<aievec::UPSOp>(op))
-      return true;
-    else
-      return false;
+  // Integer muls and FMAs write to accumulator
+  if (!isAIEOp(op)) {
+    return false;
+  } else if (isa<aievec::MulOp>(op)) {
+    auto mulOp = dyn_cast<aievec::MulOp>(op);
+    auto lhsType = mulOp.lhs().getType().cast<VectorType>().getElementType();
+    auto rhsType = mulOp.rhs().getType().cast<VectorType>().getElementType();
+    return !lhsType.isa<FloatType>() && !rhsType.isa<FloatType>();
+  } else if (isa<aievec::FMAOp>(op)) {
+    auto fmaOp = dyn_cast<aievec::FMAOp>(op);
+    auto lhsType = fmaOp.lhs().getType().cast<VectorType>().getElementType();
+    auto rhsType = fmaOp.rhs().getType().cast<VectorType>().getElementType();
+    return !lhsType.isa<FloatType>() && !rhsType.isa<FloatType>();
+  } else if (isa<aievec::UPSOp>(op))
+    return true;
+  else
+    return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -509,7 +505,7 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
   // The source should write to accumulator
   Type accType = source.getType();
   assert(writesToAccumulator(source.getDefiningOp()) &&
-    "srs source should write to accumulator");
+         "srs source should write to accumulator");
 
   // Get the number of lanes
   unsigned lanes = getVectorLaneSize(accType.cast<VectorType>());
@@ -530,7 +526,7 @@ static aievec::UPSOp generateUPSOp(Value source, VectState *state,
   Type sourceType = source.getType();
   Type accType = getVectorOpDestType(sourceType.cast<VectorType>());
   assert(!writesToAccumulator(source.getDefiningOp()) &&
-    "ups source should not be accumulator");
+         "ups source should not be accumulator");
 
   // Create a new UPS instruction
   aievec::UPSOp upsOp =
@@ -732,8 +728,8 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  Type opType = getVectorOpDestType(mulOp.getType().
-                  template cast<VectorType>());
+  Type opType =
+      getVectorOpDestType(mulOp.getType().template cast<VectorType>());
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
