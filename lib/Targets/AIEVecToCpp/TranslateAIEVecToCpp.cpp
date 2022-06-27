@@ -876,8 +876,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   std::string opname;
   // Create opname based on the result type
-  VectorType accType = mulOp.result().getType().cast<VectorType>();
-  Type eltType = accType.getElementType();
+  VectorType resType = mulOp.result().getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
   if (!simpleScheme) {
     if (auto iType = eltType.dyn_cast<IntegerType>()) {
       if (iType.getWidth() == 80)
@@ -887,7 +887,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
   }
   opname += "mul";
   if (!simpleScheme && !eltType.isa<FloatType>())
-    opname += std::to_string(getVectorLaneSize(accType));
+    opname += std::to_string(getVectorLaneSize(resType));
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -1031,8 +1031,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
 
   std::string opname;
   // Create opname based on the result type
-  VectorType accType = fmaOp.result().getType().cast<VectorType>();
-  Type eltType = accType.getElementType();
+  VectorType resType = fmaOp.result().getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
   if (!simpleScheme) {
     if (auto iType = eltType.dyn_cast<IntegerType>()) {
       if (iType.getWidth() == 80)
@@ -1042,7 +1042,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
   }
   opname += fmaOp.fmsub() ? "msc" : "mac";
   if (!simpleScheme && !eltType.isa<FloatType>())
-    opname += std::to_string(getVectorLaneSize(accType));
+    opname += std::to_string(getVectorLaneSize(resType));
 
   raw_indented_ostream &os = emitter.ostream();
 
