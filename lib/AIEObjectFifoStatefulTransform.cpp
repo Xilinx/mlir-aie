@@ -195,8 +195,7 @@ struct AIEObjectFifoStatefulTransformPass
     int offset = 0;
     MemRefType buffer = buff.getType();
     int len =
-        buffer
-            .getShape()[0]; // TODO: check if dimension is known (not <?xi32>)
+        buffer.getShape()[0]; // TODO: check if dimension is known (not <?xi32>)
 
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, acqMode,
                               LockAction::Acquire);

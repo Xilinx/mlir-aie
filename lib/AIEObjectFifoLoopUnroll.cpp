@@ -53,8 +53,8 @@ struct AIEObjectFifoLoopUnrollPass
                     coreOp.getTileOp()) != objectFifoTiles.end()) {
         coreOp.walk([&](mlir::scf::ForOp forLoop) {
           // look for operations on objectFifos
-          // TODO: when multiple fifos in same loop, must use the smallest common
-          // multiplier as the unroll factor
+          // TODO: when multiple fifos in same loop, must use the smallest
+          // common multiplier as the unroll factor
           bool found = false;
           int objFifoSize = 0;
           Block *body = forLoop.getBody();
