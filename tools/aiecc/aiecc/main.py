@@ -198,6 +198,7 @@ def main(builtin_params={}):
  
     if('VITIS' in os.environ):
       vitis_path = os.environ['VITIS']
+      vitis_bin_path = os.path.join(vitis_path, "bin")
       # Find the aietools directory, needed by xchesscc_wrapper
       
       aietools_path = os.path.join(vitis_path, "aietools")
