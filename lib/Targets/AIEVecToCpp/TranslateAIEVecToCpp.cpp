@@ -228,13 +228,12 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
   // skip op 2 : some aievec::srs for float types
   if (auto srsOp = dyn_cast<aievec::SRSOp>(op)) {
     // Get the datatype of the source accumulator and result vector
-    aievec::AccType accType = srsOp.source().getType().cast<aievec::AccType>();
-    Type eltType = accType.getValueType();
-    VectorType vecType = srsOp.result().getType().cast<VectorType>();
+    VectorType accType = srsOp.source().getType().cast<VectorType>();
+    Type eltType = accType.getElementType();
     Value source = srsOp.source();
     // If the underlying element types are float, then we do not really need an
     // srs op if source of srsOp has only one use.
-    if (eltType.isa<FloatType>() && vecType.getElementType().isa<FloatType>() &&
+    if (eltType.isa<FloatType>() && accType.getElementType().isa<FloatType>() &&
         source.getDefiningOp()->hasOneUse()) {
       StringRef srcName = emitter.getOrCreateName(source);
       emitter.setName(srsOp->getResult(0), srcName);
@@ -244,13 +243,12 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
   // skip op 3 : some aievec::ups for float ops
   else if (auto upsOp = dyn_cast<aievec::UPSOp>(op)) {
     // Get the datatype of the source vector and result accumulator
-    aievec::AccType accType = upsOp.result().getType().cast<aievec::AccType>();
-    Type eltType = accType.getValueType();
-    VectorType vecType = upsOp.source().getType().cast<VectorType>();
+    VectorType accType = upsOp.result().getType().cast<VectorType>();
+    Type eltType = accType.getElementType();
     Value source = upsOp.source();
     // If the underlying element types are float, then we do not really need a
     // ups op if the source accumulator has only one use.
-    if (eltType.isa<FloatType>() && vecType.getElementType().isa<FloatType>() &&
+    if (eltType.isa<FloatType>() && accType.getElementType().isa<FloatType>() &&
         source.getDefiningOp()->hasOneUse()) {
       StringRef srcName = emitter.getOrCreateName(source);
       emitter.setName(upsOp->getResult(0), srcName);
@@ -579,13 +577,12 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   if (!emitter.hasValueInScope(source))
     return failure();
 
-  aievec::AccType accType = upsOp.result().getType().cast<aievec::AccType>();
-  Type eltType = accType.getValueType();
-  VectorType vecType = upsOp.source().getType().cast<VectorType>();
+  VectorType accType = upsOp.source().getType().cast<VectorType>();
+  Type eltType = accType.getElementType();
 
   // If the underlying element types are float, then we do not really need a
   // ups op. We can simply generate an assignment
-  if (eltType.isa<FloatType>() && vecType.getElementType().isa<FloatType>()) {
+  if (eltType.isa<FloatType>()) {
     os << emitter.getOrCreateName(source);
     return success();
   }
@@ -610,9 +607,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   int32_t shift = srsOp.shift();
 
   // Get the datatype of the source accumulator and result vector
-  aievec::AccType accType = srsOp.source().getType().cast<aievec::AccType>();
-  Type eltType = accType.getValueType();
-  VectorType vecType = srsOp.result().getType().cast<VectorType>();
+  VectorType accType = srsOp.source().getType().cast<VectorType>();
+  Type eltType = accType.getElementType();
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -626,14 +622,14 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
 
   // If the underlying element types are float, then we do not really need an
   // srs op. We can simply generate an assignment
-  if (eltType.isa<FloatType>() && vecType.getElementType().isa<FloatType>()) {
+  if (eltType.isa<FloatType>()) {
     os << emitter.getOrCreateName(source);
     return success();
   }
 
   // Otheriwse, get the datatype width of the source accumulator and result
   // vector
-  unsigned resultWidth = getElementSizeInBits(vecType);
+  unsigned resultWidth = getElementSizeInBits(accType);
   unsigned srcWidth = 0;
   if (auto iType = eltType.dyn_cast<IntegerType>())
     srcWidth = iType.getWidth();
@@ -880,12 +876,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
 
   std::string opname;
   // Create opname based on the result type
-  bool isInt =
-      lhs.getType().cast<VectorType>().getElementType().isa<IntegerType>();
-  aievec::AccType accType =
-      mulOp.result().getType().dyn_cast<aievec::AccType>();
-  VectorType vecType = mulOp.result().getType().dyn_cast<VectorType>();
-  Type eltType = isInt ? accType.getValueType() : vecType.getElementType();
+  VectorType resType = mulOp.result().getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
   if (!simpleScheme) {
     if (auto iType = eltType.dyn_cast<IntegerType>()) {
       if (iType.getWidth() == 80)
@@ -895,7 +887,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
   }
   opname += "mul";
   if (!simpleScheme && !eltType.isa<FloatType>())
-    opname += std::to_string(accType.getLanes());
+    opname += std::to_string(getVectorLaneSize(resType));
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -1039,12 +1031,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
 
   std::string opname;
   // Create opname based on the result type
-  bool isInt =
-      lhs.getType().cast<VectorType>().getElementType().isa<IntegerType>();
-  aievec::AccType accType =
-      fmaOp.result().getType().dyn_cast<aievec::AccType>();
-  VectorType vecType = fmaOp.result().getType().dyn_cast<VectorType>();
-  Type eltType = isInt ? accType.getValueType() : vecType.getElementType();
+  VectorType resType = fmaOp.result().getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
   if (!simpleScheme) {
     if (auto iType = eltType.dyn_cast<IntegerType>()) {
       if (iType.getWidth() == 80)
@@ -1054,7 +1042,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
   }
   opname += fmaOp.fmsub() ? "msc" : "mac";
   if (!simpleScheme && !eltType.isa<FloatType>())
-    opname += std::to_string(accType.getLanes());
+    opname += std::to_string(getVectorLaneSize(resType));
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -2002,15 +1990,6 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType) {
       return failure();
     os << "v" << std::to_string(tType.getDimSize(tType.getRank() - 1));
     if (failed(emitType(loc, tType.getElementType(), false)))
-      return failure();
-    return success();
-  }
-  // AccType: printed as v'lane''eltType'
-  if (auto tType = type.dyn_cast<aievec::AccType>()) {
-    unsigned lanes = tType.getLanes();
-    if (lanes > 1)
-      os << "v" << lanes;
-    if (failed(emitType(loc, tType.getValueType(), false)))
       return failure();
     return success();
   }

@@ -44,7 +44,7 @@ func @conv2d (%A: memref<2048x2048xi32>, %B: memref<3x3xi32>, %C: memref<2046x20
 //CHECK-NEXT: %c8 = arith.constant 8 : index
 //CHECK-NEXT: scf.for %arg4 = %c0_1 to %c2046_2 step %c8 {
 //CHECK-NEXT: %0 = aievec.upd %arg2[%arg3, %arg4] {index = 0 : i8, offset = 0 : si32} : memref<2046x2046xi32>, vector<8xi32>
-//CHECK-NEXT: %1 = aievec.ups %0 {shift = 0 : i8} : vector<8xi32>, !aievec.acc<8xi80>
+//CHECK-NEXT: %1 = aievec.ups %0 {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
 //CHECK-NEXT: %c1_3 = arith.constant 1 : index
 //CHECK-NEXT: %2 = arith.addi %arg4, %c1_3 : index
 //CHECK-NEXT: %c0_4 = arith.constant 0 : index
@@ -54,10 +54,10 @@ func @conv2d (%A: memref<2048x2048xi32>, %B: memref<3x3xi32>, %C: memref<2046x20
 //CHECK-NEXT: %3 = arith.addi %arg3, %arg5 : index
 //CHECK-NEXT: %4 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : si32} : memref<2048x2048xi32>, vector<16xi32>
 //CHECK-NEXT: %5 = aievec.upd %arg1[%arg5, %c0] {index = 0 : i8, offset = 0 : si32} : memref<3x3xi32>, vector<8xi32>
-//CHECK-NEXT: %6 = aievec.mac %4, %5, %1 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, !aievec.acc<8xi80>
+//CHECK-NEXT: %6 = aievec.mac %4, %5, %1 {xoffsets = "0x76543210", xstart = "0", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
 //CHECK-NEXT: %7 = aievec.upd %arg0[%3, %2], %4 {index = 1 : i8, offset = 224 : si32} : memref<2048x2048xi32>, vector<16xi32>
-//CHECK-NEXT: %8 = aievec.mac %7, %5, %6 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, !aievec.acc<8xi80>
-//CHECK-NEXT: %9 = aievec.mac %7, %5, %8 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, !aievec.acc<8xi80>
-//CHECK-NEXT: %10 = aievec.srs %9 {shift = 0 : i8} : !aievec.acc<8xi80>, vector<8xi32>
+//CHECK-NEXT: %8 = aievec.mac %7, %5, %6 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "1"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+//CHECK-NEXT: %9 = aievec.mac %7, %5, %8 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "2"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
+//CHECK-NEXT: %10 = aievec.srs %9 {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
 //CHECK-NEXT: vector.transfer_write %10, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<8xi32>, memref<2046x2046xi32>
 

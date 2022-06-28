@@ -327,6 +327,28 @@ static bool isWellFormedVectorOp(Operation *Op) {
   return true;
 }
 
+// Given an AIEOp, determines if an operation writes to an accumulator
+// based on operation type and operand types
+static bool writesToAccumulator(Operation *op) {
+  // Integer muls and FMAs write to accumulator
+  if (!isAIEOp(op)) {
+    return false;
+  } else if (isa<aievec::MulOp>(op)) {
+    auto mulOp = dyn_cast<aievec::MulOp>(op);
+    auto lhsType = mulOp.lhs().getType().cast<VectorType>().getElementType();
+    auto rhsType = mulOp.rhs().getType().cast<VectorType>().getElementType();
+    return !lhsType.isa<FloatType>() && !rhsType.isa<FloatType>();
+  } else if (isa<aievec::FMAOp>(op)) {
+    auto fmaOp = dyn_cast<aievec::FMAOp>(op);
+    auto lhsType = fmaOp.lhs().getType().cast<VectorType>().getElementType();
+    auto rhsType = fmaOp.rhs().getType().cast<VectorType>().getElementType();
+    return !lhsType.isa<FloatType>() && !rhsType.isa<FloatType>();
+  } else if (isa<aievec::UPSOp>(op))
+    return true;
+  else
+    return false;
+}
+
 //===----------------------------------------------------------------------===//
 // Manipulate affine expressions
 //===----------------------------------------------------------------------===//
@@ -480,12 +502,13 @@ static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
 // output should be a vector of element type `scalarType`.
 static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
                                    VectState *state, Location loc) {
-  // The source should be accumulator type
+  // The source should write to accumulator
   Type accType = source.getType();
-  assert(isAccType(accType) && "srs source should be accumulator type");
+  assert(writesToAccumulator(source.getDefiningOp()) &&
+         "srs source should write to accumulator");
 
   // Get the number of lanes
-  unsigned lanes = accType.cast<AccType>().getLanes();
+  unsigned lanes = getVectorLaneSize(accType.cast<VectorType>());
   // Now generate the new vector type for the SRS intrinsic
   VectorType srsType = createVectorType(lanes, scalarType);
   // Create the SRS op
@@ -501,9 +524,9 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
 static aievec::UPSOp generateUPSOp(Value source, VectState *state,
                                    Location loc) {
   Type sourceType = source.getType();
-  assert(!isAccType(sourceType) && "ups source should not be accumulator");
-
-  AccType accType = getAccType(sourceType);
+  Type accType = getVectorOpDestType(sourceType.cast<VectorType>());
+  assert(!writesToAccumulator(source.getDefiningOp()) &&
+         "ups source should not be accumulator");
 
   // Create a new UPS instruction
   aievec::UPSOp upsOp =
@@ -644,13 +667,6 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  // If the accumulator is not of type aievec::AccType for integer FMA
-  // we need to generate a ups instruction.
-  bool isInt = fmaOp.getLhs()
-                   .getType()
-                   .cast<VectorType>()
-                   .getElementType()
-                   .isa<IntegerType>();
   Value acc = fmaOp.getAcc();
   // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
   // op for i8xi8 scheme. Find the paired accumulator.
@@ -659,7 +675,16 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
     if (state->pairedOp.count(defOp))
       acc = state->pairedOp[defOp]->getResult(0);
   }
-  if (isInt && !isAccType(acc.getType())) {
+
+  // We need to generate a UPS op for the integer path if the accumulator is
+  // coming from a vector register.
+  bool isInt = fmaOp.getLhs()
+                   .getType()
+                   .cast<VectorType>()
+                   .getElementType()
+                   .isa<IntegerType>();
+
+  if (isInt && !writesToAccumulator(acc.getDefiningOp())) {
     acc = generateUPSOp(acc, state, fmaOp->getLoc());
     LLVM_DEBUG(llvm::dbgs()
                << "\n\nCreated UPS op " << acc << " to move the output of "
@@ -694,7 +719,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
 }
 
 // Generate a MUL operation in AIE dialect. This operation will have the start
-// and offset fields for each operand. The output will be in an accumulator.
+// and offset fields for each operand.
 template <typename T>
 static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
                                 VectState *state) {
@@ -703,12 +728,8 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  // If the return type is not accumulator type already, create a new
-  // accumulator type for return value of integer types.
-  Type opType = mulOp.getType();
-  if (!isAccType(opType) &&
-      opType.cast<VectorType>().getElementType().isa<IntegerType>())
-    opType = getAccType(opType);
+  Type opType =
+      getVectorOpDestType(mulOp.getType().template cast<VectorType>());
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
@@ -954,10 +975,6 @@ int32_t computeStartInAIEVec(Operation *op, VectState *state) {
 static Operation *concatAndInterleave_i8xi8(Operation *source1,
                                             Operation *source2,
                                             VectState *state, Location loc) {
-  // Both the input sources must be accumulators
-  assert(isAccType(source1->getResult(0).getType()) &&
-         isAccType(source2->getResult(0).getType()));
-
   // The source values are in accumulator. So generate SRS intrinsic to convert
   // the accumulator output to vector output. We want the output to be in
   // v16int16 vector, since select operation does not operate on v16int8
@@ -1960,9 +1977,8 @@ static void insertSRSOp(Operation *Op, VectState *state) {
   if (Op->use_empty() || Op->getNumResults() == 0)
     return;
 
-  // The operation must be in AIE dialect, and its result should be accumulator
-  // type.
-  assert(isAIEOp(Op) && llvm::any_of(Op->getResultTypes(), isAccType));
+  // The operation must write to an accumulator
+  assert(writesToAccumulator(Op));
 
   // Check if any user of this operation is a non-AIE op. If any user of this
   // operation is non-AIE op, then we need to generate SRS op to move value
@@ -2020,9 +2036,8 @@ static void insertSRSOp(Operation *Op, VectState *state) {
 // vector.
 static void insertSRSOpsInFunc(func::FuncOp func, VectState *state) {
   func.walk([&](mlir::Operation *op) {
-    // Check if we need to insert an SRS op if (1) the op is in AIE dialect,
-    // and (2) the result of the op is accumulator type.
-    if (isAIEOp(op) && llvm::any_of(op->getResultTypes(), isAccType))
+    // Insert an SRS op if the op outputs to an accumulator
+    if (writesToAccumulator(op))
       insertSRSOp(op, state);
   });
 }

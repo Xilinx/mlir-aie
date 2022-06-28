@@ -25,20 +25,4 @@ class AIEVec_Type<string name, string typeMnemonic,
   let mnemonic = typeMnemonic;
 }
 
-//===----------------------------------------------------------------------===//
-// Accumulation Types
-//===----------------------------------------------------------------------===//
-
-def AIEVec_Acc : AIEVec_Type<"Acc", "acc"> {
-  let summary = "scalar or vector 48/80 bit accumulator type";
-  let parameters = (ins "int32_t":$lanes, "Type":$valueType);
-  let builders = [
-    TypeBuilderWithInferredContext<(ins "int32_t":$lanes, "Type":$valueType), [{
-      return $_get(valueType.getContext(), lanes, valueType);
-    }]>
-  ];
-  let skipDefaultBuilders = 1;
-  let hasCustomAssemblyFormat = 1;
-}
-
 #endif // AIEVEC_TYPES
