@@ -577,7 +577,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   if (!emitter.hasValueInScope(source))
     return failure();
 
-  VectorType accType = upsOp.source().getType().cast<VectorType>();
+  VectorType accType = upsOp.result().getType().cast<VectorType>();
   Type eltType = accType.getElementType();
 
   // If the underlying element types are float, then we do not really need a

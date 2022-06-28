@@ -70,7 +70,7 @@ func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref
 //CHECK-NEXT:      v16int32 v21;
 //CHECK-NEXT:      int32_t * restrict r_v21_v1 = v1;
 //CHECK-NEXT:      v21 = upd_w(v21, 0, *(v8int32 *)(r_v21_v1 + 2048*v11+v19));
-//CHECK-NEXT:      v8acc80 v22 = ups(v20, 0);
+//CHECK-NEXT:      v8acc80 v22 = lups(v20, 0);
 //CHECK-NEXT:      v22 = lmac8(v22, v21, 0, 0x76543210, v6, 0, 0x00000000);
 //CHECK-NEXT:      size_t v23 = 1;
 //CHECK-NEXT:      size_t v24 = v19 + v23;
@@ -161,7 +161,7 @@ func @conv2d_1(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi
 //      v16int32 v26;
 //      int32_t * restrict r_v26_v6 = v6;
 //      v26 = upd_w(v26, 0, *(v8int32 *)(r_v26_v6 + m2*v17+v24));
-//      v8acc80 v27 = ups(v25, 0);
+//      v8acc80 v27 = lups(v25, 0);
 //      v27 = lmac8(v27, v26, 0, 0x76543210, v13, 0, 0x00000000);
 //      size_t v28 = 1;
 //      size_t v29 = v24 + v28;
@@ -255,7 +255,7 @@ func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi
 //CHECK-NEXT:      v16int32 v24;
 //CHECK-NEXT:      int32_t * restrict r_v24_v6 = v6;
 //CHECK-NEXT:      v24 = upd_w(v24, 0, *(v8int32 *)(r_v24_v6 + m2*v15+v22));
-//CHECK-NEXT:      v8acc80 v25 = ups(v23, 0);
+//CHECK-NEXT:      v8acc80 v25 = lups(v23, 0);
 //CHECK-NEXT:      v25 = lmac8(v25, v24, 0, 0x76543210, v11, 0, 0x00000000);
 //CHECK-NEXT:      size_t v26 = 1;
 //CHECK-NEXT:      size_t v27 = v22 + v26;
@@ -350,7 +350,7 @@ func @conv2d_3(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memref<?x2
 //CHECK-NEXT:      v16int32 v23;
 //CHECK-NEXT:      int32_t * restrict r_v23_v4 = v4;
 //CHECK-NEXT:      v23 = upd_w(v23, 0, *(v8int32 *)(r_v23_v4 + 256*v13+v21));
-//CHECK-NEXT:      v8acc80 v24 = ups(v22, 0);
+//CHECK-NEXT:      v8acc80 v24 = lups(v22, 0);
 //CHECK-NEXT:      v24 = lmac8(v24, v23, 0, 0x76543210, v9, 0, 0x00000000);
 //CHECK-NEXT:      size_t v25 = 1;
 //CHECK-NEXT:      size_t v26 = v21 + v25;
