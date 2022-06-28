@@ -4,12 +4,6 @@
 Types and operations for AIE vector dialect
 [TOC]
 
-## Type constraint definition
-
-### scalar or vector 48/80 bit accumulator type
-
-
-
 ## Operation definition
 
 ### `aievec.add` (::xilinx::aievec::AddOp)
@@ -145,13 +139,13 @@ Effects: MemoryEffects::Effect{}
 | :-----: | ----------- |
 | `lhs` | vector of any type values
 | `rhs` | vector of any type values
-| `acc` | scalar or vector 48/80 bit accumulator type or vector of 32-bit float values
+| `acc` | vector of any type values
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | scalar or vector 48/80 bit accumulator type or vector of 32-bit float values
+| `result` | vector of any type values
 
 ### `aievec.mul` (::xilinx::aievec::MulOp)
 
@@ -193,7 +187,7 @@ Effects: MemoryEffects::Effect{}
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | scalar or vector 48/80 bit accumulator type or vector of 32-bit float values
+| `result` | vector of any type values
 
 ### `aievec.pack` (::xilinx::aievec::PackOp)
 
@@ -242,7 +236,7 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `source` | scalar or vector 48/80 bit accumulator type
+| `source` | vector of any type values
 
 #### Results:
 
@@ -395,7 +389,7 @@ Effects: MemoryEffects::Effect{}
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | scalar or vector 48/80 bit accumulator type
+| `result` | vector of any type values
 
 ### `aievec.unpack` (::xilinx::aievec::UnpackOp)
 
@@ -420,18 +414,4 @@ Effects: MemoryEffects::Effect{}
 | Result | Description |
 | :----: | ----------- |
 | `result` | vector of any type values
-
-## Type definition
-
-### AccType
-
-scalar or vector 48/80 bit accumulator type
-
-
-#### Parameters:
-
-| Parameter | C++ type | Description |
-| :-------: | :-------: | ----------- |
-| lanes | `int32_t` |  |
-| valueType | `Type` |  |
 
