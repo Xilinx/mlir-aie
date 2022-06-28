@@ -71,10 +71,8 @@ int main(int argc, char *argv[]) {
       if (i == 9) {
         test_value = 41;
       }
-      mlir_aie_check("After full exchange. Check [i*LINE_WIDTH+j] =
-                     test_value ",
-                     mlir_aie_read_buffer_out(_xaie, i * LINE_WIDTH + j),
-                     test_value, errors);
+      mlir_aie_check("After exchange. Check [i*LINE_WIDTH+j] = test_value",
+               mlir_aie_read_buffer_out(_xaie,i*LINE_WIDTH+j),test_value,errors);
     }
     test_value += 9;
   }

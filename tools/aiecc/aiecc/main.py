@@ -45,7 +45,7 @@ def run_flow(opts, tmpdirname):
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
-    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
+    do_call(['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-unroll-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
     t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
@@ -194,10 +194,11 @@ def main(builtin_params={}):
         vitis_path = os.path.dirname(vitis_bin_path)
         os.environ['VITIS'] = vitis_path
         print("Found Vitis at " + vitis_path)
-        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, os.environ['PATH']])
+        os.environ['PATH'] = os.pathsep.join([os.environ['PATH'], vitis_bin_path])
  
     if('VITIS' in os.environ):
       vitis_path = os.environ['VITIS']
+      vitis_bin_path = os.path.join(vitis_path, "bin")
       # Find the aietools directory, needed by xchesscc_wrapper
       
       aietools_path = os.path.join(vitis_path, "aietools")
@@ -206,7 +207,10 @@ def main(builtin_params={}):
       os.environ['AIETOOLS'] = aietools_path
 
       aietools_bin_path = os.path.join(aietools_path, "bin")
-      os.environ['PATH'] = os.pathsep.join([aietools_bin_path, os.environ['PATH']])
+      os.environ['PATH'] = os.pathsep.join([
+         os.environ['PATH'],
+         aietools_bin_path,
+         vitis_bin_path])
 
     # This path should be generated from cmake
     os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])

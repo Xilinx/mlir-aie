@@ -192,12 +192,11 @@ struct AIEObjectFifoStatefulTransformPass
                      LockOp lock, Block *succ) {
     int acqMode = lockMode == 0 ? 1 : 0;
     int relMode = lockMode == 0 ? 0 : 1;
-    int offset = 0; // TODO: might need to change offset to account for bank
-                    // granularity later
+    int offset = 0;
     MemRefType buffer = buff.getType();
     int len =
         buffer
-            .getShape()[0]; // TODO: check if dimension is known! (not <?xi32>)
+            .getShape()[0]; // TODO: check if dimension is known (not <?xi32>)
 
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, acqMode,
                               LockAction::Acquire);
