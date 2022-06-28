@@ -84,16 +84,16 @@ func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
 //CHECK-NEXT: %c16_3 = arith.constant 16 : index
 //CHECK-NEXT: scf.for %arg4 = %c0_2 to %c256 step %c16_3 {
 //CHECK-NEXT: %4 = aievec.upd %arg0[%arg3, %arg4] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<32xi8>
-//CHECK-NEXT: %5 = aievec.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, !aievec.acc<16xi48>
-//CHECK-NEXT: %6 = aievec.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "8", zstep = "2"} : vector<64xi8>, vector<32xi8>, !aievec.acc<16xi48>
+//CHECK-NEXT: %5 = aievec.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+//CHECK-NEXT: %6 = aievec.mul %0, %4 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "0", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "8", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
 //CHECK-NEXT: %7 = aievec.upd %arg0[%2, %arg4] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<32xi8>
-//CHECK-NEXT: %8 = aievec.mac %0, %7, %5 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, !aievec.acc<16xi48>
-//CHECK-NEXT: %9 = aievec.mac %0, %7, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "8", zstep = "2"} : vector<64xi8>, vector<32xi8>, !aievec.acc<16xi48>
+//CHECK-NEXT: %8 = aievec.mac %0, %7, %5 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+//CHECK-NEXT: %9 = aievec.mac %0, %7, %6 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "16", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "8", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
 //CHECK-NEXT: %10 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<32xi8>
-//CHECK-NEXT: %11 = aievec.mac %1, %10, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, !aievec.acc<16xi48>
-//CHECK-NEXT: %12 = aievec.mac %1, %10, %9 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "8", zstep = "2"} : vector<64xi8>, vector<32xi8>, !aievec.acc<16xi48>
-//CHECK-NEXT: %13 = aievec.srs %11 {shift = 10 : i8} : !aievec.acc<16xi48>, vector<16xi16>
-//CHECK-NEXT: %14 = aievec.srs %12 {shift = 10 : i8} : !aievec.acc<16xi48>, vector<16xi16>
+//CHECK-NEXT: %11 = aievec.mac %1, %10, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+//CHECK-NEXT: %12 = aievec.mac %1, %10, %9 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "8", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
+//CHECK-NEXT: %13 = aievec.srs %11 {shift = 10 : i8} : vector<16xi48>, vector<16xi16>
+//CHECK-NEXT: %14 = aievec.srs %12 {shift = 10 : i8} : vector<16xi48>, vector<16xi16>
 //CHECK-NEXT: %15 = aievec.concat %13, %14 : vector<16xi16>, vector<32xi16>
 //CHECK-NEXT: %16 = aievec.select %15 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
 //CHECK-NEXT: %17 = aievec.ext %16 {index = 0 : i8} : vector<32xi16>, vector<16xi16>

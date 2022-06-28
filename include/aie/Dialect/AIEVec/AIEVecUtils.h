@@ -61,40 +61,29 @@ inline int32_t getVectorSizeInBits(VectorType type) {
   return veclen;
 }
 
-// Return true if the incoming type is accumulator type
-inline bool isAccType(Type type) { return type.isa<AccType>(); }
-
 // Return true if this is an operation defined in AIE dialect
 inline bool isAIEOp(Operation *op) {
   return llvm::isa<AIEVecDialect>(op->getDialect());
 }
 
-// Create an AIE accumulator type. If the incoming type is vector, then the
-// #lanes are copied from it. Otherwise, a scalar accumulator type is created.
-inline AccType getAccType(Type type) {
-  Type stype = type;
-  unsigned lanes = 1;
-  // If the type was vector type, get the number of lanes and the underflying
-  // element type
-  if (VectorType vtype = type.dyn_cast<VectorType>()) {
-    stype = vtype.getElementType();
-    lanes = getVectorLaneSize(vtype);
-  }
+// Determine the output type for a vector operation based on whether
+// it operates on integer or floating point data.
+inline VectorType getVectorOpDestType(VectorType type) {
+  Type stype = type.getElementType();
 
-  // Now create the accumulator type. We currently only support i48 and i80
-  // type accumulator
-  AccType acc;
   if (IntegerType itype = stype.dyn_cast<IntegerType>()) {
+    // Integer vector types are sized for the appropriate accumulators
     assert(itype.getWidth() <= 64);
     unsigned width = itype.getWidth() <= 16 ? 48 : 80;
-    Type ctype = mlir::IntegerType::get(itype.getContext(), width);
-    acc = AccType::get(lanes, ctype);
-  } else if (stype.isa<FloatType>())
-    acc = AccType::get(lanes, stype);
-  else
-    llvm_unreachable("Unsupported accumulator type");
 
-  return acc;
+    Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+    return VectorType::get(type.getShape(), ctype);
+  } else if (stype.isa<FloatType>())
+    // Floating point vector types are returned as is since the floating point
+    // operations write back to registers and not accumulators
+    return type;
+  else
+    llvm_unreachable("Unsupported destination type");
 }
 
 } // end namespace aievec
