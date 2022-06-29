@@ -30,7 +30,6 @@ struct vertex {
   // defining characteristics
   Operation *op_data;
   Port port_data;
-  bool isDestPort;
   // graph data
   void *parent_key;
   bool isRoot;
@@ -47,23 +46,11 @@ public:
   bool isNotEmpty() { return vertex_map.size() > 0; }
 
   void add_root(Operation *op, Port port) {
-    vertex_map[(void *)op] = {op, port, false, 0, true};
+    vertex_map[(void *)op] = {op, port, 0, true};
   }
 
-  void add_child(void *parent_key, Operation *op, Port port,
-                 bool isDestination) {
-    // In the case of the ConnectOp.destPort, due to the Op address being the
-    // same as ConnectOp.sourcePort, we add 8bits to the ConnectOp address to
-    // represent the destPort key. Due to the word length of the system being
-    // greater than 8bits we can maintain a unique key for each sourcePort and
-    // destPort for the connections.
-    void *key;
-    if (isDestination)
-      key = (void *)op + 8;
-    else
-      key = (void *)op;
-
-    vertex_map[key] = {op, port, isDestination, parent_key, false};
+  void add_child(void *parent_key, Operation *op, Port port) {
+    vertex_map[(void *)op] = {op, port, parent_key, false};
   }
 
   std::vector<void *> get_path_to_root(void *start_node) {
@@ -143,7 +130,7 @@ private:
         // add to graph if in detection mode and op is connectOp
         if (g.isNotEmpty())
           // implicit type converion connectOp -> Operation*
-          g.add_child(op, connectOp, connectOp.destPort(), false);
+          g.add_child(op, connectOp, connectOp.destPort());
 
         MaskValue maskValue = std::make_pair(0, 0);
         PortConnection portconnection =
@@ -220,7 +207,7 @@ private:
       // add to graph if in detection mode and op is connectOp
       if (g.isNotEmpty())
         g.add_child((void *)op, nextConnection.getValue().first,
-                    nextConnection.getValue().second, false);
+                    nextConnection.getValue().second);
 
       worklist.push_back(
           std::make_pair(nextConnection.getValue(), newMaskValue));
@@ -367,7 +354,7 @@ public:
     // add node to graph if in detection mode
     if (g.isNotEmpty())
       g.add_child(tileOp.getOperation(), t.getValue().first,
-                  t.getValue().second, false);
+                  t.getValue().second);
 
     PacketConnection connection =
         std::make_pair(t.getValue(), std::make_pair(0, 0));
