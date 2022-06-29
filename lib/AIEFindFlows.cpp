@@ -141,11 +141,9 @@ private:
         // remove accessed connectOp from set
         connections_set.erase(connectOp);
         // add to graph if in detection mode and op is connectOp
-        if (g.isNotEmpty()) {
+        if (g.isNotEmpty())
           // implicit type converion connectOp -> Operation*
-          // g.add_child(op, connectOp, connectOp.sourcePort(), false);
-          g.add_child(op, connectOp, connectOp.destPort(), true);
-        }
+          g.add_child(op, connectOp, connectOp.destPort(), false);
 
         MaskValue maskValue = std::make_pair(0, 0);
         PortConnection portconnection =
@@ -212,7 +210,7 @@ private:
       // If there is no wire to follow then bail out.
       // then add to antenna list
       if (!nextConnection.hasValue()) {
-        antennaKey.push_back((void *)op + 8);
+        antennaKey.push_back((void *)op);
         if (g.isNotEmpty()) // continue if in antenna detection mode
           continue;
         else
@@ -220,8 +218,8 @@ private:
       }
 
       // add to graph if in detection mode and op is connectOp
-      if (g.isNotEmpty() && dyn_cast_or_null<ConnectOp>(op))
-        g.add_child((void *)op + 8, nextConnection.getValue().first,
+      if (g.isNotEmpty())
+        g.add_child((void *)op, nextConnection.getValue().first,
                     nextConnection.getValue().second, false);
 
       worklist.push_back(
@@ -416,12 +414,23 @@ public:
     if (g.isNotEmpty())
       detect_antenna(g, connectedTilesKeys, antennaKeys);
 
-    for (auto &key : antennaKeys) {
-      std::vector<void *> path_buf = g.get_path_to_root(key);
-      llvm::dbgs() << "\n\n";
-      for (auto &v : path_buf) {
-        llvm::dbgs() << "raw print!!\n";
-        g.vertex_map.at(v).op_data->dump();
+    if (g.isNotEmpty()) {
+      for (auto &key : connectedTilesKeys) {
+        std::vector<void *> path_buf = g.get_path_to_root(key);
+        llvm::dbgs() << "\n\n";
+        for (auto &v : path_buf) {
+          llvm::dbgs() << "connect!!\n";
+          g.vertex_map.at(v).op_data->dump();
+        }
+      }
+
+      for (auto &key : antennaKeys) {
+        std::vector<void *> path_buf = g.get_path_to_root(key);
+        llvm::dbgs() << "\n\n";
+        for (auto &v : path_buf) {
+          llvm::dbgs() << "raw print!!\n";
+          g.vertex_map.at(v).op_data->dump();
+        }
       }
     }
 
