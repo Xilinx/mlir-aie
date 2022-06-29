@@ -21,6 +21,7 @@
 module {
   %tile0 = AIE.tile(2, 3)
   %tile1 = AIE.tile(2, 2)
+  %tile2 = AIE.tile(3, 3)
 
   %0 = AIE.switchbox(%tile0) {
     AIE.connect<Core :0, South:1>
