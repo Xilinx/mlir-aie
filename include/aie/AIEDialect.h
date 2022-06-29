@@ -26,9 +26,8 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
-#include <set>
 #include <map>
-#include <unordered_map>
+#include <set>
 
 using namespace mlir;
 
@@ -50,7 +49,7 @@ namespace AIE {
 void registerAIETranslations();
 
 // FIXME: use this
-//#include "AIEDialect.h.inc"
+// #include "AIEDialect.h.inc"
 
 // The Dialect
 class AIEDialect : public mlir::Dialect {
@@ -109,7 +108,7 @@ public:
 //////////////////// Custom Operations for the Dialect /////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-//#include "AIEOpInterfaces.h.inc"
+// #include "AIEOpInterfaces.h.inc"
 
 typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
