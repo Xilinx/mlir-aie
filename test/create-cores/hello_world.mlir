@@ -66,7 +66,7 @@ module @hello_world {
 
   AIE.token(0) { sym_name="token0" }
 
-  func @producer(%arg0: memref<512xi32>) -> () {
+  func.func @producer(%arg0: memref<512xi32>) -> () {
     AIE.useToken @token0(Acquire, 0)
     %i = arith.constant 16 : index
     %val = arith.constant 1 : i32
@@ -75,7 +75,7 @@ module @hello_world {
     return
   }
 
-  func @consumer(%arg0: memref<512xi32>) -> () {
+  func.func @consumer(%arg0: memref<512xi32>) -> () {
     AIE.useToken @token0(Acquire, 2)
     %i = arith.constant 16 : index
     %val = memref.load %arg0[%i] : memref<512xi32>
@@ -83,8 +83,8 @@ module @hello_world {
     return
   }
 
-  call @producer(%buf0) { aie.x = 3, aie.y = 3 } : (memref<512xi32>) -> () // write 1 to buf[16]
-  call @consumer(%buf1) { aie.x = 4, aie.y = 4 } : (memref<512xi32>) -> () // read buf[16]
+  func.call @producer(%buf0) { aie.x = 3, aie.y = 3 } : (memref<512xi32>) -> () // write 1 to buf[16]
+  func.call @consumer(%buf1) { aie.x = 4, aie.y = 4 } : (memref<512xi32>) -> () // read buf[16]
 
   AIE.memcpy @token0(1, 2) (%tile33 : <%buf0, 0, 512>, %tile44 : <%buf1, 0, 512>) : (memref<512xi32>, memref<512xi32>)
 }

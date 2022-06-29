@@ -32,6 +32,7 @@ def ADF_Dialect : Dialect {
     the C++ syntactic level.
   }];
   let cppNamespace = "::xilinx::ADF";
+  let useDefaultTypePrinterParser = 1;
 }
 
 //===----------------------------------------------------------------------===//

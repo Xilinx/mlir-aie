@@ -11,8 +11,6 @@ add_mlir_translation_library(MLIRTargetAIEVecCpp
 
   LINK_LIBS PUBLIC
   MLIRAIEVec
-  MLIRArithmetic
-  MLIREmitC
   MLIRIR
   MLIRSupport
   )

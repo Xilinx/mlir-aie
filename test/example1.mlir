@@ -34,7 +34,7 @@ module @example1 {
   AIE.token(0) { sym_name="token0" }
   AIE.token(0) { sym_name="token1" }
 
-  func @task0(%arg0: memref<256xi32>, %arg1: i32) -> () {
+  func.func @task0(%arg0: memref<256xi32>, %arg1: i32) -> () {
     AIE.useToken @token0(Acquire, 0)
     AIE.useToken @token1(Acquire, 0)
 
@@ -49,7 +49,7 @@ module @example1 {
     return
   }
 
-  func @task1(%arg0: memref<256xi32>) -> () {
+  func.func @task1(%arg0: memref<256xi32>) -> () {
     AIE.useToken @token0(Acquire, 2)
 
     // code
@@ -58,7 +58,7 @@ module @example1 {
     return
   }
 
-  func @task2(%arg0: memref<256xi32>) -> () {
+  func.func @task2(%arg0: memref<256xi32>) -> () {
     AIE.useToken @token1(Acquire, 2)
 
     // code
@@ -67,15 +67,15 @@ module @example1 {
     return
   }
 
-  func @task3() -> () {
+  func.func @task3() -> () {
     return
   }
 
   %t0 = arith.constant 19 : i32
-  call @task0(%buf0, %t0) { aie.x = 3, aie.y = 3 } : (memref<256xi32>, i32) -> ()
-  call @task1(%buf1) { aie.x = 4, aie.y = 2 } : (memref<256xi32>) -> ()
-  call @task2(%buf2) { aie.x = 4, aie.y = 4 } : (memref<256xi32>) -> ()
-  call @task3() : () -> ()
+  func.call @task0(%buf0, %t0) { aie.x = 3, aie.y = 3 } : (memref<256xi32>, i32) -> ()
+  func.call @task1(%buf1) { aie.x = 4, aie.y = 2 } : (memref<256xi32>) -> ()
+  func.call @task2(%buf2) { aie.x = 4, aie.y = 4 } : (memref<256xi32>) -> ()
+  func.call @task3() : () -> ()
 
   AIE.memcpy @token0(1, 2) (%t33 : <%buf0, 0, 256>, %t42 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
   AIE.memcpy @token1(1, 2) (%t33 : <%buf0, 0, 256>, %t44 : <%buf2, 0, 256>) : (memref<256xi32>, memref<256xi32>)

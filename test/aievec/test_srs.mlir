@@ -1,7 +1,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -split-input-file | FileCheck %s
 
-//CHECK-LABEL: func @conv2d(%arg0: memref<128xi32>, %arg1: memref<8xi32>, %arg2: memref<126xi32>) {
-func @conv2d (%A: memref<128xi32>, %B: memref<8xi32>, %C: memref<126xi32>) {
+//CHECK-LABEL: func.func @conv2d(%arg0: memref<128xi32>, %arg1: memref<8xi32>, %arg2: memref<126xi32>) {
+func.func @conv2d (%A: memref<128xi32>, %B: memref<8xi32>, %C: memref<126xi32>) {
     //CHECK-NEXT: %c0 = arith.constant 0 : index
     //CHECK-NEXT: %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<8xi32>, vector<8xi32>
     //CHECK-NEXT: %c0_0 = arith.constant 0 : index

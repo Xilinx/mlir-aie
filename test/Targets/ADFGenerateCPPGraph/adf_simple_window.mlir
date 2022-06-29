@@ -35,12 +35,12 @@
 
 // "blk" is block, it could be window or stream form in ADF graph.
 module {
-    func private @kfunc1(%in1 : !ADF.window<!ADF.int32, 128, 0>)
+    func.func private @kfunc1(%in1 : !ADF.window<!ADF.int32, 128, 0>)
                              ->(!ADF.window<!ADF.int16, 128, 0>)
-    func private @kfunc2(%in1 : !ADF.parameter<!ADF.int32>,
+    func.func private @kfunc2(%in1 : !ADF.parameter<!ADF.int32>,
                          %in2 : !ADF.window<!ADF.int16, 128, 0>)
                              ->(!ADF.window<!ADF.int32, 64, 0>)
-    func private @kfunc3(%in1 : !ADF.window<!ADF.int32, 128, 0>,
+    func.func private @kfunc3(%in1 : !ADF.window<!ADF.int32, 128, 0>,
                          %in2 : !ADF.window<!ADF.int32, 64, 0>)
                              ->(!ADF.window<!ADF.int32, 128, 0>)
 

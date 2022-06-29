@@ -1,7 +1,7 @@
 // RUN: aie-translate --aievec-to-cpp %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: void conv2d_0(float * restrict v6, size_t m1, size_t m2, float * restrict v7, size_t m3, float * restrict v8, size_t m4, size_t m5) {
-func @conv2d_0(%arg0: memref<?x?xf32>, %arg1: memref<?xf32>, %arg2: memref<?x?xf32>) {
+func.func @conv2d_0(%arg0: memref<?x?xf32>, %arg1: memref<?xf32>, %arg2: memref<?x?xf32>) {
   %c8 = arith.constant 8 : index
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
@@ -91,7 +91,7 @@ func @conv2d_0(%arg0: memref<?x?xf32>, %arg1: memref<?xf32>, %arg2: memref<?x?xf
 
 
 // CHECK-LABEL: void conv2d_1(float * restrict v4, size_t m1, float * restrict v5, size_t m2, float * restrict v6, size_t m3) {
-func @conv2d_1(%arg0: memref<?x256xf32>, %arg1: memref<?xf32>, %arg2: memref<?x256xf32>) {
+func.func @conv2d_1(%arg0: memref<?x256xf32>, %arg1: memref<?xf32>, %arg2: memref<?x256xf32>) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
   %0 = memref.dim %arg0, %c0 : memref<?x256xf32>
