@@ -51,6 +51,7 @@ struct AIEObjectFifoLoopUnrollPass
     for (auto coreOp : m.getOps<CoreOp>()) {
       if (std::find(objectFifoTiles.begin(), objectFifoTiles.end(),
                     coreOp.getTileOp()) != objectFifoTiles.end()) {
+
         coreOp.walk([&](mlir::scf::ForOp forLoop) {
           // look for operations on objectFifos
           // TODO: when multiple fifos in same loop, must use the smallest
@@ -59,21 +60,23 @@ struct AIEObjectFifoLoopUnrollPass
           int objFifoSize = 0;
           Block *body = forLoop.getBody();
 
-          body->walk([&](ObjectFifoAcquireOp acqOp) {
-            found = true;
-            ObjectFifoCreateOp op =
-                acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-            // if (op.size() > objFifoSize)
-            objFifoSize = op.size();
-          });
+          for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
+            if (acqOp.getOperation()->getParentOp() == forLoop) {
+              found = true;
+              ObjectFifoCreateOp op =
+                  acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
+              objFifoSize = op.size();
+            } 
+          }
 
-          body->walk([&](ObjectFifoReleaseOp relOp) {
-            found = true;
-            ObjectFifoCreateOp op =
-                relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-            // if (op.size() > objFifoSize)
-            objFifoSize = op.size();
-          });
+          for (auto relOp : body->getOps<ObjectFifoReleaseOp>()) {
+            if (relOp.getOperation()->getParentOp() == forLoop) {
+              found = true;
+              ObjectFifoCreateOp op =
+                  relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
+              objFifoSize = op.size();
+            }
+          }
 
           if (found) {
             std::vector<Operation *>
