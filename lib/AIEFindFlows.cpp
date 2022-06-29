@@ -229,7 +229,7 @@ private:
       }
     }
 
-    // generate message for antennas
+    // generate messages for antennas
     for (auto &antenna_key : antennaKeys) {
       std::vector<Operation *> antenna_nonvalid_path;
       std::vector<Operation *> antenna_valid_path;
