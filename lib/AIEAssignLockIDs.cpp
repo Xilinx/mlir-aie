@@ -1,19 +1,19 @@
-//===- AIEAssignBuffers.cpp -------------------------------------*- C++ -*-===//
+//===- AIEAssignLockIDs.cpp -------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
 // This pass aims to assign lockIDs to AIE.lock operations. The lockID is
 // numbered from the most recent AIE.lock within the same tile. If the lockID
 // exceeds 15 then the pass generates an error and terminates. AIE.lock
-// operations for different tiles are numbered independently. If there exists an
-// existing lockID this pass overwrites the existing lockID generating a
-// warning.
+// operations for different tiles are numbered independently. If there are
+// existing lock IDs, this pass is idempotent and only assign lock ids to locks
+// without an ID.
 
 #include "aie/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
@@ -22,14 +22,14 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-#define DEBUG_TYPE "aie-logical-locks"
+#define DEBUG_TYPE "aie-assign-lock-ids"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIECreateLogicalLocksPass
-    : public AIECreateLogicalLocksBase<AIECreateLogicalLocksPass> {
+struct AIEAssignLockIDsPass
+    : public AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<xilinx::AIE::AIEDialect>();
@@ -44,6 +44,9 @@ struct AIECreateLogicalLocksPass
     std::map<Operation *, int> unique_tiles;
     for (auto lock : m.getOps<LockOp>()) {
       Operation *lock_tile = lock.tile().getDefiningOp();
+
+      llvm::errs() << "onelock\n";
+      lock.getLockID();
 
       if (unique_tiles.find(lock_tile) == unique_tiles.end()) {
         // if not in map initial LockID = 0
@@ -67,6 +70,6 @@ struct AIECreateLogicalLocksPass
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIECreateLogicalLocksPass() {
-  return std::make_unique<AIECreateLogicalLocksPass>();
+xilinx::AIE::createAIEAssignLockIDsPass() {
+  return std::make_unique<AIEAssignLockIDsPass>();
 }

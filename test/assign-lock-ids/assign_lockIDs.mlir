@@ -49,43 +49,15 @@
 // CHECK:    }
 // CHECK:  }
 
-module @test_xaie0 {
+module @test_assign_lockIDs {
   %t11 = AIE.tile(1, 1)
   %t34 = AIE.tile(3, 4)
   %t32 = AIE.tile(3, 2)
   %t33 = AIE.tile(3, 3)
   %t43 = AIE.tile(4, 3)
 
-  %l11_8 = AIE.lock(%t11)
-  %l33_0 = AIE.lock(%t33)
+  %l11_8 = AIE.lock(%t11, 1)
+  %l33_0 = AIE.lock(%t33, 2)
   %l33_1 = AIE.lock(%t33)
   %l43_8 = AIE.lock(%t43)  
-
-  AIE.core(%t11) {
-    AIE.useLock(%l11_8, Acquire, 0)
-    AIE.useLock(%l11_8, Release, 1)
-    AIE.end
-  }
-  AIE.core(%t34) {
-    AIE.useLock(%l33_0, Acquire, 0)
-    AIE.useLock(%l33_0, Release, 1)
-    AIE.end
-  }
-  AIE.core(%t32) {
-    AIE.useLock(%l33_0, Acquire, 0)
-    AIE.useLock(%l33_0, Release, 1)
-    AIE.end
-  }
-  AIE.core(%t33) {
-    AIE.useLock(%l33_0, Acquire, 0)
-    AIE.useLock(%l33_0, Release, 1)
-    AIE.end
-  }
-  AIE.core(%t43) {
-    AIE.useLock(%l33_0, Acquire, 0)
-    AIE.useLock(%l33_0, Release, 1)
-    AIE.useLock(%l43_8, Acquire, 0)
-    AIE.useLock(%l43_8, Release, 1)
-    AIE.end
-  }
 }
