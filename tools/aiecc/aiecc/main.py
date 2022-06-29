@@ -194,10 +194,11 @@ def main(builtin_params={}):
         vitis_path = os.path.dirname(vitis_bin_path)
         os.environ['VITIS'] = vitis_path
         print("Found Vitis at " + vitis_path)
-        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, os.environ['PATH']])
+        os.environ['PATH'] = os.pathsep.join([os.environ['PATH'], vitis_bin_path])
  
     if('VITIS' in os.environ):
       vitis_path = os.environ['VITIS']
+      vitis_bin_path = os.path.join(vitis_path, "bin")
       # Find the aietools directory, needed by xchesscc_wrapper
       
       aietools_path = os.path.join(vitis_path, "aietools")
@@ -206,7 +207,10 @@ def main(builtin_params={}):
       os.environ['AIETOOLS'] = aietools_path
 
       aietools_bin_path = os.path.join(aietools_path, "bin")
-      os.environ['PATH'] = os.pathsep.join([aietools_bin_path, os.environ['PATH']])
+      os.environ['PATH'] = os.pathsep.join([
+        os.environ['PATH'],
+        aietools_bin_path,
+        vitis_bin_path])
 
     # This path should be generated from cmake
     os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])

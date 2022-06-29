@@ -39,27 +39,3 @@ void AIEVecDialect::registerTypes() {
 bool AIEVecType::classof(Type type) {
   return llvm::isa<AIEVecDialect>(type.getDialect());
 }
-
-//===----------------------------------------------------------------------===//
-// AIE Accumulator Types
-//===----------------------------------------------------------------------===//
-
-mlir::Type AccType::parse(mlir::AsmParser &parser) {
-  int32_t lanes;
-  Type ty;
-  if (parser.parseLess() || parser.parseInteger(lanes) ||
-      parser.parseXInDimensionList() || parser.parseType(ty) ||
-      parser.parseGreater()) {
-    parser.emitError(parser.getNameLoc(), "failed to parse AccType");
-    return Type();
-  }
-  return AccType::get(lanes, ty);
-}
-
-void AccType::print(mlir::AsmPrinter &printer) const {
-  printer << "<";
-  printer << getLanes();
-  printer << "x";
-  printer.printType(getValueType());
-  printer << '>';
-}

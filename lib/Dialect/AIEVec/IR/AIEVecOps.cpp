@@ -149,7 +149,7 @@ void SRSOp::print(OpAsmPrinter &p) {
 // Verify SRS op.
 LogicalResult SRSOp::verify() {
   // Verify the types
-  aievec::AccType sourceType = source().getType().dyn_cast<aievec::AccType>();
+  VectorType sourceType = source().getType().dyn_cast<VectorType>();
   VectorType resultType = result().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return emitError("requires accumulator type");
@@ -157,7 +157,7 @@ LogicalResult SRSOp::verify() {
     return emitError("requires vector type");
 
   // The number of lanes of source accumulator and result vector must match
-  unsigned accLanes = sourceType.getLanes();
+  unsigned accLanes = getVectorLaneSize(sourceType);
   unsigned vecLanes = getVectorLaneSize(resultType);
   if (accLanes != vecLanes)
     return emitError("The number of lanes in result vector "
@@ -165,7 +165,7 @@ LogicalResult SRSOp::verify() {
 
   // The datatype of accumulator must have greater width
   Type stype = resultType.getElementType();
-  Type atype = sourceType.getValueType();
+  Type atype = sourceType.getElementType();
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
@@ -202,9 +202,9 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(typesLoc, "requires two types");
 
   // Some verification of types
-  aievec::AccType accType = types[0].dyn_cast<aievec::AccType>();
+  VectorType accType = types[0].dyn_cast<VectorType>();
   if (!accType)
-    return parser.emitError(typesLoc, "requires accumulator type");
+    return parser.emitError(typesLoc, "requires vector type");
   VectorType vectorType = types[1].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
@@ -236,22 +236,22 @@ void UPSOp::print(OpAsmPrinter &p) {
 LogicalResult UPSOp::verify() {
   // Verify the types
   VectorType sourceType = source().getType().dyn_cast<VectorType>();
-  aievec::AccType resultType = result().getType().dyn_cast<aievec::AccType>();
+  VectorType resultType = result().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return emitError("requires vector type");
   if (!resultType)
-    return emitError("requires accumulator type");
+    return emitError("requires vector type");
 
   // The number of lanes must match
   unsigned vecLanes = getVectorLaneSize(sourceType);
-  unsigned accLanes = resultType.getLanes();
+  unsigned accLanes = getVectorLaneSize(resultType);
   if (vecLanes != accLanes)
     return emitError("The number of lanes in source vector "
                      "and result accumulator must match");
 
   // The datatype of accumulator must always be greater width
   Type stype = sourceType.getElementType();
-  Type atype = resultType.getValueType();
+  Type atype = resultType.getElementType();
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
@@ -291,9 +291,9 @@ ParseResult UPSOp::parse(OpAsmParser &parser, OperationState &result) {
   VectorType vectorType = types[0].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
-  aievec::AccType accType = types[1].dyn_cast<aievec::AccType>();
+  VectorType accType = types[1].dyn_cast<VectorType>();
   if (!accType)
-    return parser.emitError(typesLoc, "requires accumulator type");
+    return parser.emitError(typesLoc, "requires vector type");
 
   // Populate the source in result
   if (parser.resolveOperand(source, vectorType, result.operands))
@@ -329,30 +329,6 @@ inline void elideFMSubAttr(aievec::FMAOp op,
 template <>
 inline void elideFMSubAttr(aievec::MulOp,
                            SmallVector<StringRef, 10> &elidedAttrs) {}
-
-// Verification checks for accumulator field of FMA op
-template <typename T>
-inline LogicalResult verifyAccType(T op, aievec::AccType resultType);
-template <>
-inline LogicalResult verifyAccType(aievec::FMAOp op,
-                                   aievec::AccType resultType) {
-  bool isInt = op.lhs()
-                   .getType()
-                   .dyn_cast<VectorType>()
-                   .getElementType()
-                   .isa<IntegerType>();
-  aievec::AccType accType = op.acc().getType().dyn_cast<aievec::AccType>();
-  if (isInt && !accType)
-    return op.emitError("requires accumulator type");
-  if (resultType != accType)
-    return op.emitError("the result type and accumulator type must match");
-  return success();
-}
-template <>
-inline LogicalResult verifyAccType(aievec::MulOp op,
-                                   aievec::AccType resultType) {
-  return success();
-}
 
 // Print out Mul and FMA op.
 template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
@@ -400,34 +376,21 @@ template <typename T> LogicalResult verifyMulFMAOp(T op) {
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
 
-  // Determine if it is an integer or float operation
-  bool isInt = lhsType.getElementType().isa<IntegerType>();
-
-  VectorType resultVecType =
-      op.result().getType().template dyn_cast<VectorType>();
-  aievec::AccType resultAccType =
-      op.result().getType().template dyn_cast<aievec::AccType>();
-  if (isInt && !resultAccType)
-    return op.emitError("requires accumulator type");
-  else if (!isInt && !resultVecType)
+  VectorType resultType = op.result().getType().template dyn_cast<VectorType>();
+  if (!resultType)
     return op.emitError("requires vector type");
 
   // Additional checks for FMA op
-  if (!isInt && failed(verifyAccType(op, resultAccType)))
-    return failure();
-
   // Get the width of the underlying scalars of all the vectors
   Type ltype = lhsType.getElementType();
   Type rtype = rhsType.getElementType();
-  Type atype =
-      isInt ? resultAccType.getValueType() : resultVecType.getElementType();
+  Type atype = resultType.getElementType();
   unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
   unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
-  unsigned accLanes =
-      isInt ? resultAccType.getLanes() : getVectorLaneSize(resultVecType);
+  unsigned accLanes = getVectorLaneSize(resultType);
   unsigned rhsLanes = getVectorLaneSize(rhsType);
   unsigned lhsLanes = getVectorLaneSize(lhsType);
 
@@ -506,13 +469,9 @@ ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
     return parser.emitError(typesLoc, "requires vector type");
 
   // Int ops use the accumulator while float ops use normal vector registers
-  bool isInt = lhsType.getElementType().isa<IntegerType>();
-  aievec::AccType accTypeAcc = types[2].dyn_cast<aievec::AccType>();
-  VectorType accTypeVec = types[2].dyn_cast<VectorType>();
-  if (isInt && !accTypeAcc)
-    return parser.emitError(typesLoc, "integer op requires accumulator type");
-  else if (!isInt && !accTypeVec)
-    return parser.emitError(typesLoc, "float op requires vector type");
+  VectorType accType = types[2].dyn_cast<VectorType>();
+  if (!accType)
+    return parser.emitError(typesLoc, "requires vector type");
 
   // Populate the lhs and rhs operands, and result
   if (parser.resolveOperand(lhs, lhsType, result.operands) ||
@@ -521,17 +480,11 @@ ParseResult parseMulFMAOp(OpAsmParser &parser, OperationState &result,
 
   // Populate acc operand for FMA op
   if (isFMAOp) {
-    if (isInt) {
-      if (parser.resolveOperand(acc, accTypeAcc, result.operands))
-        return failure();
-    } else {
-      if (parser.resolveOperand(acc, accTypeVec, result.operands))
-        return failure();
-    }
+    if (parser.resolveOperand(acc, accType, result.operands))
+      return failure();
   }
 
-  return isInt ? parser.addTypeToList(accTypeAcc, result.types)
-               : parser.addTypeToList(accTypeVec, result.types);
+  return parser.addTypeToList(accType, result.types);
 }
 
 ParseResult MulOp::parse(OpAsmParser &parser, OperationState &result) {
