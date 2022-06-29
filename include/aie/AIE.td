@@ -39,6 +39,7 @@ switch is referred to as 'switchbox' to avoid confusion with the
 'switch' keyword in C/C++.
 
   }];
+  let useDefaultTypePrinterParser = 1;
 }
 
 def Core: I32EnumAttrCase<"Core", 0>;

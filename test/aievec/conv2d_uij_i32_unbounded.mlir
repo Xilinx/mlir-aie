@@ -1,7 +1,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=0" -split-input-file | FileCheck %s
 
-//CHECK-LABEL: func @conv2d_0(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>) {
-func @conv2d_0 (%A: memref<?x?xi32>, %B: memref<?xi32>, %C: memref<?x?xi32>) {
+//CHECK-LABEL: func.func @conv2d_0(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>) {
+func.func @conv2d_0 (%A: memref<?x?xi32>, %B: memref<?xi32>, %C: memref<?x?xi32>) {
     %c0 = arith.constant 0 : index
     %M = memref.dim %A, %c0 : memref<?x?xi32>
     %c1 = arith.constant 1 : index
@@ -76,9 +76,9 @@ func @conv2d_0 (%A: memref<?x?xi32>, %B: memref<?xi32>, %C: memref<?x?xi32>) {
     return
 }
 
-//CHECK-NEXT: %c0 = arith.constant 0 : index
-//CHECK-NEXT: %c1 = arith.constant 1 : index
 //CHECK-NEXT: %c8 = arith.constant 8 : index
+//CHECK-NEXT: %c1 = arith.constant 1 : index
+//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %0 = memref.dim %arg0, %c0 : memref<?x?xi32>
 //CHECK-NEXT: %1 = memref.dim %arg0, %c1 : memref<?x?xi32>
 //CHECK-NEXT: %2 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<?xi32>, vector<8xi32>
@@ -116,8 +116,8 @@ func @conv2d_0 (%A: memref<?x?xi32>, %B: memref<?xi32>, %C: memref<?x?xi32>) {
 //CHECK-NEXT: vector.transfer_write %24, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<8xi32>, memref<?x?xi32>
 
 
-// CHECK-LABEL: func @conv2d_1(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memref<?x256xi32>) {
-func @conv2d_1 (%A: memref<?x256xi32>, %B: memref<?xi32>, %C: memref<?x256xi32>) {
+// CHECK-LABEL: func.func @conv2d_1(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memref<?x256xi32>) {
+func.func @conv2d_1 (%A: memref<?x256xi32>, %B: memref<?xi32>, %C: memref<?x256xi32>) {
     %c0 = arith.constant 0 : index
     %M = memref.dim %A, %c0 : memref<?x256xi32>
     %c1 = arith.constant 1 : index
@@ -192,8 +192,8 @@ func @conv2d_1 (%A: memref<?x256xi32>, %B: memref<?xi32>, %C: memref<?x256xi32>)
     return
 }
 
-//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %c8 = arith.constant 8 : index
+//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %0 = memref.dim %arg0, %c0 : memref<?x256xi32>
 //CHECK-NEXT: %1 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<?xi32>, vector<8xi32>
 //CHECK-NEXT: %2 = aievec.upd %arg1[%c8] {index = 0 : i8, offset = 0 : si32} : memref<?xi32>, vector<8xi32>

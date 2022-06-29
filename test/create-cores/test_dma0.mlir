@@ -75,21 +75,21 @@ module @test_dma0 {
 
   AIE.token(0) { sym_name="token0" }
 
-  func @task0(%arg0: memref<256xi32>) -> () {
+  func.func @task0(%arg0: memref<256xi32>) -> () {
     AIE.useToken @token0(Acquire, 0)
     // code
     AIE.useToken @token0(Release, 1)
     return
   }
 
-  func @task1(%arg0: memref<256xi32>) -> () {
+  func.func @task1(%arg0: memref<256xi32>) -> () {
     AIE.useToken @token0(Acquire, 2)
     // code
     AIE.useToken @token0(Release, 3)
     return
   }
 
-  call @task0(%buf0) { aie.x = 1, aie.y = 1 } : (memref<256xi32>) -> ()
+  func.call @task0(%buf0) { aie.x = 1, aie.y = 1 } : (memref<256xi32>) -> ()
   AIE.memcpy @token0(1, 2) (%t11 : <%buf0, 0, 256>, %t22 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
-  call @task1(%buf1) { aie.x = 2, aie.y = 2 } : (memref<256xi32>) -> ()
+  func.call @task1(%buf1) { aie.x = 2, aie.y = 2 } : (memref<256xi32>) -> ()
 }

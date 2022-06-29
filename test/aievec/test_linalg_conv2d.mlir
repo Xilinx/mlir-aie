@@ -1,7 +1,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -split-input-file | FileCheck %s
 
-//CHECK-LABEL: func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
-func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
+//CHECK-LABEL: func.func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
+func.func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
   %c0 = arith.constant 0 : index
   %c0_0 = arith.constant 0 : index
   %c0_1 = arith.constant 0 : index
@@ -178,9 +178,9 @@ func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg
   return
 }
 
-//CHECK-NEXT: %c0 = arith.constant 0 : index
-//CHECK-NEXT: %c1 = arith.constant 1 : index
 //CHECK-NEXT: %c2 = arith.constant 2 : index
+//CHECK-NEXT: %c1 = arith.constant 1 : index
+//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %c0_0 = arith.constant 0 : index
 //CHECK-NEXT: %c10 = arith.constant 10 : index
 //CHECK-NEXT: %c1_1 = arith.constant 1 : index

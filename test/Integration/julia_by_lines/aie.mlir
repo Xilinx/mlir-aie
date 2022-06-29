@@ -21,8 +21,8 @@ module @test {
 
   %lock13_3 = AIE.lock(%tile13, 3)
 
-  func private @func(%A: memref<32x32xi32>, %MinRe : f32, %MaxRe : f32, %MinIm : f32, %MaxIm : f32) -> ()
-  func private @do_line(%A: memref<32x32xi32>, %MinRe : f32, %StepRe : f32, %Im : f32, %cols : i32) -> ()
+  func.func private @func(%A: memref<32x32xi32>, %MinRe : f32, %MaxRe : f32, %MinIm : f32, %MaxIm : f32) -> ()
+  func.func private @do_line(%A: memref<32x32xi32>, %MinRe : f32, %StepRe : f32, %Im : f32, %cols : i32) -> ()
 
   %core13 = AIE.core(%tile13) {
     %MinRe = arith.constant -1.5 : f32
@@ -46,7 +46,7 @@ module @test {
       iter_args(%Im = %MinIm) -> (f32) {
       %Im_next = addf %Im, %StepIm : f32
       AIE.useLock(%lock13_3, "Acquire", 1) // acquire
-      call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
+      func.call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
       AIE.useLock(%lock13_3, "Release", 0) // release for write
       scf.yield %Im_next : f32
     }

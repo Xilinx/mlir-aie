@@ -1,7 +1,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="shift=10 zero-offset=4" -split-input-file | FileCheck %s
 
-// CHECK-LABEL: func @conv2d(%arg0: memref<18x288xi16>, %arg1: memref<12xi16>, %arg2: memref<16x256xi16>) {
-func @conv2d (%A: memref<18x288xi16>, %B: memref<12xi16>, %C: memref<16x256xi16>) {
+// CHECK-LABEL: func.func @conv2d(%arg0: memref<18x288xi16>, %arg1: memref<12xi16>, %arg2: memref<16x256xi16>) {
+func.func @conv2d (%A: memref<18x288xi16>, %B: memref<12xi16>, %C: memref<16x256xi16>) {
     affine.for %arg3 = 0 to 16 {
         affine.for %arg4 = 0 to 256 {
             //First row

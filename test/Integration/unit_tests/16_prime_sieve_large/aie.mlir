@@ -1117,7 +1117,7 @@ module @test16_prime_sieve_large {
     AIE.useLock(%lock1_1, "Release", 1)
     AIE.end
   }
-  func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
+  func.func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c64 = arith.constant 64 : index
@@ -1165,7 +1165,7 @@ module @test16_prime_sieve_large {
   %core1_2 = AIE.core(%tile1_2) {
     AIE.useLock(%lock1_1, "Acquire", 1)
     AIE.useLock(%lock1_2, "Acquire", 0)
-    call @do_sieve(%buf1_1, %buf1_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_1, %buf1_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_1, "Release", 0)
     AIE.useLock(%lock1_2, "Release", 1)
     AIE.end
@@ -1174,7 +1174,7 @@ module @test16_prime_sieve_large {
   %core1_3 = AIE.core(%tile1_3) {
     AIE.useLock(%lock1_2, "Acquire", 1)
     AIE.useLock(%lock1_3, "Acquire", 0)
-    call @do_sieve(%buf1_2, %buf1_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_2, %buf1_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_2, "Release", 0)
     AIE.useLock(%lock1_3, "Release", 1)
     AIE.end
@@ -1183,7 +1183,7 @@ module @test16_prime_sieve_large {
   %core1_4 = AIE.core(%tile1_4) {
     AIE.useLock(%lock1_3, "Acquire", 1)
     AIE.useLock(%lock1_4, "Acquire", 0)
-    call @do_sieve(%buf1_3, %buf1_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_3, %buf1_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_3, "Release", 0)
     AIE.useLock(%lock1_4, "Release", 1)
     AIE.end
@@ -1192,7 +1192,7 @@ module @test16_prime_sieve_large {
   %core1_5 = AIE.core(%tile1_5) {
     AIE.useLock(%lock1_4, "Acquire", 1)
     AIE.useLock(%lock1_5, "Acquire", 0)
-    call @do_sieve(%buf1_4, %buf1_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_4, %buf1_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_4, "Release", 0)
     AIE.useLock(%lock1_5, "Release", 1)
     AIE.end
@@ -1201,7 +1201,7 @@ module @test16_prime_sieve_large {
   %core1_6 = AIE.core(%tile1_6) {
     AIE.useLock(%lock1_5, "Acquire", 1)
     AIE.useLock(%lock1_6, "Acquire", 0)
-    call @do_sieve(%buf1_5, %buf1_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_5, %buf1_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_5, "Release", 0)
     AIE.useLock(%lock1_6, "Release", 1)
     AIE.end
@@ -1210,7 +1210,7 @@ module @test16_prime_sieve_large {
   %core1_7 = AIE.core(%tile1_7) {
     AIE.useLock(%lock1_6, "Acquire", 1)
     AIE.useLock(%lock1_7, "Acquire", 0)
-    call @do_sieve(%buf1_6, %buf1_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_6, %buf1_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_6, "Release", 0)
     AIE.useLock(%lock1_7, "Release", 1)
     AIE.end
@@ -1219,7 +1219,7 @@ module @test16_prime_sieve_large {
   %core1_8 = AIE.core(%tile1_8) {
     AIE.useLock(%lock1_7, "Acquire", 1)
     AIE.useLock(%lock1_8, "Acquire", 0)
-    call @do_sieve(%buf1_7, %buf1_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_7, %buf1_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_7, "Release", 0)
     AIE.useLock(%lock1_8, "Release", 1)
     AIE.end
@@ -1228,7 +1228,7 @@ module @test16_prime_sieve_large {
   %core1_9 = AIE.core(%tile1_9) {
     AIE.useLock(%lock1_8, "Acquire", 1)
     AIE.useLock(%lock1_9, "Acquire", 0)
-    call @do_sieve(%buf1_8, %buf1_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_8, %buf1_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_8, "Release", 0)
     AIE.useLock(%lock1_9, "Release", 1)
     AIE.end
@@ -1237,7 +1237,7 @@ module @test16_prime_sieve_large {
   %core2_9 = AIE.core(%tile2_9) {
     AIE.useLock(%lock1_9, "Acquire", 1)
     AIE.useLock(%lock2_9, "Acquire", 0)
-    call @do_sieve(%buf1_9, %buf2_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf1_9, %buf2_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock1_9, "Release", 0)
     AIE.useLock(%lock2_9, "Release", 1)
     AIE.end
@@ -1246,7 +1246,7 @@ module @test16_prime_sieve_large {
   %core2_8 = AIE.core(%tile2_8) {
     AIE.useLock(%lock2_9, "Acquire", 1)
     AIE.useLock(%lock2_8, "Acquire", 0)
-    call @do_sieve(%buf2_9, %buf2_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_9, %buf2_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_9, "Release", 0)
     AIE.useLock(%lock2_8, "Release", 1)
     AIE.end
@@ -1255,7 +1255,7 @@ module @test16_prime_sieve_large {
   %core2_7 = AIE.core(%tile2_7) {
     AIE.useLock(%lock2_8, "Acquire", 1)
     AIE.useLock(%lock2_7, "Acquire", 0)
-    call @do_sieve(%buf2_8, %buf2_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_8, %buf2_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_8, "Release", 0)
     AIE.useLock(%lock2_7, "Release", 1)
     AIE.end
@@ -1264,7 +1264,7 @@ module @test16_prime_sieve_large {
   %core2_6 = AIE.core(%tile2_6) {
     AIE.useLock(%lock2_7, "Acquire", 1)
     AIE.useLock(%lock2_6, "Acquire", 0)
-    call @do_sieve(%buf2_7, %buf2_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_7, %buf2_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_7, "Release", 0)
     AIE.useLock(%lock2_6, "Release", 1)
     AIE.end
@@ -1273,7 +1273,7 @@ module @test16_prime_sieve_large {
   %core2_5 = AIE.core(%tile2_5) {
     AIE.useLock(%lock2_6, "Acquire", 1)
     AIE.useLock(%lock2_5, "Acquire", 0)
-    call @do_sieve(%buf2_6, %buf2_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_6, %buf2_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_6, "Release", 0)
     AIE.useLock(%lock2_5, "Release", 1)
     AIE.end
@@ -1282,7 +1282,7 @@ module @test16_prime_sieve_large {
   %core2_4 = AIE.core(%tile2_4) {
     AIE.useLock(%lock2_5, "Acquire", 1)
     AIE.useLock(%lock2_4, "Acquire", 0)
-    call @do_sieve(%buf2_5, %buf2_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_5, %buf2_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_5, "Release", 0)
     AIE.useLock(%lock2_4, "Release", 1)
     AIE.end
@@ -1291,7 +1291,7 @@ module @test16_prime_sieve_large {
   %core2_3 = AIE.core(%tile2_3) {
     AIE.useLock(%lock2_4, "Acquire", 1)
     AIE.useLock(%lock2_3, "Acquire", 0)
-    call @do_sieve(%buf2_4, %buf2_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_4, %buf2_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_4, "Release", 0)
     AIE.useLock(%lock2_3, "Release", 1)
     AIE.end
@@ -1300,7 +1300,7 @@ module @test16_prime_sieve_large {
   %core2_2 = AIE.core(%tile2_2) {
     AIE.useLock(%lock2_3, "Acquire", 1)
     AIE.useLock(%lock2_2, "Acquire", 0)
-    call @do_sieve(%buf2_3, %buf2_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_3, %buf2_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_3, "Release", 0)
     AIE.useLock(%lock2_2, "Release", 1)
     AIE.end
@@ -1309,7 +1309,7 @@ module @test16_prime_sieve_large {
   %core2_1 = AIE.core(%tile2_1) {
     AIE.useLock(%lock2_2, "Acquire", 1)
     AIE.useLock(%lock2_1, "Acquire", 0)
-    call @do_sieve(%buf2_2, %buf2_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_2, %buf2_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_2, "Release", 0)
     AIE.useLock(%lock2_1, "Release", 1)
     AIE.end
@@ -1318,7 +1318,7 @@ module @test16_prime_sieve_large {
   %core3_1 = AIE.core(%tile3_1) {
     AIE.useLock(%lock2_1, "Acquire", 1)
     AIE.useLock(%lock3_1, "Acquire", 0)
-    call @do_sieve(%buf2_1, %buf3_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf2_1, %buf3_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock2_1, "Release", 0)
     AIE.useLock(%lock3_1, "Release", 1)
     AIE.end
@@ -1327,7 +1327,7 @@ module @test16_prime_sieve_large {
   %core3_2 = AIE.core(%tile3_2) {
     AIE.useLock(%lock3_1, "Acquire", 1)
     AIE.useLock(%lock3_2, "Acquire", 0)
-    call @do_sieve(%buf3_1, %buf3_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_1, %buf3_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_1, "Release", 0)
     AIE.useLock(%lock3_2, "Release", 1)
     AIE.end
@@ -1336,7 +1336,7 @@ module @test16_prime_sieve_large {
   %core3_3 = AIE.core(%tile3_3) {
     AIE.useLock(%lock3_2, "Acquire", 1)
     AIE.useLock(%lock3_3, "Acquire", 0)
-    call @do_sieve(%buf3_2, %buf3_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_2, %buf3_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_2, "Release", 0)
     AIE.useLock(%lock3_3, "Release", 1)
     AIE.end
@@ -1345,7 +1345,7 @@ module @test16_prime_sieve_large {
   %core3_4 = AIE.core(%tile3_4) {
     AIE.useLock(%lock3_3, "Acquire", 1)
     AIE.useLock(%lock3_4, "Acquire", 0)
-    call @do_sieve(%buf3_3, %buf3_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_3, %buf3_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_3, "Release", 0)
     AIE.useLock(%lock3_4, "Release", 1)
     AIE.end
@@ -1354,7 +1354,7 @@ module @test16_prime_sieve_large {
   %core3_5 = AIE.core(%tile3_5) {
     AIE.useLock(%lock3_4, "Acquire", 1)
     AIE.useLock(%lock3_5, "Acquire", 0)
-    call @do_sieve(%buf3_4, %buf3_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_4, %buf3_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_4, "Release", 0)
     AIE.useLock(%lock3_5, "Release", 1)
     AIE.end
@@ -1363,7 +1363,7 @@ module @test16_prime_sieve_large {
   %core3_6 = AIE.core(%tile3_6) {
     AIE.useLock(%lock3_5, "Acquire", 1)
     AIE.useLock(%lock3_6, "Acquire", 0)
-    call @do_sieve(%buf3_5, %buf3_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_5, %buf3_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_5, "Release", 0)
     AIE.useLock(%lock3_6, "Release", 1)
     AIE.end
@@ -1372,7 +1372,7 @@ module @test16_prime_sieve_large {
   %core3_7 = AIE.core(%tile3_7) {
     AIE.useLock(%lock3_6, "Acquire", 1)
     AIE.useLock(%lock3_7, "Acquire", 0)
-    call @do_sieve(%buf3_6, %buf3_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_6, %buf3_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_6, "Release", 0)
     AIE.useLock(%lock3_7, "Release", 1)
     AIE.end
@@ -1381,7 +1381,7 @@ module @test16_prime_sieve_large {
   %core3_8 = AIE.core(%tile3_8) {
     AIE.useLock(%lock3_7, "Acquire", 1)
     AIE.useLock(%lock3_8, "Acquire", 0)
-    call @do_sieve(%buf3_7, %buf3_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_7, %buf3_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_7, "Release", 0)
     AIE.useLock(%lock3_8, "Release", 1)
     AIE.end
@@ -1390,7 +1390,7 @@ module @test16_prime_sieve_large {
   %core3_9 = AIE.core(%tile3_9) {
     AIE.useLock(%lock3_8, "Acquire", 1)
     AIE.useLock(%lock3_9, "Acquire", 0)
-    call @do_sieve(%buf3_8, %buf3_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_8, %buf3_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_8, "Release", 0)
     AIE.useLock(%lock3_9, "Release", 1)
     AIE.end
@@ -1399,7 +1399,7 @@ module @test16_prime_sieve_large {
   %core4_9 = AIE.core(%tile4_9) {
     AIE.useLock(%lock3_9, "Acquire", 1)
     AIE.useLock(%lock4_9, "Acquire", 0)
-    call @do_sieve(%buf3_9, %buf4_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf3_9, %buf4_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock3_9, "Release", 0)
     AIE.useLock(%lock4_9, "Release", 1)
     AIE.end
@@ -1408,7 +1408,7 @@ module @test16_prime_sieve_large {
   %core4_8 = AIE.core(%tile4_8) {
     AIE.useLock(%lock4_9, "Acquire", 1)
     AIE.useLock(%lock4_8, "Acquire", 0)
-    call @do_sieve(%buf4_9, %buf4_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_9, %buf4_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_9, "Release", 0)
     AIE.useLock(%lock4_8, "Release", 1)
     AIE.end
@@ -1417,7 +1417,7 @@ module @test16_prime_sieve_large {
   %core4_7 = AIE.core(%tile4_7) {
     AIE.useLock(%lock4_8, "Acquire", 1)
     AIE.useLock(%lock4_7, "Acquire", 0)
-    call @do_sieve(%buf4_8, %buf4_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_8, %buf4_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_8, "Release", 0)
     AIE.useLock(%lock4_7, "Release", 1)
     AIE.end
@@ -1426,7 +1426,7 @@ module @test16_prime_sieve_large {
   %core4_6 = AIE.core(%tile4_6) {
     AIE.useLock(%lock4_7, "Acquire", 1)
     AIE.useLock(%lock4_6, "Acquire", 0)
-    call @do_sieve(%buf4_7, %buf4_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_7, %buf4_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_7, "Release", 0)
     AIE.useLock(%lock4_6, "Release", 1)
     AIE.end
@@ -1435,7 +1435,7 @@ module @test16_prime_sieve_large {
   %core4_5 = AIE.core(%tile4_5) {
     AIE.useLock(%lock4_6, "Acquire", 1)
     AIE.useLock(%lock4_5, "Acquire", 0)
-    call @do_sieve(%buf4_6, %buf4_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_6, %buf4_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_6, "Release", 0)
     AIE.useLock(%lock4_5, "Release", 1)
     AIE.end
@@ -1444,7 +1444,7 @@ module @test16_prime_sieve_large {
   %core4_4 = AIE.core(%tile4_4) {
     AIE.useLock(%lock4_5, "Acquire", 1)
     AIE.useLock(%lock4_4, "Acquire", 0)
-    call @do_sieve(%buf4_5, %buf4_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_5, %buf4_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_5, "Release", 0)
     AIE.useLock(%lock4_4, "Release", 1)
     AIE.end
@@ -1453,7 +1453,7 @@ module @test16_prime_sieve_large {
   %core4_3 = AIE.core(%tile4_3) {
     AIE.useLock(%lock4_4, "Acquire", 1)
     AIE.useLock(%lock4_3, "Acquire", 0)
-    call @do_sieve(%buf4_4, %buf4_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_4, %buf4_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_4, "Release", 0)
     AIE.useLock(%lock4_3, "Release", 1)
     AIE.end
@@ -1462,7 +1462,7 @@ module @test16_prime_sieve_large {
   %core4_2 = AIE.core(%tile4_2) {
     AIE.useLock(%lock4_3, "Acquire", 1)
     AIE.useLock(%lock4_2, "Acquire", 0)
-    call @do_sieve(%buf4_3, %buf4_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_3, %buf4_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_3, "Release", 0)
     AIE.useLock(%lock4_2, "Release", 1)
     AIE.end
@@ -1471,7 +1471,7 @@ module @test16_prime_sieve_large {
   %core4_1 = AIE.core(%tile4_1) {
     AIE.useLock(%lock4_2, "Acquire", 1)
     AIE.useLock(%lock4_1, "Acquire", 0)
-    call @do_sieve(%buf4_2, %buf4_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_2, %buf4_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_2, "Release", 0)
     AIE.useLock(%lock4_1, "Release", 1)
     AIE.end
@@ -1480,7 +1480,7 @@ module @test16_prime_sieve_large {
   %core5_1 = AIE.core(%tile5_1) {
     AIE.useLock(%lock4_1, "Acquire", 1)
     AIE.useLock(%lock5_1, "Acquire", 0)
-    call @do_sieve(%buf4_1, %buf5_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf4_1, %buf5_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock4_1, "Release", 0)
     AIE.useLock(%lock5_1, "Release", 1)
     AIE.end
@@ -1489,7 +1489,7 @@ module @test16_prime_sieve_large {
   %core5_2 = AIE.core(%tile5_2) {
     AIE.useLock(%lock5_1, "Acquire", 1)
     AIE.useLock(%lock5_2, "Acquire", 0)
-    call @do_sieve(%buf5_1, %buf5_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_1, %buf5_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_1, "Release", 0)
     AIE.useLock(%lock5_2, "Release", 1)
     AIE.end
@@ -1498,7 +1498,7 @@ module @test16_prime_sieve_large {
   %core5_3 = AIE.core(%tile5_3) {
     AIE.useLock(%lock5_2, "Acquire", 1)
     AIE.useLock(%lock5_3, "Acquire", 0)
-    call @do_sieve(%buf5_2, %buf5_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_2, %buf5_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_2, "Release", 0)
     AIE.useLock(%lock5_3, "Release", 1)
     AIE.end
@@ -1507,7 +1507,7 @@ module @test16_prime_sieve_large {
   %core5_4 = AIE.core(%tile5_4) {
     AIE.useLock(%lock5_3, "Acquire", 1)
     AIE.useLock(%lock5_4, "Acquire", 0)
-    call @do_sieve(%buf5_3, %buf5_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_3, %buf5_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_3, "Release", 0)
     AIE.useLock(%lock5_4, "Release", 1)
     AIE.end
@@ -1516,7 +1516,7 @@ module @test16_prime_sieve_large {
   %core5_5 = AIE.core(%tile5_5) {
     AIE.useLock(%lock5_4, "Acquire", 1)
     AIE.useLock(%lock5_5, "Acquire", 0)
-    call @do_sieve(%buf5_4, %buf5_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_4, %buf5_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_4, "Release", 0)
     AIE.useLock(%lock5_5, "Release", 1)
     AIE.end
@@ -1525,7 +1525,7 @@ module @test16_prime_sieve_large {
   %core5_6 = AIE.core(%tile5_6) {
     AIE.useLock(%lock5_5, "Acquire", 1)
     AIE.useLock(%lock5_6, "Acquire", 0)
-    call @do_sieve(%buf5_5, %buf5_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_5, %buf5_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_5, "Release", 0)
     AIE.useLock(%lock5_6, "Release", 1)
     AIE.end
@@ -1534,7 +1534,7 @@ module @test16_prime_sieve_large {
   %core5_7 = AIE.core(%tile5_7) {
     AIE.useLock(%lock5_6, "Acquire", 1)
     AIE.useLock(%lock5_7, "Acquire", 0)
-    call @do_sieve(%buf5_6, %buf5_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_6, %buf5_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_6, "Release", 0)
     AIE.useLock(%lock5_7, "Release", 1)
     AIE.end
@@ -1543,7 +1543,7 @@ module @test16_prime_sieve_large {
   %core5_8 = AIE.core(%tile5_8) {
     AIE.useLock(%lock5_7, "Acquire", 1)
     AIE.useLock(%lock5_8, "Acquire", 0)
-    call @do_sieve(%buf5_7, %buf5_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_7, %buf5_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_7, "Release", 0)
     AIE.useLock(%lock5_8, "Release", 1)
     AIE.end
@@ -1552,7 +1552,7 @@ module @test16_prime_sieve_large {
   %core5_9 = AIE.core(%tile5_9) {
     AIE.useLock(%lock5_8, "Acquire", 1)
     AIE.useLock(%lock5_9, "Acquire", 0)
-    call @do_sieve(%buf5_8, %buf5_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_8, %buf5_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_8, "Release", 0)
     AIE.useLock(%lock5_9, "Release", 1)
     AIE.end
@@ -1561,7 +1561,7 @@ module @test16_prime_sieve_large {
   %core6_9 = AIE.core(%tile6_9) {
     AIE.useLock(%lock5_9, "Acquire", 1)
     AIE.useLock(%lock6_9, "Acquire", 0)
-    call @do_sieve(%buf5_9, %buf6_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf5_9, %buf6_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock5_9, "Release", 0)
     AIE.useLock(%lock6_9, "Release", 1)
     AIE.end
@@ -1570,7 +1570,7 @@ module @test16_prime_sieve_large {
   %core6_8 = AIE.core(%tile6_8) {
     AIE.useLock(%lock6_9, "Acquire", 1)
     AIE.useLock(%lock6_8, "Acquire", 0)
-    call @do_sieve(%buf6_9, %buf6_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_9, %buf6_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_9, "Release", 0)
     AIE.useLock(%lock6_8, "Release", 1)
     AIE.end
@@ -1579,7 +1579,7 @@ module @test16_prime_sieve_large {
   %core6_7 = AIE.core(%tile6_7) {
     AIE.useLock(%lock6_8, "Acquire", 1)
     AIE.useLock(%lock6_7, "Acquire", 0)
-    call @do_sieve(%buf6_8, %buf6_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_8, %buf6_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_8, "Release", 0)
     AIE.useLock(%lock6_7, "Release", 1)
     AIE.end
@@ -1588,7 +1588,7 @@ module @test16_prime_sieve_large {
   %core6_6 = AIE.core(%tile6_6) {
     AIE.useLock(%lock6_7, "Acquire", 1)
     AIE.useLock(%lock6_6, "Acquire", 0)
-    call @do_sieve(%buf6_7, %buf6_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_7, %buf6_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_7, "Release", 0)
     AIE.useLock(%lock6_6, "Release", 1)
     AIE.end
@@ -1597,7 +1597,7 @@ module @test16_prime_sieve_large {
   %core6_5 = AIE.core(%tile6_5) {
     AIE.useLock(%lock6_6, "Acquire", 1)
     AIE.useLock(%lock6_5, "Acquire", 0)
-    call @do_sieve(%buf6_6, %buf6_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_6, %buf6_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_6, "Release", 0)
     AIE.useLock(%lock6_5, "Release", 1)
     AIE.end
@@ -1606,7 +1606,7 @@ module @test16_prime_sieve_large {
   %core6_4 = AIE.core(%tile6_4) {
     AIE.useLock(%lock6_5, "Acquire", 1)
     AIE.useLock(%lock6_4, "Acquire", 0)
-    call @do_sieve(%buf6_5, %buf6_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_5, %buf6_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_5, "Release", 0)
     AIE.useLock(%lock6_4, "Release", 1)
     AIE.end
@@ -1615,7 +1615,7 @@ module @test16_prime_sieve_large {
   %core6_3 = AIE.core(%tile6_3) {
     AIE.useLock(%lock6_4, "Acquire", 1)
     AIE.useLock(%lock6_3, "Acquire", 0)
-    call @do_sieve(%buf6_4, %buf6_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_4, %buf6_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_4, "Release", 0)
     AIE.useLock(%lock6_3, "Release", 1)
     AIE.end
@@ -1624,7 +1624,7 @@ module @test16_prime_sieve_large {
   %core6_2 = AIE.core(%tile6_2) {
     AIE.useLock(%lock6_3, "Acquire", 1)
     AIE.useLock(%lock6_2, "Acquire", 0)
-    call @do_sieve(%buf6_3, %buf6_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_3, %buf6_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_3, "Release", 0)
     AIE.useLock(%lock6_2, "Release", 1)
     AIE.end
@@ -1633,7 +1633,7 @@ module @test16_prime_sieve_large {
   %core6_1 = AIE.core(%tile6_1) {
     AIE.useLock(%lock6_2, "Acquire", 1)
     AIE.useLock(%lock6_1, "Acquire", 0)
-    call @do_sieve(%buf6_2, %buf6_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_2, %buf6_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_2, "Release", 0)
     AIE.useLock(%lock6_1, "Release", 1)
     AIE.end
@@ -1642,7 +1642,7 @@ module @test16_prime_sieve_large {
   %core7_1 = AIE.core(%tile7_1) {
     AIE.useLock(%lock6_1, "Acquire", 1)
     AIE.useLock(%lock7_1, "Acquire", 0)
-    call @do_sieve(%buf6_1, %buf7_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf6_1, %buf7_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock6_1, "Release", 0)
     AIE.useLock(%lock7_1, "Release", 1)
     AIE.end
@@ -1651,7 +1651,7 @@ module @test16_prime_sieve_large {
   %core7_2 = AIE.core(%tile7_2) {
     AIE.useLock(%lock7_1, "Acquire", 1)
     AIE.useLock(%lock7_2, "Acquire", 0)
-    call @do_sieve(%buf7_1, %buf7_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_1, %buf7_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_1, "Release", 0)
     AIE.useLock(%lock7_2, "Release", 1)
     AIE.end
@@ -1660,7 +1660,7 @@ module @test16_prime_sieve_large {
   %core7_3 = AIE.core(%tile7_3) {
     AIE.useLock(%lock7_2, "Acquire", 1)
     AIE.useLock(%lock7_3, "Acquire", 0)
-    call @do_sieve(%buf7_2, %buf7_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_2, %buf7_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_2, "Release", 0)
     AIE.useLock(%lock7_3, "Release", 1)
     AIE.end
@@ -1669,7 +1669,7 @@ module @test16_prime_sieve_large {
   %core7_4 = AIE.core(%tile7_4) {
     AIE.useLock(%lock7_3, "Acquire", 1)
     AIE.useLock(%lock7_4, "Acquire", 0)
-    call @do_sieve(%buf7_3, %buf7_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_3, %buf7_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_3, "Release", 0)
     AIE.useLock(%lock7_4, "Release", 1)
     AIE.end
@@ -1678,7 +1678,7 @@ module @test16_prime_sieve_large {
   %core7_5 = AIE.core(%tile7_5) {
     AIE.useLock(%lock7_4, "Acquire", 1)
     AIE.useLock(%lock7_5, "Acquire", 0)
-    call @do_sieve(%buf7_4, %buf7_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_4, %buf7_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_4, "Release", 0)
     AIE.useLock(%lock7_5, "Release", 1)
     AIE.end
@@ -1687,7 +1687,7 @@ module @test16_prime_sieve_large {
   %core7_6 = AIE.core(%tile7_6) {
     AIE.useLock(%lock7_5, "Acquire", 1)
     AIE.useLock(%lock7_6, "Acquire", 0)
-    call @do_sieve(%buf7_5, %buf7_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_5, %buf7_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_5, "Release", 0)
     AIE.useLock(%lock7_6, "Release", 1)
     AIE.end
@@ -1696,7 +1696,7 @@ module @test16_prime_sieve_large {
   %core7_7 = AIE.core(%tile7_7) {
     AIE.useLock(%lock7_6, "Acquire", 1)
     AIE.useLock(%lock7_7, "Acquire", 0)
-    call @do_sieve(%buf7_6, %buf7_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_6, %buf7_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_6, "Release", 0)
     AIE.useLock(%lock7_7, "Release", 1)
     AIE.end
@@ -1705,7 +1705,7 @@ module @test16_prime_sieve_large {
   %core7_8 = AIE.core(%tile7_8) {
     AIE.useLock(%lock7_7, "Acquire", 1)
     AIE.useLock(%lock7_8, "Acquire", 0)
-    call @do_sieve(%buf7_7, %buf7_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_7, %buf7_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_7, "Release", 0)
     AIE.useLock(%lock7_8, "Release", 1)
     AIE.end
@@ -1714,7 +1714,7 @@ module @test16_prime_sieve_large {
   %core7_9 = AIE.core(%tile7_9) {
     AIE.useLock(%lock7_8, "Acquire", 1)
     AIE.useLock(%lock7_9, "Acquire", 0)
-    call @do_sieve(%buf7_8, %buf7_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_8, %buf7_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_8, "Release", 0)
     AIE.useLock(%lock7_9, "Release", 1)
     AIE.end
@@ -1723,7 +1723,7 @@ module @test16_prime_sieve_large {
   %core8_9 = AIE.core(%tile8_9) {
     AIE.useLock(%lock7_9, "Acquire", 1)
     AIE.useLock(%lock8_9, "Acquire", 0)
-    call @do_sieve(%buf7_9, %buf8_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf7_9, %buf8_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock7_9, "Release", 0)
     AIE.useLock(%lock8_9, "Release", 1)
     AIE.end
@@ -1732,7 +1732,7 @@ module @test16_prime_sieve_large {
   %core8_8 = AIE.core(%tile8_8) {
     AIE.useLock(%lock8_9, "Acquire", 1)
     AIE.useLock(%lock8_8, "Acquire", 0)
-    call @do_sieve(%buf8_9, %buf8_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_9, %buf8_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_9, "Release", 0)
     AIE.useLock(%lock8_8, "Release", 1)
     AIE.end
@@ -1741,7 +1741,7 @@ module @test16_prime_sieve_large {
   %core8_7 = AIE.core(%tile8_7) {
     AIE.useLock(%lock8_8, "Acquire", 1)
     AIE.useLock(%lock8_7, "Acquire", 0)
-    call @do_sieve(%buf8_8, %buf8_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_8, %buf8_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_8, "Release", 0)
     AIE.useLock(%lock8_7, "Release", 1)
     AIE.end
@@ -1750,7 +1750,7 @@ module @test16_prime_sieve_large {
   %core8_6 = AIE.core(%tile8_6) {
     AIE.useLock(%lock8_7, "Acquire", 1)
     AIE.useLock(%lock8_6, "Acquire", 0)
-    call @do_sieve(%buf8_7, %buf8_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_7, %buf8_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_7, "Release", 0)
     AIE.useLock(%lock8_6, "Release", 1)
     AIE.end
@@ -1759,7 +1759,7 @@ module @test16_prime_sieve_large {
   %core8_5 = AIE.core(%tile8_5) {
     AIE.useLock(%lock8_6, "Acquire", 1)
     AIE.useLock(%lock8_5, "Acquire", 0)
-    call @do_sieve(%buf8_6, %buf8_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_6, %buf8_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_6, "Release", 0)
     AIE.useLock(%lock8_5, "Release", 1)
     AIE.end
@@ -1768,7 +1768,7 @@ module @test16_prime_sieve_large {
   %core8_4 = AIE.core(%tile8_4) {
     AIE.useLock(%lock8_5, "Acquire", 1)
     AIE.useLock(%lock8_4, "Acquire", 0)
-    call @do_sieve(%buf8_5, %buf8_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_5, %buf8_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_5, "Release", 0)
     AIE.useLock(%lock8_4, "Release", 1)
     AIE.end
@@ -1777,7 +1777,7 @@ module @test16_prime_sieve_large {
   %core8_3 = AIE.core(%tile8_3) {
     AIE.useLock(%lock8_4, "Acquire", 1)
     AIE.useLock(%lock8_3, "Acquire", 0)
-    call @do_sieve(%buf8_4, %buf8_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_4, %buf8_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_4, "Release", 0)
     AIE.useLock(%lock8_3, "Release", 1)
     AIE.end
@@ -1786,7 +1786,7 @@ module @test16_prime_sieve_large {
   %core8_2 = AIE.core(%tile8_2) {
     AIE.useLock(%lock8_3, "Acquire", 1)
     AIE.useLock(%lock8_2, "Acquire", 0)
-    call @do_sieve(%buf8_3, %buf8_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_3, %buf8_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_3, "Release", 0)
     AIE.useLock(%lock8_2, "Release", 1)
     AIE.end
@@ -1795,7 +1795,7 @@ module @test16_prime_sieve_large {
   %core8_1 = AIE.core(%tile8_1) {
     AIE.useLock(%lock8_2, "Acquire", 1)
     AIE.useLock(%lock8_1, "Acquire", 0)
-    call @do_sieve(%buf8_2, %buf8_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_2, %buf8_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_2, "Release", 0)
     AIE.useLock(%lock8_1, "Release", 1)
     AIE.end
@@ -1804,7 +1804,7 @@ module @test16_prime_sieve_large {
   %core9_1 = AIE.core(%tile9_1) {
     AIE.useLock(%lock8_1, "Acquire", 1)
     AIE.useLock(%lock9_1, "Acquire", 0)
-    call @do_sieve(%buf8_1, %buf9_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf8_1, %buf9_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock8_1, "Release", 0)
     AIE.useLock(%lock9_1, "Release", 1)
     AIE.end
@@ -1813,7 +1813,7 @@ module @test16_prime_sieve_large {
   %core9_2 = AIE.core(%tile9_2) {
     AIE.useLock(%lock9_1, "Acquire", 1)
     AIE.useLock(%lock9_2, "Acquire", 0)
-    call @do_sieve(%buf9_1, %buf9_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_1, %buf9_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_1, "Release", 0)
     AIE.useLock(%lock9_2, "Release", 1)
     AIE.end
@@ -1822,7 +1822,7 @@ module @test16_prime_sieve_large {
   %core9_3 = AIE.core(%tile9_3) {
     AIE.useLock(%lock9_2, "Acquire", 1)
     AIE.useLock(%lock9_3, "Acquire", 0)
-    call @do_sieve(%buf9_2, %buf9_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_2, %buf9_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_2, "Release", 0)
     AIE.useLock(%lock9_3, "Release", 1)
     AIE.end
@@ -1831,7 +1831,7 @@ module @test16_prime_sieve_large {
   %core9_4 = AIE.core(%tile9_4) {
     AIE.useLock(%lock9_3, "Acquire", 1)
     AIE.useLock(%lock9_4, "Acquire", 0)
-    call @do_sieve(%buf9_3, %buf9_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_3, %buf9_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_3, "Release", 0)
     AIE.useLock(%lock9_4, "Release", 1)
     AIE.end
@@ -1840,7 +1840,7 @@ module @test16_prime_sieve_large {
   %core9_5 = AIE.core(%tile9_5) {
     AIE.useLock(%lock9_4, "Acquire", 1)
     AIE.useLock(%lock9_5, "Acquire", 0)
-    call @do_sieve(%buf9_4, %buf9_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_4, %buf9_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_4, "Release", 0)
     AIE.useLock(%lock9_5, "Release", 1)
     AIE.end
@@ -1849,7 +1849,7 @@ module @test16_prime_sieve_large {
   %core9_6 = AIE.core(%tile9_6) {
     AIE.useLock(%lock9_5, "Acquire", 1)
     AIE.useLock(%lock9_6, "Acquire", 0)
-    call @do_sieve(%buf9_5, %buf9_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_5, %buf9_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_5, "Release", 0)
     AIE.useLock(%lock9_6, "Release", 1)
     AIE.end
@@ -1858,7 +1858,7 @@ module @test16_prime_sieve_large {
   %core9_7 = AIE.core(%tile9_7) {
     AIE.useLock(%lock9_6, "Acquire", 1)
     AIE.useLock(%lock9_7, "Acquire", 0)
-    call @do_sieve(%buf9_6, %buf9_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_6, %buf9_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_6, "Release", 0)
     AIE.useLock(%lock9_7, "Release", 1)
     AIE.end
@@ -1867,7 +1867,7 @@ module @test16_prime_sieve_large {
   %core9_8 = AIE.core(%tile9_8) {
     AIE.useLock(%lock9_7, "Acquire", 1)
     AIE.useLock(%lock9_8, "Acquire", 0)
-    call @do_sieve(%buf9_7, %buf9_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_7, %buf9_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_7, "Release", 0)
     AIE.useLock(%lock9_8, "Release", 1)
     AIE.end
@@ -1876,7 +1876,7 @@ module @test16_prime_sieve_large {
   %core9_9 = AIE.core(%tile9_9) {
     AIE.useLock(%lock9_8, "Acquire", 1)
     AIE.useLock(%lock9_9, "Acquire", 0)
-    call @do_sieve(%buf9_8, %buf9_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_8, %buf9_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_8, "Release", 0)
     AIE.useLock(%lock9_9, "Release", 1)
     AIE.end
@@ -1885,7 +1885,7 @@ module @test16_prime_sieve_large {
   %core10_9 = AIE.core(%tile10_9) {
     AIE.useLock(%lock9_9, "Acquire", 1)
     AIE.useLock(%lock10_9, "Acquire", 0)
-    call @do_sieve(%buf9_9, %buf10_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf9_9, %buf10_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock9_9, "Release", 0)
     AIE.useLock(%lock10_9, "Release", 1)
     AIE.end
@@ -1894,7 +1894,7 @@ module @test16_prime_sieve_large {
   %core10_8 = AIE.core(%tile10_8) {
     AIE.useLock(%lock10_9, "Acquire", 1)
     AIE.useLock(%lock10_8, "Acquire", 0)
-    call @do_sieve(%buf10_9, %buf10_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_9, %buf10_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_9, "Release", 0)
     AIE.useLock(%lock10_8, "Release", 1)
     AIE.end
@@ -1903,7 +1903,7 @@ module @test16_prime_sieve_large {
   %core10_7 = AIE.core(%tile10_7) {
     AIE.useLock(%lock10_8, "Acquire", 1)
     AIE.useLock(%lock10_7, "Acquire", 0)
-    call @do_sieve(%buf10_8, %buf10_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_8, %buf10_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_8, "Release", 0)
     AIE.useLock(%lock10_7, "Release", 1)
     AIE.end
@@ -1912,7 +1912,7 @@ module @test16_prime_sieve_large {
   %core10_6 = AIE.core(%tile10_6) {
     AIE.useLock(%lock10_7, "Acquire", 1)
     AIE.useLock(%lock10_6, "Acquire", 0)
-    call @do_sieve(%buf10_7, %buf10_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_7, %buf10_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_7, "Release", 0)
     AIE.useLock(%lock10_6, "Release", 1)
     AIE.end
@@ -1921,7 +1921,7 @@ module @test16_prime_sieve_large {
   %core10_5 = AIE.core(%tile10_5) {
     AIE.useLock(%lock10_6, "Acquire", 1)
     AIE.useLock(%lock10_5, "Acquire", 0)
-    call @do_sieve(%buf10_6, %buf10_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_6, %buf10_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_6, "Release", 0)
     AIE.useLock(%lock10_5, "Release", 1)
     AIE.end
@@ -1930,7 +1930,7 @@ module @test16_prime_sieve_large {
   %core10_4 = AIE.core(%tile10_4) {
     AIE.useLock(%lock10_5, "Acquire", 1)
     AIE.useLock(%lock10_4, "Acquire", 0)
-    call @do_sieve(%buf10_5, %buf10_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_5, %buf10_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_5, "Release", 0)
     AIE.useLock(%lock10_4, "Release", 1)
     AIE.end
@@ -1939,7 +1939,7 @@ module @test16_prime_sieve_large {
   %core10_3 = AIE.core(%tile10_3) {
     AIE.useLock(%lock10_4, "Acquire", 1)
     AIE.useLock(%lock10_3, "Acquire", 0)
-    call @do_sieve(%buf10_4, %buf10_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_4, %buf10_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_4, "Release", 0)
     AIE.useLock(%lock10_3, "Release", 1)
     AIE.end
@@ -1948,7 +1948,7 @@ module @test16_prime_sieve_large {
   %core10_2 = AIE.core(%tile10_2) {
     AIE.useLock(%lock10_3, "Acquire", 1)
     AIE.useLock(%lock10_2, "Acquire", 0)
-    call @do_sieve(%buf10_3, %buf10_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_3, %buf10_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_3, "Release", 0)
     AIE.useLock(%lock10_2, "Release", 1)
     AIE.end
@@ -1957,7 +1957,7 @@ module @test16_prime_sieve_large {
   %core10_1 = AIE.core(%tile10_1) {
     AIE.useLock(%lock10_2, "Acquire", 1)
     AIE.useLock(%lock10_1, "Acquire", 0)
-    call @do_sieve(%buf10_2, %buf10_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_2, %buf10_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_2, "Release", 0)
     AIE.useLock(%lock10_1, "Release", 1)
     AIE.end
@@ -1966,7 +1966,7 @@ module @test16_prime_sieve_large {
   %core11_1 = AIE.core(%tile11_1) {
     AIE.useLock(%lock10_1, "Acquire", 1)
     AIE.useLock(%lock11_1, "Acquire", 0)
-    call @do_sieve(%buf10_1, %buf11_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf10_1, %buf11_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock10_1, "Release", 0)
     AIE.useLock(%lock11_1, "Release", 1)
     AIE.end
@@ -1975,7 +1975,7 @@ module @test16_prime_sieve_large {
   %core11_2 = AIE.core(%tile11_2) {
     AIE.useLock(%lock11_1, "Acquire", 1)
     AIE.useLock(%lock11_2, "Acquire", 0)
-    call @do_sieve(%buf11_1, %buf11_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_1, %buf11_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_1, "Release", 0)
     AIE.useLock(%lock11_2, "Release", 1)
     AIE.end
@@ -1984,7 +1984,7 @@ module @test16_prime_sieve_large {
   %core11_3 = AIE.core(%tile11_3) {
     AIE.useLock(%lock11_2, "Acquire", 1)
     AIE.useLock(%lock11_3, "Acquire", 0)
-    call @do_sieve(%buf11_2, %buf11_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_2, %buf11_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_2, "Release", 0)
     AIE.useLock(%lock11_3, "Release", 1)
     AIE.end
@@ -1993,7 +1993,7 @@ module @test16_prime_sieve_large {
   %core11_4 = AIE.core(%tile11_4) {
     AIE.useLock(%lock11_3, "Acquire", 1)
     AIE.useLock(%lock11_4, "Acquire", 0)
-    call @do_sieve(%buf11_3, %buf11_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_3, %buf11_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_3, "Release", 0)
     AIE.useLock(%lock11_4, "Release", 1)
     AIE.end
@@ -2002,7 +2002,7 @@ module @test16_prime_sieve_large {
   %core11_5 = AIE.core(%tile11_5) {
     AIE.useLock(%lock11_4, "Acquire", 1)
     AIE.useLock(%lock11_5, "Acquire", 0)
-    call @do_sieve(%buf11_4, %buf11_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_4, %buf11_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_4, "Release", 0)
     AIE.useLock(%lock11_5, "Release", 1)
     AIE.end
@@ -2011,7 +2011,7 @@ module @test16_prime_sieve_large {
   %core11_6 = AIE.core(%tile11_6) {
     AIE.useLock(%lock11_5, "Acquire", 1)
     AIE.useLock(%lock11_6, "Acquire", 0)
-    call @do_sieve(%buf11_5, %buf11_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_5, %buf11_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_5, "Release", 0)
     AIE.useLock(%lock11_6, "Release", 1)
     AIE.end
@@ -2020,7 +2020,7 @@ module @test16_prime_sieve_large {
   %core11_7 = AIE.core(%tile11_7) {
     AIE.useLock(%lock11_6, "Acquire", 1)
     AIE.useLock(%lock11_7, "Acquire", 0)
-    call @do_sieve(%buf11_6, %buf11_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_6, %buf11_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_6, "Release", 0)
     AIE.useLock(%lock11_7, "Release", 1)
     AIE.end
@@ -2029,7 +2029,7 @@ module @test16_prime_sieve_large {
   %core11_8 = AIE.core(%tile11_8) {
     AIE.useLock(%lock11_7, "Acquire", 1)
     AIE.useLock(%lock11_8, "Acquire", 0)
-    call @do_sieve(%buf11_7, %buf11_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_7, %buf11_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_7, "Release", 0)
     AIE.useLock(%lock11_8, "Release", 1)
     AIE.end
@@ -2038,7 +2038,7 @@ module @test16_prime_sieve_large {
   %core11_9 = AIE.core(%tile11_9) {
     AIE.useLock(%lock11_8, "Acquire", 1)
     AIE.useLock(%lock11_9, "Acquire", 0)
-    call @do_sieve(%buf11_8, %buf11_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_8, %buf11_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_8, "Release", 0)
     AIE.useLock(%lock11_9, "Release", 1)
     AIE.end
@@ -2047,7 +2047,7 @@ module @test16_prime_sieve_large {
   %core12_9 = AIE.core(%tile12_9) {
     AIE.useLock(%lock11_9, "Acquire", 1)
     AIE.useLock(%lock12_9, "Acquire", 0)
-    call @do_sieve(%buf11_9, %buf12_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf11_9, %buf12_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock11_9, "Release", 0)
     AIE.useLock(%lock12_9, "Release", 1)
     AIE.end
@@ -2056,7 +2056,7 @@ module @test16_prime_sieve_large {
   %core12_8 = AIE.core(%tile12_8) {
     AIE.useLock(%lock12_9, "Acquire", 1)
     AIE.useLock(%lock12_8, "Acquire", 0)
-    call @do_sieve(%buf12_9, %buf12_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_9, %buf12_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_9, "Release", 0)
     AIE.useLock(%lock12_8, "Release", 1)
     AIE.end
@@ -2065,7 +2065,7 @@ module @test16_prime_sieve_large {
   %core12_7 = AIE.core(%tile12_7) {
     AIE.useLock(%lock12_8, "Acquire", 1)
     AIE.useLock(%lock12_7, "Acquire", 0)
-    call @do_sieve(%buf12_8, %buf12_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_8, %buf12_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_8, "Release", 0)
     AIE.useLock(%lock12_7, "Release", 1)
     AIE.end
@@ -2074,7 +2074,7 @@ module @test16_prime_sieve_large {
   %core12_6 = AIE.core(%tile12_6) {
     AIE.useLock(%lock12_7, "Acquire", 1)
     AIE.useLock(%lock12_6, "Acquire", 0)
-    call @do_sieve(%buf12_7, %buf12_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_7, %buf12_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_7, "Release", 0)
     AIE.useLock(%lock12_6, "Release", 1)
     AIE.end
@@ -2083,7 +2083,7 @@ module @test16_prime_sieve_large {
   %core12_5 = AIE.core(%tile12_5) {
     AIE.useLock(%lock12_6, "Acquire", 1)
     AIE.useLock(%lock12_5, "Acquire", 0)
-    call @do_sieve(%buf12_6, %buf12_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_6, %buf12_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_6, "Release", 0)
     AIE.useLock(%lock12_5, "Release", 1)
     AIE.end
@@ -2092,7 +2092,7 @@ module @test16_prime_sieve_large {
   %core12_4 = AIE.core(%tile12_4) {
     AIE.useLock(%lock12_5, "Acquire", 1)
     AIE.useLock(%lock12_4, "Acquire", 0)
-    call @do_sieve(%buf12_5, %buf12_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_5, %buf12_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_5, "Release", 0)
     AIE.useLock(%lock12_4, "Release", 1)
     AIE.end
@@ -2101,7 +2101,7 @@ module @test16_prime_sieve_large {
   %core12_3 = AIE.core(%tile12_3) {
     AIE.useLock(%lock12_4, "Acquire", 1)
     AIE.useLock(%lock12_3, "Acquire", 0)
-    call @do_sieve(%buf12_4, %buf12_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_4, %buf12_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_4, "Release", 0)
     AIE.useLock(%lock12_3, "Release", 1)
     AIE.end
@@ -2110,7 +2110,7 @@ module @test16_prime_sieve_large {
   %core12_2 = AIE.core(%tile12_2) {
     AIE.useLock(%lock12_3, "Acquire", 1)
     AIE.useLock(%lock12_2, "Acquire", 0)
-    call @do_sieve(%buf12_3, %buf12_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_3, %buf12_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_3, "Release", 0)
     AIE.useLock(%lock12_2, "Release", 1)
     AIE.end
@@ -2119,7 +2119,7 @@ module @test16_prime_sieve_large {
   %core12_1 = AIE.core(%tile12_1) {
     AIE.useLock(%lock12_2, "Acquire", 1)
     AIE.useLock(%lock12_1, "Acquire", 0)
-    call @do_sieve(%buf12_2, %buf12_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_2, %buf12_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_2, "Release", 0)
     AIE.useLock(%lock12_1, "Release", 1)
     AIE.end
@@ -2128,7 +2128,7 @@ module @test16_prime_sieve_large {
   %core13_1 = AIE.core(%tile13_1) {
     AIE.useLock(%lock12_1, "Acquire", 1)
     AIE.useLock(%lock13_1, "Acquire", 0)
-    call @do_sieve(%buf12_1, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf12_1, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock12_1, "Release", 0)
     AIE.useLock(%lock13_1, "Release", 1)
     AIE.end
@@ -2137,7 +2137,7 @@ module @test16_prime_sieve_large {
   %core13_2 = AIE.core(%tile13_2) {
     AIE.useLock(%lock13_1, "Acquire", 1)
     AIE.useLock(%lock13_2, "Acquire", 0)
-    call @do_sieve(%buf13_1, %buf13_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_1, %buf13_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_1, "Release", 0)
     AIE.useLock(%lock13_2, "Release", 1)
     AIE.end
@@ -2146,7 +2146,7 @@ module @test16_prime_sieve_large {
   %core13_3 = AIE.core(%tile13_3) {
     AIE.useLock(%lock13_2, "Acquire", 1)
     AIE.useLock(%lock13_3, "Acquire", 0)
-    call @do_sieve(%buf13_2, %buf13_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_2, %buf13_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_2, "Release", 0)
     AIE.useLock(%lock13_3, "Release", 1)
     AIE.end
@@ -2155,7 +2155,7 @@ module @test16_prime_sieve_large {
   %core13_4 = AIE.core(%tile13_4) {
     AIE.useLock(%lock13_3, "Acquire", 1)
     AIE.useLock(%lock13_4, "Acquire", 0)
-    call @do_sieve(%buf13_3, %buf13_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_3, %buf13_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_3, "Release", 0)
     AIE.useLock(%lock13_4, "Release", 1)
     AIE.end
@@ -2164,7 +2164,7 @@ module @test16_prime_sieve_large {
   %core13_5 = AIE.core(%tile13_5) {
     AIE.useLock(%lock13_4, "Acquire", 1)
     AIE.useLock(%lock13_5, "Acquire", 0)
-    call @do_sieve(%buf13_4, %buf13_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_4, %buf13_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_4, "Release", 0)
     AIE.useLock(%lock13_5, "Release", 1)
     AIE.end
@@ -2173,7 +2173,7 @@ module @test16_prime_sieve_large {
   %core13_6 = AIE.core(%tile13_6) {
     AIE.useLock(%lock13_5, "Acquire", 1)
     AIE.useLock(%lock13_6, "Acquire", 0)
-    call @do_sieve(%buf13_5, %buf13_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_5, %buf13_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_5, "Release", 0)
     AIE.useLock(%lock13_6, "Release", 1)
     AIE.end
@@ -2182,7 +2182,7 @@ module @test16_prime_sieve_large {
   %core13_7 = AIE.core(%tile13_7) {
     AIE.useLock(%lock13_6, "Acquire", 1)
     AIE.useLock(%lock13_7, "Acquire", 0)
-    call @do_sieve(%buf13_6, %buf13_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_6, %buf13_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_6, "Release", 0)
     AIE.useLock(%lock13_7, "Release", 1)
     AIE.end
@@ -2191,7 +2191,7 @@ module @test16_prime_sieve_large {
   %core13_8 = AIE.core(%tile13_8) {
     AIE.useLock(%lock13_7, "Acquire", 1)
     AIE.useLock(%lock13_8, "Acquire", 0)
-    call @do_sieve(%buf13_7, %buf13_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_7, %buf13_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_7, "Release", 0)
     AIE.useLock(%lock13_8, "Release", 1)
     AIE.end
@@ -2200,7 +2200,7 @@ module @test16_prime_sieve_large {
   %core13_9 = AIE.core(%tile13_9) {
     AIE.useLock(%lock13_8, "Acquire", 1)
     AIE.useLock(%lock13_9, "Acquire", 0)
-    call @do_sieve(%buf13_8, %buf13_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_8, %buf13_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_8, "Release", 0)
     AIE.useLock(%lock13_9, "Release", 1)
     AIE.end
@@ -2209,7 +2209,7 @@ module @test16_prime_sieve_large {
   %core14_9 = AIE.core(%tile14_9) {
     AIE.useLock(%lock13_9, "Acquire", 1)
     AIE.useLock(%lock14_9, "Acquire", 0)
-    call @do_sieve(%buf13_9, %buf14_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_9, %buf14_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_9, "Release", 0)
     AIE.useLock(%lock14_9, "Release", 1)
     AIE.end
@@ -2218,7 +2218,7 @@ module @test16_prime_sieve_large {
   %core14_8 = AIE.core(%tile14_8) {
     AIE.useLock(%lock14_9, "Acquire", 1)
     AIE.useLock(%lock14_8, "Acquire", 0)
-    call @do_sieve(%buf14_9, %buf14_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_9, %buf14_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_9, "Release", 0)
     AIE.useLock(%lock14_8, "Release", 1)
     AIE.end
@@ -2227,7 +2227,7 @@ module @test16_prime_sieve_large {
   %core14_7 = AIE.core(%tile14_7) {
     AIE.useLock(%lock14_8, "Acquire", 1)
     AIE.useLock(%lock14_7, "Acquire", 0)
-    call @do_sieve(%buf14_8, %buf14_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_8, %buf14_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_8, "Release", 0)
     AIE.useLock(%lock14_7, "Release", 1)
     AIE.end
@@ -2236,7 +2236,7 @@ module @test16_prime_sieve_large {
   %core14_6 = AIE.core(%tile14_6) {
     AIE.useLock(%lock14_7, "Acquire", 1)
     AIE.useLock(%lock14_6, "Acquire", 0)
-    call @do_sieve(%buf14_7, %buf14_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_7, %buf14_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_7, "Release", 0)
     AIE.useLock(%lock14_6, "Release", 1)
     AIE.end
@@ -2245,7 +2245,7 @@ module @test16_prime_sieve_large {
   %core14_5 = AIE.core(%tile14_5) {
     AIE.useLock(%lock14_6, "Acquire", 1)
     AIE.useLock(%lock14_5, "Acquire", 0)
-    call @do_sieve(%buf14_6, %buf14_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_6, %buf14_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_6, "Release", 0)
     AIE.useLock(%lock14_5, "Release", 1)
     AIE.end
@@ -2254,7 +2254,7 @@ module @test16_prime_sieve_large {
   %core14_4 = AIE.core(%tile14_4) {
     AIE.useLock(%lock14_5, "Acquire", 1)
     AIE.useLock(%lock14_4, "Acquire", 0)
-    call @do_sieve(%buf14_5, %buf14_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_5, %buf14_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_5, "Release", 0)
     AIE.useLock(%lock14_4, "Release", 1)
     AIE.end
@@ -2263,7 +2263,7 @@ module @test16_prime_sieve_large {
   %core14_3 = AIE.core(%tile14_3) {
     AIE.useLock(%lock14_4, "Acquire", 1)
     AIE.useLock(%lock14_3, "Acquire", 0)
-    call @do_sieve(%buf14_4, %buf14_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_4, %buf14_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_4, "Release", 0)
     AIE.useLock(%lock14_3, "Release", 1)
     AIE.end
@@ -2272,7 +2272,7 @@ module @test16_prime_sieve_large {
   %core14_2 = AIE.core(%tile14_2) {
     AIE.useLock(%lock14_3, "Acquire", 1)
     AIE.useLock(%lock14_2, "Acquire", 0)
-    call @do_sieve(%buf14_3, %buf14_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_3, %buf14_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_3, "Release", 0)
     AIE.useLock(%lock14_2, "Release", 1)
     AIE.end
@@ -2281,7 +2281,7 @@ module @test16_prime_sieve_large {
   %core14_1 = AIE.core(%tile14_1) {
     AIE.useLock(%lock14_2, "Acquire", 1)
     AIE.useLock(%lock14_1, "Acquire", 0)
-    call @do_sieve(%buf14_2, %buf14_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_2, %buf14_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_2, "Release", 0)
     AIE.useLock(%lock14_1, "Release", 1)
     AIE.end
@@ -2290,7 +2290,7 @@ module @test16_prime_sieve_large {
   %core15_1 = AIE.core(%tile15_1) {
     AIE.useLock(%lock14_1, "Acquire", 1)
     AIE.useLock(%lock15_1, "Acquire", 0)
-    call @do_sieve(%buf14_1, %buf15_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_1, %buf15_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_1, "Release", 0)
     AIE.useLock(%lock15_1, "Release", 1)
     AIE.end
@@ -2299,7 +2299,7 @@ module @test16_prime_sieve_large {
   %core15_2 = AIE.core(%tile15_2) {
     AIE.useLock(%lock15_1, "Acquire", 1)
     AIE.useLock(%lock15_2, "Acquire", 0)
-    call @do_sieve(%buf15_1, %buf15_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_1, %buf15_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_1, "Release", 0)
     AIE.useLock(%lock15_2, "Release", 1)
     AIE.end
@@ -2308,7 +2308,7 @@ module @test16_prime_sieve_large {
   %core15_3 = AIE.core(%tile15_3) {
     AIE.useLock(%lock15_2, "Acquire", 1)
     AIE.useLock(%lock15_3, "Acquire", 0)
-    call @do_sieve(%buf15_2, %buf15_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_2, %buf15_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_2, "Release", 0)
     AIE.useLock(%lock15_3, "Release", 1)
     AIE.end
@@ -2317,7 +2317,7 @@ module @test16_prime_sieve_large {
   %core15_4 = AIE.core(%tile15_4) {
     AIE.useLock(%lock15_3, "Acquire", 1)
     AIE.useLock(%lock15_4, "Acquire", 0)
-    call @do_sieve(%buf15_3, %buf15_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_3, %buf15_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_3, "Release", 0)
     AIE.useLock(%lock15_4, "Release", 1)
     AIE.end
@@ -2326,7 +2326,7 @@ module @test16_prime_sieve_large {
   %core15_5 = AIE.core(%tile15_5) {
     AIE.useLock(%lock15_4, "Acquire", 1)
     AIE.useLock(%lock15_5, "Acquire", 0)
-    call @do_sieve(%buf15_4, %buf15_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_4, %buf15_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_4, "Release", 0)
     AIE.useLock(%lock15_5, "Release", 1)
     AIE.end
@@ -2335,7 +2335,7 @@ module @test16_prime_sieve_large {
   %core15_6 = AIE.core(%tile15_6) {
     AIE.useLock(%lock15_5, "Acquire", 1)
     AIE.useLock(%lock15_6, "Acquire", 0)
-    call @do_sieve(%buf15_5, %buf15_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_5, %buf15_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_5, "Release", 0)
     AIE.useLock(%lock15_6, "Release", 1)
     AIE.end
@@ -2344,7 +2344,7 @@ module @test16_prime_sieve_large {
   %core15_7 = AIE.core(%tile15_7) {
     AIE.useLock(%lock15_6, "Acquire", 1)
     AIE.useLock(%lock15_7, "Acquire", 0)
-    call @do_sieve(%buf15_6, %buf15_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_6, %buf15_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_6, "Release", 0)
     AIE.useLock(%lock15_7, "Release", 1)
     AIE.end
@@ -2353,7 +2353,7 @@ module @test16_prime_sieve_large {
   %core15_8 = AIE.core(%tile15_8) {
     AIE.useLock(%lock15_7, "Acquire", 1)
     AIE.useLock(%lock15_8, "Acquire", 0)
-    call @do_sieve(%buf15_7, %buf15_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_7, %buf15_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_7, "Release", 0)
     AIE.useLock(%lock15_8, "Release", 1)
     AIE.end
@@ -2362,7 +2362,7 @@ module @test16_prime_sieve_large {
   %core15_9 = AIE.core(%tile15_9) {
     AIE.useLock(%lock15_8, "Acquire", 1)
     AIE.useLock(%lock15_9, "Acquire", 0)
-    call @do_sieve(%buf15_8, %buf15_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_8, %buf15_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_8, "Release", 0)
     AIE.useLock(%lock15_9, "Release", 1)
     AIE.end
@@ -2371,7 +2371,7 @@ module @test16_prime_sieve_large {
   %core16_9 = AIE.core(%tile16_9) {
     AIE.useLock(%lock15_9, "Acquire", 1)
     AIE.useLock(%lock16_9, "Acquire", 0)
-    call @do_sieve(%buf15_9, %buf16_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_9, %buf16_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_9, "Release", 0)
     AIE.useLock(%lock16_9, "Release", 1)
     AIE.end
@@ -2380,7 +2380,7 @@ module @test16_prime_sieve_large {
   %core16_8 = AIE.core(%tile16_8) {
     AIE.useLock(%lock16_9, "Acquire", 1)
     AIE.useLock(%lock16_8, "Acquire", 0)
-    call @do_sieve(%buf16_9, %buf16_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_9, %buf16_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_9, "Release", 0)
     AIE.useLock(%lock16_8, "Release", 1)
     AIE.end
@@ -2389,7 +2389,7 @@ module @test16_prime_sieve_large {
   %core16_7 = AIE.core(%tile16_7) {
     AIE.useLock(%lock16_8, "Acquire", 1)
     AIE.useLock(%lock16_7, "Acquire", 0)
-    call @do_sieve(%buf16_8, %buf16_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_8, %buf16_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_8, "Release", 0)
     AIE.useLock(%lock16_7, "Release", 1)
     AIE.end
@@ -2398,7 +2398,7 @@ module @test16_prime_sieve_large {
   %core16_6 = AIE.core(%tile16_6) {
     AIE.useLock(%lock16_7, "Acquire", 1)
     AIE.useLock(%lock16_6, "Acquire", 0)
-    call @do_sieve(%buf16_7, %buf16_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_7, %buf16_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_7, "Release", 0)
     AIE.useLock(%lock16_6, "Release", 1)
     AIE.end
@@ -2407,7 +2407,7 @@ module @test16_prime_sieve_large {
   %core16_5 = AIE.core(%tile16_5) {
     AIE.useLock(%lock16_6, "Acquire", 1)
     AIE.useLock(%lock16_5, "Acquire", 0)
-    call @do_sieve(%buf16_6, %buf16_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_6, %buf16_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_6, "Release", 0)
     AIE.useLock(%lock16_5, "Release", 1)
     AIE.end
@@ -2416,7 +2416,7 @@ module @test16_prime_sieve_large {
   %core16_4 = AIE.core(%tile16_4) {
     AIE.useLock(%lock16_5, "Acquire", 1)
     AIE.useLock(%lock16_4, "Acquire", 0)
-    call @do_sieve(%buf16_5, %buf16_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_5, %buf16_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_5, "Release", 0)
     AIE.useLock(%lock16_4, "Release", 1)
     AIE.end
@@ -2425,7 +2425,7 @@ module @test16_prime_sieve_large {
   %core16_3 = AIE.core(%tile16_3) {
     AIE.useLock(%lock16_4, "Acquire", 1)
     AIE.useLock(%lock16_3, "Acquire", 0)
-    call @do_sieve(%buf16_4, %buf16_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_4, %buf16_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_4, "Release", 0)
     AIE.useLock(%lock16_3, "Release", 1)
     AIE.end
@@ -2434,7 +2434,7 @@ module @test16_prime_sieve_large {
   %core16_2 = AIE.core(%tile16_2) {
     AIE.useLock(%lock16_3, "Acquire", 1)
     AIE.useLock(%lock16_2, "Acquire", 0)
-    call @do_sieve(%buf16_3, %buf16_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_3, %buf16_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_3, "Release", 0)
     AIE.useLock(%lock16_2, "Release", 1)
     AIE.end
@@ -2443,7 +2443,7 @@ module @test16_prime_sieve_large {
   %core16_1 = AIE.core(%tile16_1) {
     AIE.useLock(%lock16_2, "Acquire", 1)
     AIE.useLock(%lock16_1, "Acquire", 0)
-    call @do_sieve(%buf16_2, %buf16_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_2, %buf16_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_2, "Release", 0)
     AIE.useLock(%lock16_1, "Release", 1)
     AIE.end
@@ -2452,7 +2452,7 @@ module @test16_prime_sieve_large {
   %core17_1 = AIE.core(%tile17_1) {
     AIE.useLock(%lock16_1, "Acquire", 1)
     AIE.useLock(%lock17_1, "Acquire", 0)
-    call @do_sieve(%buf16_1, %buf17_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf16_1, %buf17_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock16_1, "Release", 0)
     AIE.useLock(%lock17_1, "Release", 1)
     AIE.end
@@ -2461,7 +2461,7 @@ module @test16_prime_sieve_large {
   %core17_2 = AIE.core(%tile17_2) {
     AIE.useLock(%lock17_1, "Acquire", 1)
     AIE.useLock(%lock17_2, "Acquire", 0)
-    call @do_sieve(%buf17_1, %buf17_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_1, %buf17_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_1, "Release", 0)
     AIE.useLock(%lock17_2, "Release", 1)
     AIE.end
@@ -2470,7 +2470,7 @@ module @test16_prime_sieve_large {
   %core17_3 = AIE.core(%tile17_3) {
     AIE.useLock(%lock17_2, "Acquire", 1)
     AIE.useLock(%lock17_3, "Acquire", 0)
-    call @do_sieve(%buf17_2, %buf17_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_2, %buf17_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_2, "Release", 0)
     AIE.useLock(%lock17_3, "Release", 1)
     AIE.end
@@ -2479,7 +2479,7 @@ module @test16_prime_sieve_large {
   %core17_4 = AIE.core(%tile17_4) {
     AIE.useLock(%lock17_3, "Acquire", 1)
     AIE.useLock(%lock17_4, "Acquire", 0)
-    call @do_sieve(%buf17_3, %buf17_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_3, %buf17_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_3, "Release", 0)
     AIE.useLock(%lock17_4, "Release", 1)
     AIE.end
@@ -2488,7 +2488,7 @@ module @test16_prime_sieve_large {
   %core17_5 = AIE.core(%tile17_5) {
     AIE.useLock(%lock17_4, "Acquire", 1)
     AIE.useLock(%lock17_5, "Acquire", 0)
-    call @do_sieve(%buf17_4, %buf17_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_4, %buf17_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_4, "Release", 0)
     AIE.useLock(%lock17_5, "Release", 1)
     AIE.end
@@ -2497,7 +2497,7 @@ module @test16_prime_sieve_large {
   %core17_6 = AIE.core(%tile17_6) {
     AIE.useLock(%lock17_5, "Acquire", 1)
     AIE.useLock(%lock17_6, "Acquire", 0)
-    call @do_sieve(%buf17_5, %buf17_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_5, %buf17_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_5, "Release", 0)
     AIE.useLock(%lock17_6, "Release", 1)
     AIE.end
@@ -2506,7 +2506,7 @@ module @test16_prime_sieve_large {
   %core17_7 = AIE.core(%tile17_7) {
     AIE.useLock(%lock17_6, "Acquire", 1)
     AIE.useLock(%lock17_7, "Acquire", 0)
-    call @do_sieve(%buf17_6, %buf17_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_6, %buf17_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_6, "Release", 0)
     AIE.useLock(%lock17_7, "Release", 1)
     AIE.end
@@ -2515,7 +2515,7 @@ module @test16_prime_sieve_large {
   %core17_8 = AIE.core(%tile17_8) {
     AIE.useLock(%lock17_7, "Acquire", 1)
     AIE.useLock(%lock17_8, "Acquire", 0)
-    call @do_sieve(%buf17_7, %buf17_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_7, %buf17_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_7, "Release", 0)
     AIE.useLock(%lock17_8, "Release", 1)
     AIE.end
@@ -2524,7 +2524,7 @@ module @test16_prime_sieve_large {
   %core17_9 = AIE.core(%tile17_9) {
     AIE.useLock(%lock17_8, "Acquire", 1)
     AIE.useLock(%lock17_9, "Acquire", 0)
-    call @do_sieve(%buf17_8, %buf17_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_8, %buf17_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_8, "Release", 0)
     AIE.useLock(%lock17_9, "Release", 1)
     AIE.end
@@ -2533,7 +2533,7 @@ module @test16_prime_sieve_large {
   %core18_9 = AIE.core(%tile18_9) {
     AIE.useLock(%lock17_9, "Acquire", 1)
     AIE.useLock(%lock18_9, "Acquire", 0)
-    call @do_sieve(%buf17_9, %buf18_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf17_9, %buf18_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock17_9, "Release", 0)
     AIE.useLock(%lock18_9, "Release", 1)
     AIE.end
@@ -2542,7 +2542,7 @@ module @test16_prime_sieve_large {
   %core18_8 = AIE.core(%tile18_8) {
     AIE.useLock(%lock18_9, "Acquire", 1)
     AIE.useLock(%lock18_8, "Acquire", 0)
-    call @do_sieve(%buf18_9, %buf18_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_9, %buf18_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_9, "Release", 0)
     AIE.useLock(%lock18_8, "Release", 1)
     AIE.end
@@ -2551,7 +2551,7 @@ module @test16_prime_sieve_large {
   %core18_7 = AIE.core(%tile18_7) {
     AIE.useLock(%lock18_8, "Acquire", 1)
     AIE.useLock(%lock18_7, "Acquire", 0)
-    call @do_sieve(%buf18_8, %buf18_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_8, %buf18_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_8, "Release", 0)
     AIE.useLock(%lock18_7, "Release", 1)
     AIE.end
@@ -2560,7 +2560,7 @@ module @test16_prime_sieve_large {
   %core18_6 = AIE.core(%tile18_6) {
     AIE.useLock(%lock18_7, "Acquire", 1)
     AIE.useLock(%lock18_6, "Acquire", 0)
-    call @do_sieve(%buf18_7, %buf18_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_7, %buf18_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_7, "Release", 0)
     AIE.useLock(%lock18_6, "Release", 1)
     AIE.end
@@ -2569,7 +2569,7 @@ module @test16_prime_sieve_large {
   %core18_5 = AIE.core(%tile18_5) {
     AIE.useLock(%lock18_6, "Acquire", 1)
     AIE.useLock(%lock18_5, "Acquire", 0)
-    call @do_sieve(%buf18_6, %buf18_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_6, %buf18_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_6, "Release", 0)
     AIE.useLock(%lock18_5, "Release", 1)
     AIE.end
@@ -2578,7 +2578,7 @@ module @test16_prime_sieve_large {
   %core18_4 = AIE.core(%tile18_4) {
     AIE.useLock(%lock18_5, "Acquire", 1)
     AIE.useLock(%lock18_4, "Acquire", 0)
-    call @do_sieve(%buf18_5, %buf18_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_5, %buf18_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_5, "Release", 0)
     AIE.useLock(%lock18_4, "Release", 1)
     AIE.end
@@ -2587,7 +2587,7 @@ module @test16_prime_sieve_large {
   %core18_3 = AIE.core(%tile18_3) {
     AIE.useLock(%lock18_4, "Acquire", 1)
     AIE.useLock(%lock18_3, "Acquire", 0)
-    call @do_sieve(%buf18_4, %buf18_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_4, %buf18_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_4, "Release", 0)
     AIE.useLock(%lock18_3, "Release", 1)
     AIE.end
@@ -2596,7 +2596,7 @@ module @test16_prime_sieve_large {
   %core18_2 = AIE.core(%tile18_2) {
     AIE.useLock(%lock18_3, "Acquire", 1)
     AIE.useLock(%lock18_2, "Acquire", 0)
-    call @do_sieve(%buf18_3, %buf18_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_3, %buf18_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_3, "Release", 0)
     AIE.useLock(%lock18_2, "Release", 1)
     AIE.end
@@ -2605,7 +2605,7 @@ module @test16_prime_sieve_large {
   %core18_1 = AIE.core(%tile18_1) {
     AIE.useLock(%lock18_2, "Acquire", 1)
     AIE.useLock(%lock18_1, "Acquire", 0)
-    call @do_sieve(%buf18_2, %buf18_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_2, %buf18_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_2, "Release", 0)
     AIE.useLock(%lock18_1, "Release", 1)
     AIE.end
@@ -2614,7 +2614,7 @@ module @test16_prime_sieve_large {
   %core19_1 = AIE.core(%tile19_1) {
     AIE.useLock(%lock18_1, "Acquire", 1)
     AIE.useLock(%lock19_1, "Acquire", 0)
-    call @do_sieve(%buf18_1, %buf19_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf18_1, %buf19_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock18_1, "Release", 0)
     AIE.useLock(%lock19_1, "Release", 1)
     AIE.end
@@ -2623,7 +2623,7 @@ module @test16_prime_sieve_large {
   %core19_2 = AIE.core(%tile19_2) {
     AIE.useLock(%lock19_1, "Acquire", 1)
     AIE.useLock(%lock19_2, "Acquire", 0)
-    call @do_sieve(%buf19_1, %buf19_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_1, %buf19_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_1, "Release", 0)
     AIE.useLock(%lock19_2, "Release", 1)
     AIE.end
@@ -2632,7 +2632,7 @@ module @test16_prime_sieve_large {
   %core19_3 = AIE.core(%tile19_3) {
     AIE.useLock(%lock19_2, "Acquire", 1)
     AIE.useLock(%lock19_3, "Acquire", 0)
-    call @do_sieve(%buf19_2, %buf19_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_2, %buf19_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_2, "Release", 0)
     AIE.useLock(%lock19_3, "Release", 1)
     AIE.end
@@ -2641,7 +2641,7 @@ module @test16_prime_sieve_large {
   %core19_4 = AIE.core(%tile19_4) {
     AIE.useLock(%lock19_3, "Acquire", 1)
     AIE.useLock(%lock19_4, "Acquire", 0)
-    call @do_sieve(%buf19_3, %buf19_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_3, %buf19_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_3, "Release", 0)
     AIE.useLock(%lock19_4, "Release", 1)
     AIE.end
@@ -2650,7 +2650,7 @@ module @test16_prime_sieve_large {
   %core19_5 = AIE.core(%tile19_5) {
     AIE.useLock(%lock19_4, "Acquire", 1)
     AIE.useLock(%lock19_5, "Acquire", 0)
-    call @do_sieve(%buf19_4, %buf19_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_4, %buf19_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_4, "Release", 0)
     AIE.useLock(%lock19_5, "Release", 1)
     AIE.end
@@ -2659,7 +2659,7 @@ module @test16_prime_sieve_large {
   %core19_6 = AIE.core(%tile19_6) {
     AIE.useLock(%lock19_5, "Acquire", 1)
     AIE.useLock(%lock19_6, "Acquire", 0)
-    call @do_sieve(%buf19_5, %buf19_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_5, %buf19_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_5, "Release", 0)
     AIE.useLock(%lock19_6, "Release", 1)
     AIE.end
@@ -2668,7 +2668,7 @@ module @test16_prime_sieve_large {
   %core19_7 = AIE.core(%tile19_7) {
     AIE.useLock(%lock19_6, "Acquire", 1)
     AIE.useLock(%lock19_7, "Acquire", 0)
-    call @do_sieve(%buf19_6, %buf19_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_6, %buf19_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_6, "Release", 0)
     AIE.useLock(%lock19_7, "Release", 1)
     AIE.end
@@ -2677,7 +2677,7 @@ module @test16_prime_sieve_large {
   %core19_8 = AIE.core(%tile19_8) {
     AIE.useLock(%lock19_7, "Acquire", 1)
     AIE.useLock(%lock19_8, "Acquire", 0)
-    call @do_sieve(%buf19_7, %buf19_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_7, %buf19_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_7, "Release", 0)
     AIE.useLock(%lock19_8, "Release", 1)
     AIE.end
@@ -2686,7 +2686,7 @@ module @test16_prime_sieve_large {
   %core19_9 = AIE.core(%tile19_9) {
     AIE.useLock(%lock19_8, "Acquire", 1)
     AIE.useLock(%lock19_9, "Acquire", 0)
-    call @do_sieve(%buf19_8, %buf19_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_8, %buf19_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_8, "Release", 0)
     AIE.useLock(%lock19_9, "Release", 1)
     AIE.end
@@ -2695,7 +2695,7 @@ module @test16_prime_sieve_large {
   %core20_9 = AIE.core(%tile20_9) {
     AIE.useLock(%lock19_9, "Acquire", 1)
     AIE.useLock(%lock20_9, "Acquire", 0)
-    call @do_sieve(%buf19_9, %buf20_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf19_9, %buf20_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock19_9, "Release", 0)
     AIE.useLock(%lock20_9, "Release", 1)
     AIE.end
@@ -2704,7 +2704,7 @@ module @test16_prime_sieve_large {
   %core20_8 = AIE.core(%tile20_8) {
     AIE.useLock(%lock20_9, "Acquire", 1)
     AIE.useLock(%lock20_8, "Acquire", 0)
-    call @do_sieve(%buf20_9, %buf20_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_9, %buf20_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_9, "Release", 0)
     AIE.useLock(%lock20_8, "Release", 1)
     AIE.end
@@ -2713,7 +2713,7 @@ module @test16_prime_sieve_large {
   %core20_7 = AIE.core(%tile20_7) {
     AIE.useLock(%lock20_8, "Acquire", 1)
     AIE.useLock(%lock20_7, "Acquire", 0)
-    call @do_sieve(%buf20_8, %buf20_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_8, %buf20_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_8, "Release", 0)
     AIE.useLock(%lock20_7, "Release", 1)
     AIE.end
@@ -2722,7 +2722,7 @@ module @test16_prime_sieve_large {
   %core20_6 = AIE.core(%tile20_6) {
     AIE.useLock(%lock20_7, "Acquire", 1)
     AIE.useLock(%lock20_6, "Acquire", 0)
-    call @do_sieve(%buf20_7, %buf20_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_7, %buf20_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_7, "Release", 0)
     AIE.useLock(%lock20_6, "Release", 1)
     AIE.end
@@ -2731,7 +2731,7 @@ module @test16_prime_sieve_large {
   %core20_5 = AIE.core(%tile20_5) {
     AIE.useLock(%lock20_6, "Acquire", 1)
     AIE.useLock(%lock20_5, "Acquire", 0)
-    call @do_sieve(%buf20_6, %buf20_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_6, %buf20_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_6, "Release", 0)
     AIE.useLock(%lock20_5, "Release", 1)
     AIE.end
@@ -2740,7 +2740,7 @@ module @test16_prime_sieve_large {
   %core20_4 = AIE.core(%tile20_4) {
     AIE.useLock(%lock20_5, "Acquire", 1)
     AIE.useLock(%lock20_4, "Acquire", 0)
-    call @do_sieve(%buf20_5, %buf20_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_5, %buf20_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_5, "Release", 0)
     AIE.useLock(%lock20_4, "Release", 1)
     AIE.end
@@ -2749,7 +2749,7 @@ module @test16_prime_sieve_large {
   %core20_3 = AIE.core(%tile20_3) {
     AIE.useLock(%lock20_4, "Acquire", 1)
     AIE.useLock(%lock20_3, "Acquire", 0)
-    call @do_sieve(%buf20_4, %buf20_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_4, %buf20_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_4, "Release", 0)
     AIE.useLock(%lock20_3, "Release", 1)
     AIE.end
@@ -2758,7 +2758,7 @@ module @test16_prime_sieve_large {
   %core20_2 = AIE.core(%tile20_2) {
     AIE.useLock(%lock20_3, "Acquire", 1)
     AIE.useLock(%lock20_2, "Acquire", 0)
-    call @do_sieve(%buf20_3, %buf20_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_3, %buf20_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_3, "Release", 0)
     AIE.useLock(%lock20_2, "Release", 1)
     AIE.end
@@ -2767,7 +2767,7 @@ module @test16_prime_sieve_large {
   %core20_1 = AIE.core(%tile20_1) {
     AIE.useLock(%lock20_2, "Acquire", 1)
     AIE.useLock(%lock20_1, "Acquire", 0)
-    call @do_sieve(%buf20_2, %buf20_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_2, %buf20_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_2, "Release", 0)
     AIE.useLock(%lock20_1, "Release", 1)
     AIE.end
@@ -2776,7 +2776,7 @@ module @test16_prime_sieve_large {
   %core21_1 = AIE.core(%tile21_1) {
     AIE.useLock(%lock20_1, "Acquire", 1)
     AIE.useLock(%lock21_1, "Acquire", 0)
-    call @do_sieve(%buf20_1, %buf21_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf20_1, %buf21_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock20_1, "Release", 0)
     AIE.useLock(%lock21_1, "Release", 1)
     AIE.end
@@ -2785,7 +2785,7 @@ module @test16_prime_sieve_large {
   %core21_2 = AIE.core(%tile21_2) {
     AIE.useLock(%lock21_1, "Acquire", 1)
     AIE.useLock(%lock21_2, "Acquire", 0)
-    call @do_sieve(%buf21_1, %buf21_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_1, %buf21_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_1, "Release", 0)
     AIE.useLock(%lock21_2, "Release", 1)
     AIE.end
@@ -2794,7 +2794,7 @@ module @test16_prime_sieve_large {
   %core21_3 = AIE.core(%tile21_3) {
     AIE.useLock(%lock21_2, "Acquire", 1)
     AIE.useLock(%lock21_3, "Acquire", 0)
-    call @do_sieve(%buf21_2, %buf21_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_2, %buf21_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_2, "Release", 0)
     AIE.useLock(%lock21_3, "Release", 1)
     AIE.end
@@ -2803,7 +2803,7 @@ module @test16_prime_sieve_large {
   %core21_4 = AIE.core(%tile21_4) {
     AIE.useLock(%lock21_3, "Acquire", 1)
     AIE.useLock(%lock21_4, "Acquire", 0)
-    call @do_sieve(%buf21_3, %buf21_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_3, %buf21_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_3, "Release", 0)
     AIE.useLock(%lock21_4, "Release", 1)
     AIE.end
@@ -2812,7 +2812,7 @@ module @test16_prime_sieve_large {
   %core21_5 = AIE.core(%tile21_5) {
     AIE.useLock(%lock21_4, "Acquire", 1)
     AIE.useLock(%lock21_5, "Acquire", 0)
-    call @do_sieve(%buf21_4, %buf21_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_4, %buf21_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_4, "Release", 0)
     AIE.useLock(%lock21_5, "Release", 1)
     AIE.end
@@ -2821,7 +2821,7 @@ module @test16_prime_sieve_large {
   %core21_6 = AIE.core(%tile21_6) {
     AIE.useLock(%lock21_5, "Acquire", 1)
     AIE.useLock(%lock21_6, "Acquire", 0)
-    call @do_sieve(%buf21_5, %buf21_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_5, %buf21_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_5, "Release", 0)
     AIE.useLock(%lock21_6, "Release", 1)
     AIE.end
@@ -2830,7 +2830,7 @@ module @test16_prime_sieve_large {
   %core21_7 = AIE.core(%tile21_7) {
     AIE.useLock(%lock21_6, "Acquire", 1)
     AIE.useLock(%lock21_7, "Acquire", 0)
-    call @do_sieve(%buf21_6, %buf21_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_6, %buf21_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_6, "Release", 0)
     AIE.useLock(%lock21_7, "Release", 1)
     AIE.end
@@ -2839,7 +2839,7 @@ module @test16_prime_sieve_large {
   %core21_8 = AIE.core(%tile21_8) {
     AIE.useLock(%lock21_7, "Acquire", 1)
     AIE.useLock(%lock21_8, "Acquire", 0)
-    call @do_sieve(%buf21_7, %buf21_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_7, %buf21_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_7, "Release", 0)
     AIE.useLock(%lock21_8, "Release", 1)
     AIE.end
@@ -2848,7 +2848,7 @@ module @test16_prime_sieve_large {
   %core21_9 = AIE.core(%tile21_9) {
     AIE.useLock(%lock21_8, "Acquire", 1)
     AIE.useLock(%lock21_9, "Acquire", 0)
-    call @do_sieve(%buf21_8, %buf21_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_8, %buf21_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_8, "Release", 0)
     AIE.useLock(%lock21_9, "Release", 1)
     AIE.end
@@ -2857,7 +2857,7 @@ module @test16_prime_sieve_large {
   %core22_9 = AIE.core(%tile22_9) {
     AIE.useLock(%lock21_9, "Acquire", 1)
     AIE.useLock(%lock22_9, "Acquire", 0)
-    call @do_sieve(%buf21_9, %buf22_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf21_9, %buf22_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock21_9, "Release", 0)
     AIE.useLock(%lock22_9, "Release", 1)
     AIE.end
@@ -2866,7 +2866,7 @@ module @test16_prime_sieve_large {
   %core22_8 = AIE.core(%tile22_8) {
     AIE.useLock(%lock22_9, "Acquire", 1)
     AIE.useLock(%lock22_8, "Acquire", 0)
-    call @do_sieve(%buf22_9, %buf22_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_9, %buf22_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_9, "Release", 0)
     AIE.useLock(%lock22_8, "Release", 1)
     AIE.end
@@ -2875,7 +2875,7 @@ module @test16_prime_sieve_large {
   %core22_7 = AIE.core(%tile22_7) {
     AIE.useLock(%lock22_8, "Acquire", 1)
     AIE.useLock(%lock22_7, "Acquire", 0)
-    call @do_sieve(%buf22_8, %buf22_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_8, %buf22_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_8, "Release", 0)
     AIE.useLock(%lock22_7, "Release", 1)
     AIE.end
@@ -2884,7 +2884,7 @@ module @test16_prime_sieve_large {
   %core22_6 = AIE.core(%tile22_6) {
     AIE.useLock(%lock22_7, "Acquire", 1)
     AIE.useLock(%lock22_6, "Acquire", 0)
-    call @do_sieve(%buf22_7, %buf22_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_7, %buf22_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_7, "Release", 0)
     AIE.useLock(%lock22_6, "Release", 1)
     AIE.end
@@ -2893,7 +2893,7 @@ module @test16_prime_sieve_large {
   %core22_5 = AIE.core(%tile22_5) {
     AIE.useLock(%lock22_6, "Acquire", 1)
     AIE.useLock(%lock22_5, "Acquire", 0)
-    call @do_sieve(%buf22_6, %buf22_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_6, %buf22_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_6, "Release", 0)
     AIE.useLock(%lock22_5, "Release", 1)
     AIE.end
@@ -2902,7 +2902,7 @@ module @test16_prime_sieve_large {
   %core22_4 = AIE.core(%tile22_4) {
     AIE.useLock(%lock22_5, "Acquire", 1)
     AIE.useLock(%lock22_4, "Acquire", 0)
-    call @do_sieve(%buf22_5, %buf22_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_5, %buf22_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_5, "Release", 0)
     AIE.useLock(%lock22_4, "Release", 1)
     AIE.end
@@ -2911,7 +2911,7 @@ module @test16_prime_sieve_large {
   %core22_3 = AIE.core(%tile22_3) {
     AIE.useLock(%lock22_4, "Acquire", 1)
     AIE.useLock(%lock22_3, "Acquire", 0)
-    call @do_sieve(%buf22_4, %buf22_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_4, %buf22_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_4, "Release", 0)
     AIE.useLock(%lock22_3, "Release", 1)
     AIE.end
@@ -2920,7 +2920,7 @@ module @test16_prime_sieve_large {
   %core22_2 = AIE.core(%tile22_2) {
     AIE.useLock(%lock22_3, "Acquire", 1)
     AIE.useLock(%lock22_2, "Acquire", 0)
-    call @do_sieve(%buf22_3, %buf22_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_3, %buf22_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_3, "Release", 0)
     AIE.useLock(%lock22_2, "Release", 1)
     AIE.end
@@ -2929,7 +2929,7 @@ module @test16_prime_sieve_large {
   %core22_1 = AIE.core(%tile22_1) {
     AIE.useLock(%lock22_2, "Acquire", 1)
     AIE.useLock(%lock22_1, "Acquire", 0)
-    call @do_sieve(%buf22_2, %buf22_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_2, %buf22_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_2, "Release", 0)
     AIE.useLock(%lock22_1, "Release", 1)
     AIE.end
@@ -2938,7 +2938,7 @@ module @test16_prime_sieve_large {
   %core23_1 = AIE.core(%tile23_1) {
     AIE.useLock(%lock22_1, "Acquire", 1)
     AIE.useLock(%lock23_1, "Acquire", 0)
-    call @do_sieve(%buf22_1, %buf23_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf22_1, %buf23_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock22_1, "Release", 0)
     AIE.useLock(%lock23_1, "Release", 1)
     AIE.end
@@ -2947,7 +2947,7 @@ module @test16_prime_sieve_large {
   %core23_2 = AIE.core(%tile23_2) {
     AIE.useLock(%lock23_1, "Acquire", 1)
     AIE.useLock(%lock23_2, "Acquire", 0)
-    call @do_sieve(%buf23_1, %buf23_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_1, %buf23_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_1, "Release", 0)
     AIE.useLock(%lock23_2, "Release", 1)
     AIE.end
@@ -2956,7 +2956,7 @@ module @test16_prime_sieve_large {
   %core23_3 = AIE.core(%tile23_3) {
     AIE.useLock(%lock23_2, "Acquire", 1)
     AIE.useLock(%lock23_3, "Acquire", 0)
-    call @do_sieve(%buf23_2, %buf23_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_2, %buf23_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_2, "Release", 0)
     AIE.useLock(%lock23_3, "Release", 1)
     AIE.end
@@ -2965,7 +2965,7 @@ module @test16_prime_sieve_large {
   %core23_4 = AIE.core(%tile23_4) {
     AIE.useLock(%lock23_3, "Acquire", 1)
     AIE.useLock(%lock23_4, "Acquire", 0)
-    call @do_sieve(%buf23_3, %buf23_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_3, %buf23_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_3, "Release", 0)
     AIE.useLock(%lock23_4, "Release", 1)
     AIE.end
@@ -2974,7 +2974,7 @@ module @test16_prime_sieve_large {
   %core23_5 = AIE.core(%tile23_5) {
     AIE.useLock(%lock23_4, "Acquire", 1)
     AIE.useLock(%lock23_5, "Acquire", 0)
-    call @do_sieve(%buf23_4, %buf23_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_4, %buf23_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_4, "Release", 0)
     AIE.useLock(%lock23_5, "Release", 1)
     AIE.end
@@ -2983,7 +2983,7 @@ module @test16_prime_sieve_large {
   %core23_6 = AIE.core(%tile23_6) {
     AIE.useLock(%lock23_5, "Acquire", 1)
     AIE.useLock(%lock23_6, "Acquire", 0)
-    call @do_sieve(%buf23_5, %buf23_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_5, %buf23_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_5, "Release", 0)
     AIE.useLock(%lock23_6, "Release", 1)
     AIE.end
@@ -2992,7 +2992,7 @@ module @test16_prime_sieve_large {
   %core23_7 = AIE.core(%tile23_7) {
     AIE.useLock(%lock23_6, "Acquire", 1)
     AIE.useLock(%lock23_7, "Acquire", 0)
-    call @do_sieve(%buf23_6, %buf23_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_6, %buf23_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_6, "Release", 0)
     AIE.useLock(%lock23_7, "Release", 1)
     AIE.end
@@ -3001,7 +3001,7 @@ module @test16_prime_sieve_large {
   %core23_8 = AIE.core(%tile23_8) {
     AIE.useLock(%lock23_7, "Acquire", 1)
     AIE.useLock(%lock23_8, "Acquire", 0)
-    call @do_sieve(%buf23_7, %buf23_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_7, %buf23_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_7, "Release", 0)
     AIE.useLock(%lock23_8, "Release", 1)
     AIE.end
@@ -3010,7 +3010,7 @@ module @test16_prime_sieve_large {
   %core23_9 = AIE.core(%tile23_9) {
     AIE.useLock(%lock23_8, "Acquire", 1)
     AIE.useLock(%lock23_9, "Acquire", 0)
-    call @do_sieve(%buf23_8, %buf23_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_8, %buf23_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_8, "Release", 0)
     AIE.useLock(%lock23_9, "Release", 1)
     AIE.end
@@ -3019,7 +3019,7 @@ module @test16_prime_sieve_large {
   %core24_9 = AIE.core(%tile24_9) {
     AIE.useLock(%lock23_9, "Acquire", 1)
     AIE.useLock(%lock24_9, "Acquire", 0)
-    call @do_sieve(%buf23_9, %buf24_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf23_9, %buf24_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock23_9, "Release", 0)
     AIE.useLock(%lock24_9, "Release", 1)
     AIE.end
@@ -3028,7 +3028,7 @@ module @test16_prime_sieve_large {
   %core24_8 = AIE.core(%tile24_8) {
     AIE.useLock(%lock24_9, "Acquire", 1)
     AIE.useLock(%lock24_8, "Acquire", 0)
-    call @do_sieve(%buf24_9, %buf24_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_9, %buf24_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_9, "Release", 0)
     AIE.useLock(%lock24_8, "Release", 1)
     AIE.end
@@ -3037,7 +3037,7 @@ module @test16_prime_sieve_large {
   %core24_7 = AIE.core(%tile24_7) {
     AIE.useLock(%lock24_8, "Acquire", 1)
     AIE.useLock(%lock24_7, "Acquire", 0)
-    call @do_sieve(%buf24_8, %buf24_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_8, %buf24_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_8, "Release", 0)
     AIE.useLock(%lock24_7, "Release", 1)
     AIE.end
@@ -3046,7 +3046,7 @@ module @test16_prime_sieve_large {
   %core24_6 = AIE.core(%tile24_6) {
     AIE.useLock(%lock24_7, "Acquire", 1)
     AIE.useLock(%lock24_6, "Acquire", 0)
-    call @do_sieve(%buf24_7, %buf24_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_7, %buf24_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_7, "Release", 0)
     AIE.useLock(%lock24_6, "Release", 1)
     AIE.end
@@ -3055,7 +3055,7 @@ module @test16_prime_sieve_large {
   %core24_5 = AIE.core(%tile24_5) {
     AIE.useLock(%lock24_6, "Acquire", 1)
     AIE.useLock(%lock24_5, "Acquire", 0)
-    call @do_sieve(%buf24_6, %buf24_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_6, %buf24_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_6, "Release", 0)
     AIE.useLock(%lock24_5, "Release", 1)
     AIE.end
@@ -3064,7 +3064,7 @@ module @test16_prime_sieve_large {
   %core24_4 = AIE.core(%tile24_4) {
     AIE.useLock(%lock24_5, "Acquire", 1)
     AIE.useLock(%lock24_4, "Acquire", 0)
-    call @do_sieve(%buf24_5, %buf24_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_5, %buf24_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_5, "Release", 0)
     AIE.useLock(%lock24_4, "Release", 1)
     AIE.end
@@ -3073,7 +3073,7 @@ module @test16_prime_sieve_large {
   %core24_3 = AIE.core(%tile24_3) {
     AIE.useLock(%lock24_4, "Acquire", 1)
     AIE.useLock(%lock24_3, "Acquire", 0)
-    call @do_sieve(%buf24_4, %buf24_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_4, %buf24_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_4, "Release", 0)
     AIE.useLock(%lock24_3, "Release", 1)
     AIE.end
@@ -3082,7 +3082,7 @@ module @test16_prime_sieve_large {
   %core24_2 = AIE.core(%tile24_2) {
     AIE.useLock(%lock24_3, "Acquire", 1)
     AIE.useLock(%lock24_2, "Acquire", 0)
-    call @do_sieve(%buf24_3, %buf24_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_3, %buf24_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_3, "Release", 0)
     AIE.useLock(%lock24_2, "Release", 1)
     AIE.end
@@ -3091,7 +3091,7 @@ module @test16_prime_sieve_large {
   %core24_1 = AIE.core(%tile24_1) {
     AIE.useLock(%lock24_2, "Acquire", 1)
     AIE.useLock(%lock24_1, "Acquire", 0)
-    call @do_sieve(%buf24_2, %buf24_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_2, %buf24_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_2, "Release", 0)
     AIE.useLock(%lock24_1, "Release", 1)
     AIE.end
@@ -3100,7 +3100,7 @@ module @test16_prime_sieve_large {
   %core25_1 = AIE.core(%tile25_1) {
     AIE.useLock(%lock24_1, "Acquire", 1)
     AIE.useLock(%lock25_1, "Acquire", 0)
-    call @do_sieve(%buf24_1, %buf25_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf24_1, %buf25_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock24_1, "Release", 0)
     AIE.useLock(%lock25_1, "Release", 1)
     AIE.end
@@ -3109,7 +3109,7 @@ module @test16_prime_sieve_large {
   %core25_2 = AIE.core(%tile25_2) {
     AIE.useLock(%lock25_1, "Acquire", 1)
     AIE.useLock(%lock25_2, "Acquire", 0)
-    call @do_sieve(%buf25_1, %buf25_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_1, %buf25_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_1, "Release", 0)
     AIE.useLock(%lock25_2, "Release", 1)
     AIE.end
@@ -3118,7 +3118,7 @@ module @test16_prime_sieve_large {
   %core25_3 = AIE.core(%tile25_3) {
     AIE.useLock(%lock25_2, "Acquire", 1)
     AIE.useLock(%lock25_3, "Acquire", 0)
-    call @do_sieve(%buf25_2, %buf25_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_2, %buf25_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_2, "Release", 0)
     AIE.useLock(%lock25_3, "Release", 1)
     AIE.end
@@ -3127,7 +3127,7 @@ module @test16_prime_sieve_large {
   %core25_4 = AIE.core(%tile25_4) {
     AIE.useLock(%lock25_3, "Acquire", 1)
     AIE.useLock(%lock25_4, "Acquire", 0)
-    call @do_sieve(%buf25_3, %buf25_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_3, %buf25_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_3, "Release", 0)
     AIE.useLock(%lock25_4, "Release", 1)
     AIE.end
@@ -3136,7 +3136,7 @@ module @test16_prime_sieve_large {
   %core25_5 = AIE.core(%tile25_5) {
     AIE.useLock(%lock25_4, "Acquire", 1)
     AIE.useLock(%lock25_5, "Acquire", 0)
-    call @do_sieve(%buf25_4, %buf25_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_4, %buf25_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_4, "Release", 0)
     AIE.useLock(%lock25_5, "Release", 1)
     AIE.end
@@ -3145,7 +3145,7 @@ module @test16_prime_sieve_large {
   %core25_6 = AIE.core(%tile25_6) {
     AIE.useLock(%lock25_5, "Acquire", 1)
     AIE.useLock(%lock25_6, "Acquire", 0)
-    call @do_sieve(%buf25_5, %buf25_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_5, %buf25_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_5, "Release", 0)
     AIE.useLock(%lock25_6, "Release", 1)
     AIE.end
@@ -3154,7 +3154,7 @@ module @test16_prime_sieve_large {
   %core25_7 = AIE.core(%tile25_7) {
     AIE.useLock(%lock25_6, "Acquire", 1)
     AIE.useLock(%lock25_7, "Acquire", 0)
-    call @do_sieve(%buf25_6, %buf25_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_6, %buf25_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_6, "Release", 0)
     AIE.useLock(%lock25_7, "Release", 1)
     AIE.end
@@ -3163,7 +3163,7 @@ module @test16_prime_sieve_large {
   %core25_8 = AIE.core(%tile25_8) {
     AIE.useLock(%lock25_7, "Acquire", 1)
     AIE.useLock(%lock25_8, "Acquire", 0)
-    call @do_sieve(%buf25_7, %buf25_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_7, %buf25_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_7, "Release", 0)
     AIE.useLock(%lock25_8, "Release", 1)
     AIE.end
@@ -3172,7 +3172,7 @@ module @test16_prime_sieve_large {
   %core25_9 = AIE.core(%tile25_9) {
     AIE.useLock(%lock25_8, "Acquire", 1)
     AIE.useLock(%lock25_9, "Acquire", 0)
-    call @do_sieve(%buf25_8, %buf25_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_8, %buf25_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_8, "Release", 0)
     AIE.useLock(%lock25_9, "Release", 1)
     AIE.end
@@ -3181,7 +3181,7 @@ module @test16_prime_sieve_large {
   %core26_9 = AIE.core(%tile26_9) {
     AIE.useLock(%lock25_9, "Acquire", 1)
     AIE.useLock(%lock26_9, "Acquire", 0)
-    call @do_sieve(%buf25_9, %buf26_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf25_9, %buf26_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock25_9, "Release", 0)
     AIE.useLock(%lock26_9, "Release", 1)
     AIE.end
@@ -3190,7 +3190,7 @@ module @test16_prime_sieve_large {
   %core26_8 = AIE.core(%tile26_8) {
     AIE.useLock(%lock26_9, "Acquire", 1)
     AIE.useLock(%lock26_8, "Acquire", 0)
-    call @do_sieve(%buf26_9, %buf26_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_9, %buf26_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_9, "Release", 0)
     AIE.useLock(%lock26_8, "Release", 1)
     AIE.end
@@ -3199,7 +3199,7 @@ module @test16_prime_sieve_large {
   %core26_7 = AIE.core(%tile26_7) {
     AIE.useLock(%lock26_8, "Acquire", 1)
     AIE.useLock(%lock26_7, "Acquire", 0)
-    call @do_sieve(%buf26_8, %buf26_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_8, %buf26_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_8, "Release", 0)
     AIE.useLock(%lock26_7, "Release", 1)
     AIE.end
@@ -3208,7 +3208,7 @@ module @test16_prime_sieve_large {
   %core26_6 = AIE.core(%tile26_6) {
     AIE.useLock(%lock26_7, "Acquire", 1)
     AIE.useLock(%lock26_6, "Acquire", 0)
-    call @do_sieve(%buf26_7, %buf26_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_7, %buf26_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_7, "Release", 0)
     AIE.useLock(%lock26_6, "Release", 1)
     AIE.end
@@ -3217,7 +3217,7 @@ module @test16_prime_sieve_large {
   %core26_5 = AIE.core(%tile26_5) {
     AIE.useLock(%lock26_6, "Acquire", 1)
     AIE.useLock(%lock26_5, "Acquire", 0)
-    call @do_sieve(%buf26_6, %buf26_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_6, %buf26_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_6, "Release", 0)
     AIE.useLock(%lock26_5, "Release", 1)
     AIE.end
@@ -3226,7 +3226,7 @@ module @test16_prime_sieve_large {
   %core26_4 = AIE.core(%tile26_4) {
     AIE.useLock(%lock26_5, "Acquire", 1)
     AIE.useLock(%lock26_4, "Acquire", 0)
-    call @do_sieve(%buf26_5, %buf26_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_5, %buf26_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_5, "Release", 0)
     AIE.useLock(%lock26_4, "Release", 1)
     AIE.end
@@ -3235,7 +3235,7 @@ module @test16_prime_sieve_large {
   %core26_3 = AIE.core(%tile26_3) {
     AIE.useLock(%lock26_4, "Acquire", 1)
     AIE.useLock(%lock26_3, "Acquire", 0)
-    call @do_sieve(%buf26_4, %buf26_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_4, %buf26_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_4, "Release", 0)
     AIE.useLock(%lock26_3, "Release", 1)
     AIE.end
@@ -3244,7 +3244,7 @@ module @test16_prime_sieve_large {
   %core26_2 = AIE.core(%tile26_2) {
     AIE.useLock(%lock26_3, "Acquire", 1)
     AIE.useLock(%lock26_2, "Acquire", 0)
-    call @do_sieve(%buf26_3, %buf26_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_3, %buf26_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_3, "Release", 0)
     AIE.useLock(%lock26_2, "Release", 1)
     AIE.end
@@ -3253,7 +3253,7 @@ module @test16_prime_sieve_large {
   %core26_1 = AIE.core(%tile26_1) {
     AIE.useLock(%lock26_2, "Acquire", 1)
     AIE.useLock(%lock26_1, "Acquire", 0)
-    call @do_sieve(%buf26_2, %buf26_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_2, %buf26_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_2, "Release", 0)
     AIE.useLock(%lock26_1, "Release", 1)
     AIE.end
@@ -3262,7 +3262,7 @@ module @test16_prime_sieve_large {
   %core27_1 = AIE.core(%tile27_1) {
     AIE.useLock(%lock26_1, "Acquire", 1)
     AIE.useLock(%lock27_1, "Acquire", 0)
-    call @do_sieve(%buf26_1, %buf27_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf26_1, %buf27_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock26_1, "Release", 0)
     AIE.useLock(%lock27_1, "Release", 1)
     AIE.end
@@ -3271,7 +3271,7 @@ module @test16_prime_sieve_large {
   %core27_2 = AIE.core(%tile27_2) {
     AIE.useLock(%lock27_1, "Acquire", 1)
     AIE.useLock(%lock27_2, "Acquire", 0)
-    call @do_sieve(%buf27_1, %buf27_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_1, %buf27_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_1, "Release", 0)
     AIE.useLock(%lock27_2, "Release", 1)
     AIE.end
@@ -3280,7 +3280,7 @@ module @test16_prime_sieve_large {
   %core27_3 = AIE.core(%tile27_3) {
     AIE.useLock(%lock27_2, "Acquire", 1)
     AIE.useLock(%lock27_3, "Acquire", 0)
-    call @do_sieve(%buf27_2, %buf27_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_2, %buf27_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_2, "Release", 0)
     AIE.useLock(%lock27_3, "Release", 1)
     AIE.end
@@ -3289,7 +3289,7 @@ module @test16_prime_sieve_large {
   %core27_4 = AIE.core(%tile27_4) {
     AIE.useLock(%lock27_3, "Acquire", 1)
     AIE.useLock(%lock27_4, "Acquire", 0)
-    call @do_sieve(%buf27_3, %buf27_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_3, %buf27_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_3, "Release", 0)
     AIE.useLock(%lock27_4, "Release", 1)
     AIE.end
@@ -3298,7 +3298,7 @@ module @test16_prime_sieve_large {
   %core27_5 = AIE.core(%tile27_5) {
     AIE.useLock(%lock27_4, "Acquire", 1)
     AIE.useLock(%lock27_5, "Acquire", 0)
-    call @do_sieve(%buf27_4, %buf27_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_4, %buf27_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_4, "Release", 0)
     AIE.useLock(%lock27_5, "Release", 1)
     AIE.end
@@ -3307,7 +3307,7 @@ module @test16_prime_sieve_large {
   %core27_6 = AIE.core(%tile27_6) {
     AIE.useLock(%lock27_5, "Acquire", 1)
     AIE.useLock(%lock27_6, "Acquire", 0)
-    call @do_sieve(%buf27_5, %buf27_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_5, %buf27_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_5, "Release", 0)
     AIE.useLock(%lock27_6, "Release", 1)
     AIE.end
@@ -3316,7 +3316,7 @@ module @test16_prime_sieve_large {
   %core27_7 = AIE.core(%tile27_7) {
     AIE.useLock(%lock27_6, "Acquire", 1)
     AIE.useLock(%lock27_7, "Acquire", 0)
-    call @do_sieve(%buf27_6, %buf27_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_6, %buf27_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_6, "Release", 0)
     AIE.useLock(%lock27_7, "Release", 1)
     AIE.end
@@ -3325,7 +3325,7 @@ module @test16_prime_sieve_large {
   %core27_8 = AIE.core(%tile27_8) {
     AIE.useLock(%lock27_7, "Acquire", 1)
     AIE.useLock(%lock27_8, "Acquire", 0)
-    call @do_sieve(%buf27_7, %buf27_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_7, %buf27_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_7, "Release", 0)
     AIE.useLock(%lock27_8, "Release", 1)
     AIE.end
@@ -3334,7 +3334,7 @@ module @test16_prime_sieve_large {
   %core27_9 = AIE.core(%tile27_9) {
     AIE.useLock(%lock27_8, "Acquire", 1)
     AIE.useLock(%lock27_9, "Acquire", 0)
-    call @do_sieve(%buf27_8, %buf27_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_8, %buf27_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_8, "Release", 0)
     AIE.useLock(%lock27_9, "Release", 1)
     AIE.end
@@ -3343,7 +3343,7 @@ module @test16_prime_sieve_large {
   %core28_9 = AIE.core(%tile28_9) {
     AIE.useLock(%lock27_9, "Acquire", 1)
     AIE.useLock(%lock28_9, "Acquire", 0)
-    call @do_sieve(%buf27_9, %buf28_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf27_9, %buf28_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock27_9, "Release", 0)
     AIE.useLock(%lock28_9, "Release", 1)
     AIE.end
@@ -3352,7 +3352,7 @@ module @test16_prime_sieve_large {
   %core28_8 = AIE.core(%tile28_8) {
     AIE.useLock(%lock28_9, "Acquire", 1)
     AIE.useLock(%lock28_8, "Acquire", 0)
-    call @do_sieve(%buf28_9, %buf28_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_9, %buf28_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_9, "Release", 0)
     AIE.useLock(%lock28_8, "Release", 1)
     AIE.end
@@ -3361,7 +3361,7 @@ module @test16_prime_sieve_large {
   %core28_7 = AIE.core(%tile28_7) {
     AIE.useLock(%lock28_8, "Acquire", 1)
     AIE.useLock(%lock28_7, "Acquire", 0)
-    call @do_sieve(%buf28_8, %buf28_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_8, %buf28_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_8, "Release", 0)
     AIE.useLock(%lock28_7, "Release", 1)
     AIE.end
@@ -3370,7 +3370,7 @@ module @test16_prime_sieve_large {
   %core28_6 = AIE.core(%tile28_6) {
     AIE.useLock(%lock28_7, "Acquire", 1)
     AIE.useLock(%lock28_6, "Acquire", 0)
-    call @do_sieve(%buf28_7, %buf28_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_7, %buf28_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_7, "Release", 0)
     AIE.useLock(%lock28_6, "Release", 1)
     AIE.end
@@ -3379,7 +3379,7 @@ module @test16_prime_sieve_large {
   %core28_5 = AIE.core(%tile28_5) {
     AIE.useLock(%lock28_6, "Acquire", 1)
     AIE.useLock(%lock28_5, "Acquire", 0)
-    call @do_sieve(%buf28_6, %buf28_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_6, %buf28_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_6, "Release", 0)
     AIE.useLock(%lock28_5, "Release", 1)
     AIE.end
@@ -3388,7 +3388,7 @@ module @test16_prime_sieve_large {
   %core28_4 = AIE.core(%tile28_4) {
     AIE.useLock(%lock28_5, "Acquire", 1)
     AIE.useLock(%lock28_4, "Acquire", 0)
-    call @do_sieve(%buf28_5, %buf28_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_5, %buf28_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_5, "Release", 0)
     AIE.useLock(%lock28_4, "Release", 1)
     AIE.end
@@ -3397,7 +3397,7 @@ module @test16_prime_sieve_large {
   %core28_3 = AIE.core(%tile28_3) {
     AIE.useLock(%lock28_4, "Acquire", 1)
     AIE.useLock(%lock28_3, "Acquire", 0)
-    call @do_sieve(%buf28_4, %buf28_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_4, %buf28_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_4, "Release", 0)
     AIE.useLock(%lock28_3, "Release", 1)
     AIE.end
@@ -3406,7 +3406,7 @@ module @test16_prime_sieve_large {
   %core28_2 = AIE.core(%tile28_2) {
     AIE.useLock(%lock28_3, "Acquire", 1)
     AIE.useLock(%lock28_2, "Acquire", 0)
-    call @do_sieve(%buf28_3, %buf28_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_3, %buf28_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_3, "Release", 0)
     AIE.useLock(%lock28_2, "Release", 1)
     AIE.end
@@ -3415,7 +3415,7 @@ module @test16_prime_sieve_large {
   %core28_1 = AIE.core(%tile28_1) {
     AIE.useLock(%lock28_2, "Acquire", 1)
     AIE.useLock(%lock28_1, "Acquire", 0)
-    call @do_sieve(%buf28_2, %buf28_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_2, %buf28_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_2, "Release", 0)
     AIE.useLock(%lock28_1, "Release", 1)
     AIE.end
@@ -3424,7 +3424,7 @@ module @test16_prime_sieve_large {
   %core29_1 = AIE.core(%tile29_1) {
     AIE.useLock(%lock28_1, "Acquire", 1)
     AIE.useLock(%lock29_1, "Acquire", 0)
-    call @do_sieve(%buf28_1, %buf29_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf28_1, %buf29_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock28_1, "Release", 0)
     AIE.useLock(%lock29_1, "Release", 1)
     AIE.end
@@ -3433,7 +3433,7 @@ module @test16_prime_sieve_large {
   %core29_2 = AIE.core(%tile29_2) {
     AIE.useLock(%lock29_1, "Acquire", 1)
     AIE.useLock(%lock29_2, "Acquire", 0)
-    call @do_sieve(%buf29_1, %buf29_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_1, %buf29_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_1, "Release", 0)
     AIE.useLock(%lock29_2, "Release", 1)
     AIE.end
@@ -3442,7 +3442,7 @@ module @test16_prime_sieve_large {
   %core29_3 = AIE.core(%tile29_3) {
     AIE.useLock(%lock29_2, "Acquire", 1)
     AIE.useLock(%lock29_3, "Acquire", 0)
-    call @do_sieve(%buf29_2, %buf29_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_2, %buf29_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_2, "Release", 0)
     AIE.useLock(%lock29_3, "Release", 1)
     AIE.end
@@ -3451,7 +3451,7 @@ module @test16_prime_sieve_large {
   %core29_4 = AIE.core(%tile29_4) {
     AIE.useLock(%lock29_3, "Acquire", 1)
     AIE.useLock(%lock29_4, "Acquire", 0)
-    call @do_sieve(%buf29_3, %buf29_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_3, %buf29_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_3, "Release", 0)
     AIE.useLock(%lock29_4, "Release", 1)
     AIE.end
@@ -3460,7 +3460,7 @@ module @test16_prime_sieve_large {
   %core29_5 = AIE.core(%tile29_5) {
     AIE.useLock(%lock29_4, "Acquire", 1)
     AIE.useLock(%lock29_5, "Acquire", 0)
-    call @do_sieve(%buf29_4, %buf29_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_4, %buf29_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_4, "Release", 0)
     AIE.useLock(%lock29_5, "Release", 1)
     AIE.end
@@ -3469,7 +3469,7 @@ module @test16_prime_sieve_large {
   %core29_6 = AIE.core(%tile29_6) {
     AIE.useLock(%lock29_5, "Acquire", 1)
     AIE.useLock(%lock29_6, "Acquire", 0)
-    call @do_sieve(%buf29_5, %buf29_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_5, %buf29_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_5, "Release", 0)
     AIE.useLock(%lock29_6, "Release", 1)
     AIE.end
@@ -3478,7 +3478,7 @@ module @test16_prime_sieve_large {
   %core29_7 = AIE.core(%tile29_7) {
     AIE.useLock(%lock29_6, "Acquire", 1)
     AIE.useLock(%lock29_7, "Acquire", 0)
-    call @do_sieve(%buf29_6, %buf29_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_6, %buf29_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_6, "Release", 0)
     AIE.useLock(%lock29_7, "Release", 1)
     AIE.end
@@ -3487,7 +3487,7 @@ module @test16_prime_sieve_large {
   %core29_8 = AIE.core(%tile29_8) {
     AIE.useLock(%lock29_7, "Acquire", 1)
     AIE.useLock(%lock29_8, "Acquire", 0)
-    call @do_sieve(%buf29_7, %buf29_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_7, %buf29_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_7, "Release", 0)
     AIE.useLock(%lock29_8, "Release", 1)
     AIE.end
@@ -3496,7 +3496,7 @@ module @test16_prime_sieve_large {
   %core29_9 = AIE.core(%tile29_9) {
     AIE.useLock(%lock29_8, "Acquire", 1)
     AIE.useLock(%lock29_9, "Acquire", 0)
-    call @do_sieve(%buf29_8, %buf29_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_8, %buf29_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_8, "Release", 0)
     AIE.useLock(%lock29_9, "Release", 1)
     AIE.end
@@ -3505,7 +3505,7 @@ module @test16_prime_sieve_large {
   %core30_9 = AIE.core(%tile30_9) {
     AIE.useLock(%lock29_9, "Acquire", 1)
     AIE.useLock(%lock30_9, "Acquire", 0)
-    call @do_sieve(%buf29_9, %buf30_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf29_9, %buf30_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock29_9, "Release", 0)
     AIE.useLock(%lock30_9, "Release", 1)
     AIE.end
@@ -3514,7 +3514,7 @@ module @test16_prime_sieve_large {
   %core30_8 = AIE.core(%tile30_8) {
     AIE.useLock(%lock30_9, "Acquire", 1)
     AIE.useLock(%lock30_8, "Acquire", 0)
-    call @do_sieve(%buf30_9, %buf30_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_9, %buf30_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_9, "Release", 0)
     AIE.useLock(%lock30_8, "Release", 1)
     AIE.end
@@ -3523,7 +3523,7 @@ module @test16_prime_sieve_large {
   %core30_7 = AIE.core(%tile30_7) {
     AIE.useLock(%lock30_8, "Acquire", 1)
     AIE.useLock(%lock30_7, "Acquire", 0)
-    call @do_sieve(%buf30_8, %buf30_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_8, %buf30_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_8, "Release", 0)
     AIE.useLock(%lock30_7, "Release", 1)
     AIE.end
@@ -3532,7 +3532,7 @@ module @test16_prime_sieve_large {
   %core30_6 = AIE.core(%tile30_6) {
     AIE.useLock(%lock30_7, "Acquire", 1)
     AIE.useLock(%lock30_6, "Acquire", 0)
-    call @do_sieve(%buf30_7, %buf30_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_7, %buf30_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_7, "Release", 0)
     AIE.useLock(%lock30_6, "Release", 1)
     AIE.end
@@ -3541,7 +3541,7 @@ module @test16_prime_sieve_large {
   %core30_5 = AIE.core(%tile30_5) {
     AIE.useLock(%lock30_6, "Acquire", 1)
     AIE.useLock(%lock30_5, "Acquire", 0)
-    call @do_sieve(%buf30_6, %buf30_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_6, %buf30_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_6, "Release", 0)
     AIE.useLock(%lock30_5, "Release", 1)
     AIE.end
@@ -3550,7 +3550,7 @@ module @test16_prime_sieve_large {
   %core30_4 = AIE.core(%tile30_4) {
     AIE.useLock(%lock30_5, "Acquire", 1)
     AIE.useLock(%lock30_4, "Acquire", 0)
-    call @do_sieve(%buf30_5, %buf30_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_5, %buf30_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_5, "Release", 0)
     AIE.useLock(%lock30_4, "Release", 1)
     AIE.end
@@ -3559,7 +3559,7 @@ module @test16_prime_sieve_large {
   %core30_3 = AIE.core(%tile30_3) {
     AIE.useLock(%lock30_4, "Acquire", 1)
     AIE.useLock(%lock30_3, "Acquire", 0)
-    call @do_sieve(%buf30_4, %buf30_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_4, %buf30_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_4, "Release", 0)
     AIE.useLock(%lock30_3, "Release", 1)
     AIE.end
@@ -3568,7 +3568,7 @@ module @test16_prime_sieve_large {
   %core30_2 = AIE.core(%tile30_2) {
     AIE.useLock(%lock30_3, "Acquire", 1)
     AIE.useLock(%lock30_2, "Acquire", 0)
-    call @do_sieve(%buf30_3, %buf30_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_3, %buf30_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_3, "Release", 0)
     AIE.useLock(%lock30_2, "Release", 1)
     AIE.end
@@ -3577,7 +3577,7 @@ module @test16_prime_sieve_large {
   %core30_1 = AIE.core(%tile30_1) {
     AIE.useLock(%lock30_2, "Acquire", 1)
     AIE.useLock(%lock30_1, "Acquire", 0)
-    call @do_sieve(%buf30_2, %buf30_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_2, %buf30_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_2, "Release", 0)
     AIE.useLock(%lock30_1, "Release", 1)
     AIE.end
@@ -3586,7 +3586,7 @@ module @test16_prime_sieve_large {
   %core31_1 = AIE.core(%tile31_1) {
     AIE.useLock(%lock30_1, "Acquire", 1)
     AIE.useLock(%lock31_1, "Acquire", 0)
-    call @do_sieve(%buf30_1, %buf31_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf30_1, %buf31_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock30_1, "Release", 0)
     AIE.useLock(%lock31_1, "Release", 1)
     AIE.end
@@ -3595,7 +3595,7 @@ module @test16_prime_sieve_large {
   %core31_2 = AIE.core(%tile31_2) {
     AIE.useLock(%lock31_1, "Acquire", 1)
     AIE.useLock(%lock31_2, "Acquire", 0)
-    call @do_sieve(%buf31_1, %buf31_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_1, %buf31_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_1, "Release", 0)
     AIE.useLock(%lock31_2, "Release", 1)
     AIE.end
@@ -3604,7 +3604,7 @@ module @test16_prime_sieve_large {
   %core31_3 = AIE.core(%tile31_3) {
     AIE.useLock(%lock31_2, "Acquire", 1)
     AIE.useLock(%lock31_3, "Acquire", 0)
-    call @do_sieve(%buf31_2, %buf31_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_2, %buf31_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_2, "Release", 0)
     AIE.useLock(%lock31_3, "Release", 1)
     AIE.end
@@ -3613,7 +3613,7 @@ module @test16_prime_sieve_large {
   %core31_4 = AIE.core(%tile31_4) {
     AIE.useLock(%lock31_3, "Acquire", 1)
     AIE.useLock(%lock31_4, "Acquire", 0)
-    call @do_sieve(%buf31_3, %buf31_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_3, %buf31_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_3, "Release", 0)
     AIE.useLock(%lock31_4, "Release", 1)
     AIE.end
@@ -3622,7 +3622,7 @@ module @test16_prime_sieve_large {
   %core31_5 = AIE.core(%tile31_5) {
     AIE.useLock(%lock31_4, "Acquire", 1)
     AIE.useLock(%lock31_5, "Acquire", 0)
-    call @do_sieve(%buf31_4, %buf31_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_4, %buf31_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_4, "Release", 0)
     AIE.useLock(%lock31_5, "Release", 1)
     AIE.end
@@ -3631,7 +3631,7 @@ module @test16_prime_sieve_large {
   %core31_6 = AIE.core(%tile31_6) {
     AIE.useLock(%lock31_5, "Acquire", 1)
     AIE.useLock(%lock31_6, "Acquire", 0)
-    call @do_sieve(%buf31_5, %buf31_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_5, %buf31_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_5, "Release", 0)
     AIE.useLock(%lock31_6, "Release", 1)
     AIE.end
@@ -3640,7 +3640,7 @@ module @test16_prime_sieve_large {
   %core31_7 = AIE.core(%tile31_7) {
     AIE.useLock(%lock31_6, "Acquire", 1)
     AIE.useLock(%lock31_7, "Acquire", 0)
-    call @do_sieve(%buf31_6, %buf31_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_6, %buf31_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_6, "Release", 0)
     AIE.useLock(%lock31_7, "Release", 1)
     AIE.end
@@ -3649,7 +3649,7 @@ module @test16_prime_sieve_large {
   %core31_8 = AIE.core(%tile31_8) {
     AIE.useLock(%lock31_7, "Acquire", 1)
     AIE.useLock(%lock31_8, "Acquire", 0)
-    call @do_sieve(%buf31_7, %buf31_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_7, %buf31_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_7, "Release", 0)
     AIE.useLock(%lock31_8, "Release", 1)
     AIE.end
@@ -3658,7 +3658,7 @@ module @test16_prime_sieve_large {
   %core31_9 = AIE.core(%tile31_9) {
     AIE.useLock(%lock31_8, "Acquire", 1)
     AIE.useLock(%lock31_9, "Acquire", 0)
-    call @do_sieve(%buf31_8, %buf31_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_8, %buf31_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_8, "Release", 0)
     AIE.useLock(%lock31_9, "Release", 1)
     AIE.end
@@ -3667,7 +3667,7 @@ module @test16_prime_sieve_large {
   %core32_9 = AIE.core(%tile32_9) {
     AIE.useLock(%lock31_9, "Acquire", 1)
     AIE.useLock(%lock32_9, "Acquire", 0)
-    call @do_sieve(%buf31_9, %buf32_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf31_9, %buf32_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock31_9, "Release", 0)
     AIE.useLock(%lock32_9, "Release", 1)
     AIE.end
@@ -3676,7 +3676,7 @@ module @test16_prime_sieve_large {
   %core32_8 = AIE.core(%tile32_8) {
     AIE.useLock(%lock32_9, "Acquire", 1)
     AIE.useLock(%lock32_8, "Acquire", 0)
-    call @do_sieve(%buf32_9, %buf32_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_9, %buf32_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_9, "Release", 0)
     AIE.useLock(%lock32_8, "Release", 1)
     AIE.end
@@ -3685,7 +3685,7 @@ module @test16_prime_sieve_large {
   %core32_7 = AIE.core(%tile32_7) {
     AIE.useLock(%lock32_8, "Acquire", 1)
     AIE.useLock(%lock32_7, "Acquire", 0)
-    call @do_sieve(%buf32_8, %buf32_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_8, %buf32_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_8, "Release", 0)
     AIE.useLock(%lock32_7, "Release", 1)
     AIE.end
@@ -3694,7 +3694,7 @@ module @test16_prime_sieve_large {
   %core32_6 = AIE.core(%tile32_6) {
     AIE.useLock(%lock32_7, "Acquire", 1)
     AIE.useLock(%lock32_6, "Acquire", 0)
-    call @do_sieve(%buf32_7, %buf32_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_7, %buf32_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_7, "Release", 0)
     AIE.useLock(%lock32_6, "Release", 1)
     AIE.end
@@ -3703,7 +3703,7 @@ module @test16_prime_sieve_large {
   %core32_5 = AIE.core(%tile32_5) {
     AIE.useLock(%lock32_6, "Acquire", 1)
     AIE.useLock(%lock32_5, "Acquire", 0)
-    call @do_sieve(%buf32_6, %buf32_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_6, %buf32_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_6, "Release", 0)
     AIE.useLock(%lock32_5, "Release", 1)
     AIE.end
@@ -3712,7 +3712,7 @@ module @test16_prime_sieve_large {
   %core32_4 = AIE.core(%tile32_4) {
     AIE.useLock(%lock32_5, "Acquire", 1)
     AIE.useLock(%lock32_4, "Acquire", 0)
-    call @do_sieve(%buf32_5, %buf32_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_5, %buf32_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_5, "Release", 0)
     AIE.useLock(%lock32_4, "Release", 1)
     AIE.end
@@ -3721,7 +3721,7 @@ module @test16_prime_sieve_large {
   %core32_3 = AIE.core(%tile32_3) {
     AIE.useLock(%lock32_4, "Acquire", 1)
     AIE.useLock(%lock32_3, "Acquire", 0)
-    call @do_sieve(%buf32_4, %buf32_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_4, %buf32_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_4, "Release", 0)
     AIE.useLock(%lock32_3, "Release", 1)
     AIE.end
@@ -3730,7 +3730,7 @@ module @test16_prime_sieve_large {
   %core32_2 = AIE.core(%tile32_2) {
     AIE.useLock(%lock32_3, "Acquire", 1)
     AIE.useLock(%lock32_2, "Acquire", 0)
-    call @do_sieve(%buf32_3, %buf32_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_3, %buf32_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_3, "Release", 0)
     AIE.useLock(%lock32_2, "Release", 1)
     AIE.end
@@ -3739,7 +3739,7 @@ module @test16_prime_sieve_large {
   %core32_1 = AIE.core(%tile32_1) {
     AIE.useLock(%lock32_2, "Acquire", 1)
     AIE.useLock(%lock32_1, "Acquire", 0)
-    call @do_sieve(%buf32_2, %buf32_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_2, %buf32_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_2, "Release", 0)
     AIE.useLock(%lock32_1, "Release", 1)
     AIE.end
@@ -3748,7 +3748,7 @@ module @test16_prime_sieve_large {
   %core33_1 = AIE.core(%tile33_1) {
     AIE.useLock(%lock32_1, "Acquire", 1)
     AIE.useLock(%lock33_1, "Acquire", 0)
-    call @do_sieve(%buf32_1, %buf33_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf32_1, %buf33_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock32_1, "Release", 0)
     AIE.useLock(%lock33_1, "Release", 1)
     AIE.end
@@ -3757,7 +3757,7 @@ module @test16_prime_sieve_large {
   %core33_2 = AIE.core(%tile33_2) {
     AIE.useLock(%lock33_1, "Acquire", 1)
     AIE.useLock(%lock33_2, "Acquire", 0)
-    call @do_sieve(%buf33_1, %buf33_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_1, %buf33_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_1, "Release", 0)
     AIE.useLock(%lock33_2, "Release", 1)
     AIE.end
@@ -3766,7 +3766,7 @@ module @test16_prime_sieve_large {
   %core33_3 = AIE.core(%tile33_3) {
     AIE.useLock(%lock33_2, "Acquire", 1)
     AIE.useLock(%lock33_3, "Acquire", 0)
-    call @do_sieve(%buf33_2, %buf33_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_2, %buf33_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_2, "Release", 0)
     AIE.useLock(%lock33_3, "Release", 1)
     AIE.end
@@ -3775,7 +3775,7 @@ module @test16_prime_sieve_large {
   %core33_4 = AIE.core(%tile33_4) {
     AIE.useLock(%lock33_3, "Acquire", 1)
     AIE.useLock(%lock33_4, "Acquire", 0)
-    call @do_sieve(%buf33_3, %buf33_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_3, %buf33_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_3, "Release", 0)
     AIE.useLock(%lock33_4, "Release", 1)
     AIE.end
@@ -3784,7 +3784,7 @@ module @test16_prime_sieve_large {
   %core33_5 = AIE.core(%tile33_5) {
     AIE.useLock(%lock33_4, "Acquire", 1)
     AIE.useLock(%lock33_5, "Acquire", 0)
-    call @do_sieve(%buf33_4, %buf33_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_4, %buf33_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_4, "Release", 0)
     AIE.useLock(%lock33_5, "Release", 1)
     AIE.end
@@ -3793,7 +3793,7 @@ module @test16_prime_sieve_large {
   %core33_6 = AIE.core(%tile33_6) {
     AIE.useLock(%lock33_5, "Acquire", 1)
     AIE.useLock(%lock33_6, "Acquire", 0)
-    call @do_sieve(%buf33_5, %buf33_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_5, %buf33_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_5, "Release", 0)
     AIE.useLock(%lock33_6, "Release", 1)
     AIE.end
@@ -3802,7 +3802,7 @@ module @test16_prime_sieve_large {
   %core33_7 = AIE.core(%tile33_7) {
     AIE.useLock(%lock33_6, "Acquire", 1)
     AIE.useLock(%lock33_7, "Acquire", 0)
-    call @do_sieve(%buf33_6, %buf33_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_6, %buf33_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_6, "Release", 0)
     AIE.useLock(%lock33_7, "Release", 1)
     AIE.end
@@ -3811,7 +3811,7 @@ module @test16_prime_sieve_large {
   %core33_8 = AIE.core(%tile33_8) {
     AIE.useLock(%lock33_7, "Acquire", 1)
     AIE.useLock(%lock33_8, "Acquire", 0)
-    call @do_sieve(%buf33_7, %buf33_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_7, %buf33_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_7, "Release", 0)
     AIE.useLock(%lock33_8, "Release", 1)
     AIE.end
@@ -3820,7 +3820,7 @@ module @test16_prime_sieve_large {
   %core33_9 = AIE.core(%tile33_9) {
     AIE.useLock(%lock33_8, "Acquire", 1)
     AIE.useLock(%lock33_9, "Acquire", 0)
-    call @do_sieve(%buf33_8, %buf33_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_8, %buf33_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_8, "Release", 0)
     AIE.useLock(%lock33_9, "Release", 1)
     AIE.end
@@ -3829,7 +3829,7 @@ module @test16_prime_sieve_large {
   %core34_9 = AIE.core(%tile34_9) {
     AIE.useLock(%lock33_9, "Acquire", 1)
     AIE.useLock(%lock34_9, "Acquire", 0)
-    call @do_sieve(%buf33_9, %buf34_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf33_9, %buf34_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock33_9, "Release", 0)
     AIE.useLock(%lock34_9, "Release", 1)
     AIE.end
@@ -3838,7 +3838,7 @@ module @test16_prime_sieve_large {
   %core34_8 = AIE.core(%tile34_8) {
     AIE.useLock(%lock34_9, "Acquire", 1)
     AIE.useLock(%lock34_8, "Acquire", 0)
-    call @do_sieve(%buf34_9, %buf34_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_9, %buf34_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_9, "Release", 0)
     AIE.useLock(%lock34_8, "Release", 1)
     AIE.end
@@ -3847,7 +3847,7 @@ module @test16_prime_sieve_large {
   %core34_7 = AIE.core(%tile34_7) {
     AIE.useLock(%lock34_8, "Acquire", 1)
     AIE.useLock(%lock34_7, "Acquire", 0)
-    call @do_sieve(%buf34_8, %buf34_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_8, %buf34_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_8, "Release", 0)
     AIE.useLock(%lock34_7, "Release", 1)
     AIE.end
@@ -3856,7 +3856,7 @@ module @test16_prime_sieve_large {
   %core34_6 = AIE.core(%tile34_6) {
     AIE.useLock(%lock34_7, "Acquire", 1)
     AIE.useLock(%lock34_6, "Acquire", 0)
-    call @do_sieve(%buf34_7, %buf34_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_7, %buf34_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_7, "Release", 0)
     AIE.useLock(%lock34_6, "Release", 1)
     AIE.end
@@ -3865,7 +3865,7 @@ module @test16_prime_sieve_large {
   %core34_5 = AIE.core(%tile34_5) {
     AIE.useLock(%lock34_6, "Acquire", 1)
     AIE.useLock(%lock34_5, "Acquire", 0)
-    call @do_sieve(%buf34_6, %buf34_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_6, %buf34_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_6, "Release", 0)
     AIE.useLock(%lock34_5, "Release", 1)
     AIE.end
@@ -3874,7 +3874,7 @@ module @test16_prime_sieve_large {
   %core34_4 = AIE.core(%tile34_4) {
     AIE.useLock(%lock34_5, "Acquire", 1)
     AIE.useLock(%lock34_4, "Acquire", 0)
-    call @do_sieve(%buf34_5, %buf34_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_5, %buf34_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_5, "Release", 0)
     AIE.useLock(%lock34_4, "Release", 1)
     AIE.end
@@ -3883,7 +3883,7 @@ module @test16_prime_sieve_large {
   %core34_3 = AIE.core(%tile34_3) {
     AIE.useLock(%lock34_4, "Acquire", 1)
     AIE.useLock(%lock34_3, "Acquire", 0)
-    call @do_sieve(%buf34_4, %buf34_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_4, %buf34_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_4, "Release", 0)
     AIE.useLock(%lock34_3, "Release", 1)
     AIE.end
@@ -3892,7 +3892,7 @@ module @test16_prime_sieve_large {
   %core34_2 = AIE.core(%tile34_2) {
     AIE.useLock(%lock34_3, "Acquire", 1)
     AIE.useLock(%lock34_2, "Acquire", 0)
-    call @do_sieve(%buf34_3, %buf34_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_3, %buf34_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_3, "Release", 0)
     AIE.useLock(%lock34_2, "Release", 1)
     AIE.end
@@ -3901,7 +3901,7 @@ module @test16_prime_sieve_large {
   %core34_1 = AIE.core(%tile34_1) {
     AIE.useLock(%lock34_2, "Acquire", 1)
     AIE.useLock(%lock34_1, "Acquire", 0)
-    call @do_sieve(%buf34_2, %buf34_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_2, %buf34_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_2, "Release", 0)
     AIE.useLock(%lock34_1, "Release", 1)
     AIE.end
@@ -3910,7 +3910,7 @@ module @test16_prime_sieve_large {
   %core35_1 = AIE.core(%tile35_1) {
     AIE.useLock(%lock34_1, "Acquire", 1)
     AIE.useLock(%lock35_1, "Acquire", 0)
-    call @do_sieve(%buf34_1, %buf35_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf34_1, %buf35_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock34_1, "Release", 0)
     AIE.useLock(%lock35_1, "Release", 1)
     AIE.end
@@ -3919,7 +3919,7 @@ module @test16_prime_sieve_large {
   %core35_2 = AIE.core(%tile35_2) {
     AIE.useLock(%lock35_1, "Acquire", 1)
     AIE.useLock(%lock35_2, "Acquire", 0)
-    call @do_sieve(%buf35_1, %buf35_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_1, %buf35_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_1, "Release", 0)
     AIE.useLock(%lock35_2, "Release", 1)
     AIE.end
@@ -3928,7 +3928,7 @@ module @test16_prime_sieve_large {
   %core35_3 = AIE.core(%tile35_3) {
     AIE.useLock(%lock35_2, "Acquire", 1)
     AIE.useLock(%lock35_3, "Acquire", 0)
-    call @do_sieve(%buf35_2, %buf35_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_2, %buf35_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_2, "Release", 0)
     AIE.useLock(%lock35_3, "Release", 1)
     AIE.end
@@ -3937,7 +3937,7 @@ module @test16_prime_sieve_large {
   %core35_4 = AIE.core(%tile35_4) {
     AIE.useLock(%lock35_3, "Acquire", 1)
     AIE.useLock(%lock35_4, "Acquire", 0)
-    call @do_sieve(%buf35_3, %buf35_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_3, %buf35_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_3, "Release", 0)
     AIE.useLock(%lock35_4, "Release", 1)
     AIE.end
@@ -3946,7 +3946,7 @@ module @test16_prime_sieve_large {
   %core35_5 = AIE.core(%tile35_5) {
     AIE.useLock(%lock35_4, "Acquire", 1)
     AIE.useLock(%lock35_5, "Acquire", 0)
-    call @do_sieve(%buf35_4, %buf35_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_4, %buf35_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_4, "Release", 0)
     AIE.useLock(%lock35_5, "Release", 1)
     AIE.end
@@ -3955,7 +3955,7 @@ module @test16_prime_sieve_large {
   %core35_6 = AIE.core(%tile35_6) {
     AIE.useLock(%lock35_5, "Acquire", 1)
     AIE.useLock(%lock35_6, "Acquire", 0)
-    call @do_sieve(%buf35_5, %buf35_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_5, %buf35_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_5, "Release", 0)
     AIE.useLock(%lock35_6, "Release", 1)
     AIE.end
@@ -3964,7 +3964,7 @@ module @test16_prime_sieve_large {
   %core35_7 = AIE.core(%tile35_7) {
     AIE.useLock(%lock35_6, "Acquire", 1)
     AIE.useLock(%lock35_7, "Acquire", 0)
-    call @do_sieve(%buf35_6, %buf35_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_6, %buf35_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_6, "Release", 0)
     AIE.useLock(%lock35_7, "Release", 1)
     AIE.end
@@ -3973,7 +3973,7 @@ module @test16_prime_sieve_large {
   %core35_8 = AIE.core(%tile35_8) {
     AIE.useLock(%lock35_7, "Acquire", 1)
     AIE.useLock(%lock35_8, "Acquire", 0)
-    call @do_sieve(%buf35_7, %buf35_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_7, %buf35_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_7, "Release", 0)
     AIE.useLock(%lock35_8, "Release", 1)
     AIE.end
@@ -3982,7 +3982,7 @@ module @test16_prime_sieve_large {
   %core35_9 = AIE.core(%tile35_9) {
     AIE.useLock(%lock35_8, "Acquire", 1)
     AIE.useLock(%lock35_9, "Acquire", 0)
-    call @do_sieve(%buf35_8, %buf35_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_8, %buf35_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_8, "Release", 0)
     AIE.useLock(%lock35_9, "Release", 1)
     AIE.end
@@ -3991,7 +3991,7 @@ module @test16_prime_sieve_large {
   %core36_9 = AIE.core(%tile36_9) {
     AIE.useLock(%lock35_9, "Acquire", 1)
     AIE.useLock(%lock36_9, "Acquire", 0)
-    call @do_sieve(%buf35_9, %buf36_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf35_9, %buf36_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock35_9, "Release", 0)
     AIE.useLock(%lock36_9, "Release", 1)
     AIE.end
@@ -4000,7 +4000,7 @@ module @test16_prime_sieve_large {
   %core36_8 = AIE.core(%tile36_8) {
     AIE.useLock(%lock36_9, "Acquire", 1)
     AIE.useLock(%lock36_8, "Acquire", 0)
-    call @do_sieve(%buf36_9, %buf36_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_9, %buf36_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_9, "Release", 0)
     AIE.useLock(%lock36_8, "Release", 1)
     AIE.end
@@ -4009,7 +4009,7 @@ module @test16_prime_sieve_large {
   %core36_7 = AIE.core(%tile36_7) {
     AIE.useLock(%lock36_8, "Acquire", 1)
     AIE.useLock(%lock36_7, "Acquire", 0)
-    call @do_sieve(%buf36_8, %buf36_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_8, %buf36_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_8, "Release", 0)
     AIE.useLock(%lock36_7, "Release", 1)
     AIE.end
@@ -4018,7 +4018,7 @@ module @test16_prime_sieve_large {
   %core36_6 = AIE.core(%tile36_6) {
     AIE.useLock(%lock36_7, "Acquire", 1)
     AIE.useLock(%lock36_6, "Acquire", 0)
-    call @do_sieve(%buf36_7, %buf36_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_7, %buf36_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_7, "Release", 0)
     AIE.useLock(%lock36_6, "Release", 1)
     AIE.end
@@ -4027,7 +4027,7 @@ module @test16_prime_sieve_large {
   %core36_5 = AIE.core(%tile36_5) {
     AIE.useLock(%lock36_6, "Acquire", 1)
     AIE.useLock(%lock36_5, "Acquire", 0)
-    call @do_sieve(%buf36_6, %buf36_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_6, %buf36_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_6, "Release", 0)
     AIE.useLock(%lock36_5, "Release", 1)
     AIE.end
@@ -4036,7 +4036,7 @@ module @test16_prime_sieve_large {
   %core36_4 = AIE.core(%tile36_4) {
     AIE.useLock(%lock36_5, "Acquire", 1)
     AIE.useLock(%lock36_4, "Acquire", 0)
-    call @do_sieve(%buf36_5, %buf36_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_5, %buf36_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_5, "Release", 0)
     AIE.useLock(%lock36_4, "Release", 1)
     AIE.end
@@ -4045,7 +4045,7 @@ module @test16_prime_sieve_large {
   %core36_3 = AIE.core(%tile36_3) {
     AIE.useLock(%lock36_4, "Acquire", 1)
     AIE.useLock(%lock36_3, "Acquire", 0)
-    call @do_sieve(%buf36_4, %buf36_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_4, %buf36_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_4, "Release", 0)
     AIE.useLock(%lock36_3, "Release", 1)
     AIE.end
@@ -4054,7 +4054,7 @@ module @test16_prime_sieve_large {
   %core36_2 = AIE.core(%tile36_2) {
     AIE.useLock(%lock36_3, "Acquire", 1)
     AIE.useLock(%lock36_2, "Acquire", 0)
-    call @do_sieve(%buf36_3, %buf36_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_3, %buf36_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_3, "Release", 0)
     AIE.useLock(%lock36_2, "Release", 1)
     AIE.end
@@ -4063,7 +4063,7 @@ module @test16_prime_sieve_large {
   %core36_1 = AIE.core(%tile36_1) {
     AIE.useLock(%lock36_2, "Acquire", 1)
     AIE.useLock(%lock36_1, "Acquire", 0)
-    call @do_sieve(%buf36_2, %buf36_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_2, %buf36_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_2, "Release", 0)
     AIE.useLock(%lock36_1, "Release", 1)
     AIE.end
@@ -4072,7 +4072,7 @@ module @test16_prime_sieve_large {
   %core37_1 = AIE.core(%tile37_1) {
     AIE.useLock(%lock36_1, "Acquire", 1)
     AIE.useLock(%lock37_1, "Acquire", 0)
-    call @do_sieve(%buf36_1, %buf37_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf36_1, %buf37_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock36_1, "Release", 0)
     AIE.useLock(%lock37_1, "Release", 1)
     AIE.end
@@ -4081,7 +4081,7 @@ module @test16_prime_sieve_large {
   %core37_2 = AIE.core(%tile37_2) {
     AIE.useLock(%lock37_1, "Acquire", 1)
     AIE.useLock(%lock37_2, "Acquire", 0)
-    call @do_sieve(%buf37_1, %buf37_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_1, %buf37_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_1, "Release", 0)
     AIE.useLock(%lock37_2, "Release", 1)
     AIE.end
@@ -4090,7 +4090,7 @@ module @test16_prime_sieve_large {
   %core37_3 = AIE.core(%tile37_3) {
     AIE.useLock(%lock37_2, "Acquire", 1)
     AIE.useLock(%lock37_3, "Acquire", 0)
-    call @do_sieve(%buf37_2, %buf37_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_2, %buf37_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_2, "Release", 0)
     AIE.useLock(%lock37_3, "Release", 1)
     AIE.end
@@ -4099,7 +4099,7 @@ module @test16_prime_sieve_large {
   %core37_4 = AIE.core(%tile37_4) {
     AIE.useLock(%lock37_3, "Acquire", 1)
     AIE.useLock(%lock37_4, "Acquire", 0)
-    call @do_sieve(%buf37_3, %buf37_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_3, %buf37_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_3, "Release", 0)
     AIE.useLock(%lock37_4, "Release", 1)
     AIE.end
@@ -4108,7 +4108,7 @@ module @test16_prime_sieve_large {
   %core37_5 = AIE.core(%tile37_5) {
     AIE.useLock(%lock37_4, "Acquire", 1)
     AIE.useLock(%lock37_5, "Acquire", 0)
-    call @do_sieve(%buf37_4, %buf37_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_4, %buf37_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_4, "Release", 0)
     AIE.useLock(%lock37_5, "Release", 1)
     AIE.end
@@ -4117,7 +4117,7 @@ module @test16_prime_sieve_large {
   %core37_6 = AIE.core(%tile37_6) {
     AIE.useLock(%lock37_5, "Acquire", 1)
     AIE.useLock(%lock37_6, "Acquire", 0)
-    call @do_sieve(%buf37_5, %buf37_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_5, %buf37_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_5, "Release", 0)
     AIE.useLock(%lock37_6, "Release", 1)
     AIE.end
@@ -4126,7 +4126,7 @@ module @test16_prime_sieve_large {
   %core37_7 = AIE.core(%tile37_7) {
     AIE.useLock(%lock37_6, "Acquire", 1)
     AIE.useLock(%lock37_7, "Acquire", 0)
-    call @do_sieve(%buf37_6, %buf37_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_6, %buf37_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_6, "Release", 0)
     AIE.useLock(%lock37_7, "Release", 1)
     AIE.end
@@ -4135,7 +4135,7 @@ module @test16_prime_sieve_large {
   %core37_8 = AIE.core(%tile37_8) {
     AIE.useLock(%lock37_7, "Acquire", 1)
     AIE.useLock(%lock37_8, "Acquire", 0)
-    call @do_sieve(%buf37_7, %buf37_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_7, %buf37_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_7, "Release", 0)
     AIE.useLock(%lock37_8, "Release", 1)
     AIE.end
@@ -4144,7 +4144,7 @@ module @test16_prime_sieve_large {
   %core37_9 = AIE.core(%tile37_9) {
     AIE.useLock(%lock37_8, "Acquire", 1)
     AIE.useLock(%lock37_9, "Acquire", 0)
-    call @do_sieve(%buf37_8, %buf37_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_8, %buf37_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_8, "Release", 0)
     AIE.useLock(%lock37_9, "Release", 1)
     AIE.end
@@ -4153,7 +4153,7 @@ module @test16_prime_sieve_large {
   %core38_9 = AIE.core(%tile38_9) {
     AIE.useLock(%lock37_9, "Acquire", 1)
     AIE.useLock(%lock38_9, "Acquire", 0)
-    call @do_sieve(%buf37_9, %buf38_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf37_9, %buf38_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock37_9, "Release", 0)
     AIE.useLock(%lock38_9, "Release", 1)
     AIE.end
@@ -4162,7 +4162,7 @@ module @test16_prime_sieve_large {
   %core38_8 = AIE.core(%tile38_8) {
     AIE.useLock(%lock38_9, "Acquire", 1)
     AIE.useLock(%lock38_8, "Acquire", 0)
-    call @do_sieve(%buf38_9, %buf38_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_9, %buf38_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_9, "Release", 0)
     AIE.useLock(%lock38_8, "Release", 1)
     AIE.end
@@ -4171,7 +4171,7 @@ module @test16_prime_sieve_large {
   %core38_7 = AIE.core(%tile38_7) {
     AIE.useLock(%lock38_8, "Acquire", 1)
     AIE.useLock(%lock38_7, "Acquire", 0)
-    call @do_sieve(%buf38_8, %buf38_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_8, %buf38_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_8, "Release", 0)
     AIE.useLock(%lock38_7, "Release", 1)
     AIE.end
@@ -4180,7 +4180,7 @@ module @test16_prime_sieve_large {
   %core38_6 = AIE.core(%tile38_6) {
     AIE.useLock(%lock38_7, "Acquire", 1)
     AIE.useLock(%lock38_6, "Acquire", 0)
-    call @do_sieve(%buf38_7, %buf38_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_7, %buf38_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_7, "Release", 0)
     AIE.useLock(%lock38_6, "Release", 1)
     AIE.end
@@ -4189,7 +4189,7 @@ module @test16_prime_sieve_large {
   %core38_5 = AIE.core(%tile38_5) {
     AIE.useLock(%lock38_6, "Acquire", 1)
     AIE.useLock(%lock38_5, "Acquire", 0)
-    call @do_sieve(%buf38_6, %buf38_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_6, %buf38_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_6, "Release", 0)
     AIE.useLock(%lock38_5, "Release", 1)
     AIE.end
@@ -4198,7 +4198,7 @@ module @test16_prime_sieve_large {
   %core38_4 = AIE.core(%tile38_4) {
     AIE.useLock(%lock38_5, "Acquire", 1)
     AIE.useLock(%lock38_4, "Acquire", 0)
-    call @do_sieve(%buf38_5, %buf38_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_5, %buf38_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_5, "Release", 0)
     AIE.useLock(%lock38_4, "Release", 1)
     AIE.end
@@ -4207,7 +4207,7 @@ module @test16_prime_sieve_large {
   %core38_3 = AIE.core(%tile38_3) {
     AIE.useLock(%lock38_4, "Acquire", 1)
     AIE.useLock(%lock38_3, "Acquire", 0)
-    call @do_sieve(%buf38_4, %buf38_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_4, %buf38_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_4, "Release", 0)
     AIE.useLock(%lock38_3, "Release", 1)
     AIE.end
@@ -4216,7 +4216,7 @@ module @test16_prime_sieve_large {
   %core38_2 = AIE.core(%tile38_2) {
     AIE.useLock(%lock38_3, "Acquire", 1)
     AIE.useLock(%lock38_2, "Acquire", 0)
-    call @do_sieve(%buf38_3, %buf38_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_3, %buf38_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_3, "Release", 0)
     AIE.useLock(%lock38_2, "Release", 1)
     AIE.end
@@ -4225,7 +4225,7 @@ module @test16_prime_sieve_large {
   %core38_1 = AIE.core(%tile38_1) {
     AIE.useLock(%lock38_2, "Acquire", 1)
     AIE.useLock(%lock38_1, "Acquire", 0)
-    call @do_sieve(%buf38_2, %buf38_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_2, %buf38_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_2, "Release", 0)
     AIE.useLock(%lock38_1, "Release", 1)
     AIE.end
@@ -4234,7 +4234,7 @@ module @test16_prime_sieve_large {
   %core39_1 = AIE.core(%tile39_1) {
     AIE.useLock(%lock38_1, "Acquire", 1)
     AIE.useLock(%lock39_1, "Acquire", 0)
-    call @do_sieve(%buf38_1, %buf39_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf38_1, %buf39_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock38_1, "Release", 0)
     AIE.useLock(%lock39_1, "Release", 1)
     AIE.end
@@ -4243,7 +4243,7 @@ module @test16_prime_sieve_large {
   %core39_2 = AIE.core(%tile39_2) {
     AIE.useLock(%lock39_1, "Acquire", 1)
     AIE.useLock(%lock39_2, "Acquire", 0)
-    call @do_sieve(%buf39_1, %buf39_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_1, %buf39_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_1, "Release", 0)
     AIE.useLock(%lock39_2, "Release", 1)
     AIE.end
@@ -4252,7 +4252,7 @@ module @test16_prime_sieve_large {
   %core39_3 = AIE.core(%tile39_3) {
     AIE.useLock(%lock39_2, "Acquire", 1)
     AIE.useLock(%lock39_3, "Acquire", 0)
-    call @do_sieve(%buf39_2, %buf39_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_2, %buf39_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_2, "Release", 0)
     AIE.useLock(%lock39_3, "Release", 1)
     AIE.end
@@ -4261,7 +4261,7 @@ module @test16_prime_sieve_large {
   %core39_4 = AIE.core(%tile39_4) {
     AIE.useLock(%lock39_3, "Acquire", 1)
     AIE.useLock(%lock39_4, "Acquire", 0)
-    call @do_sieve(%buf39_3, %buf39_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_3, %buf39_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_3, "Release", 0)
     AIE.useLock(%lock39_4, "Release", 1)
     AIE.end
@@ -4270,7 +4270,7 @@ module @test16_prime_sieve_large {
   %core39_5 = AIE.core(%tile39_5) {
     AIE.useLock(%lock39_4, "Acquire", 1)
     AIE.useLock(%lock39_5, "Acquire", 0)
-    call @do_sieve(%buf39_4, %buf39_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_4, %buf39_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_4, "Release", 0)
     AIE.useLock(%lock39_5, "Release", 1)
     AIE.end
@@ -4279,7 +4279,7 @@ module @test16_prime_sieve_large {
   %core39_6 = AIE.core(%tile39_6) {
     AIE.useLock(%lock39_5, "Acquire", 1)
     AIE.useLock(%lock39_6, "Acquire", 0)
-    call @do_sieve(%buf39_5, %buf39_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_5, %buf39_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_5, "Release", 0)
     AIE.useLock(%lock39_6, "Release", 1)
     AIE.end
@@ -4288,7 +4288,7 @@ module @test16_prime_sieve_large {
   %core39_7 = AIE.core(%tile39_7) {
     AIE.useLock(%lock39_6, "Acquire", 1)
     AIE.useLock(%lock39_7, "Acquire", 0)
-    call @do_sieve(%buf39_6, %buf39_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_6, %buf39_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_6, "Release", 0)
     AIE.useLock(%lock39_7, "Release", 1)
     AIE.end
@@ -4297,7 +4297,7 @@ module @test16_prime_sieve_large {
   %core39_8 = AIE.core(%tile39_8) {
     AIE.useLock(%lock39_7, "Acquire", 1)
     AIE.useLock(%lock39_8, "Acquire", 0)
-    call @do_sieve(%buf39_7, %buf39_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_7, %buf39_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_7, "Release", 0)
     AIE.useLock(%lock39_8, "Release", 1)
     AIE.end
@@ -4306,7 +4306,7 @@ module @test16_prime_sieve_large {
   %core39_9 = AIE.core(%tile39_9) {
     AIE.useLock(%lock39_8, "Acquire", 1)
     AIE.useLock(%lock39_9, "Acquire", 0)
-    call @do_sieve(%buf39_8, %buf39_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_8, %buf39_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_8, "Release", 0)
     AIE.useLock(%lock39_9, "Release", 1)
     AIE.end
@@ -4315,7 +4315,7 @@ module @test16_prime_sieve_large {
   %core40_9 = AIE.core(%tile40_9) {
     AIE.useLock(%lock39_9, "Acquire", 1)
     AIE.useLock(%lock40_9, "Acquire", 0)
-    call @do_sieve(%buf39_9, %buf40_9) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf39_9, %buf40_9) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock39_9, "Release", 0)
     AIE.useLock(%lock40_9, "Release", 1)
     AIE.end
@@ -4324,7 +4324,7 @@ module @test16_prime_sieve_large {
   %core40_8 = AIE.core(%tile40_8) {
     AIE.useLock(%lock40_9, "Acquire", 1)
     AIE.useLock(%lock40_8, "Acquire", 0)
-    call @do_sieve(%buf40_9, %buf40_8) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_9, %buf40_8) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_9, "Release", 0)
     AIE.useLock(%lock40_8, "Release", 1)
     AIE.end
@@ -4333,7 +4333,7 @@ module @test16_prime_sieve_large {
   %core40_7 = AIE.core(%tile40_7) {
     AIE.useLock(%lock40_8, "Acquire", 1)
     AIE.useLock(%lock40_7, "Acquire", 0)
-    call @do_sieve(%buf40_8, %buf40_7) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_8, %buf40_7) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_8, "Release", 0)
     AIE.useLock(%lock40_7, "Release", 1)
     AIE.end
@@ -4342,7 +4342,7 @@ module @test16_prime_sieve_large {
   %core40_6 = AIE.core(%tile40_6) {
     AIE.useLock(%lock40_7, "Acquire", 1)
     AIE.useLock(%lock40_6, "Acquire", 0)
-    call @do_sieve(%buf40_7, %buf40_6) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_7, %buf40_6) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_7, "Release", 0)
     AIE.useLock(%lock40_6, "Release", 1)
     AIE.end
@@ -4351,7 +4351,7 @@ module @test16_prime_sieve_large {
   %core40_5 = AIE.core(%tile40_5) {
     AIE.useLock(%lock40_6, "Acquire", 1)
     AIE.useLock(%lock40_5, "Acquire", 0)
-    call @do_sieve(%buf40_6, %buf40_5) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_6, %buf40_5) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_6, "Release", 0)
     AIE.useLock(%lock40_5, "Release", 1)
     AIE.end
@@ -4360,7 +4360,7 @@ module @test16_prime_sieve_large {
   %core40_4 = AIE.core(%tile40_4) {
     AIE.useLock(%lock40_5, "Acquire", 1)
     AIE.useLock(%lock40_4, "Acquire", 0)
-    call @do_sieve(%buf40_5, %buf40_4) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_5, %buf40_4) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_5, "Release", 0)
     AIE.useLock(%lock40_4, "Release", 1)
     AIE.end
@@ -4369,7 +4369,7 @@ module @test16_prime_sieve_large {
   %core40_3 = AIE.core(%tile40_3) {
     AIE.useLock(%lock40_4, "Acquire", 1)
     AIE.useLock(%lock40_3, "Acquire", 0)
-    call @do_sieve(%buf40_4, %buf40_3) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_4, %buf40_3) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_4, "Release", 0)
     AIE.useLock(%lock40_3, "Release", 1)
     AIE.end
@@ -4378,7 +4378,7 @@ module @test16_prime_sieve_large {
   %core40_2 = AIE.core(%tile40_2) {
     AIE.useLock(%lock40_3, "Acquire", 1)
     AIE.useLock(%lock40_2, "Acquire", 0)
-    call @do_sieve(%buf40_3, %buf40_2) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_3, %buf40_2) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_3, "Release", 0)
     AIE.useLock(%lock40_2, "Release", 1)
     AIE.end
@@ -4387,7 +4387,7 @@ module @test16_prime_sieve_large {
   %core40_1 = AIE.core(%tile40_1) {
     AIE.useLock(%lock40_2, "Acquire", 1)
     AIE.useLock(%lock40_1, "Acquire", 0)
-    call @do_sieve(%buf40_2, %buf40_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf40_2, %buf40_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock40_2, "Release", 0)
     AIE.useLock(%lock40_1, "Release", 1)
     AIE.end

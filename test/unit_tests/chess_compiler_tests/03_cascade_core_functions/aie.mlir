@@ -23,12 +23,12 @@ module {
   %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock
   %lock23_7 = AIE.lock(%tile23, 7) // output buffer lock
   
-  func private @do_mul(%A: memref<256xi32>) -> ()
-  func private @do_mac(%A: memref<256xi32>) -> ()
+  func.func private @do_mul(%A: memref<256xi32>) -> ()
+  func.func private @do_mac(%A: memref<256xi32>) -> ()
   
   %core13 = AIE.core(%tile13) { 
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
-    call @do_mul(%buf13_0) : (memref<256xi32>) -> ()
+    func.call @do_mul(%buf13_0) : (memref<256xi32>) -> ()
     AIE.useLock(%lock13_3, "Release", 0) // release for write
     AIE.end
   } { link_with="kernel.o" }
@@ -38,7 +38,7 @@ module {
 //    %idx1 = arith.constant 0 : index
 //    memref.store %val1, %buf14_0[%idx1] : memref<256xi32>
      AIE.useLock(%lock23_7, "Acquire", 0) // acquire for write
-    call @do_mac(%buf23_0) : (memref<256xi32>) -> ()
+    func.call @do_mac(%buf23_0) : (memref<256xi32>) -> ()
      AIE.useLock(%lock23_7, "Release", 1) // release for read
     AIE.end
   } { link_with="kernel.o" }
