@@ -26,43 +26,33 @@ typedef std::pair<Operation *, Port> PortConnection;
 typedef std::pair<Port, MaskValue> PortMaskValue;
 typedef std::pair<PortConnection, MaskValue> PacketConnection;
 
-struct vertex {
-  // defining characteristics
-  Operation *op_data;
-  Port port_data;
-  // graph data
-  void *parent_key;
-  bool isRoot;
-};
-
 class Graph {
 
 public:
-  std::map<void *, vertex> vertex_map;
-
-  // default root node constructor
-  Graph() {}
+  // The key of the map stores the operation pointer, it being the unique
+  // identifier. The contents store the parent operation pointer and the Port of
+  // the vertex.
+  std::map<Operation *, PortConnection> vertex_map;
 
   bool isNotEmpty() { return vertex_map.size() > 0; }
 
-  void add_root(Operation *op, Port port) {
-    vertex_map[(void *)op] = {op, port, 0, true};
+  void add_vertex(Operation *parent_key, Operation *my_op, Port my_port) {
+    vertex_map[my_op] = std::make_pair(parent_key, my_port);
   }
 
-  void add_child(void *parent_key, Operation *op, Port port) {
-    vertex_map[(void *)op] = {op, port, parent_key, false};
-  }
+  std::vector<Operation *> get_path_to_root(Operation *start_vertex) {
+    std::vector<Operation *> path_to_root;
 
-  std::vector<void *> get_path_to_root(void *start_node) {
-    std::vector<void *> path_to_root;
-
-    void *work = start_node;
+    // add start_vertex to path to prevent premature termination in the case the
+    // start_vertex is a FlowEndPoint due to it being a connectedFlow.
+    path_to_root.push_back(start_vertex);
+    Operation *work = vertex_map.at(start_vertex).first;
     while (true) {
       path_to_root.push_back(work);
-      if (vertex_map.at(work).isRoot) {
+      if (isa<FlowEndPoint>(work)) {
         break;
       } else {
-        work = vertex_map.at(work).parent_key;
+        work = vertex_map.at(work).first;
       }
     }
     return path_to_root;
@@ -130,7 +120,7 @@ private:
         // add to graph if in detection mode and op is connectOp
         if (g.isNotEmpty())
           // implicit type converion connectOp -> Operation*
-          g.add_child(op, connectOp, connectOp.destPort());
+          g.add_vertex(op, connectOp, connectOp.destPort());
 
         MaskValue maskValue = std::make_pair(0, 0);
         PortConnection portconnection =
@@ -171,7 +161,8 @@ private:
   std::vector<PacketConnection>
   maskSwitchboxConnections(Operation *switchOp, MaskValue maskValue,
                            std::vector<PacketConnection> nextOpPortMaskValues,
-                           Graph &g, std::vector<void *> &antennaKey) const {
+                           Graph &g,
+                           std::vector<Operation *> &antennaKeys) const {
     std::vector<PacketConnection> worklist;
     for (auto &nextOpPortMaskValue : nextOpPortMaskValues) {
       Operation *op = nextOpPortMaskValue.first.first;
@@ -197,7 +188,7 @@ private:
       // If there is no wire to follow then bail out.
       // then add to antenna list
       if (!nextConnection.hasValue()) {
-        antennaKey.push_back((void *)op);
+        antennaKeys.push_back(op);
         if (g.isNotEmpty()) // continue if in antenna detection mode
           continue;
         else
@@ -206,8 +197,8 @@ private:
 
       // add to graph if in detection mode and op is connectOp
       if (g.isNotEmpty())
-        g.add_child((void *)op, nextConnection.getValue().first,
-                    nextConnection.getValue().second);
+        g.add_vertex(op, nextConnection.getValue().first,
+                     nextConnection.getValue().second);
 
       worklist.push_back(
           std::make_pair(nextConnection.getValue(), newMaskValue));
@@ -215,107 +206,109 @@ private:
     return worklist;
   }
 
-  void detect_antenna(Graph &g, std::vector<void *> connectedTilesKeys,
-                      std::vector<void *> antennaKeys) const {
+  // void detect_antenna(Graph &g, std::vector<void *> connectedTilesKeys,
+  //                     std::vector<void *> antennaKeys) const {
 
-    std::vector<void *> path_buffer;
-    // create valid path from connected tiles
-    std::set<void *> valid_path;
-    for (auto &tile_key : connectedTilesKeys) {
-      // todo: empty case
-      path_buffer = g.get_path_to_root(tile_key);
-      for (auto &vertex_key : path_buffer) {
-        if (valid_path.find(vertex_key) == valid_path.end()) {
-          valid_path.insert(vertex_key);
-        }
-      }
-    }
+  //   std::vector<void *> path_buffer;
+  //   // create valid path from connected tiles
+  //   std::set<void *> valid_path;
+  //   for (auto &tile_key : connectedTilesKeys) {
+  //     // todo: empty case
+  //     path_buffer = g.get_path_to_root(tile_key);
+  //     for (auto &vertex_key : path_buffer) {
+  //       if (valid_path.find(vertex_key) == valid_path.end()) {
+  //         valid_path.insert(vertex_key);
+  //       }
+  //     }
+  //   }
 
-    // for (auto &key : valid_path) {
-    //   llvm::dbgs() << "onon!!\n";
+  //   // for (auto &key : valid_path) {
+  //   //   llvm::dbgs() << "onon!!\n";
 
-    //   g.vertex_map.at(key).op_data->dump();
-    // }
+  //   //   g.vertex_map.at(key).op_data->dump();
+  //   // }
 
-    // output antenna path
-    for (auto &antenna_key : antennaKeys) {
-      std::vector<void *> antenna_valid_path;
-      std::vector<void *> antenna_nonvalid_path;
-      path_buffer = g.get_path_to_root(antenna_key);
-      for (auto &vertex_key : path_buffer) {
-        if (valid_path.find(vertex_key) != valid_path.end()) {
-          antenna_valid_path.push_back(vertex_key);
-        } else {
-          antenna_nonvalid_path.push_back(vertex_key);
-        }
-      }
+  //   // output antenna path
+  //   for (auto &antenna_key : antennaKeys) {
+  //     std::vector<void *> antenna_valid_path;
+  //     std::vector<void *> antenna_nonvalid_path;
+  //     path_buffer = g.get_path_to_root(antenna_key);
+  //     for (auto &vertex_key : path_buffer) {
+  //       if (valid_path.find(vertex_key) != valid_path.end()) {
+  //         antenna_valid_path.push_back(vertex_key);
+  //       } else {
+  //         antenna_nonvalid_path.push_back(vertex_key);
+  //       }
+  //     }
 
-      for (auto &key : antenna_nonvalid_path) {
-        llvm::dbgs() << "onon!!\n";
+  //     for (auto &key : antenna_nonvalid_path) {
+  //       llvm::dbgs() << "onon!!\n";
 
-        g.vertex_map.at(key).op_data->dump();
-      }
+  //       g.vertex_map.at(key).op_data->dump();
+  //     }
 
-      // for (auto &v : antenna_nonvalid_path) {
-      //   std::string connectionType = "";
-      //   Operation *op = g.vertices[v].op_data;
-      //   if (dyn_cast_or_null<SwitchboxOp>(op)) {
-      //     if (g.vertices[v].isDestination)
-      //       connectionType = "Connection Destination";
-      //     else
-      //       connectionType = "Connection Source";
-      //   }
-      //   op->emitWarning() << "Antenna\n"
-      //                     << "at Port: "
-      //                     << "("
-      //                     <<
-      //                     stringifyWireBundle(g.vertices[v].port_data.first)
-      //                     << " " << (int)g.vertices[v].port_data.second
-      //                     << ")
-      //                        "
-      //                     << connectionType << "\n";
-      // }
+  //     // for (auto &v : antenna_nonvalid_path) {
+  //     //   std::string connectionType = "";
+  //     //   Operation *op = g.vertices[v].op_data;
+  //     //   if (dyn_cast_or_null<SwitchboxOp>(op)) {
+  //     //     if (g.vertices[v].isDestination)
+  //     //       connectionType = "Connection Destination";
+  //     //     else
+  //     //       connectionType = "Connection Source";
+  //     //   }
+  //     //   op->emitWarning() << "Antenna\n"
+  //     //                     << "at Port: "
+  //     //                     << "("
+  //     //                     <<
+  //     // stringifyWireBundle(g.vertices[v].port_data.first)
+  //     //                     << " " << (int)g.vertices[v].port_data.second
+  //     //                     << ")
+  //     //                        "
+  //     //                     << connectionType << "\n";
+  //     // }
 
-      // // emit warning message for antennas
-      // for (auto &v : antenna_nonvalid_path) {
-      //   std::string connectionType = "";
-      //   Operation *op = g.vertices[v].op_data;
-      //   if (dyn_cast_or_null<SwitchboxOp>(op)) {
-      //     if (g.vertices[v].isDestination)
-      //       connectionType = "Connection Destination";
-      //     else
-      //       connectionType = "Connection Source";
-      //   }
-      //   op->emitWarning() << "Antenna\n"
-      //                     << "at Port: "
-      //                     << "("
-      //                     <<
-      //                     stringifyWireBundle(g.vertices[v].port_data.first)
-      //                     << " " << (int)g.vertices[v].port_data.second << ")
-      //                     "
-      //                     << connectionType << "\n";
-      // }
-      // // emit remarks for antenna traceback
-      // for (auto &v : antenna_valid_path) {
-      //   std::string connectionType = "";
-      //   Operation *op = g.vertices[v].op_data;
-      //   if (dyn_cast_or_null<SwitchboxOp>(op)) {
-      //     if (g.vertices[v].isDestination)
-      //       connectionType = "Connection Destination";
-      //     else
-      //       connectionType = "Connection Source";
-      //   }
-      //   op->emitRemark() << "Traceback\n"
-      //                    << "at Port: "
-      //                    << "("
-      //                    <<
-      //                    stringifyWireBundle(g.vertices[v].port_data.first)
-      //                    << " " << (int)g.vertices[v].port_data.second << ")
-      //                    "
-      //                    << connectionType << "\n";
-      // }
-    }
-  }
+  //     // // emit warning message for antennas
+  //     // for (auto &v : antenna_nonvalid_path) {
+  //     //   std::string connectionType = "";
+  //     //   Operation *op = g.vertices[v].op_data;
+  //     //   if (dyn_cast_or_null<SwitchboxOp>(op)) {
+  //     //     if (g.vertices[v].isDestination)
+  //     //       connectionType = "Connection Destination";
+  //     //     else
+  //     //       connectionType = "Connection Source";
+  //     //   }
+  //     //   op->emitWarning() << "Antenna\n"
+  //     //                     << "at Port: "
+  //     //                     << "("
+  //     //                     <<
+  //     // stringifyWireBundle(g.vertices[v].port_data.first)
+  //     //                     << " " << (int)g.vertices[v].port_data.second <<
+  //     ")
+  //     //                     "
+  //     //                     << connectionType << "\n";
+  //     // }
+  //     // // emit remarks for antenna traceback
+  //     // for (auto &v : antenna_valid_path) {
+  //     //   std::string connectionType = "";
+  //     //   Operation *op = g.vertices[v].op_data;
+  //     //   if (dyn_cast_or_null<SwitchboxOp>(op)) {
+  //     //     if (g.vertices[v].isDestination)
+  //     //       connectionType = "Connection Destination";
+  //     //     else
+  //     //       connectionType = "Connection Source";
+  //     //   }
+  //     //   op->emitRemark() << "Traceback\n"
+  //     //                    << "at Port: "
+  //     //                    << "("
+  //     //                    <<
+  //     // stringifyWireBundle(g.vertices[v].port_data.first)
+  //     //                    << " " << (int)g.vertices[v].port_data.second <<
+  //     ")
+  //     //                    "
+  //     //                    << connectionType << "\n";
+  //     // }
+  //   }
+  // }
 
 public:
   // Get the tiles connected to the given tile, starting from the given
@@ -329,7 +322,7 @@ public:
     Graph g;
     // root node if in detection mode
     if (antenna_detection)
-      g.add_root(tileOp.getOperation(), port);
+      g.add_vertex(nullptr, tileOp.getOperation(), port);
 
     LLVM_DEBUG(llvm::dbgs()
                << "getConnectedTile(" << stringifyWireBundle(port.first) << " "
@@ -341,10 +334,12 @@ public:
     // A worklist of PortConnections to visit.  These are all input ports of
     // some object (likely either a TileOp or a SwitchboxOp).
     std::vector<PacketConnection> worklist;
+    // stores the leafs
+    std::vector<Operation *> connectedTilesKeys;
+    std::vector<Operation *> antennaKeys;
+
     // Start the worklist by traversing from the tile to its connected
     // switchbox.
-    std::vector<void *> connectedTilesKeys;
-    std::vector<void *> antennaKeys;
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
 
     // If there is no wire to traverse, then just return no connection
@@ -353,8 +348,8 @@ public:
 
     // add node to graph if in detection mode
     if (g.isNotEmpty())
-      g.add_child(tileOp.getOperation(), t.getValue().first,
-                  t.getValue().second);
+      g.add_vertex(tileOp.getOperation(), t.getValue().first,
+                   t.getValue().second);
 
     PacketConnection connection =
         std::make_pair(t.getValue(), std::make_pair(0, 0));
@@ -370,7 +365,7 @@ public:
       if (isa<FlowEndPoint>(other)) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
-        connectedTilesKeys.push_back((void *)other);
+        connectedTilesKeys.push_back(other);
       } else if (isa<Interconnect>(other)) {
         // append to graph included with method
         std::vector<PacketConnection> nextOpPortMaskValues =
@@ -398,25 +393,25 @@ public:
         return connectedTiles;
       }
     }
-    if (g.isNotEmpty())
-      detect_antenna(g, connectedTilesKeys, antennaKeys);
+    // if (g.isNotEmpty())
+    //   detect_antenna(g, connectedTilesKeys, antennaKeys);
 
     if (g.isNotEmpty()) {
       for (auto &key : connectedTilesKeys) {
-        std::vector<void *> path_buf = g.get_path_to_root(key);
+        std::vector<Operation *> path_buf = g.get_path_to_root(key);
         llvm::dbgs() << "\n\n";
         for (auto &v : path_buf) {
           llvm::dbgs() << "connect!!\n";
-          g.vertex_map.at(v).op_data->dump();
+          v->dump();
         }
       }
 
       for (auto &key : antennaKeys) {
-        std::vector<void *> path_buf = g.get_path_to_root(key);
+        std::vector<Operation *> path_buf = g.get_path_to_root(key);
         llvm::dbgs() << "\n\n";
         for (auto &v : path_buf) {
-          llvm::dbgs() << "raw print!!\n";
-          g.vertex_map.at(v).op_data->dump();
+          llvm::dbgs() << "antenna!!\n";
+          v->dump();
         }
       }
     }
