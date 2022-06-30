@@ -41,30 +41,44 @@ struct AIEAssignLockIDsPass
 
     // loop through locks
     // store lockID count in map with operation as key
-    std::map<Operation *, int> unique_tiles;
-    for (auto lock : m.getOps<LockOp>()) {
-      Operation *lock_tile = lock.tile().getDefiningOp();
+    std::map<Operation *, int> tileToLastID;
+    auto lockOpsRange = m.getOps<LockOp>();
+    for (auto it = lockOpsRange.begin(); it != lockOpsRange.end(); it++) {
+      Operation *lock_tile = (*it).tile().getDefiningOp();
 
-      llvm::errs() << "onelock\n";
-      lock.getLockID();
+      if (!(*it).lockID().hasValue()) {
+        if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
+          // if not in map initial LockID = 0
+          tileToLastID[lock_tile] = 0;
+        } else if (tileToLastID[lock_tile] < 15) {
+          // the next potential lockID
+          int targetID = tileToLastID.at(lock_tile) + 1;
 
-      if (unique_tiles.find(lock_tile) == unique_tiles.end()) {
-        // if not in map initial LockID = 0
-        unique_tiles[lock_tile] = 0;
-      } else if (unique_tiles[lock_tile] < 15) {
-        // if in map increment LockID
-        unique_tiles[lock_tile] += 1;
+          // look ahead to check if targetID is taken, if so increment
+          for (auto iit = it; iit != lockOpsRange.end(); iit++) {
+            if ((*iit).lockID().hasValue() &&
+                ((*iit).tile().getDefiningOp() == lock_tile &&
+                 targetID == (*iit).getLockID()))
+              targetID++;
+          }
+
+          // store lockID to map
+          tileToLastID.at(lock_tile) = targetID;
+        } else {
+          (*it)->emitError() << "Exceeded the number of unique LockIDs";
+          return;
+        }
+        (*it)->setAttr("lockID",
+                       rewriter.getI32IntegerAttr(tileToLastID[lock_tile]));
       } else {
-        lock->emitError() << "Exceeded the number of unique LockIDs";
-        return;
+        (*it)->emitRemark() << "The Lock has an existing LockID\n";
       }
 
       // set LockID: overwrites existing LockID to maintain consistency
       // generate warning if Lock has an existing LockID and overwrite
-      if (lock.lockID().hasValue())
-        lock->emitWarning() << "The Lock has an existing LockID: Overwriting";
-      lock->setAttr("lockID",
-                    rewriter.getI32IntegerAttr(unique_tiles[lock_tile]));
+      // if ((*it).lockID().hasValue())
+      //   (*it)->emitWarning() << "The Lock has an existing LockID:
+      //   Overwriting";
     }
   }
 };

@@ -50,14 +50,33 @@
 // CHECK:  }
 
 module @test_assign_lockIDs {
-  %t11 = AIE.tile(1, 1)
-  %t34 = AIE.tile(3, 4)
-  %t32 = AIE.tile(3, 2)
+  %t22 = AIE.tile(2, 2)
+  %t23 = AIE.tile(2, 3)
   %t33 = AIE.tile(3, 3)
-  %t43 = AIE.tile(4, 3)
 
-  %l11_8 = AIE.lock(%t11, 1)
-  %l33_0 = AIE.lock(%t33, 2)
+  %l22_0 = AIE.lock(%t22, 0)
+  %l22_2 = AIE.lock(%t22, 2)
+  %l22_1 = AIE.lock(%t22)
+
+  %l23_0 = AIE.lock(%t23)
+  %l23_1 = AIE.lock(%t23)
+  %l23_4 = AIE.lock(%t23, 4)
+  %l23_2 = AIE.lock(%t23)
+  %l23_3 = AIE.lock(%t23)
+  %l23_5 = AIE.lock(%t23)
+  %l23_6 = AIE.lock(%t23)
+  %l23_7 = AIE.lock(%t23)
+  %l23_10 = AIE.lock(%t23)
+  %l23_11 = AIE.lock(%t23)
+  %l23_8 = AIE.lock(%t23, 8)
+  %l23_9 = AIE.lock(%t23, 9)
+  %l23_12 = AIE.lock(%t23)
+  %l23_13 = AIE.lock(%t23)
+  %l23_14 = AIE.lock(%t23)
+  %l23_15 = AIE.lock(%t23)
+
+  %l33_0 = AIE.lock(%t33, 0)
   %l33_1 = AIE.lock(%t33)
-  %l43_8 = AIE.lock(%t43)  
+  %l33_9 = AIE.lock(%t33, 9)
+  %l33_2 = AIE.lock(%t33)
 }
