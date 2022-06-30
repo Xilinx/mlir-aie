@@ -12,47 +12,47 @@
 
 // RUN: aie-opt --aie-register-objectFifos %s | FileCheck %s
 
-// CHECK-LABEL: module @registerPatterns {
-// CHECK-NEXT:    %0 = AIE.tile(1, 2)
-// CHECK-NEXT:    %1 = AIE.tile(3, 3)
-// CHECK-NEXT:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 2) : !AIE.objectFifo<memref<16xi32>>
-// CHECK-NEXT:    %cst = arith.constant dense<1> : tensor<1xi32>
-// CHECK-NEXT:    %cst_0 = arith.constant dense<1> : tensor<1xi32>
-// CHECK-NEXT:    %c10 = arith.constant 10 : index
-// CHECK-NEXT:    func @producer_work() {
-// CHECK-NEXT:      return
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %cst_1 = arith.constant dense<1> : tensor<1xi32>
-// CHECK-NEXT:    %cst_2 = arith.constant dense<1> : tensor<1xi32>
-// CHECK-NEXT:    %c10_3 = arith.constant 10 : index
-// CHECK-NEXT:    func @consumer_work() {
-// CHECK-NEXT:      return
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %3 = AIE.core(%0) {
-// CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c10_4 = arith.constant 10 : index
-// CHECK-NEXT:      %c1 = arith.constant 1 : index
-// CHECK-NEXT:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
-// CHECK-NEXT:        %5 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK-NEXT:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK-NEXT:        call @producer_work() : () -> ()
-// CHECK-NEXT:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK-NEXT:      }
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %4 = AIE.core(%1) {
-// CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c10_4 = arith.constant 10 : index
-// CHECK-NEXT:      %c1 = arith.constant 1 : index
-// CHECK-NEXT:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
-// CHECK-NEXT:        %5 = AIE.objectFifo.acquire {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK-NEXT:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK-NEXT:        call @consumer_work() : () -> ()
-// CHECK-NEXT:        AIE.objectFifo.release {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK-NEXT:      }
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
+// CHECK: module @registerPatterns {
+// CHECK:    %0 = AIE.tile(1, 2)
+// CHECK:    %1 = AIE.tile(3, 3)
+// CHECK:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 2) : !AIE.objectFifo<memref<16xi32>>
+// CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
+// CHECK:    %cst_0 = arith.constant dense<1> : tensor<1xi32>
+// CHECK:    %c10 = arith.constant 10 : index
+// CHECK:    func @producer_work() {
+// CHECK:      return
+// CHECK:    }
+// CHECK:    %cst_1 = arith.constant dense<1> : tensor<1xi32>
+// CHECK:    %cst_2 = arith.constant dense<1> : tensor<1xi32>
+// CHECK:    %c10_3 = arith.constant 10 : index
+// CHECK:    func @consumer_work() {
+// CHECK:      return
+// CHECK:    }
+// CHECK:    %3 = AIE.core(%0) {
+// CHECK:      %c0 = arith.constant 0 : index
+// CHECK:      %c10_4 = arith.constant 10 : index
+// CHECK:      %c1 = arith.constant 1 : index
+// CHECK:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
+// CHECK:        %5 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:        call @producer_work() : () -> ()
+// CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:      }
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:    %4 = AIE.core(%1) {
+// CHECK:      %c0 = arith.constant 0 : index
+// CHECK:      %c10_4 = arith.constant 10 : index
+// CHECK:      %c1 = arith.constant 1 : index
+// CHECK:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
+// CHECK:        %5 = AIE.objectFifo.acquire {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:        call @consumer_work() : () -> ()
+// CHECK:        AIE.objectFifo.release {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:      }
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:  }
 
 module @registerPatterns  {
     %tile12 = AIE.tile(1, 2)

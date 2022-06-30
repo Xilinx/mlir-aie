@@ -12,45 +12,45 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: module @singleFifo  {
-// CHECK-NEXT:    %0 = AIE.tile(1, 2)
-// CHECK-NEXT:    %1 = AIE.tile(1, 3)
-// CHECK-NEXT:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
-// CHECK-NEXT:    %3 = AIE.lock(%0, 0)
-// CHECK-NEXT:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
-// CHECK-NEXT:    %5 = AIE.lock(%0, 1)
-// CHECK-NEXT:    %6 = AIE.buffer(%0) {sym_name = "buff2"} : memref<16xi32>
-// CHECK-NEXT:    %7 = AIE.lock(%0, 2)
-// CHECK-NEXT:    %8 = AIE.buffer(%0) {sym_name = "buff3"} : memref<16xi32>
-// CHECK-NEXT:    %9 = AIE.lock(%0, 3)
-// CHECK-NEXT:    func @some_work(%arg0: memref<16xi32>) {
-// CHECK-NEXT:      return
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %10 = AIE.core(%0)  {
-// CHECK-NEXT:      AIE.useLock(%3, Acquire, 0)
-// CHECK-NEXT:      AIE.useLock(%5, Acquire, 0)
-// CHECK-NEXT:      call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      AIE.useLock(%7, Acquire, 0)
-// CHECK-NEXT:      call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      call @some_work(%6) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      AIE.useLock(%3, Release, 1)
-// CHECK-NEXT:      AIE.useLock(%5, Release, 1)
-// CHECK-NEXT:      AIE.useLock(%9, Acquire, 0)
-// CHECK-NEXT:      call @some_work(%6) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      call @some_work(%8) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      call @some_work(%6) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      call @some_work(%8) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %11 = AIE.core(%1) {
-// CHECK-NEXT:      AIE.useLock(%3, Acquire, 1)
-// CHECK-NEXT:      call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      AIE.useLock(%3, Release, 0)
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
+// CHECK: module @singleFifo  {
+// CHECK:    %0 = AIE.tile(1, 2)
+// CHECK:    %1 = AIE.tile(1, 3)
+// CHECK:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
+// CHECK:    %3 = AIE.lock(%0, 0)
+// CHECK:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
+// CHECK:    %5 = AIE.lock(%0, 1)
+// CHECK:    %6 = AIE.buffer(%0) {sym_name = "buff2"} : memref<16xi32>
+// CHECK:    %7 = AIE.lock(%0, 2)
+// CHECK:    %8 = AIE.buffer(%0) {sym_name = "buff3"} : memref<16xi32>
+// CHECK:    %9 = AIE.lock(%0, 3)
+// CHECK:    func @some_work(%arg0: memref<16xi32>) {
+// CHECK:      return
+// CHECK:    }
+// CHECK:    %10 = AIE.core(%0)  {
+// CHECK:      AIE.useLock(%3, Acquire, 0)
+// CHECK:      AIE.useLock(%5, Acquire, 0)
+// CHECK:      call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK:      call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK:      AIE.useLock(%7, Acquire, 0)
+// CHECK:      call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK:      call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK:      call @some_work(%6) : (memref<16xi32>) -> ()
+// CHECK:      AIE.useLock(%3, Release, 1)
+// CHECK:      AIE.useLock(%5, Release, 1)
+// CHECK:      AIE.useLock(%9, Acquire, 0)
+// CHECK:      call @some_work(%6) : (memref<16xi32>) -> ()
+// CHECK:      call @some_work(%8) : (memref<16xi32>) -> ()
+// CHECK:      call @some_work(%6) : (memref<16xi32>) -> ()
+// CHECK:      call @some_work(%8) : (memref<16xi32>) -> ()
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:    %11 = AIE.core(%1) {
+// CHECK:      AIE.useLock(%3, Acquire, 1)
+// CHECK:      call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK:      AIE.useLock(%3, Release, 0)
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:  }
 
 module @singleFifo {
     %tile12 = AIE.tile(1, 2)

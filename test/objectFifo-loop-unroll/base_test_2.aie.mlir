@@ -12,40 +12,40 @@
 
 // RUN: aie-opt --aie-unroll-objectFifos %s | FileCheck %s
 
-// CHECK-LABEL: module @loopUnrollWithRemainder {
-// CHECK-NEXT:    %0 = AIE.tile(1, 2)
-// CHECK-NEXT:    %1 = AIE.tile(1, 3)
-// CHECK-NEXT:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 2) : !AIE.objectFifo<memref<16xi32>>
-// CHECK-NEXT:    func @some_work(%arg0: memref<16xi32>) {
-// CHECK-NEXT:      return
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %3 = AIE.core(%0) {
-// CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c1 = arith.constant 1 : index
-// CHECK-NEXT:      %c10 = arith.constant 10 : index
-// CHECK-NEXT:      %4 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK-NEXT:      %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK-NEXT:      call @some_work(%5) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK-NEXT:      %c9 = arith.constant 9 : index
-// CHECK-NEXT:      %c2 = arith.constant 2 : index
-// CHECK-NEXT:      scf.for %arg0 = %c1 to %c9 step %c2 {
-// CHECK-NEXT:        %8 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK-NEXT:        %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK-NEXT:        call @some_work(%9) : (memref<16xi32>) -> ()
-// CHECK-NEXT:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK-NEXT:        %10 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK-NEXT:        %11 = AIE.objectFifo.subview.access %10[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK-NEXT:        call @some_work(%11) : (memref<16xi32>) -> ()
-// CHECK-NEXT:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK-NEXT:      }
-// CHECK-NEXT:      %6 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK-NEXT:      %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK-NEXT:      call @some_work(%7) : (memref<16xi32>) -> ()
-// CHECK-NEXT:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
+// CHECK: module @loopUnrollWithRemainder {
+// CHECK:    %0 = AIE.tile(1, 2)
+// CHECK:    %1 = AIE.tile(1, 3)
+// CHECK:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 2) : !AIE.objectFifo<memref<16xi32>>
+// CHECK:    func @some_work(%arg0: memref<16xi32>) {
+// CHECK:      return
+// CHECK:    }
+// CHECK:    %3 = AIE.core(%0) {
+// CHECK:      %c0 = arith.constant 0 : index
+// CHECK:      %c1 = arith.constant 1 : index
+// CHECK:      %c10 = arith.constant 10 : index
+// CHECK:      %4 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:      %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:      call @some_work(%5) : (memref<16xi32>) -> ()
+// CHECK:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:      %c9 = arith.constant 9 : index
+// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      scf.for %arg0 = %c1 to %c9 step %c2 {
+// CHECK:        %8 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:        call @some_work(%9) : (memref<16xi32>) -> ()
+// CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:        %10 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %11 = AIE.objectFifo.subview.access %10[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:        call @some_work(%11) : (memref<16xi32>) -> ()
+// CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:      }
+// CHECK:      %6 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:      %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:      call @some_work(%7) : (memref<16xi32>) -> ()
+// CHECK:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:  }
 
 module @loopUnrollWithRemainder  {
     %tile12 = AIE.tile(1, 2)

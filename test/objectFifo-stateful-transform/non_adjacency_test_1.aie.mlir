@@ -12,80 +12,80 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: module @non_adjacency {
-// CHECK-NEXT:    %0 = AIE.tile(1, 2)
-// CHECK-NEXT:    %1 = AIE.tile(3, 3)
-// CHECK-NEXT:    AIE.flow(%0, DMA : 0, %1, DMA : 1)
-// CHECK-NEXT:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
-// CHECK-NEXT:    %3 = AIE.lock(%0, 0)
-// CHECK-NEXT:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
-// CHECK-NEXT:    %5 = AIE.lock(%0, 1)
-// CHECK-NEXT:    %6 = AIE.mem(%0) {
-// CHECK-NEXT:      %14 = AIE.dmaStart(MM2S0, ^bb1, ^bb3)
-// CHECK-NEXT:    ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK-NEXT:      AIE.useLock(%3, Acquire, 1)
-// CHECK-NEXT:      AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
-// CHECK-NEXT:      AIE.useLock(%3, Release, 0)
-// CHECK-NEXT:      cf.br ^bb2
-// CHECK-NEXT:    ^bb2:  // pred: ^bb1
-// CHECK-NEXT:      AIE.useLock(%5, Acquire, 1)
-// CHECK-NEXT:      AIE.dmaBd(<%4 : memref<16xi32>, 0, 16>, 0)
-// CHECK-NEXT:      AIE.useLock(%5, Release, 0)
-// CHECK-NEXT:      cf.br ^bb1
-// CHECK-NEXT:    ^bb3:  // pred: ^bb0
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %7 = AIE.buffer(%1) {sym_name = "buff2"} : memref<16xi32>
-// CHECK-NEXT:    %8 = AIE.lock(%1, 0)
-// CHECK-NEXT:    %9 = AIE.buffer(%1) {sym_name = "buff3"} : memref<16xi32>
-// CHECK-NEXT:    %10 = AIE.lock(%1, 1)
-// CHECK-NEXT:    %11 = AIE.mem(%1) {
-// CHECK-NEXT:      %14 = AIE.dmaStart(S2MM1, ^bb1, ^bb3)
-// CHECK-NEXT:    ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK-NEXT:      AIE.useLock(%8, Acquire, 0)
-// CHECK-NEXT:      AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)
-// CHECK-NEXT:      AIE.useLock(%8, Release, 1)
-// CHECK-NEXT:      cf.br ^bb2
-// CHECK-NEXT:    ^bb2:  // pred: ^bb1
-// CHECK-NEXT:      AIE.useLock(%10, Acquire, 0)
-// CHECK-NEXT:      AIE.dmaBd(<%9 : memref<16xi32>, 0, 16>, 0)
-// CHECK-NEXT:      AIE.useLock(%10, Release, 1)
-// CHECK-NEXT:      cf.br ^bb1
-// CHECK-NEXT:    ^bb3:  // pred: ^bb0
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    func @some_work(%arg0: memref<16xi32>) {
-// CHECK-NEXT:      return
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %12 = AIE.core(%0) {
-// CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c2 = arith.constant 2 : index
-// CHECK-NEXT:      %c12 = arith.constant 12 : index
-// CHECK-NEXT:      scf.for %arg0 = %c0 to %c12 step %c2 {
-// CHECK-NEXT:        AIE.useLock(%3, Acquire, 0)
-// CHECK-NEXT:        call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK-NEXT:        AIE.useLock(%3, Release, 1)
-// CHECK-NEXT:        AIE.useLock(%5, Acquire, 0)
-// CHECK-NEXT:        call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK-NEXT:        AIE.useLock(%5, Release, 1)
-// CHECK-NEXT:      }
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %13 = AIE.core(%1) {
-// CHECK-NEXT:      %c0 = arith.constant 0 : index
-// CHECK-NEXT:      %c2 = arith.constant 2 : index
-// CHECK-NEXT:      %c12 = arith.constant 12 : index
-// CHECK-NEXT:      scf.for %arg0 = %c0 to %c12 step %c2 {
-// CHECK-NEXT:        AIE.useLock(%8, Acquire, 1)
-// CHECK-NEXT:        call @some_work(%7) : (memref<16xi32>) -> ()
-// CHECK-NEXT:        AIE.useLock(%8, Release, 0)
-// CHECK-NEXT:        AIE.useLock(%10, Acquire, 1)
-// CHECK-NEXT:        call @some_work(%9) : (memref<16xi32>) -> ()
-// CHECK-NEXT:        AIE.useLock(%10, Release, 0)
-// CHECK-NEXT:      }
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:  }
+// CHECK: module @non_adjacency {
+// CHECK:    %0 = AIE.tile(1, 2)
+// CHECK:    %1 = AIE.tile(3, 3)
+// CHECK:    AIE.flow(%0, DMA : 0, %1, DMA : 1)
+// CHECK:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
+// CHECK:    %3 = AIE.lock(%0, 0)
+// CHECK:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
+// CHECK:    %5 = AIE.lock(%0, 1)
+// CHECK:    %6 = AIE.mem(%0) {
+// CHECK:      %14 = AIE.dmaStart(MM2S0, ^bb1, ^bb3)
+// CHECK:    ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:      AIE.useLock(%3, Acquire, 1)
+// CHECK:      AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
+// CHECK:      AIE.useLock(%3, Release, 0)
+// CHECK:      cf.br ^bb2
+// CHECK:    ^bb2:  // pred: ^bb1
+// CHECK:      AIE.useLock(%5, Acquire, 1)
+// CHECK:      AIE.dmaBd(<%4 : memref<16xi32>, 0, 16>, 0)
+// CHECK:      AIE.useLock(%5, Release, 0)
+// CHECK:      cf.br ^bb1
+// CHECK:    ^bb3:  // pred: ^bb0
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:    %7 = AIE.buffer(%1) {sym_name = "buff2"} : memref<16xi32>
+// CHECK:    %8 = AIE.lock(%1, 0)
+// CHECK:    %9 = AIE.buffer(%1) {sym_name = "buff3"} : memref<16xi32>
+// CHECK:    %10 = AIE.lock(%1, 1)
+// CHECK:    %11 = AIE.mem(%1) {
+// CHECK:      %14 = AIE.dmaStart(S2MM1, ^bb1, ^bb3)
+// CHECK:    ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:      AIE.useLock(%8, Acquire, 0)
+// CHECK:      AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)
+// CHECK:      AIE.useLock(%8, Release, 1)
+// CHECK:      cf.br ^bb2
+// CHECK:    ^bb2:  // pred: ^bb1
+// CHECK:      AIE.useLock(%10, Acquire, 0)
+// CHECK:      AIE.dmaBd(<%9 : memref<16xi32>, 0, 16>, 0)
+// CHECK:      AIE.useLock(%10, Release, 1)
+// CHECK:      cf.br ^bb1
+// CHECK:    ^bb3:  // pred: ^bb0
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:    func @some_work(%arg0: memref<16xi32>) {
+// CHECK:      return
+// CHECK:    }
+// CHECK:    %12 = AIE.core(%0) {
+// CHECK:      %c0 = arith.constant 0 : index
+// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      %c12 = arith.constant 12 : index
+// CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
+// CHECK:        AIE.useLock(%3, Acquire, 0)
+// CHECK:        call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK:        AIE.useLock(%3, Release, 1)
+// CHECK:        AIE.useLock(%5, Acquire, 0)
+// CHECK:        call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK:        AIE.useLock(%5, Release, 1)
+// CHECK:      }
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:    %13 = AIE.core(%1) {
+// CHECK:      %c0 = arith.constant 0 : index
+// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      %c12 = arith.constant 12 : index
+// CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
+// CHECK:        AIE.useLock(%8, Acquire, 1)
+// CHECK:        call @some_work(%7) : (memref<16xi32>) -> ()
+// CHECK:        AIE.useLock(%8, Release, 0)
+// CHECK:        AIE.useLock(%10, Acquire, 1)
+// CHECK:        call @some_work(%9) : (memref<16xi32>) -> ()
+// CHECK:        AIE.useLock(%10, Release, 0)
+// CHECK:      }
+// CHECK:      AIE.end
+// CHECK:    }
+// CHECK:  }
 
 module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
