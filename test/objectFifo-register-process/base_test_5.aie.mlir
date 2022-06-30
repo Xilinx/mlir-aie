@@ -14,9 +14,6 @@
 
 // CHECK: module @registerPatterns {
 // CHECK:    %0 = AIE.tile(1, 2)
-
-// CHECK: module @registerPatterns {
-// CHECK:    %0 = AIE.tile(1, 2)
 // CHECK:    %1 = AIE.tile(1, 3)
 // CHECK:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 4) : !AIE.objectFifo<memref<16xi32>>
 // CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
