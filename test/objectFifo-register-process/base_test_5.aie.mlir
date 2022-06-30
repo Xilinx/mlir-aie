@@ -14,6 +14,9 @@
 
 // CHECK: module @registerPatterns {
 // CHECK:    %0 = AIE.tile(1, 2)
+
+// CHECK: module @registerPatterns {
+// CHECK:    %0 = AIE.tile(1, 2)
 // CHECK:    %1 = AIE.tile(1, 3)
 // CHECK:    %2 = AIE.objectFifo.createObjectFifo(%0, %1, 4) : !AIE.objectFifo<memref<16xi32>>
 // CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
@@ -34,14 +37,13 @@
 // CHECK:        %9 = AIE.objectFifo.subview.access %8[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        call @producer_work() : () -> ()
 // CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
-// CHECK:     }
+// CHECK:      }
 // CHECK:      %6 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:      %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      call @producer_work() : () -> ()
 // CHECK:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2)
 // CHECK:      AIE.end
 // CHECK:    }
-// CHECK:   }
 // CHECK:  }
 
 module @registerPatterns  {
