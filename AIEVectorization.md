@@ -6,7 +6,7 @@ Achieving high performance with the AIEngine architecture typically requires exe
 
 A typical starting point for automatic vectorization is to consider Affine looped programs. [Example](https://github.com/Xilinx/mlir-aie/tree/main/test/aievec/pointwise_mult_f32.mlir)
 ```
-func @pointwise_mult (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>) {
+func.func @pointwise_mult (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>) {
     affine.for %arg0 = 0 to 2048 {
        %a = affine.load %A[%arg0] : memref<2048xf32>
        %b = affine.load %B[%arg0] : memref<2048xf32>
@@ -26,7 +26,7 @@ The ["Affine Super-Vectorize" pass](https://mlir.llvm.org/docs/Passes/#-affine-s
 aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" < pointwise_mult_f32.mlir
 ```
 ```
-  func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
+  func.func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
     affine.for %arg3 = 0 to 2048 step 8 {
       %cst = arith.constant 0.000000e+00 : f32
       %0 = vector.transfer_read %arg0[%arg3], %cst : memref<2048xf32>, vector<8xf32>
@@ -49,7 +49,7 @@ The ['AIE Vectorize' pass](https://xilinx.github.io/mlir-aie/AIEVecPasses.html) 
 aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize < pointwise_mult_f32.mlir
 ```
 ```
-  func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
+  func.func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
     %c8 = arith.constant 8 : index
     %c2048 = arith.constant 2048 : index
     %c0 = arith.constant 0 : index
@@ -95,7 +95,7 @@ The AIEngine architecture supports a number of different datatypes, typically su
 aie-opt -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize < pointwise_mult_i16.mlir
 ```
 ```
-func @pointwise_mult (%A: memref<2048xi16>, %B: memref<2048xi16>, %C: memref<2048xi16>) {
+func.func @pointwise_mult (%A: memref<2048xi16>, %B: memref<2048xi16>, %C: memref<2048xi16>) {
     affine.for %arg0 = 0 to 2048 {
        %a = affine.load %A[%arg0] : memref<2048xi16>
        %b = affine.load %B[%arg0] : memref<2048xi16>
@@ -107,7 +107,7 @@ func @pointwise_mult (%A: memref<2048xi16>, %B: memref<2048xi16>, %C: memref<204
 ```
 Results in:
 ```
-  func @pointwise_mult(%arg0: memref<2048xi16>, %arg1: memref<2048xi16>, %arg2: memref<2048xi16>) {
+  func.func @pointwise_mult(%arg0: memref<2048xi16>, %arg1: memref<2048xi16>, %arg2: memref<2048xi16>) {
     %c0 = arith.constant 0 : index
     %c2048 = arith.constant 2048 : index
     %c16 = arith.constant 16 : index
@@ -130,7 +130,7 @@ More complex algorithms with multiple loops can be more challenging to vectorize
 aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < conv2d_i32.mlir
 ```
 ```
-  func @conv2d(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref<2046x2046xi32>) {
+  func.func @conv2d(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref<2046x2046xi32>) {
     %c8 = arith.constant 8 : index
     %c0 = arith.constant 0 : index
     %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<9xi32>, vector<8xi32>
@@ -197,7 +197,7 @@ void conv2d(int img_in[17][272], int kernel_coeff[3][3], int img_out[16][256]) {
 
 Resulting in
 ```
-  func @conv2d(%arg0: memref<?x272xi32>, %arg1: memref<?x3xi32>, %arg2: memref<?x256xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
+  func.func @conv2d(%arg0: memref<?x272xi32>, %arg1: memref<?x3xi32>, %arg2: memref<?x256xi32>) attributes {llvm.linkage = #llvm.linkage<external>} {
     %c0_i32 = arith.constant 0 : i32
     affine.for %arg3 = 0 to 16 {
       affine.for %arg4 = 0 to 256 {

@@ -12,12 +12,12 @@ aie.core, aie.mem, and aie.flow operations with explicit data
 movement.  The tile tile associated with the operations is inferred
 based on the aie.x and aie.y attributes of the call operation. e.g.:
 ```
-func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
+func.func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
   ...
   return
 }
 %a = constant 0 : i32
-call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
+func.call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
 
 ```
 will result in:
