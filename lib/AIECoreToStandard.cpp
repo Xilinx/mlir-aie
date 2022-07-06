@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEConversionPatterns.h"
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
@@ -28,26 +29,6 @@ using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
-// using namespace mlir::LLVM;
-
-template <typename MyAIEOp>
-struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {
-  using OpConversionPattern<MyAIEOp>::OpConversionPattern;
-  using OpAdaptor = typename MyAIEOp::Adaptor;
-  ModuleOp &module;
-
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyAIEOp>(context, benefit), module(m) {}
-
-  LogicalResult
-  matchAndRewrite(MyAIEOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
 
 struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
   using OpConversionPattern<DebugOp>::OpConversionPattern;

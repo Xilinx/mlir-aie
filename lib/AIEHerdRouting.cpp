@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEConversionPatterns.h"
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
 #include "mlir/IR/Attributes.h"
@@ -20,24 +21,6 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-
-template <typename MyOp>
-struct AIEOpRemoval : public OpConversionPattern<MyOp> {
-  using OpConversionPattern<MyOp>::OpConversionPattern;
-  using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
-
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(MyOp op, OpAdaptor operands,
-                                ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
 
 int getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
                             WireBundle destBundle) {

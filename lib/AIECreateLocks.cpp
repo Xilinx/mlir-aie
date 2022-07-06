@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEConversionPatterns.h"
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
 #include "mlir/IR/Attributes.h"
@@ -335,15 +336,23 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
     mapTokenValues(TA, builder);
     initializeLocks(builder);
 
-    ConversionTarget target(getContext());
-    target.addLegalOp<UseLockOp>();
+    { // converting UseTokenOps to UseLockOps
+      ConversionTarget target(getContext());
+      target.addLegalOp<UseLockOp>();
+      RewritePatternSet patterns(&getContext());
+      patterns.insert<Token2LockLowering>(m.getContext(), m,
+                                          tokenValue2lockState);
+      if (failed(applyPartialConversion(m, target, std::move(patterns))))
+        signalPassFailure();
+    }
 
-    RewritePatternSet patterns(&getContext());
-    patterns.insert<Token2LockLowering>(m.getContext(), m,
-                                        tokenValue2lockState);
-
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
-      signalPassFailure();
+    { // Removing all TokenOps
+      ConversionTarget target(getContext());
+      RewritePatternSet patterns(&getContext());
+      patterns.insert<AIEOpRemoval<TokenOp>>(m.getContext(), m);
+      if (failed(applyPartialConversion(m, target, std::move(patterns))))
+        signalPassFailure();
+    }
   }
 };
 

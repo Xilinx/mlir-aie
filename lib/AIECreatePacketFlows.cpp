@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/AIEConversionPatterns.h"
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
 #include "mlir/IR/Attributes.h"
@@ -23,24 +24,6 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-
-template <typename MyOp>
-struct AIEOpRemoval : public OpConversionPattern<MyOp> {
-  using OpConversionPattern<MyOp>::OpConversionPattern;
-  using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
-
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
-
-  LogicalResult matchAndRewrite(MyOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
 
 // A port on a switch is identified by the tile and port name.
 typedef std::pair<Operation *, Port> PhysPort;
@@ -650,8 +633,7 @@ struct AIERoutePacketFlowsPass
     }
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<PacketFlowOp>
-                  >(m.getContext(), m);
+    patterns.add<AIEOpRemoval<PacketFlowOp>>(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
