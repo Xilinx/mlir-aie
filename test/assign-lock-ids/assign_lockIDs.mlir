@@ -53,6 +53,7 @@ module @test_assign_lockIDs {
   %t22 = AIE.tile(2, 2)
   %t23 = AIE.tile(2, 3)
   %t33 = AIE.tile(3, 3)
+  %t33 = AIE.tile(3, 4)
 
   %l22_0 = AIE.lock(%t22, 0)
   %l22_2 = AIE.lock(%t22, 2)
@@ -79,4 +80,9 @@ module @test_assign_lockIDs {
   %l33_1 = AIE.lock(%t33)
   %l33_9 = AIE.lock(%t33, 9)
   %l33_2 = AIE.lock(%t33)
+
+  %l34_0 = AIE.lock(%t34)
+  %l34_1 = AIE.lock(%t34)
+  %l34_2 = AIE.lock(%t34)
+  %l34_3 = AIE.lock(%t34)
 }

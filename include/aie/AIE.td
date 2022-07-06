@@ -960,6 +960,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
         $_builder.getI32IntegerAttr(lockID));
       }]>
   ];
+  // let hasCanonicalizer = 1;
 }
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
