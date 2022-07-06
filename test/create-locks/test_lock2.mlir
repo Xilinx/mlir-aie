@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,43 +12,43 @@
 
 // CHECK-LABEL: module @test_lock2 {
 // CHECK:  %0 = AIE.tile(3, 3)
-// CHECK:  %1 = AIE.lock(%0, 0)
-// CHECK:  %2 = AIE.tile(2, 3)
-// CHECK:  %3 = AIE.lock(%2, 0)
-// CHECK:  %4 = AIE.tile(3, 4)
-// CHECK:  %5 = AIE.lock(%4, 0)
-// CHECK:  %6 = AIE.tile(4, 3)
-// CHECK:  %7 = AIE.tile(3, 2)
+// CHECK:  %1 = AIE.lock(%0, 3)
+// CHECK:  %2 = AIE.lock(%0, 2)
+// CHECK:  %3 = AIE.lock(%0, 1)
+// CHECK:  %4 = AIE.lock(%0, 0)
+// CHECK:  %5 = AIE.tile(2, 3)
+// CHECK:  %6 = AIE.lock(%5, 0)
+// CHECK:  %7 = AIE.tile(3, 4)
 // CHECK:  %8 = AIE.lock(%7, 0)
-// CHECK:  AIE.token(0) {sym_name = "token0"}
-// CHECK:  AIE.token(0) {sym_name = "token1"}
-// CHECK:  AIE.token(0) {sym_name = "token2"}
-// CHECK:  AIE.token(0) {sym_name = "token3"}
-// CHECK:  %14 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 1)
-// CHECK:    AIE.useLock(%3, Release, 0)
+// CHECK:  %9 = AIE.tile(4, 3)
+// CHECK:  %10 = AIE.lock(%9, 0)
+// CHECK:  %11 = AIE.tile(3, 2)
+// CHECK:  %12 = AIE.lock(%11, 0)
+// CHECK:  %13 = AIE.core(%5) {
+// CHECK:    AIE.useLock(%6, Acquire, 0)
+// CHECK:    AIE.useLock(%6, Release, 1)
 // CHECK:  }
-// CHECK:  %15 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%8, Acquire, 0)
-// CHECK:    AIE.useLock(%1, Acquire, 0)
-// CHECK:    AIE.useLock(%5, Acquire, 0)
+// CHECK:  %14 = AIE.core(%0) {
+// CHECK:    AIE.useLock(%2, Acquire, 0)
 // CHECK:    AIE.useLock(%3, Acquire, 0)
+// CHECK:    AIE.useLock(%4, Acquire, 0)
+// CHECK:    AIE.useLock(%1, Acquire, 0)
+// CHECK:    AIE.useLock(%6, Release, 0)
+// CHECK:    AIE.useLock(%4, Release, 1)
 // CHECK:    AIE.useLock(%3, Release, 1)
-// CHECK:    AIE.useLock(%5, Release, 1)
-// CHECK:    AIE.useLock(%1, Release, 1)
-// CHECK:    AIE.useLock(%8, Release, 1)
+// CHECK:    AIE.useLock(%2, Release, 1)
 // CHECK:  }
-// CHECK:  %16 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%5, Acquire, 1)
-// CHECK:    AIE.useLock(%5, Release, 0)
-// CHECK:  }
-// CHECK:  %17 = AIE.core(%6) {
-// CHECK:    AIE.useLock(%1, Acquire, 1)
-// CHECK:    AIE.useLock(%1, Release, 0)
-// CHECK:  }
-// CHECK:  %18 = AIE.core(%7) {
-// CHECK:    AIE.useLock(%8, Acquire, 1)
+// CHECK:  %15 = AIE.core(%7) {
+// CHECK:    AIE.useLock(%4, Acquire, 1)
 // CHECK:    AIE.useLock(%8, Release, 0)
+// CHECK:  }
+// CHECK:  %16 = AIE.core(%9) {
+// CHECK:    AIE.useLock(%3, Acquire, 1)
+// CHECK:    AIE.useLock(%10, Release, 0)
+// CHECK:  }
+// CHECK:  %17 = AIE.core(%11) {
+// CHECK:    AIE.useLock(%2, Acquire, 1)
+// CHECK:    AIE.useLock(%12, Release, 0)
 // CHECK:  }
 // CHECK:}
 
@@ -71,26 +71,6 @@ module @test_lock2 {
   AIE.token(0) {sym_name = "token1"}
   AIE.token(0) {sym_name = "token2"}
   AIE.token(0) {sym_name = "token3"}
-
-  %m33 = AIE.mem(%t33) {
-      AIE.end
-  }
-
-  %m23 = AIE.mem(%t23) {
-      AIE.end
-  }
-
-  %m34 = AIE.mem(%t34) {
-      AIE.end
-  }
-
-  %m43 = AIE.mem(%t43) {
-      AIE.end
-  }
-
-  %m32 = AIE.mem(%t32) {
-      AIE.end
-  }
 
   %c23 = AIE.core(%t23) {
     AIE.useToken @token0(Acquire, 1)

@@ -4,13 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef MLIR_AIE_LOCKANALYSIS_H
 #define MLIR_AIE_LOCKANALYSIS_H
 
+#include "aie/AIEDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -20,10 +21,10 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringSwitch.h"
 
-#include <map>
-
+using llvm::SmallSet;
 using namespace mlir;
 
 namespace xilinx {
@@ -31,34 +32,39 @@ namespace AIE {
 
 class TokenAnalysis {
   ModuleOp &module;
+  // tokenSymbols[name] == initialValue
   DenseMap<StringRef, int> tokenSymbols;
-  DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap;
-  DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap;
-  SmallVector<std::pair<Operation *, Operation *>, 4> tokenChains;
-  SmallVector<std::pair<Operation *, Operation *>, 4> tokenPairs;
-  DenseMap<std::pair<int, int>, Operation *> tiles;
+  // tokenValues[name] == {value, ...}
+  DenseMap<StringRef, SmallSet<int, 4>> tokenValues;
+  // tokenAcqMap[name] == {UseTokenOp/MemcpyOp, ...} (Acquire)
+  DenseMap<StringRef, SmallVector<Operation *>> tokenAcqMap;
+  // tokenRelMap[name] == {UseTokenOp/MemcpyOp, ...} (Release)
+  DenseMap<StringRef, SmallVector<Operation *>> tokenRelMap;
+  // tokenPairs == {(Acquire Op, Release Op), ...}
+  SmallVector<std::pair<Operation *, Operation *>> tokenPairs;
+  // tiles[(col, rol)] == TileOp
+  DenseMap<std::pair<int, int>, TileOp> tiles;
+  // tileLocks[tile][lockId] == LockOp
+  DenseMap<TileOp, DenseMap<int, LockOp>> tileLocks;
 
 public:
   TokenAnalysis(ModuleOp &m) : module(m) {}
 
   void runAnalysis();
 
-  auto getTokenSymbols() const { return tokenSymbols; }
+  auto &getTokenSymbols() { return tokenSymbols; }
+  auto &getTokenValues() { return tokenValues; }
+  auto &getTokenAcqMap() { return tokenAcqMap; }
+  auto &getTokenRelMap() { return tokenRelMap; }
+  auto &getTokenPairs() { return tokenPairs; }
+  auto &getTiles() { return tiles; }
+  auto &getTileLocks() { return tileLocks; }
 
-  auto getTokenAcqMap() const { return tokenAcqMap; }
-
-  auto getTokenRelMap() const { return tokenRelMap; }
-
-  auto getTokenChains() const { return tokenChains; }
-
-  auto getTokenPairs() const { return tokenPairs; }
-
-  auto getTiles() const { return tiles; }
-
-  // CoreOp or MemOp
+  // CoreOp, MemOp or ShimDMAOp
   Operation *getTokenUserOp(Operation *Op);
-  Operation *getShareableTileOp(Operation *Op1, Operation *Op2);
+  SmallSet<TileOp, 4> getAccessibleTileOp(Operation *Op);
   std::pair<int, int> getCoord(Operation *Op);
+  std::pair<StringRef, int> getTokenUseNameValue(Operation *Op, bool acquire);
 
   void print(raw_ostream &os);
 };

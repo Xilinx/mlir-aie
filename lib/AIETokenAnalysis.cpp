@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,32 +30,36 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
             .getValue();
     int value = op.getTokenValue();
     tokenSymbols[tokenName] = value;
+    tokenValues[tokenName].insert(value);
   }
 
-  // collect all the UseTokenOps and MemcpyOps
-  std::map<StringRef, SmallVector<UseTokenOp, 4>> visitors;
+  // Collect all the UseTokenOps and MemcpyOps
+  std::map<StringRef, SmallVector<Operation *>> visitors;
   module.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseTokenOp>(Op)) {
       StringRef tokenName = op.tokenName();
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
              "Token not found!");
       if (op.acquire()) {
-        tokenAcqMap[tokenName].push_back(op.getOperation());
-        visitors[tokenName].push_back(op);
+        tokenAcqMap[tokenName].push_back(Op);
+        visitors[tokenName].push_back(Op);
       } else {
-        tokenRelMap[tokenName].push_back(op.getOperation());
+        tokenRelMap[tokenName].push_back(Op);
         if (!visitors[tokenName].empty()) {
-          Operation *Op = visitors[tokenName].pop_back_val();
-          tokenPairs.push_back(std::make_pair(Op, op.getOperation()));
+          auto previousOp = visitors[tokenName].pop_back_val();
+          tokenPairs.push_back(std::make_pair(previousOp, Op));
         }
       }
+      tokenValues[tokenName].insert(op.getTokenValue());
+
     } else if (auto op = dyn_cast<MemcpyOp>(Op)) {
       StringRef tokenName = op.tokenName();
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
              "Token not found!");
-      Operation *Op = op.getOperation();
       tokenAcqMap[tokenName].push_back(Op);
+      tokenValues[tokenName].insert(op.getAcquireTokenValue());
       tokenRelMap[tokenName].push_back(Op);
+      tokenValues[tokenName].insert(op.getReleaseTokenValue());
       tokenPairs.push_back(std::make_pair(Op, Op));
     }
   });
@@ -83,46 +87,17 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
     }
   }
 
-  // Look for a pair of UseTokenOps (or UseTokenOp and MemcpyOp) such that one
-  // releases and one acquires the same token + value. They form a chain of
-  // releasing and acquiring a token. From the chains of tokens collected, we
-  // can infer the dependency of the parentOps
-  for (auto map : tokenRelMap) {
-    StringRef tokenName = map.first;
-    auto tokenRels = map.second;
-    auto tokenAcqs = tokenAcqMap[tokenName];
-    for (auto ROp : tokenRels) {
-      int releaseValue;
-
-      if (auto op = dyn_cast<UseTokenOp>(ROp))
-        releaseValue = op.getTokenValue();
-      else if (auto op = dyn_cast<MemcpyOp>(ROp))
-        releaseValue = op.getReleaseTokenValue();
-
-      for (auto AOp : tokenAcqs) {
-        int acquireValue;
-
-        if (auto op = dyn_cast<UseTokenOp>(AOp))
-          acquireValue = op.getTokenValue();
-        else if (auto op = dyn_cast<MemcpyOp>(AOp))
-          acquireValue = op.getAcquireTokenValue();
-        else
-          continue;
-
-        // Release and Acquire form a chain if they set/get the token with the
-        // same value
-        if (releaseValue != acquireValue)
-          continue;
-
-        tokenChains.push_back(std::make_pair(ROp, AOp));
-      }
-    }
-  }
-
+  // Collecting tiles
   for (auto tile : module.getOps<TileOp>()) {
     int colIndex = tile.colIndex();
     int rowIndex = tile.rowIndex();
     tiles[std::make_pair(colIndex, rowIndex)] = tile;
+  }
+
+  // Collecting existing locks
+  for (auto lock : module.getOps<LockOp>()) {
+    TileOp tile = dyn_cast<TileOp>(lock.tile().getDefiningOp());
+    tileLocks[tile][lock.getLockID()] = lock;
   }
 }
 
@@ -152,53 +127,53 @@ std::pair<int, int> xilinx::AIE::TokenAnalysis::getCoord(Operation *Op) {
   } else if (ShimDMAOp shimDma = dyn_cast<ShimDMAOp>(Op)) {
     colIndex = shimDma.colIndex();
     rowIndex = shimDma.rowIndex();
+  } else {
+    assert(false && "unknown usage operation");
   }
 
   return std::make_pair(colIndex, rowIndex);
 }
 
-Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1,
-                                                          Operation *Op2) {
-  bool IsOp1Mem = isa<MemOp>(Op1) || isa<ShimDMAOp>(Op1);
-  bool IsOp2Mem = isa<MemOp>(Op2) || isa<ShimDMAOp>(Op2);
+SmallSet<TileOp, 4>
+xilinx::AIE::TokenAnalysis::getAccessibleTileOp(Operation *Op) {
+  SmallSet<TileOp, 4> possibleTiles;
 
-  assert((!IsOp1Mem || !IsOp2Mem) &&
-         "Op1 and Op2 cannot be both Mem operation!");
+  bool IsOpCore = isa<CoreOp>(Op);
+  auto coord1 = getCoord(Op);
+  int col1 = coord1.first, row1 = coord1.second;
 
-  std::pair<int, int> coord1 = getCoord(Op1);
-  std::pair<int, int> coord2 = getCoord(Op2);
+  possibleTiles.insert(tiles[coord1]);
 
-  int col1 = coord1.first;
-  int row1 = coord1.second;
-  int col2 = coord2.first;
-  int row2 = coord2.second;
+  // Operations in CoreOp could use neighbor locks
+  if (IsOpCore) {
+    for (auto tile : tiles) {
+      int col2 = tile.first.first, row2 = tile.first.second;
+      bool IsS = isSouth(col1, row1, col2, row2);
+      bool IsW = isWest(col1, row1, col2, row2);
+      bool IsN = isNorth(col1, row1, col2, row2);
+      bool IsE = isEast(col1, row1, col2, row2);
+      bool IsEvenRow = ((row1 % 2) == 0);
 
-  bool IsOp1ShareableMem =
-      IsOp1Mem && isLegalMemAffinity(col2, row2, col1, row1);
-  bool IsOp2ShareableMem =
-      IsOp2Mem && isLegalMemAffinity(col1, row1, col2, row2);
-
-  if (IsOp1ShareableMem)
-    return tiles[coord1];
-  if (IsOp2ShareableMem)
-    return tiles[coord2];
-
-  // both Op1 and Op2 are core ops
-  if (!IsOp1Mem && !IsOp2Mem) {
-    bool IsS = isSouth(col1, row1, col2, row2);
-    bool IsW = isWest(col1, row1, col2, row2);
-    bool IsN = isNorth(col1, row1, col2, row2);
-    bool IsE = isEast(col1, row1, col2, row2);
-    bool IsInternal = isInternal(col1, row1, col2, row2);
-    bool IsEvenRow = ((row1 % 2) == 0);
-
-    if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))
-      return tiles[coord2];
-    if ((IsW && IsEvenRow) || (IsE && !IsEvenRow) || IsInternal)
-      return tiles[coord1];
+      if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))
+        possibleTiles.insert(tile.second);
+    }
   }
 
-  return nullptr;
+  return possibleTiles;
+}
+
+std::pair<StringRef, int>
+xilinx::AIE::TokenAnalysis::getTokenUseNameValue(Operation *Op, bool acquire) {
+  if (auto mop = dyn_cast<MemcpyOp>(Op)) {
+    if (acquire) {
+      return std::make_pair(mop.tokenName(), mop.getAcquireTokenValue());
+    } else {
+      return std::make_pair(mop.tokenName(), mop.getReleaseTokenValue());
+    }
+  } else if (auto utop = dyn_cast<UseTokenOp>(Op)) {
+    return std::make_pair(utop.tokenName(), utop.value());
+  }
+  assert(false && "unknown token use operation.");
 }
 
 void xilinx::AIE::TokenAnalysis::print(raw_ostream &os) {
@@ -209,16 +184,6 @@ void xilinx::AIE::TokenAnalysis::print(raw_ostream &os) {
     acquire->print(os);
     os << " -> ";
     release->print(os);
-    os << "\n";
-  }
-
-  os << "\n=====tokenChains: \n";
-  for (auto pair : tokenChains) {
-    Operation *release = pair.first;
-    Operation *acquire = pair.second;
-    release->print(os);
-    os << " -> ";
-    acquire->print(os);
     os << "\n";
   }
 }

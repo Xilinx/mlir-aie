@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,208 +25,276 @@ using namespace xilinx::AIE;
 struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   using OpConversionPattern<UseTokenOp>::OpConversionPattern;
   ModuleOp &module;
-  DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks;
-  DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks;
-  DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
-      &lockChains;
+  DenseMap<std::pair<StringRef, int>, std::pair<LockOp, int>>
+      &tokenValue2lockState;
 
-  Token2LockLowering(
-      MLIRContext *context, ModuleOp &m,
-      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
-      DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
-      DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
-          &lockChains,
-      PatternBenefit benefit = 1)
+  Token2LockLowering(MLIRContext *context, ModuleOp &m,
+                     DenseMap<std::pair<StringRef, int>, std::pair<LockOp, int>>
+                         &tokenValue2lockState,
+                     PatternBenefit benefit = 1)
       : OpConversionPattern<UseTokenOp>(context, benefit), module(m),
-        acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
+        tokenValue2lockState(tokenValue2lockState) {}
 
   LogicalResult
   matchAndRewrite(UseTokenOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = op.getOperation();
-    Operation *parentOp = op->getParentOp();
+    auto lockState =
+        tokenValue2lockState[std::make_pair(op.tokenName(), op.value())];
 
-    int srcCol, srcRow;
-    bool IsParentMemOp = false;
-    if (CoreOp core = dyn_cast<CoreOp>(parentOp)) {
-      srcCol = core.colIndex();
-      srcRow = core.rowIndex();
-    } else if (MemOp mem = dyn_cast<MemOp>(parentOp)) {
-      srcCol = mem.colIndex();
-      srcRow = mem.rowIndex();
-      IsParentMemOp = true;
-    } else if (auto shimDma = dyn_cast<ShimDMAOp>(parentOp)) {
-      srcCol = shimDma.colIndex();
-      srcRow = shimDma.rowIndex();
-    } else {
-      llvm_unreachable("A parent operation of UseTokenOp must be either CoreOp "
-                       "or MemOp or ShimDMAOp");
-    }
-
+    LockAction action;
     if (op.acquire()) {
-      // Acquire lock from pair
+      action = LockAction::Acquire;
       LLVM_DEBUG(llvm::dbgs() << "Replacing Acquire: " << op << "\n");
-      for (auto acqLock : acqLocks[op]) {
-        Value lockFromPair = acqLock.first;
-        int lockValueFromPair = acqLock.second;
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair, lockValueFromPair,
-                                   LockAction::Acquire);
-        LLVM_DEBUG(llvm::dbgs() << "Acquire from pair " << lockFromPair
-                                << " with " << lockValueFromPair << "\n");
-      }
-
-      // Acquire lock from chain
-      for (auto map : lockChains) {
-        Value lockFromChain = map.second.first;
-        int lockValueFromChain = map.second.second;
-        Operation *acqOp = map.first.second;
-        if (acqOp != Op)
-          continue;
-
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromChain,
-                                   lockValueFromChain, LockAction::Acquire);
-        LLVM_DEBUG(llvm::dbgs() << "Acquire from chain " << lockFromChain
-                                << " with " << lockValueFromChain << "\n");
-      }
-    } else if (op.release()) {
-      // Release lock from pair
+    } else {
+      action = LockAction::Release;
       LLVM_DEBUG(llvm::dbgs() << "Replacing Release: " << op << "\n");
-      for (auto relLock : relLocks[op]) {
-        Value lockFromPair = relLock.first;
-        int lockValueFromPair = relLock.second;
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair, lockValueFromPair,
-                                   LockAction::Release);
-        LLVM_DEBUG(llvm::dbgs() << "Release from pair " << lockFromPair
-                                << " with " << lockValueFromPair << "\n");
-      }
-
-      // Release lock from chain
-      for (auto map : lockChains) {
-        Value lockFromChain = map.second.first;
-        int lockValueFromChain = map.second.second;
-        Operation *relOp = map.first.first;
-        if (relOp != Op)
-          continue;
-
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromChain,
-                                   lockValueFromChain, LockAction::Release);
-        LLVM_DEBUG(llvm::dbgs() << "Release from chain " << lockFromChain
-                                << " with " << lockValueFromChain << "\n");
-      }
     }
 
-    rewriter.eraseOp(Op);
+    rewriter.create<UseLockOp>(op.getLoc(), lockState.first, lockState.second,
+                               action);
+    LLVM_DEBUG(llvm::dbgs() << "with lock " << lockState.first << " in state "
+                            << lockState.second << "\n");
+    rewriter.eraseOp(op.getOperation());
 
     return success();
   }
 };
 
-static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
-                     Operation *tileOp) {
-
+static LockOp
+allocateFullLock(DenseMap<int, DenseMap<int, StringRef>> &lockUsedStates,
+                 DenseMap<int, LockOp> &tileLocks, TileOp tile,
+                 OpBuilder &builder) {
   for (unsigned i = 0; i < 16; i++) {
-    int usageCnt = locks[std::make_pair(tileOp, i)];
-    if (usageCnt == 0) {
-      locks[std::make_pair(tileOp, i)] = 1;
-      return i;
+    if (lockUsedStates.count(i)) {
+      LLVM_DEBUG(llvm::dbgs() << "Lock " << i << " at " << tile
+                              << "was already used, skipping...\n");
+      continue;
+    }
+    auto lock = builder.create<LockOp>(builder.getUnknownLoc(), tile, i);
+    tileLocks[i] = lock;
+    LLVM_DEBUG(llvm::dbgs() << "lock " << lock << " allocated for tokens.\n");
+    return lock;
+  }
+  return nullptr;
+}
+
+static std::pair<LockOp, int>
+allocateLockState(DenseMap<int, DenseMap<int, StringRef>> &lockUsedStates,
+                  DenseMap<int, LockOp> &tileLocks, TileOp tile,
+                  StringRef tokenName, OpBuilder &builder) {
+
+  // Try reusing a lock first
+  for (unsigned i = 0; i < 16; i++) {
+    if (!lockUsedStates.count(i))
+      continue;
+
+    // Avoid using the same physical lock for different tokens
+    bool usedForDifferentToken = false;
+    for (unsigned s = 0; s < 2; s++) {
+      if (lockUsedStates[i].count(s) && lockUsedStates[i][s] != tokenName)
+        usedForDifferentToken = true;
+    }
+    if (usedForDifferentToken)
+      continue;
+
+    for (unsigned s = 0; s < 2; s++) {
+      if (lockUsedStates[i].count(s))
+        continue;
+      lockUsedStates[i][s] = tokenName;
+      return std::make_pair(tileLocks[i], s);
     }
   }
 
-  return -1;
+  // Otherwise, allocate a new lock
+  auto lock = allocateFullLock(lockUsedStates, tileLocks, tile, builder);
+  if (lock == nullptr)
+    return std::make_pair(lock, -1);
+  lockUsedStates[lock.getLockID()][0] = tokenName;
+  return std::make_pair(lock, 0 /* state */);
 }
 
 struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
-  void runOnOperation() override {
 
+  // tileLockUsedStates[tile][lockId] = {state: user tokenName}
+  DenseMap<TileOp, DenseMap<int, DenseMap<int, StringRef>>> tileLockUsedStates;
+  // tileLocks[tileOp] = {lockId: LockOp}
+  DenseMap<TileOp, DenseMap<int, LockOp>> tileLocks;
+
+  // tokenValue2lockState[(tokenName, value)] = (lockOp, state)
+  DenseMap<std::pair<StringRef, int>, std::pair<LockOp, int>>
+      tokenValue2lockState;
+
+  void reserveExistingLocks(TokenAnalysis &TA) {
+    for (auto existingLocks : TA.getTileLocks()) {
+      auto tile = existingLocks.first;
+      auto locks = existingLocks.second;
+      for (auto lock : locks) {
+        int lockId = lock.first;
+        // all states of exsiting locks shall be reserved
+        tileLockUsedStates[tile][lockId][0] = "";
+        tileLockUsedStates[tile][lockId][1] = "";
+        tileLocks[tile][lockId] = lock.second;
+      }
+    }
+  }
+
+  void mapDMAAndMemcpyPairs(TokenAnalysis &TA, OpBuilder &builder) {
+    // Phase 1: DMA and Memcpy pairs shall be mapped into 0/1 states of
+    // a physical lock.
+
+    for (auto pair : TA.getTokenPairs()) {
+      auto acquire = pair.first;
+      auto release = pair.second;
+      auto acqUser = TA.getTokenUserOp(acquire);
+      auto relUser = TA.getTokenUserOp(release);
+      auto acqPair = TA.getTokenUseNameValue(acquire, true);
+      auto relPair = TA.getTokenUseNameValue(release, false);
+
+      // skip pairs if they are not in DMA or are MemcpyOp
+      if ((!isa<MemcpyOp>(acquire) || !isa<MemcpyOp>(release)) &&
+          (!isa<MemOp>(acqUser) || !isa<MemOp>(relUser)) &&
+          (!isa<ShimDMAOp>(acqUser) || !isa<ShimDMAOp>(relUser)))
+        continue;
+
+      // if one of them is mapped but the other is not, it is impossible to
+      // implement this scheme since the unmapped cannot be mapped to the
+      // opposite state of the physical lock of the mapped
+      assert(tokenValue2lockState.count(acqPair) ==
+                 tokenValue2lockState.count(relPair) &&
+             "Unable to resolve: DMA/memcpy chaining not supported.");
+
+      // if both are mapped, they need to be in the same physical lock.
+      if (tokenValue2lockState.count(acqPair)) {
+        assert(tokenValue2lockState[acqPair].first ==
+                   tokenValue2lockState[relPair].first &&
+               "Unable to resolve: DMA/memcpy mapped to different locks.");
+        continue; // no need to allocate :-)
+      }
+
+      // select the tile to place the physical lock
+      auto tileOp = *(TA.getAccessibleTileOp(acqUser).begin());
+      // the legality of the tile selection will be check in the next phase.
+      // for now, we make a best selection to be located at the user tile,
+      // as the user is the only possible sharable mem selection.
+
+      // allocate a physical lock for the values, and use 0/1 as their states
+      builder.setInsertionPointAfter(tileOp);
+      auto lock = allocateFullLock(tileLockUsedStates[tileOp],
+                                   tileLocks[tileOp], tileOp, builder);
+      assert(lock && "No more locks to allocate!");
+      tileLockUsedStates[tileOp][lock.getLockID()][1] = acqPair.first;
+      tileLockUsedStates[tileOp][lock.getLockID()][0] = relPair.first;
+      tokenValue2lockState[acqPair] = std::make_pair(lock, 1 /* state */);
+      tokenValue2lockState[relPair] = std::make_pair(lock, 0 /* state */);
+      LLVM_DEBUG(llvm::dbgs()
+                 << "DMA token " << acqPair.first << " value " << acqPair.second
+                 << " is replaced with lock " << lock << " state 1\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "DMA token " << relPair.first << " value " << relPair.second
+                 << " is replaced with lock " << lock << " state 0\n");
+    }
+  }
+
+  void mapTokenValues(TokenAnalysis &TA, OpBuilder &builder) {
+    // Phase 2: Mapping all values to physical locks.
+
+    for (auto tokenValues : TA.getTokenValues()) {
+      auto tokenName = tokenValues.first;
+      auto values = tokenValues.second;
+      for (auto value : values) {
+        auto valPair = std::make_pair(tokenName, value);
+
+        SmallVector<Operation *> users;
+        // locate all users
+        for (auto acquire : TA.getTokenAcqMap()[tokenName]) {
+          auto acqPair = TA.getTokenUseNameValue(acquire, true);
+          // skip acquires with different values
+          if (acqPair.second != valPair.second)
+            continue;
+          users.push_back(TA.getTokenUserOp(acquire));
+        }
+        for (auto release : TA.getTokenRelMap()[tokenName]) {
+          auto relPair = TA.getTokenUseNameValue(release, false);
+          // skip releases with different values
+          if (relPair.second != valPair.second)
+            continue;
+          users.push_back(TA.getTokenUserOp(release));
+        }
+
+        // Skipping generation if the token is not used
+        if (!users.size())
+          continue;
+
+        SmallSet<TileOp, 4> possibleTiles =
+            TA.getAccessibleTileOp(*users.begin());
+
+        for (auto user : users) {
+          auto currPossibleTiles = TA.getAccessibleTileOp(user);
+
+          // find the intersection of the possible tiles
+          SmallSet<TileOp, 4> intersection;
+          for (auto tileOp : currPossibleTiles)
+            if (possibleTiles.count(tileOp))
+              intersection.insert(tileOp);
+          possibleTiles = intersection;
+
+          assert(possibleTiles.size() && "Unable to place the lock.");
+          LLVM_DEBUG(llvm::dbgs()
+                     << "Token " << valPair.first << " value " << valPair.second
+                     << " may be placed at " << *possibleTiles.begin()
+                     << ", iterating...\n");
+        }
+
+        if (tokenValue2lockState.count(valPair)) {
+          // if the token is already placed, check if it is a possible tile.
+          auto tileOp =
+              tokenValue2lockState[valPair].first.tile().getDefiningOp();
+          assert(possibleTiles.count(dyn_cast<TileOp>(tileOp)) &&
+                 "Failed to place the token to a physical tile.");
+
+        } else {
+          // otherwise, place it to a possible tile
+          for (auto tileOp : possibleTiles) {
+            // try all possible tiles until it is placed
+            builder.setInsertionPointAfter(tileOp);
+            auto lockState =
+                allocateLockState(tileLockUsedStates[tileOp], tileLocks[tileOp],
+                                  tileOp, valPair.first, builder);
+            if (lockState.first != nullptr) {
+              tokenValue2lockState[valPair] = lockState;
+              LLVM_DEBUG(llvm::dbgs()
+                         << "Token " << valPair.first << " value "
+                         << valPair.second << "is replaced with lock "
+                         << lockState.first << " state " << lockState.second
+                         << "\n");
+              break;
+            }
+          }
+          assert(tokenValue2lockState.count(valPair) &&
+                 "No more locks to allocate!");
+        }
+      }
+    }
+  }
+
+  void runOnOperation() override {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     TokenAnalysis TA(m);
     TA.runAnalysis();
     LLVM_DEBUG(TA.print(llvm::dbgs()));
-    DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap(
-        TA.getTokenAcqMap());
-    DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap(
-        TA.getTokenRelMap());
-    SmallVector<std::pair<Operation *, Operation *>, 4> tokenChains(
-        TA.getTokenChains());
-    SmallVector<std::pair<Operation *, Operation *>, 4> tokenPairs(
-        TA.getTokenPairs());
-    DenseMap<std::pair<int, int>, Operation *> tiles(TA.getTiles());
+    reserveExistingLocks(TA);
 
-    DenseMap<std::pair<Operation *, int>, int> locks;
-    DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
-        lockChains;
-    DenseMap<Operation *, std::vector<std::pair<Value, int>>> acqLocks;
-    DenseMap<Operation *, std::vector<std::pair<Value, int>>> relLocks;
-
-    for (auto map : tokenChains) {
-      Operation *release = map.first;
-      Operation *acquire = map.second;
-
-      Operation *relUser = TA.getTokenUserOp(release);
-      Operation *acqUser = TA.getTokenUserOp(acquire);
-      bool IsRelUserCore = isa<CoreOp>(relUser);
-      bool IsAcqUserCore = isa<CoreOp>(acqUser);
-      std::pair<int, int> relUserCoord = TA.getCoord(relUser);
-      std::pair<int, int> acqUserCoord = TA.getCoord(acqUser);
-
-      Operation *tileOp = TA.getShareableTileOp(relUser, acqUser);
-
-      LLVM_DEBUG(llvm::dbgs() << "\n=== CHECKING TOKEN CHAIN ===\n";
-                 release->print(llvm::dbgs());
-                 if (IsRelUserCore) llvm::dbgs() << " @Core";
-                 else llvm::dbgs() << " @DMA";
-                 llvm::dbgs() << " (" << relUserCoord.first << ", "
-                              << relUserCoord.second << ")" << '\n';
-                 acquire->print(llvm::dbgs());
-                 if (IsAcqUserCore) llvm::dbgs() << " @Core";
-                 else llvm::dbgs() << " @DMA";
-                 llvm::dbgs() << " (" << acqUserCoord.first << ", "
-                              << acqUserCoord.second << ")" << '\n';);
-
-      // ignore chain that involves a MemOp (DMA) user and CoreOp user and they
-      // don't have a shareable tile. This might be caused by MemcpyOp lowering
-      // -- there are two MemOps that use the same token and the same lock
-      // action + value. Therefore, TokenAnalysis accidentally chains one MemOp
-      // to a Core (from the MemcpyOp relationship) that does not have memory
-      // affinity with it
-      // TODO: verify if it is actually safe to ignore this case
-      if (!tileOp && ((!IsRelUserCore && IsAcqUserCore) ||
-                      (!IsAcqUserCore && IsRelUserCore)))
-        continue;
-      assert(tileOp &&
-             "Sorry, the lock users of this chain do not have a common lock");
-
-      TileOp tile = dyn_cast<TileOp>(tileOp);
-      int lockID = getLockID(locks, tileOp);
-      assert(lockID >= 0 && "No more locks to allocate!");
-      LLVM_DEBUG(llvm::dbgs() << "Shared tile \n"; tileOp->print(llvm::dbgs()));
-      LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
-      builder.setInsertionPointAfter(tileOp);
-      LockOp lock =
-          builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID);
-
-      lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);
-
-      for (auto pair : tokenPairs) {
-        Operation *acqFromPair = pair.first;
-        Operation *relFromPair = pair.second;
-
-        if (relFromPair == release)
-          acqLocks[acqFromPair].push_back(std::make_pair(lock, 0));
-
-        if (acqFromPair == acquire)
-          relLocks[relFromPair].push_back(std::make_pair(lock, 0));
-      }
-    }
+    mapDMAAndMemcpyPairs(TA, builder);
+    mapTokenValues(TA, builder);
 
     ConversionTarget target(getContext());
     target.addLegalOp<UseLockOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<Token2LockLowering>(m.getContext(), m, acqLocks, relLocks,
-                                        lockChains);
+    patterns.insert<Token2LockLowering>(m.getContext(), m,
+                                        tokenValue2lockState);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
