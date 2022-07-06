@@ -119,6 +119,8 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
   DenseMap<TileOp, DenseMap<int, DenseMap<int, StringRef>>> tileLockUsedStates;
   // tileLocks[tileOp] = {lockId: LockOp}
   DenseMap<TileOp, DenseMap<int, LockOp>> tileLocks;
+  // lockInitialized = {LockOp: initialized or not}
+  DenseMap<LockOp, bool> lockInitialized;
 
   // tokenValue2lockState[(tokenName, value)] = (lockOp, state)
   DenseMap<std::pair<StringRef, int>, std::pair<LockOp, int>>
@@ -149,6 +151,11 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       auto relUser = TA.getTokenUserOp(release);
       auto acqPair = TA.getTokenUseNameValue(acquire, true);
       auto relPair = TA.getTokenUseNameValue(release, false);
+
+      auto isAcqInitialValue =
+          (acqPair.second == TA.getTokenSymbols()[acqPair.first]);
+      auto isRelInitialValue =
+          (relPair.second == TA.getTokenSymbols()[relPair.first]);
 
       // skip pairs if they are not in DMA or are MemcpyOp
       if ((!isa<MemcpyOp>(acquire) || !isa<MemcpyOp>(release)) &&
@@ -186,6 +193,18 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       tileLockUsedStates[tileOp][lock.getLockID()][0] = relPair.first;
       tokenValue2lockState[acqPair] = std::make_pair(lock, 1 /* state */);
       tokenValue2lockState[relPair] = std::make_pair(lock, 0 /* state */);
+
+      // create lock initialization
+      if (isAcqInitialValue) {
+        builder.create<UseLockOp>(lock.getLoc(), lock, 1, LockAction::Release);
+        lockInitialized[lock] = true;
+      } else if (isRelInitialValue) {
+        builder.create<UseLockOp>(lock.getLoc(), lock, 0, LockAction::Release);
+        lockInitialized[lock] = true;
+      } else {
+        lockInitialized[lock] = false;
+      }
+
       LLVM_DEBUG(llvm::dbgs()
                  << "DMA token " << acqPair.first << " value " << acqPair.second
                  << " is replaced with lock " << lock << " state 1\n");
@@ -203,6 +222,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       auto values = tokenValues.second;
       for (auto value : values) {
         auto valPair = std::make_pair(tokenName, value);
+        auto isInitialValue = (value == TA.getTokenSymbols()[tokenName]);
 
         SmallVector<Operation *> users;
         // locate all users
@@ -260,6 +280,18 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
             auto lockState =
                 allocateLockState(tileLockUsedStates[tileOp], tileLocks[tileOp],
                                   tileOp, valPair.first, builder);
+
+            if (lockInitialized.count(lockState.first) == 0)
+              lockInitialized[lockState.first] = false;
+
+            // create lock initialization
+            if (isInitialValue) {
+              builder.create<UseLockOp>(lockState.first.getLoc(),
+                                        lockState.first, lockState.second,
+                                        LockAction::Release);
+              lockInitialized[lockState.first] = true;
+            }
+
             if (lockState.first != nullptr) {
               tokenValue2lockState[valPair] = lockState;
               LLVM_DEBUG(llvm::dbgs()
@@ -277,6 +309,19 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
     }
   }
 
+  void initializeLocks(OpBuilder &builder) {
+    for (auto lock : lockInitialized) {
+      // skipping initialized locks
+      if (lock.second)
+        continue;
+
+      builder.setInsertionPointAfter(lock.first);
+      // none of the created value is the initial value, acquiring the lock
+      builder.create<UseLockOp>(lock.first.getLoc(), lock.first, 0,
+                                LockAction::Acquire);
+    }
+  }
+
   void runOnOperation() override {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
@@ -288,6 +333,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
 
     mapDMAAndMemcpyPairs(TA, builder);
     mapTokenValues(TA, builder);
+    initializeLocks(builder);
 
     ConversionTarget target(getContext());
     target.addLegalOp<UseLockOp>();

@@ -14,6 +14,7 @@
 // CHECK:  %0 = AIE.tile(3, 3)
 // CHECK:  %1 = AIE.tile(2, 3)
 // CHECK:  %2 = AIE.lock(%1, 0)
+// CHECK:  AIE.useLock(%2, Release, 0)
 // CHECK:  %5 = AIE.core(%0) {
 // CHECK:    AIE.useLock(%2, Acquire, 0)
 // CHECK:    AIE.useLock(%2, Release, 1)

@@ -13,8 +13,10 @@
 // CHECK-LABEL: module @test_lock0 {
 // CHECK:  %0 = AIE.tile(3, 3)
 // CHECK:  %1 = AIE.lock(%0, 0)
+// CHECK:  AIE.useLock(%1, Release, 0)
 // CHECK:  %2 = AIE.tile(2, 3)
 // CHECK:  %3 = AIE.lock(%2, 0)
+// CHECK:  AIE.useLock(%3, Acquire, 0)
 // CHECK:  %6 = AIE.core(%0) {
 // CHECK:    AIE.useLock(%1, Acquire, 0)
 // CHECK:    AIE.useLock(%3, Release, 0)

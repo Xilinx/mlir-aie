@@ -14,6 +14,7 @@
 // CHECK:  %0 = AIE.external_buffer 0 : memref<256xi32>
 // CHECK:  %1 = AIE.tile(6, 0)
 // CHECK:  %2 = AIE.lock(%1, 0)
+// CHECK:  AIE.useLock(%2, Release, 1)
 // CHECK:  %3 = AIE.shimDMA(%1) {
 // CHECK:    AIE.useLock(%2, Acquire, 1)
 // CHECK:    AIE.dmaBd(<%0 : memref<256xi32>, 0, 256>, 0)
