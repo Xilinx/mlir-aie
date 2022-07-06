@@ -1,10 +1,10 @@
-//===- packet_drop_header.mlir ----------------------------------*- MLIR -*-===//
+//===- packet_shim_header.mlir ----------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,8 +15,8 @@
 // CHECK: XAieDma_ShimBdSetPkt(&ShimDMAInst_7_0,  /* bd */ 0,  /* en */ 1,  /* type */ 6,  /* id */ 10);
 
 //
-// This tests the switchbox configuration lowering for packet switched routing
-// to drop headers when the packet's destination is a DMA.
+// This tests the shim DMA BD configuration lowering for packet switched routing
+// to insert packet headers for shim DMA BDs.
 //
 module @aie_module  {
   %t70 = AIE.tile(7, 0)
