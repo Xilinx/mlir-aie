@@ -39,9 +39,12 @@ struct AIEAssignLockIDsPass
     ModuleOp m = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(m.getBody());
 
-    // loop through locks
-    // store lockID count in map with operation as key
     std::map<Operation *, std::pair<int, std::set<int>>> tileToLastID;
+
+    // The first pass scans for and stores the existing lockIDs. This data is
+    // stored in a map with the lock’s tile operation as the key, while the
+    // value to the key is a pair with the current potential lockID and a set
+    // that stores the currently assigned lockIDs.
     for (auto lock : m.getOps<LockOp>()) {
       if (lock.lockID().hasValue()) {
         Operation *lock_tile = lock.tile().getDefiningOp();
@@ -50,29 +53,40 @@ struct AIEAssignLockIDsPass
       }
     }
 
+    // The second pass scans for locks with no lockIDs and assigns locks.
     for (auto lock : m.getOps<LockOp>()) {
       Operation *lock_tile = lock.tile().getDefiningOp();
-
       if (!lock.lockID().hasValue()) {
-        if (unique_tiles.find(lock_tile) == unique_tiles.end()) {
-          // if not in map initial LockID = 0
-          unique_tiles[lock_tile].first = 0;
-        } else if (unique_tiles[lock_tile] < 15) {
-          // if in map increment LockID
-          unique_tiles[lock_tile] += 1;
+        if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
+          // If the tile operation corresponding to the lock does not exist in
+          // the data structure, initialize the lockID with 0 with an empty set.
+          tileToLastID[lock_tile].first = 0;
+        } else if (tileToLastID[lock_tile].first < 15) {
+          // If the tile operation of the lock exists, the potential lockID is
+          // checked with the set containing occupied lockIDs until a lockID
+          // that is free is found.
+          int potential_ID = tileToLastID[lock_tile].first;
+          while (true) {
+            if (tileToLastID[lock_tile].second.find(potential_ID) !=
+                tileToLastID[lock_tile].second.end())
+              potential_ID++;
+            else
+              break;
+          }
+          tileToLastID[lock_tile].first = potential_ID;
         } else {
           lock->emitError() << "Exceeded the number of unique LockIDs";
           return;
         }
 
-        lock->setAttr("lockID",
-                      rewriter.getI32IntegerAttr(unique_tiles[lock_tile]));
+        // The lockID is assigned and is stored in the set.
+        lock->setAttr("lockID", rewriter.getI32IntegerAttr(
+                                    tileToLastID[lock_tile].first));
+        tileToLastID[lock_tile].second.insert(tileToLastID[lock_tile].first);
       }
     }
   }
-}
-}
-;
+};
 
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::AIE::createAIEAssignLockIDsPass() {

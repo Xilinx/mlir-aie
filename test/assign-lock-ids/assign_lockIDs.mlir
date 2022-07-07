@@ -10,50 +10,45 @@
 
 // RUN: aie-opt --aie-create-logical-lock %s | FileCheck %s
 
-// CHECK:  module @test_xaie0 {
-// CHECK:    %0 = AIE.tile(1, 1)
-// CHECK:    %1 = AIE.tile(3, 4)
-// CHECK:    %2 = AIE.tile(3, 2)
-// CHECK:    %3 = AIE.tile(3, 3)
-// CHECK:    %4 = AIE.tile(4, 3)
-// CHECK:    %5 = AIE.lock(%0, 0)
-// CHECK:    %6 = AIE.lock(%3, 0)
-// CHECK:    %7 = AIE.lock(%3, 1)
-// CHECK:    %8 = AIE.lock(%4, 0)
-// CHECK:    %9 = AIE.core(%0) {
-// CHECK:      AIE.useLock(%5, Acquire, 0)
-// CHECK:      AIE.useLock(%5, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %10 = AIE.core(%1) {
-// CHECK:      AIE.useLock(%6, Acquire, 0)
-// CHECK:      AIE.useLock(%6, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %11 = AIE.core(%2) {
-// CHECK:      AIE.useLock(%6, Acquire, 0)
-// CHECK:      AIE.useLock(%6, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %12 = AIE.core(%3) {
-// CHECK:      AIE.useLock(%6, Acquire, 0)
-// CHECK:      AIE.useLock(%6, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %13 = AIE.core(%4) {
-// CHECK:      AIE.useLock(%6, Acquire, 0)
-// CHECK:      AIE.useLock(%6, Release, 1)
-// CHECK:      AIE.useLock(%8, Acquire, 0)
-// CHECK:      AIE.useLock(%8, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
+// CHECK:  module @test_assign_lockIDs {
+// CHECK:    %0 = AIE.tile(2, 2)
+// CHECK:    %1 = AIE.tile(2, 3)
+// CHECK:    %2 = AIE.tile(3, 3)
+// CHECK:    %3 = AIE.tile(3, 4)
+// CHECK:    %4 = AIE.lock(%0, 0)
+// CHECK:    %5 = AIE.lock(%0, 2)
+// CHECK:    %6 = AIE.lock(%0, 1)
+// CHECK:    %7 = AIE.lock(%1, 0)
+// CHECK:    %8 = AIE.lock(%1, 1)
+// CHECK:    %9 = AIE.lock(%1, 4)
+// CHECK:    %10 = AIE.lock(%1, 2)
+// CHECK:    %11 = AIE.lock(%1, 3)
+// CHECK:    %12 = AIE.lock(%1, 5)
+// CHECK:    %13 = AIE.lock(%1, 6)
+// CHECK:    %14 = AIE.lock(%1, 7)
+// CHECK:    %15 = AIE.lock(%1, 10)
+// CHECK:    %16 = AIE.lock(%1, 11)
+// CHECK:    %17 = AIE.lock(%1, 8)
+// CHECK:    %18 = AIE.lock(%1, 9)
+// CHECK:    %19 = AIE.lock(%1, 12)
+// CHECK:    %20 = AIE.lock(%1, 13)
+// CHECK:    %21 = AIE.lock(%1, 14)
+// CHECK:    %22 = AIE.lock(%1, 15)
+// CHECK:    %23 = AIE.lock(%2, 0)
+// CHECK:    %24 = AIE.lock(%2, 1)
+// CHECK:    %25 = AIE.lock(%2, 9)
+// CHECK:    %26 = AIE.lock(%2, 2)
+// CHECK:    %27 = AIE.lock(%3, 0)
+// CHECK:    %28 = AIE.lock(%3, 1)
+// CHECK:    %29 = AIE.lock(%3, 2)
+// CHECK:    %30 = AIE.lock(%3, 3)
 // CHECK:  }
 
 module @test_assign_lockIDs {
   %t22 = AIE.tile(2, 2)
   %t23 = AIE.tile(2, 3)
   %t33 = AIE.tile(3, 3)
-  %t33 = AIE.tile(3, 4)
+  %t34 = AIE.tile(3, 4)
 
   %l22_0 = AIE.lock(%t22, 0)
   %l22_2 = AIE.lock(%t22, 2)
