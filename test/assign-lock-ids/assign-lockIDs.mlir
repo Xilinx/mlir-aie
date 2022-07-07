@@ -1,16 +1,14 @@
-//===- locks1.mlir ---------------------------------------------*- MLIR -*-===//
+//===- assign-lockIDs.mlir ---------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-logical-lock %s | FileCheck %s
-
-// CHECK:  module @test_assign_lockIDs {
+// RUN: aie-opt --aie-assign-lock-ids %s | FileCheck %s
 // CHECK:    %0 = AIE.tile(2, 2)
 // CHECK:    %1 = AIE.tile(2, 3)
 // CHECK:    %2 = AIE.tile(3, 3)
@@ -42,7 +40,6 @@
 // CHECK:    %28 = AIE.lock(%3, 1)
 // CHECK:    %29 = AIE.lock(%3, 2)
 // CHECK:    %30 = AIE.lock(%3, 3)
-// CHECK:  }
 
 module @test_assign_lockIDs {
   %t22 = AIE.tile(2, 2)
