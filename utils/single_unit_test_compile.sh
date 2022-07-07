@@ -19,7 +19,7 @@
 ##===----------------------------------------------------------------------===##
 
 if [ "$#" -ne 2 ]; then
-    echo "ERROR: Needs 2 arguments for <sysroot dir> and <runtime lib dir>
+    echo "ERROR: Needs 2 arguments for <sysroot dir> and <runtime lib dir>"
     exit 1
 fi
 
