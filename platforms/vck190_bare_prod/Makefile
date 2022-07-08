@@ -14,7 +14,7 @@ XSA_DIR ?= $(CWD)/vivado
 
 all: $(PLATFORM)
 
-$(PLATFORM): xsa petalinux_build petalinux_sysroot aie_platform
+$(PLATFORM): xsa petalinux_build petalinux_sysroot aie_platform_build
 	@echo 'Platform build complete'
 
 xsa:
