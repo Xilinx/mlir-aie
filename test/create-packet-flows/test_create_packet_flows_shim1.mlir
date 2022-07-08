@@ -12,7 +12,7 @@
 
 // CHECK-LABEL: module @aie_module {
 // CHECK:   %[[VAL_0:.*]] = AIE.tile(7, 0)
-// CHECK:   %[[VAL_1.*]] = AIE.shimmux(%[[VAL_0:.*]])  {
+// CHECK:   %[[VAL_1:.*]] = AIE.shimmux(%[[VAL_0:.*]])  {
 // CHECK:     AIE.connect<DMA : 0, North : 3>
 // CHECK:   }
 // CHECK:   %[[VAL_2:.*]] = AIE.switchbox(%[[VAL_0:.*]]) {
