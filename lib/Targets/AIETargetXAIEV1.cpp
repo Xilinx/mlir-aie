@@ -393,6 +393,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     output << "XAieDma_Shim " << dmaName << ";\n";
     output << "XAieDma_ShimInitialize(" << tileInstStr(col, row) << ", &"
            << dmaName << ");\n";
+    output << "XAieDma_ShimBdClearAll(" << "&" << dmaName << ");\n";
+    output << "XAieDma_ShimChResetAll(" << "&" << dmaName << ");\n";
 
     DenseMap<Block *, int> blockMap;
 
