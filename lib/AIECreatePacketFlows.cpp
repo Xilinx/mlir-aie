@@ -33,8 +33,9 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
-  LogicalResult matchAndRewrite(MyOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     rewriter.eraseOp(Op);
@@ -176,11 +177,15 @@ void buildPSRoute(
         continue;
 
       curBundle = move;
-      lastBundle = (move == WireBundle::East)    ? WireBundle::West
-                   : (move == WireBundle::West)  ? WireBundle::East
-                   : (move == WireBundle::North) ? WireBundle::South
-                   : (move == WireBundle::South) ? WireBundle::North
-                                                 : lastBundle;
+      lastBundle = (move == WireBundle::East)
+                       ? WireBundle::West
+                       : (move == WireBundle::West)
+                             ? WireBundle::East
+                             : (move == WireBundle::North)
+                                   ? WireBundle::South
+                                   : (move == WireBundle::South)
+                                         ? WireBundle::North
+                                         : lastBundle;
       break;
     }
 
@@ -658,61 +663,74 @@ struct AIERoutePacketFlowsPass
     for (auto switchbox : llvm::make_early_inc_range(m.getOps<SwitchboxOp>())) {
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
-      
-      if(tileOp.row()==0){
-        
+
+      if (tileOp.row() == 0) {
+
         Region &r = switchbox.connections();
         Block &b = r.front();
 
-        int flag=0;
+        int flag = 0;
         for (Operation &Op : b.getOperations()) {
           if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
-            flag=1;
+            flag = 1;
           }
         }
-        
-        if(flag==1){
+
+        if (flag == 1) {
           builder.setInsertionPointAfter(tileOp);
-          auto shimOp =builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+          auto shimOp =
+              builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
           Region &r0 = shimOp.connections();
           Block *b0 = builder.createBlock(&r0);
           builder.setInsertionPointToStart(b0);
           for (Operation &Op : b.getOperations()) {
             if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
-              if(pktrules.sourceBundle()==WireBundle::DMA){
+              if (pktrules.sourceBundle() == WireBundle::DMA) {
 
                 pktrules->removeAttr("sourceBundle");
-                pktrules->setAttr("sourceBundle",builder.getI32IntegerAttr(3)); //Sorth
+                pktrules->setAttr("sourceBundle",
+                                  builder.getI32IntegerAttr(3)); // Sorth
 
-                if(pktrules.sourceChannel()==0){
+                if (pktrules.sourceChannel() == 0) {
                   pktrules->removeAttr("sourceChannel");
-                  pktrules->setAttr("sourceChannel",builder.getI32IntegerAttr(3));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),WireBundle::DMA,0,WireBundle::North,3);
+                  pktrules->setAttr("sourceChannel",
+                                    builder.getI32IntegerAttr(3));
+                  builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                            WireBundle::DMA, 0,
+                                            WireBundle::North, 3);
                 }
 
-                else if(pktrules.sourceChannel()==1){
+                else if (pktrules.sourceChannel() == 1) {
                   pktrules->removeAttr("sourceChannel");
-                  pktrules->setAttr("sourceChannel",builder.getI32IntegerAttr(7));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),WireBundle::DMA,1,WireBundle::North,7);
-                }  
+                  pktrules->setAttr("sourceChannel",
+                                    builder.getI32IntegerAttr(7));
+                  builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                            WireBundle::DMA, 1,
+                                            WireBundle::North, 7);
+                }
               }
             }
             if (MasterSetOp mtset = dyn_cast<MasterSetOp>(Op)) {
-              if(mtset.destBundle()==WireBundle::DMA){
+              if (mtset.destBundle() == WireBundle::DMA) {
 
                 mtset->removeAttr("destBundle");
-                mtset->setAttr("destBundle",builder.getI32IntegerAttr(3)); //South
+                mtset->setAttr("destBundle",
+                               builder.getI32IntegerAttr(3)); // South
 
-                if(mtset.destChannel()==0){
+                if (mtset.destChannel() == 0) {
                   mtset->removeAttr("destChannel");
-                  mtset->setAttr("destChannel",builder.getI32IntegerAttr(2));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),WireBundle::North,2,WireBundle::DMA,0);
+                  mtset->setAttr("destChannel", builder.getI32IntegerAttr(2));
+                  builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                            WireBundle::North, 2,
+                                            WireBundle::DMA, 0);
                 }
 
-                if(mtset.destChannel()==1){
+                if (mtset.destChannel() == 1) {
                   mtset->removeAttr("destChannel");
-                  mtset->setAttr("destChannel",builder.getI32IntegerAttr(3));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),WireBundle::North,3,WireBundle::DMA,1);
+                  mtset->setAttr("destChannel", builder.getI32IntegerAttr(3));
+                  builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                            WireBundle::North, 3,
+                                            WireBundle::DMA, 1);
                 }
               }
             }
@@ -720,13 +738,11 @@ struct AIERoutePacketFlowsPass
           builder.setInsertionPointToEnd(b0);
           builder.create<xilinx::AIE::EndOp>(builder.getUnknownLoc());
         }
-        
       }
     }
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<PacketFlowOp>
-                  >(m.getContext(), m);
+    patterns.add<AIEOpRemoval<PacketFlowOp>>(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
