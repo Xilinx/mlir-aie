@@ -30,7 +30,6 @@ module @aie_module  {
     %srcDma = AIE.dmaStart("S2MM0", ^bb2, ^end)
   ^bb2:
     AIE.useLock(%10, Acquire, 0)
-    AIE.dmaBdPacket(0x6, 10)
     AIE.dmaBd(<%11 : memref<32xi32, 2>, 0, 32>, 0)
     AIE.useLock(%10, Release, 1)
     cf.br ^bb2
