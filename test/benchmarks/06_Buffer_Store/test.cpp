@@ -20,10 +20,6 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 
@@ -32,57 +28,46 @@
 #define MAP_SIZE 16UL
 #define MAP_MASK (MAP_SIZE - 1)
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */
-XAieGbl AieInst;              /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;      /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS +
-                                     1]; /**< Instantiates AIE array of
-                                            [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
-
-} // namespace
 
 int main(int argc, char *argv[]) {
 
   int n = 1;
   u32 pc0_times[n];
 
-  size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-  XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                           XAIE_ADDR_ARRAY_OFF);
-  XAieGbl_HwInit(&AieConfig);
-  AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-  XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+  printf("06_Buffer_Store test start.\n");
+  printf("Running %d times ...\n", n);
 
   int errors = 0;
   for (int iters = 0; iters < n; iters++) {
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_initialize_locks();
-    mlir_configure_dmas();
-    EventMonitor pc0(&TileInst[1][3], 0, XAIETILE_EVENT_CORE_ACTIVE,
-                 XAIETILE_EVENT_CORE_DISABLED, XAIETILE_EVENT_CORE_NONE,
-                 MODE_CORE);
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
+    mlir_configure_dmas(_xaie);
+
+    EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
+                 XAIE_EVENT_CORE_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
+                 XAOE_CORE_MOD);
 
     pc0.set();
 
-    ACDC_print_tile_status(TileInst[1][3]);
+    // mlir_aie_print_tile_status(_xaie, 1, 3);
 
-    mlir_start_cores();
+    mlir_aie_start_cores(_xaie);
     pc0_times[iters] = pc0.diff();
     printf("result: %u", pc0_times[iters]);
 
     int errors = 0;
 
-    ACDC_check("After memory writes. Check [3]=14", mlir_read_buffer_a(3), 7,
+    mlir_aie_check("After memory writes. Check [3]=14", mlir_aie_read_buffer_a(_xaie, 3), 7,
                errors);
+    mlir_aie_deinit_libxaie(_xaie);         
   }
   computeStats(pc0_times, n);
 }

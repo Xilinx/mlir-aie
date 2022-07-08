@@ -20,10 +20,6 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 
@@ -33,19 +29,7 @@
 #define BRAM_ADDR (0x4000 + 0x020100000000LL)
 #define DMA_COUNT 512
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */
-XAieGbl AieInst;              /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;      /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS +
-                                     1]; /**< Instantiates AIE array of
-                                            [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
-
-} // namespace
 
 int main(int argc, char *argv[]) {
   int n = 1;
@@ -54,57 +38,60 @@ int main(int argc, char *argv[]) {
   u32 pc2_times[n];
   u32 pc3_times[n];
 
+  printf("09_Shim_Broadcast_Horizontal test start.\n");
+  printf("Running %d times ...\n", n);
+
   int total_errors = 0;
 
   auto col = 7;
 
-  size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-  XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                           XAIE_ADDR_ARRAY_OFF);
-  XAieGbl_HwInit(&AieConfig);
-  AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-  XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
-
   for (int iters = 0; iters < n; iters++) {
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_initialize_locks();
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
 
-    XAieTile_LockAcquire(&(TileInst[7][2]), 1, 0, 0);
-    XAieTile_LockAcquire(&(TileInst[7][2]), 2, 0, 0);
+    mlir_aie_acquire_lock(_xaie, 7, 2, 1, 0, 0); 
+    mlir_aie_acquire_lock(_xaie, 7, 2, 2, 0, 0); 
 
-    mlir_configure_dmas();
+    mlir_aie_configure_dmas(_xaie);
 
-    XAieTilePl_EventBroadcast(
-        &TileInst[6][0], 2, XAIETILE_EVENT_SHIM_DMA_S2MM_0_ERROR_NOC); // Start
-    XAieTilePl_EventBroadcast(&TileInst[7][0], 3,
-                              XAIETILE_EVENT_MEM_LOCK_0_RELEASE); // Stop
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(6,0), 
+                        XAIE_PL_MOD, 2,
+                        XAIE_EVENT_DMA_S2MM_ERROR_PL); // Start
+
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), 
+                        XAIE_PL_MOD, 3,
+                        XAIE_EVENT_LOCK_0_RELEASED_PL); // Stop
 
     // Track time between two broadcast events in destination tiles (7,3) and
     // (7,4)
-    EventMonitor pc0(&TileInst[5][0], 0, XAIETILE_EVENT_SHIM_BROADCAST_A_2,
-                 XAIETILE_EVENT_SHIM_BROADCAST_A_3, XAIETILE_EVENT_SHIM_NONE,
-                 MODE_PL);
+    EventMonitor pc0(_xaie, 5, 0, 0, XAIE_EVENT_BROADCAST_A_2_PL,
+                 XAIE_EVENT_BROADCAST_A_3_PL, XAIE_EVENT_NONE_PL,
+                 XAIE_PL_MOD);
     pc0.set();
 
-    EventMonitor pc1(&TileInst[7][0], 1, XAIETILE_EVENT_SHIM_BROADCAST_A_2,
-                 XAIETILE_EVENT_MEM_LOCK_0_RELEASE, XAIETILE_EVENT_SHIM_NONE,
-                 MODE_PL);
+    EventMonitor pc1(_xaie, 7, 0, 1, XAIE_EVENT_BROADCAST_A_2_PL,
+                 XAIE_EVENT_LOCK_0_RELEASED_PL, XAIE_EVENT_NONE_PL,
+                 XAIE_PL_MOD);
     pc1.set();
 
     // Start Test by generating events in Source Tile
-    XAieTilePl_EventGenerate(&TileInst[6][0],
-                             XAIETILE_EVENT_SHIM_DMA_S2MM_0_ERROR_NOC);
-    XAieTilePl_EventGenerate(&TileInst[7][0],
-                             XAIETILE_EVENT_MEM_LOCK_0_RELEASE);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(6,0),
+                       XAIE_PL_MOD, XAIE_EVENT_DMA_S2MM_0_ERROR_PL);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7,0),
+                       XAIE_PL_MOD, XAIE_EVENT_LOCK_0_RELEASED_PL);
 
     usleep(200);
 
-    ACDC_print_tile_status(TileInst[7][3]);
+    mlir_aie_print_tile_status(_xaie, 7, 3);
 
     pc0_times[iters] = pc0.diff();
     pc1_times[iters] = pc1.diff();
+
+    mlir_aie_deinit_libxaie(_xaie);
   }
 
   computeStats(pc0_times, n);
