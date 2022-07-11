@@ -177,15 +177,11 @@ void buildPSRoute(
         continue;
 
       curBundle = move;
-      lastBundle = (move == WireBundle::East)
-                       ? WireBundle::West
-                       : (move == WireBundle::West)
-                             ? WireBundle::East
-                             : (move == WireBundle::North)
-                                   ? WireBundle::South
-                                   : (move == WireBundle::South)
-                                         ? WireBundle::North
-                                         : lastBundle;
+      lastBundle = (move == WireBundle::East)    ? WireBundle::West
+                   : (move == WireBundle::West)  ? WireBundle::East
+                   : (move == WireBundle::North) ? WireBundle::South
+                   : (move == WireBundle::South) ? WireBundle::North
+                                                 : lastBundle;
       break;
     }
 
