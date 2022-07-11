@@ -136,7 +136,7 @@ int main(int argc, char *argv[]) {
   for (int bd = 0; bd < DMA_COUNT + 1; bd++) {
     if (bd == 0) {
       printf("External memory1[0]=%x\n", mem_ptr1[0]);
-    } else if (mem_ptr0[bd] != 72) {
+    } else if (mem_ptr1[bd] != 72) {
       printf("External memory1[%d]=%d\n", bd, mem_ptr1[bd]);
       errors++;
     }
