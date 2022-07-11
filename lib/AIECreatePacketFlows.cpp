@@ -665,14 +665,7 @@ struct AIERoutePacketFlowsPass
         Region &r = switchbox.connections();
         Block &b = r.front();
 
-        int flag = 0;
-        for (Operation &Op : b.getOperations()) {
-          if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
-            flag = 1;
-          }
-        }
-
-        if (flag == 1) {
+        if (&switchbox.getBody()->front() != switchbox.getBody()->getTerminator()) {
           builder.setInsertionPointAfter(tileOp);
           auto shimOp =
               builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
