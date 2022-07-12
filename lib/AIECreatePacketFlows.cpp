@@ -656,6 +656,7 @@ struct AIERoutePacketFlowsPass
     // From BLI to shimDMA: 1) North   2 --> shimDMA 0
     //                      2) North   3 --> shimDMA 1
 
+    
     for (auto switchbox : llvm::make_early_inc_range(m.getOps<SwitchboxOp>())) {
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
