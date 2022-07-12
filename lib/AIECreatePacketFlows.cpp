@@ -656,7 +656,6 @@ struct AIERoutePacketFlowsPass
     // From BLI to shimDMA: 1) North   2 --> shimDMA 0
     //                      2) North   3 --> shimDMA 1
 
-    
     for (auto switchbox : llvm::make_early_inc_range(m.getOps<SwitchboxOp>())) {
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
@@ -666,7 +665,8 @@ struct AIERoutePacketFlowsPass
         Region &r = switchbox.connections();
         Block &b = r.front();
 
-        if (&switchbox.getBody()->front() != switchbox.getBody()->getTerminator()) {
+        if (&switchbox.getBody()->front() !=
+            switchbox.getBody()->getTerminator()) {
           builder.setInsertionPointAfter(tileOp);
           auto shimOp =
               builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
@@ -725,6 +725,7 @@ struct AIERoutePacketFlowsPass
               }
             }
           }
+
           builder.setInsertionPointToEnd(b0);
           builder.create<xilinx::AIE::EndOp>(builder.getUnknownLoc());
         }
