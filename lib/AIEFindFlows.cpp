@@ -109,11 +109,25 @@ private:
                                  std::set<Operation *> &connections_set) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
 
+    llvm::dbgs() << "****debugstart\n";
+    llvm::dbgs() << op->getNumRegions() << "\n";
+
     Region *r;
-    if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(op))
+    if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(op)) {
       r = &switchOp.connections();
-    else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(op))
+
+      llvm::dbgs() << "debug\n";
+      llvm::dbgs() << &switchOp.connections() << "\n";
+      llvm::dbgs() << &switchOp.getRegion() << "\n";
+    }
+
+    else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(op)) {
       r = &switchOp.connections();
+      llvm::dbgs() << "debug\n";
+      llvm::dbgs() << &switchOp.connections() << "\n";
+      llvm::dbgs() << &switchOp.getRegion() << "\n";
+    }
+
     else
       LLVM_DEBUG(llvm::dbgs()
                  << "*** Connection Terminated at unknown operation: \n");
@@ -122,7 +136,7 @@ private:
     std::vector<PacketConnection> opportSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
-        // remove accessed connectOp from set
+        // remove accessed connectOp from dangling island set
         connections_set.erase(connectOp);
         // add to graph if in detection mode and op is connectOp
         if (g.isNotEmpty())
@@ -153,6 +167,16 @@ private:
                            << "To:"
                            << stringifyWireBundle(masterSetOp.destPort().first)
                            << " " << masterSetOp.destPort().second << "\n");
+                // remove accessed connectOp from dangling island set
+                connections_set.erase(masterSetOp);
+                // add to graph if in detection mode and op is connectOp
+                if (g.isNotEmpty()) {
+                  // implicit type converion connect/masterSetOp -> Operation*
+                  g.addVertex(op, connectOp, connectOp.sourcePort());
+                  g.addVertex(connectOp, ruleOp, connectOp.sourcePort());
+                  g.addVertex(ruleOp, masterSetOp, masterSetOp.destPort());
+                }
+
                 MaskValue maskValue =
                     std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
                 PortConnection portconnection = std::make_pair(
@@ -216,6 +240,9 @@ private:
   void detect_antenna(Graph &g, std::vector<Operation *> connectedTilesKeys,
                       std::vector<Operation *> antennaKeys) const {
 
+    LLVM_DEBUG(llvm::dbgs() << "Starting Antenna Detection\n");
+
+    LLVM_DEBUG(llvm::dbgs() << "Creating valid verticies\n");
     std::vector<Operation *> path_buffer;
     // create valid path from connected tiles
     std::set<Operation *> valid_path;
@@ -229,11 +256,13 @@ private:
       }
     }
 
+    LLVM_DEBUG(llvm::dbgs() << "Starting Antenna Warning Generation\n");
     // generate messages for antennas
     for (auto &antenna_key : antennaKeys) {
       std::vector<Operation *> antenna_nonvalid_path;
       std::vector<Operation *> antenna_valid_path;
       path_buffer = g.getPathToRoot(antenna_key);
+
       for (auto &vertex_key : path_buffer) {
         if (valid_path.find(vertex_key) == valid_path.end()) {
           antenna_nonvalid_path.push_back(vertex_key);
@@ -242,18 +271,20 @@ private:
         }
       }
 
+      LLVM_DEBUG(llvm::dbgs() << "Warning Non-Valid Path\n");
       for (auto &key : antenna_nonvalid_path) {
-        if (isa<ConnectOp>(key)) { // todo: else -> packet switched antenna
-          // Generate Warning message for antennas inside a switchbox
-          Operation *parent_op = key->getParentOp();
-          key->emitWarning("Antenna\nAt Destination Port (" +
-                           g.getPortBundle(key) + ":" + g.getPortChannel(key) +
-                           ")\n")
-                  .attachNote(parent_op->getLoc())
-              << "in parent region\n";
-        }
+        // if (isa<ConnectOp>(key)) { // todo: else -> packet switched antenna
+        // Generate Warning message for antennas inside a switchbox
+        Operation *parent_op = key->getParentOp();
+        key->emitWarning("Antenna\nAt Destination Port (" +
+                         g.getPortBundle(key) + ":" + g.getPortChannel(key) +
+                         ")\n")
+                .attachNote(parent_op->getLoc())
+            << "in parent region\n";
+        // } else
       }
 
+      LLVM_DEBUG(llvm::dbgs() << "Remark Valid Path\n");
       for (auto &key : antenna_valid_path) {
         // Generate Remarks for antenna path traceback
         key->emitRemark("Path Traceback\nUsing Port (" + g.getPortBundle(key) +
@@ -297,8 +328,8 @@ public:
     // If there is no wire to traverse, then just return no connection
     // emit error message for TileOp Antenna
     if (!t.hasValue()) {
-      tileOp.getOperation()->emitWarning(
-          "TileOp Antenna: " + stringifyWireBundle(port.first) + "\n");
+      // tileOp.getOperation()->emitWarning(
+      //     "TileOp Antenna: " + stringifyWireBundle(port.first) + "\n");
       return None;
     }
 
@@ -373,7 +404,21 @@ std::set<Operation *> create_connections_set(ModuleOp m) {
       // implicit type converion connectOp -> Operation*
       new_set.insert(connectOp);
     }
+    // dangling masterset ports
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      new_set.insert(masterSetOp);
+    }
   }
+
+  // this should be caught by the verifier
+  // for (auto shimmux : m.getOps<ShimMuxOp>()) {
+  //   Region &r = shimmux.connections();
+  //   Block &b = r.front();
+  //   for (auto connectOp : b.getOps<ConnectOp>()) {
+  //     // implicit type converion connectOp -> Operation*
+  //     new_set.insert(connectOp);
+  //   }
+  // }
 
   return new_set;
 }
