@@ -109,31 +109,17 @@ private:
                                  std::set<Operation *> &connections_set) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
 
-    llvm::dbgs() << "****debugstart\n";
-    llvm::dbgs() << op->getNumRegions() << "\n";
-
-    Region *r;
-    if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(op)) {
-      r = &switchOp.connections();
-
-      llvm::dbgs() << "debug\n";
-      llvm::dbgs() << &switchOp.connections() << "\n";
-      llvm::dbgs() << &switchOp.getRegion() << "\n";
-    }
-
-    else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(op)) {
-      r = &switchOp.connections();
-      llvm::dbgs() << "debug\n";
-      llvm::dbgs() << &switchOp.connections() << "\n";
-      llvm::dbgs() << &switchOp.getRegion() << "\n";
-    }
-
-    else
-      LLVM_DEBUG(llvm::dbgs()
-                 << "*** Connection Terminated at unknown operation: \n");
-
-    Block &b = r->front();
     std::vector<PacketConnection> opportSet;
+    if (!(dyn_cast_or_null<SwitchboxOp>(op) ||
+          dyn_cast_or_null<ShimMuxOp>(op))) {
+      op->emitError();
+      LLVM_DEBUG(llvm::dbgs() << "*** Connection not SwitchBox or ShimMux: \n");
+      return opportSet;
+    }
+
+    // can use begin()/front() to access the Region/Block due to
+    // swichbox/shimmux being defined to only have one Region/Block
+    Block &b = op->getRegions().begin()->front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
         // remove accessed connectOp from dangling island set
