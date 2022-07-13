@@ -29,7 +29,7 @@ module @ping_pong {
     %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
 
     // Fills the given memref with the same input index value.
-    func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
+    func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -52,7 +52,7 @@ module @ping_pong {
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
             // call generator function
-            call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
+            func.call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
 
             // release next element for consume
             AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
@@ -62,7 +62,7 @@ module @ping_pong {
     }
 
     // Stores the given memref in the bufferOut at the given row index.
-    func @storeLineScalar(%lineIn : memref<16xi32>, %row : index, %bufferOut : memref<10x16xi32>) -> () {
+    func.func @storeLineScalar(%lineIn : memref<16xi32>, %row : index, %bufferOut : memref<10x16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -88,7 +88,7 @@ module @ping_pong {
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
             // call consumer function
-            call @storeLineScalar(%elem0, %indexInHeight, %buff_out) : (memref<16xi32>, index, memref<10x16xi32>) -> ()
+            func.call @storeLineScalar(%elem0, %indexInHeight, %buff_out) : (memref<16xi32>, index, memref<10x16xi32>) -> ()
 
             // release next element for produce
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)

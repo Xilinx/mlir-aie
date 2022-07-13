@@ -69,7 +69,7 @@
 // CHECK:    ^bb5:  // pred: ^bb0
 // CHECK:      AIE.end
 // CHECK:    }
-// CHECK:    func @some_work(%arg0: memref<16xi32>) {
+// CHECK:    func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %16 = AIE.core(%0) {
@@ -78,10 +78,10 @@
 // CHECK:      %c12 = arith.constant 12 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%3, Acquire, 0)
-// CHECK:        call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%2) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%3, Release, 1)
 // CHECK:        AIE.useLock(%5, Acquire, 0)
-// CHECK:        call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%4) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%5, Release, 1)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -94,16 +94,16 @@
 // CHECK:        AIE.useLock(%8, Acquire, 1)
 // CHECK:        AIE.useLock(%10, Acquire, 1)
 // CHECK:        AIE.useLock(%12, Acquire, 1)
-// CHECK:        call @some_work(%7) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%7) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%8, Release, 0)
 // CHECK:        AIE.useLock(%14, Acquire, 1)
-// CHECK:        call @some_work(%9) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%9) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%10, Release, 0)
 // CHECK:        AIE.useLock(%8, Acquire, 1)
-// CHECK:        call @some_work(%11) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%11) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%12, Release, 0)
 // CHECK:        AIE.useLock(%10, Acquire, 1)
-// CHECK:        call @some_work(%13) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%13) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%14, Release, 0)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -116,7 +116,7 @@ module @non_adjacency {
 
     %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 4) : !AIE.objectFifo<memref<16xi32>>
 
-    func @some_work(%lineOut : memref<16xi32>) -> () {
+    func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
     }
 
@@ -128,12 +128,12 @@ module @non_adjacency {
         scf.for %indexInHeight = %c0 to %height step %c2 {
             %subview0 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem00) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
             %subview1 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem10) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
@@ -150,28 +150,28 @@ module @non_adjacency {
             %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem01 = AIE.objectFifo.subview.access %subview0[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem02 = AIE.objectFifo.subview.access %subview0[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem00) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
             %subview1 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem11 = AIE.objectFifo.subview.access %subview1[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem12 = AIE.objectFifo.subview.access %subview1[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem10) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
             %subview2 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem20 = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem21 = AIE.objectFifo.subview.access %subview2[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem22 = AIE.objectFifo.subview.access %subview2[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem20) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem20) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
             %subview3 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem30 = AIE.objectFifo.subview.access %subview3[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem31 = AIE.objectFifo.subview.access %subview3[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem32 = AIE.objectFifo.subview.access %subview3[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem30) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem30) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         

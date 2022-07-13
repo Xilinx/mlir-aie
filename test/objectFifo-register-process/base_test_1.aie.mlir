@@ -19,7 +19,7 @@
 // CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %cst_0 = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %c10 = arith.constant 10 : index
-// CHECK:    func @producer_work() {
+// CHECK:    func.func @producer_work() {
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %3 = AIE.core(%0)  {
@@ -29,7 +29,7 @@
 // CHECK:      scf.for %arg0 = %c0 to %c10_1 step %c1 {
 // CHECK:        %4 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:        call @producer_work() : () -> ()
+// CHECK:        func.call @producer_work() : () -> ()
 // CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -45,7 +45,7 @@ module @registerPatterns  {
     %acquirePattern = arith.constant dense<[1]> : tensor<1xi32>
     %releasePattern = arith.constant dense<[1]> : tensor<1xi32>
     %length = arith.constant 10 : index
-    func @producer_work() -> () { 
+    func.func @producer_work() -> () { 
         return
     }
 

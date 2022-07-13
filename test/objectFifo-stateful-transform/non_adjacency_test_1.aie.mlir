@@ -55,7 +55,7 @@
 // CHECK:    ^bb3:  // pred: ^bb0
 // CHECK:      AIE.end
 // CHECK:    }
-// CHECK:    func @some_work(%arg0: memref<16xi32>) {
+// CHECK:    func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %12 = AIE.core(%0) {
@@ -64,10 +64,10 @@
 // CHECK:      %c12 = arith.constant 12 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%3, Acquire, 0)
-// CHECK:        call @some_work(%2) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%2) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%3, Release, 1)
 // CHECK:        AIE.useLock(%5, Acquire, 0)
-// CHECK:        call @some_work(%4) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%4) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%5, Release, 1)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -78,10 +78,10 @@
 // CHECK:      %c12 = arith.constant 12 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%8, Acquire, 1)
-// CHECK:        call @some_work(%7) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%7) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%8, Release, 0)
 // CHECK:        AIE.useLock(%10, Acquire, 1)
-// CHECK:        call @some_work(%9) : (memref<16xi32>) -> ()
+// CHECK:        func.call @some_work(%9) : (memref<16xi32>) -> ()
 // CHECK:        AIE.useLock(%10, Release, 0)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -94,7 +94,7 @@ module @non_adjacency {
 
     %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
 
-    func @some_work(%lineOut : memref<16xi32>) -> () {
+    func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
     }
 
@@ -106,12 +106,12 @@ module @non_adjacency {
         scf.for %indexInHeight = %c0 to %height step %c2 {
             %subview0 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem00) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
             %subview1 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem10) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
@@ -126,12 +126,12 @@ module @non_adjacency {
         scf.for %indexInHeight = %c0 to %height step %c2 { 
             %subview0 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem00) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
             %subview1 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @some_work(%elem10) : (memref<16xi32>) -> ()
+            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         

@@ -19,13 +19,13 @@
 // CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %cst_0 = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %c10 = arith.constant 10 : index
-// CHECK:    func @producer_work() {
+// CHECK:    func.func @producer_work() {
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %cst_1 = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %cst_2 = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %c10_3 = arith.constant 10 : index
-// CHECK:    func @consumer_work() {
+// CHECK:    func.func @consumer_work() {
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %3 = AIE.core(%0) {
@@ -35,7 +35,7 @@
 // CHECK:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
 // CHECK:        %5 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:        call @producer_work() : () -> ()
+// CHECK:        func.call @producer_work() : () -> ()
 // CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -47,7 +47,7 @@
 // CHECK:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
 // CHECK:        %5 = AIE.objectFifo.acquire {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:        call @consumer_work() : () -> ()
+// CHECK:        func.call @consumer_work() : () -> ()
 // CHECK:        AIE.objectFifo.release {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
 // CHECK:      AIE.end
@@ -63,14 +63,14 @@ module @registerPatterns  {
     %prodAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
     %prodRelPattern = arith.constant dense<[1]> : tensor<1xi32>
     %prodLength = arith.constant 10 : index
-    func @producer_work() -> () {
+    func.func @producer_work() -> () {
         return
     }
 
     %consAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
     %consRelPattern = arith.constant dense<[1]> : tensor<1xi32>
     %consLength = arith.constant 10 : index
-    func @consumer_work() -> () {
+    func.func @consumer_work() -> () {
         return
     }
 

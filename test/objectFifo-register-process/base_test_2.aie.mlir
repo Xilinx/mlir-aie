@@ -19,14 +19,14 @@
 // CHECK:    %cst = arith.constant dense<[2, 3, 3, 2]> : tensor<4xi32>
 // CHECK:    %cst_0 = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
 // CHECK:    %c10 = arith.constant 10 : index
-// CHECK:    func @producer_work() {
+// CHECK:    func.func @producer_work() {
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %3 = AIE.core(%0) {
 // CHECK:      %4 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:      %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      %6 = AIE.objectFifo.subview.access %4[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:      call @producer_work() : () -> ()
+// CHECK:      func.call @producer_work() : () -> ()
 // CHECK:      %c0 = arith.constant 0 : index
 // CHECK:      %c2 = arith.constant 2 : index
 // CHECK:      %c1 = arith.constant 1 : index
@@ -35,13 +35,13 @@
 // CHECK:        %11 = AIE.objectFifo.subview.access %10[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        %12 = AIE.objectFifo.subview.access %10[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        %13 = AIE.objectFifo.subview.access %10[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:        call @producer_work() : () -> ()
+// CHECK:        func.call @producer_work() : () -> ()
 // CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
 // CHECK:      %7 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:      %8 = AIE.objectFifo.subview.access %7[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      %9 = AIE.objectFifo.subview.access %7[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:      call @producer_work() : () -> ()
+// CHECK:      func.call @producer_work() : () -> ()
 // CHECK:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2)
 // CHECK:      AIE.end
 // CHECK:    }
@@ -56,7 +56,7 @@ module @registerPatterns  {
     %acquirePattern = arith.constant dense<[2,3,3,2]> : tensor<4xi32>
     %releasePattern = arith.constant dense<[0,1,1,2]> : tensor<4xi32>
     %length = arith.constant 10 : index
-    func @producer_work() -> () { 
+    func.func @producer_work() -> () { 
         return
     }
 

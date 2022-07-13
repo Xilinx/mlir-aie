@@ -31,7 +31,7 @@ module @twoFilter2D  {
     %objFifoTwo = AIE.objectFifo.createObjectFifo(%tile13, %tile14, 4) : !AIE.objectFifo<memref<16xi32>>
 
     // Kernel Functions
-    func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
+    func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -43,7 +43,7 @@ module @twoFilter2D  {
         return
     }
 
-    func @firstFilterTwoLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %bufferOut:memref<16xi32>) -> () {
+    func.func @firstFilterTwoLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %bufferOut:memref<16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -57,7 +57,7 @@ module @twoFilter2D  {
         return
     }
 
-    func @firstFilterThreeLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %lineIn2:memref<16xi32>, %bufferOut:memref<16xi32>) -> () {
+    func.func @firstFilterThreeLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %lineIn2:memref<16xi32>, %bufferOut:memref<16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -73,7 +73,7 @@ module @twoFilter2D  {
         return
     }
 
-    func @secondFilterTwoLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %row:index, %bufferOut:memref<10x16xi32>) -> () {
+    func.func @secondFilterTwoLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %row:index, %bufferOut:memref<10x16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -87,7 +87,7 @@ module @twoFilter2D  {
         return
     }
 
-    func @secondFilterThreeLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %lineIn2:memref<16xi32>, %row:index, %bufferOut:memref<10x16xi32>) -> () {
+    func.func @secondFilterThreeLines(%lineIn0:memref<16xi32>, %lineIn1:memref<16xi32>, %lineIn2:memref<16xi32>, %row:index, %bufferOut:memref<10x16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -112,7 +112,7 @@ module @twoFilter2D  {
         scf.for %indexInHeight = %c0 to %height step %c1 { 
             %subview = AIE.objectFifo.acquire{ port = "produce" }(%objFifoOne : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
+            func.call @generateLineScalar(%indexInHeight, %elem0) : (index, memref<16xi32>) -> ()
             AIE.objectFifo.release{ port = "produce" }(%objFifoOne : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
@@ -135,7 +135,7 @@ module @twoFilter2D  {
         %subviewTwoTop = AIE.objectFifo.acquire{ port = "produce" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elemTwoTop0 = AIE.objectFifo.subview.access %subviewTwoTop[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
-        call @firstFilterTwoLines(%elemOneTop0, %elemOneTop1, %elemTwoTop0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
+        func.call @firstFilterTwoLines(%elemOneTop0, %elemOneTop1, %elemTwoTop0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
 
         AIE.objectFifo.release{ port = "produce" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1)
 
@@ -149,7 +149,7 @@ module @twoFilter2D  {
             %subviewTwo = AIE.objectFifo.acquire{ port = "produce" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elemTwo0 = AIE.objectFifo.subview.access %subviewTwo[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             
-            call @firstFilterThreeLines(%elemOne0, %elemOne1, %elemOne2, %elemTwo0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
+            func.call @firstFilterThreeLines(%elemOne0, %elemOne1, %elemOne2, %elemTwo0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
 
             AIE.objectFifo.release{ port = "consume" }(%objFifoOne : !AIE.objectFifo<memref<16xi32>>, 1)
             AIE.objectFifo.release{ port = "produce" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1)
@@ -163,7 +163,7 @@ module @twoFilter2D  {
         %subviewTwoBottom = AIE.objectFifo.acquire{ port = "produce" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elemTwoBottom0 = AIE.objectFifo.subview.access %subviewTwoBottom[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         
-        call @firstFilterTwoLines(%elemOneBottom0, %elemOneBottom1, %elemTwoBottom0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
+        func.call @firstFilterTwoLines(%elemOneBottom0, %elemOneBottom1, %elemTwoBottom0) : (memref<16xi32>, memref<16xi32>, memref<16xi32>) -> ()
 
         AIE.objectFifo.release{ port = "consume" }(%objFifoOne : !AIE.objectFifo<memref<16xi32>>, 2)
         AIE.objectFifo.release{ port = "produce" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1)
@@ -185,7 +185,7 @@ module @twoFilter2D  {
         %subviewTop = AIE.objectFifo.acquire{ port = "consume" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
         %elemTop0 = AIE.objectFifo.subview.access %subviewTop[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         %elemTop1 = AIE.objectFifo.subview.access %subviewTop[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        call @secondFilterTwoLines(%elemTop0, %elemTop1, %c0, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+        func.call @secondFilterTwoLines(%elemTop0, %elemTop1, %c0, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
 
         // Middle
         scf.for %indexInHeight = %c1 to %height step %c1 { 
@@ -193,7 +193,7 @@ module @twoFilter2D  {
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem2 = AIE.objectFifo.subview.access %subview[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            call @secondFilterThreeLines(%elem0, %elem1, %elem2, %indexInHeight, %buff_out) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+            func.call @secondFilterThreeLines(%elem0, %elem1, %elem2, %indexInHeight, %buff_out) : (memref<16xi32>, memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
             AIE.objectFifo.release{ port = "consume" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
 
@@ -201,7 +201,7 @@ module @twoFilter2D  {
         %subviewBottom = AIE.objectFifo.acquire{ port = "consume" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
         %elemBottom0 = AIE.objectFifo.subview.access %subviewBottom[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         %elemBottom1 = AIE.objectFifo.subview.access %subviewBottom[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        call @secondFilterTwoLines(%elemBottom0, %elemBottom1, %height, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
+        func.call @secondFilterTwoLines(%elemBottom0, %elemBottom1, %height, %buff_out) : (memref<16xi32>, memref<16xi32>, index, memref<10x16xi32>) -> ()
         AIE.objectFifo.release{ port = "consume" }(%objFifoTwo : !AIE.objectFifo<memref<16xi32>>, 2)
 
         AIE.useLock(%lock_out, "Release", 1) // release output buffer for consume
