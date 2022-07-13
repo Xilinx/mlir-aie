@@ -20,10 +20,6 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
 #define LOCK_TIMEOUT 100
 
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
@@ -34,81 +30,67 @@
 #define MAP_SIZE 16UL
 #define MAP_MASK (MAP_SIZE - 1)
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */
-XAieGbl AieInst;              /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;      /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS +
-                                     1]; /**< Instantiates AIE array of
-                                            [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
 
-} // namespace
-
 int main(int argc, char *argv[]) {
-  printf("test start.\n");
-
-  int n = 1;
+  int n = 100;
   u32 pc0_times[n];
   u32 pc1_times[n];
   u32 pc2_times[n];
   u32 pc3_times[n];
 
+  printf("04_Tile_Tile_FillRate test start.\n");
+  printf("Running %d times ...\n", n);
+
   for (int iters = 0; iters < n; iters++) {
 
-    size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-    XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                             XAIE_ADDR_ARRAY_OFF);
-    XAieGbl_HwInit(&AieConfig);
-    AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
+    // printf("Acquire input buffer lock first.\n");
+    mlir_aie_acquire_lock(_xaie, 1, 3, 5, 0, 0); 
 
-    printf("Acquire input buffer lock first.\n");
-    XAieTile_LockAcquire(&(TileInst[1][3]), 5, 0, 0);
+    mlir_aie_configure_dmas(_xaie);
+    mlir_aie_init_mems(_xaie, 1);
 
-    mlir_configure_dmas();
-    mlir_initialize_locks();
-
-    ACDC_clear_tile_memory(TileInst[1][3]);
-    ACDC_clear_tile_memory(TileInst[1][4]);
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+    mlir_aie_clear_tile_memory(_xaie, 1, 4);
 
 #define DMA_COUNT 512
 
     for (int i = 0; i < DMA_COUNT; i++) {
-      mlir_write_buffer_a13(i, i + 1);
-      mlir_write_buffer_a14(i, 0xdeadbeef);
+      mlir_aie_write_buffer_a13(_xaie, i, i + 1);
+      mlir_aie_write_buffer_a14(_xaie, i, 0xdeadbeef);
     }
 
     // Destination Tile
-    EventMonitor pc0(&TileInst[1][4], 0, XAIETILE_EVENT_MEM_BROADCAST_2,
-                 XAIETILE_EVENT_MEM_DMA_S2MM_1_FINISHED_BD,
-                 XAIETILE_EVENT_MEM_NONE, MODE_MEM);
+    EventMonitor pc0(_xaie, 1, 4, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                 XAIE_EVENT_DMA_S2MM_1_FINISHED_BD_MEM,
+                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
     pc0.set();
-    EventMonitor pc1(&TileInst[1][4], 1, XAIETILE_EVENT_MEM_BROADCAST_2,
-                 XAIETILE_EVENT_MEM_LOCK_6_RELEASE, XAIETILE_EVENT_MEM_NONE,
-                 MODE_MEM);
+    EventMonitor pc1(_xaie, 1, 4, 1, XAIE_EVENT_BROADCAST_2_MEM,
+                 XAIE_EVENT_LOCK_6_REL_MEM, XAIE_EVENT_NONE_MEM,
+                 XAIE_MEM_MOD);
     pc1.set();
 
     // Source Tile
-    EventMonitor pc2(&TileInst[1][3], 0, XAIETILE_EVENT_MEM_LOCK_5_ACQUIRED,
-                 XAIETILE_EVENT_MEM_DMA_MM2S_0_FINISHED_BD,
-                 XAIETILE_EVENT_MEM_NONE, MODE_MEM);
+    EventMonitor pc2(_xaie, 1, 3, 0, XAIE_EVENT_LOCK_5_ACQ_MEM,
+                 XAIE_EVENT_DMA_MM2S_0_FINISHED_BD_MEM,
+                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
     pc2.set();
-    EventMonitor pc3(&TileInst[1][3], 1, XAIETILE_EVENT_MEM_LOCK_5_ACQUIRED,
-                 XAIETILE_EVENT_MEM_LOCK_5_RELEASE, XAIETILE_EVENT_MEM_NONE,
-                 MODE_MEM);
+    EventMonitor pc3(_xaie, 1, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM,
+                 XAIE_EVENT_LOCK_5_REL_MEM, XAIE_EVENT_NONE_MEM,
+                 XAIE_MEM_MOD);
     pc3.set();
 
-    XAieTileMem_EventBroadcast(&TileInst[1][3], 2,
-                               XAIETILE_EVENT_MEM_LOCK_5_ACQUIRED); // Start
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(1,3), 
+                        XAIE_MEM_MOD, 2,
+                        XAIE_EVENT_LOCK_5_ACQ_MEM); // Start
 
-    XAieTile_LockRelease(&(TileInst[1][3]), 5, 1, 0);
+    mlir_aie_release_lock(_xaie, 1, 3, 5, 1, 0);
     usleep(100);
 
     pc0_times[iters] = pc0.diff();
@@ -117,7 +99,7 @@ int main(int argc, char *argv[]) {
     pc3_times[iters] = pc3.diff();
 
     for (int i = 0; i < DMA_COUNT; i++) {
-      uint32_t d = mlir_read_buffer_a13(i);
+      uint32_t d = mlir_aie_read_buffer_a13(_xaie, i);
       if (d != (i + 1)) {
         printf("Not Matched");
       }
@@ -125,13 +107,14 @@ int main(int argc, char *argv[]) {
 
     int errors = 0;
     for (int i = 0; i < DMA_COUNT; i++) {
-      uint32_t d = mlir_read_buffer_a14(i);
+      uint32_t d = mlir_aie_read_buffer_a14(_xaie, i);
       if (d != (i + 1)) {
         errors++;
         printf("mismatch %x != 1 + %x\n", d, i);
         break;
       }
     }
+    mlir_aie_deinit_libxaie(_xaie);
   }
 
   printf("\nSource MM2S Finished ");

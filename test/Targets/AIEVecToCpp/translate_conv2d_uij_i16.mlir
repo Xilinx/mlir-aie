@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: void conv2d(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
 module  {
-  func @conv2d(%arg0: memref<2048x2048xi16>, %arg1: memref<12xi16>, %arg2: memref<2046x2046xi16>) {
+  func.func @conv2d(%arg0: memref<2048x2048xi16>, %arg1: memref<12xi16>, %arg2: memref<2046x2046xi16>) {
     %c0 = arith.constant 0 : index
     %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<12xi16>, vector<16xi16>
     %c0_0 = arith.constant 0 : index
@@ -91,7 +91,7 @@ module  {
 
 // CHECK-LABEL: void conv2d(int16_t * restrict v6, size_t m1, size_t m2, int16_t * restrict v7, size_t m3, int16_t * restrict v8, size_t m4, size_t m5, size_t v9, size_t v10) {
 module  {
-  func @conv2d(%arg0: memref<?x?xi16>, %arg1: memref<?xi16>, %arg2: memref<?x?xi16>, %arg3: index, %arg4: index) {
+  func.func @conv2d(%arg0: memref<?x?xi16>, %arg1: memref<?xi16>, %arg2: memref<?x?xi16>, %arg3: index, %arg4: index) {
     %c0 = arith.constant 0 : index
     %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<?xi16>, vector<16xi16>
     %c0_0 = arith.constant 0 : index
@@ -174,7 +174,7 @@ module  {
 
 // CHECK-LABEL: void conv2d(int16_t * restrict v6, size_t m1, size_t m2, int16_t * restrict v7, size_t m3, int16_t * restrict v8, size_t m4, size_t m5) {
 module  {
-  func @conv2d(%arg0: memref<?x?xi16>, %arg1: memref<?xi16>, %arg2: memref<?x?xi16>) {
+  func.func @conv2d(%arg0: memref<?x?xi16>, %arg1: memref<?xi16>, %arg2: memref<?x?xi16>) {
     %c1 = arith.constant 1 : index
     %c0 = arith.constant 0 : index
     %0 = memref.dim %arg0, %c0 : memref<?x?xi16>
@@ -255,7 +255,7 @@ module  {
 
 // CHECK-LABEL: void conv2d(int16_t * restrict v4, size_t m1, int16_t * restrict v5, size_t m2, int16_t * restrict v6, size_t m3) {
 module  {
-  func @conv2d(%arg0: memref<?x256xi16>, %arg1: memref<?xi16>, %arg2: memref<?x256xi16>) {
+  func.func @conv2d(%arg0: memref<?x256xi16>, %arg1: memref<?xi16>, %arg2: memref<?x256xi16>) {
     %c0 = arith.constant 0 : index
     %0 = memref.dim %arg0, %c0 : memref<?x256xi16>
     %1 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<?xi16>, vector<16xi16>

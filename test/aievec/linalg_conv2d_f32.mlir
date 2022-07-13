@@ -1,17 +1,17 @@
 // RUN: aie-opt %s --convert-linalg-to-affine-loops --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -split-input-file | FileCheck %s
 
 //The affine dialect code is generated from the following linalg operator, with the maps inlined. 
-//CHECK-LABEL: func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
-func @conv_2d(%input: memref<10x3x256x256xf32>, %filter: memref<10x3x3x3xf32>, %output: memref<10x10x254x254xf32>) {
+//CHECK-LABEL: func.func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
+func.func @conv_2d(%input: memref<10x3x256x256xf32>, %filter: memref<10x3x3x3xf32>, %output: memref<10x10x254x254xf32>) {
   linalg.conv_2d_nchw_fchw{dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>}
      ins (%input, %filter: memref<10x3x256x256xf32>, memref<10x3x3x3xf32>)
     outs (%output: memref<10x10x254x254xf32>)
   return
 }
 
-//CHECK-NEXT: %c0 = arith.constant 0 : index
-//CHECK-NEXT: %c1 = arith.constant 1 : index
 //CHECK-NEXT: %c2 = arith.constant 2 : index
+//CHECK-NEXT: %c1 = arith.constant 1 : index
+//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %c0_0 = arith.constant 0 : index
 //CHECK-NEXT: %c10 = arith.constant 10 : index
 //CHECK-NEXT: %c1_1 = arith.constant 1 : index

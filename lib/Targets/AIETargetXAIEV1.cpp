@@ -521,10 +521,10 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     int row = tile.rowIndex();
     int lockID = lock.getLockID();
     if (op.acquire()) {
-      output << "XAieTile_LockAcquire(" << tileDMAInstStr(col, row) << ", "
+      output << "XAieTile_LockAcquire(" << tileInstStr(col, row) << ", "
              << lockID << ", " << lockVal << ", " << timeOut << ");\n";
     } else if (op.release()) {
-      output << "XAieTile_LockRelease(" << tileDMAInstStr(col, row) << ", "
+      output << "XAieTile_LockRelease(" << tileInstStr(col, row) << ", "
              << lockID << ", " << lockVal << ", " << timeOut << ");\n";
     }
   }

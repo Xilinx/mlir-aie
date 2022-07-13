@@ -1,7 +1,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="shift=10" -split-input-file | FileCheck %s
 
-//CHECK-LABEL: func @conv2d(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
-func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
+//CHECK-LABEL: func.func @conv2d(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
+func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
     affine.for %arg3 = 0 to 16 {
         affine.for %arg4 = 0 to 256 {
             //First row
@@ -67,8 +67,8 @@ func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
     return
 }
 
-//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %c32 = arith.constant 32 : index
+//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
 //CHECK-NEXT: %1 = aievec.upd %arg1[%c32], %0 {index = 1 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
 //CHECK-NEXT: %c0_0 = arith.constant 0 : index

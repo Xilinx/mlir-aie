@@ -834,31 +834,81 @@ int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
-    Operation *operation = op;
+    Operation *operation = op->getParentOp();
     while (operation) {
-      if (llvm::isa<ParentOpTypes...>(operation->getParentOp()))
+      if (llvm::isa<ParentOpTypes...>(operation))
         return success();
       operation = operation->getParentOp();
     }
-    return op->emitOpError()
-           << "expects some parent op "
-           << (sizeof...(ParentOpTypes) != 1 ? "to be one of '" : "'")
-           << llvm::makeArrayRef({ParentOpTypes::getOperationName()...}) << "'";
+    return failure();
+  }
+};
+
+struct UsesOneLockInDMABlock {
+  static LogicalResult verifyTrait(Operation *op) {
+    auto block = op->getBlock();
+    int lockID = -1;
+    for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
+      auto lock = dyn_cast<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
+      if (lockID != -1 && lockID != lock.getLockID())
+        return failure();
+      lockID = lock.getLockID();
+    }
+    return success();
+  }
+};
+
+struct AcquireReleaseOneStateInDMABlock {
+  static LogicalResult verifyTrait(Operation *op) {
+    auto block = op->getBlock();
+    int acqValue = -1, relValue = -1;
+    for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
+      if (op.acquire()) {
+        if (acqValue != -1 && acqValue != op.getLockValue()) {
+          return failure();
+        }
+        acqValue = op.getLockValue();
+      } else if (op.release()) {
+        if (relValue != -1 && relValue != op.getLockValue()) {
+          return failure();
+        }
+        relValue = op.getLockValue();
+      }
+    }
+    return success();
   }
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
-  return HasSomeParent<xilinx::AIE::CoreOp, xilinx::AIE::MemOp,
-                       xilinx::AIE::ShimDMAOp>::verifyTrait(*this);
+  // AIE.useLock may be used in a module to set the lock's default value
+  if (llvm::isa<mlir::ModuleOp>((*this)->getParentOp()))
+    return success();
 
-  //  xilinx::AIE::LockOp lockOp =
-  //  dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
-  //   if (!lockOp) {
-  //     op.emitOpError() << "Expected LockOp!\n";
-  // //    return failure();
-  //   }
+  // Otherwise, AIE.useLock should be inside CoreOp, MemOp, or ShimDMAOp
+  if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::ShimDMAOp>::verifyTrait(
+          *this)
+          .succeeded()) {
+    if (!(*this)->getBlock())
+      return (*this)->emitOpError("is not in a block.");
 
-  return success();
+    if (UsesOneLockInDMABlock::verifyTrait(*this).failed())
+      return (*this)->emitOpError(
+          "used in a DMA block that have multiple locks.");
+
+    if (AcquireReleaseOneStateInDMABlock::verifyTrait(*this).failed())
+      return (*this)->emitOpError(
+          "acquires/releases the lock in a DMA block from/to multiple states.");
+
+    return success();
+
+  } else if (HasSomeParent<xilinx::AIE::CoreOp>::verifyTrait(*this)
+                 .succeeded()) {
+    return success();
+
+  } else {
+    return (*this)->emitOpError() << "expects some parent op to be one of "
+                                  << "AIE::core, AIE::mem, or AIE::shimDMA";
+  }
 }
 
 #include "aie/AIEEnums.cpp.inc"

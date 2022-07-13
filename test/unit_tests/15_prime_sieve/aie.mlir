@@ -44,7 +44,7 @@ module @test15_prime_sieve {
     AIE.useLock(%lock13_0, "Release", 1)
     AIE.end
   }
-  func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
+  func.func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c64 = arith.constant 64 : index
@@ -92,7 +92,7 @@ module @test15_prime_sieve {
   %core14 = AIE.core(%tile14) {
     AIE.useLock(%lock13_0, "Acquire", 1)
     AIE.useLock(%lock14_0, "Acquire", 0)
-    call @do_sieve(%buf13_0, %buf14_0) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf13_0, %buf14_0) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_0, "Release", 0)
     AIE.useLock(%lock14_0, "Release", 1)
     AIE.end
@@ -100,7 +100,7 @@ module @test15_prime_sieve {
   %core15 = AIE.core(%tile15) {
     AIE.useLock(%lock14_0, "Acquire", 1)
     AIE.useLock(%lock15_0, "Acquire", 0)
-    call @do_sieve(%buf14_0, %buf15_0) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf14_0, %buf15_0) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock14_0, "Release", 0)
     AIE.useLock(%lock15_0, "Release", 1)
     AIE.end
@@ -108,7 +108,7 @@ module @test15_prime_sieve {
   %core16 = AIE.core(%tile16) {
     AIE.useLock(%lock15_0, "Acquire", 1)
     AIE.useLock(%lock16_0, "Acquire", 0)
-    call @do_sieve(%buf15_0, %buf16_0) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @do_sieve(%buf15_0, %buf16_0) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock15_0, "Release", 0)
     AIE.useLock(%lock16_0, "Release", 1)
     AIE.end

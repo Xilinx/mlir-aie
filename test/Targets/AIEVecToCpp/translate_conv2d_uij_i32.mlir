@@ -1,7 +1,7 @@
 // RUN: aie-translate --aievec-to-cpp %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: void conv2d_0(int32_t * restrict v1, int32_t * restrict v2, int32_t * restrict v3) {
-func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref<2046x2046xi32>) {
+func.func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref<2046x2046xi32>) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<9xi32>, vector<8xi32>
@@ -98,7 +98,7 @@ func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref
 
 
 // CHECK-LABEL: void conv2d_1(int32_t * restrict v6, size_t m1, size_t m2, int32_t * restrict v7, size_t m3, int32_t * restrict v8, size_t m4, size_t m5, size_t v9, size_t v10) {
-func @conv2d_1(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>, %arg3: index, %arg4: index) {
+func.func @conv2d_1(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>, %arg3: index, %arg4: index) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<?xi32>, vector<8xi32>
@@ -189,7 +189,7 @@ func @conv2d_1(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi
 
 
 // CHECK-LABEL: void conv2d_2(int32_t * restrict v6, size_t m1, size_t m2, int32_t * restrict v7, size_t m3, int32_t * restrict v8, size_t m4, size_t m5) {
-func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>) {
+func.func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>) {
   %c8 = arith.constant 8 : index
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
@@ -283,7 +283,7 @@ func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi
 
 
 // CHECK-LABEL: void conv2d_3(int32_t * restrict v4, size_t m1, int32_t * restrict v5, size_t m2, int32_t * restrict v6, size_t m3) {
-func @conv2d_3(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memref<?x256xi32>) {
+func.func @conv2d_3(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memref<?x256xi32>) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
   %0 = memref.dim %arg0, %c0 : memref<?x256xi32>

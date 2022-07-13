@@ -1,7 +1,7 @@
 // RUN: aie-translate --aievec-to-cpp %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: void conv2d_0(int8_t * restrict v1, int8_t * restrict v2, int8_t * restrict v3) {
-func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
+func.func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
   %c32 = arith.constant 32 : index
   %c0 = arith.constant 0 : index
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
@@ -87,7 +87,7 @@ func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x
 //CHECK-NEXT:  }
 
 // CHECK-LABEL: void conv2d_1(int8_t * restrict v1, int8_t * restrict v2, int8_t * restrict v3) {
-func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
+func.func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
   %c32 = arith.constant 32 : index
   %c0 = arith.constant 0 : index
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>

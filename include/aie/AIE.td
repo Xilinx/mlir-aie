@@ -39,6 +39,7 @@ switch is referred to as 'switchbox' to avoid confusion with the
 'switch' keyword in C/C++.
 
   }];
+  let useDefaultTypePrinterParser = 1;
 }
 
 def Core: I32EnumAttrCase<"Core", 0>;
@@ -989,7 +990,9 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let description = [{
     This operation uses a lock. A lock can be acquired with a value, or release with a value.
     This should be understood as a "blocking" operation.  This lock must appear in a parent op
-    where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).
+    where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).  If the useLock
+    operation appears in a module directly, an initialization to the lock will be generated in
+    the host implementation.
   }];
   let arguments = (
     ins Index:$lock,

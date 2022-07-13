@@ -1,7 +1,7 @@
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=0" -split-input-file | FileCheck %s
 
-// CHECK-LABEL: func @conv2d_0(%arg0: memref<?x?xf32>, %arg1: memref<?xf32>, %arg2: memref<?x?xf32>) {
-func @conv2d_0 (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>) {
+// CHECK-LABEL: func.func @conv2d_0(%arg0: memref<?x?xf32>, %arg1: memref<?xf32>, %arg2: memref<?x?xf32>) {
+func.func @conv2d_0 (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>) {
     %c0 = arith.constant 0 : index
     %M = memref.dim %A, %c0 : memref<?x?xf32>
     %c1 = arith.constant 1 : index
@@ -76,9 +76,9 @@ func @conv2d_0 (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>) {
     return
 }
 
-//CHECK-NEXT: %c0 = arith.constant 0 : index
-//CHECK-NEXT: %c1 = arith.constant 1 : index
 //CHECK-NEXT: %c8 = arith.constant 8 : index
+//CHECK-NEXT: %c1 = arith.constant 1 : index
+//CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %0 = memref.dim %arg0, %c0 : memref<?x?xf32>
 //CHECK-NEXT: %1 = memref.dim %arg0, %c1 : memref<?x?xf32>
 //CHECK-NEXT: %2 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : si32} : memref<?xf32>, vector<8xf32>
@@ -114,8 +114,8 @@ func @conv2d_0 (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>) {
 //CHECK-NEXT: vector.transfer_write %22, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<8xf32>, memref<?x?xf32>
 
 
-//CHECK-LABEL: func @conv2d_1(%arg0: memref<?x256xf32>, %arg1: memref<?xf32>, %arg2: memref<?x256xf32>) {
-func @conv2d_1 (%A: memref<?x256xf32>, %B: memref<?xf32>, %C: memref<?x256xf32>) {
+//CHECK-LABEL: func.func @conv2d_1(%arg0: memref<?x256xf32>, %arg1: memref<?xf32>, %arg2: memref<?x256xf32>) {
+func.func @conv2d_1 (%A: memref<?x256xf32>, %B: memref<?xf32>, %C: memref<?x256xf32>) {
     %c0 = arith.constant 0 : index
     %M = memref.dim %A, %c0 : memref<?x256xf32>
     %c1 = arith.constant 1 : index

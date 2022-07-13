@@ -19,7 +19,7 @@
 //             static allocation (for now) for each core that can access to the buffer
 module @test_core_llvm1 {
 // CHECK11:  memref.global "public" @a : memref<256xi32>
-// CHECK11:  func @core11() {
+// CHECK11:  func.func @core11() {
 // CHECK11:    %0 = memref.get_global @a : memref<256xi32>
 // CHECK11:    memref.assume_alignment %0, 32 : memref<256xi32>
 // CHECK11:    %c56 = arith.constant 56 : index
@@ -36,7 +36,7 @@ module @test_core_llvm1 {
 // CHECK11:  }
 
 // CHECK12:  memref.global "public" @a : memref<256xi32>
-// CHECK12:  func @core12() {
+// CHECK12:  func.func @core12() {
 // CHECK12:    %0 = memref.get_global @a : memref<256xi32>
 // CHECK12:    memref.assume_alignment %0, 32 : memref<256xi32>
 // CHECK12:    %c8 = arith.constant 8 : index
