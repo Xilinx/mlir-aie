@@ -66,7 +66,7 @@ struct AIEObjectFifoLoopUnrollPass
               ObjectFifoCreateOp op =
                   acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
               objFifoSize = op.size();
-            } 
+            }
           }
 
           for (auto relOp : body->getOps<ObjectFifoReleaseOp>()) {
