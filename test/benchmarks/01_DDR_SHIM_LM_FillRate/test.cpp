@@ -20,115 +20,82 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 
 #define MAP_SIZE 16UL
 #define MAP_MASK (MAP_SIZE - 1)
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */
-XAieGbl AieInst;              /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;      /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS +
-                                     1]; /**< Instantiates AIE array of
-                                            [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
 
-} // namespace
-
 int main(int argc, char *argv[]) {
-  int n = 1;
+  int n = 100;
   u32 pc2_times[n];
+
+  printf("01_DDR_SHIM_LM_FillRate test start\n");
+  printf("Running %d times ...\n", n);
 
   for (int iters = 0; iters < n; iters++) {
 
-    auto col = 7;
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
 
-    size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-    XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                             XAIE_ADDR_ARRAY_OFF);
-    XAieGbl_HwInit(&AieConfig);
-    AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
-
-    ACDC_print_tile_status(TileInst[7][1]);
+    // mlir_aie_print_tile_status(_xaie, 7, 1);
 
     // Run auto generated config functions
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_initialize_locks();
+    #define DMA_COUNT 7168
 
-    static XAieGbl_MemInst *IO_Mem;
-    u32 *ddr_ptr;
+    mlir_aie_configure_dmas(_xaie);
+    mlir_aie_init_mems(_xaie, 1);
 
-#define DMA_COUNT 7168
-
-    IO_Mem = XAieGbl_MemInit(0);
-    ddr_ptr = (u32 *)XAieGbl_MemGetPaddr(IO_Mem);
-    printf("Start address of ddr buffer = %p\n", ddr_ptr);
-    for (int i = 0; i < DMA_COUNT; i++) {
-      // if ( i < 10){
-      //   printf("%p\n", ddr_ptr + i);
-      // }
-      XAieGbl_MemWrite32(IO_Mem, (u64)(ddr_ptr + i), i + 1);
+    int *ddr_ptr = mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+    for(int i=0; i<DMA_COUNT; i++) {
+      *(ddr_ptr + i) = i + 1;
     }
+    mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
 
-    u32 *ddr_ptr2 = ddr_ptr + DMA_COUNT;
-    printf("DDR_PTR NEW, %p \n", ddr_ptr2);
+    // XAie_DmaDesc dma_tile70_bd0;
+    // XAie_DmaDescInit(&(_xaie->DevInst), &(dma_tile70_bd0), XAie_TileLoc(7,0));
+    // XAie_DmaSetLock(&(dma_tile70_bd0), XAie_LockInit(1,1),XAie_LockInit(1,0));
+    // XAie_DmaSetAddrLen(&(dma_tile70_bd0),  /* addr */ (u64)(ddr_ptr),  /* len */ 7168 * 4);
+    // XAie_DmaSetAxi(&(dma_tile70_bd0), /* smid */ 0, /* burstlen */ 16, /* QoS */ 0 , /* Cache */ 1, /* Secure */ XAIE_DISABLE);
+    // XAie_DmaSetNextBd(&(dma_tile70_bd0),  /* nextbd */ 0,  /* enableNextBd */ 0);
+    // XAie_DmaEnableBd(&(dma_tile70_bd0));
+    // XAie_DmaWriteBd(&(_xaie->DevInst), &(dma_tile70_bd0), XAie_TileLoc(7,0),  /* bd */ 0);
+    // XAie_DmaChannelPushBdToQueue(&(_xaie->DevInst), XAie_TileLoc(7,0), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */0);
+    // XAie_DmaChannelEnable(&(_xaie->DevInst), XAie_TileLoc(7,0), /* ChNum */ 0, /* dmaDir */ DMA_MM2S);
+    // XAie_EnableShimDmaToAieStrmPort(&(_xaie->DevInst), XAie_TileLoc(7,0), 3);
 
-    printf("Acquired before");
-    // XAieTile_LockAcquire(&(TileInst[7][1]), 0, 0, 0);
-    mlir_configure_dmas();
+    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr);
+    mlir_aie_configure_shimdma_70(_xaie);
 
-    XAieDma_Shim ShimDMAInst_7_0;
-    XAieDma_ShimInitialize(&(TileInst[7][0]), &ShimDMAInst_7_0);
-    XAieDma_ShimBdSetLock(&ShimDMAInst_7_0, /* bd */ 0, /* lockID */ 1,
-                          XAIE_ENABLE, /* release */ 0, XAIE_ENABLE,
-                          /* acquire */ 1);
-    // XAieDma_ShimBdSetAddr(&ShimDMAInst_7_0,  /* bd */ 0,
-    // HIGH_ADDR((u64)0x20100004000), LOW_ADDR((u64)0x20100004000),  /* len */
-    // 256 * 4);
-    XAieDma_ShimBdSetAddr(&ShimDMAInst_7_0, /* bd */ 0, HIGH_ADDR((u64)ddr_ptr),
-                          LOW_ADDR((u64)ddr_ptr), /* len */ 7168 * 4);
-    XAieDma_ShimBdSetAxi(&ShimDMAInst_7_0, /* bd */ 0, /* smid */ 0,
-                         /* burstlen */ 16, /* QOS */ 0, /* Cache */ 1,
-                         /* secure */ XAIE_DISABLE);
-    XAieDma_ShimBdSetNext(&ShimDMAInst_7_0, /* bd */ 0, /* nextbd */ 0);
-    XAieDma_ShimBdWrite(&ShimDMAInst_7_0, /* bd */ 0);
-    XAieDma_ShimSetStartBd(&ShimDMAInst_7_0, XAIEDMA_SHIM_CHNUM_MM2S0,
-                           /* bd */ 0);
-    XAieDma_ShimChControl(&ShimDMAInst_7_0, XAIEDMA_TILE_CHNUM_MM2S0,
-                          /* PauseStream */ XAIE_DISABLE,
-                          /* PauseMM */ XAIE_DISABLE, /* Enable */ XAIE_ENABLE);
+    mlir_aie_start_cores(_xaie);
 
     // We're going to stamp over the memory
     for (int i = 0; i < DMA_COUNT; i++) {
-      mlir_write_buffer_buf71_0(i, 0xdeadbeef);
+      mlir_aie_write_buffer_buf71_0(_xaie, i, 0xdeadbeef);
     }
 
-    XAieTilePl_EventBroadcast(&TileInst[7][0], 2,
-                              XAIETILE_EVENT_SHIM_LOCK_1_ACQUIRED_NOC); // Start
-    XAieTilePl_EventBroadcast(&TileInst[7][0], 3,
-                              XAIETILE_EVENT_SHIM_LOCK_1_RELEASE_NOC); // Stop
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), 
+                        /*XAie_ModuleType*/ XAIE_PL_MOD, /*u8 BroadcastId*/ 2, 
+                        /*XAie_Events*/ XAIE_EVENT_LOCK_1_ACQUIRED_PL);
 
-    EventMonitor pc2(&TileInst[7][1], 0, XAIETILE_EVENT_MEM_BROADCAST_2,
-                 XAIETILE_EVENT_MEM_LOCK_0_RELEASE, XAIETILE_EVENT_MEM_NONE,
-                 MODE_MEM);
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), 
+                        /*XAie_ModuleType*/ XAIE_PL_MOD, /*u8 BroadcastId*/ 3, 
+                        /*XAie_Events*/ XAIE_EVENT_LOCK_1_RELEASED_PL);
+
+    EventMonitor pc2(_xaie, 7, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                 XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                 XAIE_MEM_MOD);
     pc2.set();
 
     // iterate over the buffer
     usleep(1000);
-    XAieTile_LockRelease(&(TileInst[7][0]), 1, 1,
-                         0); // Release lock for reading from DDR
+    mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0); // Release lock for reading from DDR
 
     usleep(2000);
 
@@ -136,12 +103,13 @@ int main(int argc, char *argv[]) {
 
     int errors = 0;
     for (int i = 0; i < DMA_COUNT; i++) {
-      uint32_t d = mlir_read_buffer_buf71_0(i);
+      uint32_t d = mlir_aie_read_buffer_buf71_0(_xaie, i);
       if (d != (i + 1)) {
         errors++;
         printf("mismatch %x != 1 + %x\n", d, i);
       }
     }
+    mlir_aie_deinit_libxaie(_xaie);
   }
 
   computeStats(pc2_times, n);

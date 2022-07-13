@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: valid_xchess_license
 //  clang -O2 --target=aie -c %S/kernel.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
@@ -28,7 +29,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %lock_b_ping = AIE.lock(%t73, 5) // b_ping
   %lock_b_pong = AIE.lock(%t73, 6) // b_pong
 
-  // func private @func(%A: memref<256xi32>, %B: memref<256xi32>, %C: i32) -> ()
+  // func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>, %C: i32) -> ()
 
   %c13 = AIE.core(%t73) { 
     %buffer_size =  arith.constant 256 : i32
@@ -54,7 +55,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
         memref.store %i2, %buf_b_ping[%arg0] : memref<64xi32>
         scf.yield %i : i32
       }
-//      call @func(%buf_a_ping, %buf_b_ping,%buffer_size) : (memref<256xi32>, memref<256xi32>,i32) -> ()
+//      func.call @func(%buf_a_ping, %buf_b_ping,%buffer_size) : (memref<256xi32>, memref<256xi32>,i32) -> ()
       AIE.useLock(%lock_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_b_ping, "Release", 1) // release for read
 

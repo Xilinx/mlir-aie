@@ -38,7 +38,6 @@ add_mlir_dialect_library(AIE
   MLIRPass
   MLIRSupport
   MLIRTransformUtils
-  MLIRVector
   )
 
 add_subdirectory(Targets)

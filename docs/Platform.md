@@ -5,8 +5,8 @@ In order to facilitate additional exploration of the MLIR AIE tools in hardware,
 ## Prerequisites for building the platform and sysroot
 
 ```
-Xilinx Vitis 2020.1
-Petalinux 2020.1
+Xilinx Vitis 2021.2
+Petalinux 2021.2
 ```
 
 The 'platform' sub-directory contains the necessary Makefile and build scripts to simplify the build process. The same system requirements to run Vitis and Petalinux will be required for the platform build flow so please refer to those software tool requirements.
@@ -20,7 +20,7 @@ The vck190 'bare' platform is a nearly empty design that enables the necessary N
 
 To start the build, do the following:
 ```sh
-cd platforms/vck190_bare
+cd platforms/vck190_bare_prod
 make all
 ```
 

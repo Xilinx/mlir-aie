@@ -21,11 +21,11 @@ module @test {
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<4096xi32>
   %lock13_3 = AIE.lock(%tile13, 3)
 
-  func private @func(%A: memref<2xi32>, %B: memref<4096xi32>) -> ()
+  func.func private @func(%A: memref<2xi32>, %B: memref<4096xi32>) -> ()
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire
-    call @func(%buf13_0, %buf13_1) : (memref<2xi32>, memref<4096xi32>) -> ()
+    func.call @func(%buf13_0, %buf13_1) : (memref<2xi32>, memref<4096xi32>) -> ()
     AIE.useLock(%lock13_3, "Release", 0) // release for write
     AIE.end
   } { link_with="kernel.o" }

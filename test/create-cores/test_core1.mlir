@@ -18,7 +18,7 @@
 // CHECK-NEXT:        AIE.end
 // CHECK-NEXT:    }
 // CHECK-NEXT:    %4 = memref.alloc() : memref<256xi32>
-// CHECK-NEXT:    func @host_task() {
+// CHECK-NEXT:    func.func @host_task() {
 // CHECK-NEXT:      return
 // CHECK-NEXT:    }
 // CHECK-NEXT:    %c0_i32 = arith.constant 0 : i32
@@ -29,7 +29,7 @@
 // CHECK-NEXT:      memref.store %6, %1[%c10] : memref<256xi32>
 // CHECK-NEXT:      AIE.end
 // CHECK-NEXT:    }
-// CHECK-NEXT:    call @host_task() : () -> ()
+// CHECK-NEXT:    func.call @host_task() : () -> ()
 // CHECK-NEXT:  }
 
 // Lowering Std::FuncOp and Std::CallOp with (aie.x, aie.y) attributes to AIE::CoreOp,
@@ -40,17 +40,17 @@
 module @test_core1 {
   %buf = memref.alloc() : memref<256xi32>
 
-  func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
+  func.func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
     %i = arith.constant 10 : index
     memref.store %arg1, %arg0[%i] : memref<256xi32>
     return
   }
 
-  func @host_task() -> () {
+  func.func @host_task() -> () {
     return
   }
 
   %a = arith.constant 0 : i32
-  call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
-  call @host_task() : () -> ()
+  func.call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
+  func.call @host_task() : () -> ()
 }

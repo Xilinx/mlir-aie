@@ -32,10 +32,10 @@
 
 // "blk" is block, it could be window or stream form in ADF graph.
 module {
-    func private @kfunc1(%in1 : !ADF.stream<!ADF.int32>)
+    func.func private @kfunc1(%in1 : !ADF.stream<!ADF.int32>)
                              ->(!ADF.stream<!ADF.int32>)
 
-    func private @kfunc2(%in1 : !ADF.stream<!ADF.int32>,
+    func.func private @kfunc2(%in1 : !ADF.stream<!ADF.int32>,
                          %in2 : !ADF.stream<!ADF.int32>)
                              ->(!ADF.stream<!ADF.int32>)
 

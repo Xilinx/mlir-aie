@@ -58,7 +58,7 @@ jobs:
         run: utils/build-llvm.sh
 
       # Build the repo test target in debug mode to build and test.
-      - name: Build (Assert)
+      - name: Build and test (Assert)
         run: |
           mkdir build_assert
           cd build_assert
@@ -75,9 +75,10 @@ jobs:
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           ninja
+          ninja check-aie
 
       # Build the repo test target in release mode to build and test.
-      - name: Build (Release)
+      - name: Build and test (Release)
         run: |
           mkdir build_release
           cd build_release
@@ -92,6 +93,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make -j$(nproc)
+          make check-aie
 
   lint-repo:
     name: Check code format

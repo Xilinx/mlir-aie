@@ -10,7 +10,7 @@
 
 // RUN: aie-opt --aie-standard-lowering="tilecol=3 tilerow=3" %s | FileCheck --check-prefix=CHECK33 %s
 
-// CHECK33:  func @core33() {
+// CHECK33:  func.func @core33() {
 // CHECK33:    %c56 = arith.constant 56 : index
 // CHECK33:    %0 = arith.index_cast %c56 : index to i32
 // CHECK33:    %c0_i32 = arith.constant 0 : i32

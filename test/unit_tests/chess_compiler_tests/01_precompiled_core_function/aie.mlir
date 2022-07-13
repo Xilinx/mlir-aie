@@ -22,12 +22,12 @@ module @test_chesss_01_precompiled_core_function {
   %lock13_3 = AIE.lock(%tile13, 3)
   %lock13_5 = AIE.lock(%tile13, 5)
 
-  func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
+  func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
 
   %core13 = AIE.core(%tile13) { 
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock13_5, "Acquire", 0) // acquire for write
-    call @func(%buf13_0, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
+    func.call @func(%buf13_0, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
     AIE.useLock(%lock13_3, "Release", 0) // release for write
     AIE.useLock(%lock13_5, "Release", 1) // release for read
     AIE.end

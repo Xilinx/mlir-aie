@@ -54,17 +54,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %lock_75_b_pong = AIE.lock(%t75, 6) // b_pong
 
 
-  func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
 
-  func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
-  // func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
     %buffer_size =  arith.constant 64 : i32
@@ -82,13 +82,13 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       
       AIE.useLock(%lock_73_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_ping, "Acquire", 0) // acquire for write
-      call @dequant_8x8(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @dequant_8x8(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_73_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_73_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_73_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_pong, "Acquire", 0) // acquire for write
-      call @dequant_8x8(%buf_73_apong, %buf_73_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @dequant_8x8(%buf_73_apong, %buf_73_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_73_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_73_b_pong, "Release", 1) // release for read      
     }
@@ -113,13 +113,13 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       
       AIE.useLock(%lock_74_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_ping, "Acquire", 0) // acquire for write
-      call @pass(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @pass(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_74_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_74_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_74_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_pong, "Acquire", 0) // acquire for write
-      call @pass(%buf_74_apong, %buf_74_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @pass(%buf_74_apong, %buf_74_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_74_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_74_b_pong, "Release", 1) // release for read      
     }
@@ -145,13 +145,13 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       
       AIE.useLock(%lock_75_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_ping, "Acquire", 0) // acquire for write
-      call @pass(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @pass(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_75_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_75_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_75_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_pong, "Acquire", 0) // acquire for write
-      call @pass(%buf_75_apong, %buf_75_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @pass(%buf_75_apong, %buf_75_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_75_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_75_b_pong, "Release", 1) // release for read      
     }

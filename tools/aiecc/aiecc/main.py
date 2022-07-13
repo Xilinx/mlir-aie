@@ -91,7 +91,7 @@ def run_flow(opts, tmpdirname):
         file_core_ldscript = tmpcorefile(core, "ld.script")
         do_call(['aie-translate', file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
         file_core_llvmir = tmpcorefile(core, "ll")
-        do_call(['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
+        do_call(['aie-translate', '--mlir-to-llvmir', '--opaque-pointers=0', file_opt_core, '-o', file_core_llvmir])
         file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
         if(opts.xchesscc):
@@ -194,10 +194,11 @@ def main(builtin_params={}):
         vitis_path = os.path.dirname(vitis_bin_path)
         os.environ['VITIS'] = vitis_path
         print("Found Vitis at " + vitis_path)
-        os.environ['PATH'] = os.pathsep.join([vitis_bin_path, os.environ['PATH']])
+        os.environ['PATH'] = os.pathsep.join([os.environ['PATH'], vitis_bin_path])
  
     if('VITIS' in os.environ):
       vitis_path = os.environ['VITIS']
+      vitis_bin_path = os.path.join(vitis_path, "bin")
       # Find the aietools directory, needed by xchesscc_wrapper
       
       aietools_path = os.path.join(vitis_path, "aietools")
@@ -206,7 +207,10 @@ def main(builtin_params={}):
       os.environ['AIETOOLS'] = aietools_path
 
       aietools_bin_path = os.path.join(aietools_path, "bin")
-      os.environ['PATH'] = os.pathsep.join([aietools_bin_path, os.environ['PATH']])
+      os.environ['PATH'] = os.pathsep.join([
+        os.environ['PATH'],
+        aietools_bin_path,
+        vitis_bin_path])
 
     # This path should be generated from cmake
     os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])
