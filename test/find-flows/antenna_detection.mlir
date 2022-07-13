@@ -43,10 +43,8 @@ module {
     AIE.connect<East :1, North :3> //dangling island antenna 
     %18 = AIE.amsel<0> (0)
     %19 = AIE.masterset(North : 0, %18)
-    // packet antennas
-    %20 = AIE.amsel<0> (1)
-    %21 = AIE.masterset(East : 1, %20)
-    // packet antennas
+    %20 = AIE.amsel<0> (1) // packet antennas
+    %21 = AIE.masterset(East : 1, %20) // packet antennas    
     AIE.packetrules(DMA : 0) {
       AIE.rule(31, 0, %18)
       AIE.rule(31, 0, %20)
