@@ -65,6 +65,8 @@ jobs:
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
             -DCMAKE_MODULE_PATH=`pwd`/../cmakeModules \
             -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
@@ -84,6 +86,8 @@ jobs:
           cd build_release
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DCMAKE_MODULE_PATH=../cmakeModules \
             -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
