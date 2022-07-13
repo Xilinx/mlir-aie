@@ -52,10 +52,10 @@ public:
 
     // add start_vertex to path to prevent premature termination in the case the
     // start_vertex is a FlowEndPoint due to it being a connectedFlow.
-    path_to_root.push_back(start_vertex);
+    path_to_root.emplace_back(start_vertex);
     Operation *work = vertex_map.at(start_vertex).first;
     while (true) {
-      path_to_root.push_back(work);
+      path_to_root.emplace_back(work);
       if (isa<FlowEndPoint>(work)) {
         break;
       } else {
@@ -227,6 +227,23 @@ private:
 
   void detect_antenna(Graph &g, std::vector<Operation *> connectedTilesKeys,
                       std::vector<Operation *> antennaKeys) const {
+
+    //    This method detects antennas by first starting with the leaf nodes of
+    // the generated graph that is built while traversing from a FlowEndPoint.
+    // There are two types of leaf nodes: connectedTiles and antennas. Vertices
+    // in the connectedTilesKeys vector are leafs that have terminated at a
+    // FlowEndPoint and are not antennas. Vertices in the antennaKeys vector are
+    // antennas that we wish to detect.
+    //    As we desire to emit a message that prints the path from the antennas
+    // while also distinguishing from vertices that are part of a valid paths,
+    // we first create a set which keeps track of these valid vertices (the
+    // order is not important). In the second phase we traceback the path from
+    // an antenna using the “getPathToRoot” method where the order of the path
+    // is preserved. Afterwards, the individual vertices are classifies into
+    // “antenna_valid_path” and “antenna_nonvalid_paths” based on the
+    // “valid_path” set from the previous phase. Finally, we emit a Warning for
+    // antennas and Remarks for paths from the antenna that are themselves not
+    // antennas.
 
     LLVM_DEBUG(llvm::dbgs() << "Starting Antenna Detection\n");
     LLVM_DEBUG(llvm::dbgs() << "Creating valid verticies\n");
