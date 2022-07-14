@@ -13,7 +13,7 @@ make all
 
 ## Tool requirements
 To run these build scripts, you should only need Vitis/Vivado/Petalinux 2021.2 (note the sw requirements of each tool as well). There was an issue where the program 'dot' (which is used by aiecompiler) needed to be installed. You can do that with:
-`sudo apt-get install graphwiz`
+`sudo apt-get install graphviz`
 
 Once you've run the top level make, you should have sd_card/sd_card.img along with a sysroot which should be found at:
 `aie_platform/sw_comp/sysroots/cortexa72-cortexa53-xilinx-linux`
