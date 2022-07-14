@@ -9,3 +9,4 @@ aie_link_with_xchesscc = @CONFIG_LINK_WITH_XCHESSCC@
 aie_compile_with_xchesscc = @CONFIG_COMPILE_WITH_XCHESSCC@
 aie_disable_link = @CONFIG_DISABLE_LINK@
 aie_disable_compile = @CONFIG_DISABLE_COMPILE@
+host_disable_compile = @CONFIG_DISABLE_HOST_COMPILE@

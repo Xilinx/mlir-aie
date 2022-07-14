@@ -147,6 +147,9 @@ def run_flow(opts, tmpdirname):
 
 
       # Lastly, compile the generated host interface with any ARM code.
+      if not opts.compile_host:
+        return
+
       cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
