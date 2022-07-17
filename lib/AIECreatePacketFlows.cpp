@@ -660,7 +660,7 @@ struct AIERoutePacketFlowsPass
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
 
-      if (tileOp.row() == 0) {
+      if (tileOp.isShimNOCorPLTile()) {
 
         Region &r = switchbox.connections();
         Block &b = r.front();
@@ -729,6 +729,14 @@ struct AIERoutePacketFlowsPass
           builder.setInsertionPointToEnd(b0);
           builder.create<xilinx::AIE::EndOp>(builder.getUnknownLoc());
         }
+      }
+    }
+
+    for (auto shimMux : llvm::make_early_inc_range(m.getOps<ShimMuxOp>())) {
+      // Remove empty shim muxes.
+      if (&shimMux.getBody()->front() == shimMux.getBody()->getTerminator()) {
+        shimMux->dropAllUses();
+        shimMux->erase();
       }
     }
 
