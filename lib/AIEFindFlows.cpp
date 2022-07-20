@@ -26,6 +26,46 @@ typedef std::pair<Operation *, Port> PortConnection;
 typedef std::pair<Port, MaskValue> PortMaskValue;
 typedef std::pair<PortConnection, MaskValue> PacketConnection;
 
+class Graph {
+  // The key of the map stores the operation pointer, it being the unique
+  // identifier. The contents store the parent operation pointer and the Port of
+  // the vertex.
+  std::map<Operation *, PortConnection> vertex_map;
+
+public:
+  bool isNotEmpty() { return vertex_map.size() > 0; }
+
+  void addVertex(Operation *parent_key, Operation *my_op, Port my_port) {
+    vertex_map[my_op] = std::make_pair(parent_key, my_port);
+  }
+
+  StringRef getPortBundle(Operation *key) {
+    return stringifyWireBundle(vertex_map.at(key).second.first);
+  }
+
+  std::string getPortChannel(Operation *key) {
+    return std::to_string(vertex_map.at(key).second.second);
+  }
+
+  std::vector<Operation *> getPathToRoot(Operation *start_vertex) {
+    std::vector<Operation *> path_to_root;
+
+    // add start_vertex to path to prevent premature termination in the case the
+    // start_vertex is a FlowEndPoint due to it being a connectedFlow.
+    path_to_root.emplace_back(start_vertex);
+    Operation *work = vertex_map.at(start_vertex).first;
+    while (true) {
+      path_to_root.emplace_back(work);
+      if (isa<FlowEndPoint>(work)) {
+        break;
+      } else {
+        work = vertex_map.at(work).first;
+      }
+    }
+    return path_to_root;
+  }
+};
+
 class ConnectivityAnalysis {
   ModuleOp &module;
 
@@ -35,6 +75,7 @@ public:
 private:
   llvm::Optional<PortConnection>
   getConnectionThroughWire(Operation *op, Port masterPort) const {
+
     LLVM_DEBUG(llvm::dbgs()
                << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first)
                << " " << masterPort.second << "\n");
@@ -63,15 +104,35 @@ private:
     return None;
   }
 
-  std::vector<PortMaskValue>
-  getConnectionsThroughSwitchbox(Region &r, Port sourcePort) const {
+  std::vector<PacketConnection> getConnectionsThroughSwitchboxShimMux(
+      Operation *op, Port sourcePort, Graph &g,
+      std::set<Operation *> &connections_set) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
-    Block &b = r.front();
-    std::vector<PortMaskValue> portSet;
+
+    std::vector<PacketConnection> opportSet;
+    if (!(dyn_cast_or_null<SwitchboxOp>(op) ||
+          dyn_cast_or_null<ShimMuxOp>(op))) {
+      op->emitError();
+      LLVM_DEBUG(llvm::dbgs() << "*** Connection not SwitchBox or ShimMux: \n");
+      return opportSet;
+    }
+
+    // can use begin()/front() to access the Region/Block due to
+    // swichbox/shimmux being defined to only have one Region/Block
+    Block &b = op->getRegions().begin()->front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
+        // remove accessed connectOp from dangling island set
+        connections_set.erase(connectOp);
+        // add to graph if in detection mode and op is connectOp
+        if (g.isNotEmpty())
+          // implicit type converion connectOp -> Operation*
+          g.addVertex(op, connectOp, connectOp.destPort());
+
         MaskValue maskValue = std::make_pair(0, 0);
-        portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
+        PortConnection portconnection =
+            std::make_pair(connectOp.getOperation(), connectOp.destPort());
+        opportSet.push_back(std::make_pair(portconnection, maskValue));
         LLVM_DEBUG(llvm::dbgs()
                    << "To:" << stringifyWireBundle(connectOp.destPort().first)
                    << " " << connectOp.destPort().second << "\n");
@@ -82,7 +143,7 @@ private:
         LLVM_DEBUG(llvm::dbgs()
                    << "Packet From: "
                    << stringifyWireBundle(connectOp.sourcePort().first) << " "
-                   << (int)sourcePort.first << "\n");
+                   << (int)sourcePort.second << "\n");
         for (auto masterSetOp : b.getOps<MasterSetOp>())
           for (Value amsel : masterSetOp.amsels())
             for (auto ruleOp :
@@ -92,26 +153,40 @@ private:
                            << "To:"
                            << stringifyWireBundle(masterSetOp.destPort().first)
                            << " " << masterSetOp.destPort().second << "\n");
+                // remove accessed packetRulesOps/masterSetOp from dangling
+                // island set
+                connections_set.erase(connectOp);
+                connections_set.erase(masterSetOp);
+                // add to graph if in detection mode and op is connectOp
+                if (g.isNotEmpty()) {
+                  // implicit type converion connect/masterSetOp -> Operation*
+                  g.addVertex(op, connectOp, connectOp.sourcePort());
+                  g.addVertex(connectOp, ruleOp, connectOp.sourcePort());
+                  g.addVertex(ruleOp, masterSetOp, masterSetOp.destPort());
+                }
+
                 MaskValue maskValue =
                     std::make_pair(ruleOp.maskInt(), ruleOp.valueInt());
-                portSet.push_back(
-                    std::make_pair(masterSetOp.destPort(), maskValue));
+                PortConnection portconnection = std::make_pair(
+                    masterSetOp.getOperation(), masterSetOp.destPort());
+                opportSet.push_back(std::make_pair(portconnection, maskValue));
               }
             }
       }
     }
-    return portSet;
+    return opportSet;
   }
 
   std::vector<PacketConnection>
-  maskSwitchboxConnections(Operation *switchOp,
-                           std::vector<PortMaskValue> nextPortMaskValues,
-                           MaskValue maskValue) const {
+  maskSwitchboxConnections(Operation *switchOp, MaskValue maskValue,
+                           std::vector<PacketConnection> nextOpPortMaskValues,
+                           Graph &g,
+                           std::vector<Operation *> &antennaKeys) const {
     std::vector<PacketConnection> worklist;
-    bool matched = false;
-    for (auto &nextPortMaskValue : nextPortMaskValues) {
-      Port nextPort = nextPortMaskValue.first;
-      MaskValue nextMaskValue = nextPortMaskValue.second;
+    for (auto &nextOpPortMaskValue : nextOpPortMaskValues) {
+      Operation *op = nextOpPortMaskValue.first.first;
+      Port nextPort = nextOpPortMaskValue.first.second;
+      MaskValue nextMaskValue = nextOpPortMaskValue.second;
       int maskConflicts = nextMaskValue.first & maskValue.first;
       LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.first << " "
                               << maskValue.second << "\n");
@@ -124,15 +199,25 @@ private:
         // Incoming packets cannot match this rule. Skip it.
         continue;
       }
-      matched = true;
       MaskValue newMaskValue = std::make_pair(
           maskValue.first | nextMaskValue.first,
           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.
-      if (!nextConnection.hasValue())
-        continue;
+      // then add to antenna list
+      if (!nextConnection.hasValue()) {
+        antennaKeys.push_back(op);
+        if (g.isNotEmpty()) // continue if in antenna detection mode
+          continue;
+        else
+          break; // break to restart in antenna detection mode
+      }
+
+      // add to graph if in detection mode and op is connectOp
+      if (g.isNotEmpty())
+        g.addVertex(op, nextConnection.getValue().first,
+                    nextConnection.getValue().second);
 
       worklist.push_back(
           std::make_pair(nextConnection.getValue(), newMaskValue));
@@ -140,12 +225,91 @@ private:
     return worklist;
   }
 
+  void detect_antenna(Graph &g, std::vector<Operation *> connectedTilesKeys,
+                      std::vector<Operation *> antennaKeys) const {
+
+    //    This method detects antennas by first starting with the leaf nodes of
+    // the generated graph that is built while traversing from a FlowEndPoint.
+    // There are two types of leaf nodes: connectedTiles and antennas. Vertices
+    // in the connectedTilesKeys vector are leafs that have terminated at a
+    // FlowEndPoint and are not antennas. Vertices in the antennaKeys vector are
+    // antennas that we wish to detect.
+    //    As we desire to emit a message that prints the path from the antennas
+    // while also distinguishing from vertices that are part of a valid paths,
+    // we first create a set which keeps track of these valid vertices (the
+    // order is not important). In the second phase we traceback the path from
+    // an antenna using the “getPathToRoot” method where the order of the path
+    // is preserved. Afterwards, the individual vertices are classifies into
+    // “antenna_valid_path” and “antenna_nonvalid_paths” based on the
+    // “valid_path” set from the previous phase. Finally, we emit a Warning for
+    // antennas and Remarks for paths from the antenna that are themselves not
+    // antennas.
+
+    LLVM_DEBUG(llvm::dbgs() << "Starting Antenna Detection\n");
+    LLVM_DEBUG(llvm::dbgs() << "Creating valid verticies\n");
+    std::vector<Operation *> path_buffer;
+    // create valid path from connected tiles
+    std::set<Operation *> valid_path;
+    for (auto &tile_key : connectedTilesKeys) {
+      // todo: empty case
+      path_buffer = g.getPathToRoot(tile_key);
+      for (auto &vertex_key : path_buffer) {
+        if (valid_path.find(vertex_key) == valid_path.end()) {
+          valid_path.insert(vertex_key);
+        }
+      }
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "Starting Antenna Warning Generation\n");
+    // generate messages for antennas
+    for (auto &antenna_key : antennaKeys) {
+      std::vector<Operation *> antenna_nonvalid_path;
+      std::vector<Operation *> antenna_valid_path;
+      path_buffer = g.getPathToRoot(antenna_key);
+
+      for (auto &vertex_key : path_buffer) {
+        if (valid_path.find(vertex_key) == valid_path.end()) {
+          antenna_nonvalid_path.push_back(vertex_key);
+        } else {
+          antenna_valid_path.push_back(vertex_key);
+        }
+      }
+
+      LLVM_DEBUG(llvm::dbgs() << "Warning Non-Valid Path\n");
+      for (auto &key : antenna_nonvalid_path) {
+        // if (isa<ConnectOp>(key)) { // todo: else -> packet switched antenna
+        // Generate Warning message for antennas inside a switchbox
+        Operation *parent_op = key->getParentOp();
+        key->emitWarning("Antenna\nAt Destination Port (" +
+                         g.getPortBundle(key) + ":" + g.getPortChannel(key) +
+                         ")\n")
+                .attachNote(parent_op->getLoc())
+            << "in parent region\n";
+        // } else
+      }
+
+      LLVM_DEBUG(llvm::dbgs() << "Remark Valid Path\n");
+      for (auto &key : antenna_valid_path) {
+        // Generate Remarks for antenna path traceback
+        key->emitRemark("Path Traceback\nUsing Port (" + g.getPortBundle(key) +
+                        ":" + g.getPortChannel(key) + ")\n");
+      }
+    }
+  }
+
 public:
   // Get the tiles connected to the given tile, starting from the given
   // output port of the tile.  This is 1:N relationship because each
   // switchbox can broadcast.
-  std::vector<PacketConnection> getConnectedTiles(TileOp tileOp,
-                                                  Port port) const {
+  llvm::Optional<std::vector<PacketConnection>>
+  getConnectedTiles(TileOp tileOp, Port port, bool &antenna_detection,
+                    std::set<Operation *> &connections_set) const {
+
+    // create graph
+    Graph g;
+    // root node if in detection mode
+    if (antenna_detection)
+      g.addVertex(nullptr, tileOp.getOperation(), port);
 
     LLVM_DEBUG(llvm::dbgs()
                << "getConnectedTile(" << stringifyWireBundle(port.first) << " "
@@ -157,14 +321,30 @@ public:
     // A worklist of PortConnections to visit.  These are all input ports of
     // some object (likely either a TileOp or a SwitchboxOp).
     std::vector<PacketConnection> worklist;
+    // stores the leafs
+    std::vector<Operation *> connectedTilesKeys;
+    std::vector<Operation *> antennaKeys;
+
     // Start the worklist by traversing from the tile to its connected
     // switchbox.
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
 
     // If there is no wire to traverse, then just return no connection
-    if (!t.hasValue())
-      return connectedTiles;
-    worklist.push_back(std::make_pair(t.getValue(), std::make_pair(0, 0)));
+    // emit error message for TileOp Antenna
+    if (!t.hasValue()) {
+      // tileOp.getOperation()->emitWarning(
+      //     "TileOp Antenna: " + stringifyWireBundle(port.first) + "\n");
+      return None;
+    }
+
+    // add node to graph if in detection mode
+    if (g.isNotEmpty())
+      g.addVertex(tileOp.getOperation(), t.getValue().first,
+                  t.getValue().second);
+
+    PacketConnection connection =
+        std::make_pair(t.getValue(), std::make_pair(0, 0));
+    worklist.push_back(connection);
 
     while (!worklist.empty()) {
       PacketConnection t = worklist.back();
@@ -176,27 +356,18 @@ public:
       if (isa<FlowEndPoint>(other)) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
-      } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
+        connectedTilesKeys.push_back(other);
+      } else if (isa<Interconnect>(other)) {
+        // append to graph included with method
+        std::vector<PacketConnection> nextOpPortMaskValues =
+            getConnectionsThroughSwitchboxShimMux(other, otherPort, g,
+                                                  connections_set);
+        // append to graph included with method
+        std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
+            other, maskValue, nextOpPortMaskValues, g, antennaKeys);
         // append to the worklist
         worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
-          // No rule matched some incoming packet.  This is likely a
-          // configuration error.
-          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
-          LLVM_DEBUG(other->dump());
-        }
-      } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
-        // append to the worklist
-        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (nextPortMaskValues.size() > 0 && newWorkList.size() == 0) {
+        if (nextOpPortMaskValues.size() > 0 && newWorkList.size() == 0) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
           LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
@@ -207,24 +378,78 @@ public:
                    << "*** Connection Terminated at unknown operation: ");
         LLVM_DEBUG(other->dump());
       }
+      // break to restart in antenna detection mode
+      if (!antenna_detection && antennaKeys.size() > 0) {
+        antenna_detection = true;
+        return connectedTiles;
+      }
     }
+    if (g.isNotEmpty())
+      detect_antenna(g, connectedTilesKeys, antennaKeys);
+
     return connectedTiles;
   }
 };
 
+std::set<Operation *> create_connections_set(ModuleOp m) {
+  // Dangling island antennas refers to ConnectOps that do not originate from a
+  // FlowEndPoint. To be able to detect these antennas we create a set with the
+  // addresses of the ConnectOp. During traversal from a FlowEndPoint we remove
+  // ConnectOps that have been visited. Thus, remaining ConnectOps in the set
+  // are Dangling Island antennas. We note that for Dangling island antennas,
+  // both sourcePort and destPort are part of the antenna as Dangling island
+  // antennas do not have a sourcePort connection.
+
+  std::set<Operation *> new_set;
+  for (auto switchbox : m.getOps<SwitchboxOp>()) {
+    Region &r = switchbox.connections();
+    Block &b = r.front();
+    // dangling ConnectOp ports
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      // implicit type converion ConnectOp -> Operation*
+      new_set.insert(connectOp);
+    }
+    // dangling packetRulesOps ports
+    for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
+      // implicit type converion PacketRulesOp -> Operation*
+      new_set.insert(packetRulesOp);
+    }
+    // dangling masterset ports
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      // implicit type converion MasterSetOp -> Operation*
+      new_set.insert(masterSetOp);
+    }
+  }
+  // ShimMux should be caught by the verifier
+  return new_set;
+}
+
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
-                          OpBuilder &rewriter) {
+                          OpBuilder &rewriter,
+                          std::set<Operation *> &connections_set) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
 
   std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
   for (WireBundle bundle : bundles) {
     for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
-      std::vector<PacketConnection> tiles =
-          analysis.getConnectedTiles(op, std::make_pair(bundle, i));
-      LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
+      bool antenna_detection = false;
+      llvm::Optional<std::vector<PacketConnection>> tiles;
+      tiles = analysis.getConnectedTiles(op, std::make_pair(bundle, i),
+                                         antenna_detection, connections_set);
+      if (!tiles.hasValue())
+        // when no connections exist from the starting TileOP & bundle
+        break;
 
-      for (PacketConnection &c : tiles) {
+      if (antenna_detection) { // get connected Tiles in antenna detection mode
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Rerun ConnectivityAnalysis in Antenna Detection Mode\n");
+        tiles = analysis.getConnectedTiles(op, std::make_pair(bundle, i),
+                                           antenna_detection, connections_set);
+      }
+      LLVM_DEBUG(llvm::dbgs() << tiles.getValue().size() << " Flows\n");
+
+      for (PacketConnection &c : tiles.getValue()) {
         PortConnection portConnection = c.first;
         MaskValue maskValue = c.second;
         Operation *destOp = portConnection.first;
@@ -260,9 +485,18 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
     ModuleOp m = getOperation();
     ConnectivityAnalysis analysis(m);
 
+    std::set<Operation *> connections_set = create_connections_set(m);
+
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
     for (auto tile : m.getOps<TileOp>()) {
-      findFlowsFrom(tile, analysis, builder);
+      findFlowsFrom(tile, analysis, builder, connections_set);
+    }
+
+    // emit error when connections_set is not empty
+    for (auto &key : connections_set) {
+      Operation *parent_op = key->getParentOp();
+      key->emitWarning("Dangling Island Antenna\n")
+          .attachNote(parent_op->getLoc());
     }
   }
 };
