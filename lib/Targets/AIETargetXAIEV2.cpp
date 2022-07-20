@@ -407,6 +407,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     output << "void mlir_aie_configure_shimdma_" << col << row << "(" << ctx_p
            << ") {\n";
     for (auto &block : op.body()) {
+      bool foundBdPacket = false;
+      int packetType = 0;
+      int packetID = 0;
       bool foundBd = false;
       int len = 0;
       uint64_t bytes = 0;
@@ -439,6 +442,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           relEnable = enable;
           relValue = op.getLockValue();
         }
+      }
+
+      for (auto op : block.getOps<DMABDPACKETOp>()) {
+        foundBdPacket = true;
+        packetType = op.getPacketType();
+        packetID = op.getPacketID();
       }
 
       int bdNum = blockMap[&block];
@@ -481,6 +490,10 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                  << " /* nextbd */ " << nextBdNum << ", "
                  << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
                                                  // disable this?
+        }
+        if (foundBdPacket) {
+          output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
+                 << ", " << packetStr(packetID, packetType) << ");\n";
         }
         output << "XAie_DmaEnableBd(" << tileDMAInstRefStr(col, row, bdNum)
                << ");\n";
