@@ -363,7 +363,6 @@ void AIEDialect::printType(mlir::Type type,
     printer << "objectFifoSubview<";
     printer << subviewType.getElementType();
     printer << '>';
-
   }
 }
 
