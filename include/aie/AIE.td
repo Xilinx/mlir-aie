@@ -63,10 +63,6 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
-def AIE_ArrayType :
-    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEArrayType>()">,
-                "AIE array type">;
-
 def AIE_ObjectFifoType :
     DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoType>()">,
                 "AIE objectFifo type">;
@@ -75,7 +71,7 @@ def AIE_ObjectFifoSubviewType :
     DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoSubviewType>()">,
                 "AIE ObjectFifoSubview type">;
 
-def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType, AIE_ArrayType]>;
+def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
@@ -1386,57 +1382,13 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_CreateArrayOp : AIE_Op<"createArray", []> {
-  let summary = "Create an aie array";
-  let description = [{
-    Creates an aie.array with the input values of given type
-  }];
-
-  let arguments = (
-    ins Variadic<AnyType>:$operands
-  );
-
-  let results = (outs AIE_ArrayType:$output);
-
-  let assemblyFormat = [{
-    attr-dict `(` $operands `:` type($operands) `)` `:` type($output)
-  }];
-
-  //let extraClassDeclaration = [{
-  //  int size();
-  //}];
-}
-
-def AIE_ArrayLoadOp : AIE_Op<"array.load", []> {
-  let summary = "Load operation for aie arrays";
-  let description = [{
-    Given an aie.array and an index value, outputs the element at that position from the array
-  }];
-
-  let arguments = (
-    ins AIE_ArrayType:$array, 
-        Index:$index
-  );
-
-  let results = (outs AnyType:$output);
-
-  let assemblyFormat = [{
-    attr-dict `(` $array `:` type($array) `,` $index `)` `:` type($output)
-  }];
-
-  //let hasVerifier = 1;
-
-  //let extraClassDeclaration = [{
-  //  int getIndex();
-  //}];
-}
-
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
     a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
-    buffers (of given output type) and their locks in the Memory Module of the producer tile.
+    buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
+    These elements represent the conceptual depth of the objectFifo.
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are

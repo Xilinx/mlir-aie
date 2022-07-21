@@ -164,54 +164,6 @@ bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
 }
 
 namespace detail {
-/// This class represents the internal storage of the AIE `ArrayType`.
-struct AIEArrayTypeStorage : public mlir::TypeStorage {
-  /// The `KeyTy` is a required type that provides an interface for the storage
-  /// instance. This type will be used when uniquing an instance of the type
-  /// storage.
-  using KeyTy = mlir::Type;
-
-  /// A constructor for the array type storage instance.
-  AIEArrayTypeStorage(mlir::Type elementType) : elementType(elementType) {}
-
-  /// Define the comparison function for the key type with the current storage
-  /// instance. This is used when constructing a new instance to ensure that we
-  /// haven't already uniqued an instance of the given key.
-  bool operator==(const KeyTy &key) const { return key == KeyTy(elementType); }
-
-  /// Define a construction method for creating a new instance of this storage.
-  /// This method takes an instance of a storage allocator, and an instance of a
-  /// `KeyTy`.
-  static AIEArrayTypeStorage *construct(mlir::TypeStorageAllocator &allocator,
-                                        const KeyTy &key) {
-    // Allocate the storage instance and construct it.
-    return new (allocator.allocate<AIEArrayTypeStorage>())
-        AIEArrayTypeStorage(key);
-  }
-
-  mlir::Type elementType;
-};
-} // namespace detail
-
-AIEArrayType AIEArrayType::get(mlir::Type elementType) {
-  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
-  // of this type.
-  mlir::MLIRContext *ctx = elementType.getContext();
-  return Base::get(ctx, elementType);
-}
-
-mlir::Type AIEArrayType::getElementType() {
-  // 'getImpl' returns a pointer to the internal storage instance.
-  return getImpl()->elementType;
-}
-
-LogicalResult AIEArrayType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                   mlir::Type elementType) {
-  // TODO: what to verify?
-  return success();
-}
-
-namespace detail {
 /// This class represents the internal storage of the AIE `ObjectFifoType`.
 struct AIEObjectFifoTypeStorage : public mlir::TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
@@ -367,24 +319,6 @@ static OptionalParseResult aieTypeParser(MLIRContext *context,
     return result = AIEObjectFifoSubviewType::get(elementType), success();
   }
 
-  if (name.equals("array")) {
-    if (parser.parseLess())
-      return failure();
-
-    // Parse the element type of the struct.
-    mlir::Type elementType;
-    // Parse the current element type.
-    llvm::SMLoc typeLoc = parser.getCurrentLocation();
-    if (parser.parseType(elementType))
-      return failure();
-
-    // Parse: `>`
-    if (parser.parseGreater())
-      return failure();
-
-    return result = AIEArrayType::get(elementType), success();
-  }
-
   return {};
 }
 
@@ -430,11 +364,6 @@ void AIEDialect::printType(mlir::Type type,
     printer << subviewType.getElementType();
     printer << '>';
 
-  } else if (type.isa<AIEArrayType>()) {
-    AIEArrayType arrayType = type.cast<AIEArrayType>();
-    printer << "array<";
-    printer << arrayType.getElementType();
-    printer << '>';
   }
 }
 
@@ -442,7 +371,7 @@ void AIEDialect::printType(mlir::Type type,
 AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
     : mlir::Dialect("AIE", ctx, ::mlir::TypeID::get<AIEDialect>()) {
   // addTypes<AIEListType>();
-  addTypes<AIEArrayType, AIEObjectFifoType, AIEObjectFifoSubviewType>();
+  addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addOperations<
 #define GET_OP_LIST
 #include "aie/AIE.cpp.inc"

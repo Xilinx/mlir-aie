@@ -346,17 +346,20 @@ XAieTile_LockRelease(&(TileInst[7][2]), 1, 0x1, 0);
 
 [ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/non_adjacency_test_1.aie.mlir)
 
-An objectFifo can be established between two tiles.
+An objectFIFO can be established between two tiles.
+Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO. Instead, a pool of memory elements is allocated to the objectFIFO. 
+Processes can then write to and read from these memory elements after acquiring them.
 
-Define two tiles and create an AIE.objectFifo with two elements of type <memref<16xi32>> between them:
+Define two tiles and create an AIE.objectFifo of depth two between them, with the two elements being of type <memref<16xi32>>:
 ```
 %tile12 = AIE.tile(1, 2)
 %tile33 = AIE.tile(3, 3)
 %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
 ```
+After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
 
-objectFifo operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFifo.
-Operations can be performed on the objectFifo in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectFifoSubview type, then released. 
+objectFIFO operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFIFO.
+Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectFifoSubview type, then released: 
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -389,7 +392,7 @@ Operations can be performed on the objectFifo in the cores: elements can be acqu
 }
 ```
 
-For correct execution, loops that contain objectFifo operations are unrolled based on objectFifo size; the previous code in core12 becomes:
+For correct execution, loops that contain objectFIFO operations must be unrolled based on objectFIFO size; the previous code in core12 becomes:
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -412,7 +415,7 @@ For correct execution, loops that contain objectFifo operations are unrolled bas
 }
 ```
 
-At a higher abstraction level, a process can be registered to an objectFifo using access patterns and work functions:
+At a higher abstraction level, a process can be registered to an objectFIFO using access patterns and work functions:
 ```
 module @objectFIFO  {
     %tile12 = AIE.tile(1, 2)
