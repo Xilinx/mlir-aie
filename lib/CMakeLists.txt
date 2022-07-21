@@ -23,6 +23,9 @@ add_mlir_dialect_library(AIE
   AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp
+  AIEObjectFifoStatefulTransform.cpp
+  AIEObjectFifoLoopUnroll.cpp
+  AIEObjectFifoRegisterProcess.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

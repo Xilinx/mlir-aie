@@ -227,4 +227,59 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
   let dependentDialects = [
   ];
 }
+
+def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "ModuleOp"> {
+  let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
+  let description = [{
+    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
+    producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
+    operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
+    each process.
+
+    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
+    pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEObjectFifoLoopUnroll : Pass<"aie-unroll-objectFifos", "ModuleOp"> {
+  let summary = "Identify and unroll loops that contain operations on objectFifos based on their number of elements";
+  let description = [{
+    Extend the body of each loop that contains operations on objectFifos such that it is unrolled
+    based on the number of elements in the objectFifos. If the number of iterations of the loop 
+    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
+    the original loop.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLoopUnrollPass()";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "func::FuncDialect",
+    "arith::ArithmeticDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "ModuleOp"> {
+  let summary = "Generate acquire/release patterns for producer/consumer processes registered to an objectFifo";
+  let description = [{
+    Generate acquire/release patterns in the CoreOps of associated cores for each 
+    aie.objectFifo.registerProcess operation. Patterns are generated as for loops
+    of different sizes depending on input patterns.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoRegisterProcessPass()";
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "func::FuncDialect",
+    "arith::ArithmeticDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif
