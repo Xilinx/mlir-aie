@@ -209,6 +209,10 @@ struct AIEObjectFifoStatefulTransformPass
   void createDMA(OpBuilder &builder, ObjectFifoCreateOp op, DMAChan channelMode,
                  int lockMode) {
     int numBlocks = op.size();
+
+    if (numBlocks == 0)
+      return; 
+
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
 
@@ -343,7 +347,8 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to find the maximum number of elements (of given objectFifo)
-  /// acquired by a process running on given tile.
+  /// acquired by a process running on given tile. If no CoreOp exists for given
+  /// tile, returns 0.
   int findProcessMaxAcquire(ModuleOp &m, TileOp tile,
                             ObjectFifoCreateOp objFifo) {
     CoreOp *core = nullptr;
@@ -354,6 +359,9 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
+    if (core == nullptr) 
+      return 0;
+
     int maxAcquire = 0;
     core->walk([&](ObjectFifoAcquireOp acqOp) {
       if (acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo) {
@@ -362,7 +370,9 @@ struct AIEObjectFifoStatefulTransformPass
       }
     });
 
-    return maxAcquire + 1; // +1 to account for DMA unit
+    return (maxAcquire > 0) ? (maxAcquire + 1) : 0; 
+    // +1 because objectFifo size is always 1 bigger than maxAcquire to allow for prefetching 
+    // simplest case scenario is at least a ping-pong buffer
   }
 
   void runOnOperation() override {

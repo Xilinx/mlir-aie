@@ -1413,8 +1413,6 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
     `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
 
-  let hasVerifier = 1;
-
   let extraClassDeclaration = [{
     int size() { return elemNumber(); }
     TileOp getProducerTileOp();

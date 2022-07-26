@@ -390,14 +390,6 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getConsumerTileOp() {
   return cast<xilinx::AIE::TileOp>(consumerTile().getDefiningOp());
 }
 
-LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
-  if (size() < 2)
-    return emitError(
-        "Number of elements of AIE ObjectFifoCreateOp operation must be >= 2");
-
-  return success();
-}
-
 // ObjectFifoAcquireOp
 LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
