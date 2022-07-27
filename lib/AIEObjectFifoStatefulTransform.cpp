@@ -211,7 +211,7 @@ struct AIEObjectFifoStatefulTransformPass
     int numBlocks = op.size();
 
     if (numBlocks == 0)
-      return; 
+      return;
 
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
@@ -359,7 +359,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    if (core == nullptr) 
+    if (core == nullptr)
       return 0;
 
     int maxAcquire = 0;
@@ -370,9 +370,9 @@ struct AIEObjectFifoStatefulTransformPass
       }
     });
 
-    return (maxAcquire > 0) ? (maxAcquire + 1) : 0; 
-    // +1 because objectFifo size is always 1 bigger than maxAcquire to allow for prefetching 
-    // simplest case scenario is at least a ping-pong buffer
+    return (maxAcquire > 0) ? (maxAcquire + 1) : 0;
+    // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
+    // for prefetching simplest case scenario is at least a ping-pong buffer
   }
 
   void runOnOperation() override {
