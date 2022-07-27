@@ -660,7 +660,7 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   // ];
 }
 
-def AIE_BroadPacketOp: AIE_Op<"broad_packet", [SingleBlockImplicitTerminator<"EndOp">]> {
+def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
@@ -680,7 +680,7 @@ def AIE_BroadPacketOp: AIE_Op<"broad_packet", [SingleBlockImplicitTerminator<"En
       %74 = AIE.tile(7, 4)
       %63 = AIE.tile(6, 3)
       %64 = AIE.tile(6, 4)
-      AIE.broad_packet(%70, "DMA" : 0){
+      AIE.broadcast_packet(%70, "DMA" : 0){
         AIE.bp_id(0x0){
           AIE.bp_dest<%73, "DMA" : 0>
           AIE.bp_dest<%63, "DMA" : 0>
@@ -708,8 +708,8 @@ def AIE_BPIDOp: AIE_Op<"bp_id", [SingleBlockImplicitTerminator<"EndOp">]> {
   let summary = "A set of packets that share the same ID";
   let description = [{
     A set of destination packets that share the same source and ID. This must exist
-    within an [AIE.broad_packet] operation.
-    See [AIE.broad_packet]for an example.
+    within an [AIE.broadcast_packet] operation.
+    See [AIE.broadcast_packet]for an example.
   }];
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let extraClassDeclaration = [{
@@ -727,7 +727,7 @@ def AIE_BPDestOp: AIE_Op<"bp_dest", [HasParent<"BPIDOp">]> {
   let description = [{
     An object representing the destination of a  Broad Packet. This must exist
     within an [AIE.bp_id] operation.
-    See [AIE.broad_packet] for an example.
+    See [AIE.broadcast_packet] for an example.
   }];
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict

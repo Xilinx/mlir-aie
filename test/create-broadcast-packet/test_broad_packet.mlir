@@ -1,6 +1,6 @@
 // RUN: aie-opt --aie-create-broadcast-packet %s | FileCheck %s
 
-// CHECK-LABEL: module @test_broad_packet {
+// CHECK-LABEL: module @test_broadcast_packet {
 // CHECK-NEXT:    %0 = AIE.tile(6, 3)
 // CHECK-NEXT:    %1 = AIE.tile(6, 4)
 // CHECK-NEXT:    %2 = AIE.tile(7, 2)
@@ -23,13 +23,13 @@
 //Besides, (6, 3) and (7, 3) are in stream with ID 0,
 //(6, 4) and (7, 4) are in stream with ID 1. That means that pair (6, 3), (7, 3)
 //and pair (6, 4) and (7, 4) will time-multiplexed use tile DMA 0 of (7,2).
-module @test_broad_packet {
+module @test_broadcast_packet {
   %t63 = AIE.tile(6, 3)
   %t64 = AIE.tile(6, 4)
   %t72 = AIE.tile(7, 2)
   %t73 = AIE.tile(7, 3)
   %t74 = AIE.tile(7, 4)
-  AIE.broad_packet(%t72, "DMA" : 0){
+  AIE.broadcast_packet(%t72, "DMA" : 0){
     AIE.bp_id(0x0){
       AIE.bp_dest<%t73, "DMA" : 0>
       AIE.bp_dest<%t63, "DMA" : 0>
