@@ -175,6 +175,18 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   ];
 }
 
+def AIEBroadPacket : Pass<"aie-create-broadcast-packet", "ModuleOp"> {
+  let summary = "Replace combination of broadcast and packet-switch by packet-flow";
+  let description = [{
+    Replace combination of broadcast and packet-switch by packet-flow  
+  }];
+
+  let constructor = "xilinx::AIE::createAIEBroadPacketPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "ModuleOp"> {
   let summary = "Route aie.packetflow operations through switchboxes";
   let description = [{

@@ -398,6 +398,21 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
+LogicalResult xilinx::AIE::BroadPacketOp::verify() {
+  Region &body = ports();
+  assert(getOperation()->getNumRegions());
+  assert(!body.empty());
+  for (auto &ops : body.front()) {
+    if (auto Op = dyn_cast<xilinx::AIE::BPIDOp>(ops)) {
+    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
+    } else {
+      return ops.emitOpError("cannot be contained in a BroadPacket op");
+    }
+  }
+
+  return success();
+}
+
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = ports();
   // DenseSet<xilinx::AIE::Port> destset;
