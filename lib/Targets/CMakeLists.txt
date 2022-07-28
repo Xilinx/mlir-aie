@@ -11,6 +11,7 @@ add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetXAIEV1.cpp
   AIETargetXAIEV2.cpp
+  AIETargetAirbin.cpp
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   ADDITIONAL_HEADER_DIRS
