@@ -18,6 +18,7 @@ set(_sources
   AIETargetXAIEV2.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
+  AIETargetAirbin.cpp
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   AIELLVMLink.cpp

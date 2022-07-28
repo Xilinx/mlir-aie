@@ -130,6 +130,11 @@ def parse_args(args=None):
         action="store_true",
         help="Enable linking of AIE code",
     )
+    parser.add_argument('--aie-generate-airbin',
+                        dest="airbin",
+                        default=False,
+                        action='store_const', const=True,
+                        help='Generate airbin configuration (default is off)')
     parser.add_argument(
         "--no-link",
         dest="link",
