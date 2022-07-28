@@ -33,10 +33,10 @@
 // CHECK:      %c10_4 = arith.constant 10 : index
 // CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
-// CHECK:        %5 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %5 = AIE.objectFifo.acquire<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        func.call @producer_work() : () -> ()
-// CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:        AIE.objectFifo.release<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
 // CHECK:      AIE.end
 // CHECK:    }
@@ -45,10 +45,10 @@
 // CHECK:      %c10_4 = arith.constant 10 : index
 // CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      scf.for %arg0 = %c0 to %c10_4 step %c1 {
-// CHECK:        %5 = AIE.objectFifo.acquire {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %5 = AIE.objectFifo.acquire<Consume> (%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        func.call @consumer_work() : () -> ()
-// CHECK:        AIE.objectFifo.release {port = "consume"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:        AIE.objectFifo.release<Consume> (%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
 // CHECK:      AIE.end
 // CHECK:    }
@@ -74,6 +74,6 @@ module @registerPatterns  {
         return
     }
 
-    AIE.objectFifo.registerProcess{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength) 
-    AIE.objectFifo.registerProcess{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %consAcqPattern : tensor<1xi32>, %consRelPattern : tensor<1xi32>, @consumer_work, %consLength) 
+    AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength) 
+    AIE.objectFifo.registerProcess<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %consAcqPattern : tensor<1xi32>, %consRelPattern : tensor<1xi32>, @consumer_work, %consLength) 
 }

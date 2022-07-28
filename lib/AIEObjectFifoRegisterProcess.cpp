@@ -78,8 +78,8 @@ struct AIEObjectFifoRegisterProcessPass
 
   void createPattern(OpBuilder &builder, ModuleOp &m,
                      ObjectFifoRegisterProcessOp regOp, mlir::Type elementType,
-                     IntegerAttr acqNumber, IntegerAttr relNumber, int length,
-                     StringRef port) {
+                     IntegerAttr acqNumber, IntegerAttr relNumber, 
+                     int length) {
     // create for loop
     mlir::scf::ForOp forLoop;
     if (length > 1) {
@@ -92,8 +92,7 @@ struct AIEObjectFifoRegisterProcessPass
     if (acqNumber.getInt() > 0) {
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
-          builder.getUnknownLoc(), acqType, regOp.fifo(), acqNumber);
-      acqOp.getOperation()->setAttr("port", builder.getStringAttr(port));
+          builder.getUnknownLoc(), acqType, regOp.getPortAttr(), regOp.fifo(), acqNumber);
 
       // subview accesses
       ObjectFifoSubviewAccessOp acc;
@@ -118,8 +117,7 @@ struct AIEObjectFifoRegisterProcessPass
     // releases
     if (relNumber.getInt() > 0) {
       auto relOp = builder.create<ObjectFifoReleaseOp>(builder.getUnknownLoc(),
-                                                       regOp.fifo(), relNumber);
-      relOp.getOperation()->setAttr("port", builder.getStringAttr(port));
+                                                       regOp.getPortAttr(), regOp.fifo(), relNumber);
       builder.setInsertionPointAfter(relOp);
     }
 
@@ -137,19 +135,15 @@ struct AIEObjectFifoRegisterProcessPass
       builder.setInsertionPointToEnd(m.getBody());
       ObjectFifoCreateOp objFifo =
           registerOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      auto port = registerOp.port().getValue();
       auto elementType =
           objFifo.getType().dyn_cast<AIEObjectFifoType>().getElementType();
 
       // identify tile on which to generate the pattern
       TileOp tile;
-      if (port == "produce") {
+      if (registerOp.port() == ObjectFifoPort::Produce) {
         tile = objFifo.getProducerTileOp();
-      } else if (port == "consume") {
+      } else if (registerOp.port() == ObjectFifoPort::Consume) {
         tile = objFifo.getConsumerTileOp();
-      } else {
-        assert(false && "registerProcess() must be called with either "
-                        "'produce' or 'consume' ports");
       }
 
       // retrieve core associated to above tile or create new one
@@ -184,7 +178,7 @@ struct AIEObjectFifoRegisterProcessPass
         IntegerAttr relNumber =
             registerOp.getReleasePattern().getValues<IntegerAttr>()[0];
         createPattern(builder, m, registerOp, elementType, acqNumber, relNumber,
-                      registerOp.getProcessLength(), port);
+                      registerOp.getProcessLength());
 
       } else {
         auto acqPattern =
@@ -235,7 +229,7 @@ struct AIEObjectFifoRegisterProcessPass
             }
           }
           createPattern(builder, m, registerOp, elementType, currAcq, currRel,
-                        length, port);
+                        length);
           length = 1;
         }
       }
