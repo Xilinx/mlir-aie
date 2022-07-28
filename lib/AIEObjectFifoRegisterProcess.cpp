@@ -78,8 +78,7 @@ struct AIEObjectFifoRegisterProcessPass
 
   void createPattern(OpBuilder &builder, ModuleOp &m,
                      ObjectFifoRegisterProcessOp regOp, mlir::Type elementType,
-                     IntegerAttr acqNumber, IntegerAttr relNumber, 
-                     int length) {
+                     IntegerAttr acqNumber, IntegerAttr relNumber, int length) {
     // create for loop
     mlir::scf::ForOp forLoop;
     if (length > 1) {
@@ -92,7 +91,8 @@ struct AIEObjectFifoRegisterProcessPass
     if (acqNumber.getInt() > 0) {
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
-          builder.getUnknownLoc(), acqType, regOp.getPortAttr(), regOp.fifo(), acqNumber);
+          builder.getUnknownLoc(), acqType, regOp.getPortAttr(), regOp.fifo(),
+          acqNumber);
 
       // subview accesses
       ObjectFifoSubviewAccessOp acc;
@@ -117,7 +117,8 @@ struct AIEObjectFifoRegisterProcessPass
     // releases
     if (relNumber.getInt() > 0) {
       auto relOp = builder.create<ObjectFifoReleaseOp>(builder.getUnknownLoc(),
-                                                       regOp.getPortAttr(), regOp.fifo(), relNumber);
+                                                       regOp.getPortAttr(),
+                                                       regOp.fifo(), relNumber);
       builder.setInsertionPointAfter(relOp);
     }
 
