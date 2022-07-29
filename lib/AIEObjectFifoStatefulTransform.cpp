@@ -346,11 +346,16 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  /// Function used to find the maximum number of elements (of given objectFifo)
-  /// acquired by a process running on given tile. If no CoreOp exists for given
-  /// tile, returns 0.
-  int findProcessMaxAcquire(ModuleOp &m, TileOp tile,
+  /// Function used to find the size of an objectFifo after split based on
+  /// the maximum number of elements (of the original objectFifo) acquired
+  /// by a process running on given tile. If no CoreOp exists for this tile
+  /// return 0.
+  int findObjectFifoSize(ModuleOp &m, TileOp tile,
                             ObjectFifoCreateOp objFifo) {
+
+    if (objFifo.size() == 0)
+      return 0;
+
     CoreOp *core = nullptr;
     for (auto coreOp : m.getOps<CoreOp>()) {
       if ((coreOp.tile().getDefiningOp<TileOp>()) == tile) {
@@ -370,9 +375,16 @@ struct AIEObjectFifoStatefulTransformPass
       }
     });
 
-    return (maxAcquire > 0) ? (maxAcquire + 1) : 0;
-    // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
-    // for prefetching simplest case scenario is at least a ping-pong buffer
+    if (maxAcquire > 0) {
+      if ((maxAcquire == 1) && (objFifo.size() == 1)) {
+        return 1;
+      }
+      return maxAcquire + 1;
+      // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
+      // for prefetching: simplest case scenario is at least a ping-pong buffer
+    }
+
+    return 0;
   }
 
   void runOnOperation() override {
@@ -395,9 +407,9 @@ struct AIEObjectFifoStatefulTransformPass
       } else {
         // Find max acquire number for producer and consumer of objectFifo.
         int prodMaxAcquire =
-            findProcessMaxAcquire(m, createOp.getProducerTileOp(), createOp);
+            findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
         int consMaxAcquire =
-            findProcessMaxAcquire(m, createOp.getConsumerTileOp(), createOp);
+            findObjectFifoSize(m, createOp.getConsumerTileOp(), createOp);
 
         // objectFifos between non-adjacent tiles must be split into two new
         // ones, their elements will be created in next iterations
