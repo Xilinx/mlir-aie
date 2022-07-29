@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -21,7 +22,15 @@
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <cstdint>
+#include <elf.h>
+#include <fcntl.h>
+#include <sstream>
+#include <unistd.h>
 
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
@@ -34,6 +43,286 @@ using namespace xilinx::AIE;
 
 namespace xilinx {
 namespace AIE {
+
+static constexpr auto TILE_ADDR_OFF_WITDH = 18u;
+
+static constexpr auto TILE_ADDR_ROW_SHIFT = TILE_ADDR_OFF_WITDH;
+static constexpr auto TILE_ADDR_ROW_WIDTH = 5u;
+
+static constexpr auto TILE_ADDR_COL_SHIFT =
+    TILE_ADDR_ROW_SHIFT + TILE_ADDR_ROW_WIDTH;
+static constexpr auto TILE_ADDR_COL_WIDTH = 7u;
+
+static constexpr auto TILE_ADDR_ARR_SHIFT =
+    TILE_ADDR_COL_SHIFT + TILE_ADDR_COL_WIDTH;
+
+/*
+ * Tile address format:
+ * --------------------------------------------
+ * |                7 bits  5 bits   18 bits  |
+ * --------------------------------------------
+ * | Array offset | Column | Row | Tile addr  |
+ * --------------------------------------------
+ */
+class TileAddress {
+public:
+  TileAddress(uint8_t column, uint8_t row, uint64_t array_offset = 0x800u)
+      : array_offset{array_offset}, column{column}, row{row} {}
+
+  uint64_t fullAddress(uint32_t register_offset) const {
+    return (0x800ul << TILE_ADDR_ARR_SHIFT) |
+           (static_cast<uint64_t>(column) << TILE_ADDR_COL_SHIFT) |
+           (static_cast<uint64_t>(row) << TILE_ADDR_ROW_SHIFT) |
+           register_offset;
+  }
+
+private:
+  uint64_t array_offset : 34;
+  uint8_t column : TILE_ADDR_COL_WIDTH;
+  uint8_t row : TILE_ADDR_ROW_WIDTH;
+};
+
+class Address {
+public:
+  Address(TileAddress tile, uint32_t register_offset)
+      : tile{tile}, register_offset{register_offset} {}
+
+  operator uint64_t() const { return tile.fullAddress(register_offset); }
+
+private:
+  TileAddress tile;
+  uint32_t register_offset : TILE_ADDR_ROW_SHIFT;
+};
+
+class Write {
+public:
+  Write(Address addr, uint32_t data) : address{addr}, data{data} {
+    assert(address % 4 == 0);
+  }
+
+private:
+  Address address;
+  uint32_t data;
+};
+
+static std::vector<Write> writes;
+
+static void write32(Address addr, uint32_t value) {
+  writes.emplace_back(addr, value);
+}
+
+// Inclusive on both ends
+static void clearRange(TileAddress tile, uint32_t range_start,
+                       uint32_t range_end) {
+  assert(range_start % 4 == 0);
+  assert(range_end % 4 == 0);
+
+  for (auto off = range_start; off <= range_end; off += 4u) {
+    write32({tile, off}, 0);
+  }
+}
+
+enum class ShimTileType { OnlyShim, ShimNOC, ShimNOCOrPL };
+
+// The SHIM row is always 0
+static void generateShimConfig(uint8_t col, ShimTileType tile_type) {
+
+  // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETENABLE);
+  static constexpr auto PL_AIETILCOLRST = 0x00036048u;
+  static constexpr auto RESET_ENABLE = 1u;
+
+  TileAddress tile{col, 0};
+  write32({tile, PL_AIETILCOLRST}, RESET_ENABLE);
+
+  switch (tile_type) {
+  case ShimTileType::ShimNOC:
+    clearRange(tile, 0x1D000, 0x1D13C);
+    clearRange(tile, 0x1D140, 0x1D140);
+    clearRange(tile, 0x1D148, 0x1D148);
+    clearRange(tile, 0x1D150, 0x1D150);
+    clearRange(tile, 0x1D158, 0x1D158);
+    break;
+  case ShimTileType::ShimNOCOrPL:
+    // output << "// Stream Switch master config\n";
+    clearRange(tile, 0x3F000, 0x3F058);
+    // output << "// Stream Switch slave config\n";
+    clearRange(tile, 0x3F100, 0x3F15C);
+    // output << "// Stream Switch slave slot config\n";
+    clearRange(tile, 0x3F200, 0x3F37C);
+    break;
+  case ShimTileType::OnlyShim:
+    break;
+  }
+  // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETDISABLE);
+  write32({tile, PL_AIETILCOLRST}, 0);
+}
+
+static constexpr uint64_t setField(uint64_t value, uint8_t shift,
+                                   uint64_t mask) {
+  return (value << shift) & mask;
+}
+
+static bool loadElf(TileAddress tile, const std::string &filename) {
+
+  llvm::dbgs() << "Reading ELF file " << filename;
+
+  int fd = open(filename.c_str(), O_RDONLY);
+  if (fd < 0) {
+    return false;
+  }
+
+  static constexpr auto READ_SIZE = sizeof(uint32_t);
+  unsigned char num[READ_SIZE] = {0};
+
+  auto read_at = [](int fd, unsigned char bytes[READ_SIZE], uint64_t addr) {
+    auto ret = lseek(fd, addr, SEEK_SET);
+    assert(ret >= 0 and static_cast<uint64_t>(ret) == addr);
+    return read(fd, bytes, READ_SIZE) == READ_SIZE;
+  };
+
+  auto parse_little_endian = [](unsigned char bytes[READ_SIZE]) {
+    return bytes[0] | (((uint32_t)bytes[1]) << 8u) |
+           (((uint32_t)bytes[2]) << 16u) | (((uint32_t)bytes[3]) << 24u);
+  };
+
+  // check that the elf is LSB
+  if (!read_at(fd, num, 4)) {
+    return false;
+  }
+
+  // Read data as 32-bit little endian
+  assert(num[0] == ELFCLASS32);
+  assert(num[1] == ELFDATA2LSB);
+
+#define PROGRAM_HEADER_OFFSET                                                  \
+  (EI_NIDENT + sizeof(uint16_t) * 2 + sizeof(uint32_t) + sizeof(Elf32_Addr))
+
+  if (!read_at(fd, num, PROGRAM_HEADER_OFFSET)) {
+    return false;
+  }
+  uint32_t phstart = parse_little_endian(num);
+  assert(phstart != 0);
+
+#define PROGRAM_HEADER_COUNT_OFFSET                                            \
+  (PROGRAM_HEADER_OFFSET + sizeof(Elf32_Off) * 2 + sizeof(uint32_t) +          \
+   sizeof(uint16_t))
+
+  if (!read_at(fd, num, PROGRAM_HEADER_COUNT_OFFSET)) {
+    return false;
+  }
+
+  {
+    uint16_t prog_header_size = (((uint16_t)num[1]) << 8u) | num[0];
+    assert(prog_header_size > 0);
+
+    uint16_t prog_header_count = (((uint16_t)num[3]) << 8u) | num[2];
+    assert(prog_header_count > 0);
+  }
+
+  if (!read_at(fd, num, phstart)) {
+    return false;
+  }
+  {
+    uint32_t header_type = parse_little_endian(num);
+    assert(header_type == PT_LOAD);
+  }
+
+  if (!read_at(fd, num, phstart + sizeof(num))) {
+    return false;
+  }
+  uint32_t start = parse_little_endian(num);
+
+  if (!read_at(fd, num, phstart + 2 * sizeof(num))) {
+    return false;
+  }
+  uint32_t dest = parse_little_endian(num);
+
+  if (!read_at(fd, num, phstart + 4 * sizeof(num))) {
+    return false;
+  }
+  uint32_t stop = parse_little_endian(num);
+
+  llvm::dbgs() << "Loading " << filename << " tile @ offset "
+               << ((tile.fullAddress(0) >> TILE_ADDR_ROW_SHIFT) & 0xFFFu);
+
+  assert(lseek(fd, start, SEEK_SET) == start);
+  for (auto i = 0u; i < stop / sizeof(num); i++) {
+    if (read(fd, num, sizeof(num)) < static_cast<long>(sizeof(num))) {
+      return false;
+    }
+    static constexpr auto PROG_MEM_OFFSET = 0x20000u;
+    Address dest_addr{
+        tile, static_cast<uint32_t>(dest + PROG_MEM_OFFSET + i * READ_SIZE)};
+    // The data needs to be read in little endian
+    uint32_t data = parse_little_endian(num);
+    write32(dest_addr, data);
+  }
+
+  return true;
+}
+
+static void configure_cores(mlir::ModuleOp module) {
+
+  for (auto tileOp : module.getOps<TileOp>()) {
+    auto col = tileOp.colIndex();
+    if (tileOp.isShimTile()) {
+      auto tile_type = [&tileOp] {
+        if (tileOp.isShimNOCorPLTile())
+          return ShimTileType::ShimNOCOrPL;
+        if (tileOp.isShimNOCTile())
+          return ShimTileType::ShimNOC;
+        return ShimTileType::OnlyShim;
+      }();
+      generateShimConfig(col, tile_type);
+    } else {
+      TileAddress tile{static_cast<uint8_t>(col),
+                       static_cast<uint8_t>(tileOp.rowIndex())};
+
+      static constexpr auto CORE_CORECTRL = 0x00032000u;
+      static constexpr auto CORE_CTRL_ENABLE_SHIFT = 0u;
+      static constexpr auto CORE_CTRL_ENABLE_MASK = 1u;
+      static constexpr auto CORE_CTRL_RESET_SHIFT = 1u;
+      static constexpr auto CORE_CTRL_RESET_MASK = 2u;
+
+      write32({tile, CORE_CORECTRL},
+              setField(0, CORE_CTRL_ENABLE_SHIFT, CORE_CTRL_ENABLE_MASK) |
+                  setField(1, CORE_CTRL_RESET_SHIFT, CORE_CTRL_RESET_MASK));
+
+      // Reset configuration
+      // Program Memory
+      clearRange(tile, 0x20000, 0x23FFF);
+      // TileDMA
+      clearRange(tile, 0x1D000, 0x1D1F8);
+      clearRange(tile, 0x1DE00, 0x1DE00);
+      clearRange(tile, 0x1DE08, 0x1DE08);
+      clearRange(tile, 0x1DE10, 0x1DE10);
+      clearRange(tile, 0x1DE18, 0x1DE18);
+      // Stream Switch master config
+      clearRange(tile, 0x3F000, 0x3F060);
+      // Stream Switch slave config
+      clearRange(tile, 0x3F100, 0x3F168);
+      // Stream Switch slave slot config
+      clearRange(tile, 0x3F200, 0x3F3AC);
+
+      // NOTE: Here is usually where locking is done.
+      // However, the runtime will handle that when loading the airbin.
+
+      if (auto coreOp = tileOp.getCoreOp()) {
+        std::string fileName;
+        if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
+          fileName = std::string(fileAttr.getValue());
+        } else {
+          std::stringstream ss;
+          ss << "core_" << col << '_' << tileOp.rowIndex() << ".elf";
+          fileName = ss.str();
+        }
+        if (not loadElf(tile, fileName)) {
+          llvm::outs() << "Error loading " << fileName;
+        }
+      }
+    }
+  }
+}
 
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          llvm::raw_ostream &output) {
@@ -51,92 +340,11 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   NL.collectTiles(tiles);
   NL.collectBuffers(buffers);
 
+  configure_cores(module);
+
   assert(false);
 
   /*
-    output << "void mlir_aie_configure_cores(" << ctx_p << ") {\n";
-    // Reset each core.  Load the corresponding ELF file, if necessary.
-    for (auto tileOp : module.getOps<TileOp>()) {
-      int col = tileOp.colIndex();
-      int row = tileOp.rowIndex();
-      if (tileOp.isShimTile()) {
-        // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETENABLE);
-        // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETDISABLE);
-        output << "XAieTile_ShimColumnReset(" << tileInstStr(col, row)
-               << ", XAIE_RESETENABLE);\n";
-        output << "// Reset configuration\n";
-        if (tileOp.isShimNOCTile()) {
-          output << "// Reset configuration\n";
-          output << "// ShimDMA\n";
-          output << clear_range(col, row, 0x1D000, 0x1D13C);
-          output << clear_range(col, row, 0x1D140, 0x1D140);
-          output << clear_range(col, row, 0x1D148, 0x1D148);
-          output << clear_range(col, row, 0x1D150, 0x1D150);
-          output << clear_range(col, row, 0x1D158, 0x1D158);
-        }
-        if (tileOp.isShimNOCorPLTile()) {
-          output << "// Stream Switch master config\n";
-          output << clear_range(col, row, 0x3F000, 0x3F058);
-          output << "// Stream Switch slave config\n";
-          output << clear_range(col, row, 0x3F100, 0x3F15C);
-          output << "// Stream Switch slave slot config\n";
-          output << clear_range(col, row, 0x3F200, 0x3F37C);
-        }
-        output << "XAieTile_ShimColumnReset(" << tileInstStr(col, row)
-               << ", XAIE_RESETDISABLE);\n";
-
-      } else {
-        // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable,
-        // u8 Reset);
-        // auto ret =
-        // XAieGbl_LoadElf(&(TileInst[row][col]),
-        // (u8*)elf_file, XAIE_ENABLE);
-        output << "XAieTile_CoreControl(" << tileInstStr(col, row) << ", "
-               << disable << ", " << enable << ");\n";
-        output << "// Reset configuration\n";
-        output << "// Program Memory\n";
-        output << clear_range(col, row, 0x20000, 0x23FFF);
-        output << "// TileDMA\n";
-        output << clear_range(col, row, 0x1D000, 0x1D1F8);
-        output << clear_range(col, row, 0x1DE00, 0x1DE00);
-        output << clear_range(col, row, 0x1DE08, 0x1DE08);
-        output << clear_range(col, row, 0x1DE10, 0x1DE10);
-        output << clear_range(col, row, 0x1DE18, 0x1DE18);
-        output << "// Stream Switch master config\n";
-        output << clear_range(col, row, 0x3F000, 0x3F060);
-        output << "// Stream Switch slave config\n";
-        output << clear_range(col, row, 0x3F100, 0x3F168);
-        output << "// Stream Switch slave slot config\n";
-        output << clear_range(col, row, 0x3F200, 0x3F3AC);
-
-        // Release locks
-        output << "for (int l=0; l<16; l++)\n"
-               << "  XAieTile_LockRelease(" << tileInstStr(col, row)
-               << ", l, 0x0, 0);\n";
-
-        if (auto coreOp = tileOp.getCoreOp()) {
-          std::string fileName;
-          if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
-            fileName = std::string(fileAttr.getValue());
-          } else {
-            fileName = std::string("core_") + std::to_string(col) + "_" +
-                       std::to_string(row) + ".elf";
-          }
-          output << "{\n"
-                 << "int ret = XAieGbl_LoadElf(" << tileInstStr(col, row) << ",
-    "
-                 << "(u8*)\"" << fileName << "\", " << enable << ");\n";
-          output << "if (ret == XAIELIB_FAILURE)\n"
-                 << "printf(\"Failed to load elf for Core[%d,%d], ret is %d\", "
-                 << std::to_string(col) << ", " << std::to_string(row)
-                 << ", ret);\n"
-                 << "assert(ret != XAIELIB_FAILURE);\n"
-                 << "}\n";
-        }
-      }
-    }
-    output << "} // mlir_aie_configure_cores\n\n";
-
     output << "void mlir_aie_start_cores(" << ctx_p << ") {\n";
     // Start execution of all the cores.
     // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8
