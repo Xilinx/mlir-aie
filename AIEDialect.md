@@ -768,6 +768,224 @@ the source tile to the dest. tile.
 | `dstTile` | index
 | `dstBuf` | memref of any type values
 
+### `AIE.objectFifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
+
+Acquire operation to lock and return objects of an ObjectFifo
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.acquire` attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+```
+
+The "aie.objectFifo.acquire" operation first acquires the locks of the next given number 
+of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
+(producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
+the acquired objects which can be used to access them.
+
+This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations on 
+the locks of the objectFifo objects that will be acquired. Under the hood, the operation only performs
+new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
+to be released by the same process, then performing another acquire operation on the same objectFifo 
+within the same process of size two or less will not result in any new useLock operations (and for size 
+greater than two, only (size - 2) useLock operations will be performed).
+
+Example:
+```
+  %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+```
+This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
+| `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `fifo` | AIE objectFifo type
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `subview` | AIE ObjectFifoSubview type
+
+### `AIE.objectFifo.createObjectFifo` (::xilinx::AIE::ObjectFifoCreateOp)
+
+Create a circular buffer or channel between two tiles
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.createObjectFifo` `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
+```
+
+The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
+a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
+These elements represent the conceptual depth of the objectFifo.
+
+This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
+locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
+not adjacent.
+
+Example:
+```
+  %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>> 
+```
+This operation creates an objectFifo between tiles 12 and 13 of 4 elements, each a buffer of 16 32-bit integers.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `elemNumber` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `producerTile` | index
+| `consumerTile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `fifo` | AIE objectFifo type
+
+### `AIE.objectFifo.registerProcess` (::xilinx::AIE::ObjectFifoRegisterProcessOp)
+
+Operation that produces the acquire/release patterns for a process registered to an objectFifo
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.registerProcess` attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)`
+```
+
+The "aie.registerProcess" operation allows the user to register a function to an objectFifo along with its 
+acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
+on the objectFifo elements. This generated sequence is often in the form of a for loop, however, in the case 
+of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
+This may result in multiple for loops of different sizes being generated. If there is no repetition, then no 
+loops will be generated.
+
+Example:
+```
+  %length = arith.constant 10 : index
+  %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
+  %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
+  func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
+
+  AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+```
+This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
+@producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
+
+If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
+If the input patterns are cyclo-static then they must be of the same size.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
+| `callee` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `fifo` | AIE objectFifo type
+| `acquirePattern` | tensor of 32-bit signless integer values
+| `releasePattern` | tensor of 32-bit signless integer values
+| `length` | index
+
+### `AIE.objectFifo.release` (::xilinx::AIE::ObjectFifoReleaseOp)
+
+Release operation for object locks in an ObjectFifo
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.release` attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)`
+```
+
+The "aie.objectFifo.release" operation releases the locks of the given number of objects 
+in the objectFifo. The mode it releases the locks in is chosen based on the "port" 
+(producer: release for read, consumer: release for write). 
+
+This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
+
+Example:
+```
+  AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+```
+This operation releases the lock of the next object in objFifo from producer port.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
+| `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `fifo` | AIE objectFifo type
+
+### `AIE.objectFifo.subview.access` (::xilinx::AIE::ObjectFifoSubviewAccessOp)
+
+ObjectFifoSubview type accessor method
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.subview.access` $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+```
+
+  Access the Nth element of a value of ObjectFifoSubview type.
+
+Example:
+  ```
+    %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+    %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+  ```
+  In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
+  the objectFifo if other acquire operations took place beforehand.
+
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `index` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `subview` | AIE ObjectFifoSubview type
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `output` | memref of any type values
+
 ### `AIE.plio` (::xilinx::AIE::PLIOOp)
 
 Declare an interface to the PL
@@ -1404,4 +1622,14 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 | :-----: | ----------- |
 | `source` | index
 | `dest` | index
+
+## Type constraint definition
+
+### AIE ObjectFifoSubview type
+
+
+
+### AIE objectFifo type
+
+
 

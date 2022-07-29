@@ -82,6 +82,18 @@ address spaces.  However, after outlining code for AIE engines, the core itself 
 has access to a single address space.  To avoid confusion, this pass normalizes
 any address spaces remaining in the code, converting them to the default address
 space.
+### `-aie-objectFifo-stateful-transform`: Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations
+Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
+producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
+operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
+each process.
+
+If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
+pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
+### `-aie-register-objectFifos`: Generate acquire/release patterns for producer/consumer processes registered to an objectFifo
+Generate acquire/release patterns in the CoreOps of associated cores for each 
+aie.objectFifo.registerProcess operation. Patterns are generated as for loops
+of different sizes depending on input patterns.
 ### `-aie-standard-lowering`: Lowering operations in AIE cores' regions to Standard
 Outline code inside a particular AIE.core operation into the llvm dialect.
 BufferOp operations are converted to a GlobalMemrefOp and references to
@@ -95,6 +107,11 @@ Other AIE operations (e.g. CoreOp, TileOp, LockOp) outside the core are removed.
 -tilecol : X coordinate of tile to generate code for
 -tilerow : Y coordinate of tile to generate code for
 ```
+### `-aie-unroll-objectFifos`: Identify and unroll loops that contain operations on objectFifos based on their number of elements
+Extend the body of each loop that contains operations on objectFifos such that it is unrolled
+based on the number of elements in the objectFifos. If the number of iterations of the loop 
+cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
+the original loop.
 ### `-aie-vector-opt`: optimize vector instructions for AIE
 After super-vectorization, some additional optimizations are important
 for improving QOR and enabling lowering to LLVM.
