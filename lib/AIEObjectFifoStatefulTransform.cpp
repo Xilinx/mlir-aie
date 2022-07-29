@@ -350,8 +350,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// the maximum number of elements (of the original objectFifo) acquired
   /// by a process running on given tile. If no CoreOp exists for this tile
   /// return 0.
-  int findObjectFifoSize(ModuleOp &m, TileOp tile,
-                            ObjectFifoCreateOp objFifo) {
+  int findObjectFifoSize(ModuleOp &m, TileOp tile, ObjectFifoCreateOp objFifo) {
 
     if (objFifo.size() == 0)
       return 0;
