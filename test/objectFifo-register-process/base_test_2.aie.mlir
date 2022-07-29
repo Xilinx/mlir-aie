@@ -23,7 +23,7 @@
 // CHECK:      return
 // CHECK:    }
 // CHECK:    %3 = AIE.core(%0) {
-// CHECK:      %4 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:      %4 = AIE.objectFifo.acquire<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:      %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      %6 = AIE.objectFifo.subview.access %4[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      func.call @producer_work() : () -> ()
@@ -31,18 +31,18 @@
 // CHECK:      %c2 = arith.constant 2 : index
 // CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      scf.for %arg0 = %c0 to %c2 step %c1 {
-// CHECK:        %10 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %10 = AIE.objectFifo.acquire<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %11 = AIE.objectFifo.subview.access %10[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        %12 = AIE.objectFifo.subview.access %10[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        %13 = AIE.objectFifo.subview.access %10[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        func.call @producer_work() : () -> ()
-// CHECK:        AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:        AIE.objectFifo.release<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 1)
 // CHECK:      }
-// CHECK:      %7 = AIE.objectFifo.acquire {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:      %7 = AIE.objectFifo.acquire<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:      %8 = AIE.objectFifo.subview.access %7[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      %9 = AIE.objectFifo.subview.access %7[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:      func.call @producer_work() : () -> ()
-// CHECK:      AIE.objectFifo.release {port = "produce"}(%2 : !AIE.objectFifo<memref<16xi32>>, 2)
+// CHECK:      AIE.objectFifo.release<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 2)
 // CHECK:      AIE.end
 // CHECK:    }
 // CHECK:  }
@@ -60,5 +60,5 @@ module @registerPatterns  {
         return
     }
 
-    AIE.objectFifo.registerProcess{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<4xi32>, %releasePattern : tensor<4xi32>, @producer_work, %length) 
+    AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<4xi32>, %releasePattern : tensor<4xi32>, @producer_work, %length) 
 }

@@ -59,13 +59,18 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   let cppNamespace = "xilinx::AIE";
 }
 
+def Produce: I32EnumAttrCase<"Produce", 0>;
+def Consume: I32EnumAttrCase<"Consume", 1>;
+
+def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
+  [Produce, Consume]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
 
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
-
-def AIE_ArrayType :
-    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEArrayType>()">,
-                "AIE array type">;
 
 def AIE_ObjectFifoType :
     DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoType>()">,
@@ -75,7 +80,7 @@ def AIE_ObjectFifoSubviewType :
     DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoSubviewType>()">,
                 "AIE ObjectFifoSubview type">;
 
-def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType, AIE_ArrayType]>;
+def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
@@ -1386,57 +1391,13 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_CreateArrayOp : AIE_Op<"createArray", []> {
-  let summary = "Create an aie array";
-  let description = [{
-    Creates an aie.array with the input values of given type
-  }];
-
-  let arguments = (
-    ins Variadic<AnyType>:$operands
-  );
-
-  let results = (outs AIE_ArrayType:$output);
-
-  let assemblyFormat = [{
-    attr-dict `(` $operands `:` type($operands) `)` `:` type($output)
-  }];
-
-  //let extraClassDeclaration = [{
-  //  int size();
-  //}];
-}
-
-def AIE_ArrayLoadOp : AIE_Op<"array.load", []> {
-  let summary = "Load operation for aie arrays";
-  let description = [{
-    Given an aie.array and an index value, outputs the element at that position from the array
-  }];
-
-  let arguments = (
-    ins AIE_ArrayType:$array, 
-        Index:$index
-  );
-
-  let results = (outs AnyType:$output);
-
-  let assemblyFormat = [{
-    attr-dict `(` $array `:` type($array) `,` $index `)` `:` type($output)
-  }];
-
-  //let hasVerifier = 1;
-
-  //let extraClassDeclaration = [{
-  //  int getIndex();
-  //}];
-}
-
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
     a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
-    buffers (of given output type) and their locks in the Memory Module of the producer tile.
+    buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
+    These elements represent the conceptual depth of the objectFifo.
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
@@ -1461,8 +1422,6 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
     `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
 
-  let hasVerifier = 1;
-
   let extraClassDeclaration = [{
     int size() { return elemNumber(); }
     TileOp getProducerTileOp();
@@ -1473,10 +1432,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
-    The "aie.objectFifo.acquire" operation first acquires the locks of the next given number of objects 
-    in the objectFifo. The mode it acquires the locks in is chosen based on the "port" attribute 
-    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of the acquired 
-    objects which can be used to access them.
+    The "aie.objectFifo.acquire" operation first acquires the locks of the next given number 
+    of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
+    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
+    the acquired objects which can be used to access them.
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations on 
     the locks of the objectFifo objects that will be acquired. Under the hood, the operation only performs
@@ -1487,33 +1446,33 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
     ```
     This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoType:$fifo,
+    ins ObjectFifoPort:$port,
+        AIE_ObjectFifoType:$fifo,
         Confined<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "::mlir::Type":$subview, "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
+    [{
+      build($_builder, $_state, subview, port, fifo, size);
+    }]>
+  ];
+
   let extraClassDeclaration = [{
-    StringAttr port() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>("port")) {
-        return attr;
-      } else {
-        emitOpError("does not have 'port' attribute specified");
-      }
-      llvm_unreachable("unreachable");
-    }
     Value getAIEObjectFifo() { return fifo(); }
     AIEObjectFifoType getAIEObjectFifoType() {
       return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
@@ -1525,39 +1484,39 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let description = [{
-    The "aie.objectFifo.release" operation releases the locks of the given number of objects in the
-    objectFifo. The mode it releases the locks in is chosen based on the "port" attribute 
+    The "aie.objectFifo.release" operation releases the locks of the given number of objects 
+    in the objectFifo. The mode it releases the locks in is chosen based on the "port" 
     (producer: release for read, consumer: release for write). 
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
 
     Example:
     ```
-      AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+      AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
     ```
     This operation releases the lock of the next object in objFifo from producer port.
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoType:$fifo,
+    ins ObjectFifoPort:$port,
+        AIE_ObjectFifoType:$fifo,
         Confined<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let assemblyFormat = [{
-    attr-dict `(` $fifo `:` type($fifo) `,` $size `)` 
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` 
   }];
 
   let hasVerifier = 1;
 
+  let builders = [
+    OpBuilder<(ins "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
+    [{
+      build($_builder, $_state, port, fifo, size);
+    }]>
+  ];
+
   let extraClassDeclaration = [{
-    StringAttr port() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>("port")) {
-        return attr;
-      } else {
-        emitOpError("does not have 'port' attribute specified");
-      }
-      llvm_unreachable("unreachable");
-    }
     Value getAIEObjectFifo() { return fifo(); }
     AIEObjectFifoType getAIEObjectFifoType() {
       return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
@@ -1573,7 +1532,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
   Example:
     ```
-      %subview = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
       %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
     ```
     In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
@@ -1619,7 +1578,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
       func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
 
-      AIE.objectFifo.registerProcess{port = "produce"}(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+      AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```
     This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
     @producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
@@ -1629,7 +1588,8 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoType:$fifo,
+    ins ObjectFifoPort:$port,
+        AIE_ObjectFifoType:$fifo,
         I32Tensor:$acquirePattern,
         I32Tensor:$releasePattern,
         FlatSymbolRefAttr:$callee,
@@ -1637,20 +1597,13 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)` 
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)` 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    StringAttr port() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>("port")) {
-        return attr;
-      } else {
-        emitOpError("does not have 'port' attribute specified");
-      }
-      llvm_unreachable("unreachable");
-    }
+    ObjectFifoPortAttr getPortAttr() { return portAttr(); }
     DenseIntElementsAttr getAcquirePattern() { return acquirePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     DenseIntElementsAttr getReleasePattern() { return releasePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     int getProcessLength() { return length().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }

@@ -212,6 +212,10 @@ struct AIEObjectFifoStatefulTransformPass
   void createDMA(OpBuilder &builder, ObjectFifoCreateOp op, DMAChan channelMode,
                  int lockMode) {
     int numBlocks = op.size();
+
+    if (numBlocks == 0)
+      return;
+
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
 
@@ -467,46 +471,46 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to check whether objectFifo accessed by op has been split.
   /// If yes, it replaces the parent objectFifo with the correct child based on
-  /// 'port' attribute.
+  /// port.
   void checkSplitFifo(Operation *op) {
     ObjectFifoCreateOp parentFifo;
-    StringRef port;
+    ObjectFifoPort port;
     if (isa<ObjectFifoAcquireOp>(op)) {
       ObjectFifoAcquireOp acqOp = dyn_cast<ObjectFifoAcquireOp>(op);
       parentFifo = acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = acqOp.port().getValue();
+      port = acqOp.port();
     } else if (isa<ObjectFifoReleaseOp>(op)) {
       ObjectFifoReleaseOp relOp = dyn_cast<ObjectFifoReleaseOp>(op);
       parentFifo = relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = relOp.port().getValue();
+      port = relOp.port();
     } else {
       assert(false && "checkSplitFifo() must be called on either "
                       "ObjectFifoAcquireOp or ObjectFifoReleaseOp");
     }
 
     if (splitFifos.find(parentFifo) != splitFifos.end()) {
-      if (port == "produce") {
+      if (port == ObjectFifoPort::Produce) {
         op->replaceUsesOfWith(parentFifo, splitFifos[parentFifo].first);
-      } else if (port == "consume") {
+      } else if (port == ObjectFifoPort::Consume) {
         op->replaceUsesOfWith(parentFifo, splitFifos[parentFifo].second);
       }
     }
   }
 
   /// Function used to check whether the process that is accessing the
-  /// objectFifo is running on a tile matching the 'port' attribute of that
+  /// objectFifo is running on a tile matching the port of that
   /// objectFifo.
   void checkCorrectPort(Operation *op) {
     ObjectFifoCreateOp objFifo;
-    StringRef port;
+    ObjectFifoPort port;
     if (isa<ObjectFifoAcquireOp>(op)) {
       ObjectFifoAcquireOp acqOp = dyn_cast<ObjectFifoAcquireOp>(op);
       objFifo = acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = acqOp.port().getValue();
+      port = acqOp.port();
     } else if (isa<ObjectFifoReleaseOp>(op)) {
       ObjectFifoReleaseOp relOp = dyn_cast<ObjectFifoReleaseOp>(op);
       objFifo = relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = relOp.port().getValue();
+      port = relOp.port();
     } else {
       assert(false && "checkCorrectPort() must be called on either "
                       "ObjectFifoAcquireOp or ObjectFifoReleaseOp");
@@ -520,21 +524,26 @@ struct AIEObjectFifoStatefulTransformPass
                         "used inside a CoreOp");
     }
     auto coreTile = dyn_cast<CoreOp>(coreOp).tile();
-    if (port == "produce") {
+    if (port == ObjectFifoPort::Produce) {
       if (coreTile != objFifo.producerTile())
         assert(false && "Producer port of objectFifo accessed by core running "
                         "on non-producer tile");
-    } else if (port == "consume") {
+    } else if (port == ObjectFifoPort::Consume) {
       if (coreTile != objFifo.consumerTile())
         assert(false && "Consumer port of objectFifo accessed by core running "
                         "on non-consumer tile");
     }
   }
 
-  /// Function used to find the maximum number of elements (of given objectFifo)
-  /// acquired by a process running on given tile.
-  int findProcessMaxAcquire(ModuleOp &m, TileOp tile,
-                            ObjectFifoCreateOp objFifo) {
+  /// Function used to find the size of an objectFifo after split based on
+  /// the maximum number of elements (of the original objectFifo) acquired
+  /// by a process running on given tile. If no CoreOp exists for this tile
+  /// return 0.
+  int findObjectFifoSize(ModuleOp &m, TileOp tile, ObjectFifoCreateOp objFifo) {
+
+    if (objFifo.size() == 0)
+      return 0;
+
     CoreOp *core = nullptr;
     for (auto coreOp : m.getOps<CoreOp>()) {
       if ((coreOp.tile().getDefiningOp<TileOp>()) == tile) {
@@ -542,6 +551,9 @@ struct AIEObjectFifoStatefulTransformPass
         break;
       }
     }
+
+    if (core == nullptr)
+      return 0;
 
     int maxAcquire = 0;
     core->walk([&](ObjectFifoAcquireOp acqOp) {
@@ -551,7 +563,16 @@ struct AIEObjectFifoStatefulTransformPass
       }
     });
 
-    return maxAcquire + 1; // +1 to account for DMA unit
+    if (maxAcquire > 0) {
+      if ((maxAcquire == 1) && (objFifo.size() == 1)) {
+        return 1;
+      }
+      return maxAcquire + 1;
+      // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
+      // for prefetching: simplest case scenario is at least a ping-pong buffer
+    }
+
+    return 0;
   }
 
   void runOnOperation() override {
@@ -579,9 +600,9 @@ struct AIEObjectFifoStatefulTransformPass
       } else {
         // Find max acquire number for producer and consumer of objectFifo.
         int prodMaxAcquire =
-            findProcessMaxAcquire(m, createOp.getProducerTileOp(), createOp);
+            findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
         int consMaxAcquire =
-            findProcessMaxAcquire(m, createOp.getConsumerTileOp(), createOp);
+            findObjectFifoSize(m, createOp.getConsumerTileOp(), createOp);
 
         // objectFifos between non-adjacent tiles must be split into two new
         // ones, their elements will be created in next iterations
@@ -655,14 +676,14 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op =
             releaseOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-        auto port = releaseOp.port().getValue();
+        auto port = releaseOp.port();
 
         // update index of next element to release for this objectFifo
         updateAndReturnIndex(relPerFifo, op);
 
         // release locks
         int numLocks = releaseOp.relNumber();
-        int lockMode = port == "produce" ? 1 : 0;
+        int lockMode = port == ObjectFifoPort::Produce ? 1 : 0;
         createUseLocks(builder, op, relPerFifo, numLocks, lockMode,
                        LockAction::Release);
 
@@ -679,7 +700,7 @@ struct AIEObjectFifoStatefulTransformPass
         checkCorrectPort(acquireOp.getOperation());
 
         builder.setInsertionPointAfter(acquireOp);
-        auto port = acquireOp.port().getValue();
+        auto port = acquireOp.port();
         ObjectFifoCreateOp op =
             acquireOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
 
@@ -752,7 +773,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         // acquire locks
         int numLocks = acquireOp.acqNumber();
-        int lockMode = port == "produce" ? 0 : 1;
+        int lockMode = port == ObjectFifoPort::Produce ? 0 : 1;
         int alreadyAcq = acquiredIndices.size();
         int numCreate;
         if (numLocks > alreadyAcq) {

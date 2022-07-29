@@ -60,8 +60,9 @@
 // CHECK:    }
 // CHECK:    %12 = AIE.core(%0) {
 // CHECK:      %c0 = arith.constant 0 : index
-// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      %c12 = arith.constant 12 : index
+// CHECK:      %c2 = arith.constant 2 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%3, Acquire, 0)
 // CHECK:        func.call @some_work(%2) : (memref<16xi32>) -> ()
@@ -74,8 +75,9 @@
 // CHECK:    }
 // CHECK:    %13 = AIE.core(%1) {
 // CHECK:      %c0 = arith.constant 0 : index
-// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      %c12 = arith.constant 12 : index
+// CHECK:      %c2 = arith.constant 2 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%8, Acquire, 1)
 // CHECK:        func.call @some_work(%7) : (memref<16xi32>) -> ()
@@ -104,10 +106,10 @@ module @non_adjacency {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview0 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
         AIE.end
@@ -119,10 +121,10 @@ module @non_adjacency {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 { 
-            %subview0 = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+            AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
         AIE.end

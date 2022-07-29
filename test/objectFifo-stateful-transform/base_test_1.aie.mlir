@@ -6,105 +6,36 @@
 //
 // (c) Copyright 2021 Xilinx Inc.
 //
-// Date: October 26th 2021
+// Date: July 26th 2022
 // 
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK: module @singleFifo  {
-// CHECK:    %0 = AIE.tile(1, 2)
-// CHECK:    %1 = AIE.tile(1, 3)
-// CHECK:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
-// CHECK:    %3 = AIE.lock(%0, 0)
-// CHECK:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
-// CHECK:    %5 = AIE.lock(%0, 1)
-// CHECK:    %6 = AIE.buffer(%0) {sym_name = "buff2"} : memref<16xi32>
-// CHECK:    %7 = AIE.lock(%0, 2)
-// CHECK:    %8 = AIE.buffer(%0) {sym_name = "buff3"} : memref<16xi32>
-// CHECK:    %9 = AIE.lock(%0, 3)
-// CHECK:    func.func @some_work(%arg0: memref<16xi32>) {
-// CHECK:      return
-// CHECK:    }
-// CHECK:    %10 = AIE.core(%0)  {
-// CHECK:      AIE.useLock(%3, Acquire, 0)
-// CHECK:      AIE.useLock(%5, Acquire, 0)
-// CHECK:      func.call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK:      func.call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK:      AIE.useLock(%7, Acquire, 0)
-// CHECK:      func.call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK:      func.call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK:      func.call @some_work(%6) : (memref<16xi32>) -> ()
-// CHECK:      AIE.useLock(%3, Release, 1)
-// CHECK:      AIE.useLock(%5, Release, 1)
-// CHECK:      AIE.useLock(%9, Acquire, 0)
-// CHECK:      func.call @some_work(%6) : (memref<16xi32>) -> ()
-// CHECK:      func.call @some_work(%8) : (memref<16xi32>) -> ()
-// CHECK:      func.call @some_work(%6) : (memref<16xi32>) -> ()
-// CHECK:      func.call @some_work(%8) : (memref<16xi32>) -> ()
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %11 = AIE.core(%1) {
-// CHECK:      AIE.useLock(%3, Acquire, 1)
-// CHECK:      func.call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK:      AIE.useLock(%3, Release, 0)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:  }
+// CHECK: module @elementGeneration {
+// CHECK:   %0 = AIE.tile(1, 2)
+// CHECK:   %1 = AIE.tile(1, 3)
+// CHECK:   %2 = AIE.tile(3, 3)
+// CHECK:   %3 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
+// CHECK:   %4 = AIE.lock(%0, 0)
+// CHECK:   %5 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
+// CHECK:   %6 = AIE.lock(%0, 1)
+// CHECK:   %7 = AIE.buffer(%0) {sym_name = "buff2"} : memref<16xi32>
+// CHECK:   %8 = AIE.lock(%0, 2)
+// CHECK:   %9 = AIE.buffer(%0) {sym_name = "buff3"} : memref<16xi32>
+// CHECK:   %10 = AIE.lock(%0, 3)
+// CHECK:   AIE.flow(%0, DMA : 0, %2, DMA : 1)
+// CHECK: }
 
-module @singleFifo {
+module @elementGeneration {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
+    %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>>
+    // In the shared memory case, the number of elements does not change.
+    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>>
 
-    func.func @some_work(%line_in:memref<16xi32>) -> () {
-        return
-    }
-
-    %core12 = AIE.core(%tile12) {
-        // this acquires 2 elements
-        %subview0 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        %elem01 = AIE.objectFifo.subview.access %subview0[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem00) : (memref<16xi32>) -> ()
-        func.call @some_work(%elem01) : (memref<16xi32>) -> ()
-
-        // this should only acquire one new element, previous two are still acquired
-        %subview1 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        %elem11 = AIE.objectFifo.subview.access %subview1[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        %elem12 = AIE.objectFifo.subview.access %subview1[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem10) : (memref<16xi32>) -> ()
-        func.call @some_work(%elem11) : (memref<16xi32>) -> ()
-        func.call @some_work(%elem12) : (memref<16xi32>) -> ()
-
-        // one new acquire should take place
-        AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-        AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-        %subview2 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elem20 = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        %elem21 = AIE.objectFifo.subview.access %subview2[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem20) : (memref<16xi32>) -> () 
-        func.call @some_work(%elem21) : (memref<16xi32>) -> ()
-
-        // no new acquires should take place, elem30 should be third element of objFifo (with index 2)
-        %subview3 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elem30 = AIE.objectFifo.subview.access %subview3[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        %elem31 = AIE.objectFifo.subview.access %subview3[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        //%elem32 = AIE.subview.access %subview3[2] : !AIE.subview<memref<16xi32>> -> memref<16xi32> // expected to fail if this line is uncommented
-        func.call @some_work(%elem30) : (memref<16xi32>) -> ()
-        func.call @some_work(%elem31) : (memref<16xi32>) -> ()
-
-        AIE.end
-    }
-
-    %core13 = AIE.core(%tile13) {
-        %subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-        AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-
-        AIE.end
-    }
+    // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
+    // the processes running on each core (here nothing is specified so it cannot be derived).
+    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
 }
