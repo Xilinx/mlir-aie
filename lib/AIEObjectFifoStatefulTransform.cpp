@@ -565,7 +565,7 @@ struct AIEObjectFifoStatefulTransformPass
           // AcquireOp in program order
           acquiredIndices = acquiresPerFifo[op];
           // take into account what has been released in-between
-          assert(numRel <= acquiredIndices.size() &&
+          assert((size_t)numRel <= acquiredIndices.size() &&
                  "Cannot release more elements than are already acquired.");
           for (int i = 0; i < numRel; i++) {
             acquiredIndices.erase(acquiredIndices.begin());
@@ -605,7 +605,7 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoAcquireOp acqOp =
             accessOp.subview().getDefiningOp<ObjectFifoAcquireOp>();
         auto users = accessOp.output().getUsers();
-        assert(accessOp.getIndex() < subviews[acqOp].size() &&
+        assert((size_t)accessOp.getIndex() < subviews[acqOp].size() &&
                "Index out of bounds for subview: accessed farther than number "
                "of acquired elements.");
         for (auto user : users) {

@@ -1465,13 +1465,6 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
   let hasVerifier = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$subview, "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
-    [{
-      build($_builder, $_state, subview, port, fifo, size);
-    }]>
-  ];
-
   let extraClassDeclaration = [{
     Value getAIEObjectFifo() { return fifo(); }
     AIEObjectFifoType getAIEObjectFifoType() {
@@ -1508,13 +1501,6 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   }];
 
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
-    [{
-      build($_builder, $_state, port, fifo, size);
-    }]>
-  ];
 
   let extraClassDeclaration = [{
     Value getAIEObjectFifo() { return fifo(); }
