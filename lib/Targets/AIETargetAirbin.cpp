@@ -497,7 +497,6 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
 
     TileAddress tile{static_cast<uint8_t>(col), static_cast<uint8_t>(row)};
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
-
       write32({tile, dmaChannelCtrlOffsets[chNum]},
               setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
                   setField(enable, dmaChannelEnableLSB, dmaChannelEnableMask));
@@ -636,17 +635,12 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           default:
             assert(false);
           }
+
           write32(Address{tile, dmaChannelQueueOffsets[chNum]},
                   setField(bdNum, 0u, 0xFu));
 
-          /*
-   output << "XAieDma_TileChControl(" << tileDMAInstStr(col, row) << ", "
-          << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
-          << ", " << resetDisable << ", " << enable << ");\n";
-          */
-
           write32(
-              {tile, dmaChannelQueueOffsets[chNum] - 4u},
+              {tile, dmaChannelCtrlOffsets[chNum]},
               setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
                   setField(enable, dmaChannelEnableLSB, dmaChannelEnableMask));
         }
