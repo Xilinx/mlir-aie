@@ -3,11 +3,10 @@
 
 module @test_broadcast_packet {
   
+  %t72 = AIE.tile(7, 2)
+  
   %t63 = AIE.tile(6, 3)
   %t64 = AIE.tile(6, 4)
-
-  %t70 = AIE.tile(7, 0)
-  %t72 = AIE.tile(7, 2)
   %t73 = AIE.tile(7, 3)
   %t74 = AIE.tile(7, 4)
 
