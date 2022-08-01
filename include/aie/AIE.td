@@ -660,6 +660,63 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   // ];
 }
 
+def AIE_MulticastOp: AIE_Op<"multicast", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "An abstraction of multicast";
+  let description = [{
+    An abstraction of broadcast. During place and
+    route, it will be replaced by multiple flows.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.multicast(%70, "DMA" : 0){
+        AIE.multi_dest<%73, "DMA" : 0>
+        AIE.multi_dest<%74, "DMA" : 0>
+        AIE.multi_dest<%63, "DMA" : 0>
+        AIE.multi_dest<%64, "DMA" : 0>
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MultiDestOp: AIE_Op<"multi_dest", [HasParent<"MulticastOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port of multicast flow";
+  let description = [{
+    An object representing the destination of a multicast flow. This must exist
+    within an [AIE.multicast] operation. There can multiple destinations with in the Op.
+
+    See [AIE.multicast]for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins I8Attr:$ID
