@@ -389,6 +389,21 @@ SECTIONS
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
       });
+  TranslateFromMLIRRegistration registrationAirbin(
+      "aie-generate-airbin",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToAirbin(module, output);
+      },
+      [](DialectRegistry &registry) {
+        registry.insert<xilinx::AIE::AIEDialect>();
+        registry.insert<func::FuncDialect>();
+        registry.insert<cf::ControlFlowDialect>();
+        registry.insert<DLTIDialect>();
+        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<memref::MemRefDialect>();
+        registry.insert<VectorDialect>();
+        registry.insert<LLVM::LLVMDialect>();
+      });
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
