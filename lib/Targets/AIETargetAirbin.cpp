@@ -21,6 +21,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
@@ -32,6 +33,7 @@
 #include <fcntl.h>
 #include <sstream>
 #include <unistd.h>
+#include <utility>
 
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
@@ -86,6 +88,8 @@ public:
            (static_cast<uint64_t>(row) << TILE_ADDR_ROW_SHIFT) |
            register_offset;
   }
+
+  bool isShim() const { return row == 0; }
 
 private:
   uint64_t array_offset : 34;
@@ -525,6 +529,10 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         if (bdInfo.bytesA != bdInfo.bytesB)
           llvm::errs() << "ABmode must have matching element data types.\n";
       }
+
+      assert(false);
+
+      /*
       int acqValue = 0, relValue = 0;
       auto acqEnable = disable;
       auto relEnable = disable;
@@ -541,6 +549,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           relValue = op.getLockValue();
         }
       }
+      */
 
       for (auto op : block.getOps<DMABDPACKETOp>()) {
         bdInfo.foundBdPacket = true;
@@ -548,7 +557,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         bdInfo.packetID = op.getPacketID();
       }
 
-      auto bdNum = blockMap[&block];
+      // auto bdNum = blockMap[&block];
       if (bdInfo.foundBd) {
         if (bdInfo.hasA) {
           /*
@@ -581,8 +590,8 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         if (block.getNumSuccessors() > 0) {
           // should have only one successor block
           assert(block.getNumSuccessors() == 1);
-          auto *nextBlock = block.getSuccessors()[0];
-          auto nextBdNum = blockMap[nextBlock];
+          // auto *nextBlock = block.getSuccessors()[0];
+          // auto nextBdNum = blockMap[nextBlock];
 
           /*
           output << "XAieDma_TileBdSetNext(" << tileDMAInstStr(col, row) << ", "
@@ -668,11 +677,13 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     // XAieDma_ShimWaitDone(XAieDma_Shim *DmaInstPtr, u32 ChNum, u32
     // TimeOut); u8 XAieDma_ShimPendingBdCount(XAieDma_Shim *DmaInstPtr, u32
     // ChNum);
-    auto index = 0;
+
+    // auto index = 0;
     for (auto op : module.getOps<ShimDMAOp>()) {
-      auto col = op.colIndex();
-      auto row = op.rowIndex();
-      /*
+      assert(false);
+      // auto col = op.colIndex();
+      // auto row = op.rowIndex();
+      /* TODO: Implement the following
       std::string dmaName =
           shimDMAInstStr(std::to_string(col), std::to_string(index));
       output << "XAieDma_Shim " << dmaName << ";\n";
@@ -694,7 +705,9 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
       }
 
       for (auto &block : op.body()) {
+        assert(false);
         bool foundBd = false;
+        /*
         int len = 0;
         uint64_t bytes = 0;
         uint64_t offset = 0;
@@ -708,7 +721,9 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
           offset = op.getOffsetValue();
         }
+        */
 
+        /*
         int acqValue = 0, relValue = 0;
         bool hasLock = false;
         auto acqEnable = disable;
@@ -726,23 +741,25 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
             relValue = op.getLockValue();
           }
         }
+        */
 
-        int bdNum = blockMap[&block];
+        // int bdNum = blockMap[&block];
         if (foundBd) {
+          assert(false);
           // void XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum,
           // u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8
           // LockAcqVal);
+          /* TODO: Implement the following
           if (hasLock) {
-            /*
             output << "XAieDma_ShimBdSetLock(&" << dmaName << ", " << bdNum
                    << ", " << lockID << ", " << relEnable << ", " << relValue
                    << ", " << acqEnable << ", " << acqValue << ");\n";
-                   */
           }
+          */
           // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
           // u16 AddrHigh, u32 AddrLow, u32 Length);
-          uint64_t address = BaseAddr + offset;
-          /*
+          // uint64_t address = BaseAddr + offset;
+          /* TODO: Implement the following
           output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", " << bdNum << ",
           "
                  << "HIGH_ADDR((u64)0x" << llvm::utohexstr(address) << "), "
@@ -765,8 +782,8 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           if (block.getNumSuccessors() > 0) {
             // should have only one successor block
             assert(block.getNumSuccessors() == 1);
-            Block *nextBlock = block.getSuccessors()[0];
-            int nextBdNum = blockMap[nextBlock];
+            // Block *nextBlock = block.getSuccessors()[0];
+            // int nextBdNum = blockMap[nextBlock];
             // void XAieDma_ShimBdSetNext(XAieDma_Shim *DmaInstPtr, u8
             // BdNum, u8 NextBd);
             /*
@@ -784,7 +801,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
 
       for (auto &block : op.body()) {
         for (auto op : block.getOps<DMAStartOp>()) {
-          int bdNum = blockMap[op.dest()];
+          // int bdNum = blockMap[op.dest()];
 
           /*
           output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
@@ -800,6 +817,402 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
                  */
         }
       }
+    }
+  }
+}
+
+/*
+Initialize locks seems to not ever call `Write32`, making it a no-op.
+static void initialize_locks(mlir::ModuleOp module) {
+
+  // Lock configuration
+  // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal,
+  // u32 TimeOut) u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8 LockId,
+  // u8 LockVal, u32 TimeOut)
+  for (auto op : module.getOps<UseLockOp>()) {
+    int lockVal = op.getLockValue();
+    int timeOut = op.getTimeout();
+    LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
+    TileOp tile = dyn_cast<TileOp>(lock.tile().getDefiningOp());
+    int col = tile.colIndex();
+    int row = tile.rowIndex();
+    int lockID = lock.getLockID();
+    if (op.acquire()) {
+      output << "XAieTile_LockAcquire(" << tileDMAInstStr(col, row) << ", "
+             << lockID << ", " << lockVal << ", " << timeOut << ");\n";
+    } else if (op.release()) {
+      output << "XAieTile_LockRelease(" << tileDMAInstStr(col, row) << ", "
+             << lockID << ", " << lockVal << ", " << timeOut << ");\n";
+    }
+  }
+}
+*/
+
+static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
+  assert(index > 0);
+  assert(index < UINT8_MAX - 17);
+
+  switch (bundle) {
+  case WireBundle::DMA:
+    return 2u + index;
+  case WireBundle::South:
+    if (isShim)
+      return 3u + index;
+    else
+      return 7u + index;
+  case WireBundle::North:
+    if (isShim)
+      return 15u + index;
+    else
+      return 17u + index;
+  default:
+    assert(false);
+  }
+}
+
+static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
+  assert(index > 0);
+  assert(index < UINT8_MAX - 17);
+
+  switch (bundle) {
+  case WireBundle::DMA:
+    return 2u + index;
+  case WireBundle::South:
+    if (isShim)
+      return 3u + index;
+    else
+      return 7u + index;
+  case WireBundle::North:
+    if (isShim)
+      return 13u + index;
+    else
+      return 15u + index;
+  default:
+    assert(false);
+  }
+}
+
+static void configure_switchboxes(mlir::ModuleOp &module) {
+
+  // StreamSwitch (switchbox) configuration
+  // void XAieTile_StrmConnectCct(XAieGbl_Tile *TileInstPtr, u8 Slave, u8
+  // Master, u8 SlvEnable); void XAieTile_StrmConfigMstr(XAieGbl_Tile
+  // *TileInstPtr, u8 Master, u8 Enable, u8 PktEnable, u8 Config); void
+  // XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable, u8
+  // PktEnable); void XAieTile_StrmConfigSlvSlot(XAieGbl_Tile *TileInstPtr, u8
+  // Slave, u8 Slot, u8 Enable, u32 RegVal); void
+  // XAieTile_ShimStrmMuxConfig(XAieGbl_Tile *TileInstPtr, u32 Port, u32 Input);
+  // void XAieTile_ShimStrmDemuxConfig(XAieGbl_Tile *TileInstPtr, u32 Port, u32
+  // Output); void XAieTile_StrmEventPortSelect(XAieGbl_Tile *TileInstPtr, u8
+  // Port, u8 Master, u8 Id);
+
+  // XAieTile_StrmConnectCct(&(TileInst[col+i][row]),
+  // XAIETILE_STRSW_SPORT_TRACE((&(TileInst[col+i][row])),
+  //                         1),
+  // XAIETILE_STRSW_MPORT_NORTH((&(TileInst[col+i][row])),
+  //                         0), XAIE_ENABLE);
+
+  for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
+    Region &r = switchboxOp.connections();
+    Block &b = r.front();
+    bool isEmpty = b.getOps<ConnectOp>().empty() &&
+                   b.getOps<MasterSetOp>().empty() &&
+                   b.getOps<PacketRulesOp>().empty();
+
+    auto switchbox_set = [&] {
+      std::set<std::pair<int, int>> result;
+      if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
+        int col = switchboxOp.colIndex();
+        int row = switchboxOp.rowIndex();
+        if (!isEmpty) {
+          result.emplace(col, row);
+        }
+      } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
+                     switchboxOp.tile().getDefiningOp())) {
+        // TODO: Use XAIEV1 target and translate into write32s
+        assert(false);
+      }
+
+      return result;
+    }();
+
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      /*
+      output << "XAieTile_StrmConnectCct(" << tileInstStr("x", "y") << ",\n";
+      output << "\tXAIETILE_STRSW_SPORT_"
+             << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
+             << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
+             << "),\n";
+      output << "\tXAIETILE_STRSW_MPORT_"
+             << stringifyWireBundle(connectOp.destBundle()).upper() << "("
+             << tileInstStr("x", "y") << ", " << connectOp.destIndex()
+             << "),\n";
+      output << "\t" << enable << ");\n";
+      */
+      /* clang-format off
+      void XAieTile_StrmConnectCct(
+          XAieGbl_Tile *TileInstPtr,
+          u8 Slave, u8 Master, u8 SlvEnable)
+        with TileInstPtr @ (x, y)
+             Slave @ XAIETILE_STRSW_SPORT_ << stringifyWireBundle(connectOp.sourceBundle()).upper()  ( tile @ (x, y) , connectOp.sourceIndex() )
+             Master @ XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y), connectOp.destIndex())
+        clang-format on
+      */
+      for (auto tile_coords : switchbox_set) {
+        TileAddress tile{static_cast<uint8_t>(tile_coords.first),
+                         static_cast<uint8_t>(tile_coords.second)};
+
+        auto slave_port = computeSlavePort(
+            connectOp.sourceBundle(), connectOp.sourceIndex(), tile.isShim());
+
+        auto master_port = computeMasterPort(
+            connectOp.destBundle(), connectOp.destIndex(), tile.isShim());
+
+        /* clang-format off
+          Enable the master port in circuit switched mode and specify the slave port it is connected to
+          XAieTile_StrmConfigMstr(TileInstPtr, Master, XAIE_ENABLE, XAIE_DISABLE, Slave);
+
+          Enable the slave port in circuit switched mode
+          if(SlvEnable == XAIE_ENABLE) XAieTile_StrmConfigSlv(TileInstPtr, Slave, SlvEnable, XAIE_DISABLE);
+          clang-format on
+        */
+
+        // Configure master side
+        {
+          /* clang-format off
+          void XAieTile_StrmConfigMstr(XAieGbl_Tile *TileInstPtr, u8 Master, u8 Enable, u8 PktEnable, u8 Config)
+          ----
+          RegAddr = TileInstPtr->TileAddr + RegPtr->RegOff;
+
+          DropHdr = XAie_GetField(Config, RegPtr->DrpHdr.Lsb, RegPtr->DrpHdr.Mask)
+          RegVal =
+              XAie_SetField(Enable, RegPtr->MstrEn.Lsb, RegPtr->MstrEn.Mask) |
+              XAie_SetField(PktEnable, RegPtr->PktEn.Lsb, RegPtr->PktEn.Mask) |
+              XAie_SetField(DropHdr, RegPtr->DrpHdr.Lsb, RegPtr->DrpHdr.Mask) |
+              XAie_SetField(Config, RegPtr->Config.Lsb, RegPtr->Config.Mask);
+          clang-format on
+        */
+          Address address{tile, 0x3F000u + master_port * 4u};
+
+          auto drop_header = (slave_port & 0x80u) >> 7u;
+
+          auto value =
+              setField(1, 31, 0x80000000u) | setField(0, 30, 0x40000000u) |
+              setField(drop_header, 7, 0x80u) | setField(slave_port, 0, 0x7Fu);
+          assert(value < UINT32_MAX);
+          write32(address, value);
+        }
+
+        // Configure slave side
+        {
+          /*
+void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
+                                                                u8 PktEnable)
+----
+          // Get the address of Slave port config reg
+          RegAddr = TileInstPtr->TileAddr + RegPtr->RegOff;
+
+          // Frame the 32-bit reg value
+          RegVal = XAie_SetField(Enable, RegPtr->SlvEn.Lsb,
+                                          RegPtr->SlvEn.Mask) |
+                  XAie_SetField(PktEnable, RegPtr->PktEn.Lsb,
+                                          RegPtr->PktEn.Mask);
+            */
+          Address address{tile, 0x3F100u + slave_port * 4u};
+
+          write32(address,
+                  setField(1, 31, 0x80000000u) | setField(0, 30, 0x40000000u));
+        }
+      }
+    }
+
+    for (auto connectOp : b.getOps<MasterSetOp>()) {
+      /*
+      int mask = 0;
+      int arbiter = -1;
+      for (auto val : connectOp.amsels()) {
+        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+        arbiter = amsel.arbiterIndex();
+        int msel = amsel.getMselValue();
+        mask |= (1u << msel);
+      }
+      */
+      assert(false);
+
+      /* clang-format off
+      TODO: Implement the following
+      bool isdma = (connectOp.destBundle() == WireBundle::DMA);
+      XAieTile_StrmConfigMstr(tile @ (x, y),
+        XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y)), connectOp.destIndex() ),
+        enable, // port enable output
+        enable, // packet enable output
+        XAIETILE_STRSW_MPORT_CFGPKT( tile @ (x, y),
+        XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y), connectOp.destIndex() ),
+        (isdma ? enable : disable), mask, arbiter)
+      clang-format on
+      */
+    }
+
+    for (auto connectOp : b.getOps<PacketRulesOp>()) {
+      int slot = 0;
+      Block &block = connectOp.rules().front();
+      for (auto slotOp : block.getOps<PacketRuleOp>()) {
+        /*
+        AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.amsel().getDefiningOp());
+        int arbiter = amselOp.arbiterIndex();
+        int msel = amselOp.getMselValue();
+        */
+        assert(false);
+        /* TODO
+        output << "XAieTile_StrmConfigSlv(" << tileInstStr("x", "y") << ",\n";
+        output << "\tXAIETILE_STRSW_SPORT_"
+               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
+               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
+               << "),\n";
+        output << "\t" << enable << ", " << enable << ");\n";
+        output << "XAieTile_StrmConfigSlvSlot(" << tileInstStr("x", "y")
+               << ",\n";
+        output << "\tXAIETILE_STRSW_SPORT_"
+               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
+               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
+               << "),\n";
+        output << "\t" << slot << " ,\n";
+        output << "\t" << enable << ",\n";
+        output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" << tileInstStr("x", "y")
+               << ",\n";
+        output << "\t\t(XAIETILE_STRSW_SPORT_"
+               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
+               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
+               << ")),\n";
+        output << "\t\t" << slot << " ,\n";
+        output << "\t\t"
+               << "0x" << llvm::utohexstr(slotOp.valueInt()) << " ,\n";
+        output << "\t\t"
+               << "0x" << llvm::utohexstr(slotOp.maskInt()) << " ,\n";
+        output << "\t\t" << enable << ",\n";
+        output << "\t\t" << msel << " ,\n";
+        output << "\t\t" << arbiter << " ));\n";
+        */
+        slot++;
+      }
+    }
+  }
+
+  Optional<std::pair<uint8_t, uint8_t>> currentShimMux = llvm::NoneType{};
+  for (auto op : module.getOps<ShimMuxOp>()) {
+    Region &r = op.connections();
+    Block &b = r.front();
+    bool isEmpty = b.getOps<ConnectOp>().empty();
+
+    if (isa<TileOp>(op.tile().getDefiningOp())) {
+      int col = op.colIndex();
+      int row = op.rowIndex();
+      if (!isEmpty) {
+        currentShimMux = std::make_pair(col, row);
+      }
+    }
+
+    // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]),
+    // XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
+    // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
+    // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (connectOp.sourceBundle() == WireBundle::North) {
+        // demux!
+        assert(currentShimMux.hasValue());
+        TileAddress tile{currentShimMux->first, currentShimMux->second};
+
+        auto portNumber = [&connectOp] {
+          switch (connectOp.sourceIndex()) {
+          case 2:
+            return 0u;
+          case 3:
+            return 1u;
+          case 6:
+            return 2u;
+          case 7:
+            return 3u;
+          default:
+            assert(false);
+          }
+        }();
+
+        auto input = [&connectOp] {
+          switch (connectOp.destBundle()) {
+          case WireBundle::PLIO:
+            return 0u;
+          case WireBundle::DMA:
+            return 1u;
+          case WireBundle::NOC:
+            return 2u;
+          default:
+            assert(false);
+          }
+        }();
+
+        // Assume all zeros before write.
+        write32({tile, 0x1F004u}, input << (2u * (portNumber + 4u)));
+
+      } else if (connectOp.destBundle() == WireBundle::North) {
+        // mux
+        assert(currentShimMux.hasValue());
+        TileAddress tile{currentShimMux->first, currentShimMux->second};
+
+        auto portNumber = [&connectOp] {
+          // NOTE: hardcoded to SOUTH to match definitions from libxaie
+          switch (connectOp.destIndex()) {
+          case 2:
+            return 0u;
+          case 3:
+            return 1u;
+          case 6:
+            return 2u;
+          case 7:
+            return 3u;
+          default:
+            assert(false);
+          }
+        }();
+
+        auto input = [&connectOp] {
+          switch (connectOp.sourceBundle()) {
+          case WireBundle::PLIO:
+            return 0u;
+          case WireBundle::DMA:
+            return 1u;
+          case WireBundle::NOC:
+            return 2u;
+          default:
+            assert(false);
+          }
+        }();
+
+        // Assume all zeros before write.
+        write32({tile, 0x1F000u}, input << (2u * (portNumber + 4u)));
+      }
+    }
+  }
+
+  for (auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
+    Region &r = switchboxOp.connections();
+    Block &b = r.front();
+    /*
+    bool isEmpty = b.getOps<ConnectOp>().empty();
+    int col = switchboxOp.col();
+    */
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      assert(false);
+      /* TODO: Implement the following
+      output << "XAieTile_StrmConnectCct(" << tileInstStr(col, 0) << ",\n";
+      output << "\tXAIETILE_STRSW_SPORT_"
+             << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
+             << tileInstStr(col, 0) << ", " << connectOp.sourceIndex()
+             << "),\n";
+      output << "\tXAIETILE_STRSW_MPORT_"
+             << stringifyWireBundle(connectOp.destBundle()).upper() << "("
+             << tileInstStr(col, 0) << ", " << connectOp.destIndex() << "),\n";
+      output << "\t" << enable << ");\n";
+      */
     }
   }
 }
@@ -821,274 +1234,13 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   NL.collectBuffers(buffers);
 
   configure_cores(module);
-  start_cores(module);
+  configure_switchboxes(module);
   configure_dmas(module, NL);
+  start_cores(module);
 
   assert(false);
 
   /*
-
-    output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
-    // Lock configuration
-    // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8
-    LockVal,
-    // u32 TimeOut); u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8
-    LockId,
-    // u8 LockVal, u32 TimeOut);
-    for (auto op : module.getOps<UseLockOp>()) {
-      int lockVal = op.getLockValue();
-      int timeOut = op.getTimeout();
-      LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
-      TileOp tile = dyn_cast<TileOp>(lock.tile().getDefiningOp());
-      int col = tile.colIndex();
-      int row = tile.rowIndex();
-      int lockID = lock.getLockID();
-      if (op.acquire()) {
-        output << "XAieTile_LockAcquire(" << tileDMAInstStr(col, row) << ", "
-               << lockID << ", " << lockVal << ", " << timeOut << ");\n";
-      } else if (op.release()) {
-        output << "XAieTile_LockRelease(" << tileDMAInstStr(col, row) << ", "
-               << lockID << ", " << lockVal << ", " << timeOut << ");\n";
-      }
-    }
-    output << "} // mlir_aie_initialize_locks\n";
-
-    output << "void mlir_aie_configure_switchboxes(" << ctx_p << ") {\n";
-    output << "  int x, y;\n";
-
-    // StreamSwitch (switchbox) configuration
-    // void XAieTile_StrmConnectCct(XAieGbl_Tile *TileInstPtr, u8 Slave, u8
-    // Master, u8 SlvEnable); void XAieTile_StrmConfigMstr(XAieGbl_Tile
-    // *TileInstPtr, u8 Master, u8 Enable, u8 PktEnable, u8 Config); void
-    // XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable, u8
-    // PktEnable); void XAieTile_StrmConfigSlvSlot(XAieGbl_Tile *TileInstPtr, u8
-    // Slave, u8 Slot, u8 Enable, u32 RegVal); void
-    // XAieTile_ShimStrmMuxConfig(XAieGbl_Tile *TileInstPtr, u32 Port, u32
-    Input);
-    // void XAieTile_ShimStrmDemuxConfig(XAieGbl_Tile *TileInstPtr, u32 Port,
-    u32
-    // Output); void XAieTile_StrmEventPortSelect(XAieGbl_Tile *TileInstPtr, u8
-    // Port, u8 Master, u8 Id);
-
-    // XAieTile_StrmConnectCct(&(TileInst[col+i][row]),
-    // XAIETILE_STRSW_SPORT_TRACE((&(TileInst[col+i][row])),
-    //                         1),
-    // XAIETILE_STRSW_MPORT_NORTH((&(TileInst[col+i][row])),
-    //                         0), XAIE_ENABLE);
-    for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
-      Region &r = switchboxOp.connections();
-      Block &b = r.front();
-      bool isEmpty = b.getOps<ConnectOp>().empty() &&
-                     b.getOps<MasterSetOp>().empty() &&
-                     b.getOps<PacketRulesOp>().empty();
-      bool isParam = false;
-
-      if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
-        int col = switchboxOp.colIndex();
-        int row = switchboxOp.rowIndex();
-        if (!isEmpty) {
-          output << "// Core Stream Switch column " << col << " row " << row
-                 << "\n";
-          output << "x = " << col << ";\n";
-          output << "y = " << row << ";\n";
-        }
-      } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
-                     switchboxOp.tile().getDefiningOp())) {
-        // parameterize streamswitch's configuration
-        isParam = true;
-        HerdOp sourceHerd = dyn_cast<HerdOp>(sel.startHerd().getDefiningOp());
-        std::string sourceHerdName(sourceHerd.name().getValue());
-
-        IterOp iterX = dyn_cast<IterOp>(sel.iterX().getDefiningOp());
-        IterOp iterY = dyn_cast<IterOp>(sel.iterY().getDefiningOp());
-        int startXValue = iterX.getStartValue();
-        int endXValue = iterX.getEndValue();
-        int strideXValue = iterX.getStrideValue();
-        int startYValue = iterY.getStartValue();
-        int endYValue = iterY.getEndValue();
-        int strideYValue = iterY.getStrideValue();
-
-        std::string startX(sourceHerdName + "_X + " +
-                           std::to_string(startXValue));
-        std::string endX(sourceHerdName + "_X + " + std::to_string(endXValue));
-        std::string startY(sourceHerdName + "_Y + " +
-                           std::to_string(startYValue));
-        std::string endY(sourceHerdName + "_Y + " + std::to_string(endYValue));
-
-        output << "for (x = " << startX << "; x < " << endX
-               << "; x += " << strideXValue << ") {\n";
-        output << "for (y = " << startY << "; y < " << endY
-               << "; y += " << strideYValue << ") {\n";
-      }
-
-      for (auto connectOp : b.getOps<ConnectOp>()) {
-        output << "XAieTile_StrmConnectCct(" << tileInstStr("x", "y") << ",\n";
-        output << "\tXAIETILE_STRSW_SPORT_"
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-               << "),\n";
-        output << "\tXAIETILE_STRSW_MPORT_"
-               << stringifyWireBundle(connectOp.destBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.destIndex()
-               << "),\n";
-        output << "\t" << enable << ");\n";
-      }
-
-      for (auto connectOp : b.getOps<MasterSetOp>()) {
-        int mask = 0;
-        int arbiter = -1;
-        for (auto val : connectOp.amsels()) {
-          AMSelOp amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
-          arbiter = amsel.arbiterIndex();
-          int msel = amsel.getMselValue();
-          mask |= (1 << msel);
-        }
-
-        output << "XAieTile_StrmConfigMstr(" << tileInstStr("x", "y") << ",\n";
-        output << "\tXAIETILE_STRSW_MPORT_"
-               << stringifyWireBundle(connectOp.destBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.destIndex()
-               << "),\n";
-        output << "\t" << enable << ",\n"; // port enable
-        output << "\t" << enable << ",\n"; // packet enable
-        output << "\tXAIETILE_STRSW_MPORT_CFGPKT(" << tileInstStr("x", "y")
-               << ",\n";
-        output << "\t\tXAIETILE_STRSW_MPORT_"
-               << stringifyWireBundle(connectOp.destBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.destIndex()
-               << "),\n";
-        bool isdma = (connectOp.destBundle() == WireBundle::DMA);
-        output << "\t\t" << (isdma ? enable : disable) << " ,\n";
-        output << "\t\t"
-               << "0x" << llvm::utohexstr(mask)
-               << " ,\n"; // FIXME: compute mask for msel
-        output << "\t\t" << arbiter << " ));\n";
-      }
-
-      for (auto connectOp : b.getOps<PacketRulesOp>()) {
-        int slot = 0;
-        Block &block = connectOp.rules().front();
-        for (auto slotOp : block.getOps<PacketRuleOp>()) {
-          AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.amsel().getDefiningOp());
-          int arbiter = amselOp.arbiterIndex();
-          int msel = amselOp.getMselValue();
-          output << "XAieTile_StrmConfigSlv(" << tileInstStr("x", "y") << ",\n";
-          output << "\tXAIETILE_STRSW_SPORT_"
-                 << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-                 << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-                 << "),\n";
-          output << "\t" << enable << ", " << enable << ");\n";
-          output << "XAieTile_StrmConfigSlvSlot(" << tileInstStr("x", "y")
-                 << ",\n";
-          output << "\tXAIETILE_STRSW_SPORT_"
-                 << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-                 << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-                 << "),\n";
-          output << "\t" << slot << " ,\n";
-          output << "\t" << enable << ",\n";
-          output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" << tileInstStr("x", "y")
-                 << ",\n";
-          output << "\t\t(XAIETILE_STRSW_SPORT_"
-                 << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-                 << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-                 << ")),\n";
-          output << "\t\t" << slot << " ,\n";
-          output << "\t\t"
-                 << "0x" << llvm::utohexstr(slotOp.valueInt())
-                 << " ,\n";
-          output << "\t\t"
-                 << "0x" << llvm::utohexstr(slotOp.maskInt()) << " ,\n";
-          output << "\t\t" << enable << ",\n";
-          output << "\t\t" << msel << " ,\n";
-          output << "\t\t" << arbiter << " ));\n";
-          slot++;
-        }
-      }
-
-      if (isParam) {
-        output << "}\n";
-        output << "}\n";
-      }
-    }
-    for (auto op : module.getOps<ShimMuxOp>()) {
-      Region &r = op.connections();
-      Block &b = r.front();
-      bool isEmpty = b.getOps<ConnectOp>().empty();
-
-      if (isa<TileOp>(op.tile().getDefiningOp())) {
-        int col = op.colIndex();
-        int row = op.rowIndex();
-        if (!isEmpty) {
-          output << "// ShimMux column " << col << " row " << row << "\n";
-          output << "// NOTE ShimMux always connects from the south as "
-                 << "directions are defined relative to the tile stream "
-                 << "switch\n";
-          output << "x = " << col << ";\n";
-          output << "y = " << row << ";\n";
-        }
-      }
-
-      // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]),
-      // XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
-      // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
-      // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
-      for (auto connectOp : b.getOps<ConnectOp>()) {
-        if (connectOp.sourceBundle() == WireBundle::North) {
-          // demux!
-          output << "XAieTile_ShimStrmDemuxConfig(" << tileInstStr("x", "y")
-                 << ",\n";
-          output << "\tXAIETILE_SHIM_STRM_DEM_SOUTH"
-                 << // NOTE hardcoded to SOUTH to match definitions
-                    //      from libxaie
-              connectOp.sourceIndex() << ",\n";
-          if (connectOp.destBundle() == WireBundle::PLIO) {
-            output << "\tXAIETILE_SHIM_STRM_DEM_PL);\n";
-          } else {
-            output << "\tXAIETILE_SHIM_STRM_DEM_"
-                   << stringifyWireBundle(connectOp.destBundle()).upper()
-                   << ");\n";
-          }
-
-        } else if (connectOp.destBundle() == WireBundle::North) {
-          // mux
-          output << "XAieTile_ShimStrmMuxConfig(" << tileInstStr("x", "y")
-                 << ",\n";
-          output << "\tXAIETILE_SHIM_STRM_MUX_SOUTH"
-                 << // NOTE hardcoded to SOUTH to match definitions
-                    //      from libxaie
-              connectOp.destIndex() << ",\n";
-          if (connectOp.sourceBundle() == WireBundle::PLIO) {
-            output << "\tXAIETILE_SHIM_STRM_MUX_PL);\n";
-          } else {
-            output << "\tXAIETILE_SHIM_STRM_MUX_"
-                   << stringifyWireBundle(connectOp.sourceBundle()).upper()
-                   << ");\n";
-          }
-        }
-      }
-    }
-    for (auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
-      Region &r = switchboxOp.connections();
-      Block &b = r.front();
-      bool isEmpty = b.getOps<ConnectOp>().empty();
-      int col = switchboxOp.col();
-      if (!isEmpty) {
-        output << "// Shim Switch column " << col << "\n";
-      }
-      for (auto connectOp : b.getOps<ConnectOp>()) {
-        output << "XAieTile_StrmConnectCct(" << tileInstStr(col, 0) << ",\n";
-        output << "\tXAIETILE_STRSW_SPORT_"
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-               << tileInstStr(col, 0) << ", " << connectOp.sourceIndex()
-               << "),\n";
-        output << "\tXAIETILE_STRSW_MPORT_"
-               << stringifyWireBundle(connectOp.destBundle()).upper() << "("
-               << tileInstStr(col, 0) << ", " << connectOp.destIndex() <<
-    "),\n"; output << "\t" << enable << ");\n";
-      }
-    }
-
-    output << "} // mlir_aie_configure_switchboxes\n\n";
 
     // Output Buffer Accessors
     for (auto tile : tiles) {
@@ -1104,7 +1256,8 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
         //     (index*4));
         // }
         // void mlir_aie_write_buffer_a13(int index, int32_t value) {
-        //     XAieTile_DmWriteWord(&(TileInst[1][3]), a13_offset + (index*4),
+        //     XAieTile_DmWriteWord(&(TileInst[1][3]), a13_offset +
+(index*4),
         //     value);
         // }
         std::string bufName(buf.name().getValue());
@@ -1118,22 +1271,27 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
           else if (et.isF32())
             typestr = "float";
           else {
-            output << "// buffer " << bufName << " with unsupported type " << t
+            output << "// buffer " << bufName << " with unsupported type "
+<<
+    t
                    << ";\n";
             return; // Unsupported type
           }
 
         } else {
-          output << "// buffer " << bufName << " with unsupported type " << t
+          output << "// buffer " << bufName << " with unsupported type "
+<< t
                  << ";\n";
           return; // Unsupported type
         }
 
         output << "const int " << bufName
                << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-        output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p
+        output << typestr << " mlir_aie_read_buffer_" << bufName << "(" <<
+    ctx_p
                << ", int index) {\n";
-        output << "  int32_t value = XAieTile_DmReadWord(" << tileInst << ", "
+        output << "  int32_t value = XAieTile_DmReadWord(" << tileInst <<
+", "
                << bufName << "_offset + (index*4));\n";
         if (et.isInteger(32))
           output << "  return value;\n";
