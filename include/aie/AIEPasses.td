@@ -187,6 +187,18 @@ def AIEBroadcastPacket : Pass<"aie-create-broadcast-packet", "ModuleOp"> {
   ];
 }
 
+def AIEMulticast : Pass<"aie-create-multicast", "ModuleOp"> {
+  let summary = "Replace multicast flow by flow";
+  let description = [{
+    An abstraction of multicast flow  
+  }];
+
+  let constructor = "xilinx::AIE::createAIEMulticastPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "ModuleOp"> {
   let summary = "Route aie.packetflow operations through switchboxes";
   let description = [{

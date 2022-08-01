@@ -210,6 +210,7 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMemcpyPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEMulticastPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEBroadcastPacketPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
