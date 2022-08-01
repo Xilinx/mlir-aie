@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license
 // RUN: aiecc.py %s
 
 module @test00_itsalive {
