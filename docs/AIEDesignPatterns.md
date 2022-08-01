@@ -436,7 +436,7 @@ module @objectFIFO  {
 
 ## Using AIE broadcast_packet
 
-[Core Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/23_broadcast_packet/aie.mlir)
+[broadcast_packet Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/23_broadcast_packet/aie.mlir)
 
 The broadcast_packet operation is a logical connection that combines broadcast and packet-switch data transferring mechanism.
 
