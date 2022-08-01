@@ -10,6 +10,7 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Location.h"
@@ -46,6 +47,7 @@ namespace AIE {
 
 static constexpr auto disable = 0u;
 static constexpr auto enable = 1u;
+static constexpr auto MAX_CHANNEL_COUNT = 4u;
 
 static constexpr auto TILE_ADDR_OFF_WITDH = 18u;
 
@@ -345,210 +347,312 @@ static void start_cores(mlir::ModuleOp module) {
   }
 }
 
-mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output) {
+struct BDInfo {
+  bool foundBdPacket = false;
+  int packetType = 0;
+  int packetID = 0;
+  bool foundBd = false;
+  int lenA = 0;
+  int lenB = 0;
+  int bytesA = 0;
+  int bytesB = 0;
+  int offsetA = 0;
+  int offsetB = 0;
+  int BaseAddrA = 0;
+  int BaseAddrB = 0;
+  bool hasA = false;
+  bool hasB = false;
+  std::string bufA = "0";
+  std::string bufB = "0";
+  uint32_t AbMode = disable;
+  uint32_t FifoMode = disable; // FIXME: when to enable FIFO mode?
+};
 
-  assert(not output.is_displayed());
+static BDInfo getBDInfo(Block &block, NetlistAnalysis &NL) {
+  BDInfo bdInfo;
+  for (auto op : block.getOps<DMABDOp>()) {
+    bdInfo.foundBd = true;
+    auto bufferType = op.buffer().getType().cast<::mlir::MemRefType>();
 
-  DenseMap<std::pair<int, int>, Operation *> tiles;
-  DenseMap<Operation *, CoreOp> cores;
-  DenseMap<Operation *, MemOp> mems;
-  DenseMap<std::pair<Operation *, int>, LockOp> locks;
-  DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-  DenseMap<Operation *, SwitchboxOp> switchboxes;
+    if (op.isA()) {
+      bdInfo.BaseAddrA = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+      bdInfo.lenA = op.getLenValue();
+      bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8;
+      bdInfo.offsetA = op.getOffsetValue();
+      bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
+      bdInfo.hasA = true;
+    }
 
-  NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
-  NL.collectTiles(tiles);
-  NL.collectBuffers(buffers);
+    if (op.isB()) {
+      bdInfo.BaseAddrB = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+      bdInfo.lenB = op.getLenValue();
+      bdInfo.bytesB = bufferType.getElementTypeBitWidth() / 8;
+      bdInfo.offsetB = op.getOffsetValue();
+      bdInfo.bufB = "XAIEDMA_TILE_BD_ADDRB";
+      bdInfo.hasB = true;
+    }
+  }
+  return bdInfo;
+}
 
-  configure_cores(module);
-  start_cores(module);
+static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
+  static constexpr uint32_t dmaChannelCtrlOffsets[4]{
+      0x1de00,
+      0x1de08,
+      0x1de10,
+      0x1de18,
+  };
+  static constexpr uint32_t dmaChannelQueueOffsets[4]{
+      0x1de04,
+      0x1de0C,
+      0x1de14,
+      0x1de1C,
+  };
 
-  assert(false);
+  static constexpr auto dmaChannelResetLSB = 1u;
+  static constexpr auto dmaChannelResetMask = 0x2u;
+  static constexpr auto dmaChannelEnableLSB = 0u;
+  static constexpr auto dmaChannelEnableMask = 0x1u;
 
-  /*
-    output << "void mlir_aie_configure_dmas(" << ctx_p << ") {\n";
+  /* clang-format off
+     DMA configuration
+     XAieDma_TileSetStartBd(DmaInstPtr, ChNum, BdStart)
+     u32 XAieDma_TileSoftInitialize(XAieGbl_Tile *TileInstPtr, XAieDma_Tile *DmaInstPtr)
+     u32 XAieDma_TileInitialize(XAieGbl_Tile *TileInstPtr, XAieDma_Tile *DmaInstPtr);
+     void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8 LockAcqVal)
+     void XAieDma_TileBdSetXy2d(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 XyType, u16 Incr, u16 Wrap, u16 Offset);
+     void XAieDma_TileBdSetIntlv(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 IntlvMode, u8 IntlvDb, u8 IntlvCnt, u16 IntlvCur)
+     void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn, u8 PktType, u8 PktId)
+     void XAieDma_TileBdSetAdrLenMod(XAieDma_Tile *DmaInstPtr, u8 BdNum, u16 BaseAddrA, u16 BaseAddrB, u16 Length, u8 AbMode, u8 FifoMode)
+     void XAieDma_TileBdSetNext(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 NextBd)
+     void XAieDma_TileBdWrite(XAieDma_Tile *DmaInstPtr, u8 BdNum)
+     void XAieDma_TileBdClear(XAieDma_Tile *DmaInstPtr, u8 BdNum)
+     void XAieDma_TileBdClearAll(XAieDma_Tile *DmaInstPtr)
+     u32 XAieDma_TileChControl(XAieDma_Tile *DmaInstPtr, u8 ChNum, u8 Reset, u8 Enable)
+     u32 XAieDma_TileChReset(XAieDma_Tile *DmaInstPtr, u8 ChNum)
+     u32 XAieDma_TileChResetAll(XAieDma_Tile *DmaInstPtr)
+     clang-format on
+     */
 
-    // DMA configuration
-    // XAieDma_TileSetStartBd(DmaInstPtr, ChNum, BdStart)
-    // u32 XAieDma_TileSoftInitialize(XAieGbl_Tile *TileInstPtr, XAieDma_Tile
-    // *DmaInstPtr); u32 XAieDma_TileInitialize(XAieGbl_Tile *TileInstPtr,
-    // XAieDma_Tile *DmaInstPtr); void XAieDma_TileBdSetLock(XAieDma_Tile
-    // *DmaInstPtr, u8 BdNum, u8 AbType, u8 LockId, u8 LockRelEn, u8 LockRelVal,
-    // u8 LockAcqEn, u8 LockAcqVal); void XAieDma_TileBdSetXy2d(XAieDma_Tile
-    // *DmaInstPtr, u8 BdNum, u8 XyType, u16 Incr, u16 Wrap, u16 Offset); void
-    // XAieDma_TileBdSetIntlv(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 IntlvMode,
-    u8
-    // IntlvDb, u8 IntlvCnt, u16 IntlvCur); void
-    XAieDma_TileBdSetPkt(XAieDma_Tile
-    // *DmaInstPtr, u8 BdNum, u8 PktEn, u8 PktType, u8 PktId); void
-    // XAieDma_TileBdSetAdrLenMod(XAieDma_Tile *DmaInstPtr, u8 BdNum, u16
-    // BaseAddrA, u16 BaseAddrB, u16 Length, u8 AbMode, u8 FifoMode); void
-    // XAieDma_TileBdSetNext(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 NextBd);
-    void
-    // XAieDma_TileBdWrite(XAieDma_Tile *DmaInstPtr, u8 BdNum); void
-    // XAieDma_TileBdClear(XAieDma_Tile *DmaInstPtr, u8 BdNum); void
-    // XAieDma_TileBdClearAll(XAieDma_Tile *DmaInstPtr); u32
-    // XAieDma_TileChControl(XAieDma_Tile *DmaInstPtr, u8 ChNum, u8 Reset, u8
-    // Enable); u32 XAieDma_TileChReset(XAieDma_Tile *DmaInstPtr, u8 ChNum); u32
-    // XAieDma_TileChResetAll(XAieDma_Tile *DmaInstPtr);
-    for (auto memOp : module.getOps<MemOp>()) {
-      int col = memOp.colIndex();
-      int row = memOp.rowIndex();
-      output << "XAieDma_TileInitialize(" << tileInstStr(col, row) << ", "
-             << tileDMAInstStr(col, row) << ");\n";
-      output << "XAieDma_TileBdClearAll(" << tileDMAInstStr(col, row) << ");\n";
-      output << "XAieDma_TileChResetAll(" << tileDMAInstStr(col, row) << ");\n";
+  for (auto memOp : module.getOps<MemOp>()) {
+    int col = memOp.colIndex();
+    int row = memOp.rowIndex();
+    /* clang-format off
+    output << "XAieDma_TileInitialize(" << tileInstStr(col, row) << ", " << tileDMAInstStr(col, row) << ");\n";
+    ----
+    DmaInstPtr->BaseAddress = TileInstPtr->TileAddr;
 
-      DenseMap<Block *, int> blockMap;
+    Clear the BD entries in the DMA instance structure
+    for(BdIdx = 0U; BdIdx < XAIEDMA_TILE_MAX_NUM_DESCRS; BdIdx++) {
+      XAieDma_TileBdClear(DmaInstPtr, BdIdx);
+    }
+    clang-format on */
 
-      {
-        // Assign each block a BD number
-        int bdNum = 0;
-        for (auto &block : memOp.body()) {
-          if (!block.getOps<DMABDOp>().empty()) {
-            blockMap[&block] = bdNum;
-            bdNum++;
-          }
-        }
+    // Note: `TileInitialize` already clears the bds,
+    // so calling `TileBdClearAll` is unneeded.
+
+    // Note: `TileBdClear` does not call `Write32`
+
+    /* clang-format off
+    output << "XAieDma_TileChResetAll(" << tileDMAInstStr(col, row) << ");\n";
+    ----
+    for (ChNum = 0U; ChNum < XAIEDMA_TILE_MAX_NUM_CHANNELS; ChNum++) {
+      Status = XAieDma_TileChReset(DmaInstPtr, ChNum);
+      if (Status == XAIE_FAILURE) {
+        Ret = XAIE_FAILURE;
       }
-      for (auto &block : memOp.body()) {
-        bool foundBdPacket = false;
-        int packetType = 0;
-        int packetID = 0;
-        bool foundBd = false;
-        int lenA = 0;
-        int lenB = 0;
-        int bytesA = 0;
-        int bytesB = 0;
-        int offsetA = 0;
-        int offsetB = 0;
-        int BaseAddrA = 0;
-        int BaseAddrB = 0;
-        bool hasA = false;
-        bool hasB = false;
-        StringRef bufA = "0";
-        StringRef bufB = "0";
-        StringRef AbMode = disable;
-        StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
-        for (auto op : block.getOps<DMABDOp>()) {
-          foundBd = true;
-          ShapedType bufferType =
-              op.buffer().getType().cast<::mlir::MemRefType>();
-          if (op.isA()) {
-            BaseAddrA = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
-            lenA = op.getLenValue();
-            bytesA = bufferType.getElementTypeBitWidth() / 8;
-            offsetA = op.getOffsetValue();
-            bufA = "XAIEDMA_TILE_BD_ADDRA";
-            hasA = true;
-          }
-          if (op.isB()) {
-            BaseAddrB = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
-            lenB = op.getLenValue();
-            bytesB = bufferType.getElementTypeBitWidth() / 8;
-            offsetB = op.getOffsetValue();
-            bufB = "XAIEDMA_TILE_BD_ADDRB";
-            hasB = true;
-          }
-        }
-
-        if (hasA && hasB) {
-          AbMode = enable;
-          if (lenA != lenB)
-            llvm::errs() << "ABmode must have matching lengths.\n";
-          if (bytesA != bytesB)
-            llvm::errs() << "ABmode must have matching element data types.\n";
-        }
-        int acqValue = 0, relValue = 0;
-        StringRef acqEnable = disable;
-        StringRef relEnable = disable;
-        int lockID;
-        for (auto op : block.getOps<UseLockOp>()) {
-          LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
-          lockID = lock.getLockID();
-          if (op.acquire()) {
-            acqEnable = enable;
-            acqValue = op.getLockValue();
-          } else if (op.release()) {
-            relEnable = enable;
-            relValue = op.getLockValue();
-          }
-        }
-
-        for (auto op : block.getOps<DMABDPACKETOp>()) {
-          foundBdPacket = true;
-          packetType = op.getPacketType();
-          packetID = op.getPacketID();
-        }
-
-        int bdNum = blockMap[&block];
-        if (foundBd) {
-          if (hasA) {
-            output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ",
-    "
-                   << bdNum << ", " << bufA << ", "
-                   << lockID << ", " << relEnable << ", "
-                   << relValue << ", " << acqEnable << ", "
-                   << acqValue << ");\n";
-          }
-          if (hasB) {
-            output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ",
-    "
-                   << bdNum << ", " << bufB << ", "
-                   << lockID << ", " << relEnable << ", "
-                   << relValue << ", " << acqEnable << ", "
-                   << acqValue << ");\n";
-          }
-
-          output << "XAieDma_TileBdSetAdrLenMod(" << tileDMAInstStr(col, row)
-                 << ", "
-                 << bdNum << ", "
-                 << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
-                 << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", "
-                 << lenA << " * " << bytesA << ", "
-                 << AbMode << ", "
-                 << FifoMode << ");\n";
-
-          if (block.getNumSuccessors() > 0) {
-            Block *nextBlock = block.getSuccessors()[0]; // should have only one
-                                                         // successor block
-            int nextBdNum = blockMap[nextBlock];
-            output << "XAieDma_TileBdSetNext(" << tileDMAInstStr(col, row) << ",
-    "
-                   << bdNum << ", "
-                   << nextBdNum << ");\n";
-          }
-          if (foundBdPacket) {
-            output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ",
-    "
-                   << bdNum << ", "
-                   << 1 << ", "
-                   << packetType << ", "
-                   << packetID << ");\n";
-          }
-          output << "XAieDma_TileBdWrite(" << tileDMAInstStr(col, row) << ", "
-                 << bdNum << ");\n";
-        }
+    }
+    ----
+    for (ChNum = 0U; ChNum < XAIEDMA_TILE_MAX_NUM_CHANNELS; ChNum++) {
+      // Reset the channel
+      Status = XAieDma_TileChControl(DmaInstPtr, ChNum, XAIE_RESETENABLE, XAIE_DISABLE);
+      if (Status == XAIE_FAILURE) {
+        return Status;
       }
 
-      for (auto &block : memOp.body()) {
-        for (auto op : block.getOps<DMAStartOp>()) {
-          int bdNum = blockMap[op.dest()];
+      // Unreset and Disable the channel
+      Status = XAieDma_TileChControl(DmaInstPtr, ChNum, XAIE_RESETDISABLE, XAIE_DISABLE);
+      if (Status == XAIE_FAILURE) {
+        return Status;
+      }
 
-          // Note fixup with extra parenthesis here.
-          output << "XAieDma_TileSetStartBd("
-                 << "(" << tileDMAInstStr(col, row) << ")"
-                 << ", "
-                 << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
-                 << ", "
-                 << bdNum << ");\n";
-          output << "XAieDma_TileChControl(" << tileDMAInstStr(col, row) << ", "
-                 << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
-                 << ", " << resetDisable << ", " << enable << ");\n";
+      // Set Start BD to the reset value
+      XAieDma_TileSetStartBd(DmaInstPtr, ChNum, XAIEDMA_TILE_STARTBD_RESET);
+    }
+    ----
+    for (ChNum = 0U; ChNum < XAIEDMA_TILE_MAX_NUM_CHANNELS; ChNum++) {
+      // NOTE: the first call to `TileChControl` is overwritten by the second.
+
+      // Unreset and Disable the channel
+      RegAddr = DmaInstPtr->BaseAddress + TileDmaCh[ChNum].CtrlOff;
+      // Frame the register value
+      RegVal = XAie_SetField(XAIE_RESETDISABLE, TileDmaCh[ChNum].Rst.Lsb, TileDmaCh[ChNum].Rst.Mask) |
+              XAie_SetField(XAIE_ENABLE, TileDmaCh[ChNum].En.Lsb, TileDmaCh[ChNum].En.Mask);
+
+      // Write to channel control register
+      XAieGbl_Write32(RegAddr, RegVal);
+      DmaInstPtr->StartBd[ChNum] = BdStart;
+    }
+    clang-format on */
+
+    TileAddress tile{static_cast<uint8_t>(col), static_cast<uint8_t>(row)};
+    for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
+
+      write32({tile, dmaChannelCtrlOffsets[chNum]},
+              setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
+                  setField(enable, dmaChannelEnableLSB, dmaChannelEnableMask));
+    }
+
+    DenseMap<Block *, int> blockMap;
+
+    {
+      // Assign each block a BD number
+      auto bdNum = 0;
+      for (auto &block : memOp.body()) {
+        if (not block.getOps<DMABDOp>().empty()) {
+          blockMap[&block] = bdNum;
+          bdNum++;
         }
       }
     }
+
+    for (auto &block : memOp.body()) {
+      auto bdInfo = getBDInfo(block, NL);
+
+      if (bdInfo.hasA and bdInfo.hasB) {
+        bdInfo.AbMode = enable;
+        if (bdInfo.lenA != bdInfo.lenB)
+          llvm::errs() << "ABmode must have matching lengths.\n";
+        if (bdInfo.bytesA != bdInfo.bytesB)
+          llvm::errs() << "ABmode must have matching element data types.\n";
+      }
+      int acqValue = 0, relValue = 0;
+      auto acqEnable = disable;
+      auto relEnable = disable;
+      int lockID;
+
+      for (auto op : block.getOps<UseLockOp>()) {
+        LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
+        lockID = lock.getLockID();
+        if (op.acquire()) {
+          acqEnable = enable;
+          acqValue = op.getLockValue();
+        } else if (op.release()) {
+          relEnable = enable;
+          relValue = op.getLockValue();
+        }
+      }
+
+      for (auto op : block.getOps<DMABDPACKETOp>()) {
+        bdInfo.foundBdPacket = true;
+        bdInfo.packetType = op.getPacketType();
+        bdInfo.packetID = op.getPacketID();
+      }
+
+      auto bdNum = blockMap[&block];
+      if (bdInfo.foundBd) {
+        if (bdInfo.hasA) {
+          /*
+          output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ", "
+                 << bdNum << ", " << bufA << ", " << lockID << ", " << relEnable
+                 << ", " << relValue << ", " << acqEnable << ", " << acqValue
+                 << ");\n";
+                 */
+        }
+        if (bdInfo.hasB) {
+          /*
+          output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ", "
+                 << bdNum << ", " << bufB << ", " << lockID << ", " << relEnable
+                 << ", " << relValue << ", " << acqEnable << ", " << acqValue
+                 << ");\n";
+                 */
+        }
+
+        /*
+                output << "XAieDma_TileBdSetAdrLenMod(" << tileDMAInstStr(col,
+           row)
+                       << ", " << bdNum << ", "
+                       << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
+                       << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", "
+           << lenA
+                       << " * " << bytesA << ", " << AbMode << ", " << FifoMode
+                       << ");\n";
+                       */
+
+        if (block.getNumSuccessors() > 0) {
+          // should have only one successor block
+          assert(block.getNumSuccessors() == 1);
+          auto *nextBlock = block.getSuccessors()[0];
+          auto nextBdNum = blockMap[nextBlock];
+
+          /*
+          output << "XAieDma_TileBdSetNext(" << tileDMAInstStr(col, row) << ", "
+                           << bdNum << ", " << nextBdNum << ");\n";
+          */
+        }
+
+        if (bdInfo.foundBdPacket) {
+          /*
+          output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
+                 << bdNum << ", " << 1 << ", " << packetType << ", " << packetID
+                 << ");\n";
+                 */
+        }
+        /*
+        output << "XAieDma_TileBdWrite(" << tileDMAInstStr(col, row) << ", "
+               << bdNum << ");\n";
+               */
+      }
+    }
+
+    for (auto &block : memOp.body()) {
+      for (auto op : block.getOps<DMAStartOp>()) {
+        auto bdNum = blockMap[op.dest()];
+
+        /*
+        output << "XAieDma_TileSetStartBd("
+               << "(" << tileDMAInstStr(col, row) << ")"
+               << ", "
+               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
+               << ", " << bdNum << ");\n";
+               */
+
+        if (bdNum != 0xFFU) {
+
+          uint32_t chNum;
+          switch (op.dmaChan()) {
+          case DMAChan::S2MM0:
+            chNum = 0;
+            break;
+          case DMAChan::S2MM1:
+            chNum = 1;
+            break;
+          case DMAChan::MM2S0:
+            chNum = 2;
+            break;
+          case DMAChan::MM2S1:
+            chNum = 3;
+            break;
+          default:
+            assert(false);
+          }
+          write32(Address{tile, dmaChannelQueueOffsets[chNum]},
+                  setField(bdNum, 0u, 0xFu));
+
+          /*
+   output << "XAieDma_TileChControl(" << tileDMAInstStr(col, row) << ", "
+          << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
+          << ", " << resetDisable << ", " << enable << ");\n";
+          */
+
+          write32(
+              {tile, dmaChannelQueueOffsets[chNum] - 4u},
+              setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
+                  setField(enable, dmaChannelEnableLSB, dmaChannelEnableMask));
+        }
+      }
+    }
+
     // XAieDma_Shim ShimDmaInst1;
     // u32 XAieDma_ShimSoftInitialize(XAieGbl_Tile *TileInstPtr,
     // XAieDma_Shim *DmaInstPtr); void XAieDma_ShimInitialize(XAieGbl_Tile
@@ -570,15 +674,17 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
     // XAieDma_ShimWaitDone(XAieDma_Shim *DmaInstPtr, u32 ChNum, u32
     // TimeOut); u8 XAieDma_ShimPendingBdCount(XAieDma_Shim *DmaInstPtr, u32
     // ChNum);
-    int index = 0;
+    auto index = 0;
     for (auto op : module.getOps<ShimDMAOp>()) {
-      int col = op.colIndex();
-      int row = op.rowIndex();
+      auto col = op.colIndex();
+      auto row = op.rowIndex();
+      /*
       std::string dmaName =
           shimDMAInstStr(std::to_string(col), std::to_string(index));
       output << "XAieDma_Shim " << dmaName << ";\n";
       output << "XAieDma_ShimInitialize(" << tileInstStr(col, row) << ", &"
              << dmaName << ");\n";
+             */
 
       DenseMap<Block *, int> blockMap;
 
@@ -592,6 +698,7 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
           }
         }
       }
+
       for (auto &block : op.body()) {
         bool foundBd = false;
         int len = 0;
@@ -602,20 +709,19 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
         for (auto op : block.getOps<DMABDOp>()) {
           foundBd = true;
           len = op.getLenValue();
-          ShapedType bufferType =
-              op.buffer().getType().cast<::mlir::MemRefType>();
-          bytes = bufferType.getElementTypeBitWidth() / 8;
+          auto bufferType = op.buffer().getType().cast<::mlir::MemRefType>();
+          bytes = bufferType.getElementTypeBitWidth() / 8u;
           BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
           offset = op.getOffsetValue();
         }
 
         int acqValue = 0, relValue = 0;
         bool hasLock = false;
-        StringRef acqEnable = disable;
-        StringRef relEnable = disable;
+        auto acqEnable = disable;
+        auto relEnable = disable;
         int lockID = 0;
         for (auto op : block.getOps<UseLockOp>()) {
-          LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
+          auto lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
           lockID = lock.getLockID();
           hasLock = true;
           if (op.acquire()) {
@@ -632,43 +738,53 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
           // void XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum,
           // u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8
           // LockAcqVal);
-          if (hasLock)
-            output << "XAieDma_ShimBdSetLock(&" << dmaName << ", "
-                   <<  bdNum << ", "
-                   << lockID << ", " << relEnable << ", "
-                   << relValue << ", " << acqEnable << ", "
-                   << acqValue << ");\n";
+          if (hasLock) {
+            /*
+            output << "XAieDma_ShimBdSetLock(&" << dmaName << ", " << bdNum
+                   << ", " << lockID << ", " << relEnable << ", " << relValue
+                   << ", " << acqEnable << ", " << acqValue << ");\n";
+                   */
+          }
           // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
           // u16 AddrHigh, u32 AddrLow, u32 Length);
           uint64_t address = BaseAddr + offset;
-          output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", "
-                 << bdNum << ", "
+          /*
+          output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", " << bdNum << ",
+          "
                  << "HIGH_ADDR((u64)0x" << llvm::utohexstr(address) << "), "
                  << "LOW_ADDR((u64)0x" << llvm::utohexstr(address) << "), " <<
-    len << " * " << bytes << ");\n";
+          len
+                 << " * " << bytes << ");\n";
+                 */
 
           // void XAieDma_ShimBdSetAxi(XAieDma_Shim *DmaInstPtr, u8 BdNum,
           // u8 Smid, u8 BurstLen, u8 Qos, u8 Cache, u8 Secure);
-          output << "XAieDma_ShimBdSetAxi(&" << dmaName << ", "
-                 << bdNum << ", "
+          /*
+          output << "XAieDma_ShimBdSetAxi(&" << dmaName << ", " << bdNum << ", "
                  << " 0, "
                  << " 4, "
                  << " 0, "
                  << " 0, "
                  << " " << enable << ");\n";
+                 */
 
           if (block.getNumSuccessors() > 0) {
-            Block *nextBlock = block.getSuccessors()[0]; // should have only one
-                                                         // successor block
+            // should have only one successor block
+            assert(block.getNumSuccessors() == 1);
+            Block *nextBlock = block.getSuccessors()[0];
             int nextBdNum = blockMap[nextBlock];
             // void XAieDma_ShimBdSetNext(XAieDma_Shim *DmaInstPtr, u8
             // BdNum, u8 NextBd);
+            /*
             output << "XAieDma_ShimBdSetNext(&" << dmaName << ", "
                    << "  " << bdNum << ", "
                    << "  " << nextBdNum << ");\n";
+                   */
           }
+          /*
           output << "XAieDma_ShimBdWrite(&" << dmaName << ", "
                  << "  " << bdNum << ");\n";
+                 */
         }
       }
 
@@ -676,6 +792,7 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
         for (auto op : block.getOps<DMAStartOp>()) {
           int bdNum = blockMap[op.dest()];
 
+          /*
           output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
                  << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChan(op.dmaChan())
                  << ", "
@@ -684,16 +801,43 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
           // PauseMm, Enable)
           output << "XieDma_ShimChControl(&" << dmaName << ", "
                  << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
-                 << ",  " << disable << ",  "
-                 << disable << ", " << enable << ");\n";
+                 << ",  " << disable << ",  " << disable << ", " << enable
+                 << ");\n";
+                 */
         }
       }
     }
-    output << "} // mlir_aie_configure_dmas\n\n";
+  }
+}
+
+mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
+                                         llvm::raw_ostream &output) {
+
+  assert(not output.is_displayed());
+
+  DenseMap<std::pair<int, int>, Operation *> tiles;
+  DenseMap<Operation *, CoreOp> cores;
+  DenseMap<Operation *, MemOp> mems;
+  DenseMap<std::pair<Operation *, int>, LockOp> locks;
+  DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+  DenseMap<Operation *, SwitchboxOp> switchboxes;
+
+  NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+  NL.collectTiles(tiles);
+  NL.collectBuffers(buffers);
+
+  configure_cores(module);
+  start_cores(module);
+  configure_dmas(module, NL);
+
+  assert(false);
+
+  /*
 
     output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
     // Lock configuration
-    // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal,
+    // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8
+    LockVal,
     // u32 TimeOut); u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8
     LockId,
     // u8 LockVal, u32 TimeOut);
