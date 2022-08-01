@@ -44,6 +44,9 @@ using namespace xilinx::AIE;
 namespace xilinx {
 namespace AIE {
 
+static constexpr auto disable = 0u;
+static constexpr auto enable = 1u;
+
 static constexpr auto TILE_ADDR_OFF_WITDH = 18u;
 
 static constexpr auto TILE_ADDR_ROW_SHIFT = TILE_ADDR_OFF_WITDH;
@@ -55,6 +58,12 @@ static constexpr auto TILE_ADDR_COL_WIDTH = 7u;
 
 static constexpr auto TILE_ADDR_ARR_SHIFT =
     TILE_ADDR_COL_SHIFT + TILE_ADDR_COL_WIDTH;
+
+static constexpr auto CORE_CORECTRL = 0x00032000u;
+static constexpr auto CORE_CTRL_ENABLE_SHIFT = 0u;
+static constexpr auto CORE_CTRL_ENABLE_MASK = 1u;
+static constexpr auto CORE_CTRL_RESET_SHIFT = 1u;
+static constexpr auto CORE_CTRL_RESET_MASK = 2u;
 
 /*
  * Tile address format:
@@ -278,15 +287,10 @@ static void configure_cores(mlir::ModuleOp module) {
       TileAddress tile{static_cast<uint8_t>(col),
                        static_cast<uint8_t>(tileOp.rowIndex())};
 
-      static constexpr auto CORE_CORECTRL = 0x00032000u;
-      static constexpr auto CORE_CTRL_ENABLE_SHIFT = 0u;
-      static constexpr auto CORE_CTRL_ENABLE_MASK = 1u;
-      static constexpr auto CORE_CTRL_RESET_SHIFT = 1u;
-      static constexpr auto CORE_CTRL_RESET_MASK = 2u;
-
-      write32({tile, CORE_CORECTRL},
-              setField(0, CORE_CTRL_ENABLE_SHIFT, CORE_CTRL_ENABLE_MASK) |
-                  setField(1, CORE_CTRL_RESET_SHIFT, CORE_CTRL_RESET_MASK));
+      write32(
+          {tile, CORE_CORECTRL},
+          setField(disable, CORE_CTRL_ENABLE_SHIFT, CORE_CTRL_ENABLE_MASK) |
+              setField(enable, CORE_CTRL_RESET_SHIFT, CORE_CTRL_RESET_MASK));
 
       // Reset configuration
       // Program Memory
@@ -324,6 +328,23 @@ static void configure_cores(mlir::ModuleOp module) {
   }
 }
 
+// Start execution of all the cores.
+static void start_cores(mlir::ModuleOp module) {
+
+  for (auto tileOp : module.getOps<TileOp>()) {
+    if (!tileOp.isShimTile()) {
+      int col = tileOp.colIndex();
+      int row = tileOp.rowIndex();
+
+      write32(
+          {TileAddress{static_cast<uint8_t>(col), static_cast<uint8_t>(row)},
+           CORE_CORECTRL},
+          setField(enable, CORE_CTRL_ENABLE_SHIFT, CORE_CTRL_ENABLE_MASK) |
+              setField(disable, CORE_CTRL_RESET_SHIFT, CORE_CTRL_RESET_MASK));
+    }
+  }
+}
+
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          llvm::raw_ostream &output) {
 
@@ -341,27 +362,11 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   NL.collectBuffers(buffers);
 
   configure_cores(module);
+  start_cores(module);
 
   assert(false);
 
   /*
-    output << "void mlir_aie_start_cores(" << ctx_p << ") {\n";
-    // Start execution of all the cores.
-    // void XAieTile_CoreControl(XAieGbl_Tile *TileInstPtr, u8 Enable, u8
-    // Reset); auto ret =
-    //
-    XAieGbl_LoadElf(&(TileInst[HERD_START_COL+h_core][HERD_START_ROW+v_core]),
-    // (u8*)elf_file, XAIE_ENABLE);
-    for (auto tileOp : module.getOps<TileOp>()) {
-      int col = tileOp.colIndex();
-      int row = tileOp.rowIndex();
-      if (!tileOp.isShimTile()) {
-        output << "XAieTile_CoreControl(" << tileInstStr(col, row) << ", "
-               << enable << ", " << disable << ");\n";
-      }
-    }
-    output << "} // mlir_aie_start_cores\n\n";
-
     output << "void mlir_aie_configure_dmas(" << ctx_p << ") {\n";
 
     // DMA configuration
