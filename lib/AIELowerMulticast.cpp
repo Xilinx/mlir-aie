@@ -65,6 +65,7 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIELowerMulticastPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::AIE::createAIELowerMulticastPass() {
   return std::make_unique<AIELowerMulticastPass>();
 }

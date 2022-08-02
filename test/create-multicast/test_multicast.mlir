@@ -1,4 +1,4 @@
-// RUN: aie-opt --aie-create-multicast %s | FileCheck %s
+// RUN: aie-opt --aie-lower-multicast %s | FileCheck %s
 
 // CHECK-LABEL: module @test_multicast { 
 // CHECK-NEXT:    %0 = AIE.tile(7, 0)
