@@ -319,7 +319,7 @@ static void configure_cores(mlir::ModuleOp module) {
 
       // Reset configuration
       // Program Memory
-      clearRange(tile, 0x20000, 0x23FFF);
+      clearRange(tile, 0x20000, 0x23FFC);
       // TileDMA
       clearRange(tile, 0x1D000, 0x1D1F8);
       clearRange(tile, 0x1DE00, 0x1DE00);
@@ -868,7 +868,7 @@ static void initialize_locks(mlir::ModuleOp module) {
 */
 
 static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
-  assert(index > 0);
+  assert(index >= 0);
   assert(index < UINT8_MAX - 17);
 
   switch (bundle) {
@@ -885,12 +885,14 @@ static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
     else
       return 17u + index;
   default:
+    // To implement a new WireBundle,
+    // look in libXAIE for the macros that handle the port.
     assert(false);
   }
 }
 
 static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
-  assert(index > 0);
+  assert(index >= 0);
   assert(index < UINT8_MAX - 17);
 
   switch (bundle) {
@@ -907,6 +909,8 @@ static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
     else
       return 15u + index;
   default:
+    // To implement a new WireBundle,
+    // look in libXAIE for the macros that handle the port.
     assert(false);
   }
 }
