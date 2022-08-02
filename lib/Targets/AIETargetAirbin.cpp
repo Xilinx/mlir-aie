@@ -25,15 +25,18 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <array>
 #include <cstdint>
 #include <elf.h>
 #include <fcntl.h>
 #include <sstream>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
@@ -91,6 +94,10 @@ public:
 
   bool isShim() const { return row == 0; }
 
+  operator uint16_t() const {
+    return (static_cast<uint16_t>(column) << TILE_ADDR_ROW_WIDTH) | row;
+  }
+
 private:
   uint64_t array_offset : 34;
   uint8_t column : TILE_ADDR_COL_WIDTH;
@@ -104,6 +111,8 @@ public:
 
   operator uint64_t() const { return tile.fullAddress(register_offset); }
 
+  uint16_t tileId() const { return tile; }
+
 private:
   TileAddress tile;
   uint32_t register_offset : TILE_ADDR_ROW_SHIFT;
@@ -114,6 +123,16 @@ public:
   Write(Address addr, uint32_t data) : address{addr}, data{data} {
     assert(address % 4 == 0);
   }
+
+  bool isJustBefore(const Write &rhs) const {
+    return static_cast<uint64_t>(this->address) + sizeof(data) ==
+           static_cast<uint64_t>(rhs.address);
+  }
+
+  uint64_t destination() const { return address; }
+
+  uint16_t tile() const { return address.tileId(); }
+  uint32_t value() const { return data; }
 
 private:
   Address address;
@@ -1217,6 +1236,116 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
   }
 }
 
+static std::vector<std::vector<Write>> group_sections() {
+  std::vector<std::vector<Write>> sections{{}};
+
+  for (auto write : writes) {
+    if (sections.back().empty()) {
+      sections.back().emplace_back(write);
+      continue;
+    }
+
+    auto &last_write = sections.back().back();
+    if (last_write.isJustBefore(write)) {
+      sections.back().emplace_back(write);
+    } else {
+      sections.emplace_back(std::vector<decltype(write)>{write});
+    }
+  }
+
+  return sections;
+}
+
+struct [[gnu::packed]] SectionHeader {
+  uint8_t padding;
+  uint16_t tile;
+  uint8_t name;
+  uint32_t type;
+  uint64_t address;
+  uint64_t offset;
+  uint64_t size;
+};
+static_assert(
+    sizeof(SectionHeader) == sizeof(uint64_t) * 4u,
+    "SectionHeaders should have the same in-memory and in-file sizes");
+
+// TODO: Use `sizeof(SectionHeader)` when in binary mode
+static constexpr auto SECTION_SIZE = 9u * 8u;
+
+static constexpr auto HEADER_SIZE = 16u + 16u;
+
+struct [[gnu::packed]] FileHeader {
+  std::array<uint8_t, 16> ident{'~' + 1, 'A', 'I', 'R', 2, 2, 1};
+  uint16_t type{1};
+  uint16_t machine{1};
+  uint16_t version{1};
+  uint16_t chnum;
+  uint64_t choff = HEADER_SIZE;
+};
+
+static_assert(sizeof(FileHeader) == sizeof(uint64_t) * 2 + 16,
+              "FileHeader should have the same size in-file and in-memory");
+
+static std::vector<SectionHeader>
+make_section_headers(std::vector<std::vector<Write>> &group_writes) {
+  std::vector<SectionHeader> headers;
+
+  uint64_t seen_size = 0;
+
+  for (auto &section : group_writes) {
+    assert(not section.empty());
+    SectionHeader header;
+    header.address = section.front().destination();
+    header.offset = seen_size;
+    // TODO: This size is for ascii mode
+    header.size = section.size() * 2 * sizeof(uint32_t) + section.size();
+    seen_size += header.size;
+    header.tile = section.front().tile();
+
+    headers.emplace_back(std::move(header));
+  }
+
+  for (auto &header : headers) {
+    header.offset += HEADER_SIZE + SECTION_SIZE * headers.size();
+  }
+
+  return headers;
+}
+
+static void output_sections(llvm::raw_ostream &output,
+                            std::vector<SectionHeader> &headers,
+                            const std::vector<std::vector<Write>> &writes) {
+
+  FileHeader fileHeader;
+  fileHeader.chnum = headers.size();
+
+  output.write(reinterpret_cast<const char *>(fileHeader.ident.data()),
+               fileHeader.ident.size())
+      << llvm::format("%02x%02x%02x%02x%08x", fileHeader.type,
+                      fileHeader.machine, fileHeader.version, fileHeader.chnum,
+                      fileHeader.choff);
+
+  for (auto &header : headers) {
+    output << llvm::format(
+        "%08x\n"
+        "%08x\n"
+        "%08x\n"
+        "%08x\n"
+        "%08x\n"
+        "%08x\n"
+        "%08x\n"
+        "%08x\n",
+        header.name | (static_cast<uint32_t>(header.tile) << 8u), header.type,
+        0, header.address, 0, header.offset, 0, header.size);
+  }
+
+  for (auto &section : writes) {
+    for (auto &write : section) {
+      output << llvm::format("%08x\n", write.value());
+    }
+  }
+}
+
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          llvm::raw_ostream &output) {
 
@@ -1238,90 +1367,11 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   configure_dmas(module, NL);
   start_cores(module);
 
-  assert(false);
+  auto section_writes = group_sections();
+  auto sections = make_section_headers(section_writes);
 
-  /*
+  output_sections(output, sections, section_writes);
 
-    // Output Buffer Accessors
-    for (auto tile : tiles) {
-      Operation *tileOp = tile.second;
-      std::pair<int, int> coord = NL.getCoord(tileOp);
-      int col = coord.first;
-      int row = coord.second;
-      auto tileInst = tileInstStr(col, row);
-
-      auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
-        // int32_t mlir_aie_read_buffer_a13(int index) {
-        //     return XAieTile_DmReadWord(&(TileInst[1][3]), a13_offset +
-        //     (index*4));
-        // }
-        // void mlir_aie_write_buffer_a13(int index, int32_t value) {
-        //     XAieTile_DmWriteWord(&(TileInst[1][3]), a13_offset +
-(index*4),
-        //     value);
-        // }
-        std::string bufName(buf.name().getValue());
-        Type t = buf.getType();
-        Type et;
-        std::string typestr;
-        if (auto memrefType = t.dyn_cast<MemRefType>()) {
-          et = memrefType.getElementType();
-          if (et.isInteger(32))
-            typestr = "int32_t";
-          else if (et.isF32())
-            typestr = "float";
-          else {
-            output << "// buffer " << bufName << " with unsupported type "
-<<
-    t
-                   << ";\n";
-            return; // Unsupported type
-          }
-
-        } else {
-          output << "// buffer " << bufName << " with unsupported type "
-<< t
-                 << ";\n";
-          return; // Unsupported type
-        }
-
-        output << "const int " << bufName
-               << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
-        output << typestr << " mlir_aie_read_buffer_" << bufName << "(" <<
-    ctx_p
-               << ", int index) {\n";
-        output << "  int32_t value = XAieTile_DmReadWord(" << tileInst <<
-", "
-               << bufName << "_offset + (index*4));\n";
-        if (et.isInteger(32))
-          output << "  return value;\n";
-        else if (et.isF32()) {
-          output << "  union caster { int32_t i; float f; };\n";
-          output << "  caster c; c.i = value;\n";
-          output << "  return c.f;\n";
-        }
-        output << "}\n";
-        output << "void mlir_aie_write_buffer_" << bufName << "(" << ctx_p
-               << ", int index, " << typestr << " value) {\n";
-        if (et.isInteger(32))
-          output << "  int32_t int_value = value;\n";
-        else if (et.isF32()) {
-          output << "  union caster { int32_t i; float f; };\n";
-          output << "  caster c; c.f = value;\n";
-          output << "  int32_t int_value = c.i;\n";
-        }
-        output << "  return XAieTile_DmWriteWord(" << tileInst << ", " <<
-    bufName
-               << "_offset + (index*4), int_value);\n";
-        output << "}\n";
-      };
-
-      // if(tiles.count(tile.getValue()))
-      for (auto buf : buffers[tileOp])
-        bufferAccessor(coord, buf);
-      // };
-    }
-    */
   return success();
 }
 } // namespace AIE
