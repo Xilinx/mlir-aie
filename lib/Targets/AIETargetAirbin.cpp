@@ -542,6 +542,16 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     for (auto &block : memOp.body()) {
       auto bdInfo = getBDInfo(block, NL);
 
+      struct BdData {
+        uint32_t addr_a{0};
+        uint32_t addr_b{0};
+        uint32_t x{0};
+        uint32_t y{0};
+        uint32_t packet{0};
+        uint32_t interleave{0};
+        uint32_t control{0};
+      };
+
       if (bdInfo.hasA and bdInfo.hasB) {
         bdInfo.AbMode = enable;
         if (bdInfo.lenA != bdInfo.lenB)
@@ -550,11 +560,10 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           llvm::errs() << "ABmode must have matching element data types.\n";
       }
 
-      /*
       int acqValue = 0, relValue = 0;
       auto acqEnable = disable;
       auto relEnable = disable;
-      int lockID;
+      Optional<int> lockID = llvm::NoneType::None;
 
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
@@ -565,9 +574,15 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
-        }
+        } else
+          assert(false);
       }
-      */
+
+      // We either
+      //  a. went thru the loop once (`lockID` should be something) xor
+      //  b. did not enter the loop (the enables should be both disable)
+      assert(lockID.hasValue() xor
+             (acqEnable == disable and relEnable == disable));
 
       for (auto op : block.getOps<DMABDPACKETOp>()) {
         bdInfo.foundBdPacket = true;
@@ -575,16 +590,60 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         bdInfo.packetID = op.getPacketID();
       }
 
-      // auto bdNum = blockMap[&block];
+      auto bdNum = blockMap[&block];
+      BdData bdData;
       if (bdInfo.foundBd) {
+        static constexpr auto BD_ADDR_LOCKID_SHIFT = 22u;
+        static constexpr auto BD_ADDR_LOCKID_MASK = 0xFu
+                                                    << BD_ADDR_LOCKID_SHIFT;
+        static constexpr auto BD_ADDR_RELEN_SHIFT = 21u;
+        static constexpr auto BD_ADDR_RELEN_MASK = 1u << BD_ADDR_RELEN_SHIFT;
+
+        static constexpr auto BD_ADDR_RELVAL_SHIFT = 20u;
+        static constexpr auto BD_ADDR_RELVAL_MASK = 1u << BD_ADDR_RELVAL_SHIFT;
+
+        static constexpr auto BD_ADDR_RELVALEN_SHIFT = 19u;
+        static constexpr auto BD_ADDR_RELVALEN_MASK = 1u
+                                                      << BD_ADDR_RELVALEN_SHIFT;
+
+        static constexpr auto BD_ADDR_ACQEN_SHIFT = 18u;
+        static constexpr auto BD_ADDR_ACQEN_MASK = 1u << BD_ADDR_ACQEN_SHIFT;
+
+        static constexpr auto BD_ADDR_ACQVAL_SHIFT = 17u;
+        static constexpr auto BD_ADDR_ACQVAL_MASK = 1u << BD_ADDR_ACQVAL_SHIFT;
+
+        static constexpr auto BD_ADDR_ACQVALEN_SHIFT = 16u;
+        static constexpr auto BD_ADDR_ACQVALEN_MASK = 1u
+                                                      << BD_ADDR_ACQVALEN_SHIFT;
+
         if (bdInfo.hasA) {
-          assert(false);
-          /*
+          /* clang-format off
           output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << bufA << ", " << lockID << ", " << relEnable
                  << ", " << relValue << ", " << acqEnable << ", " << acqValue
                  << ");\n";
-                 */
+void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8 LockAcqVal)
+   with AbType = bufA
+        LockId = lockID
+        LockRelEn = relEnable
+        LockRelVal = relValue
+   clang-format on */
+          bdData.addr_a =
+              setField(lockID.getValue(), BD_ADDR_LOCKID_SHIFT,
+                       BD_ADDR_LOCKID_MASK) |
+              setField(relEnable, BD_ADDR_RELEN_SHIFT, BD_ADDR_RELEN_MASK) |
+              setField(acqEnable, BD_ADDR_ACQEN_SHIFT, BD_ADDR_ACQEN_MASK);
+
+          if (relValue != 0xFFu) {
+            bdData.addr_a |=
+                setField(1, BD_ADDR_RELVALEN_SHIFT, BD_ADDR_RELVALEN_MASK) |
+                setField(relValue, BD_ADDR_RELVAL_SHIFT, BD_ADDR_RELVAL_MASK);
+          }
+          if (acqValue != 0xFFu) {
+            bdData.addr_a |=
+                setField(1, BD_ADDR_ACQVALEN_SHIFT, BD_ADDR_ACQVALEN_MASK) |
+                setField(acqValue, BD_ADDR_ACQVAL_SHIFT, BD_ADDR_ACQVAL_MASK);
+          }
         }
         if (bdInfo.hasB) {
           assert(false);
@@ -596,29 +655,79 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
                  */
         }
 
-        assert(false);
-        /*
-                output << "XAieDma_TileBdSetAdrLenMod(" << tileDMAInstStr(col,
-           row)
-                       << ", " << bdNum << ", "
-                       << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
-                       << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", "
-           << lenA
-                       << " * " << bytesA << ", " << AbMode << ", " << FifoMode
-                       << ");\n";
-                       */
+        /* clang-format off
+        output << "XAieDma_TileBdSetAdrLenMod(" << tileDMAInstStr(col, row)
+               << ", " << bdNum << ", "
+               << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
+               << "0x" << llvm::utohexstr(BaseAddrB + offsetB) << ", " << lenA
+               << " * " << bytesA << ", " << AbMode << ", " << FifoMode
+               << ");\n";
+void XAieDma_TileBdSetAdrLenMod(XAieDma_Tile *DmaInstPtr, u8 BdNum, u16 BaseAddrA, u16 BaseAddrB, u16 Length, u8 AbMode, u8 FifoMode)
+with BaseAddrA = BaseAddr + offsetA
+     Length = lenA
+
+	Length = Length >> XAIEDMA_TILE_LENGTH32_OFFSET;
+	if(FifoMode != 0U) {
+		LenMask = XAIEDMA_TILE_LENGTH128_MASK;
+	}
+
+	DescrPtr->AddrA.BaseAddr = BaseAddrA >>XAIEDMA_TILE_ADDRAB_ALIGN_OFFSET;
+	DescrPtr->AddrB.BaseAddr = BaseAddrB >>XAIEDMA_TILE_ADDRAB_ALIGN_OFFSET;
+	DescrPtr->Length = Length - 1U;
+	DescrPtr->AbMode = AbMode;
+	DescrPtr->FifoMode = FifoMode;
+        clang-format on */
+
+        auto addr_a = bdInfo.BaseAddrA + bdInfo.offsetA;
+        auto addr_b = bdInfo.BaseAddrB + bdInfo.offsetB;
+
+        static constexpr auto BD_ADDR_BASE_MASK = 0x1FFFu;
+        static constexpr auto BD_CTRL_LEN_MASK = 0x1FFFu;
+
+        static constexpr auto BD_CTRL_ABMODE_SHIFT = 30u;
+        static constexpr auto BD_CTRL_ABMODE_MASK = 1u << BD_CTRL_ABMODE_SHIFT;
+
+        static constexpr auto BD_CTRL_FIFO_SHIFT = 28u;
+        static constexpr auto BD_CTRL_FIFO_MASK = 3u << BD_CTRL_FIFO_SHIFT;
+
+        bdData.addr_a |= setField(addr_a >> 2u, 0, BD_ADDR_BASE_MASK);
+        bdData.addr_b |= setField(addr_b >> 2u, 0, BD_ADDR_BASE_MASK);
+        bdData.control |=
+            (setField(bdInfo.lenA >> 2u, 0, BD_CTRL_LEN_MASK) - 1) |
+            setField(bdInfo.FifoMode, BD_CTRL_FIFO_SHIFT, BD_CTRL_FIFO_MASK) |
+            setField(bdInfo.AbMode, BD_CTRL_ABMODE_SHIFT, BD_CTRL_ABMODE_MASK);
 
         if (block.getNumSuccessors() > 0) {
           // should have only one successor block
           assert(block.getNumSuccessors() == 1);
-          assert(false);
-          // auto *nextBlock = block.getSuccessors()[0];
-          // auto nextBdNum = blockMap[nextBlock];
+          auto *nextBlock = block.getSuccessors()[0];
+          auto nextBdNum = blockMap[nextBlock];
 
           /*
           output << "XAieDma_TileBdSetNext(" << tileDMAInstStr(col, row) << ", "
                            << bdNum << ", " << nextBdNum << ");\n";
+        DescrPtr->NextBd = NextBd;
+
+        // Use next BD only if the Next BD value is not invalid
+        if(NextBd != XAIEDMA_TILE_BD_NEXTBD_INVALID) {
+                DescrPtr->NextBdEn = XAIE_ENABLE;
+        } else {
+                DescrPtr->NextBdEn = XAIE_DISABLE;
+        }
           */
+
+          static constexpr auto BD_CTRL_NEXTBD_SHIFT = 13u;
+          static constexpr auto BD_CTRL_NEXTBD_MASK = 0xFu
+                                                      << BD_CTRL_NEXTBD_SHIFT;
+
+          static constexpr auto BD_CTRL_NEXTBDEN_SHIFT = 17u;
+          static constexpr auto BD_CTRL_NEXTBDEN_MASK =
+              1u << BD_CTRL_NEXTBDEN_SHIFT;
+
+          bdData.control |=
+              setField(nextBdNum, BD_CTRL_NEXTBD_SHIFT, BD_CTRL_NEXTBD_MASK) |
+              setField(nextBdNum != 0xFFu, BD_CTRL_NEXTBDEN_SHIFT,
+                       BD_CTRL_NEXTBDEN_MASK);
         }
 
         if (bdInfo.foundBdPacket) {
@@ -629,25 +738,43 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
                  << ");\n";
                  */
         }
-        assert(false);
+
         /*
         output << "XAieDma_TileBdWrite(" << tileDMAInstStr(col, row) << ", "
                << bdNum << ");\n";
                */
+
+        auto bdOffset = 0x1D000 + bdNum * 0x20u;
+
+        write32({tile, bdOffset}, bdData.addr_a);
+        write32({tile, bdOffset + 4u}, bdData.addr_b);
+        write32({tile, bdOffset + 8u}, bdData.x);
+        write32({tile, bdOffset + 0xCu}, bdData.y);
+        write32({tile, bdOffset + 0x10u}, bdData.packet);
+        write32({tile, bdOffset + 0x14u}, bdData.interleave);
+        write32({tile, bdOffset + 0x18u}, bdData.control);
       }
     }
 
     for (auto &block : memOp.body()) {
       for (auto op : block.getOps<DMAStartOp>()) {
         auto bdNum = blockMap[op.dest()];
-
-        assert(false);
         /*
         output << "XAieDma_TileSetStartBd("
                << "(" << tileDMAInstStr(col, row) << ")"
                << ", "
                << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.dmaChan())
                << ", " << bdNum << ");\n";
+
+#define XAieDma_TileSetStartBd(DmaInstPtr, ChNum, BdStart)
+                        if(BdStart != 0xFFU) {
+                                XAieGbl_Write32((DmaInstPtr->BaseAddress +
+                                TileDmaCh[ChNum].StatQOff),
+                                (XAie_SetField(BdStart,
+                                TileDmaCh[ChNum].StatQ.Lsb,
+                                TileDmaCh[ChNum].StatQ.Mask)));
+                        }
+                         DmaInstPtr->StartBd[ChNum] = BdStart
                */
 
         if (bdNum != 0xFFU) {
