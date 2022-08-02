@@ -660,76 +660,71 @@ struct AIERoutePacketFlowsPass
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
 
-      if (tileOp.isShimNOCTile()) {
+      if (!tileOp.isShimNOCTile())
+        continue;
 
-        Region &r = switchbox.connections();
-        Block &b = r.front();
+      Region &r = switchbox.connections();
+      Block &b = r.front();
 
-        if (&switchbox.getBody()->front() !=
-            switchbox.getBody()->getTerminator()) {
-          builder.setInsertionPointAfter(tileOp);
-          auto shimOp =
-              builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
-          Region &r0 = shimOp.connections();
-          Block *b0 = builder.createBlock(&r0);
-          builder.setInsertionPointToStart(b0);
-          for (Operation &Op : b.getOperations()) {
-            if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
-              if (pktrules.sourceBundle() == WireBundle::DMA) {
+      if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
+        continue;
 
-                pktrules->removeAttr("sourceBundle");
-                pktrules->setAttr("sourceBundle",
-                                  builder.getI32IntegerAttr(3)); // Sorth
-
-                if (pktrules.sourceChannel() == 0) {
-                  pktrules->removeAttr("sourceChannel");
-                  pktrules->setAttr("sourceChannel",
-                                    builder.getI32IntegerAttr(3));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                            WireBundle::DMA, 0,
-                                            WireBundle::North, 3);
-                }
-
-                else if (pktrules.sourceChannel() == 1) {
-                  pktrules->removeAttr("sourceChannel");
-                  pktrules->setAttr("sourceChannel",
-                                    builder.getI32IntegerAttr(7));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                            WireBundle::DMA, 1,
-                                            WireBundle::North, 7);
-                }
-              }
+      builder.setInsertionPointAfter(tileOp);
+      auto shimOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+      Region &r0 = shimOp.connections();
+      Block *b0 = builder.createBlock(&r0);
+      builder.setInsertionPointToStart(b0);
+      for (Operation &Op : b.getOperations()) {
+        if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
+          if (pktrules.sourceBundle() == WireBundle::DMA) {
+            pktrules->removeAttr("sourceBundle");
+            pktrules->setAttr(
+                "sourceBundle",
+                builder.getI32IntegerAttr(3)); // WireBundle::South
+            if (pktrules.sourceChannel() == 0) {
+              pktrules->removeAttr("sourceChannel");
+              pktrules->setAttr("sourceChannel",
+                                builder.getI32IntegerAttr(3)); // Channel 3
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::DMA, 0, WireBundle::North,
+                                        3);
             }
-            if (MasterSetOp mtset = dyn_cast<MasterSetOp>(Op)) {
-              if (mtset.destBundle() == WireBundle::DMA) {
-
-                mtset->removeAttr("destBundle");
-                mtset->setAttr("destBundle",
-                               builder.getI32IntegerAttr(3)); // South
-
-                if (mtset.destChannel() == 0) {
-                  mtset->removeAttr("destChannel");
-                  mtset->setAttr("destChannel", builder.getI32IntegerAttr(2));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                            WireBundle::North, 2,
-                                            WireBundle::DMA, 0);
-                }
-
-                if (mtset.destChannel() == 1) {
-                  mtset->removeAttr("destChannel");
-                  mtset->setAttr("destChannel", builder.getI32IntegerAttr(3));
-                  builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                            WireBundle::North, 3,
-                                            WireBundle::DMA, 1);
-                }
-              }
+            if (pktrules.sourceChannel() == 1) {
+              pktrules->removeAttr("sourceChannel");
+              pktrules->setAttr("sourceChannel",
+                                builder.getI32IntegerAttr(7)); // Channel 7
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::DMA, 1, WireBundle::North,
+                                        7);
             }
           }
-
-          builder.setInsertionPointToEnd(b0);
-          builder.create<xilinx::AIE::EndOp>(builder.getUnknownLoc());
+        }
+        if (MasterSetOp mtset = dyn_cast<MasterSetOp>(Op)) {
+          if (mtset.destBundle() == WireBundle::DMA) {
+            mtset->removeAttr("destBundle");
+            mtset->setAttr("destBundle",
+                           builder.getI32IntegerAttr(3)); // WireBundle::South
+            if (mtset.destChannel() == 0) {
+              mtset->removeAttr("destChannel");
+              mtset->setAttr("destChannel",
+                             builder.getI32IntegerAttr(2)); // Channel 2
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::North, 2, WireBundle::DMA,
+                                        0);
+            }
+            if (mtset.destChannel() == 1) {
+              mtset->removeAttr("destChannel");
+              mtset->setAttr("destChannel",
+                             builder.getI32IntegerAttr(3)); // Channel 3
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::North, 3, WireBundle::DMA,
+                                        1);
+            }
+          }
         }
       }
+      builder.setInsertionPointToEnd(b0);
+      builder.create<EndOp>(builder.getUnknownLoc());
     }
 
     RewritePatternSet patterns(&getContext());
