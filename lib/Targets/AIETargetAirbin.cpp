@@ -1313,7 +1313,7 @@ make_section_headers(std::vector<std::vector<Write>> &group_writes) {
 }
 
 static void output_sections(llvm::raw_ostream &output,
-                            std::vector<SectionHeader> &headers,
+                            const std::vector<SectionHeader> &headers,
                             const std::vector<std::vector<Write>> &writes) {
 
   FileHeader fileHeader;
@@ -1325,7 +1325,7 @@ static void output_sections(llvm::raw_ostream &output,
                       fileHeader.machine, fileHeader.version, fileHeader.chnum,
                       fileHeader.choff);
 
-  for (auto &header : headers) {
+  for (const auto &header : headers) {
     output << llvm::format(
         "%08x\n"
         "%08x\n"
