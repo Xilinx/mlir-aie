@@ -768,6 +768,82 @@ the source tile to the dest. tile.
 | `dstTile` | index
 | `dstBuf` | memref of any type values
 
+### `AIE.multi_dest` (::xilinx::AIE::MultiDestOp)
+
+A destination port of multicast flow
+
+
+Syntax:
+
+```
+operation ::= `AIE.multi_dest` `<` $tile `,` $bundle `:` $channel `>` attr-dict
+```
+
+An object representing the destination of a multicast flow. This must exist
+within an [AIE.multicast] operation. There can be multiple destinations within an
+AIE.multicast Op.
+
+See [AIE.multicast]for an example.
+
+Traits: HasParent<MulticastOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+### `AIE.multicast` (::xilinx::AIE::MulticastOp)
+
+An abstraction of multicast
+
+
+Syntax:
+
+```
+operation ::= `AIE.multicast` `(` $tile `,` $bundle `:` $channel `)` regions attr-dict
+```
+
+An abstraction of broadcast. During place and
+route, it will be replaced by multiple flows.
+
+Example:
+```
+  %70 = AIE.tile(7, 0)
+  %73 = AIE.tile(7, 3)
+  %74 = AIE.tile(7, 4)
+  %63 = AIE.tile(6, 3)
+  %64 = AIE.tile(6, 4)
+  AIE.multicast(%70, "DMA" : 0){
+    AIE.multi_dest<%73, "DMA" : 0>
+    AIE.multi_dest<%74, "DMA" : 0>
+    AIE.multi_dest<%63, "DMA" : 0>
+    AIE.multi_dest<%64, "DMA" : 0>
+  }
+```
+
+Traits: SingleBlockImplicitTerminator<EndOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
 ### `AIE.objectFifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
 
 Acquire operation to lock and return objects of an ObjectFifo

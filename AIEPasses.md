@@ -76,6 +76,10 @@ AIE.core(%tile) {
 aie.memcpy operations are an experimental high-level abstraction which
 move data from one buffer to another.
 This pass lowers them into appropriate aie.flow and aie.mem operations.
+### `-aie-lower-multicast`: Lower AIE.multicast operation to AIE.flow operations
+This pass replaces AIE.multicast operation with the equivalent number of AIE.flow 
+operations. The lowered AIE.flow operations have the same source port but different
+destinations.
 ### `-aie-normalize-address-spaces`: Remove non-default address spaces
 Early in the flow, it is convenient to represent multiple memories using different
 address spaces.  However, after outlining code for AIE engines, the core itself only
