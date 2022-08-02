@@ -198,7 +198,7 @@ static constexpr uint64_t setField(uint64_t value, uint8_t shift,
 
 static bool loadElf(TileAddress tile, const std::string &filename) {
 
-  llvm::dbgs() << "Reading ELF file " << filename;
+  llvm::dbgs() << "Reading ELF file " << filename << '\n';
 
   int fd = open(filename.c_str(), O_RDONLY);
   if (fd < 0) {
@@ -277,7 +277,8 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   uint32_t stop = parse_little_endian(num);
 
   llvm::dbgs() << "Loading " << filename << " tile @ offset "
-               << ((tile.fullAddress(0) >> TILE_ADDR_ROW_SHIFT) & 0xFFFu);
+               << ((tile.fullAddress(0) >> TILE_ADDR_ROW_SHIFT) & 0xFFFu)
+               << '\n';
 
   assert(lseek(fd, start, SEEK_SET) == start);
   for (auto i = 0u; i < stop / sizeof(num); i++) {
