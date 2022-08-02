@@ -8,7 +8,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/Twine.h"
 
-#define DEBUG_TYPE "aie-create-multicast"
+#define DEBUG_TYPE "aie-lower-multicast"
 
 using namespace mlir;
 using namespace xilinx;
@@ -33,7 +33,7 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-struct AIEMulticastPass : public AIEMulticastBase<AIEMulticastPass> {
+struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -65,6 +65,6 @@ struct AIEMulticastPass : public AIEMulticastBase<AIEMulticastPass> {
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIEMulticastPass() {
-  return std::make_unique<AIEMulticastPass>();
+std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIELowerMulticastPass() {
+  return std::make_unique<AIELowerMulticastPass>();
 }

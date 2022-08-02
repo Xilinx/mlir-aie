@@ -175,13 +175,15 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   ];
 }
 
-def AIEMulticast : Pass<"aie-create-multicast", "ModuleOp"> {
-  let summary = "Replace multicast flow by flow";
+def AIEMulticast : Pass<"aie-lower-multicast", "ModuleOp"> {
+  let summary = "Lower AIE.multicast operation to AIE.flow operations";
   let description = [{
-    An abstraction of multicast flow  
+    This pass replaces AIE.multicast operation with the equivalent number of AIE.flow 
+    operations. The lowered AIE.flow operations have the same source port but different
+    destinations.
   }];
 
-  let constructor = "xilinx::AIE::createAIEMulticastPass()";
+  let constructor = "xilinx::AIE::createAIELowerMulticastPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
   ];

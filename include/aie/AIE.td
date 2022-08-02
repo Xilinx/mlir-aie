@@ -704,7 +704,8 @@ def AIE_MultiDestOp: AIE_Op<"multi_dest", [HasParent<"MulticastOp">]> {
   let summary = "A destination port of multicast flow";
   let description = [{
     An object representing the destination of a multicast flow. This must exist
-    within an [AIE.multicast] operation. There can multiple destinations with in the Op.
+    within an [AIE.multicast] operation. There can be multiple destinations within an
+    AIE.multicast Op.
 
     See [AIE.multicast]for an example.
   }];
