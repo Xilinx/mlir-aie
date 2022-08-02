@@ -86,7 +86,7 @@ public:
       : array_offset{array_offset}, column{column}, row{row} {}
 
   uint64_t fullAddress(uint32_t register_offset) const {
-    return (0x800ul << TILE_ADDR_ARR_SHIFT) |
+    return (array_offset << TILE_ADDR_ARR_SHIFT) |
            (static_cast<uint64_t>(column) << TILE_ADDR_COL_SHIFT) |
            (static_cast<uint64_t>(row) << TILE_ADDR_ROW_SHIFT) |
            register_offset;
