@@ -549,8 +549,6 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           llvm::errs() << "ABmode must have matching element data types.\n";
       }
 
-      assert(false);
-
       /*
       int acqValue = 0, relValue = 0;
       auto acqEnable = disable;
@@ -579,6 +577,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
       // auto bdNum = blockMap[&block];
       if (bdInfo.foundBd) {
         if (bdInfo.hasA) {
+          assert(false);
           /*
           output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << bufA << ", " << lockID << ", " << relEnable
@@ -587,6 +586,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
                  */
         }
         if (bdInfo.hasB) {
+          assert(false);
           /*
           output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << bufB << ", " << lockID << ", " << relEnable
@@ -595,6 +595,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
                  */
         }
 
+        assert(false);
         /*
                 output << "XAieDma_TileBdSetAdrLenMod(" << tileDMAInstStr(col,
            row)
@@ -609,6 +610,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         if (block.getNumSuccessors() > 0) {
           // should have only one successor block
           assert(block.getNumSuccessors() == 1);
+          assert(false);
           // auto *nextBlock = block.getSuccessors()[0];
           // auto nextBdNum = blockMap[nextBlock];
 
@@ -619,12 +621,14 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         }
 
         if (bdInfo.foundBdPacket) {
+          assert(false);
           /*
           output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << 1 << ", " << packetType << ", " << packetID
                  << ");\n";
                  */
         }
+        assert(false);
         /*
         output << "XAieDma_TileBdWrite(" << tileDMAInstStr(col, row) << ", "
                << bdNum << ");\n";
@@ -636,6 +640,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
       for (auto op : block.getOps<DMAStartOp>()) {
         auto bdNum = blockMap[op.dest()];
 
+        assert(false);
         /*
         output << "XAieDma_TileSetStartBd("
                << "(" << tileDMAInstStr(col, row) << ")"
