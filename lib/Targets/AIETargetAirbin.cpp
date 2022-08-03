@@ -28,6 +28,9 @@
 namespace xilinx {
 namespace AIE {
 
+// NOTE: All recorded writes are time/order invariant.
+//       This allows sorting to compact the airbin.
+
 static constexpr auto disable = 0u;
 static constexpr auto enable = 1u;
 static constexpr auto MAX_CHANNEL_COUNT = 4u;
@@ -113,10 +116,15 @@ public:
            static_cast<uint64_t>(rhs.address);
   }
 
+  uint64_t destination() const { return address; }
   uint32_t relativeDest() const { return address.offset(); }
 
   uint16_t tile() const { return address.destTile(); }
   uint32_t value() const { return data; }
+
+  bool operator<(const Write &rhs) const {
+    return static_cast<uint64_t>(address) < static_cast<uint64_t>(rhs.address);
+  }
 
 private:
   Address address;
@@ -127,6 +135,17 @@ static std::vector<Write> writes;
 
 static void write32(Address addr, uint32_t value) {
   assert(addr.destTile().col() > 0);
+
+  auto iter =
+      std::find_if(writes.begin(), writes.end(), [addr](const auto &x) -> bool {
+        return addr == x.destination();
+      });
+
+  if (iter != writes.end()) {
+    // Overwrite
+    writes.erase(iter);
+  }
+
   writes.emplace_back(addr, value);
 }
 
@@ -141,39 +160,24 @@ static void clearRange(TileAddress tile, uint32_t range_start,
   }
 }
 
-enum class ShimTileType { OnlyShim, ShimNOC, ShimNOCOrPL };
+// The SHIM row is always 0.
+// SHIM resets are handled by the runtime.
+static void generateShimConfig(TileOp &tileOp) {
 
-// The SHIM row is always 0
-static void generateShimConfig(uint8_t col, ShimTileType tile_type) {
+  TileAddress tile{static_cast<uint8_t>(tileOp.colIndex()),
+                   static_cast<uint8_t>(tileOp.rowIndex())};
 
-  // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETENABLE);
-  static constexpr auto PL_AIETILCOLRST = 0x00036048u;
-  static constexpr auto RESET_ENABLE = 1u;
-
-  TileAddress tile{col, 0};
-  write32({tile, PL_AIETILCOLRST}, RESET_ENABLE);
-
-  switch (tile_type) {
-  case ShimTileType::ShimNOC:
-    clearRange(tile, 0x1D000, 0x1D13C);
-    clearRange(tile, 0x1D140, 0x1D140);
-    clearRange(tile, 0x1D148, 0x1D148);
-    clearRange(tile, 0x1D150, 0x1D150);
-    clearRange(tile, 0x1D158, 0x1D158);
-    break;
-  case ShimTileType::ShimNOCOrPL:
+  if (tileOp.isShimNOCTile()) {
+    clearRange(tile, 0x1D000, 0x1D158);
+  }
+  if (tileOp.isShimNOCTile() or tileOp.isShimTile()) {
     // output << "// Stream Switch master config\n";
     clearRange(tile, 0x3F000, 0x3F058);
     // output << "// Stream Switch slave config\n";
     clearRange(tile, 0x3F100, 0x3F15C);
     // output << "// Stream Switch slave slot config\n";
     clearRange(tile, 0x3F200, 0x3F37C);
-    break;
-  case ShimTileType::OnlyShim:
-    break;
   }
-  // XAieTile_ShimColumnReset(&(TileInst[col][0]), XAIE_RESETDISABLE);
-  write32({tile, PL_AIETILCOLRST}, 0);
 }
 
 static constexpr uint64_t setField(uint64_t value, uint8_t shift,
@@ -284,34 +288,18 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
 static void configure_cores(mlir::ModuleOp module) {
 
   for (auto tileOp : module.getOps<TileOp>()) {
-    auto col = tileOp.colIndex();
     if (tileOp.isShimTile()) {
-      auto tile_type = [&tileOp] {
-        if (tileOp.isShimNOCorPLTile())
-          return ShimTileType::ShimNOCOrPL;
-        if (tileOp.isShimNOCTile())
-          return ShimTileType::ShimNOC;
-        return ShimTileType::OnlyShim;
-      }();
-      generateShimConfig(col, tile_type);
+      generateShimConfig(tileOp);
     } else {
-      TileAddress tile{static_cast<uint8_t>(col),
+      TileAddress tile{static_cast<uint8_t>(tileOp.colIndex()),
                        static_cast<uint8_t>(tileOp.rowIndex())};
-
-      write32(
-          {tile, CORE_CORECTRL},
-          setField(disable, CORE_CTRL_ENABLE_SHIFT, CORE_CTRL_ENABLE_MASK) |
-              setField(enable, CORE_CTRL_RESET_SHIFT, CORE_CTRL_RESET_MASK));
 
       // Reset configuration
       // Program Memory
       clearRange(tile, 0x20000, 0x23FFC);
       // TileDMA
       clearRange(tile, 0x1D000, 0x1D1F8);
-      clearRange(tile, 0x1DE00, 0x1DE00);
-      clearRange(tile, 0x1DE08, 0x1DE08);
-      clearRange(tile, 0x1DE10, 0x1DE10);
-      clearRange(tile, 0x1DE18, 0x1DE18);
+      clearRange(tile, 0x1de00, 0x1de18);
       // Stream Switch master config
       clearRange(tile, 0x3F000, 0x3F060);
       // Stream Switch slave config
@@ -328,7 +316,8 @@ static void configure_cores(mlir::ModuleOp module) {
           fileName = std::string(fileAttr.getValue());
         } else {
           std::stringstream ss;
-          ss << "core_" << col << '_' << tileOp.rowIndex() << ".elf";
+          ss << "core_" << tileOp.colIndex() << '_' << tileOp.rowIndex()
+             << ".elf";
           fileName = ss.str();
         }
         if (not loadElf(tile, fileName)) {
@@ -340,6 +329,8 @@ static void configure_cores(mlir::ModuleOp module) {
 }
 
 // Start execution of all the cores.
+// This is by the runtime. We do not need to record it.
+/*
 static void start_cores(mlir::ModuleOp module) {
 
   for (auto tileOp : module.getOps<TileOp>()) {
@@ -355,6 +346,7 @@ static void start_cores(mlir::ModuleOp module) {
     }
   }
 }
+*/
 
 struct BDInfo {
   bool foundBdPacket = false;
@@ -1498,7 +1490,8 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   configure_cores(module);
   configure_switchboxes(module);
   configure_dmas(module, NL);
-  start_cores(module);
+
+  std::sort(writes.begin(), writes.end());
 
   auto section_writes = group_sections();
   auto sections = make_section_headers(section_writes);
