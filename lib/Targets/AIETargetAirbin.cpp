@@ -25,10 +25,6 @@
 
 #include "AIETargets.h"
 
-using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::AIE;
-
 namespace xilinx {
 namespace AIE {
 
