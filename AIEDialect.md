@@ -57,6 +57,108 @@ Traits: HasParent<SwitchboxOp>
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
+### `AIE.bp_dest` (::xilinx::AIE::BPDestOp)
+
+A destination port
+
+
+Syntax:
+
+```
+operation ::= `AIE.bp_dest` `<` $tile `,` $bundle `:` $channel `>` attr-dict
+```
+
+An object representing the destination of a  Broad Packet. This must exist
+within an [AIE.bp_id] operation.
+See [AIE.broadcast_packet] for an example.
+
+Traits: HasParent<BPIDOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+### `AIE.bp_id` (::xilinx::AIE::BPIDOp)
+
+A set of packets that share the same ID
+
+
+Syntax:
+
+```
+operation ::= `AIE.bp_id` `(` $ID `)` regions attr-dict
+```
+
+A set of destination packets that share the same source and ID. This must exist
+within an [AIE.broadcast_packet] operation.
+See [AIE.broadcast_packet]for an example.
+
+Traits: SingleBlockImplicitTerminator<EndOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
+
+### `AIE.broadcast_packet` (::xilinx::AIE::BroadcastPacketOp)
+
+Combination of broadcast and packet-switch
+
+
+Syntax:
+
+```
+operation ::= `AIE.broadcast_packet` `(` $tile `,` $bundle `:` $channel `)` regions attr-dict
+```
+
+An abstraction of broadcast and packet-switched flow. During place and
+route, it will be replaced by packet-switched flow and further replaced 
+by MasterSets and PacketRules inside switchboxes.
+
+Example:
+```
+  %70 = AIE.tile(7, 0)
+  %73 = AIE.tile(7, 3)
+  %74 = AIE.tile(7, 4)
+  %63 = AIE.tile(6, 3)
+  %64 = AIE.tile(6, 4)
+  AIE.broadcast_packet(%70, "DMA" : 0){
+    AIE.bp_id(0x0){
+      AIE.bp_dest<%73, "DMA" : 0>
+      AIE.bp_dest<%63, "DMA" : 0>
+    }
+    AIE.bp_id(0x1){
+      AIE.bp_dest<%74, "DMA" : 0>
+      AIE.bp_dest<%64, "DMA" : 0>
+    }
+  }
+```
+
+Traits: SingleBlockImplicitTerminator<EndOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
 ### `AIE.buffer` (::xilinx::AIE::BufferOp)
 
 Declare a buffer

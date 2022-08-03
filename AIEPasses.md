@@ -72,6 +72,8 @@ AIE.core(%tile) {
   AIE.useLock(%lockindex, "Acquire", 1)
 }
 ```
+### `-aie-lower-broadcast-packet`: Replace combination of broadcast and packet-switch by packet-flow
+Replace combination of broadcast and packet-switch by packet-flow  
 ### `-aie-lower-memcpy`: Lower aie.memcpy operations to Flows and DMA programs
 aie.memcpy operations are an experimental high-level abstraction which
 move data from one buffer to another.
