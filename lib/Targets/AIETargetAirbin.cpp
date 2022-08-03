@@ -76,6 +76,8 @@ public:
     return (static_cast<uint16_t>(column) << TILE_ADDR_ROW_WIDTH) | row;
   }
 
+  uint8_t col() const { return column; }
+
 private:
   uint64_t array_offset : 34;
   uint8_t column : TILE_ADDR_COL_WIDTH;
@@ -92,7 +94,7 @@ public:
 
   operator uint64_t() const { return tile.fullAddress(register_offset); }
 
-  uint16_t tileId() const { return tile; }
+  TileAddress destTile() const { return tile; }
 
 private:
   TileAddress tile;
@@ -112,7 +114,7 @@ public:
 
   uint64_t destination() const { return address; }
 
-  uint16_t tile() const { return address.tileId(); }
+  uint16_t tile() const { return address.destTile(); }
   uint32_t value() const { return data; }
 
 private:
@@ -123,6 +125,7 @@ private:
 static std::vector<Write> writes;
 
 static void write32(Address addr, uint32_t value) {
+  assert(addr.destTile().col() > 0);
   writes.emplace_back(addr, value);
 }
 
