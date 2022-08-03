@@ -679,18 +679,29 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   // ];
 }
 
+<<<<<<< HEAD
 def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTerminator<"EndOp">]> {
+=======
+def AIE_MulticastOp: AIE_Op<"multicast", [SingleBlockImplicitTerminator<"EndOp">]> {
+>>>>>>> 2507cd566e751bdc369e68da50c75304a22afe4c
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
         I32Attr:$channel
   );
   let regions = (region AnyRegion:$ports);
+<<<<<<< HEAD
   let summary = "Combination of broadcast and packet-switch";
   let description = [{
     An abstraction of broadcast and packet-switched flow. During place and
     route, it will be replaced by packet-switched flow and further replaced 
     by MasterSets and PacketRules inside switchboxes.
+=======
+  let summary = "An abstraction of multicast";
+  let description = [{
+    An abstraction of broadcast. During place and
+    route, it will be replaced by multiple flows.
+>>>>>>> 2507cd566e751bdc369e68da50c75304a22afe4c
 
     Example:
     ```
@@ -699,6 +710,7 @@ def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTermin
       %74 = AIE.tile(7, 4)
       %63 = AIE.tile(6, 3)
       %64 = AIE.tile(6, 4)
+<<<<<<< HEAD
       AIE.broadcast_packet(%70, "DMA" : 0){
         AIE.bp_id(0x0){
           AIE.bp_dest<%73, "DMA" : 0>
@@ -708,6 +720,13 @@ def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTermin
           AIE.bp_dest<%74, "DMA" : 0>
           AIE.bp_dest<%64, "DMA" : 0>
         }
+=======
+      AIE.multicast(%70, "DMA" : 0){
+        AIE.multi_dest<%73, "DMA" : 0>
+        AIE.multi_dest<%74, "DMA" : 0>
+        AIE.multi_dest<%63, "DMA" : 0>
+        AIE.multi_dest<%64, "DMA" : 0>
+>>>>>>> 2507cd566e751bdc369e68da50c75304a22afe4c
       }
     ```
   }];
@@ -719,6 +738,7 @@ def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTermin
   }];
 }
 
+<<<<<<< HEAD
 def AIE_BPIDOp: AIE_Op<"bp_id", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins I8Attr:$ID
@@ -737,16 +757,29 @@ def AIE_BPIDOp: AIE_Op<"bp_id", [SingleBlockImplicitTerminator<"EndOp">]> {
 }
 
 def AIE_BPDestOp: AIE_Op<"bp_dest", [HasParent<"BPIDOp">]> {
+=======
+def AIE_MultiDestOp: AIE_Op<"multi_dest", [HasParent<"MulticastOp">]> {
+>>>>>>> 2507cd566e751bdc369e68da50c75304a22afe4c
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
         I32Attr:$channel
   );
+<<<<<<< HEAD
   let summary = "A destination port";
   let description = [{
     An object representing the destination of a  Broad Packet. This must exist
     within an [AIE.bp_id] operation.
     See [AIE.broadcast_packet] for an example.
+=======
+  let summary = "A destination port of multicast flow";
+  let description = [{
+    An object representing the destination of a multicast flow. This must exist
+    within an [AIE.multicast] operation. There can be multiple destinations within an
+    AIE.multicast Op.
+
+    See [AIE.multicast]for an example.
+>>>>>>> 2507cd566e751bdc369e68da50c75304a22afe4c
   }];
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict

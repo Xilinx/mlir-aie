@@ -33,8 +33,9 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
-  LogicalResult matchAndRewrite(MyOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     rewriter.eraseOp(Op);
@@ -649,9 +650,85 @@ struct AIERoutePacketFlowsPass
       }
     }
 
+    // Add support for shimDMA
+    // From shimDMA to BLI: 1) shimDMA 0 --> North 3
+    //                      2) shimDMA 1 --> North 7
+    // From BLI to shimDMA: 1) North   2 --> shimDMA 0
+    //                      2) North   3 --> shimDMA 1
+
+    for (auto switchbox : llvm::make_early_inc_range(m.getOps<SwitchboxOp>())) {
+      auto retVal = switchbox->getOperand(0);
+      auto tileOp = retVal.getDefiningOp<TileOp>();
+
+      if (!tileOp.isShimNOCTile())
+        continue;
+
+      Region &r = switchbox.connections();
+      Block &b = r.front();
+
+      if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
+        continue;
+
+      builder.setInsertionPointAfter(tileOp);
+      auto shimOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
+      Region &r0 = shimOp.connections();
+      Block *b0 = builder.createBlock(&r0);
+      builder.setInsertionPointToStart(b0);
+      for (Operation &Op : b.getOperations()) {
+        if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
+          if (pktrules.sourceBundle() == WireBundle::DMA) {
+            pktrules->removeAttr("sourceBundle");
+            pktrules->setAttr(
+                "sourceBundle",
+                builder.getI32IntegerAttr(3)); // WireBundle::South
+            if (pktrules.sourceChannel() == 0) {
+              pktrules->removeAttr("sourceChannel");
+              pktrules->setAttr("sourceChannel",
+                                builder.getI32IntegerAttr(3)); // Channel 3
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::DMA, 0, WireBundle::North,
+                                        3);
+            }
+            if (pktrules.sourceChannel() == 1) {
+              pktrules->removeAttr("sourceChannel");
+              pktrules->setAttr("sourceChannel",
+                                builder.getI32IntegerAttr(7)); // Channel 7
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::DMA, 1, WireBundle::North,
+                                        7);
+            }
+          }
+        }
+        if (MasterSetOp mtset = dyn_cast<MasterSetOp>(Op)) {
+          if (mtset.destBundle() == WireBundle::DMA) {
+            mtset->removeAttr("destBundle");
+            mtset->setAttr("destBundle",
+                           builder.getI32IntegerAttr(3)); // WireBundle::South
+            if (mtset.destChannel() == 0) {
+              mtset->removeAttr("destChannel");
+              mtset->setAttr("destChannel",
+                             builder.getI32IntegerAttr(2)); // Channel 2
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::North, 2, WireBundle::DMA,
+                                        0);
+            }
+            if (mtset.destChannel() == 1) {
+              mtset->removeAttr("destChannel");
+              mtset->setAttr("destChannel",
+                             builder.getI32IntegerAttr(3)); // Channel 3
+              builder.create<ConnectOp>(builder.getUnknownLoc(),
+                                        WireBundle::North, 3, WireBundle::DMA,
+                                        1);
+            }
+          }
+        }
+      }
+      builder.setInsertionPointToEnd(b0);
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<PacketFlowOp>
-                  >(m.getContext(), m);
+    patterns.add<AIEOpRemoval<PacketFlowOp>>(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

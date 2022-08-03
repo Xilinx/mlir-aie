@@ -132,6 +132,7 @@ def run_flow(opts, tmpdirname):
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
 
+
     def process_arm_cgen():
       # Generate the included host interface
       file_physical = os.path.join(tmpdirname, 'input_physical.mlir')

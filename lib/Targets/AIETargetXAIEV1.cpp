@@ -393,6 +393,10 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     output << "XAieDma_Shim " << dmaName << ";\n";
     output << "XAieDma_ShimInitialize(" << tileInstStr(col, row) << ", &"
            << dmaName << ");\n";
+    output << "XAieDma_ShimBdClearAll("
+           << "&" << dmaName << ");\n";
+    output << "XAieDma_ShimChResetAll("
+           << "&" << dmaName << ");\n";
 
     DenseMap<Block *, int> blockMap;
 
@@ -407,6 +411,9 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       }
     }
     for (auto &block : op.body()) {
+      bool foundBdPacket = false;
+      int packetType = 0;
+      int packetID = 0;
       bool foundBd = false;
       int len = 0;
       uint64_t bytes = 0;
@@ -439,6 +446,12 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
           relEnable = enable;
           relValue = op.getLockValue();
         }
+      }
+
+      for (auto op : block.getOps<DMABDPACKETOp>()) {
+        foundBdPacket = true;
+        packetType = op.getPacketType();
+        packetID = op.getPacketID();
       }
 
       int bdNum = blockMap[&block];
@@ -482,6 +495,13 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
           output << "XAieDma_ShimBdSetNext(&" << dmaName << ", "
                  << " /* bd */ " << bdNum << ", "
                  << " /* nextbd */ " << nextBdNum << ");\n";
+        }
+        if (foundBdPacket) {
+          output << "XAieDma_ShimBdSetPkt(&" << dmaName << ", "
+                 << " /* bd */ " << bdNum << ", "
+                 << " /* en */ " << 1 << ", "
+                 << " /* type */ " << packetType << ", "
+                 << " /* id */ " << packetID << ");\n";
         }
         output << "XAieDma_ShimBdWrite(&" << dmaName << ", "
                << " /* bd */ " << bdNum << ");\n";

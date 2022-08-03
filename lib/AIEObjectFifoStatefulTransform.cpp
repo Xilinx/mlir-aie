@@ -33,74 +33,21 @@ using namespace xilinx::AIE;
 #define DEBUG_TYPE "aie-objectFifo-stateful-transform"
 
 //===----------------------------------------------------------------------===//
-// Conversion Patterns
+// Conversion Pattern
 //===----------------------------------------------------------------------===//
-struct RemoveAIEObjectFifoCreate
-    : public OpConversionPattern<ObjectFifoCreateOp> {
-  using OpConversionPattern<ObjectFifoCreateOp>::OpConversionPattern;
+template <typename MyOp>
+struct AIEOpRemoval : public OpConversionPattern<MyOp> {
+  using OpConversionPattern<MyOp>::OpConversionPattern;
+  using OpAdaptor = typename MyOp::Adaptor;
   ModuleOp &module;
 
-  RemoveAIEObjectFifoCreate(MLIRContext *context, ModuleOp &m,
-                            PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoCreateOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(ObjectFifoCreateOp op, OpAdaptor adaptor,
+  matchAndRewrite(MyOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct RemoveAIEAcquireLocks : public OpConversionPattern<ObjectFifoAcquireOp> {
-  using OpConversionPattern<ObjectFifoAcquireOp>::OpConversionPattern;
-  ModuleOp &module;
-
-  RemoveAIEAcquireLocks(MLIRContext *context, ModuleOp &m,
-                        PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoAcquireOp>(context, benefit), module(m) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoAcquireOp acqOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = acqOp.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct RemoveAIEReleaseLocks : public OpConversionPattern<ObjectFifoReleaseOp> {
-  using OpConversionPattern<ObjectFifoReleaseOp>::OpConversionPattern;
-  ModuleOp &module;
-
-  RemoveAIEReleaseLocks(MLIRContext *context, ModuleOp &m,
-                        PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoReleaseOp>(context, benefit), module(m) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoReleaseOp relOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = relOp.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct RemoveAIESubviewAccess
-    : public OpConversionPattern<ObjectFifoSubviewAccessOp> {
-  using OpConversionPattern<ObjectFifoSubviewAccessOp>::OpConversionPattern;
-  ModuleOp &module;
-
-  RemoveAIESubviewAccess(MLIRContext *context, ModuleOp &m,
-                         PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoSubviewAccessOp>(context, benefit),
-        module(m) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoSubviewAccessOp accOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = accOp.getOperation();
     rewriter.eraseOp(Op);
     return success();
   }
@@ -620,10 +567,10 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
-    patterns.insert<RemoveAIEObjectFifoCreate>(m.getContext(), m);
-    patterns.insert<RemoveAIEAcquireLocks>(m.getContext(), m);
-    patterns.insert<RemoveAIEReleaseLocks>(m.getContext(), m);
-    patterns.insert<RemoveAIESubviewAccess>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }

@@ -19,6 +19,7 @@ add_mlir_dialect_library(AIE
   AIECoreToStandard.cpp
   AIEHerdRouting.cpp
   AIECreateBroadcastPacket.cpp
+  AIELowerMulticast.cpp
   AIECreatePacketFlows.cpp
   AIELowerMemcpy.cpp
   AIELocalizeLocks.cpp
