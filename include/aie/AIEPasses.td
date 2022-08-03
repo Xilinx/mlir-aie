@@ -175,7 +175,7 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   ];
 }
 
-def AIEBroadcastPacket : Pass<"aie-create-broadcast-packet", "ModuleOp"> {
+def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "ModuleOp"> {
   let summary = "Replace combination of broadcast and packet-switch by packet-flow";
   let description = [{
     Replace combination of broadcast and packet-switch by packet-flow  

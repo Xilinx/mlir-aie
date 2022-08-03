@@ -8,7 +8,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/Twine.h"
 
-#define DEBUG_TYPE "aie-create-broadcast-packet"
+#define DEBUG_TYPE "aie-create-lower-packet"
 
 using namespace mlir;
 using namespace xilinx;
