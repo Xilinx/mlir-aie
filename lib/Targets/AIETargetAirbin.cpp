@@ -95,6 +95,7 @@ public:
   operator uint64_t() const { return tile.fullAddress(register_offset); }
 
   TileAddress destTile() const { return tile; }
+  uint32_t offset() const { return register_offset; }
 
 private:
   TileAddress tile;
@@ -112,7 +113,7 @@ public:
            static_cast<uint64_t>(rhs.address);
   }
 
-  uint64_t destination() const { return address; }
+  uint32_t relativeDest() const { return address.offset(); }
 
   uint16_t tile() const { return address.destTile(); }
   uint32_t value() const { return data; }
@@ -1417,7 +1418,7 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
   for (const auto &section : group_writes) {
     assert(not section.empty());
     SectionHeader header;
-    header.address = section.front().destination();
+    header.address = section.front().relativeDest();
     header.offset = seen_size;
     // TODO: This size is for ascii mode
     header.size = section.size() * 2 * sizeof(uint32_t) + section.size();
