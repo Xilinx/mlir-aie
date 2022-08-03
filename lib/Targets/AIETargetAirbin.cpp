@@ -187,6 +187,9 @@ static constexpr uint64_t setField(uint64_t value, uint8_t shift,
 
 static bool loadElf(TileAddress tile, const std::string &filename) {
 
+  // Clear program memory
+  clearRange(tile, 0, 0x7ffcu);
+
   llvm::dbgs() << "Reading ELF file " << filename << '\n';
 
   int fd = open(filename.c_str(), O_RDONLY);
@@ -248,6 +251,8 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   {
     uint32_t header_type = parse_little_endian(num);
     assert(header_type == PT_LOAD);
+    // TODO: What if the first header is not the one to load?
+    // TODO: What if there are multiple sections to load?
   }
 
   if (!read_at(fd, num, phstart + sizeof(num))) {
