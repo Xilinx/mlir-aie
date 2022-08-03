@@ -1423,10 +1423,12 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
     assert(not section.empty());
     SectionHeader header;
     header.address = section.front().relativeDest();
+    // TODO: The size is for binary mode,
+    // but the offset must account for ascii mode and newlines
     header.offset = seen_size;
-    // TODO: This size is for ascii mode
-    header.size = section.size() * 2 * sizeof(uint32_t) + section.size();
-    seen_size += header.size;
+    header.size = section.size() * sizeof(uint32_t);
+    seen_size += section.size() * 2 * sizeof(uint32_t) + section.size();
+
     header.tile = section.front().tile();
     leftMostColumn =
         std::min(leftMostColumn,
