@@ -82,6 +82,9 @@ private:
   uint8_t row : TILE_ADDR_ROW_WIDTH;
 };
 
+static_assert(sizeof(TileAddress) <= sizeof(uint64_t),
+              "Tile addresses are at most 64-bits");
+
 class Address {
 public:
   Address(TileAddress tile, uint32_t register_offset)
