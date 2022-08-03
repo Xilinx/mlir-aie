@@ -1,4 +1,4 @@
-// RUN: aie-opt --aie-create-broadcast-packet %s | FileCheck %s
+// RUN: aie-opt --aie-lower-broadcast-packet %s | FileCheck %s
 
 // CHECK-LABEL: module @test_broadcast_packet {
 // CHECK-NEXT:    %0 = AIE.tile(6, 3)
