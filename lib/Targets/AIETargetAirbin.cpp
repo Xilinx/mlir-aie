@@ -382,7 +382,7 @@ struct BDInfo {
   uint32_t FifoMode = disable; // FIXME: when to enable FIFO mode?
 };
 
-static BDInfo getBDInfo(Block &block, NetlistAnalysis &NL) {
+static BDInfo getBDInfo(Block &block, const NetlistAnalysis &NL) {
   BDInfo bdInfo;
   for (auto op : block.getOps<DMABDOp>()) {
     bdInfo.foundBd = true;
@@ -1063,6 +1063,7 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
                    b.getOps<MasterSetOp>().empty() &&
                    b.getOps<PacketRulesOp>().empty();
 
+    // NOTE: may not be needed
     auto switchbox_set = [&] {
       std::set<std::pair<int, int>> result;
       if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
