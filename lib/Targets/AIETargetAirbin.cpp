@@ -1422,6 +1422,7 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
   for (const auto &section : group_writes) {
     assert(not section.empty());
     SectionHeader header;
+    header.type = 1;
     header.address = section.front().relativeDest();
     // TODO: The size is for binary mode,
     // but the offset must account for ascii mode and newlines
