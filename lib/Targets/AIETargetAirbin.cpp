@@ -17,8 +17,9 @@
 #include <elf.h>
 #include <fcntl.h> // open
 #include <sstream>
-#include <unistd.h> // read
-#include <utility>  // pair
+#include <type_traits> // enable_if_t
+#include <unistd.h>    // read
+#include <utility>     // pair
 #include <vector>
 
 #include "aie/AIENetlistAnalysis.h"
@@ -65,6 +66,15 @@ class TileAddress {
 public:
   TileAddress(uint8_t column, uint8_t row, uint64_t array_offset = 0x800u)
       : array_offset{array_offset}, column{column}, row{row} {}
+
+  // SFINAE is used here to choose the copy constructor for `TileAddress`,
+  // and this constructor for all other classes.
+  template <
+      typename Op,
+      std::enable_if_t<not std::is_same<Op, TileAddress>::value, bool> = true>
+  TileAddress(Op &op)
+      : TileAddress{static_cast<uint8_t>(op.colIndex()),
+                    static_cast<uint8_t>(op.rowIndex())} {}
 
   uint64_t fullAddress(uint32_t register_offset) const {
     return (array_offset << TILE_ADDR_ARR_SHIFT) |
@@ -164,19 +174,18 @@ static void clearRange(TileAddress tile, uint32_t range_start,
 // SHIM resets are handled by the runtime.
 static void generateShimConfig(TileOp &tileOp) {
 
-  TileAddress tile{static_cast<uint8_t>(tileOp.colIndex()),
-                   static_cast<uint8_t>(tileOp.rowIndex())};
+  TileAddress tileAddress{tileOp};
 
   if (tileOp.isShimNOCTile()) {
-    clearRange(tile, 0x1D000, 0x1D158);
+    clearRange(tileAddress, 0x1D000, 0x1D158);
   }
   if (tileOp.isShimNOCTile() or tileOp.isShimTile()) {
     // output << "// Stream Switch master config\n";
-    clearRange(tile, 0x3F000, 0x3F058);
+    clearRange(tileAddress, 0x3F000, 0x3F058);
     // output << "// Stream Switch slave config\n";
-    clearRange(tile, 0x3F100, 0x3F15C);
+    clearRange(tileAddress, 0x3F100, 0x3F15C);
     // output << "// Stream Switch slave slot config\n";
-    clearRange(tile, 0x3F200, 0x3F37C);
+    clearRange(tileAddress, 0x3F200, 0x3F37C);
   }
 }
 
@@ -296,21 +305,20 @@ static void configure_cores(mlir::ModuleOp module) {
     if (tileOp.isShimTile()) {
       generateShimConfig(tileOp);
     } else {
-      TileAddress tile{static_cast<uint8_t>(tileOp.colIndex()),
-                       static_cast<uint8_t>(tileOp.rowIndex())};
+      TileAddress tileAddress{tileOp};
 
       // Reset configuration
       // Program Memory
-      clearRange(tile, 0x20000, 0x23FFC);
+      clearRange(tileAddress, 0x20000, 0x23FFC);
       // TileDMA
-      clearRange(tile, 0x1D000, 0x1D1F8);
-      clearRange(tile, 0x1de00, 0x1de18);
+      clearRange(tileAddress, 0x1D000, 0x1D1F8);
+      clearRange(tileAddress, 0x1de00, 0x1de18);
       // Stream Switch master config
-      clearRange(tile, 0x3F000, 0x3F060);
+      clearRange(tileAddress, 0x3F000, 0x3F060);
       // Stream Switch slave config
-      clearRange(tile, 0x3F100, 0x3F168);
+      clearRange(tileAddress, 0x3F100, 0x3F168);
       // Stream Switch slave slot config
-      clearRange(tile, 0x3F200, 0x3F3AC);
+      clearRange(tileAddress, 0x3F200, 0x3F3AC);
 
       // NOTE: Here is usually where locking is done.
       // However, the runtime will handle that when loading the airbin.
@@ -325,7 +333,7 @@ static void configure_cores(mlir::ModuleOp module) {
              << ".elf";
           fileName = ss.str();
         }
-        if (not loadElf(tile, fileName)) {
+        if (not loadElf(tileAddress, fileName)) {
           llvm::outs() << "Error loading " << fileName;
         }
       }
@@ -441,8 +449,6 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
      */
 
   for (auto memOp : module.getOps<MemOp>()) {
-    int col = memOp.colIndex();
-    int row = memOp.rowIndex();
     /* clang-format off
     output << "XAieDma_TileInitialize(" << tileInstStr(col, row) << ", " << tileDMAInstStr(col, row) << ");\n";
     ----
@@ -501,7 +507,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     }
     clang-format on */
 
-    TileAddress tile{static_cast<uint8_t>(col), static_cast<uint8_t>(row)};
+    TileAddress tile{memOp};
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
       write32({tile, dmaChannelCtrlOffsets[chNum]},
               setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
