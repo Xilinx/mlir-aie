@@ -1408,12 +1408,12 @@ static_assert(sizeof(FileHeader) == sizeof(uint64_t) * 2 + 16,
               "FileHeader should have the same size in-file and in-memory");
 
 static std::vector<SectionHeader>
-make_section_headers(std::vector<std::vector<Write>> &group_writes) {
+make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
   std::vector<SectionHeader> headers;
 
   uint64_t seen_size = 0;
 
-  for (auto &section : group_writes) {
+  for (const auto &section : group_writes) {
     assert(not section.empty());
     SectionHeader header;
     header.address = section.front().destination();
