@@ -662,6 +662,21 @@ LogicalResult xilinx::AIE::MulticastOp::verify() {
   return success();
 }
 
+LogicalResult xilinx::AIE::BroadcastPacketOp::verify() {
+  Region &body = ports();
+  assert(getOperation()->getNumRegions());
+  assert(!body.empty());
+  for (auto &ops : body.front()) {
+    if (auto Op = dyn_cast<xilinx::AIE::BPIDOp>(ops)) {
+    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
+    } else {
+      return ops.emitOpError("cannot be contained in a BroadcastPacket op");
+    }
+  }
+
+  return success();
+}
+
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = ports();
   // DenseSet<xilinx::AIE::Port> destset;

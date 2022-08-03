@@ -1,4 +1,4 @@
-﻿
+﻿﻿
 # AIE Basic Design Patterns
 
 This document is an introduction to using the AIE dialect in practice and provides basic patterns that one would use in order to generate low level configurations for the AI engine. 
@@ -432,4 +432,41 @@ module @objectFIFO  {
 
     AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
 }
+```
+
+## Using AIE broadcast_packet
+
+[broadcast_packet Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/23_broadcast_packet/aie.mlir)
+
+The broadcast_packet operation is a logical connection that combines broadcast and packet-switch data transferring mechanism.
+
+In this operation, the data streams with different packet-IDs will time-multiplexed use the single source port to broadcast 
+data to multiple destinations.
+
+The following example shows that two streams of data with different packet-ID (0x0 and 0x1) will time-multiplexed share the same 
+source port (%t72, "DMA" : 0) to broadcast data to %t73, %t63(ID: 0x0) and %t74, %t64(ID: 0x1).
+
+Define tiles
+```
+%t72 = AIE.tile(7, 2)
+%t63 = AIE.tile(6, 3)
+%t64 = AIE.tile(6, 4)
+%t73 = AIE.tile(7, 3)
+%t74 = AIE.tile(7, 4)
+
+```
+
+broadcast_packet 
+```
+AIE.broadcast_packet(%t72, "DMA" : 0){
+  AIE.bp_id(0x0){
+    AIE.bp_dest<%t73, "DMA" : 0>
+    AIE.bp_dest<%t63, "DMA" : 0>
+  }
+  AIE.bp_id(0x1){
+    AIE.bp_dest<%t74, "DMA" : 0>
+    AIE.bp_dest<%t64, "DMA" : 0>
+  }
+}
+
 ```
