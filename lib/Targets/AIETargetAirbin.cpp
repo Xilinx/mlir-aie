@@ -1439,7 +1439,7 @@ static void output_sections(llvm::raw_ostream &output,
 
   output.write(reinterpret_cast<const char *>(fileHeader.ident.data()),
                fileHeader.ident.size())
-      << llvm::format("%02x%02x%02x%02x%08x", fileHeader.type,
+      << llvm::format("%02x%02x%02x%02x%08x\n", fileHeader.type,
                       fileHeader.machine, fileHeader.version, fileHeader.chnum,
                       fileHeader.choff);
 
