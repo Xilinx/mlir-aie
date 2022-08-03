@@ -1412,6 +1412,7 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
   std::vector<SectionHeader> headers;
 
   uint64_t seen_size = 0;
+  uint8_t leftMostColumn = UINT8_MAX;
 
   for (const auto &section : group_writes) {
     assert(not section.empty());
@@ -1422,12 +1423,20 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
     header.size = section.size() * 2 * sizeof(uint32_t) + section.size();
     seen_size += header.size;
     header.tile = section.front().tile();
+    leftMostColumn =
+        std::min(leftMostColumn,
+                 static_cast<uint8_t>(header.tile >> TILE_ADDR_ROW_WIDTH));
 
     headers.emplace_back(std::move(header));
   }
 
+  assert(leftMostColumn < UINT8_MAX);
+
+  llvm::dbgs() << "Leftmost column: " << int{leftMostColumn} << '\n';
+
   for (auto &header : headers) {
     header.offset += HEADER_SIZE + SECTION_SIZE * headers.size();
+    header.tile -= leftMostColumn << TILE_ADDR_ROW_WIDTH;
   }
 
   return headers;
@@ -1439,6 +1448,8 @@ static void output_sections(llvm::raw_ostream &output,
 
   FileHeader fileHeader;
   fileHeader.chnum = headers.size();
+
+  llvm::dbgs() << "Found " << fileHeader.chnum << " sections\n";
 
   output.write(reinterpret_cast<const char *>(fileHeader.ident.data()),
                fileHeader.ident.size())
