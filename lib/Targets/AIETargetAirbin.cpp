@@ -48,12 +48,6 @@ static constexpr auto TILE_ADDR_COL_WIDTH = 7u;
 static constexpr auto TILE_ADDR_ARR_SHIFT =
     TILE_ADDR_COL_SHIFT + TILE_ADDR_COL_WIDTH;
 
-static constexpr auto CORE_CORECTRL = 0x00032000u;
-static constexpr auto CORE_CTRL_ENABLE_SHIFT = 0u;
-static constexpr auto CORE_CTRL_ENABLE_MASK = 1u;
-static constexpr auto CORE_CTRL_RESET_SHIFT = 1u;
-static constexpr auto CORE_CTRL_RESET_MASK = 2u;
-
 /*
  * Tile address format:
  * --------------------------------------------
