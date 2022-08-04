@@ -936,7 +936,7 @@ with BaseAddrA = BaseAddr + offsetA
       for (auto &block : op.body()) {
         for (auto op : block.getOps<DMAStartOp>()) {
           // int bdNum = blockMap[op.dest()];
-
+          assert(false);
           /*
           output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
                  << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChan(op.dmaChan())
