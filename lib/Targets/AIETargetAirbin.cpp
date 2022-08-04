@@ -515,7 +515,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
       write32({tile, dmaChannelCtrlOffsets[chNum]},
               setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
-                  setField(enable, dmaChannelEnableLSB, dmaChannelEnableMask));
+                  setField(disable, dmaChannelEnableLSB, dmaChannelEnableMask));
     }
 
     DenseMap<Block *, int> blockMap;
