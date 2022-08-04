@@ -497,10 +497,12 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     clang-format on */
 
     TileAddress tile{memOp};
+    // Clear the CTRL and QUEUE registers for the DMA channels.
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
       write32({tile, dmaChannelCtrlOffsets[chNum]},
               setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
                   setField(disable, dmaChannelEnableLSB, dmaChannelEnableMask));
+      write32({tile, dmaChannelQueueOffsets[chNum]}, 0);
     }
 
     DenseMap<Block *, int> blockMap;
