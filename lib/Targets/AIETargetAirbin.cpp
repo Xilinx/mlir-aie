@@ -27,11 +27,14 @@
 
 #include "AIETargets.h"
 
+// This target is a "flattening" of AIETargetXAIEV1 thru libXAIE.
+// All recorded writes are time/order invariant.
+// This allows sorting to compact the airbin,
+// but translating from XAIE is more difficult,
+// as some writes are handled by the runtime that loads our resulting airbin.
+
 namespace xilinx {
 namespace AIE {
-
-// NOTE: All recorded writes are time/order invariant.
-//       This allows sorting to compact the airbin.
 
 static constexpr auto disable = 0u;
 static constexpr auto enable = 1u;
@@ -198,6 +201,8 @@ static constexpr uint64_t setField(uint64_t value, uint8_t shift,
   return (value << shift) & mask;
 }
 
+// LLVM may have a way to read ELF files,
+// but for our purposes, manually parsing is fine for now.
 static bool loadElf(TileAddress tile, const std::string &filename) {
 
   // Clear program memory
@@ -431,26 +436,6 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
   static constexpr auto dmaChannelResetMask = 0x2u;
   static constexpr auto dmaChannelEnableLSB = 0u;
   static constexpr auto dmaChannelEnableMask = 0x1u;
-
-  /* clang-format off
-     DMA configuration
-     XAieDma_TileSetStartBd(DmaInstPtr, ChNum, BdStart)
-     u32 XAieDma_TileSoftInitialize(XAieGbl_Tile *TileInstPtr, XAieDma_Tile *DmaInstPtr)
-     u32 XAieDma_TileInitialize(XAieGbl_Tile *TileInstPtr, XAieDma_Tile *DmaInstPtr);
-     void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8 LockAcqVal)
-     void XAieDma_TileBdSetXy2d(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 XyType, u16 Incr, u16 Wrap, u16 Offset);
-     void XAieDma_TileBdSetIntlv(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 IntlvMode, u8 IntlvDb, u8 IntlvCnt, u16 IntlvCur)
-     void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn, u8 PktType, u8 PktId)
-     void XAieDma_TileBdSetAdrLenMod(XAieDma_Tile *DmaInstPtr, u8 BdNum, u16 BaseAddrA, u16 BaseAddrB, u16 Length, u8 AbMode, u8 FifoMode)
-     void XAieDma_TileBdSetNext(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 NextBd)
-     void XAieDma_TileBdWrite(XAieDma_Tile *DmaInstPtr, u8 BdNum)
-     void XAieDma_TileBdClear(XAieDma_Tile *DmaInstPtr, u8 BdNum)
-     void XAieDma_TileBdClearAll(XAieDma_Tile *DmaInstPtr)
-     u32 XAieDma_TileChControl(XAieDma_Tile *DmaInstPtr, u8 ChNum, u8 Reset, u8 Enable)
-     u32 XAieDma_TileChReset(XAieDma_Tile *DmaInstPtr, u8 ChNum)
-     u32 XAieDma_TileChResetAll(XAieDma_Tile *DmaInstPtr)
-     clang-format on
-     */
 
   for (auto memOp : module.getOps<MemOp>()) {
     /* clang-format off
