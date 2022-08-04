@@ -12,6 +12,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm> // find_if
 #include <array>
 #include <cstdint>
 #include <elf.h>
@@ -151,6 +152,15 @@ static void write32(Address addr, uint32_t value) {
   }
 
   writes.emplace_back(addr, value);
+}
+
+static uint32_t read32(Address addr) {
+  auto iter =
+      std::find_if(writes.begin(), writes.end(), [addr](const auto &x) -> bool {
+        return x.destination() == addr;
+      });
+
+  return (iter != writes.end()) ? iter->value() : 0;
 }
 
 // Inclusive on both ends
@@ -1254,24 +1264,25 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
     // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
     // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      auto calculateShiftAmt = [](int index) {
+        // NOTE: hardcoded to SOUTH to match definitions from libxaie
+        switch (index) {
+        case 2:
+          return 8u;
+        case 3:
+          return 10u;
+        case 6:
+          return 12u;
+        case 7:
+          return 14u;
+        default:
+          assert(false);
+        }
+      };
+
       if (connectOp.sourceBundle() == WireBundle::North) {
         // demux!
         assert(currentTile.hasValue());
-
-        auto portNumber = [&connectOp] {
-          switch (connectOp.sourceIndex()) {
-          case 2:
-            return 0u;
-          case 3:
-            return 1u;
-          case 6:
-            return 2u;
-          case 7:
-            return 3u;
-          default:
-            assert(false);
-          }
-        }();
 
         auto input = [&connectOp] {
           switch (connectOp.destBundle()) {
@@ -1286,29 +1297,16 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           }
         }();
 
-        // Assume all zeros before write.
-        write32({currentTile.value(), 0x1F004u},
-                input << (2u * (portNumber + 4u)));
+        // We need to add to the possibly preexisting mask.
+        Address addr{currentTile.value(), 0x1F004u};
+        auto currentMask = read32(addr);
+
+        write32(addr, currentMask | (input << calculateShiftAmt(
+                                         connectOp.sourceIndex())));
 
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
         assert(currentTile.hasValue());
-
-        auto portNumber = [&connectOp] {
-          // NOTE: hardcoded to SOUTH to match definitions from libxaie
-          switch (connectOp.destIndex()) {
-          case 2:
-            return 0u;
-          case 3:
-            return 1u;
-          case 6:
-            return 2u;
-          case 7:
-            return 3u;
-          default:
-            assert(false);
-          }
-        }();
 
         auto input = [&connectOp] {
           switch (connectOp.sourceBundle()) {
@@ -1323,9 +1321,11 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           }
         }();
 
-        // Assume all zeros before write.
-        write32({currentTile.value(), 0x1F000u},
-                input << (2u * (portNumber + 4u)));
+        Address addr{currentTile.value(), 0x1F000u};
+        auto currentMask = read32(addr);
+
+        write32(addr, currentMask |
+                          (input << calculateShiftAmt(connectOp.destIndex())));
       }
     }
   }
