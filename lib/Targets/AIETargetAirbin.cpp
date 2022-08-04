@@ -1237,17 +1237,15 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
     }
   }
 
-  Optional<std::pair<uint8_t, uint8_t>> currentShimMux = llvm::NoneType{};
+  Optional<TileAddress> currentTile = llvm::NoneType::None;
   for (auto op : module.getOps<ShimMuxOp>()) {
     Region &r = op.connections();
     Block &b = r.front();
-    bool isEmpty = b.getOps<ConnectOp>().empty();
 
     if (isa<TileOp>(op.tile().getDefiningOp())) {
-      int col = op.colIndex();
-      int row = op.rowIndex();
+      bool isEmpty = b.getOps<ConnectOp>().empty();
       if (!isEmpty) {
-        currentShimMux = std::make_pair(col, row);
+        currentTile = op;
       }
     }
 
@@ -1258,8 +1256,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourceBundle() == WireBundle::North) {
         // demux!
-        assert(currentShimMux.hasValue());
-        TileAddress tile{currentShimMux->first, currentShimMux->second};
+        assert(currentTile.hasValue());
 
         auto portNumber = [&connectOp] {
           switch (connectOp.sourceIndex()) {
@@ -1290,12 +1287,12 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         }();
 
         // Assume all zeros before write.
-        write32({tile, 0x1F004u}, input << (2u * (portNumber + 4u)));
+        write32({currentTile.value(), 0x1F004u},
+                input << (2u * (portNumber + 4u)));
 
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
-        assert(currentShimMux.hasValue());
-        TileAddress tile{currentShimMux->first, currentShimMux->second};
+        assert(currentTile.hasValue());
 
         auto portNumber = [&connectOp] {
           // NOTE: hardcoded to SOUTH to match definitions from libxaie
@@ -1327,7 +1324,8 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         }();
 
         // Assume all zeros before write.
-        write32({tile, 0x1F000u}, input << (2u * (portNumber + 4u)));
+        write32({currentTile.value(), 0x1F000u},
+                input << (2u * (portNumber + 4u)));
       }
     }
   }
