@@ -675,7 +675,7 @@ with BaseAddrA = BaseAddr + offsetA
         bdData.addr_a |= setField(addr_a >> 2u, 0, BD_ADDR_BASE_MASK);
         bdData.addr_b |= setField(addr_b >> 2u, 0, BD_ADDR_BASE_MASK);
         bdData.control |=
-            (setField(bdInfo.lenA >> 2u, 0, BD_CTRL_LEN_MASK) - 1) |
+            setField((bdInfo.lenA >> 2u) - 1, 0, BD_CTRL_LEN_MASK) |
             setField(bdInfo.FifoMode, BD_CTRL_FIFO_SHIFT, BD_CTRL_FIFO_MASK) |
             setField(bdInfo.AbMode, BD_CTRL_ABMODE_SHIFT, BD_CTRL_ABMODE_MASK);
 
