@@ -1453,27 +1453,27 @@ static void output_sections(llvm::raw_ostream &output,
 
   output.write(reinterpret_cast<const char *>(fileHeader.ident.data()),
                fileHeader.ident.size())
-      << llvm::format("%02x%02x%02x%02x%08x\n", fileHeader.type,
+      << llvm::format("%02X%02X%02X%02X%08X\n", fileHeader.type,
                       fileHeader.machine, fileHeader.version, fileHeader.chnum,
                       fileHeader.choff);
 
   for (const auto &header : headers) {
     output << llvm::format(
-        "%08x\n"
-        "%08x\n"
-        "%08x\n"
-        "%08x\n"
-        "%08x\n"
-        "%08x\n"
-        "%08x\n"
-        "%08x\n",
+        "%08X\n"
+        "%08X\n"
+        "%08X\n"
+        "%08X\n"
+        "%08X\n"
+        "%08X\n"
+        "%08X\n"
+        "%08X\n",
         header.name | (static_cast<uint32_t>(header.tile) << 8u), header.type,
         0, header.address, 0, header.offset, 0, header.size);
   }
 
   for (auto &section : writes) {
     for (auto &write : section) {
-      output << llvm::format("%08x\n", write.value());
+      output << llvm::format("%08X\n", write.value());
     }
   }
 }
