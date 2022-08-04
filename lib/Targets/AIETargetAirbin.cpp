@@ -685,7 +685,7 @@ with BaseAddrA = BaseAddr + offsetA
         bdData.addr_a |= setField(addr_a >> 2u, 0, BD_ADDR_BASE_MASK);
         bdData.addr_b |= setField(addr_b >> 2u, 0, BD_ADDR_BASE_MASK);
         bdData.control |=
-            setField((bdInfo.lenA >> 2u) - 1, 0, BD_CTRL_LEN_MASK) |
+            setField(bdInfo.lenA - 1, 0, BD_CTRL_LEN_MASK) |
             setField(bdInfo.FifoMode, BD_CTRL_FIFO_SHIFT, BD_CTRL_FIFO_MASK) |
             setField(bdInfo.AbMode, BD_CTRL_ABMODE_SHIFT, BD_CTRL_ABMODE_MASK);
 
@@ -736,6 +736,9 @@ with BaseAddrA = BaseAddr + offsetA
                << bdNum << ");\n";
                */
 
+        static constexpr auto BD_CTRL_VALID_SHIFT = 31u;
+        static constexpr auto BD_CTRL_VALID_MASK = 1u << BD_CTRL_VALID_SHIFT;
+
         auto bdOffset = 0x1D000 + bdNum * 0x20u;
 
         write32({tile, bdOffset}, bdData.addr_a);
@@ -744,7 +747,9 @@ with BaseAddrA = BaseAddr + offsetA
         write32({tile, bdOffset + 0xCu}, bdData.y);
         write32({tile, bdOffset + 0x10u}, bdData.packet);
         write32({tile, bdOffset + 0x14u}, bdData.interleave);
-        write32({tile, bdOffset + 0x18u}, bdData.control);
+        write32({tile, bdOffset + 0x18u},
+                bdData.control |
+                    setField(1u, BD_CTRL_VALID_SHIFT, BD_CTRL_VALID_MASK));
       }
     }
 
