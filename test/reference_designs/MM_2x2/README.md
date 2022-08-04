@@ -13,7 +13,7 @@ This is an end-to-end matrix multiply example with size (32 * 64) * (64 * 64) by
 
 
 ### AIE array layout and data communication<br>
-1. The communicatoin from tile (6,0) MM2S0 channel is a broadcast_packet in which tile0 of LHS can be broadcast to tile(6,3) and tile (7,3). The data in tile1 of LHS can be broadcast to tile (6,4) and tile (7,4) by time-multiplexedly using the same dma channel with different packet ID.<br> 
+1. The communication from tile (6,0) MM2S0 channel is a broadcast_packet in which tile0 of LHS can be broadcast to tile(6,3) and tile (7,3). The data in tile1 of LHS can be broadcast to tile (6,4) and tile (7,4) by time-multiplexedly using the same dma channel with different packet ID.<br> 
 2. One thing to notify is that the accumulator matrices are set to zero in the local memory of the AIEs in the third row. Thus, there isn't the dma channel to send the accumulator matrix to tile (6,3) and tile (7,3)<br>
 ![image](https://user-images.githubusercontent.com/77606152/182739011-d27f9e43-7468-43b5-bbfe-1ed399bfb2c6.png)
 
