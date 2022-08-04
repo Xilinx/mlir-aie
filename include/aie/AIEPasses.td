@@ -214,6 +214,10 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIELowerMemcpyPass()";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
 }
 
 def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
