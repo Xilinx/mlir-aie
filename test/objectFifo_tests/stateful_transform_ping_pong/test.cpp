@@ -55,8 +55,8 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
       mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = i + j",
-                     mlir_aie_read_buffer_out(_xaie, i * LINE_WIDTH + j), (i + j),
-                     errors);
+                     mlir_aie_read_buffer_out(_xaie, i * LINE_WIDTH + j),
+                     (i + j), errors);
     }
   }
 
