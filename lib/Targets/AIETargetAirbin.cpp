@@ -342,7 +342,9 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
                << '\n';
 
   assert(lseek(fd, data_start, SEEK_SET) == data_start);
-  for (auto i = 0u; i < data_stop / sizeof(num); i++) {
+  // NOTE: The "return" type of `sizeof` is `size_t`.
+  //       `clang-tidy` warns about this.
+  for (auto i = 0u; i < data_stop / static_cast<uint8_t>(sizeof(num)); i++) {
     if (read(fd, num, sizeof(num)) < static_cast<long>(sizeof(num))) {
       return false;
     }
@@ -431,8 +433,8 @@ struct BDInfo {
   bool foundBd = false;
   int lenA = 0;
   int lenB = 0;
-  int bytesA = 0;
-  int bytesB = 0;
+  unsigned bytesA = 0;
+  unsigned bytesB = 0;
   int offsetA = 0;
   int offsetB = 0;
   int BaseAddrA = 0;
@@ -454,7 +456,7 @@ static BDInfo getBDInfo(Block &block, const NetlistAnalysis &NL) {
     if (op.isA()) {
       bdInfo.BaseAddrA = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
       bdInfo.lenA = op.getLenValue();
-      bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8;
+      bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8u;
       bdInfo.offsetA = op.getOffsetValue();
       bdInfo.bufA = "XAIEDMA_TILE_BD_ADDRA";
       bdInfo.hasA = true;
@@ -463,7 +465,7 @@ static BDInfo getBDInfo(Block &block, const NetlistAnalysis &NL) {
     if (op.isB()) {
       bdInfo.BaseAddrB = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
       bdInfo.lenB = op.getLenValue();
-      bdInfo.bytesB = bufferType.getElementTypeBitWidth() / 8;
+      bdInfo.bytesB = bufferType.getElementTypeBitWidth() / 8u;
       bdInfo.offsetB = op.getOffsetValue();
       bdInfo.bufB = "XAIEDMA_TILE_BD_ADDRB";
       bdInfo.hasB = true;
