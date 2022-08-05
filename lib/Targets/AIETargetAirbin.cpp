@@ -14,6 +14,7 @@
 
 #include <algorithm> // find_if
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <elf.h>
 #include <fcntl.h> // open
@@ -264,18 +265,21 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
     return false;
   }
 
-  static constexpr auto READ_SIZE = sizeof(uint32_t);
-  unsigned char num[READ_SIZE] = {0};
+  using read_buffer_t = std::array<unsigned char, sizeof(uint32_t)>;
+  read_buffer_t num;
+  num.fill(0);
 
-  auto read_at = [](int fd, unsigned char bytes[READ_SIZE], uint64_t addr) {
-    auto ret = lseek(fd, addr, SEEK_SET);
+  auto read_at = [](int fd, read_buffer_t &bytes, uint64_t addr) {
+    assert(addr < LONG_MAX);
+    auto ret = lseek(fd, static_cast<long>(addr), SEEK_SET);
     assert(ret >= 0 and static_cast<uint64_t>(ret) == addr);
-    return read(fd, bytes, READ_SIZE) == READ_SIZE;
+    ret = read(fd, bytes.data(), bytes.size());
+    return ret == static_cast<long>(bytes.size());
   };
 
-  auto parse_little_endian = [](unsigned char bytes[READ_SIZE]) {
-    return bytes[0] | (((uint32_t)bytes[1]) << 8u) |
-           (((uint32_t)bytes[2]) << 16u) | (((uint32_t)bytes[3]) << 24u);
+  auto parse_little_endian = [](read_buffer_t num) {
+    return num[0] | (((uint32_t)num[1]) << 8u) | (((uint32_t)num[2]) << 16u) |
+           (((uint32_t)num[3]) << 24u);
   };
 
   // check that the elf is LSB
@@ -345,12 +349,12 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   // NOTE: The "return" type of `sizeof` is `size_t`.
   //       `clang-tidy` warns about this.
   for (auto i = 0u; i < data_stop / static_cast<uint8_t>(sizeof(num)); i++) {
-    if (read(fd, num, sizeof(num)) < static_cast<long>(sizeof(num))) {
+    if (read(fd, num.data(), num.size()) < static_cast<long>(num.size())) {
       return false;
     }
     static constexpr auto PROG_MEM_OFFSET = 0x20000u;
     Address dest_addr{
-        tile, static_cast<uint32_t>(dest + PROG_MEM_OFFSET + i * READ_SIZE)};
+        tile, static_cast<uint32_t>(dest + PROG_MEM_OFFSET + i * num.size())};
     // The data needs to be read in little endian
     uint32_t data = parse_little_endian(num);
     write32(dest_addr, data);
@@ -475,13 +479,13 @@ static BDInfo getBDInfo(Block &block, const NetlistAnalysis &NL) {
 }
 
 static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
-  static constexpr uint32_t dmaChannelCtrlOffsets[4]{
+  static constexpr std::array<uint32_t, 4> dmaChannelCtrlOffsets{
       0x1de00,
       0x1de08,
       0x1de10,
       0x1de18,
   };
-  static constexpr uint32_t dmaChannelQueueOffsets[4]{
+  static constexpr std::array<uint32_t, 4> dmaChannelQueueOffsets{
       0x1de04,
       0x1de0C,
       0x1de14,
