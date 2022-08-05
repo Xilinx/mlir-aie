@@ -1053,21 +1053,31 @@ static void initialize_locks(mlir::ModuleOp module) {
 
 static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
   assert(index >= 0);
-  assert(index < UINT8_MAX - 17);
+  assert(index < UINT8_MAX - 21);
 
   switch (bundle) {
   case WireBundle::DMA:
     return 2u + index;
-  case WireBundle::South:
+  case WireBundle::East:
     if (isShim)
-      return 3u + index;
+      return 19u + index;
     else
-      return 7u + index;
+      return 21u + index;
   case WireBundle::North:
     if (isShim)
       return 15u + index;
     else
       return 17u + index;
+  case WireBundle::South:
+    if (isShim)
+      return 3u + index;
+    else
+      return 7u + index;
+  case WireBundle::West:
+    if (isShim)
+      return 11u + index;
+    else
+      return 13u + index;
   default:
     // To implement a new WireBundle,
     // look in libXAIE for the macros that handle the port.
@@ -1077,21 +1087,31 @@ static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
 
 static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
   assert(index >= 0);
-  assert(index < UINT8_MAX - 17);
+  assert(index < UINT8_MAX - 21);
 
   switch (bundle) {
   case WireBundle::DMA:
     return 2u + index;
-  case WireBundle::South:
+  case WireBundle::East:
     if (isShim)
-      return 3u + index;
+      return 19u + index;
     else
-      return 7u + index;
+      return 21u + index;
   case WireBundle::North:
     if (isShim)
       return 13u + index;
     else
       return 15u + index;
+  case WireBundle::South:
+    if (isShim)
+      return 3u + index;
+    else
+      return 7u + index;
+  case WireBundle::West:
+    if (isShim)
+      return 9u + index;
+    else
+      return 11u + index;
   default:
     // To implement a new WireBundle,
     // look in libXAIE for the macros that handle the port.
