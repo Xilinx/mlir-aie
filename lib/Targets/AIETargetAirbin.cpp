@@ -533,7 +533,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
         uint32_t x{0x00ff0001u};
         // The Y register has some fields
         // which need to be nonzero in the default state.
-        uint32_t y{0xffff0001u};
+        uint32_t y{0xffff0100u};
         uint32_t packet{0};
         uint32_t interleave{0};
         uint32_t control{0};
