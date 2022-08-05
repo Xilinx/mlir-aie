@@ -1262,6 +1262,19 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
 
     for (auto connectOp : b.getOps<ConnectOp>()) {
 
+      const auto inputMaskFor = [](WireBundle bundle, uint8_t shiftAmt) {
+        switch (bundle) {
+        case WireBundle::PLIO:
+          return 0u << shiftAmt;
+        case WireBundle::DMA:
+          return 1u << shiftAmt;
+        case WireBundle::NOC:
+          return 2u << shiftAmt;
+        default:
+          assert(false);
+        }
+      };
+
       if (connectOp.sourceBundle() == WireBundle::North) {
         // demux!
         // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
@@ -1284,24 +1297,12 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           }
         }();
 
-        auto input = [&connectOp] {
-          switch (connectOp.destBundle()) {
-          case WireBundle::PLIO:
-            return 0u;
-          case WireBundle::DMA:
-            return 1u;
-          case WireBundle::NOC:
-            return 2u;
-          default:
-            assert(false);
-          }
-        }();
-
         // We need to add to the possibly preexisting mask.
         Address addr{currentTile.value(), 0x1F004u};
         auto currentMask = read32(addr);
 
-        write32(addr, currentMask | (input << shiftAmt));
+        write32(addr,
+                currentMask | inputMaskFor(connectOp.destBundle(), shiftAmt));
 
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
@@ -1325,23 +1326,11 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           }
         }();
 
-        auto input = [&connectOp] {
-          switch (connectOp.sourceBundle()) {
-          case WireBundle::PLIO:
-            return 0u;
-          case WireBundle::DMA:
-            return 1u;
-          case WireBundle::NOC:
-            return 2u;
-          default:
-            assert(false);
-          }
-        }();
-
         Address addr{currentTile.value(), 0x1F000u};
         auto currentMask = read32(addr);
 
-        write32(addr, currentMask | (input << shiftAmt));
+        write32(addr,
+                currentMask | inputMaskFor(connectOp.sourceBundle(), shiftAmt));
       }
     }
   }
