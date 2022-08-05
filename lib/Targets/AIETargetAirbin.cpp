@@ -178,6 +178,8 @@ static void clearRange(TileAddress tile, uint32_t range_start,
 }
 
 static constexpr auto BD_BASE = 0x1D000u;
+static constexpr auto BD_END = 0x1D1F8u;
+static constexpr auto SHIM_BD_END = 0x1D15Cu;
 
 // The SHIM row is always 0.
 // SHIM resets are handled by the runtime.
@@ -186,7 +188,7 @@ static void generateShimConfig(TileOp &tileOp) {
   TileAddress tileAddress{tileOp};
 
   if (tileOp.isShimNOCTile()) {
-    clearRange(tileAddress, BD_BASE, 0x1D15C);
+    clearRange(tileAddress, BD_BASE, SHIM_BD_END);
   }
   if (tileOp.isShimNOCTile() or tileOp.isShimTile()) {
     // output << "// Stream Switch master config\n";
@@ -322,7 +324,7 @@ static void configure_cores(mlir::ModuleOp module) {
       // Program Memory
       clearRange(tileAddress, 0x20000, 0x23FFC);
       // TileDMA
-      clearRange(tileAddress, BD_BASE, 0x1D1FC);
+      clearRange(tileAddress, BD_BASE, BD_END);
       clearRange(tileAddress, 0x1de00, 0x1de1C);
       // Stream Switch master config
       clearRange(tileAddress, 0x3F000, 0x3F060);
@@ -733,6 +735,7 @@ with BaseAddrA = BaseAddr + offsetA
         static constexpr auto BD_CTRL_VALID_MASK = 1u << BD_CTRL_VALID_SHIFT;
 
         auto bdOffset = BD_BASE + bdNum * 0x20u;
+        assert(bdOffset <= BD_END);
 
         write32({tile, bdOffset}, bdData.addr_a);
         write32({tile, bdOffset + 4u}, bdData.addr_b);
