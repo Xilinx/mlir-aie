@@ -1489,7 +1489,7 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
         std::min(leftMostColumn,
                  static_cast<uint8_t>(header.tile >> TILE_ADDR_ROW_WIDTH));
 
-    headers.emplace_back(std::move(header));
+    headers.emplace_back(header);
   }
 
   assert(leftMostColumn < UINT8_MAX);
