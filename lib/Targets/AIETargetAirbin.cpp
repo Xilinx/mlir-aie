@@ -24,6 +24,7 @@
 #include <utility>     // pair
 #include <vector>
 
+#include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
 
 #include "AIETargets.h"
@@ -1328,7 +1329,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         case WireBundle::NOC:
           return 2u << shiftAmt;
         default:
-          TODO;
+          UNREACHABLE;
         }
       };
 
