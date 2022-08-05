@@ -1260,30 +1260,29 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
       }
     }
 
-    // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]),
-    // XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
-    // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
-    // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      auto calculateShiftAmt = [](int index) {
-        // NOTE: hardcoded to SOUTH to match definitions from libxaie
-        switch (index) {
-        case 2:
-          return 8u;
-        case 3:
-          return 10u;
-        case 6:
-          return 12u;
-        case 7:
-          return 14u;
-        default:
-          assert(false);
-        }
-      };
 
       if (connectOp.sourceBundle() == WireBundle::North) {
         // demux!
+        // XAieTile_ShimStrmDemuxConfig(&(TileInst[col][0]),
+        // XAIETILE_SHIM_STRM_DEM_SOUTH3, XAIETILE_SHIM_STRM_DEM_DMA);
         assert(currentTile.hasValue());
+
+        auto shiftAmt = [index = connectOp.sourceIndex()] {
+          // NOTE: hardcoded to SOUTH to match definitions from libxaie
+          switch (index) {
+          case 2:
+            return 4u;
+          case 3:
+            return 6u;
+          case 6:
+            return 8u;
+          case 7:
+            return 10u;
+          default:
+            assert(false);
+          }
+        }();
 
         auto input = [&connectOp] {
           switch (connectOp.destBundle()) {
@@ -1302,12 +1301,29 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         Address addr{currentTile.value(), 0x1F004u};
         auto currentMask = read32(addr);
 
-        write32(addr, currentMask | (input << calculateShiftAmt(
-                                         connectOp.sourceIndex())));
+        write32(addr, currentMask | (input << shiftAmt));
 
       } else if (connectOp.destBundle() == WireBundle::North) {
         // mux
+        // XAieTile_ShimStrmMuxConfig(&(TileInst[col][0]),
+        // XAIETILE_SHIM_STRM_MUX_SOUTH3, XAIETILE_SHIM_STRM_MUX_DMA);
         assert(currentTile.hasValue());
+
+        auto shiftAmt = [index = connectOp.destIndex()] {
+          // NOTE: hardcoded to SOUTH to match definitions from libxaie
+          switch (index) {
+          case 2:
+            return 8u;
+          case 3:
+            return 10u;
+          case 6:
+            return 12u;
+          case 7:
+            return 14u;
+          default:
+            assert(false);
+          }
+        }();
 
         auto input = [&connectOp] {
           switch (connectOp.sourceBundle()) {
@@ -1325,8 +1341,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         Address addr{currentTile.value(), 0x1F000u};
         auto currentMask = read32(addr);
 
-        write32(addr, currentMask |
-                          (input << calculateShiftAmt(connectOp.destIndex())));
+        write32(addr, currentMask | (input << shiftAmt));
       }
     }
   }
