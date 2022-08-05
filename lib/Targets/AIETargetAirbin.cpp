@@ -33,6 +33,12 @@
 // but translating from XAIE is more difficult,
 // as some writes are handled by the runtime that loads our resulting airbin.
 
+// Current conventions for this file
+// - Some comments are code snippets from AIETargetXAIEV1.cpp.
+//   These serve as a guide for implementation
+// - `assert(false);` is a todo or a never should happen marker.
+//    TODO: Add macros to disambiguate.
+
 namespace xilinx {
 namespace AIE {
 
@@ -141,6 +147,9 @@ private:
 
 static std::vector<Write> writes;
 
+// Stores the write for later output, overwriting what was previously there.
+// It is recommended NOT to call this function too much,
+// as the overwrite check is currently linear.
 static void write32(Address addr, uint32_t value) {
   assert(addr.destTile().col() > 0);
 
@@ -157,6 +166,8 @@ static void write32(Address addr, uint32_t value) {
   writes.emplace_back(addr, value);
 }
 
+// Read a previously written value,
+// or 0 if the address has never been written to.
 static uint32_t read32(Address addr) {
   auto iter =
       std::find_if(writes.begin(), writes.end(), [addr](const auto &x) -> bool {
@@ -173,7 +184,7 @@ static void reserveWrites(size_t new_writes) {
   writes.reserve(current_size + new_writes);
 }
 
-// Inclusive on both ends
+// Inclusive on both ends.
 static void removeWritesInRange(Address start, Address end) {
   auto iter =
       std::remove_if(writes.begin(), writes.end(), [&](const Write &write) {
@@ -184,13 +195,21 @@ static void removeWritesInRange(Address start, Address end) {
     writes.erase(iter, writes.end());
 }
 
-// Inclusive on both ends
+// Set every address in the (inclusive on both ends) range to 0.
+// This function is faster and prefered over the equivalent `for` over
+// `write32`, due to batching.
 static void clearRange(TileAddress tile, uint32_t range_start,
                        uint32_t range_end) {
   assert(range_start <= range_end);
   assert(range_start % 4 == 0);
   assert(range_end % 4 == 0);
 
+  // Since we are emplacing a chunk of contiguous writes,
+  // it is more efficient to
+  // 1. reserve extra memory
+  // 2. remove all to-be-overwritten writes ahead of time
+  // 3. directly add the writes
+  // than to use `write32` repeatedly.
   reserveWrites((range_end - range_start) / 4);
   removeWritesInRange({tile, range_start}, {tile, range_end});
 
@@ -334,44 +353,49 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   return true;
 }
 
+// Generates the config for a non-shim tile.
+// TODO: Better name
+static void generateNonShimConfig(TileOp tileOp) {
+  TileAddress tileAddress{tileOp};
+  // Reset configuration
+  // Program Memory
+  clearRange(tileAddress, 0x20000, 0x23FFC);
+  // TileDMA
+  clearRange(tileAddress, BD_BASE, BD_END);
+  clearRange(tileAddress, 0x1de00, 0x1de1C);
+  // Stream Switch master config
+  clearRange(tileAddress, 0x3F000, 0x3F060);
+  // Stream Switch slave config
+  clearRange(tileAddress, 0x3F100, 0x3F168);
+  // Stream Switch slave slot config
+  clearRange(tileAddress, 0x3F200, 0x3F38C);
+
+  // NOTE: Here is usually where locking is done.
+  // However, the runtime will handle that when loading the airbin.
+
+  if (auto coreOp = tileOp.getCoreOp()) {
+    std::string fileName;
+    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
+      fileName = std::string(fileAttr.getValue());
+    } else {
+      std::stringstream ss;
+      ss << "core_" << tileOp.colIndex() << '_' << tileOp.rowIndex() << ".elf";
+      fileName = ss.str();
+    }
+    if (not loadElf(tileAddress, fileName)) {
+      llvm::outs() << "Error loading " << fileName;
+    }
+  }
+}
+
+// Write the initial configuration for every tile specified in the MLIR.
 static void configure_cores(mlir::ModuleOp module) {
 
   for (auto tileOp : module.getOps<TileOp>()) {
     if (tileOp.isShimTile()) {
       generateShimConfig(tileOp);
     } else {
-      TileAddress tileAddress{tileOp};
-
-      // Reset configuration
-      // Program Memory
-      clearRange(tileAddress, 0x20000, 0x23FFC);
-      // TileDMA
-      clearRange(tileAddress, BD_BASE, BD_END);
-      clearRange(tileAddress, 0x1de00, 0x1de1C);
-      // Stream Switch master config
-      clearRange(tileAddress, 0x3F000, 0x3F060);
-      // Stream Switch slave config
-      clearRange(tileAddress, 0x3F100, 0x3F168);
-      // Stream Switch slave slot config
-      clearRange(tileAddress, 0x3F200, 0x3F38C);
-
-      // NOTE: Here is usually where locking is done.
-      // However, the runtime will handle that when loading the airbin.
-
-      if (auto coreOp = tileOp.getCoreOp()) {
-        std::string fileName;
-        if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
-          fileName = std::string(fileAttr.getValue());
-        } else {
-          std::stringstream ss;
-          ss << "core_" << tileOp.colIndex() << '_' << tileOp.rowIndex()
-             << ".elf";
-          fileName = ss.str();
-        }
-        if (not loadElf(tileAddress, fileName)) {
-          llvm::outs() << "Error loading " << fileName;
-        }
-      }
+      generateNonShimConfig(tileOp);
     }
   }
 }
@@ -524,6 +548,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
 
     TileAddress tile{memOp};
     // Clear the CTRL and QUEUE registers for the DMA channels.
+    // TODO: Use `clearRange` for this?
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
       write32({tile, dmaChannelCtrlOffsets[chNum]},
               setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
