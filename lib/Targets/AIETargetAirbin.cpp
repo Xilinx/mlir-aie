@@ -36,8 +36,12 @@
 // Current conventions for this file
 // - Some comments are code snippets from AIETargetXAIEV1.cpp.
 //   These serve as a guide for implementation
-// - `assert(false);` is a todo or a never should happen marker.
-//    TODO: Add macros to disambiguate.
+
+// Marks a particular code path as unfinished.
+#define TODO assert(false)
+
+// Marks a particular code path as unused in normal execution.
+#define UNREACHABLE assert(false)
 
 namespace xilinx {
 namespace AIE {
@@ -609,7 +613,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
           relEnable = enable;
           relValue = op.getLockValue();
         } else
-          assert(false);
+          UNREACHABLE;
       }
 
       // We either
@@ -680,7 +684,7 @@ void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 Loc
           }
         }
         if (bdInfo.hasB) {
-          assert(false);
+          TODO;
           /*
           output << "XAieDma_TileBdSetLock(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << bufB << ", " << lockID << ", " << relEnable
@@ -765,7 +769,7 @@ with BaseAddrA = BaseAddr + offsetA
         }
 
         if (bdInfo.foundBdPacket) {
-          assert(false);
+          TODO;
           /*
           output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << 1 << ", " << packetType << ", " << packetID
@@ -834,7 +838,7 @@ with BaseAddrA = BaseAddr + offsetA
             chNum = 3;
             break;
           default:
-            assert(false);
+            UNREACHABLE;
           }
 
           write32(Address{tile, dmaChannelQueueOffsets[chNum]},
@@ -872,7 +876,7 @@ with BaseAddrA = BaseAddr + offsetA
 
     // auto index = 0;
     for (auto op : module.getOps<ShimDMAOp>()) {
-      assert(false);
+      TODO;
       // auto col = op.colIndex();
       // auto row = op.rowIndex();
       /* TODO: Implement the following
@@ -897,7 +901,7 @@ with BaseAddrA = BaseAddr + offsetA
       }
 
       for (auto &block : op.body()) {
-        assert(false);
+        TODO;
         bool foundBd = false;
         /*
         int len = 0;
@@ -937,7 +941,7 @@ with BaseAddrA = BaseAddr + offsetA
 
         // int bdNum = blockMap[&block];
         if (foundBd) {
-          assert(false);
+          TODO;
           // void XAieDma_ShimBdSetLock(XAieDma_Shim *DmaInstPtr, u8 BdNum,
           // u8 LockId, u8 LockRelEn, u8 LockRelVal, u8 LockAcqEn, u8
           // LockAcqVal);
@@ -994,7 +998,7 @@ with BaseAddrA = BaseAddr + offsetA
       for (auto &block : op.body()) {
         for (auto op : block.getOps<DMAStartOp>()) {
           // int bdNum = blockMap[op.dest()];
-          assert(false);
+          TODO;
           /*
           output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
                  << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChan(op.dmaChan())
@@ -1060,7 +1064,7 @@ static uint8_t computeSlavePort(WireBundle bundle, int index, bool isShim) {
   default:
     // To implement a new WireBundle,
     // look in libXAIE for the macros that handle the port.
-    assert(false);
+    TODO;
   }
 }
 
@@ -1084,7 +1088,7 @@ static uint8_t computeMasterPort(WireBundle bundle, int index, bool isShim) {
   default:
     // To implement a new WireBundle,
     // look in libXAIE for the macros that handle the port.
-    assert(false);
+    TODO;
   }
 }
 
@@ -1127,7 +1131,7 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
       } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
                      switchboxOp.tile().getDefiningOp())) {
         // TODO: Use XAIEV1 target and translate into write32s
-        assert(false);
+        TODO;
       }
 
       return result;
@@ -1234,7 +1238,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         mask |= (1u << msel);
       }
       */
-      assert(false);
+      TODO;
 
       /* clang-format off
       TODO: Implement the following
@@ -1259,7 +1263,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
         */
-        assert(false);
+        TODO;
         /* TODO
         output << "XAieTile_StrmConfigSlv(" << tileInstStr("x", "y") << ",\n";
         output << "\tXAIETILE_STRSW_SPORT_"
@@ -1318,7 +1322,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         case WireBundle::NOC:
           return 2u << shiftAmt;
         default:
-          assert(false);
+          TODO;
         }
       };
 
@@ -1340,7 +1344,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           case 7:
             return 10u;
           default:
-            assert(false);
+            UNREACHABLE; // Unsure about this, but seems safe to assume
           }
         }();
 
@@ -1369,7 +1373,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           case 7:
             return 14u;
           default:
-            assert(false);
+            UNREACHABLE; // Unsure about this, but seems safe to assume
           }
         }();
 
@@ -1390,7 +1394,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
     int col = switchboxOp.col();
     */
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      assert(false);
+      TODO;
       /* TODO: Implement the following
       output << "XAieTile_StrmConnectCct(" << tileInstStr(col, 0) << ",\n";
       output << "\tXAIETILE_STRSW_SPORT_"
