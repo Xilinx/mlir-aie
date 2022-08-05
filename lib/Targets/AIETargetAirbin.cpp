@@ -166,14 +166,36 @@ static uint32_t read32(Address addr) {
   return (iter != writes.end()) ? iter->value() : 0;
 }
 
+// Reserves `new_writes` more space in the `writes` vector.
+static void reserveWrites(size_t new_writes) {
+  auto current_size = writes.size();
+  assert(current_size + new_writes < writes.max_size());
+  writes.reserve(current_size + new_writes);
+}
+
+// Inclusive on both ends
+static void removeWritesInRange(Address start, Address end) {
+  auto iter =
+      std::remove_if(writes.begin(), writes.end(), [&](const Write &write) {
+        return start <= write.destination() and write.destination() <= end;
+      });
+
+  if (iter != writes.end())
+    writes.erase(iter, writes.end());
+}
+
 // Inclusive on both ends
 static void clearRange(TileAddress tile, uint32_t range_start,
                        uint32_t range_end) {
+  assert(range_start <= range_end);
   assert(range_start % 4 == 0);
   assert(range_end % 4 == 0);
 
+  reserveWrites((range_end - range_start) / 4);
+  removeWritesInRange({tile, range_start}, {tile, range_end});
+
   for (auto off = range_start; off <= range_end; off += 4u) {
-    write32({tile, off}, 0);
+    writes.emplace_back(Address{tile, off}, 0);
   }
 }
 
@@ -280,7 +302,7 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   if (!read_at(fd, num, phstart + sizeof(num))) {
     return false;
   }
-  uint32_t start = parse_little_endian(num);
+  uint32_t data_start = parse_little_endian(num);
 
   if (!read_at(fd, num, phstart + 2 * sizeof(num))) {
     return false;
@@ -290,14 +312,14 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   if (!read_at(fd, num, phstart + 4 * sizeof(num))) {
     return false;
   }
-  uint32_t stop = parse_little_endian(num);
+  uint32_t data_stop = parse_little_endian(num);
 
   llvm::dbgs() << "Loading " << filename << " tile @ offset "
                << ((tile.fullAddress(0) >> TILE_ADDR_ROW_SHIFT) & 0xFFFu)
                << '\n';
 
-  assert(lseek(fd, start, SEEK_SET) == start);
-  for (auto i = 0u; i < stop / sizeof(num); i++) {
+  assert(lseek(fd, data_start, SEEK_SET) == data_start);
+  for (auto i = 0u; i < data_stop / sizeof(num); i++) {
     if (read(fd, num, sizeof(num)) < static_cast<long>(sizeof(num))) {
       return false;
     }
