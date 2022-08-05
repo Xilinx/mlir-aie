@@ -53,29 +53,33 @@ int main(int argc, char *argv[]) {
     printf("ERROR: timeout hit!\n");
   }
 
-  int test_value = 0;
+  int start_value = 0;
+  int increment = 0;
   for (int i = 0; i < HEIGHT; i++) {
+    start_value = i * 9;
+    increment = 9;
+    if (i == 0) {
+      start_value = 4;
+      increment = 5;
+    }
+    if (i == 1) {
+      start_value = 10;
+      increment = 8;
+    }
+    if (i == 8) {
+      start_value = 62;
+      increment = 8;
+    }
+    if (i == 9) {
+      start_value = 41;
+      increment = 5;
+    }
     for (int j = 0; j < LINE_WIDTH; j++) {
-      if (i == 0) {
-        test_value = 4;
-      }
-      if (i == 1) {
-        test_value = 10;
-      }
-      if (i == 2) {
-        test_value = 18;
-      }
-      if (i == 8) {
-        test_value = 62;
-      }
-      if (i == 9) {
-        test_value = 41;
-      }
+      int test_value = start_value + j * increment;
       mlir_aie_check("After exchange. Check [i*LINE_WIDTH+j] = test_value",
                      mlir_aie_read_buffer_out(_xaie, i * LINE_WIDTH + j),
                      test_value, errors);
     }
-    test_value += 9;
   }
 
   for (int i = 0; i < HEIGHT; i++) {
