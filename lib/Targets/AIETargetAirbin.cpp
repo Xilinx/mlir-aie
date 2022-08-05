@@ -331,7 +331,7 @@ static void configure_cores(mlir::ModuleOp module) {
       // Stream Switch slave config
       clearRange(tileAddress, 0x3F100, 0x3F168);
       // Stream Switch slave slot config
-      clearRange(tileAddress, 0x3F200, 0x3F3AC);
+      clearRange(tileAddress, 0x3F200, 0x3F38C);
 
       // NOTE: Here is usually where locking is done.
       // However, the runtime will handle that when loading the airbin.
