@@ -247,6 +247,32 @@ static void generateShimConfig(TileOp &tileOp) {
   }
 }
 
+// This template can be instantiated to represent a bitfield in a register.
+template <uint8_t high_bit, uint8_t low_bit = high_bit> class Field final {
+public:
+  static_assert(high_bit >= low_bit,
+                "The high bit should be higher than the low bit");
+  static_assert(high_bit < sizeof(uint32_t) * 8u,
+                "The field must live in a 32-bit register");
+
+  static constexpr auto num_bits_used = (high_bit - low_bit) + 1u;
+  static constexpr auto unshifted_mask = (1u << num_bits_used) - 1u;
+  static_assert((low_bit != high_bit) xor (unshifted_mask == 1),
+                "1 is a valid mask iff the field is 1 bit wide");
+
+  static constexpr auto shifted_mask = unshifted_mask << low_bit;
+
+  [[nodiscard]] static constexpr uint32_t set(uint32_t value) {
+    return (value << low_bit) & shifted_mask;
+  }
+};
+
+template <uint8_t high_bit, uint8_t low_bit>
+static constexpr uint32_t setField(Field<high_bit, low_bit> field,
+                                   uint32_t value) {
+  return field.set(value);
+}
+
 static constexpr uint64_t setField(uint64_t value, uint8_t shift,
                                    uint64_t mask) {
   return (value << shift) & mask;
@@ -442,8 +468,8 @@ struct BDInfo {
   unsigned bytesB = 0;
   int offsetA = 0;
   int offsetB = 0;
-  int BaseAddrA = 0;
-  int BaseAddrB = 0;
+  uint64_t BaseAddrA = 0;
+  uint64_t BaseAddrB = 0;
   bool hasA = false;
   bool hasB = false;
   std::string bufA = "0";
@@ -493,10 +519,8 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
       0x1de1C,
   };
 
-  static constexpr auto dmaChannelResetLSB = 1u;
-  static constexpr auto dmaChannelResetMask = 0x2u;
-  static constexpr auto dmaChannelEnableLSB = 0u;
-  static constexpr auto dmaChannelEnableMask = 0x1u;
+  Field<1> dmaChannelReset;
+  Field<0> dmaChannelEnable;
 
   for (auto memOp : module.getOps<MemOp>()) {
     /* clang-format off
@@ -562,8 +586,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     // TODO: Use `clearRange` for this?
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
       write32({tile, dmaChannelCtrlOffsets[chNum]},
-              setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
-                  setField(disable, dmaChannelEnableLSB, dmaChannelEnableMask));
+              dmaChannelReset.set(disable) | dmaChannelEnable.set(disable));
       write32({tile, dmaChannelQueueOffsets[chNum]}, 0);
     }
 
@@ -638,28 +661,13 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
       auto bdNum = blockMap[&block];
       BdData bdData;
       if (bdInfo.foundBd) {
-        static constexpr auto BD_ADDR_LOCKID_SHIFT = 22u;
-        static constexpr auto BD_ADDR_LOCKID_MASK = 0xFu
-                                                    << BD_ADDR_LOCKID_SHIFT;
-        static constexpr auto BD_ADDR_RELEN_SHIFT = 21u;
-        static constexpr auto BD_ADDR_RELEN_MASK = 1u << BD_ADDR_RELEN_SHIFT;
-
-        static constexpr auto BD_ADDR_RELVAL_SHIFT = 20u;
-        static constexpr auto BD_ADDR_RELVAL_MASK = 1u << BD_ADDR_RELVAL_SHIFT;
-
-        static constexpr auto BD_ADDR_RELVALEN_SHIFT = 19u;
-        static constexpr auto BD_ADDR_RELVALEN_MASK = 1u
-                                                      << BD_ADDR_RELVALEN_SHIFT;
-
-        static constexpr auto BD_ADDR_ACQEN_SHIFT = 18u;
-        static constexpr auto BD_ADDR_ACQEN_MASK = 1u << BD_ADDR_ACQEN_SHIFT;
-
-        static constexpr auto BD_ADDR_ACQVAL_SHIFT = 17u;
-        static constexpr auto BD_ADDR_ACQVAL_MASK = 1u << BD_ADDR_ACQVAL_SHIFT;
-
-        static constexpr auto BD_ADDR_ACQVALEN_SHIFT = 16u;
-        static constexpr auto BD_ADDR_ACQVALEN_MASK = 1u
-                                                      << BD_ADDR_ACQVALEN_SHIFT;
+        Field<25, 22> bdAddressLockID;
+        Field<21> bdAddressReleaseEnable;
+        Field<20> bdAddressReleaseValue;
+        Field<19> bdAddressReleaseValueEnable;
+        Field<18> bdAddressAcquireEnable;
+        Field<17> bdAddressAcquireValue;
+        Field<16> bdAddressAcquireValueEnable;
 
         if (bdInfo.hasA) {
           /* clang-format off
@@ -673,21 +681,17 @@ void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 Loc
         LockRelEn = relEnable
         LockRelVal = relValue
    clang-format on */
-          bdData.addr_a =
-              setField(lockID.getValue(), BD_ADDR_LOCKID_SHIFT,
-                       BD_ADDR_LOCKID_MASK) |
-              setField(relEnable, BD_ADDR_RELEN_SHIFT, BD_ADDR_RELEN_MASK) |
-              setField(acqEnable, BD_ADDR_ACQEN_SHIFT, BD_ADDR_ACQEN_MASK);
+          bdData.addr_a = bdAddressLockID.set(lockID.getValue()) |
+                          bdAddressReleaseEnable.set(relEnable) |
+                          bdAddressAcquireEnable.set(acqEnable);
 
           if (relValue != 0xFFu) {
-            bdData.addr_a |=
-                setField(1, BD_ADDR_RELVALEN_SHIFT, BD_ADDR_RELVALEN_MASK) |
-                setField(relValue, BD_ADDR_RELVAL_SHIFT, BD_ADDR_RELVAL_MASK);
+            bdData.addr_a |= bdAddressReleaseValueEnable.set(true) |
+                             bdAddressReleaseValue.set(relValue);
           }
           if (acqValue != 0xFFu) {
-            bdData.addr_a |=
-                setField(1, BD_ADDR_ACQVALEN_SHIFT, BD_ADDR_ACQVALEN_MASK) |
-                setField(acqValue, BD_ADDR_ACQVAL_SHIFT, BD_ADDR_ACQVAL_MASK);
+            bdData.addr_a |= bdAddressAcquireValueEnable.set(true) |
+                             bdAddressAcquireValue.set(acqValue);
           }
         }
         if (bdInfo.hasB) {
@@ -726,21 +730,16 @@ with BaseAddrA = BaseAddr + offsetA
         auto addr_a = bdInfo.BaseAddrA + bdInfo.offsetA;
         auto addr_b = bdInfo.BaseAddrB + bdInfo.offsetB;
 
-        static constexpr auto BD_ADDR_BASE_MASK = 0x1FFFu;
-        static constexpr auto BD_CTRL_LEN_MASK = 0x1FFFu;
+        Field<12, 0> bdAddressBase, bdControlLength;
 
-        static constexpr auto BD_CTRL_ABMODE_SHIFT = 30u;
-        static constexpr auto BD_CTRL_ABMODE_MASK = 1u << BD_CTRL_ABMODE_SHIFT;
+        Field<30> bdControlABMode;
+        Field<28> bdControlFifo;
 
-        static constexpr auto BD_CTRL_FIFO_SHIFT = 28u;
-        static constexpr auto BD_CTRL_FIFO_MASK = 3u << BD_CTRL_FIFO_SHIFT;
-
-        bdData.addr_a |= setField(addr_a >> 2u, 0, BD_ADDR_BASE_MASK);
-        bdData.addr_b |= setField(addr_b >> 2u, 0, BD_ADDR_BASE_MASK);
-        bdData.control |=
-            setField(bdInfo.lenA - 1, 0, BD_CTRL_LEN_MASK) |
-            setField(bdInfo.FifoMode, BD_CTRL_FIFO_SHIFT, BD_CTRL_FIFO_MASK) |
-            setField(bdInfo.AbMode, BD_CTRL_ABMODE_SHIFT, BD_CTRL_ABMODE_MASK);
+        bdData.addr_a |= bdAddressBase.set(addr_a >> 2u);
+        bdData.addr_b |= bdAddressBase.set(addr_b >> 2u);
+        bdData.control |= bdControlLength.set(bdInfo.lenA - 1) |
+                          bdControlFifo.set(bdInfo.FifoMode) |
+                          bdControlABMode.set(bdInfo.AbMode);
 
         if (block.getNumSuccessors() > 0) {
           // should have only one successor block
@@ -761,39 +760,24 @@ with BaseAddrA = BaseAddr + offsetA
         }
           */
 
-          static constexpr auto BD_CTRL_NEXTBD_SHIFT = 13u;
-          static constexpr auto BD_CTRL_NEXTBD_MASK = 0xFu
-                                                      << BD_CTRL_NEXTBD_SHIFT;
+          Field<16, 13> bdControlNextBD;
+          Field<17> bdControlEnableNextBD;
 
-          static constexpr auto BD_CTRL_NEXTBDEN_SHIFT = 17u;
-          static constexpr auto BD_CTRL_NEXTBDEN_MASK =
-              1u << BD_CTRL_NEXTBDEN_SHIFT;
-
-          bdData.control |=
-              setField(nextBdNum, BD_CTRL_NEXTBD_SHIFT, BD_CTRL_NEXTBD_MASK) |
-              setField(nextBdNum != 0xFFu, BD_CTRL_NEXTBDEN_SHIFT,
-                       BD_CTRL_NEXTBDEN_MASK);
+          bdData.control |= bdControlEnableNextBD.set(nextBdNum != 0xFFu) |
+                            bdControlNextBD.set(nextBdNum);
         }
 
         if (bdInfo.foundBdPacket) {
 
-          static constexpr auto BD_PACKET_ID_SHIFT = 0u;
-          static constexpr auto BD_PACKET_ID_MASK = 0xFu << BD_PACKET_ID_SHIFT;
+          Field<14, 12> bdPacketType;
+          Field<4, 0> bdPacketID;
 
-          static constexpr auto BD_PACKET_TYPE_SHIFT = 12u;
-          static constexpr auto BD_PACKET_TYPE_MASK = 0x7u
-                                                      << BD_PACKET_TYPE_SHIFT;
+          Field<27> bdControlEnablePacket;
 
-          static constexpr auto BD_CTRL_ENPKT_SHIFT = 27u;
-          static constexpr auto BD_CTRL_ENPKT_MASK = 1u << BD_CTRL_ENPKT_SHIFT;
+          bdData.packet = bdPacketID.set(bdInfo.packetID) |
+                          bdPacketType.set(bdInfo.packetType);
 
-          bdData.packet =
-              setField(bdInfo.packetID, BD_PACKET_ID_SHIFT, BD_PACKET_ID_MASK) |
-              setField(bdInfo.packetType, BD_PACKET_TYPE_SHIFT,
-                       BD_PACKET_TYPE_MASK);
-
-          bdData.control |=
-              setField(enable, BD_CTRL_ENPKT_SHIFT, BD_CTRL_ENPKT_MASK);
+          bdData.control |= bdControlEnablePacket.set(enable);
 
           /*
           output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
@@ -810,8 +794,7 @@ void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
                << bdNum << ");\n";
                */
 
-        static constexpr auto BD_CTRL_VALID_SHIFT = 31u;
-        static constexpr auto BD_CTRL_VALID_MASK = 1u << BD_CTRL_VALID_SHIFT;
+        Field<31> bdControlValid;
 
         auto bdOffset = BD_BASE + bdNum * 0x20u;
         assert(bdOffset <= BD_END);
@@ -823,8 +806,7 @@ void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
         write32({tile, bdOffset + 0x10u}, bdData.packet);
         write32({tile, bdOffset + 0x14u}, bdData.interleave);
         write32({tile, bdOffset + 0x18u},
-                bdData.control |
-                    setField(1u, BD_CTRL_VALID_SHIFT, BD_CTRL_VALID_MASK));
+                bdData.control | bdControlValid.set(true));
       }
     }
 
@@ -869,13 +851,13 @@ void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
             UNREACHABLE;
           }
 
-          write32(Address{tile, dmaChannelQueueOffsets[chNum]},
-                  setField(bdNum, 0u, 0xFu));
+          Field<4, 0> dmaChannelQueueStartBd;
 
-          write32(
-              {tile, dmaChannelCtrlOffsets[chNum]},
-              setField(disable, dmaChannelResetLSB, dmaChannelResetMask) |
-                  setField(enable, dmaChannelEnableLSB, dmaChannelEnableMask));
+          write32(Address{tile, dmaChannelQueueOffsets[chNum]},
+                  dmaChannelQueueStartBd.set(bdNum));
+
+          write32({tile, dmaChannelCtrlOffsets[chNum]},
+                  dmaChannelEnable.set(enable) | dmaChannelReset.set(disable));
         }
       }
     }
