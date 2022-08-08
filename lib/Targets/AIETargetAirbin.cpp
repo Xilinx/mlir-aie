@@ -267,17 +267,6 @@ public:
   }
 };
 
-template <uint8_t high_bit, uint8_t low_bit>
-static constexpr uint32_t setField(Field<high_bit, low_bit> field,
-                                   uint32_t value) {
-  return field.set(value);
-}
-
-static constexpr uint64_t setField(uint64_t value, uint8_t shift,
-                                   uint64_t mask) {
-  return (value << shift) & mask;
-}
-
 // LLVM may have a way to read ELF files,
 // but for our purposes, manually parsing is fine for now.
 static bool loadElf(TileAddress tile, const std::string &filename) {
