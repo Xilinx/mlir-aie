@@ -1148,12 +1148,10 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
 
     // NOTE: may not be needed
     auto switchbox_set = [&] {
-      std::set<std::pair<int, int>> result;
+      std::set<TileAddress> result;
       if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
-        int col = switchboxOp.colIndex();
-        int row = switchboxOp.rowIndex();
         if (!isEmpty) {
-          result.emplace(col, row);
+          result.emplace(switchboxOp);
         }
       } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
                      switchboxOp.tile().getDefiningOp())) {
@@ -1186,9 +1184,7 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
              Master @ XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y), connectOp.destIndex())
         clang-format on
       */
-      for (auto tile_coords : switchbox_set) {
-        TileAddress tile{static_cast<uint8_t>(tile_coords.first),
-                         static_cast<uint8_t>(tile_coords.second)};
+      for (auto tile : switchbox_set) {
 
         auto slave_port = computeSlavePort(
             connectOp.sourceBundle(), connectOp.sourceIndex(), tile.isShim());
@@ -1251,77 +1247,209 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           write32(address,
                   setField(1, 31, 0x80000000u) | setField(0, 30, 0x40000000u));
         }
-      }
-    }
 
-    for (auto connectOp : b.getOps<MasterSetOp>()) {
-      /*
-      int mask = 0;
-      int arbiter = -1;
-      for (auto val : connectOp.amsels()) {
-        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
-        arbiter = amsel.arbiterIndex();
-        int msel = amsel.getMselValue();
-        mask |= (1u << msel);
-      }
-      */
-      TODO;
+        for (auto connectOp : b.getOps<MasterSetOp>()) {
+          auto mask = 0u;
+          int arbiter = -1;
+          for (auto val : connectOp.amsels()) {
+            auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+            arbiter = amsel.arbiterIndex();
+            int msel = amsel.getMselValue();
+            mask |= (1u << msel);
+          }
 
-      /* clang-format off
+          static constexpr auto STREAM_SWITCH_DROP_HEADER_SHIFT = 7u;
+          static constexpr auto STREAM_SWITCH_DROP_HEADER_MASK =
+              1u << STREAM_SWITCH_DROP_HEADER_SHIFT;
+
+          static constexpr auto STREAM_SWITCH_MENABLE_SHIFT = 31u;
+          static constexpr auto STREAM_SWITCH_MENABLE_MASK =
+              1u << STREAM_SWITCH_MENABLE_SHIFT;
+
+          static constexpr auto STREAM_SWITCH_PKTENABLE_SHIFT = 30u;
+          static constexpr auto STREAM_SWITCH_PKTENABLE_MASK =
+              1u << STREAM_SWITCH_MENABLE_SHIFT;
+
+          static constexpr auto STREAM_SWITCH_MSEL_SHIFT = 3u;
+          static constexpr auto STREAM_SWITCH_ARB_SHIFT = 0u;
+
+          const auto dropHeader = connectOp.destBundle() == WireBundle::DMA;
+          auto config = setField(dropHeader, STREAM_SWITCH_DROP_HEADER_SHIFT,
+                                 STREAM_SWITCH_DROP_HEADER_MASK) |
+                        (mask << STREAM_SWITCH_MSEL_SHIFT) |
+                        (arbiter << STREAM_SWITCH_ARB_SHIFT);
+
+          Address dest{tile, 0x3f000u + 4u * master_port};
+
+          write32(dest,
+                  setField(enable, STREAM_SWITCH_MENABLE_SHIFT,
+                           STREAM_SWITCH_MENABLE_MASK) |
+                      setField(enable, STREAM_SWITCH_PKTENABLE_SHIFT,
+                               STREAM_SWITCH_PKTENABLE_MASK) |
+                      setField(dropHeader, STREAM_SWITCH_DROP_HEADER_SHIFT,
+                               STREAM_SWITCH_DROP_HEADER_MASK) |
+                      setField(config, 0u, 0x3Fu));
+
+          /* clang-format off
       TODO: Implement the following
-      bool isdma = (connectOp.destBundle() == WireBundle::DMA);
-      XAieTile_StrmConfigMstr(tile @ (x, y),
+      XAieTile_StrmConfigMstr(
+        tile @ (x, y),
         XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y)), connectOp.destIndex() ),
         enable, // port enable output
         enable, // packet enable output
-        XAIETILE_STRSW_MPORT_CFGPKT( tile @ (x, y),
-        XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y), connectOp.destIndex() ),
-        (isdma ? enable : disable), mask, arbiter)
+        XAIETILE_STRSW_MPORT_CFGPKT(
+          tile @ (x, y),
+          XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y), connectOp.destIndex() ),
+          (isdma ? enable : disable),
+          mask,
+          arbiter
+        )
+      )
+
+#define XAIETILE_STRSW_MPORT_CFGPKT(TileInstPtr, Master, DropHdr, Msk, Arbiter)  \
+({                                                                              \
+        XAieGbl_RegStrmMstr *TmpPtr;                                             \
+        TmpPtr = ((TileInstPtr)->TileType == XAIEGBL_TILE_TYPE_AIETILE)?            \
+                        &TileStrmMstr[Master]:&ShimStrmMstr[Master];            \
+        (XAie_SetField(DropHdr, TmpPtr->DrpHdr.Lsb, TmpPtr->DrpHdr.Mask) |      \
+	((u32)Msk << XAIETILE_STRSW_MPORT_PKTMSEL_SHIFT) |                       \
+	((u32)Arbiter << XAIETILE_STRSW_MPORT_PKTARB_SHIFT));                    \
+})
+
+       	if(TileInstPtr->TileType == XAIEGBL_TILE_TYPE_AIETILE) {
+                RegPtr = &TileStrmMstr[Master];
+        } else {
+                RegPtr = &ShimStrmMstr[Master];
+        }
+
+	// Get the address of Master port config reg
+	RegAddr = TileInstPtr->TileAddr + RegPtr->RegOff;
+
+	if(Enable == XAIE_ENABLE) {
+                // Extract the drop header field
+                DropHdr = XAie_GetField(Config, RegPtr->DrpHdr.Lsb,
+                                                RegPtr->DrpHdr.Mask);
+		/* Frame the 32-bit reg value
+		RegVal = XAie_SetField(Enable, RegPtr->MstrEn.Lsb, RegPtr->MstrEn.Mask) |
+			XAie_SetField(PktEnable, RegPtr->PktEn.Lsb, RegPtr->PktEn.Mask) |
+      XAie_SetField(DropHdr, RegPtr->DrpHdr.Lsb, RegPtr->DrpHdr.Mask) |
+			XAie_SetField(Config, RegPtr->Config.Lsb, RegPtr->Config.Mask);
+	}
+	XAieGbl_Write32(RegAddr, RegVal);
       clang-format on
       */
+        }
+      }
     }
 
     for (auto connectOp : b.getOps<PacketRulesOp>()) {
       int slot = 0;
       Block &block = connectOp.rules().front();
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
-        /*
         AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.amsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
+
+        for (auto tile : switchbox_set) {
+          // NOTE: the same for both DMAs and non-DMAs
+          static constexpr auto STREAM_SWITCH_SLAVE_ADDR = 0x3F100u;
+          static constexpr auto STREAM_ENABLE_SHIFT = 31u;
+          static constexpr auto STREAM_ENABLE_MASK = 1u << STREAM_ENABLE_SHIFT;
+          static constexpr auto STREAM_PACKET_SHIFT = 30u;
+          static constexpr auto STREAM_PACKET_MASK = 1u << STREAM_PACKET_SHIFT;
+
+          auto slavePort = computeSlavePort(
+              connectOp.sourceBundle(), connectOp.sourceIndex(), tile.isShim());
+          write32(
+              {tile, STREAM_SWITCH_SLAVE_ADDR + 4u * slavePort},
+              setField(enable, STREAM_ENABLE_SHIFT, STREAM_ENABLE_MASK) |
+                  setField(enable, STREAM_PACKET_SHIFT, STREAM_PACKET_MASK));
+
+          static constexpr auto STREAM_NUM_SLOTS = 4u;
+
+          static constexpr auto STREAM_SLOT_ENABLE_SHIFT = 8u;
+          static constexpr auto STREAM_SLOT_ENABLE_MASK =
+              1u << STREAM_SLOT_ENABLE_SHIFT;
+
+          static constexpr auto STREAM_SLOT_ID_SHIFT = 24u;
+          static constexpr auto STREAM_SLOT_ID_MASK = 0x1Fu
+                                                      << STREAM_SLOT_ID_SHIFT;
+
+          static constexpr auto STREAM_SLOT_MASK_SHIFT = 16u;
+          static constexpr auto STREAM_SLOT_MASK_MASK =
+              0x1Fu << STREAM_SLOT_MASK_SHIFT;
+
+          static constexpr auto STREAM_SLOT_MSEL_SHIFT = 4u;
+          static constexpr auto STREAM_SLOT_MSEL_MASK =
+              0x3u << STREAM_SLOT_MSEL_SHIFT;
+
+          static constexpr auto STREAM_SLOT_ARB_SHIFT = 0u;
+          static constexpr auto STREAM_SLOT_ARB_MASK = 0x3u
+                                                       << STREAM_SLOT_ARB_SHIFT;
+
+          auto config =
+              setField(slotOp.valueInt(), STREAM_SLOT_ID_SHIFT,
+                       STREAM_SLOT_ID_MASK) |
+              setField(slotOp.maskInt(), STREAM_SLOT_MASK_SHIFT,
+                       STREAM_SLOT_MASK_MASK) |
+              setField(enable, STREAM_SLOT_ENABLE_SHIFT,
+                       STREAM_SLOT_ENABLE_MASK) |
+              setField(msel, STREAM_SLOT_MSEL_SHIFT, STREAM_SLOT_MSEL_MASK) |
+              setField(arbiter, STREAM_SLOT_ARB_SHIFT, STREAM_SLOT_ARB_MASK);
+
+          write32({tile, 0x3f200u + STREAM_NUM_SLOTS * slavePort + slot},
+                  config);
+
+          /* clang-format off
+        XAieTile_StrmConfigSlvSlot(
+          tile @ (x, y),
+          AIETILE_STRSW_SPORT_ << stringifyWireBundle(connectOp.sourceBundle()).upper() ( tile @ (x, y), connectOp.sourceIndex()),
+          slot,
+          enable,
+          AIETILE_STRSW_SLVSLOT_CFG(
+            tile @ (x, y),
+            (XAIETILE_STRSW_SPORT_ << stringifyWireBundle(connectOp.sourceBundle()).upper() ( tile @ (x, y), connectOp.sourceIndex())),
+            slot,
+            slotOp.valueInt(),
+            slotOp.maskInt(),
+            enable,
+            msel,
+            arbiter
+          )
+        );
+
+        if(TileInstPtr->TileType == XAIEGBL_TILE_TYPE_AIETILE) {
+                RegPtr = &(TileStrmSlot[(XAIETILE_STRSW_SPORT_NUMSLOTS * Slave)
+        + Slot]); } else { RegPtr =
+        &(ShimStrmSlot[(XAIETILE_STRSW_SPORT_NUMSLOTS * Slave) + Slot]);
+        }
+
+        / Get the address of Slave slot config reg
+        RegAddr = TileInstPtr->TileAddr + RegPtr->RegOff;
+
+        if(Enable == XAIE_ENABLE) {
+                RegVal|=(XAie_SetField(Enable, RegPtr->En.Lsb,
+        RegPtr->En.Mask)); } else { RegVal = 0U;
+        }
+
+        XAieGbl_Write32(RegAddr, RegVal);
+#define XAIETILE_STRSW_SLVSLOT_CFG(TileInstPtr, Slave, SlotIdx, SlotId,          \
+                                SlotMask, SlotEnable, SlotMsel, SlotArbiter) 	\
+({                                                                              \
+        XAieGbl_RegStrmSlot *TmpPtr;                                            \
+        TmpPtr = (((TileInstPtr)->TileType == XAIEGBL_TILE_TYPE_AIETILE)?          \
+                &TileStrmSlot[XAIETILE_STRSW_SPORT_NUMSLOTS*Slave + SlotIdx]:    \
+                &ShimStrmSlot[XAIETILE_STRSW_SPORT_NUMSLOTS*Slave + SlotIdx]);   \
+        (XAie_SetField(SlotId, TmpPtr->Id.Lsb, TmpPtr->Id.Mask) |      	\
+        XAie_SetField(SlotMask, TmpPtr->Mask.Lsb, TmpPtr->Mask.Mask) |         \
+        XAie_SetField(SlotEnable, TmpPtr->En.Lsb, TmpPtr->En.Mask) |           \
+        XAie_SetField(SlotMsel, TmpPtr->Msel.Lsb, TmpPtr->Msel.Mask) |         \
+	XAie_SetField(SlotArbiter, TmpPtr->Arb.Lsb, TmpPtr->Arb.Mask));        \
+})
+        clang-format on
         */
-        TODO;
-        /* TODO
-        output << "XAieTile_StrmConfigSlv(" << tileInstStr("x", "y") << ",\n";
-        output << "\tXAIETILE_STRSW_SPORT_"
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-               << "),\n";
-        output << "\t" << enable << ", " << enable << ");\n";
-        output << "XAieTile_StrmConfigSlvSlot(" << tileInstStr("x", "y")
-               << ",\n";
-        output << "\tXAIETILE_STRSW_SPORT_"
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-               << "),\n";
-        output << "\t" << slot << " ,\n";
-        output << "\t" << enable << ",\n";
-        output << "\tXAIETILE_STRSW_SLVSLOT_CFG(" << tileInstStr("x", "y")
-               << ",\n";
-        output << "\t\t(XAIETILE_STRSW_SPORT_"
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << "("
-               << tileInstStr("x", "y") << ", " << connectOp.sourceIndex()
-               << ")),\n";
-        output << "\t\t" << slot << " ,\n";
-        output << "\t\t"
-               << "0x" << llvm::utohexstr(slotOp.valueInt()) << " ,\n";
-        output << "\t\t"
-               << "0x" << llvm::utohexstr(slotOp.maskInt()) << " ,\n";
-        output << "\t\t" << enable << ",\n";
-        output << "\t\t" << msel << " ,\n";
-        output << "\t\t" << arbiter << " ));\n";
-        */
-        slot++;
+          slot++;
+        }
       }
     }
   }
