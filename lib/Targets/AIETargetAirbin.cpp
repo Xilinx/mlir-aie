@@ -1165,6 +1165,8 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
       return result;
     }();
 
+    constexpr Field<31> streamEnable;
+    constexpr Field<30> streamPacketEnable;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       /*
       output << "XAieTile_StrmConnectCct(" << tileInstStr("x", "y") << ",\n";
@@ -1204,6 +1206,9 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
           clang-format on
         */
 
+        Field<7> streamMasterDropHeader;
+        Field<6, 0> streamMasterConfig;
+
         // Configure master side
         {
           /* clang-format off
@@ -1221,11 +1226,12 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
         */
           Address address{tile, 0x3F000u + master_port * 4u};
 
+          // TODO: `Field::extract(uint32_t)`?
           auto drop_header = (slave_port & 0x80u) >> 7u;
 
-          auto value =
-              setField(1, 31, 0x80000000u) | setField(0, 30, 0x40000000u) |
-              setField(drop_header, 7, 0x80u) | setField(slave_port, 0, 0x7Fu);
+          auto value = streamEnable.set(true) | streamPacketEnable.set(false) |
+                       streamMasterDropHeader.set(drop_header) |
+                       streamMasterConfig.set(slave_port);
           assert(value < UINT32_MAX);
           write32(address, value);
         }
@@ -1248,7 +1254,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           Address address{tile, 0x3F100u + slave_port * 4u};
 
           write32(address,
-                  setField(1, 31, 0x80000000u) | setField(0, 30, 0x40000000u));
+                  streamEnable.set(true) | streamPacketEnable.set(false));
         }
 
         for (auto connectOp : b.getOps<MasterSetOp>()) {
@@ -1261,40 +1267,22 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
             mask |= (1u << msel);
           }
 
-          static constexpr auto STREAM_SWITCH_DROP_HEADER_SHIFT = 7u;
-          static constexpr auto STREAM_SWITCH_DROP_HEADER_MASK =
-              1u << STREAM_SWITCH_DROP_HEADER_SHIFT;
-
-          static constexpr auto STREAM_SWITCH_MENABLE_SHIFT = 31u;
-          static constexpr auto STREAM_SWITCH_MENABLE_MASK =
-              1u << STREAM_SWITCH_MENABLE_SHIFT;
-
-          static constexpr auto STREAM_SWITCH_PKTENABLE_SHIFT = 30u;
-          static constexpr auto STREAM_SWITCH_PKTENABLE_MASK =
-              1u << STREAM_SWITCH_MENABLE_SHIFT;
-
           static constexpr auto STREAM_SWITCH_MSEL_SHIFT = 3u;
           static constexpr auto STREAM_SWITCH_ARB_SHIFT = 0u;
 
           const auto dropHeader = connectOp.destBundle() == WireBundle::DMA;
-          auto config = setField(dropHeader, STREAM_SWITCH_DROP_HEADER_SHIFT,
-                                 STREAM_SWITCH_DROP_HEADER_MASK) |
+          auto config = streamMasterDropHeader.set(dropHeader) |
                         (mask << STREAM_SWITCH_MSEL_SHIFT) |
                         (arbiter << STREAM_SWITCH_ARB_SHIFT);
 
           Address dest{tile, 0x3f000u + 4u * master_port};
 
-          write32(dest,
-                  setField(enable, STREAM_SWITCH_MENABLE_SHIFT,
-                           STREAM_SWITCH_MENABLE_MASK) |
-                      setField(enable, STREAM_SWITCH_PKTENABLE_SHIFT,
-                               STREAM_SWITCH_PKTENABLE_MASK) |
-                      setField(dropHeader, STREAM_SWITCH_DROP_HEADER_SHIFT,
-                               STREAM_SWITCH_DROP_HEADER_MASK) |
-                      setField(config, 0u, 0x3Fu));
+          write32(dest, streamEnable.set(enable) |
+                            streamPacketEnable.set(enable) |
+                            streamMasterDropHeader.set(dropHeader) |
+                            streamMasterConfig.set(config));
 
           /* clang-format off
-      TODO: Implement the following
       XAieTile_StrmConfigMstr(
         tile @ (x, y),
         XAIETILE_STRSW_MPORT_ << stringifyWireBundle(connectOp.destBundle()).upper() ( tile @ (x, y)), connectOp.destIndex() ),
@@ -1356,49 +1344,24 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         for (auto tile : switchbox_set) {
           // NOTE: the same for both DMAs and non-DMAs
           static constexpr auto STREAM_SWITCH_SLAVE_ADDR = 0x3F100u;
-          static constexpr auto STREAM_ENABLE_SHIFT = 31u;
-          static constexpr auto STREAM_ENABLE_MASK = 1u << STREAM_ENABLE_SHIFT;
-          static constexpr auto STREAM_PACKET_SHIFT = 30u;
-          static constexpr auto STREAM_PACKET_MASK = 1u << STREAM_PACKET_SHIFT;
 
           auto slavePort = computeSlavePort(
               connectOp.sourceBundle(), connectOp.sourceIndex(), tile.isShim());
-          write32(
-              {tile, STREAM_SWITCH_SLAVE_ADDR + 4u * slavePort},
-              setField(enable, STREAM_ENABLE_SHIFT, STREAM_ENABLE_MASK) |
-                  setField(enable, STREAM_PACKET_SHIFT, STREAM_PACKET_MASK));
+          write32({tile, STREAM_SWITCH_SLAVE_ADDR + 4u * slavePort},
+                  streamEnable.set(enable) | streamPacketEnable.set(enable));
 
           static constexpr auto STREAM_NUM_SLOTS = 4u;
 
-          static constexpr auto STREAM_SLOT_ENABLE_SHIFT = 8u;
-          static constexpr auto STREAM_SLOT_ENABLE_MASK =
-              1u << STREAM_SLOT_ENABLE_SHIFT;
+          Field<28, 24> streamSlotId;
+          Field<20, 16> streamSlotMask;
+          Field<8> streamSlotEnable;
+          Field<5, 4> streamSlotMSel;
+          Field<2, 0> streamSlotArbit;
 
-          static constexpr auto STREAM_SLOT_ID_SHIFT = 24u;
-          static constexpr auto STREAM_SLOT_ID_MASK = 0x1Fu
-                                                      << STREAM_SLOT_ID_SHIFT;
-
-          static constexpr auto STREAM_SLOT_MASK_SHIFT = 16u;
-          static constexpr auto STREAM_SLOT_MASK_MASK =
-              0x1Fu << STREAM_SLOT_MASK_SHIFT;
-
-          static constexpr auto STREAM_SLOT_MSEL_SHIFT = 4u;
-          static constexpr auto STREAM_SLOT_MSEL_MASK =
-              0x3u << STREAM_SLOT_MSEL_SHIFT;
-
-          static constexpr auto STREAM_SLOT_ARB_SHIFT = 0u;
-          static constexpr auto STREAM_SLOT_ARB_MASK = 0x3u
-                                                       << STREAM_SLOT_ARB_SHIFT;
-
-          auto config =
-              setField(slotOp.valueInt(), STREAM_SLOT_ID_SHIFT,
-                       STREAM_SLOT_ID_MASK) |
-              setField(slotOp.maskInt(), STREAM_SLOT_MASK_SHIFT,
-                       STREAM_SLOT_MASK_MASK) |
-              setField(enable, STREAM_SLOT_ENABLE_SHIFT,
-                       STREAM_SLOT_ENABLE_MASK) |
-              setField(msel, STREAM_SLOT_MSEL_SHIFT, STREAM_SLOT_MSEL_MASK) |
-              setField(arbiter, STREAM_SLOT_ARB_SHIFT, STREAM_SLOT_ARB_MASK);
+          auto config = streamSlotId.set(slotOp.valueInt()) |
+                        streamSlotMask.set(slotOp.maskInt()) |
+                        streamSlotEnable.set(enable) |
+                        streamSlotMSel.set(msel) | streamSlotArbit.set(arbiter);
 
           write32({tile, 0x3f200u + STREAM_NUM_SLOTS * slavePort + slot},
                   config);
