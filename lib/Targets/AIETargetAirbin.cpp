@@ -776,11 +776,32 @@ with BaseAddrA = BaseAddr + offsetA
         }
 
         if (bdInfo.foundBdPacket) {
-          TODO;
+
+          static constexpr auto BD_PACKET_ID_SHIFT = 0u;
+          static constexpr auto BD_PACKET_ID_MASK = 0xFu << BD_PACKET_ID_SHIFT;
+
+          static constexpr auto BD_PACKET_TYPE_SHIFT = 12u;
+          static constexpr auto BD_PACKET_TYPE_MASK = 0x7u
+                                                      << BD_PACKET_TYPE_SHIFT;
+
+          static constexpr auto BD_CTRL_ENPKT_SHIFT = 27u;
+          static constexpr auto BD_CTRL_ENPKT_MASK = 1u << BD_CTRL_ENPKT_SHIFT;
+
+          bdData.packet =
+              setField(bdInfo.packetID, BD_PACKET_ID_SHIFT, BD_PACKET_ID_MASK) |
+              setField(bdInfo.packetType, BD_PACKET_TYPE_SHIFT,
+                       BD_PACKET_TYPE_MASK);
+
+          bdData.control |=
+              setField(enable, BD_CTRL_ENPKT_SHIFT, BD_CTRL_ENPKT_MASK);
+
           /*
           output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
                  << bdNum << ", " << 1 << ", " << packetType << ", " << packetID
                  << ");\n";
+
+void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
+                                                u8 PktType, u8 PktId)
                  */
         }
 
