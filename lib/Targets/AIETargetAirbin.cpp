@@ -763,8 +763,8 @@ with BaseAddrA = BaseAddr + offsetA
 
           Field<27> bdControlEnablePacket;
 
-          bdData.packet = bdPacketID(bdInfo.packetID) |
-                          bdPacketType(bdInfo.packetType);
+          bdData.packet =
+              bdPacketID(bdInfo.packetID) | bdPacketType(bdInfo.packetType);
 
           bdData.control |= bdControlEnablePacket(enable);
 
@@ -1242,8 +1242,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
             */
           Address address{tile, 0x3F100u + slave_port * 4u};
 
-          write32(address,
-                  streamEnable(true) | streamPacketEnable(false));
+          write32(address, streamEnable(true) | streamPacketEnable(false));
         }
 
         for (auto connectOp : b.getOps<MasterSetOp>()) {
@@ -1266,8 +1265,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
 
           Address dest{tile, 0x3f000u + 4u * master_port};
 
-          write32(dest, streamEnable(enable) |
-                            streamPacketEnable(enable) |
+          write32(dest, streamEnable(enable) | streamPacketEnable(enable) |
                             streamMasterDropHeader(dropHeader) |
                             streamMasterConfig(config));
 
@@ -1349,8 +1347,8 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
 
           auto config = streamSlotId(slotOp.valueInt()) |
                         streamSlotMask(slotOp.maskInt()) |
-                        streamSlotEnable(enable) |
-                        streamSlotMSel(msel) | streamSlotArbit(arbiter);
+                        streamSlotEnable(enable) | streamSlotMSel(msel) |
+                        streamSlotArbit(arbiter);
 
           write32({tile, 0x3f200u + STREAM_NUM_SLOTS * slavePort + slot},
                   config);
