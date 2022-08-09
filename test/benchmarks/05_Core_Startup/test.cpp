@@ -20,10 +20,6 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 
@@ -32,19 +28,7 @@
 #define MAP_SIZE 16UL
 #define MAP_MASK (MAP_SIZE - 1)
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */
-XAieGbl AieInst;              /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;      /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS +
-                                     1]; /**< Instantiates AIE array of
-                                            [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
-
-} // namespace
 
 int main(int argc, char *argv[]) {
 
@@ -52,32 +36,33 @@ int main(int argc, char *argv[]) {
   u32 pc0_times[n];
   u32 pc1_times[n];
 
+  printf("05_Core_Startup test start.\n");
+  printf("Running %d times ...\n", n);
+
   for (int iters = 0; iters < n; iters++) {
 
-    size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-    XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                             XAIE_ADDR_ARRAY_OFF);
-    XAieGbl_HwInit(&AieConfig);
-    AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+    aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+    mlir_aie_init_device(_xaie);
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
 
-    ACDC_clear_tile_memory(TileInst[1][3]);
+    mlir_aie_clear_tile_memory(_xaie, 1, 3);
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_initialize_locks();
-    mlir_configure_dmas();
+    mlir_aie_configure_dmas(_xaie);
 
-    EventMonitor pc0(&TileInst[1][3], 0, XAIETILE_EVENT_CORE_ACTIVE,
-                 XAIETILE_EVENT_CORE_DISABLED, XAIETILE_EVENT_CORE_NONE,
-                 MODE_CORE);
+    EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
+                 XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
+                 XAIE_CORE_MOD);
 
     pc0.set();
 
-    mlir_start_cores();
+    mlir_aie_start_cores(_xaie);
     usleep(1000);
 
     pc0_times[iters] = pc0.diff();
+
+    mlir_aie_deinit_libxaie(_xaie);
   }
 
   computeStats(pc0_times, n);

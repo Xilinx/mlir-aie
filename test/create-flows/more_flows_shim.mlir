@@ -19,11 +19,11 @@
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T70]])  {
 // CHECK:    AIE.connect<North : 0, South : 2>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.switchbox(%[[T71]])  {
-// CHECK:    AIE.connect<North : 0, South : 0>
-// CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T70]])  {
 // CHECK:    AIE.connect<North : 2, PLIO : 2>
+// CHECK:  }
+// CHECK:  %{{.*}} = AIE.switchbox(%[[T71]])  {
+// CHECK:    AIE.connect<North : 0, South : 0>
 // CHECK:  }
 
 // Tile 7,0 is a shim NoC tile that has a ShimMux.
@@ -42,11 +42,11 @@ module {
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T60]])  {
 // CHECK:    AIE.connect<South : 6, North : 0>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.switchbox(%[[T61]])  {
-// CHECK:    AIE.connect<South : 0, DMA : 1>
-// CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T60]])  {
 // CHECK:    AIE.connect<PLIO : 6, North : 6>
+// CHECK:  }
+// CHECK:  %{{.*}} = AIE.switchbox(%[[T61]])  {
+// CHECK:    AIE.connect<South : 0, DMA : 1>
 // CHECK:  }
 
 // Tile 6,0 is a shim NoC tile that has a ShimMux.
@@ -87,11 +87,11 @@ module {
 // CHECK:  %{{.*}} = AIE.switchbox(%[[T100]])  {
 // CHECK:    AIE.connect<North : 0, South : 4>
 // CHECK:  }
-// CHECK:  %{{.*}} = AIE.switchbox(%[[T101]])  {
-// CHECK:    AIE.connect<North : 0, South : 0>
-// CHECK:  }
 // CHECK:  %{{.*}} = AIE.shimmux(%[[T100]])  {
 // CHECK:    AIE.connect<North : 4, NOC : 2>
+// CHECK:  }
+// CHECK:  %{{.*}} = AIE.switchbox(%[[T101]])  {
+// CHECK:    AIE.connect<North : 0, South : 0>
 // CHECK:  }
 
 // Tile 10,0 is a shim NoC tile that has a ShimMux.

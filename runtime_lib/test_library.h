@@ -73,6 +73,81 @@ struct aie_libxaie_ctx_t {
   XAie_MemInst **buffers;
 };
 
+
+// class for using events and PF cpounters
+class EventMonitor {
+public:
+  EventMonitor(aie_libxaie_ctx_t *_xaie, u32 _col, u32 _row, u32 _pfc, XAie_Events _startE, XAie_Events _endE,
+           XAie_Events _resetE, XAie_ModuleType _module) {
+//  EventMonitor(struct XAieGbl_Tile *_tilePtr, u32 _pfc, u32 _startE, u32 _endE,
+//           u32 _resetE, XAie_ModuleType _module) {
+    //tilePtr = _tilePtr;
+    devInst = &(_xaie->DevInst);
+    row = _row;
+    col = _col;
+    pfc = _pfc;
+    mode = _module;
+    XAie_PerfCounterControlSet(devInst, XAie_TileLoc(col,row), mode, pfc, _startE, _endE);
+
+    // mode = _mode; // 0: Core, 1: PL, 2, Mem
+    // if (mode == MODE_CORE) {
+    //   XAieTileCore_PerfCounterControl(tilePtr, pfc, _startE, _endE, _resetE);
+    // } else if (mode == MODE_PL) {
+    //   XAieTilePl_PerfCounterControl(tilePtr, pfc, _startE, _endE, _resetE);
+    // } else {
+    //   XAieTileMem_PerfCounterControl(tilePtr, pfc, _startE, _endE, _resetE);
+    // }
+  }
+  void set() {
+    //XAie_PerfCounterSet(devInst, XAie_TileLoc(col,row), mode, pfc, val);
+    XAie_PerfCounterGet(devInst, XAie_TileLoc(col,row), mode, pfc, &start);
+    // if (mode == MODE_CORE) {
+    //   start = XAieTileCore_PerfCounterGet(tilePtr, pfc);
+    // } else if (mode == MODE_PL) {
+    //   start = XAieTilePl_PerfCounterGet(tilePtr, pfc);
+    // } else {
+    //   start = XAieTileMem_PerfCounterGet(tilePtr, pfc);
+    // }
+  }
+  u32 read() {
+    u32 val;
+    XAie_PerfCounterGet(devInst, XAie_TileLoc(col,row), mode, pfc, &val);
+    return val;
+    // if (mode == MODE_CORE) {
+    //   return XAieTileCore_PerfCounterGet(tilePtr, pfc);
+    // } else if (mode == MODE_PL) {
+    //   return XAieTilePl_PerfCounterGet(tilePtr, pfc);
+    // } else {
+    //   return XAieTileMem_PerfCounterGet(tilePtr, pfc);
+    // }
+  }
+  u32 diff() {
+    u32 end;
+    XAie_PerfCounterGet(devInst, XAie_TileLoc(col,row), mode, pfc, &end);
+    // if (mode == MODE_CORE) {
+    //   end = XAieTileCore_PerfCounterGet(tilePtr, pfc);
+    // } else if (mode == MODE_PL) {
+    //   end = XAieTilePl_PerfCounterGet(tilePtr, pfc);
+    // } else {
+    //   end = XAieTileMem_PerfCounterGet(tilePtr, pfc);
+    // }
+    if (end < start) {
+      printf("WARNING: EventMonitor: performance counter wrapped!\n");
+      return 0; // TODO: fix this
+    } else {
+      return end - start;
+    }
+  }
+
+private:
+  u32 start;
+  u32 pfc;
+  XAie_ModuleType mode;
+  u8 col, row;
+  XAie_DevInst *devInst;
+};
+
+
 /*
  ******************************************************************************
  * LIBXAIENGIENV1
@@ -160,8 +235,6 @@ private:
   struct XAieGbl_Tile *tilePtr;
 };
 
-void computeStats(u32 performance_counter[], int n);
-
 #endif
 
 aie_libxaie_ctx_t *mlir_aie_init_libxaie();
@@ -208,6 +281,9 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr, int size);
 void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx);
 void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx);
 
+void computeStats(u32 performance_counter[], int n);
+
 } // extern "C"
 
 #endif
+

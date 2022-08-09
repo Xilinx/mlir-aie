@@ -123,7 +123,7 @@ def main():
     AIE.useLock(%lock1_1, "Release", 1, 0)
     AIE.end
   }
-  func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
+  func.func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
     %c0 = constant 0 : index
     %c1 = constant 1 : index
     %c64 = constant 64 : index
@@ -178,7 +178,7 @@ def main():
                 f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
                 f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col, row - 1 ))
                 f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col, row     ))
-                f.write("    call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row - 1, col, row))
+                f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row - 1, col, row))
                 f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col, row - 1 ))
                 f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row     ))
                 f.write("    AIE.end\n")
@@ -194,7 +194,7 @@ def main():
                     f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col_p, row_p))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col,   row  ))
-                    f.write("    call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col_p, row_p, col, row))
+                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col_p, row_p, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col_p, row_p))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
                     f.write("    AIE.end\n")
@@ -203,7 +203,7 @@ def main():
                     f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col, row - 1))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col, row   ))
-                    f.write("    call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row - 1, col, row))
+                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row - 1, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col, row - 1))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
                     f.write("    AIE.end\n")
@@ -219,7 +219,7 @@ def main():
                     f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col_p, row_p))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col,   row  ))
-                    f.write("    call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col_p, row_p, col, row))
+                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col_p, row_p, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col_p, row_p))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
                     f.write("    AIE.end\n")
@@ -228,7 +228,7 @@ def main():
                     f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col, row + 1))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col, row   ))
-                    f.write("    call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row + 1, col, row))
+                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row + 1, col, row))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col, row + 1))
                     f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
                     f.write("    AIE.end\n")

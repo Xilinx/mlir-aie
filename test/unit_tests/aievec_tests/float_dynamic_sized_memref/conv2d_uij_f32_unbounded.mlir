@@ -3,7 +3,7 @@
 // RUN: xchesscc -f -g +s -p me -P ${CARDANO}/data/cervino/lib +w work +o work -I%S -I. %S/float.cc %S/kernel.cc
 // RUN: cp -r %S/data . && xca_udm_dbg -qf -T -P ${CARDANO}/data/cervino/lib -t "%S/../profiling.tcl ./work/a.out"
 
-func @conv2d (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>) {
+func.func @conv2d (%A: memref<?x?xf32>, %B: memref<?xf32>, %C: memref<?x?xf32>) {
     %c0 = arith.constant 0 : index
     %M = memref.dim %C, %c0 : memref<?x?xf32>
     %c1 = arith.constant 1 : index

@@ -1,4 +1,4 @@
-﻿
+﻿﻿
 # AIE Basic Design Patterns
 
 This document is an introduction to using the AIE dialect in practice and provides basic patterns that one would use in order to generate low level configurations for the AI engine. 
@@ -340,4 +340,133 @@ We can then release the locks manually from the host code in order to begin the 
 ```
 XAieTile_LockRelease(&(TileInst[7][2]), 0, 0x1, 0);
 XAieTile_LockRelease(&(TileInst[7][2]), 1, 0x1, 0);
+```
+
+## Using AIE ObjectFIFOs
+
+[ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/non_adjacency_test_1.aie.mlir)
+
+An objectFIFO can be established between two tiles.
+Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO. Instead, a pool of memory elements is allocated to the objectFIFO. 
+Processes can then write to and read from these memory elements after acquiring them.
+
+Define two tiles and create an AIE.objectFifo of depth two between them, with the two elements being of type <memref<16xi32>>:
+```
+%tile12 = AIE.tile(1, 2)
+%tile33 = AIE.tile(3, 3)
+%objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+```
+After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
+
+objectFIFO operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFIFO.
+Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectFifoSubview type, then released: 
+```
+%core12 = AIE.core(%tile12) {
+	%c0 = arith.constant 0 : index
+	%c1 = arith.constant 1 : index
+	%height = arith.constant 12 : index
+
+	scf.for %indexInHeight = %c0 to %height step %c1 {
+		%subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		call @some_work(%elem0) : (memref<16xi32>) -> ()
+		AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+	}
+	
+	AIE.end
+}
+
+%core33 = AIE.core(%tile33) {
+	%c0 = arith.constant 0 : index
+	%c1 = arith.constant 1 : index
+	%height = arith.constant 12 : index
+
+	scf.for %indexInHeight = %c0 to %height step %c1 { 
+		%subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		call @some_work(%elem0) : (memref<16xi32>) -> ()
+		AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+	}
+	
+	AIE.end
+}
+```
+
+For correct execution, loops that contain objectFIFO operations must be unrolled based on objectFIFO size; the previous code in core12 becomes:
+```
+%core12 = AIE.core(%tile12) {
+	%c0 = arith.constant 0 : index
+	%c2 = arith.constant 2 : index
+	%height = arith.constant 12 : index
+
+	scf.for %indexInHeight = %c0 to %height step %c2 {
+		%subview0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		call @some_work(%elem00) : (memref<16xi32>) -> ()
+		AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+
+		%subview1 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+		call @some_work(%elem10) : (memref<16xi32>) -> ()
+		AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+	}
+	
+	AIE.end
+}
+```
+
+At a higher abstraction level, a process can be registered to an objectFIFO using access patterns and work functions:
+```
+module @objectFIFO  {
+    %tile12 = AIE.tile(1, 2)
+    %tile33 = AIE.tile(3, 3)
+
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+
+    %prodAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
+    %prodRelPattern = arith.constant dense<[1]> : tensor<1xi32>
+    %prodLength = arith.constant 12 : index
+    func @producer_work() -> () {
+        return
+    }
+
+    AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
+}
+```
+
+## Using AIE broadcast_packet
+
+[broadcast_packet Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/23_broadcast_packet/aie.mlir)
+
+The broadcast_packet operation is a logical connection that combines broadcast and packet-switch data transferring mechanism.
+
+In this operation, the data streams with different packet-IDs will time-multiplexed use the single source port to broadcast 
+data to multiple destinations.
+
+The following example shows that two streams of data with different packet-ID (0x0 and 0x1) will time-multiplexed share the same 
+source port (%t72, "DMA" : 0) to broadcast data to %t73, %t63(ID: 0x0) and %t74, %t64(ID: 0x1).
+
+Define tiles
+```
+%t72 = AIE.tile(7, 2)
+%t63 = AIE.tile(6, 3)
+%t64 = AIE.tile(6, 4)
+%t73 = AIE.tile(7, 3)
+%t74 = AIE.tile(7, 4)
+
+```
+
+broadcast_packet 
+```
+AIE.broadcast_packet(%t72, "DMA" : 0){
+  AIE.bp_id(0x0){
+    AIE.bp_dest<%t73, "DMA" : 0>
+    AIE.bp_dest<%t63, "DMA" : 0>
+  }
+  AIE.bp_id(0x1){
+    AIE.bp_dest<%t74, "DMA" : 0>
+    AIE.bp_dest<%t64, "DMA" : 0>
+  }
+}
+
 ```

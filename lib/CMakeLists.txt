@@ -19,11 +19,16 @@ add_mlir_dialect_library(AIE
   AIECreateLocks.cpp
   AIECoreToStandard.cpp
   AIEHerdRouting.cpp
+  AIECreateBroadcastPacket.cpp
+  AIELowerMulticast.cpp
   AIECreatePacketFlows.cpp
   AIELowerMemcpy.cpp
   AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp
+  AIEObjectFifoStatefulTransform.cpp
+  AIEObjectFifoLoopUnroll.cpp
+  AIEObjectFifoRegisterProcess.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -39,7 +44,6 @@ add_mlir_dialect_library(AIE
   MLIRPass
   MLIRSupport
   MLIRTransformUtils
-  MLIRVector
   )
 
 add_subdirectory(Targets)

@@ -56,6 +56,36 @@ def parse_args():
             default=not aie_compile_with_xchesscc,
             action='store_false',
             help='Compile using peano')
+    parser.add_argument('--compile',
+            dest="compile",
+            default=not aie_disable_compile,
+            action='store_true',
+            help='Enable compiling of AIE code')
+    parser.add_argument('--no-compile',
+            dest="compile",
+            default=aie_disable_compile,
+            action='store_false',
+            help='Disable compiling of AIE code')
+    parser.add_argument('--compile-host',
+            dest="compile_host",
+            default=not host_disable_compile,
+            action='store_true',
+            help='Enable compiling of the host program')
+    parser.add_argument('--no-compile-host',
+            dest="compile_host",
+            default=host_disable_compile,
+            action='store_false',
+            help='Disable compiling of the host program')
+    parser.add_argument('--link',
+            dest="link",
+            default=not aie_disable_link,
+            action='store_true',
+            help='Enable linking of AIE code')
+    parser.add_argument('--no-link',
+            dest="link",
+            default=aie_disable_link,
+            action='store_false',
+            help='Disable linking of AIE code')
     parser.add_argument('--pathfinder',
             dest="pathfinder",
             default=False,

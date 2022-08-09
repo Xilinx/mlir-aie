@@ -16,10 +16,6 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   MLIRAIEVecPassIncGen
 
   LINK_LIBS PUBLIC
-  MLIRAffine
-  MLIRArithmetic
   MLIRIR
-  MLIRMemRef
   MLIRPass
-  MLIRVector
   )

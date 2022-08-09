@@ -163,10 +163,214 @@ bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
 
+namespace detail {
+/// This class represents the internal storage of the AIE `ObjectFifoType`.
+struct AIEObjectFifoTypeStorage : public mlir::TypeStorage {
+  /// The `KeyTy` is a required type that provides an interface for the storage
+  /// instance. This type will be used when uniquing an instance of the type
+  /// storage.
+  using KeyTy = mlir::Type;
+
+  /// A constructor for the objectFifo type storage instance.
+  AIEObjectFifoTypeStorage(mlir::Type elementType) : elementType(elementType) {}
+
+  /// Define the comparison function for the key type with the current storage
+  /// instance. This is used when constructing a new instance to ensure that we
+  /// haven't already uniqued an instance of the given key.
+  bool operator==(const KeyTy &key) const { return key == KeyTy(elementType); }
+
+  /// Define a construction method for creating a new instance of this storage.
+  /// This method takes an instance of a storage allocator, and an instance of a
+  /// `KeyTy`.
+  static AIEObjectFifoTypeStorage *
+  construct(mlir::TypeStorageAllocator &allocator, const KeyTy &key) {
+    // Allocate the storage instance and construct it.
+    return new (allocator.allocate<AIEObjectFifoTypeStorage>())
+        AIEObjectFifoTypeStorage(key);
+  }
+
+  mlir::Type elementType;
+};
+} // namespace detail
+
+AIEObjectFifoType AIEObjectFifoType::get(mlir::Type elementType) {
+  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
+  // of this type.
+  mlir::MLIRContext *ctx = elementType.getContext();
+  return Base::get(ctx, elementType);
+}
+
+LogicalResult
+AIEObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
+                          mlir::Type elementType) {
+  // Memref element type expected.
+  if (!elementType.isa<MemRefType>())
+    return emitError() << "non memref-type passed to 'ObjectFifoType'";
+  return success();
+}
+
+mlir::Type AIEObjectFifoType::getElementType() {
+  // 'getImpl' returns a pointer to the internal storage instance.
+  return getImpl()->elementType;
+}
+
+namespace detail {
+/// This class represents the internal storage of the AIE
+/// `ObjectFifoSubviewType`.
+struct AIEObjectFifoSubviewTypeStorage : public mlir::TypeStorage {
+  /// The `KeyTy` is a required type that provides an interface for the storage
+  /// instance. This type will be used when uniquing an instance of the type
+  /// storage.
+  using KeyTy = mlir::Type;
+
+  /// A constructor for the subview type storage instance.
+  AIEObjectFifoSubviewTypeStorage(mlir::Type elementType)
+      : elementType(elementType) {}
+
+  /// Define the comparison function for the key type with the current storage
+  /// instance. This is used when constructing a new instance to ensure that we
+  /// haven't already uniqued an instance of the given key.
+  bool operator==(const KeyTy &key) const { return key == elementType; }
+
+  /// Define a construction method for creating a new instance of this storage.
+  /// This method takes an instance of a storage allocator, and an instance of a
+  /// `KeyTy`.
+  static AIEObjectFifoSubviewTypeStorage *
+  construct(mlir::TypeStorageAllocator &allocator, const KeyTy &key) {
+    // Allocate the storage instance and construct it.
+    return new (allocator.allocate<AIEObjectFifoSubviewTypeStorage>())
+        AIEObjectFifoSubviewTypeStorage(key);
+  }
+
+  mlir::Type elementType;
+};
+} // namespace detail
+
+AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(mlir::Type elementType) {
+  // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
+  // of this type.
+  mlir::MLIRContext *ctx = elementType.getContext();
+  return Base::get(ctx, elementType);
+}
+
+/// This method is used to verify the construction invariants.
+LogicalResult
+AIEObjectFifoSubviewType::verify(function_ref<InFlightDiagnostic()> emitError,
+                                 mlir::Type elementType) {
+  // Memref element type expected.
+  if (!elementType.isa<MemRefType>())
+    return emitError() << "non memref-type passed to 'ObjectFifoSubviewType'";
+  return success();
+}
+
+mlir::Type AIEObjectFifoSubviewType::getElementType() {
+  return getImpl()->elementType;
+}
+
+/// Parse an instance of a type registered to the AIE dialect.
+/// Parse an AIE type in the following forms:
+///   AIE-type
+///         ::= `objectFifo` `<` type `>`
+///         ::= `objectFifoSubview` `<` type `>`
+static OptionalParseResult aieTypeParser(MLIRContext *context,
+                                         DialectAsmParser &parser,
+                                         StringRef name, Type &result) {
+  if (name.equals("objectFifo")) {
+    mlir::Type elementType;
+    llvm::SMLoc typeLoc = parser.getCurrentLocation();
+    if (parser.parseLess() || parser.parseType(elementType) ||
+        parser.parseGreater())
+      return failure();
+
+    // Check that the type is a MemRef type.
+    if (!elementType.isa<mlir::MemRefType>()) {
+      parser.emitError(typeLoc, "element type for an objectFifo must be "
+                                "a MemRefType, got: ")
+          << elementType;
+      return failure();
+    }
+
+    return result = AIEObjectFifoType::get(elementType), success();
+  }
+
+  if (name.equals("objectFifoSubview")) {
+    if (parser.parseLess())
+      return failure();
+
+    // Parse the element type of the struct.
+    mlir::Type elementType;
+    // Parse the current element type.
+    llvm::SMLoc typeLoc = parser.getCurrentLocation();
+    if (parser.parseType(elementType))
+      return failure();
+
+    // Check that the type is a MemRefType.
+    if (!elementType.isa<mlir::MemRefType>()) {
+      parser.emitError(typeLoc, "element type for a subview must be "
+                                "a MemRefType, got: ")
+          << elementType;
+      return failure();
+    }
+
+    // Parse: `>`
+    if (parser.parseGreater())
+      return failure();
+
+    return result = AIEObjectFifoSubviewType::get(elementType), success();
+  }
+
+  return {};
+}
+
+/// Parse a type defined by this dialect.
+/// Emits an error and returns failure if `name` does not
+/// refer to a type defined in this dialect.
+static ParseResult parse(Type &result, StringRef name,
+                         DialectAsmParser &parser) {
+  auto *context = parser.getBuilder().getContext();
+  OptionalParseResult parseResult;
+
+  parseResult = aieTypeParser(context, parser, name, result);
+  if (parseResult.hasValue())
+    return parseResult.getValue();
+
+  parser.emitError(parser.getNameLoc(), "unknown AIE dialect type: \"")
+      << name << "\"";
+  return failure();
+}
+
+/// Parse an instance of a type registered to the AIE dialect.
+mlir::Type AIEDialect::parseType(mlir::DialectAsmParser &parser) const {
+  StringRef name;
+  Type result;
+  if (parser.parseKeyword(&name) || parse(result, name, parser))
+    return Type();
+  return result;
+}
+
+/// Print an instance of a type registered to the AIE dialect.
+void AIEDialect::printType(mlir::Type type,
+                           mlir::DialectAsmPrinter &printer) const {
+  if (type.isa<AIEObjectFifoType>()) {
+    AIEObjectFifoType objectFifoType = type.cast<AIEObjectFifoType>();
+    printer << "objectFifo<";
+    printer << objectFifoType.getElementType();
+    printer << '>';
+
+  } else if (type.isa<AIEObjectFifoSubviewType>()) {
+    AIEObjectFifoSubviewType subviewType =
+        type.cast<AIEObjectFifoSubviewType>();
+    printer << "objectFifoSubview<";
+    printer << subviewType.getElementType();
+    printer << '>';
+  }
+}
+
 // FIXME: use Tablegen'd dialect class
 AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
     : mlir::Dialect("AIE", ctx, ::mlir::TypeID::get<AIEDialect>()) {
   // addTypes<AIEListType>();
+  addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addOperations<
 #define GET_OP_LIST
 #include "aie/AIE.cpp.inc"
@@ -176,6 +380,51 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
 
 } // namespace AIE
 } // namespace xilinx
+
+// ObjectFifoCreateOp
+xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
+  return cast<xilinx::AIE::TileOp>(producerTile().getDefiningOp());
+}
+
+xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getConsumerTileOp() {
+  return cast<xilinx::AIE::TileOp>(consumerTile().getDefiningOp());
+}
+
+// ObjectFifoAcquireOp
+LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
+  if (acqNumber() < 1)
+    return emitError("ObjectFifoAcquireOp must acquire at least one element");
+
+  return success();
+}
+
+// ObjectFifoReleaseOp
+LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
+  if (relNumber() < 1)
+    return emitError("ObjectFifoReleaseOp must release at least one element");
+
+  return success();
+}
+
+// ObjectFifoRegisterProcessOp
+LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
+  if (getProcessLength() < 1)
+    return emitError(
+        "Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
+
+  if (getAcquirePattern().size() != getReleasePattern().size()) {
+    // acquire pattern size = process length (i.e., release pattern will be
+    // duplicated by process length times) OR the other way around
+    if (!(getAcquirePattern().size() == getProcessLength()) &&
+        !(getProcessLength() == getReleasePattern().size()))
+      return emitError(
+          "Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp "
+          "must be of equal length, or longest length of one equal to process "
+          "length of the other");
+  }
+
+  return success();
+}
 
 LogicalResult xilinx::AIE::TileOp::verify() {
   auto users = result().getUsers();
@@ -398,6 +647,36 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
+LogicalResult xilinx::AIE::MulticastOp::verify() {
+  Region &body = ports();
+  assert(getOperation()->getNumRegions());
+  assert(!body.empty());
+  for (auto &ops : body.front()) {
+    if (auto Op = dyn_cast<xilinx::AIE::MultiDestOp>(ops)) {
+    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
+    } else {
+      return ops.emitOpError("cannot be contained in a Multicast op");
+    }
+  }
+
+  return success();
+}
+
+LogicalResult xilinx::AIE::BroadcastPacketOp::verify() {
+  Region &body = ports();
+  assert(getOperation()->getNumRegions());
+  assert(!body.empty());
+  for (auto &ops : body.front()) {
+    if (auto Op = dyn_cast<xilinx::AIE::BPIDOp>(ops)) {
+    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
+    } else {
+      return ops.emitOpError("cannot be contained in a BroadcastPacket op");
+    }
+  }
+
+  return success();
+}
+
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = ports();
   // DenseSet<xilinx::AIE::Port> destset;
@@ -497,31 +776,81 @@ int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
-    Operation *operation = op;
+    Operation *operation = op->getParentOp();
     while (operation) {
-      if (llvm::isa<ParentOpTypes...>(operation->getParentOp()))
+      if (llvm::isa<ParentOpTypes...>(operation))
         return success();
       operation = operation->getParentOp();
     }
-    return op->emitOpError()
-           << "expects some parent op "
-           << (sizeof...(ParentOpTypes) != 1 ? "to be one of '" : "'")
-           << llvm::makeArrayRef({ParentOpTypes::getOperationName()...}) << "'";
+    return failure();
+  }
+};
+
+struct UsesOneLockInDMABlock {
+  static LogicalResult verifyTrait(Operation *op) {
+    auto block = op->getBlock();
+    int lockID = -1;
+    for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
+      auto lock = dyn_cast<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
+      if (lockID != -1 && lockID != lock.getLockID())
+        return failure();
+      lockID = lock.getLockID();
+    }
+    return success();
+  }
+};
+
+struct AcquireReleaseOneStateInDMABlock {
+  static LogicalResult verifyTrait(Operation *op) {
+    auto block = op->getBlock();
+    int acqValue = -1, relValue = -1;
+    for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
+      if (op.acquire()) {
+        if (acqValue != -1 && acqValue != op.getLockValue()) {
+          return failure();
+        }
+        acqValue = op.getLockValue();
+      } else if (op.release()) {
+        if (relValue != -1 && relValue != op.getLockValue()) {
+          return failure();
+        }
+        relValue = op.getLockValue();
+      }
+    }
+    return success();
   }
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
-  return HasSomeParent<xilinx::AIE::CoreOp, xilinx::AIE::MemOp,
-                       xilinx::AIE::ShimDMAOp>::verifyTrait(*this);
+  // AIE.useLock may be used in a module to set the lock's default value
+  if (llvm::isa<mlir::ModuleOp>((*this)->getParentOp()))
+    return success();
 
-  //  xilinx::AIE::LockOp lockOp =
-  //  dyn_cast_or_null<xilinx::AIE::LockOp>(op.lock().getDefiningOp());
-  //   if (!lockOp) {
-  //     op.emitOpError() << "Expected LockOp!\n";
-  // //    return failure();
-  //   }
+  // Otherwise, AIE.useLock should be inside CoreOp, MemOp, or ShimDMAOp
+  if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::ShimDMAOp>::verifyTrait(
+          *this)
+          .succeeded()) {
+    if (!(*this)->getBlock())
+      return (*this)->emitOpError("is not in a block.");
 
-  return success();
+    if (UsesOneLockInDMABlock::verifyTrait(*this).failed())
+      return (*this)->emitOpError(
+          "used in a DMA block that have multiple locks.");
+
+    if (AcquireReleaseOneStateInDMABlock::verifyTrait(*this).failed())
+      return (*this)->emitOpError(
+          "acquires/releases the lock in a DMA block from/to multiple states.");
+
+    return success();
+
+  } else if (HasSomeParent<xilinx::AIE::CoreOp>::verifyTrait(*this)
+                 .succeeded()) {
+    return success();
+
+  } else {
+    return (*this)->emitOpError() << "expects some parent op to be one of "
+                                  << "AIE::core, AIE::mem, or AIE::shimDMA";
+  }
 }
 
 #include "aie/AIEEnums.cpp.inc"
