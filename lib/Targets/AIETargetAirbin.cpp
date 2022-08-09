@@ -313,8 +313,8 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   if (!read_at(fd, num, PROGRAM_HEADER_OFFSET)) {
     return false;
   }
-  uint32_t phstart = parse_little_endian(num);
-  assert(phstart != 0);
+  uint32_t prog_header_arr_start = parse_little_endian(num);
+  assert(prog_header_arr_start != 0);
 
 #define PROGRAM_HEADER_COUNT_OFFSET                                            \
   (PROGRAM_HEADER_OFFSET + sizeof(Elf32_Off) * 2 + sizeof(uint32_t) +          \
@@ -324,56 +324,59 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
     return false;
   }
 
-  {
-    uint16_t prog_header_size = (((uint16_t)num[1]) << 8u) | num[0];
-    assert(prog_header_size > 0);
+  uint16_t prog_header_size = (((uint16_t)num[1]) << 8u) | num[0];
+  assert(prog_header_size > 0);
 
-    uint16_t prog_header_count = (((uint16_t)num[3]) << 8u) | num[2];
-    assert(prog_header_count > 0);
-  }
+  uint16_t prog_header_count = (((uint16_t)num[3]) << 8u) | num[2];
+  assert(prog_header_count > 0);
 
-  if (!read_at(fd, num, phstart)) {
-    return false;
-  }
-  {
-    uint32_t header_type = parse_little_endian(num);
-    assert(header_type == PT_LOAD);
-    // TODO: What if the first header is not the one to load?
-    // TODO: What if there are multiple sections to load?
-  }
+  printf("Found %d sections in %s\n", prog_header_count, filename.c_str());
 
-  if (!read_at(fd, num, phstart + sizeof(num))) {
-    return false;
-  }
-  uint32_t data_start = parse_little_endian(num);
+  for (auto header_num = 0u; header_num < prog_header_count; ++header_num) {
 
-  if (!read_at(fd, num, phstart + 2 * sizeof(num))) {
-    return false;
-  }
-  uint32_t dest = parse_little_endian(num);
+    auto phstart = prog_header_arr_start + header_num * prog_header_size;
 
-  if (!read_at(fd, num, phstart + 4 * sizeof(num))) {
-    return false;
-  }
-  uint32_t data_stop = parse_little_endian(num);
-
-  llvm::dbgs() << "Loading " << filename << " tile @ offset "
-               << ((tile.fullAddress(0) >> TILE_ADDR_ROW_SHIFT) & 0xFFFu)
-               << '\n';
-
-  assert(lseek(fd, data_start, SEEK_SET) == data_start);
-  // NOTE: The "return" type of `sizeof` is `size_t`.
-  //       `clang-tidy` warns about this.
-  for (auto i = 0u; i < data_stop / static_cast<uint8_t>(sizeof(num)); i++) {
-    if (read(fd, num.data(), num.size()) < static_cast<long>(num.size())) {
+    if (!read_at(fd, num, phstart)) {
       return false;
     }
-    static constexpr auto PROG_MEM_OFFSET = 0x20000u;
-    Address dest_addr{
-        tile, static_cast<uint32_t>(dest + PROG_MEM_OFFSET + i * num.size())};
-    // The data needs to be read in little endian
-    uint32_t data = parse_little_endian(num);
-    write32(dest_addr, data);
+
+    uint32_t header_type = parse_little_endian(num);
+    if (header_type != PT_LOAD) {
+      continue;
+    }
+
+    if (!read_at(fd, num, phstart + sizeof(num))) {
+      return false;
+    }
+    uint32_t data_start = parse_little_endian(num);
+
+    if (!read_at(fd, num, phstart + 2 * sizeof(num))) {
+      return false;
+    }
+    uint32_t dest = parse_little_endian(num);
+
+    if (!read_at(fd, num, phstart + 4 * sizeof(num))) {
+      return false;
+    }
+    uint32_t data_stop = parse_little_endian(num);
+
+    llvm::dbgs() << "Loading " << filename << " tile @ offset "
+                 << static_cast<uint16_t>(tile) << '\n';
+
+    assert(lseek(fd, data_start, SEEK_SET) == data_start);
+    // NOTE: The "return" type of `sizeof` is `size_t`.
+    //       `clang-tidy` warns about this.
+    for (auto i = 0u; i < data_stop / static_cast<uint8_t>(sizeof(num)); i++) {
+      if (read(fd, num.data(), num.size()) < static_cast<long>(num.size())) {
+        return false;
+      }
+      static constexpr auto PROG_MEM_OFFSET = 0x20000u;
+      Address dest_addr{
+          tile, static_cast<uint32_t>(dest + PROG_MEM_OFFSET + i * num.size())};
+      // The data needs to be read in little endian
+      uint32_t data = parse_little_endian(num);
+      write32(dest_addr, data);
+    }
   }
 
   return true;
