@@ -262,7 +262,7 @@ public:
 
   static constexpr auto shifted_mask = unshifted_mask << low_bit;
 
-  [[nodiscard]] static constexpr uint32_t set(uint32_t value) {
+  [[nodiscard]] constexpr uint32_t operator()(uint32_t value) const {
     return (value << low_bit) & shifted_mask;
   }
 };
@@ -575,7 +575,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
     // TODO: Use `clearRange` for this?
     for (auto chNum = 0u; chNum < MAX_CHANNEL_COUNT; ++chNum) {
       write32({tile, dmaChannelCtrlOffsets[chNum]},
-              dmaChannelReset.set(disable) | dmaChannelEnable.set(disable));
+              dmaChannelReset(disable) | dmaChannelEnable(disable));
       write32({tile, dmaChannelQueueOffsets[chNum]}, 0);
     }
 
@@ -670,17 +670,17 @@ void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 Loc
         LockRelEn = relEnable
         LockRelVal = relValue
    clang-format on */
-          bdData.addr_a = bdAddressLockID.set(lockID.getValue()) |
-                          bdAddressReleaseEnable.set(relEnable) |
-                          bdAddressAcquireEnable.set(acqEnable);
+          bdData.addr_a = bdAddressLockID(lockID.getValue()) |
+                          bdAddressReleaseEnable(relEnable) |
+                          bdAddressAcquireEnable(acqEnable);
 
           if (relValue != 0xFFu) {
-            bdData.addr_a |= bdAddressReleaseValueEnable.set(true) |
-                             bdAddressReleaseValue.set(relValue);
+            bdData.addr_a |= bdAddressReleaseValueEnable(true) |
+                             bdAddressReleaseValue(relValue);
           }
           if (acqValue != 0xFFu) {
-            bdData.addr_a |= bdAddressAcquireValueEnable.set(true) |
-                             bdAddressAcquireValue.set(acqValue);
+            bdData.addr_a |= bdAddressAcquireValueEnable(true) |
+                             bdAddressAcquireValue(acqValue);
           }
         }
         if (bdInfo.hasB) {
@@ -724,11 +724,11 @@ with BaseAddrA = BaseAddr + offsetA
         Field<30> bdControlABMode;
         Field<28> bdControlFifo;
 
-        bdData.addr_a |= bdAddressBase.set(addr_a >> 2u);
-        bdData.addr_b |= bdAddressBase.set(addr_b >> 2u);
-        bdData.control |= bdControlLength.set(bdInfo.lenA - 1) |
-                          bdControlFifo.set(bdInfo.FifoMode) |
-                          bdControlABMode.set(bdInfo.AbMode);
+        bdData.addr_a |= bdAddressBase(addr_a >> 2u);
+        bdData.addr_b |= bdAddressBase(addr_b >> 2u);
+        bdData.control |= bdControlLength(bdInfo.lenA - 1) |
+                          bdControlFifo(bdInfo.FifoMode) |
+                          bdControlABMode(bdInfo.AbMode);
 
         if (block.getNumSuccessors() > 0) {
           // should have only one successor block
@@ -752,8 +752,8 @@ with BaseAddrA = BaseAddr + offsetA
           Field<16, 13> bdControlNextBD;
           Field<17> bdControlEnableNextBD;
 
-          bdData.control |= bdControlEnableNextBD.set(nextBdNum != 0xFFu) |
-                            bdControlNextBD.set(nextBdNum);
+          bdData.control |= bdControlEnableNextBD(nextBdNum != 0xFFu) |
+                            bdControlNextBD(nextBdNum);
         }
 
         if (bdInfo.foundBdPacket) {
@@ -763,10 +763,10 @@ with BaseAddrA = BaseAddr + offsetA
 
           Field<27> bdControlEnablePacket;
 
-          bdData.packet = bdPacketID.set(bdInfo.packetID) |
-                          bdPacketType.set(bdInfo.packetType);
+          bdData.packet = bdPacketID(bdInfo.packetID) |
+                          bdPacketType(bdInfo.packetType);
 
-          bdData.control |= bdControlEnablePacket.set(enable);
+          bdData.control |= bdControlEnablePacket(enable);
 
           /*
           output << "XAieDma_TileBdSetPkt(" << tileDMAInstStr(col, row) << ", "
@@ -795,7 +795,7 @@ void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
         write32({tile, bdOffset + 0x10u}, bdData.packet);
         write32({tile, bdOffset + 0x14u}, bdData.interleave);
         write32({tile, bdOffset + 0x18u},
-                bdData.control | bdControlValid.set(true));
+                bdData.control | bdControlValid(true));
       }
     }
 
@@ -843,10 +843,10 @@ void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
           Field<4, 0> dmaChannelQueueStartBd;
 
           write32(Address{tile, dmaChannelQueueOffsets[chNum]},
-                  dmaChannelQueueStartBd.set(bdNum));
+                  dmaChannelQueueStartBd(bdNum));
 
           write32({tile, dmaChannelCtrlOffsets[chNum]},
-                  dmaChannelEnable.set(enable) | dmaChannelReset.set(disable));
+                  dmaChannelEnable(enable) | dmaChannelReset(disable));
         }
       }
     }
@@ -1218,9 +1218,9 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
           // TODO: `Field::extract(uint32_t)`?
           auto drop_header = (slave_port & 0x80u) >> 7u;
 
-          auto value = streamEnable.set(true) | streamPacketEnable.set(false) |
-                       streamMasterDropHeader.set(drop_header) |
-                       streamMasterConfig.set(slave_port);
+          auto value = streamEnable(true) | streamPacketEnable(false) |
+                       streamMasterDropHeader(drop_header) |
+                       streamMasterConfig(slave_port);
           assert(value < UINT32_MAX);
           write32(address, value);
         }
@@ -1243,7 +1243,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           Address address{tile, 0x3F100u + slave_port * 4u};
 
           write32(address,
-                  streamEnable.set(true) | streamPacketEnable.set(false));
+                  streamEnable(true) | streamPacketEnable(false));
         }
 
         for (auto connectOp : b.getOps<MasterSetOp>()) {
@@ -1260,16 +1260,16 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           static constexpr auto STREAM_SWITCH_ARB_SHIFT = 0u;
 
           const auto dropHeader = connectOp.destBundle() == WireBundle::DMA;
-          auto config = streamMasterDropHeader.set(dropHeader) |
+          auto config = streamMasterDropHeader(dropHeader) |
                         (mask << STREAM_SWITCH_MSEL_SHIFT) |
                         (arbiter << STREAM_SWITCH_ARB_SHIFT);
 
           Address dest{tile, 0x3f000u + 4u * master_port};
 
-          write32(dest, streamEnable.set(enable) |
-                            streamPacketEnable.set(enable) |
-                            streamMasterDropHeader.set(dropHeader) |
-                            streamMasterConfig.set(config));
+          write32(dest, streamEnable(enable) |
+                            streamPacketEnable(enable) |
+                            streamMasterDropHeader(dropHeader) |
+                            streamMasterConfig(config));
 
           /* clang-format off
       XAieTile_StrmConfigMstr(
@@ -1337,7 +1337,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           auto slavePort = computeSlavePort(
               connectOp.sourceBundle(), connectOp.sourceIndex(), tile.isShim());
           write32({tile, STREAM_SWITCH_SLAVE_ADDR + 4u * slavePort},
-                  streamEnable.set(enable) | streamPacketEnable.set(enable));
+                  streamEnable(enable) | streamPacketEnable(enable));
 
           static constexpr auto STREAM_NUM_SLOTS = 4u;
 
@@ -1347,10 +1347,10 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           Field<5, 4> streamSlotMSel;
           Field<2, 0> streamSlotArbit;
 
-          auto config = streamSlotId.set(slotOp.valueInt()) |
-                        streamSlotMask.set(slotOp.maskInt()) |
-                        streamSlotEnable.set(enable) |
-                        streamSlotMSel.set(msel) | streamSlotArbit.set(arbiter);
+          auto config = streamSlotId(slotOp.valueInt()) |
+                        streamSlotMask(slotOp.maskInt()) |
+                        streamSlotEnable(enable) |
+                        streamSlotMSel(msel) | streamSlotArbit(arbiter);
 
           write32({tile, 0x3f200u + STREAM_NUM_SLOTS * slavePort + slot},
                   config);
