@@ -59,9 +59,28 @@ def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   let cppNamespace = "xilinx::AIE";
 }
 
+def Produce: I32EnumAttrCase<"Produce", 0>;
+def Consume: I32EnumAttrCase<"Consume", 1>;
+
+def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
+  [Produce, Consume]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
 
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
+
+def AIE_ObjectFifoType :
+    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoType>()">,
+                "AIE objectFifo type">;
+
+def AIE_ObjectFifoSubviewType :
+    DialectType<AIE_Dialect, CPred<"$_self.isa<AIEObjectFifoSubviewType>()">,
+                "AIE ObjectFifoSubview type">;
+
+def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
@@ -658,6 +677,142 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   //           amsel);
   //     }]>
   // ];
+}
+
+def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "Combination of broadcast and packet-switch";
+  let description = [{
+    An abstraction of broadcast and packet-switched flow. During place and
+    route, it will be replaced by packet-switched flow and further replaced 
+    by MasterSets and PacketRules inside switchboxes.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.broadcast_packet(%70, "DMA" : 0){
+        AIE.bp_id(0x0){
+          AIE.bp_dest<%73, "DMA" : 0>
+          AIE.bp_dest<%63, "DMA" : 0>
+        }
+        AIE.bp_id(0x1){
+          AIE.bp_dest<%74, "DMA" : 0>
+          AIE.bp_dest<%64, "DMA" : 0>
+        }
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_BPIDOp: AIE_Op<"bp_id", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins I8Attr:$ID
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "A set of packets that share the same ID";
+  let description = [{
+    A set of destination packets that share the same source and ID. This must exist
+    within an [AIE.broadcast_packet] operation.
+    See [AIE.broadcast_packet]for an example.
+  }];
+  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let extraClassDeclaration = [{
+    int IDInt() { return ID(); }
+  }];
+}
+
+def AIE_BPDestOp: AIE_Op<"bp_dest", [HasParent<"BPIDOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port";
+  let description = [{
+    An object representing the destination of a  Broad Packet. This must exist
+    within an [AIE.bp_id] operation.
+    See [AIE.broadcast_packet] for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MulticastOp: AIE_Op<"multicast", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "An abstraction of multicast";
+  let description = [{
+    An abstraction of broadcast. During place and
+    route, it will be replaced by multiple flows.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.multicast(%70, "DMA" : 0){
+        AIE.multi_dest<%73, "DMA" : 0>
+        AIE.multi_dest<%74, "DMA" : 0>
+        AIE.multi_dest<%63, "DMA" : 0>
+        AIE.multi_dest<%64, "DMA" : 0>
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MultiDestOp: AIE_Op<"multi_dest", [HasParent<"MulticastOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port of multicast flow";
+  let description = [{
+    An object representing the destination of a multicast flow. This must exist
+    within an [AIE.multicast] operation. There can be multiple destinations within an
+    AIE.multicast Op.
+
+    See [AIE.multicast]for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
 }
 
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
@@ -1372,3 +1527,207 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
+  let summary = "Create a circular buffer or channel between two tiles";
+  let description = [{
+    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
+    a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+    buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
+    These elements represent the conceptual depth of the objectFifo.
+
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
+    locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
+    not adjacent.
+
+    Example:
+    ```
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>> 
+    ```
+    This operation creates an objectFifo between tiles 12 and 13 of 4 elements, each a buffer of 16 32-bit integers.
+  }];
+
+  let arguments = (
+    ins Index:$producerTile,
+        Index:$consumerTile,
+        Confined<I32Attr, [IntMinValue<0>]>:$elemNumber
+  );
+
+  let results = (outs AIE_ObjectFifoType:$fifo);
+
+  let assemblyFormat = [{
+    `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
+  }];
+
+  let extraClassDeclaration = [{
+    int size() { return elemNumber(); }
+    TileOp getProducerTileOp();
+    TileOp getConsumerTileOp();
+  }];
+}
+
+def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
+  let summary = "Acquire operation to lock and return objects of an ObjectFifo";
+  let description = [{
+    The "aie.objectFifo.acquire" operation first acquires the locks of the next given number 
+    of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
+    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
+    the acquired objects which can be used to access them.
+
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations on 
+    the locks of the objectFifo objects that will be acquired. Under the hood, the operation only performs
+    new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
+    to be released by the same process, then performing another acquire operation on the same objectFifo 
+    within the same process of size two or less will not result in any new useLock operations (and for size 
+    greater than two, only (size - 2) useLock operations will be performed).
+
+    Example:
+    ```
+      %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+    ```
+    This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
+  }];
+
+  let arguments = (
+    ins ObjectFifoPort:$port,
+        AIE_ObjectFifoType:$fifo,
+        Confined<I32Attr, [IntMinValue<0>]>:$size
+  );
+
+  let results = (outs AIE_ObjectFifoSubviewType:$subview);
+
+  let assemblyFormat = [{
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    Value getAIEObjectFifo() { return fifo(); }
+    AIEObjectFifoType getAIEObjectFifoType() {
+      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
+    }
+    int acqNumber() { return size(); }
+  }];
+}
+
+def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
+  let summary = "Release operation for object locks in an ObjectFifo";
+  let description = [{
+    The "aie.objectFifo.release" operation releases the locks of the given number of objects 
+    in the objectFifo. The mode it releases the locks in is chosen based on the "port" 
+    (producer: release for read, consumer: release for write). 
+
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
+
+    Example:
+    ```
+      AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+    ```
+    This operation releases the lock of the next object in objFifo from producer port.
+  }];
+
+  let arguments = (
+    ins ObjectFifoPort:$port,
+        AIE_ObjectFifoType:$fifo,
+        Confined<I32Attr, [IntMinValue<0>]>:$size
+  );
+
+  let assemblyFormat = [{
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` 
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    Value getAIEObjectFifo() { return fifo(); }
+    AIEObjectFifoType getAIEObjectFifoType() {
+      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
+    }
+    int relNumber() { return size(); }
+  }];
+}
+
+def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
+  let summary = "ObjectFifoSubview type accessor method";
+  let description = [{
+    Access the Nth element of a value of ObjectFifoSubview type.
+
+  Example:
+    ```
+      %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+      %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+    ```
+    In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
+    the objectFifo if other acquire operations took place beforehand.
+
+  }];
+
+  let arguments = (
+    ins AIE_ObjectFifoSubviewType:$subview, 
+        Confined<I32Attr, [IntMinValue<0>]>:$index
+  );
+
+  let results = (outs AnyMemRef:$output);
+
+  let assemblyFormat = [{
+    $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+  }];
+
+  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
+  let builders = [
+    OpBuilder<(ins "Value":$subview, "size_t":$index)>
+  ];
+
+  let extraClassDeclaration = [{
+    int getIndex() { return index(); }
+  }];
+}
+
+def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
+  let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
+  let description = [{
+    The "aie.registerProcess" operation allows the user to register a function to an objectFifo along with its 
+    acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
+    on the objectFifo elements. This generated sequence is often in the form of a for loop, however, in the case 
+    of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
+    This may result in multiple for loops of different sizes being generated. If there is no repetition, then no 
+    loops will be generated.
+
+    Example:
+    ```
+      %length = arith.constant 10 : index
+      %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
+      %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
+      func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
+
+      AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+    ```
+    This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
+    @producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
+
+    If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
+    If the input patterns are cyclo-static then they must be of the same size.
+  }];
+
+  let arguments = (
+    ins ObjectFifoPort:$port,
+        AIE_ObjectFifoType:$fifo,
+        I32Tensor:$acquirePattern,
+        I32Tensor:$releasePattern,
+        FlatSymbolRefAttr:$callee,
+        Index:$length
+  );
+
+  let assemblyFormat = [{
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)` 
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ObjectFifoPortAttr getPortAttr() { return portAttr(); }
+    DenseIntElementsAttr getAcquirePattern() { return acquirePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
+    DenseIntElementsAttr getReleasePattern() { return releasePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
+    int getProcessLength() { return length().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
+  }];
+}

@@ -45,7 +45,7 @@ def run_flow(opts, tmpdirname):
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
-    do_call(['aie-opt', '--lower-affine', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
+    do_call(['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-unroll-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
     t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
@@ -94,6 +94,8 @@ def run_flow(opts, tmpdirname):
         do_call(['aie-translate', '--mlir-to-llvmir', '--opaque-pointers=0', file_opt_core, '-o', file_core_llvmir])
         file_core_elf = elf_file if elf_file else corefile(".", core, "elf")
         file_core_obj = tmpcorefile(core, "o")
+        if not opts.compile:
+          return
         if(opts.xchesscc):
           file_core_llvmir_chesshack = tmpcorefile(core, "chesshack.ll")
           do_call(['cp', file_core_llvmir, file_core_llvmir_chesshack])
@@ -107,6 +109,8 @@ def run_flow(opts, tmpdirname):
           do_call(['sed', '-i', '-E', 's/mustprogress//g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/poison/undef/g', file_core_llvmir_chesslinked])
           do_call(['sed', '-i', '-E', 's/nocallback//g', file_core_llvmir_chesslinked])
+          if not opts.link:
+            return
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
             do_call(['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
@@ -118,6 +122,8 @@ def run_flow(opts, tmpdirname):
           file_core_llvmir_stripped = tmpcorefile(core, "stripped.ll")
           do_call(['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
           do_call(['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
+          if not opts.link:
+            return
           if(opts.xbridge):
             link_with_obj = extract_input_files(file_core_bcf)
             do_call(['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
@@ -126,13 +132,14 @@ def run_flow(opts, tmpdirname):
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
 
+
     def process_arm_cgen():
       # Generate the included host interface
       file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
       if(opts.pathfinder):
-        do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+        do_call(['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
       else:
-        do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+        do_call(['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
       if(opts.xaie == 2):
           do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
@@ -141,6 +148,9 @@ def run_flow(opts, tmpdirname):
 
 
       # Lastly, compile the generated host interface with any ARM code.
+      if not opts.compile_host:
+        return
+
       cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]

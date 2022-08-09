@@ -31,6 +31,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 set(AIE_COMPILER "XCHESSCC" CACHE STRING "Backend compiler selection")
 set(AIE_LINKER "XCHESSCC" CACHE STRING "Backend linker selection")
+set(HOST_COMPILER "CLANG" CACHE STRING "Host program compiler selection")
 set(PEANO_INSTALL_DIR "<unset>" CACHE STRING "Location of Peano compiler")
 
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
