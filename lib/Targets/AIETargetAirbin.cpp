@@ -307,8 +307,8 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   assert(num[0] == ELFCLASS32);
   assert(num[1] == ELFDATA2LSB);
 
-#define PROGRAM_HEADER_OFFSET                                                  \
-  (EI_NIDENT + sizeof(uint16_t) * 2 + sizeof(uint32_t) + sizeof(Elf32_Addr))
+  static constexpr auto PROGRAM_HEADER_OFFSET =
+      EI_NIDENT + sizeof(uint16_t) * 2 + sizeof(uint32_t) + sizeof(Elf32_Addr);
 
   if (!read_at(fd, num, PROGRAM_HEADER_OFFSET)) {
     return false;
@@ -316,9 +316,9 @@ static bool loadElf(TileAddress tile, const std::string &filename) {
   uint32_t prog_header_arr_start = parse_little_endian(num);
   assert(prog_header_arr_start != 0);
 
-#define PROGRAM_HEADER_COUNT_OFFSET                                            \
-  (PROGRAM_HEADER_OFFSET + sizeof(Elf32_Off) * 2 + sizeof(uint32_t) +          \
-   sizeof(uint16_t))
+  static constexpr auto PROGRAM_HEADER_COUNT_OFFSET =
+      PROGRAM_HEADER_OFFSET + sizeof(Elf32_Off) * 2 + sizeof(uint32_t) +
+      sizeof(uint16_t);
 
   if (!read_at(fd, num, PROGRAM_HEADER_COUNT_OFFSET)) {
     return false;
