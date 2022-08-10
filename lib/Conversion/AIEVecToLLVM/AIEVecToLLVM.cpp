@@ -13,6 +13,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/TypeUtilities.h"
 
+#include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
@@ -187,11 +188,125 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
     }
 };
 
+// Generates the buffer address offset given the current index values
+Value createLinearizedAccess(Value source, SmallVector<Value, 4> indices) {
+  auto memRefType = source.getType().dyn_cast<MemRefType>();
+  assert(memRefType &&
+         "cannot creating linearized expression for non-memref type");
+  ArrayRef<int64_t> stride = memRefType.getShape();
+
+  Value *cur = nullptr;
+  for (int dim = memRefType.getRank() - 1; dim >= 0; --dim) {
+    // k * z_dim + j * y_dim + k
+    // add the innermost , multiply each index by the dimension
+  }
+  return source;
+
+  /*
+  MemRefType memRefType = source.getType().dyn_cast<MemRefType>();
+  assert(memRefType &&
+         "cannot creating linearized expression for non-memref type");
+  ArrayRef<int64_t> stride = memRefType.getShape();
+
+  // The stride and indices size must match
+  if (stride.size() != indices.size() ||
+      (int)stride.size() != memRefType.getRank())
+    return failure();
+
+  // A stride contains two parts:
+  int64_t numPart = 1;   // for static shaped dims
+  std::string paramPart; // for dynamic shaped dims
+
+  SmallVector<std::string, 4> accessVec;
+  for (int dim = memRefType.getRank() - 1; dim >= 0; --dim) {
+    // All the indices in the access expression must already be emitted
+    if (!emitter.hasValueInScope(indices[dim]))
+      return failure();
+
+    // Form the access string for this dimension
+    std::string cur;
+    if (!paramPart.empty())
+      cur = paramPart + "*";
+    if (numPart > 1)
+      cur += std::to_string(numPart) + "*";
+    cur += emitter.getOrCreateName(indices[dim]);
+    accessVec.push_back(cur);
+
+    // Now update the numPart and paramPart to form the stride for the next
+    // dimension
+    if (memRefType.isDynamicDim(dim)) {
+      StringRef param = emitter.getMemRefDimParam(source, dim);
+      paramPart = param.str() + (paramPart.empty() ? "" : "*" + paramPart);
+    } else
+      numPart *= stride[dim];
+  }
+  // All the strides are in accessVec. Compose them
+  while (!accessVec.empty()) {
+    access += (access.empty() ? "" : "+") + accessVec.back();
+    accessVec.pop_back();
+  }
+  // If the access is empty, make '0' as default access
+  if (access.empty())
+    access = "0";
+
+  return success();
+  */
+}
+/*
+static Value castDataPtr(ConversionPatternRewriter &rewriter, Location loc,
+                         Value ptr, MemRefType memRefType, Type vt) {
+  auto pType = LLVM::LLVMPointerType::get(vt, memRefType.getMemorySpaceAsInt());
+  return rewriter.create<LLVM::BitcastOp>(loc, pType, ptr);
+}
+*/
+
+class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::UPDOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::UPDOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      // A bit more complicated: load the vector, then update result vector
+      // AIE1 is capable of 128-bit on one bank and 256-bit loads on even-odd banks
+      // Identify size of update
+      int vecSizeInBits = getVectorSizeInBits(op.result().getType().cast<VectorType>());
+
+      if (vecSizeInBits <= 256) {
+        // total <=256-bit updates are much simpler:
+        // we can do a direct load into the vector register
+        // look at the indices to calculate the address
+        // thanks vector for telling me about this function :)
+        auto ptr = this->getStridedElementPtr(op->getLoc(),
+          op.source().getType().cast<MemRefType>(),
+          adaptor.source(),
+          op.indices(),
+          rewriter);
+        auto vectorPtrType = LLVM::LLVMPointerType::get(
+          op.result().getType().cast<VectorType>(),
+          op.source().getType().cast<MemRefType>().getMemorySpaceAsInt());
+        auto castedPtr = rewriter.create<LLVM::BitcastOp>(op->getLoc(),
+          vectorPtrType,
+          ptr);
+        rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, castedPtr, 1);
+      } else {
+        // total >256-bit updates will require upd ops to fill the whole vector
+        // each UDP op represents one of these 256-bit loads and updates
+        return failure();
+      }
+
+      return success();
+
+    }
+};
+
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   patterns.add<xilinx::aievec::SRSOpConversion>(converter);
   patterns.add<xilinx::aievec::MulOpConversion>(converter);
   patterns.add<xilinx::aievec::FMAOpConversion>(converter);
+  patterns.add<xilinx::aievec::UPDOpConversion>(converter);
 }
 
 struct ConvertAIEVecToLLVMPass
