@@ -147,11 +147,10 @@ def run_flow(opts, tmpdirname):
           do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
 
 
-      # Lastly, compile the generated host interface with any ARM code.
-      if not opts.compile_host:
-        return
-
-      cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+      ## Lastly, compile the generated host interface with any ARM code.
+      #cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+      # Lastly, compile the generated host interface with any x86 code.
+      cmd = ['clang','-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
       if(opts.xaie == 2):

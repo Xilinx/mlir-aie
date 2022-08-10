@@ -27,7 +27,7 @@ extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
  */
 #ifdef LIBXAIENGINEV1
 
-aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
+aie_libxaie_ctx_t *mlir_aie_init_libxaie(volatile void *base_va) {
   aie_libxaie_ctx_t *ctx =
       (aie_libxaie_ctx_t *)malloc(sizeof(aie_libxaie_ctx_t));
   if (!ctx)
