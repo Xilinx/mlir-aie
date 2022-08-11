@@ -117,59 +117,63 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
     LogicalResult
     matchAndRewrite(xilinx::aievec::MulOp op, OpAdaptor adaptor,
                     ConversionPatternRewriter &rewriter) const override {
-      // If the intrinsic declaration doesn't exist, create it
-      //std::string intrinsicName = "__builtin_aie_mul";
-      std::string intrinsicName = "mul16";
       auto module = op->getParentOfType<ModuleOp>();
       MLIRContext *context = rewriter.getContext();
-      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
 
-      // Set up the function declaration
       auto startType = IntegerType::get(context, 32);
-      auto offsetsType = IntegerType::get(context, 32);
-      auto stepType = IntegerType::get(context, 32);
-      auto squareType = IntegerType::get(context, 32);
+      auto offsetsType = VectorType::get({2}, IntegerType::get(context, 32));
+      auto confType = VectorType::get({2}, IntegerType::get(context, 32));
+
+      // If the intrinsic declaration doesn't exist, create it
+      std::string builtinName = getMulOrFMABuiltinName(op);
+      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, builtinName));
+
       if (!func) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
-            rewriter.getUnknownLoc(), intrinsicName,
+            rewriter.getUnknownLoc(), builtinName,
             LLVM::LLVMFunctionType::get(op.result().getType(),
                                         {op.lhs().getType(),
-                                         startType,
-                                         offsetsType,
-                                         stepType,
-                                         squareType,
                                          op.rhs().getType(),
-                                         startType,
-                                         offsetsType,
-                                         stepType,
-                                         squareType})
+                                         startType, /* xstart */
+                                         startType, /* ystart */
+                                         startType, /* zstart */
+                                         offsetsType, /* xoffsets */
+                                         offsetsType, /* zoffsets */
+                                         confType})
                                        );
         rewriter.setInsertionPoint(op);
       }
 
-      // Create a constant for the shift value
-      int xstart, xoffsets, xstep, xsquare, zstart, zoffsets, zstep, zsquare;
+      // Get the attribute values
+      int32_t xstart, xoffsets, xoffsets_hi, xstep, xsquare, ystart, zstart, zoffsets, zoffsets_hi, zstep, zsquare;
+      ystart = 0;
       op.xstart().getAsInteger(0, xstart);
       op.xoffsets().getAsInteger(0, xoffsets);
+      op.xoffsets_hi().getAsInteger(0, xoffsets_hi);
       op.xstep().getAsInteger(0, xstep);
       op.xsquare().getAsInteger(0, xsquare);
       op.zstart().getAsInteger(0, zstart);
       op.zoffsets().getAsInteger(0, zoffsets);
+      op.zoffsets_hi().getAsInteger(0, zoffsets_hi);
       op.zstep().getAsInteger(0, zstep);
       op.zsquare().getAsInteger(0, zsquare);
-      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstart));
-      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xoffsets));
-      auto xstepVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstep));
-      auto xsquareVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xsquare));
-      auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstart));
-      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zoffsets));
-      auto zstepVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstep));
-      auto zsquareVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zsquare));
 
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), xstartVal, xoffsetsVal, xstepVal, xsquareVal, op.rhs(), zstartVal, zoffsetsVal, zstepVal, zsquareVal});
+      // Encode the configuration register
+      int32_t conf[2] = {0,0};
+      conf[0] |= ((xstep & 0x3F) << 0) | ((zstep & 0x3F) << 8);
+      conf[1] |= ((xsquare & 0xFF) << 0) | ((zsquare & 0xFF) << 8);
+
+      // Create the constants and replace the op
+      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstart));
+      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({xoffsets, xoffsets_hi}));
+      auto ystartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(0));
+      auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstart));
+      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({zoffsets, zoffsets_hi}));
+      auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({conf[0], conf[1]}));
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), op.rhs(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
       return success();
     }
 };
