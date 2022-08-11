@@ -17,12 +17,33 @@
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
+#include <sstream>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::aievec;
 
 namespace xilinx {
 namespace aievec {
+
+std::string getVectorTypeString(VectorType type) {
+  std::stringstream ss;
+  auto size = getVectorLaneSize(type);
+  ss << "v" << size;
+  if (auto intType  = type.getElementType().dyn_cast<IntegerType>()) {
+    ss << "int" << intType.getWidth();
+  } else if (auto floatType = type.getElementType().dyn_cast<FloatType>()) {
+    ss << "float";
+  }
+  return ss.str();
+}
+
+bool accIsDouble(VectorType type) {
+  auto lanes = getVectorLaneSize(type);
+  auto accWidth = type.getElementType().cast<IntegerType>().getWidth();
+  if (accWidth == 80) accWidth = 96;
+  return (lanes * accWidth) > 384;
+}
 
 class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSOp> {
   public:
@@ -126,65 +147,86 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::FMAOp>::ConvertOpToLLVMPattern;
 
+    static std::string getBuiltinName(xilinx::aievec::FMAOp op) {
+      VectorType resultType = op.result().getType().cast<VectorType>();
+      int resultSize = getVectorLaneSize(resultType);
+      std::stringstream ss;
+      ss << "__builtin_aie_";
+      if (auto intType = resultType.getElementType().dyn_cast<IntegerType>()) {
+        ss << "mac";
+        ss << resultSize << "_"
+           << getVectorTypeString(op.lhs().getType().cast<VectorType>()) << "_"
+           << getVectorTypeString(op.rhs().getType().cast<VectorType>()) << "_"
+           << (accIsDouble(resultType) ? "bm" : "am")
+           << "_sw" << intType.getWidth();
+      } else if (resultType.getElementType().dyn_cast<FloatType>()) {
+        ss << "vfpmac";
+      }
+      return ss.str();
+    }
+
     LogicalResult
     matchAndRewrite(xilinx::aievec::FMAOp op, OpAdaptor adaptor,
                     ConversionPatternRewriter &rewriter) const override {
-      // If the intrinsic declaration doesn't exist, create it
-      //std::string intrinsicName = "__builtin_aie_mac";
-      std::string intrinsicName = "mac16";
       auto module = op->getParentOfType<ModuleOp>();
       MLIRContext *context = rewriter.getContext();
-      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
 
-      // Set up the function declaration
       auto startType = IntegerType::get(context, 32);
-      auto offsetsType = IntegerType::get(context, 32);
-      auto stepType = IntegerType::get(context, 32);
-      auto squareType = IntegerType::get(context, 32);
+      auto offsetsType = VectorType::get({2}, IntegerType::get(context, 32));
+      auto confType = VectorType::get({2}, IntegerType::get(context, 32));
+
+      // If the intrinsic declaration doesn't exist, create it
+      std::string builtinName = getBuiltinName(op);
+      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, builtinName));
+
       if (!func) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
-            rewriter.getUnknownLoc(), intrinsicName,
+            rewriter.getUnknownLoc(), builtinName,
             LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.acc().getType(),
-                                         op.lhs().getType(),
-                                         startType,
-                                         offsetsType,
-                                         stepType,
-                                         squareType,
+                                        {op.lhs().getType(),
                                          op.rhs().getType(),
-                                         startType,
-                                         offsetsType,
-                                         stepType,
-                                         squareType})
+                                         op.acc().getType(),
+                                         startType, /* xstart */
+                                         startType, /* ystart */
+                                         startType, /* zstart */
+                                         offsetsType, /* xoffsets */
+                                         offsetsType, /* zoffsets */
+                                         confType})
                                        );
         rewriter.setInsertionPoint(op);
       }
 
-      // Create a constant for the shift value
-      int xstart, xoffsets, xstep, xsquare, zstart, zoffsets, zstep, zsquare;
+      // Get the attribute values
+      int32_t xstart, xoffsets, xoffsets_hi, xstep, xsquare, ystart, zstart, zoffsets, zoffsets_hi, zstep, zsquare;
+      ystart = 0;
       op.xstart().getAsInteger(0, xstart);
       op.xoffsets().getAsInteger(0, xoffsets);
+      op.xoffsets_hi().getAsInteger(0, xoffsets_hi);
       op.xstep().getAsInteger(0, xstep);
       op.xsquare().getAsInteger(0, xsquare);
       op.zstart().getAsInteger(0, zstart);
       op.zoffsets().getAsInteger(0, zoffsets);
+      op.zoffsets_hi().getAsInteger(0, zoffsets_hi);
       op.zstep().getAsInteger(0, zstep);
       op.zsquare().getAsInteger(0, zsquare);
+
+      // Encode the configuration register
+      int32_t conf[2] = {0,0};
+      conf[0] |= ((xstep & 0x3F) << 0) | ((zstep & 0x3F) << 8);
+      conf[1] |= ((xsquare & 0xFF) << 0) | ((zsquare & 0xFF) << 8);
+
+      // Create the constants and replace the op
       auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstart));
-      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xoffsets));
-      auto xstepVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstep));
-      auto xsquareVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xsquare));
+      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({xoffsets, xoffsets_hi}));
+      auto ystartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(0));
       auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstart));
-      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zoffsets));
-      auto zstepVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstep));
-      auto zsquareVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zsquare));
-
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.acc(), op.lhs(), xstartVal, xoffsetsVal, xstepVal, xsquareVal, op.rhs(), zstartVal, zoffsetsVal, zstepVal, zsquareVal});
+      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({zoffsets, zoffsets_hi}));
+      auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({conf[0], conf[1]}));
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), op.rhs(), op.acc(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
       return success();
-
     }
 };
 
@@ -306,7 +348,7 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
   patterns.add<xilinx::aievec::SRSOpConversion>(converter);
   patterns.add<xilinx::aievec::MulOpConversion>(converter);
   patterns.add<xilinx::aievec::FMAOpConversion>(converter);
-  patterns.add<xilinx::aievec::UPDOpConversion>(converter);
+  //patterns.add<xilinx::aievec::UPDOpConversion>(converter);
 }
 
 struct ConvertAIEVecToLLVMPass
