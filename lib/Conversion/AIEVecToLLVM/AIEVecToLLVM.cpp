@@ -363,7 +363,7 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
         auto ptr = this->getStridedElementPtr(op->getLoc(),
           op.source().getType().cast<MemRefType>(),
           adaptor.source(),
-          op.indices(),
+          adaptor.indices(),
           rewriter);
         auto vectorPtrType = LLVM::LLVMPointerType::get(
           op.result().getType().cast<VectorType>(),
@@ -389,7 +389,7 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
   patterns.add<xilinx::aievec::SRSOpConversion>(converter);
   patterns.add<xilinx::aievec::MulOpConversion>(converter);
   patterns.add<xilinx::aievec::FMAOpConversion>(converter);
-  //patterns.add<xilinx::aievec::UPDOpConversion>(converter);
+  patterns.add<xilinx::aievec::UPDOpConversion>(converter);
 }
 
 struct ConvertAIEVecToLLVMPass
