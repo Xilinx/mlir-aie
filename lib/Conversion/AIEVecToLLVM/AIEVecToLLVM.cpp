@@ -80,15 +80,38 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::SRSOp>::ConvertOpToLLVMPattern;
 
+    static std::string getBuiltinName(xilinx::aievec::SRSOp op) {
+      std::stringstream ss;
+      ss << "__builtin_aie_";
+
+      // determine the prefix
+      auto sourceType = op.source().getType().cast<VectorType>();
+      auto resultType = op.result().getType().cast<VectorType>();
+      auto sourceElType = sourceType.getElementType().cast<IntegerType>();
+      auto resultElType = resultType.getElementType().cast<IntegerType>();
+
+      auto sourceElWidth = sourceElType.getWidth();
+      auto resultElWidth = resultElType.getWidth();
+
+      if (sourceElWidth == 48 && resultElWidth == 8) {
+        ss << (resultElType.getSignedness() == IntegerType::Unsigned ? 'u' : 'b');
+      } else if ((sourceElWidth == 48 && resultElWidth == 32) || (sourceElWidth == 80 && resultElWidth == 64)) {
+        ss << 'l';
+      }
+      ss << "srs_" << getVectorTypeString(resultType);
+
+      return ss.str();
+    }
+
     LogicalResult
     matchAndRewrite(xilinx::aievec::SRSOp op, OpAdaptor adaptor,
                     ConversionPatternRewriter &rewriter) const override {
       // If the intrinsic declaration doesn't exist, create it
-      std::string intrinsicName = "__builtin_aie_bsrs_v16i8";
+      std::string builtinName = getBuiltinName(op);
       auto module = op->getParentOfType<ModuleOp>();
       MLIRContext *context = rewriter.getContext();
       auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
+        StringAttr::get(context, builtinName));
       auto shiftType = IntegerType::get(context, 8);
       auto shiftVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), shiftType, rewriter.getI8IntegerAttr(op.shift()));
 
@@ -96,7 +119,7 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
-            rewriter.getUnknownLoc(), intrinsicName,
+            rewriter.getUnknownLoc(), builtinName,
             LLVM::LLVMFunctionType::get(op.result().getType(),
                                         {op.source().getType(),
                                          shiftType})
