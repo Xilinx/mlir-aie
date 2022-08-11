@@ -30,6 +30,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
 #include <map>
+#include <set>
 
 using namespace mlir;
 
@@ -201,6 +202,7 @@ namespace AIE {
 #include "aie/AIEPasses.h.inc"
 
 std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignBufferAddressesPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateCoresPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLocksPass();
