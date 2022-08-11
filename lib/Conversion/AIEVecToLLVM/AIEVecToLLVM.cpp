@@ -170,9 +170,9 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
         rewriter.setInsertionPoint(op);
       }
 
-      // Get the attribute values
+      // Parse the string attribute values
       int32_t xstart, xoffsets, xoffsets_hi, xstep, xsquare, ystart, zstart, zoffsets, zoffsets_hi, zstep, zsquare;
-      ystart = 0;
+      xstart = xoffsets = xoffsets_hi = xstep = xsquare = ystart = zstart =  zoffsets = zoffsets_hi = zstep = zsquare = 0;
       op.xstart().getAsInteger(0, xstart);
       op.xoffsets().getAsInteger(0, xoffsets);
       op.xoffsets_hi().getAsInteger(0, xoffsets_hi);
@@ -239,9 +239,9 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
         rewriter.setInsertionPoint(op);
       }
 
-      // Get the attribute values
+      // Parse the string attribute values
       int32_t xstart, xoffsets, xoffsets_hi, xstep, xsquare, ystart, zstart, zoffsets, zoffsets_hi, zstep, zsquare;
-      ystart = 0;
+      xstart = xoffsets = xoffsets_hi = xstep = xsquare = ystart = zstart =  zoffsets = zoffsets_hi = zstep = zsquare = 0;
       op.xstart().getAsInteger(0, xstart);
       op.xoffsets().getAsInteger(0, xoffsets);
       op.xoffsets_hi().getAsInteger(0, xoffsets_hi);
