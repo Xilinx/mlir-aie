@@ -717,10 +717,11 @@ Declare a physical lock
 Syntax:
 
 ```
-operation ::= `AIE.lock` `(` $tile `,` $lockID `)` attr-dict
+operation ::= `AIE.lock` `(` $tile (`,` $lockID^ )? `)` attr-dict
 ```
 
-This operation creates a physical lock.
+This operation creates a physical lock. For this operation the lockID variable is optional. 
+However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass. 
 
 Example:
 ```
@@ -728,6 +729,10 @@ Example:
   %lck = AIE.lock(%tile33, 7)
 ```
 This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
+
+Case when LockID is not assigned:
+  Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
+  After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
 
 #### Attributes:
 

@@ -6,6 +6,8 @@ aie.buffer operations without an address.  This pass determines
 updates each aie.buffer operation without an address to have a
 well-defined address.  This enables later passes to have a
 consistent view of the memory map of a system.
+### `-aie-assign-lock-ids`: Assigns the lockIDs of locks that do not have IDs.
+Assigns the lockIDs of locks that do not have IDs.
 ### `-aie-create-cores`: Create CoreOp, MemOp, and FlowOp of AIE dialect
 Lower toplevel 'call' operations with implicit data movement into
 aie.core, aie.mem, and aie.flow operations with explicit data
