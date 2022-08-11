@@ -257,6 +257,7 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
       int32_t conf[2] = {0,0};
       conf[0] |= ((xstep & 0x3F) << 0) | ((zstep & 0x3F) << 8);
       conf[1] |= ((xsquare & 0xFF) << 0) | ((zsquare & 0xFF) << 8);
+      conf[1] |= op.fmsub() << 17;
 
       // Create the constants and replace the op
       auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstart));
