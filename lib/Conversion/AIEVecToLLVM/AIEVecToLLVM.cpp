@@ -368,7 +368,24 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
         } else {
           // If this UPD is not working off of an existing destination vector,
           // create an undefined vector as the destination
-          destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
+          //destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
+
+          std::stringstream ss;
+          ss << "__builtin_aie_" << getVectorTypeString(resultType) << "undef";
+          std::string builtinName = ss.str();
+
+          auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+                StringAttr::get(rewriter.getContext(), builtinName));
+
+          if (!func) {
+            OpBuilder::InsertionGuard guard(rewriter);
+            rewriter.setInsertionPointToStart(module.getBody());
+            func = rewriter.create<LLVM::LLVMFuncOp>(
+                rewriter.getUnknownLoc(), builtinName,
+                LLVM::LLVMFunctionType::get(resultType, {}));
+            rewriter.setInsertionPoint(op);
+          }
+          destValue = rewriter.create<LLVM::CallOp>(op->getLoc(), func, ValueRange{})->getOpResult(0);
         }
 
         // Create our call
