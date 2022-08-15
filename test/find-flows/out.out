@@ -1,0 +1,155 @@
+antenna_detection.mlir:33:5: warning: Antenna
+At Destination Port (North:2)
+
+    AIE.connect<South:1, North:2> //endpoint antenna
+    ^
+antenna_detection.mlir:33:5: note: see current operation: AIE.connect<South : 1, North : 2>
+antenna_detection.mlir:30:10: note: in parent region
+
+  %sb0 = AIE.switchbox(%tile23) {
+         ^
+antenna_detection.mlir:30:10: remark: Path Traceback
+Using Port (South:1)
+
+  %sb0 = AIE.switchbox(%tile23) {
+         ^
+antenna_detection.mlir:30:10: note: see current operation: %4 = AIE.switchbox(%0) {
+  AIE.connect<Core : 0, South : 1>
+  AIE.connect<South : 1, Core : 1>
+  AIE.connect<South : 1, North : 2>
+  AIE.connect<South : 3, Core : 0>
+  %10 = AIE.amsel<0> (0)
+  %11 = AIE.masterset(DMA : 1, %10)
+  AIE.packetrules(South : 0) {
+    AIE.rule(31, 0, %10)
+  }
+}
+antenna_detection.mlir:43:5: remark: Path Traceback
+Using Port (North:1)
+
+    AIE.connect<Core :1, North:1>
+    ^
+antenna_detection.mlir:43:5: note: see current operation: AIE.connect<Core : 1, North : 1>
+antenna_detection.mlir:41:10: remark: Path Traceback
+Using Port (Core:1)
+
+  %sb1 = AIE.switchbox(%tile22) {
+         ^
+antenna_detection.mlir:41:10: note: see current operation: %5 = AIE.switchbox(%1) {
+  AIE.connect<North : 1, Core : 1>
+  AIE.connect<Core : 1, North : 1>
+  AIE.connect<Core : 0, Core : 0>
+  AIE.connect<East : 1, North : 3>
+  %10 = AIE.amsel<0> (0)
+  %11 = AIE.masterset(North : 0, %10)
+  %12 = AIE.amsel<0> (1)
+  %13 = AIE.masterset(East : 1, %12)
+  AIE.packetrules(DMA : 0) {
+    AIE.rule(31, 0, %10)
+    AIE.rule(31, 0, %12)
+  }
+  %14 = AIE.amsel<1> (2)
+  %15 = AIE.masterset(East : 2, %14)
+  AIE.packetrules(West : 0) {
+    AIE.rule(31, 0, %14)
+  }
+}
+antenna_detection.mlir:26:13: remark: Path Traceback
+Using Port (Core:1)
+
+  %tile22 = AIE.tile(2, 2)
+            ^
+antenna_detection.mlir:26:13: note: see current operation: %1 = AIE.tile(2, 2)
+antenna_detection.mlir:49:11: warning: Antenna
+At Destination Port (East:1)
+
+    %21 = AIE.masterset(East : 1, %20) // packet antennas    
+          ^
+antenna_detection.mlir:49:11: note: see current operation: %13 = AIE.masterset(East : 1, %12)
+antenna_detection.mlir:41:10: note: in parent region
+
+  %sb1 = AIE.switchbox(%tile22) {
+         ^
+antenna_detection.mlir:52:7: warning: Antenna
+At Destination Port (DMA:0)
+
+      AIE.rule(31, 0, %20)
+      ^
+antenna_detection.mlir:52:7: note: see current operation: AIE.rule(31, 0, %12)
+antenna_detection.mlir:50:5: note: in parent region
+
+    AIE.packetrules(DMA : 0) {
+    ^
+antenna_detection.mlir:50:5: remark: Path Traceback
+Using Port (DMA:0)
+
+    AIE.packetrules(DMA : 0) {
+    ^
+antenna_detection.mlir:50:5: note: see current operation: AIE.packetrules(DMA : 0) {
+  AIE.rule(31, 0, %10)
+  AIE.rule(31, 0, %12)
+}
+antenna_detection.mlir:41:10: remark: Path Traceback
+Using Port (DMA:0)
+
+  %sb1 = AIE.switchbox(%tile22) {
+         ^
+antenna_detection.mlir:41:10: note: see current operation: %5 = AIE.switchbox(%1) {
+  AIE.connect<North : 1, Core : 1>
+  AIE.connect<Core : 1, North : 1>
+  AIE.connect<Core : 0, Core : 0>
+  AIE.connect<East : 1, North : 3>
+  %10 = AIE.amsel<0> (0)
+  %11 = AIE.masterset(North : 0, %10)
+  %12 = AIE.amsel<0> (1)
+  %13 = AIE.masterset(East : 1, %12)
+  AIE.packetrules(DMA : 0) {
+    AIE.rule(31, 0, %10)
+    AIE.rule(31, 0, %12)
+  }
+  %14 = AIE.amsel<1> (2)
+  %15 = AIE.masterset(East : 2, %14)
+  AIE.packetrules(West : 0) {
+    AIE.rule(31, 0, %14)
+  }
+}
+antenna_detection.mlir:26:13: remark: Path Traceback
+Using Port (DMA:0)
+
+  %tile22 = AIE.tile(2, 2)
+            ^
+antenna_detection.mlir:26:13: note: see current operation: %1 = AIE.tile(2, 2)
+antenna_detection.mlir:34:5: warning: Dangling Island Antenna
+
+    AIE.connect<South:3, Core :0> //dangling island antenna 
+    ^
+antenna_detection.mlir:34:5: note: see current operation: AIE.connect<South : 3, Core : 0>
+antenna_detection.mlir:30:10: note: 
+  %sb0 = AIE.switchbox(%tile23) {
+         ^
+antenna_detection.mlir:45:5: warning: Dangling Island Antenna
+
+    AIE.connect<East :1, North :3> //dangling island antenna 
+    ^
+antenna_detection.mlir:45:5: note: see current operation: AIE.connect<East : 1, North : 3>
+antenna_detection.mlir:41:10: note: 
+  %sb1 = AIE.switchbox(%tile22) {
+         ^
+antenna_detection.mlir:56:11: warning: Dangling Island Antenna
+
+    %23 = AIE.masterset(East : 2, %22)
+          ^
+antenna_detection.mlir:56:11: note: see current operation: %15 = AIE.masterset(East : 2, %14)
+antenna_detection.mlir:41:10: note: 
+  %sb1 = AIE.switchbox(%tile22) {
+         ^
+antenna_detection.mlir:57:5: warning: Dangling Island Antenna
+
+    AIE.packetrules(West : 0) {
+    ^
+antenna_detection.mlir:57:5: note: see current operation: AIE.packetrules(West : 0) {
+  AIE.rule(31, 0, %14)
+}
+antenna_detection.mlir:41:10: note: 
+  %sb1 = AIE.switchbox(%tile22) {
+         ^

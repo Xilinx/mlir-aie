@@ -9,6 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt -aie-find-flows %s | FileCheck %s
+// CHECK: antenna_detection.mlir:54:5: warning: Dangling Island Antenna
+
 // CHECK: %[[T23:.*]] = AIE.tile(2, 3)
 // CHECK: %[[T22:.*]] = AIE.tile(2, 2)
 // CHECK: AIE.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
