@@ -26,6 +26,14 @@ using namespace xilinx::aievec;
 namespace xilinx {
 namespace aievec {
 
+struct BufferParams {
+  int32_t start;
+  int32_t offsets;
+  int32_t offsets_hi;
+  int32_t step;
+  int32_t square;
+};
+
 std::string getVectorTypeString(VectorType type) {
   std::stringstream ss;
   auto size = getVectorLaneSize(type);
@@ -182,30 +190,30 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
       }
 
       // Parse the string attribute values
-      int32_t xstart, xoffsets, xoffsets_hi, xstep, xsquare, ystart, zstart, zoffsets, zoffsets_hi, zstep, zsquare;
-      xstart = xoffsets = xoffsets_hi = xstep = xsquare = ystart = zstart =  zoffsets = zoffsets_hi = zstep = zsquare = 0;
-      op.xstart().getAsInteger(0, xstart);
-      op.xoffsets().getAsInteger(0, xoffsets);
-      op.xoffsets_hi().getAsInteger(0, xoffsets_hi);
-      op.xstep().getAsInteger(0, xstep);
-      op.xsquare().getAsInteger(0, xsquare);
-      op.zstart().getAsInteger(0, zstart);
-      op.zoffsets().getAsInteger(0, zoffsets);
-      op.zoffsets_hi().getAsInteger(0, zoffsets_hi);
-      op.zstep().getAsInteger(0, zstep);
-      op.zsquare().getAsInteger(0, zsquare);
+      BufferParams x = {};
+      BufferParams z = {};
+      op.xstart().getAsInteger(0, x.start);
+      op.xoffsets().getAsInteger(0, x.offsets);
+      op.xoffsets_hi().getAsInteger(0, x.offsets_hi);
+      op.xstep().getAsInteger(0, x.step);
+      op.xsquare().getAsInteger(0, x.square);
+      op.zstart().getAsInteger(0, z.start);
+      op.zoffsets().getAsInteger(0, z.offsets);
+      op.zoffsets_hi().getAsInteger(0, z.offsets_hi);
+      op.zstep().getAsInteger(0, z.step);
+      op.zsquare().getAsInteger(0, z.square);
 
       // Encode the configuration register
       int32_t conf[2] = {0,0};
-      conf[0] |= ((xstep & 0x3F) << 0) | ((zstep & 0x3F) << 8);
-      conf[1] |= (encodeSquare(xsquare) << 0) | (encodeSquare(zsquare) << 8);
+      conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
+      conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
 
       // Create the constants and replace the op
-      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstart));
+      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(x.start));
       auto ystartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(0));
-      auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstart));
-      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({xoffsets, xoffsets_hi}));
-      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({zoffsets, zoffsets_hi}));
+      auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(z.start));
+      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({x.offsets, x.offsets_hi}));
+      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({z.offsets, z.offsets_hi}));
       auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({conf[0], conf[1]}));
       rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), op.rhs(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
       return success();
@@ -251,31 +259,31 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
       }
 
       // Parse the string attribute values
-      int32_t xstart, xoffsets, xoffsets_hi, xstep, xsquare, ystart, zstart, zoffsets, zoffsets_hi, zstep, zsquare;
-      xstart = xoffsets = xoffsets_hi = xstep = xsquare = ystart = zstart =  zoffsets = zoffsets_hi = zstep = zsquare = 0;
-      op.xstart().getAsInteger(0, xstart);
-      op.xoffsets().getAsInteger(0, xoffsets);
-      op.xoffsets_hi().getAsInteger(0, xoffsets_hi);
-      op.xstep().getAsInteger(0, xstep);
-      op.xsquare().getAsInteger(0, xsquare);
-      op.zstart().getAsInteger(0, zstart);
-      op.zoffsets().getAsInteger(0, zoffsets);
-      op.zoffsets_hi().getAsInteger(0, zoffsets_hi);
-      op.zstep().getAsInteger(0, zstep);
-      op.zsquare().getAsInteger(0, zsquare);
+      BufferParams x = {};
+      BufferParams z = {};
+      op.xstart().getAsInteger(0, x.start);
+      op.xoffsets().getAsInteger(0, x.offsets);
+      op.xoffsets_hi().getAsInteger(0, x.offsets_hi);
+      op.xstep().getAsInteger(0, x.step);
+      op.xsquare().getAsInteger(0, x.square);
+      op.zstart().getAsInteger(0, z.start);
+      op.zoffsets().getAsInteger(0, z.offsets);
+      op.zoffsets_hi().getAsInteger(0, z.offsets_hi);
+      op.zstep().getAsInteger(0, z.step);
+      op.zsquare().getAsInteger(0, z.square);
 
       // Encode the configuration register
       int32_t conf[2] = {0,0};
-      conf[0] |= ((xstep & 0x3F) << 0) | ((zstep & 0x3F) << 8);
-      conf[1] |= (encodeSquare(xsquare) << 0) | (encodeSquare(zsquare) << 8);
+      conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
+      conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
       conf[1] |= op.fmsub() << 17;
 
       // Create the constants and replace the op
-      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(xstart));
+      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(x.start));
       auto ystartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(0));
-      auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(zstart));
-      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({xoffsets, xoffsets_hi}));
-      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({zoffsets, zoffsets_hi}));
+      auto zstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(z.start));
+      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({x.offsets, x.offsets_hi}));
+      auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({z.offsets, z.offsets_hi}));
       auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({conf[0], conf[1]}));
       rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), op.rhs(), op.acc(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
       return success();
