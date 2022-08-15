@@ -27,6 +27,15 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 }
 
+def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "ModuleOp"> {
+  let summary = "Assigns the lockIDs of locks that do not have IDs.";
+  let description = [{
+    Assigns the lockIDs of locks that do not have IDs.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignLockIDsPass()";
+}
+
 def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
@@ -99,6 +108,7 @@ def AIECreateLocks : Pass<"aie-create-locks", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIECreateLocksPass()";
 }
+
 def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
   let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
   let description = [{

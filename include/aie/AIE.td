@@ -1083,7 +1083,8 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
-    This operation creates a physical lock.
+    This operation creates a physical lock. For this operation the lockID variable is optional. 
+    However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass. 
 
     Example:
     ```
@@ -1091,14 +1092,21 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
       %lck = AIE.lock(%tile33, 7)
     ```
     This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
+
+    Case when LockID is not assigned:
+      Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
+      After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
   }];
   let arguments = (
     ins Index:$tile,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
+        OptionalAttr<Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
   );
-  let assemblyFormat = [{ `(` $tile `,` $lockID `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getLockID() { return lockID(); }
+    int getLockID() { 
+      assert(lockID().hasValue() && "Lock has no ID value");
+      return lockID().getValue();
+    }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile, "int":$lockID), [{
@@ -1108,6 +1116,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
         $_builder.getI32IntegerAttr(lockID));
       }]>
   ];
+  // let hasCanonicalizer = 1;
 }
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
