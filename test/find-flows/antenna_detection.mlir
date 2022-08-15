@@ -4,13 +4,48 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// (c) Copyright 2022 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt -aie-find-flows %s | FileCheck %s
-// CHECK: antenna_detection.mlir:54:5: warning: Dangling Island Antenna
+// RUN: aie-opt -aie-find-flows %s 2>&1 | FileCheck %s
 
+///////////////////////Antenna1////////////////////////////////
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Antenna
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} AIE.connect<South:1, North:2>
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} %sb0 = AIE.switchbox(%tile23) {
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} AIE.connect<Core :1, North:1>
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}}  %sb1 = AIE.switchbox(%tile22) {
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} %tile22 = AIE.tile(2, 2)
+///////////////////////Antenna2////////////////////////////////
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Antenna
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} %21 = AIE.masterset(East : 1, %20)
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Antenna
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} AIE.rule(31, 0, %20)
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} AIE.packetrules(DMA : 0) {
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} %sb1 = AIE.switchbox(%tile22) {
+// CHECK: antenna_detection.mlir:{{.*}}: remark: Path Traceback
+// CHECK-NEXT: {{[[:space:]].*[[:space:]].*}} %tile22 = AIE.tile(2, 2)
+///////////////////////danglingAntenna1////////////////////////////////
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Dangling Island Antenna
+// CHECK-NEXT: {{[[:space:]].*}} AIE.connect<South:3, Core :0>
+///////////////////////danglingAntenna2////////////////////////////////
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Dangling Island Antenna
+// CHECK-NEXT: {{[[:space:]].*}} AIE.connect<East :1, North :3>
+///////////////////////danglingAntenna3////////////////////////////////
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Dangling Island Antenna
+// CHECK-NEXT: {{[[:space:]].*}} %23 = AIE.masterset(East : 2, %22)
+///////////////////////danglingAntenna4////////////////////////////////
+// CHECK: antenna_detection.mlir:{{.*}}: warning: Dangling Island Antenna
+// CHECK-NEXT: {{[[:space:]].*}} AIE.packetrules(West : 0) {
+
+///////////////////////Flows////////////////////////////////
 // CHECK: %[[T23:.*]] = AIE.tile(2, 3)
 // CHECK: %[[T22:.*]] = AIE.tile(2, 2)
 // CHECK: AIE.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
@@ -21,6 +56,7 @@
 // CHECK:   AIE.packet_dest<%[[T23]], DMA : 1>
 // CHECK: }
 // CHECK: AIE.flow(%2, Core : 0, %9, DMA : 0)
+
 module {
   %tile23 = AIE.tile(2, 3)
   %tile22 = AIE.tile(2, 2)
