@@ -34,14 +34,14 @@ struct BufferParams {
   int32_t square;
 };
 
-std::string getVectorTypeString(VectorType type) {
+std::string getVectorTypeString(VectorType type, bool abbrev = false) {
   std::stringstream ss;
   auto size = getVectorLaneSize(type);
   ss << "v" << size;
   if (auto intType  = type.getElementType().dyn_cast<IntegerType>()) {
-    ss << "int" << intType.getWidth();
+    ss << (abbrev ? "i" : "int") << intType.getWidth();
   } else if (auto floatType = type.getElementType().dyn_cast<FloatType>()) {
-    ss << "float";
+    ss << (abbrev ? "f" : "float");
   }
   return ss.str();
 }
@@ -125,7 +125,7 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
       } else if ((sourceElWidth == 48 && resultElWidth == 32) || (sourceElWidth == 80 && resultElWidth == 64)) {
         ss << 'l';
       }
-      ss << "srs_" << getVectorTypeString(resultType);
+      ss << "srs_" << getVectorTypeString(resultType, true);
 
       return ss.str();
     }
