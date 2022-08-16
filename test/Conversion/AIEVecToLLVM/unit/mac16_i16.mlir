@@ -1,0 +1,15 @@
+// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
+module {
+  func.func @mac16(%arg0: vector<32xi16>, %arg1: vector<16xi16>, %arg2: vector<16xi48>) {
+    %0 = aievec.mac %arg0, %arg1, %arg2 {xoffsets= "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "1", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>
+    return
+  }
+}
+// CHECK:      llvm.func @__builtin_aie_mac16_v32int16_v16int16_bm_sw48(vector<32xi16>, vector<16xi16>, vector<16xi48>, i32, i32, i32, vector<2xi32>, vector<2xi32>, vector<2xi32>) -> vector<16xi48>
+// CHECK:      %0 = llvm.mlir.constant(1 : i32) : i32
+// CHECK-NEXT: %1 = llvm.mlir.constant(0 : i32) : i32
+// CHECK-NEXT: %2 = llvm.mlir.constant(2 : i32) : i32
+// CHECK-NEXT: %3 = llvm.mlir.constant(dense<[50462976, 117835012]> : vector<2xi32>) : vector<2xi32>
+// CHECK-NEXT: %4 = llvm.mlir.constant(dense<0> : vector<2xi32>) : vector<2xi32>
+// CHECK-NEXT: %5 = llvm.mlir.constant(dense<[256, 148]> : vector<2xi32>) : vector<2xi32>
+// CHECK-NEXT: %6 = llvm.call @__builtin_aie_mac16_v32int16_v16int16_bm_sw48(%arg0, %arg1, %arg2, %0, %1, %2, %3, %4, %5) : (vector<32xi16>, vector<16xi16>, vector<16xi48>, i32, i32, i32, vector<2xi32>, vector<2xi32>, vector<2xi32>) -> vector<16xi48>
