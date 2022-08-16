@@ -95,6 +95,14 @@ int32_t encodeSquare(int32_t square) {
   return out & 0xFF;
 }
 
+// Encode the configuration register with buffer parameters and options
+// TODO: struct to handle this? Would that be too much public information?
+void encodeConf(int32_t conf[2], BufferParams &x, BufferParams &z, bool sub) {
+  conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
+  conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
+  conf[1] |= sub << 17;
+}
+
 class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSOp> {
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::SRSOp>::ConvertOpToLLVMPattern;
@@ -205,8 +213,7 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
 
       // Encode the configuration register
       int32_t conf[2] = {0,0};
-      conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
-      conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
+      encodeConf(conf, x, z, false);
 
       // Create the constants and replace the op
       auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(x.start));
@@ -274,9 +281,8 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
 
       // Encode the configuration register
       int32_t conf[2] = {0,0};
-      conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
-      conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
-      conf[1] |= op.fmsub() << 17;
+      encodeConf(conf, x, z, op.fmsub());
+
 
       // Create the constants and replace the op
       auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(x.start));
