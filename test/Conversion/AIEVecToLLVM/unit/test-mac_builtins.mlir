@@ -17,7 +17,7 @@ module {
   }
 }
 
-// The function declarations are sorted
+// The function declarations are in reverse order of creation
 // CHECK: llvm.func @__builtin_aie_mac8_v16int32_v8int32_bm_sw80(vector<16xi32>, vector<8xi32>, vector<8xi80>, i32, i32, i32, vector<2xi32>, vector<2xi32>, vector<2xi32>) -> vector<8xi80>
 // CHECK: llvm.func @__builtin_aie_mac8_v64int8_v32int8_am_sw48(vector<64xi8>, vector<32xi8>, vector<8xi48>, i32, i32, i32, vector<2xi32>, vector<2xi32>, vector<2xi32>) -> vector<8xi48>
 // CHECK: llvm.func @__builtin_aie_mac16_v32int16_v16int16_bm_sw48(vector<32xi16>, vector<16xi16>, vector<16xi48>, i32, i32, i32, vector<2xi32>, vector<2xi32>, vector<2xi32>) -> vector<16xi48>
