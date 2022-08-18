@@ -49,7 +49,6 @@ class flow_runner:
         await proc.wait()
         ret = proc.returncode
       else:
-<<<<<<< HEAD
         ret = 0
       end = time.time()
       if(self.opts.verbose):
@@ -157,9 +156,9 @@ class flow_runner:
         elif(opts.link):
           await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
                             '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
-        do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
-      if(opt.airbin):
-        file_airbin = os.path.join(tmpdirname, 'aie.airbin')
+        do_call(['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
+      if(opts.airbin):
+        file_airbin = os.path.join(tmpdirname, 'air.bin')
         do_call(['aie-translate', '--aie-generate-airbin', file_physical, '-o', file_airbin])
       else:
         file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
