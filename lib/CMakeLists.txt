@@ -7,6 +7,7 @@
 
 add_mlir_dialect_library(AIE
   AIEAssignBuffers.cpp
+  AIEAssignLockIDs.cpp
   AIEDialect.cpp
   AIETokenAnalysis.cpp
   AIENetlistAnalysis.cpp
@@ -18,6 +19,8 @@ add_mlir_dialect_library(AIE
   AIECreateLocks.cpp
   AIECoreToStandard.cpp
   AIEHerdRouting.cpp
+  AIECreateBroadcastPacket.cpp
+  AIELowerMulticast.cpp
   AIECreatePacketFlows.cpp
   AIELowerMemcpy.cpp
   AIELocalizeLocks.cpp

@@ -141,7 +141,7 @@ struct AIEObjectFifoLoopUnrollPass
               // identify dependencies
               auto numOperands = (&(*op))->getNumOperands();
               std::vector<int> dependecyIndices;
-              for (int i = 0; i < numOperands; i++) {
+              for (size_t i = 0; i < numOperands; i++) {
                 auto operand = (&(*op))->getOperand(i);
                 int dependencyIndex = -1;
 
@@ -181,7 +181,7 @@ struct AIEObjectFifoLoopUnrollPass
                 // for each operand, check whether there was a dependecy
                 auto clone = op->clone();
                 auto numOperands = clone->getNumOperands();
-                for (int operandIndex = 0; operandIndex < numOperands;
+                for (size_t operandIndex = 0; operandIndex < numOperands;
                      operandIndex++) {
                   int originalDependencyIndex =
                       dependecies[originalIndex][operandIndex];

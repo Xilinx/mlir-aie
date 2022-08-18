@@ -36,74 +36,21 @@ using namespace xilinx::AIE;
 #define LOOP_VAR_DEPENDENCY -2
 
 //===----------------------------------------------------------------------===//
-// Conversion Patterns
+// Conversion Pattern
 //===----------------------------------------------------------------------===//
-struct RemoveAIEObjectFifoCreate
-    : public OpConversionPattern<ObjectFifoCreateOp> {
-  using OpConversionPattern<ObjectFifoCreateOp>::OpConversionPattern;
+template <typename MyOp>
+struct AIEOpRemoval : public OpConversionPattern<MyOp> {
+  using OpConversionPattern<MyOp>::OpConversionPattern;
+  using OpAdaptor = typename MyOp::Adaptor;
   ModuleOp &module;
 
-  RemoveAIEObjectFifoCreate(MLIRContext *context, ModuleOp &m,
-                            PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoCreateOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
   LogicalResult
-  matchAndRewrite(ObjectFifoCreateOp op, OpAdaptor adaptor,
+  matchAndRewrite(MyOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct RemoveAIEAcquireLocks : public OpConversionPattern<ObjectFifoAcquireOp> {
-  using OpConversionPattern<ObjectFifoAcquireOp>::OpConversionPattern;
-  ModuleOp &module;
-
-  RemoveAIEAcquireLocks(MLIRContext *context, ModuleOp &m,
-                        PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoAcquireOp>(context, benefit), module(m) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoAcquireOp acqOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = acqOp.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct RemoveAIEReleaseLocks : public OpConversionPattern<ObjectFifoReleaseOp> {
-  using OpConversionPattern<ObjectFifoReleaseOp>::OpConversionPattern;
-  ModuleOp &module;
-
-  RemoveAIEReleaseLocks(MLIRContext *context, ModuleOp &m,
-                        PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoReleaseOp>(context, benefit), module(m) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoReleaseOp relOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = relOp.getOperation();
-    rewriter.eraseOp(Op);
-    return success();
-  }
-};
-
-struct RemoveAIESubviewAccess
-    : public OpConversionPattern<ObjectFifoSubviewAccessOp> {
-  using OpConversionPattern<ObjectFifoSubviewAccessOp>::OpConversionPattern;
-  ModuleOp &module;
-
-  RemoveAIESubviewAccess(MLIRContext *context, ModuleOp &m,
-                         PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoSubviewAccessOp>(context, benefit),
-        module(m) {}
-
-  LogicalResult
-  matchAndRewrite(ObjectFifoSubviewAccessOp accOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Operation *Op = accOp.getOperation();
     rewriter.eraseOp(Op);
     return success();
   }
@@ -764,7 +711,7 @@ struct AIEObjectFifoStatefulTransformPass
           // AcquireOp in program order
           acquiredIndices = acquiresPerFifo[op];
           // take into account what has been released in-between
-          assert(numRel <= acquiredIndices.size() &&
+          assert((size_t)numRel <= acquiredIndices.size() &&
                  "Cannot release more elements than are already acquired.");
           for (int i = 0; i < numRel; i++) {
             acquiredIndices.erase(acquiredIndices.begin());
@@ -804,7 +751,7 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoAcquireOp acqOp =
             accessOp.subview().getDefiningOp<ObjectFifoAcquireOp>();
         auto users = accessOp.output().getUsers();
-        assert(accessOp.getIndex() < subviews[acqOp].size() &&
+        assert((size_t)accessOp.getIndex() < subviews[acqOp].size() &&
                "Index out of bounds for subview: accessed farther than number "
                "of acquired elements.");
         for (auto user : users) {
@@ -819,10 +766,10 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
-    patterns.insert<RemoveAIEObjectFifoCreate>(m.getContext(), m);
-    patterns.insert<RemoveAIEAcquireLocks>(m.getContext(), m);
-    patterns.insert<RemoveAIEReleaseLocks>(m.getContext(), m);
-    patterns.insert<RemoveAIESubviewAccess>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }

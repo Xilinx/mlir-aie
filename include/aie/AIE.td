@@ -679,6 +679,142 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   // ];
 }
 
+def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "Combination of broadcast and packet-switch";
+  let description = [{
+    An abstraction of broadcast and packet-switched flow. During place and
+    route, it will be replaced by packet-switched flow and further replaced 
+    by MasterSets and PacketRules inside switchboxes.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.broadcast_packet(%70, "DMA" : 0){
+        AIE.bp_id(0x0){
+          AIE.bp_dest<%73, "DMA" : 0>
+          AIE.bp_dest<%63, "DMA" : 0>
+        }
+        AIE.bp_id(0x1){
+          AIE.bp_dest<%74, "DMA" : 0>
+          AIE.bp_dest<%64, "DMA" : 0>
+        }
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_BPIDOp: AIE_Op<"bp_id", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins I8Attr:$ID
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "A set of packets that share the same ID";
+  let description = [{
+    A set of destination packets that share the same source and ID. This must exist
+    within an [AIE.broadcast_packet] operation.
+    See [AIE.broadcast_packet]for an example.
+  }];
+  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let extraClassDeclaration = [{
+    int IDInt() { return ID(); }
+  }];
+}
+
+def AIE_BPDestOp: AIE_Op<"bp_dest", [HasParent<"BPIDOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port";
+  let description = [{
+    An object representing the destination of a  Broad Packet. This must exist
+    within an [AIE.bp_id] operation.
+    See [AIE.broadcast_packet] for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MulticastOp: AIE_Op<"multicast", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "An abstraction of multicast";
+  let description = [{
+    An abstraction of broadcast. During place and
+    route, it will be replaced by multiple flows.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.multicast(%70, "DMA" : 0){
+        AIE.multi_dest<%73, "DMA" : 0>
+        AIE.multi_dest<%74, "DMA" : 0>
+        AIE.multi_dest<%63, "DMA" : 0>
+        AIE.multi_dest<%64, "DMA" : 0>
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MultiDestOp: AIE_Op<"multi_dest", [HasParent<"MulticastOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port of multicast flow";
+  let description = [{
+    An object representing the destination of a multicast flow. This must exist
+    within an [AIE.multicast] operation. There can be multiple destinations within an
+    AIE.multicast Op.
+
+    See [AIE.multicast]for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return channel(); }
+    Port port() { return std::make_pair(bundle(), channelIndex()); }
+  }];
+}
+
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins I8Attr:$ID
@@ -947,7 +1083,8 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
-    This operation creates a physical lock.
+    This operation creates a physical lock. For this operation the lockID variable is optional. 
+    However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass. 
 
     Example:
     ```
@@ -955,14 +1092,21 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
       %lck = AIE.lock(%tile33, 7)
     ```
     This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
+
+    Case when LockID is not assigned:
+      Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
+      After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
   }];
   let arguments = (
     ins Index:$tile,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
+        OptionalAttr<Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
   );
-  let assemblyFormat = [{ `(` $tile `,` $lockID `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getLockID() { return lockID(); }
+    int getLockID() { 
+      assert(lockID().hasValue() && "Lock has no ID value");
+      return lockID().getValue();
+    }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile, "int":$lockID), [{
@@ -972,6 +1116,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
         $_builder.getI32IntegerAttr(lockID));
       }]>
   ];
+  // let hasCanonicalizer = 1;
 }
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
@@ -1465,13 +1610,6 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
   let hasVerifier = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$subview, "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
-    [{
-      build($_builder, $_state, subview, port, fifo, size);
-    }]>
-  ];
-
   let extraClassDeclaration = [{
     Value getAIEObjectFifo() { return fifo(); }
     AIEObjectFifoType getAIEObjectFifoType() {
@@ -1508,13 +1646,6 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   }];
 
   let hasVerifier = 1;
-
-  let builders = [
-    OpBuilder<(ins "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
-    [{
-      build($_builder, $_state, port, fifo, size);
-    }]>
-  ];
 
   let extraClassDeclaration = [{
     Value getAIEObjectFifo() { return fifo(); }

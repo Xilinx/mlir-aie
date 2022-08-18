@@ -38,7 +38,9 @@ module @twoFilter2D  {
 
         %value = arith.index_cast %valueIndex : index to i32
         scf.for %indexInLine = %c0 to %lineWidth step %c1 {
-            memref.store %value, %lineOut[%indexInLine] : memref<16xi32>
+            %i = arith.index_cast %indexInLine : index to i32
+            %sum = arith.addi %value, %i : i32
+            memref.store %sum, %lineOut[%indexInLine] : memref<16xi32>
         }
         return
     }
