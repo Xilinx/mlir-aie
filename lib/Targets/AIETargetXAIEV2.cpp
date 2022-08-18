@@ -635,11 +635,10 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
              << "/* drop_header */ "
              << (isdma ? "XAIE_SS_PKT_DROP_HEADER"
                        : "XAIE_SS_PKT_DONOT_DROP_HEADER")
-             << ", " // TODO is this right default???
+             << ", "
              << "/* arbiter */ " << arbiter << ", "
              << "/* MSelEn */ "
-             << "0x" << llvm::utohexstr(mask)
-             << ");\n"; // TODO do I need mask instead???
+             << "0x" << llvm::utohexstr(mask) << ");\n";
     }
 
     for (auto connectOp : b.getOps<PacketRulesOp>()) {
