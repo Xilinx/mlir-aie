@@ -235,7 +235,7 @@ private:
 
 #endif
 
-aie_libxaie_ctx_t *mlir_aie_init_libxaie(volatile void *base_va);
+aie_libxaie_ctx_t *mlir_aie_init_libxaie();
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *);
 
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx);

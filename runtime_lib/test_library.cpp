@@ -15,10 +15,13 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <string>
 
 extern "C" {
 extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
 }
+
+volatile void *_aie_base = nullptr;
 
 /*
  ******************************************************************************
@@ -27,16 +30,77 @@ extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
  */
 #ifdef LIBXAIENGINEV1
 
-aie_libxaie_ctx_t *mlir_aie_init_libxaie(volatile void *base_va) {
+aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   aie_libxaie_ctx_t *ctx =
       (aie_libxaie_ctx_t *)malloc(sizeof(aie_libxaie_ctx_t));
   if (!ctx)
     return 0;
 
+<<<<<<< HEAD
   return ctx;
 }
 
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) { free(ctx); }
+=======
+  ctx->AieConfigPtr.AieGen = XAIE_DEV_GEN_AIE;
+//#ifdef AIR_PCIE
+  // TODO really discover the bus id
+  std::string aie_bar = "/sys/bus/pci/devices/0000:21:00.0/resource2";
+
+  int fda;
+  if((fda = open(aie_bar.c_str(), O_RDWR | O_SYNC)) == -1) {
+      printf("[ERROR] Failed to open device file\n");
+      return nullptr;
+  }
+
+  // Map the memory region into userspace
+  _aie_base = mmap(NULL,    // virtual address
+                      0x20000000,             // length
+                      PROT_READ | PROT_WRITE, // prot
+                      MAP_SHARED,             // flags
+                      fda,                    // device fd
+                      0);                     // offset
+  if (!_aie_base) return nullptr;
+  ctx->AieConfigPtr.BaseAddr = (uint64_t)_aie_base;
+//#else
+//  xaie->AieConfigPtr.BaseAddr = XAIE_BASE_ADDR;
+//#endif
+  ctx->AieConfigPtr.ColShift = XAIE_COL_SHIFT;
+  ctx->AieConfigPtr.RowShift = XAIE_ROW_SHIFT;
+  ctx->AieConfigPtr.NumRows = XAIE_NUM_ROWS;
+  ctx->AieConfigPtr.NumCols = XAIE_NUM_COLS;
+  ctx->AieConfigPtr.ShimRowNum = XAIE_SHIM_ROW;
+  ctx->AieConfigPtr.MemTileRowStart = XAIE_RES_TILE_ROW_START;
+  ctx->AieConfigPtr.MemTileNumRows = XAIE_RES_TILE_NUM_ROWS;
+  //  ctx->AieConfigPtr.ReservedRowStart = XAIE_RES_TILE_ROW_START;
+  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;
+  ctx->AieConfigPtr.AieTileRowStart = XAIE_AIE_TILE_ROW_START;
+  ctx->AieConfigPtr.AieTileNumRows = XAIE_AIE_TILE_NUM_ROWS;
+  ctx->AieConfigPtr.PartProp = {0};
+  ctx->DevInst = {0};
+
+  /*
+    XAIEGBL_HWCFG_SET_CONFIG((&xaie->AieConfig),
+                             XAIE_NUM_ROWS, XAIE_NUM_COLS, 0x800);
+    XAieGbl_HwInit(&xaie->AieConfig);
+    xaie->AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
+    XAieGbl_CfgInitialize(&xaie->AieInst,
+                          &xaie->TileInst[0][0], xaie->AieConfigPtr);
+
+    _air_host_active_libxaie1 = xaie;
+  */
+  return ctx;
+}
+
+void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
+  //  if (xaie == _air_host_active_libxaie1)
+  //    _air_host_active_libxaie1 = nullptr;
+  AieRC RC = XAie_Finish(&(ctx->DevInst));
+  if (RC != XAIE_OK) {
+    printf("Failed to finish tiles.\n");
+  }
+  free(ctx);
+}
 
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   XAIEGBL_HWCFG_SET_CONFIG((&(ctx->AieConfig)), XAIE_NUM_ROWS, XAIE_NUM_COLS,
@@ -421,9 +485,12 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
  */
 #else
 
+<<<<<<< HEAD
 // namespace aie_device {
 //}
 
+=======
+>>>>>>> Moved aie bar mapping into test_library
 aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   aie_libxaie_ctx_t *ctx =
       (aie_libxaie_ctx_t *)malloc(sizeof(aie_libxaie_ctx_t));
