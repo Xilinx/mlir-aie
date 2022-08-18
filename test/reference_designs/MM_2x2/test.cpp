@@ -107,13 +107,13 @@ int main(int argc, char *argv[]) {
   int *mem_ptr3 =
       mlir_aie_mem_alloc(_xaie, 3, 0x3000 + 0x020100000000LL, DMA_COUNT);
   int *mem_ptr4 =
-      mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+      mlir_aie_mem_alloc(_xaie, 4, 0x4000 + 0x020100000000LL, DMA_COUNT);
   int *mem_ptr5 =
-      mlir_aie_mem_alloc(_xaie, 1, 0x5000 + 0x020100000000LL, DMA_COUNT);
+      mlir_aie_mem_alloc(_xaie, 5, 0x5000 + 0x020100000000LL, DMA_COUNT);
   int *mem_ptr6 =
-      mlir_aie_mem_alloc(_xaie, 2, 0x6000 + 0x020100000000LL, DMA_COUNT + 1);
+      mlir_aie_mem_alloc(_xaie, 6, 0x6000 + 0x020100000000LL, DMA_COUNT + 1);
   int *mem_ptr7 =
-      mlir_aie_mem_alloc(_xaie, 3, 0x8000 + 0x020100000000LL, DMA_COUNT + 1);
+      mlir_aie_mem_alloc(_xaie, 7, 0x8000 + 0x020100000000LL, DMA_COUNT + 1);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT + 1; i++) {
@@ -132,6 +132,15 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 2); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 3); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 4); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 5); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 6); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
+
   mlir_aie_clear_tile_memory(_xaie, 7, 3);
   mlir_aie_clear_tile_memory(_xaie, 7, 4);
   mlir_aie_clear_tile_memory(_xaie, 6, 3);
@@ -143,6 +152,19 @@ int main(int argc, char *argv[]) {
     mlir_aie_write_buffer_buf63_2(_xaie, bd,
                                   0); // Assign the accumulator matrix to 0
   }
+
+#ifdef LIBXAIENGINEV2
+  mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
+  mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
+  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr2);
+  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr3);
+  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr4);
+  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr5);
+  mlir_aie_external_set_addr_myBuffer_70_2((u64)mem_ptr6);
+  mlir_aie_external_set_addr_myBuffer_70_3((u64)mem_ptr7);
+  mlir_aie_configure_shimdma_70(_xaie);
+  mlir_aie_configure_shimdma_60(_xaie);
+#endif
 
   printf("before core start\n");
   usleep(sleep_u);
