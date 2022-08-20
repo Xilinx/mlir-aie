@@ -297,15 +297,15 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::UPDOp>::ConvertOpToLLVMPattern;
 
-    static std::string getBuiltinName(xilinx::aievec::UPDOp op, int loadSize) {
+    static std::string getIntrinsicName(xilinx::aievec::UPDOp op, int loadSize) {
       auto resultType = op.result().getType().cast<VectorType>();
       std::stringstream ss;
-      ss << "upd_";
+      ss << "llvm.aie.upd_";
       ss << (loadSize == 128   ? 'v'
              : loadSize == 256 ? 'w'
                                : 'x') << "_";
       ss << getVectorTypeString(resultType) << "_";
-      // The index actually affects which builtin to call
+      // The index actually affects which intrinsic to call
       ss << (op.index() == 0 ? "lo" : "hi");
       return ss.str();
     }
@@ -365,18 +365,18 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           ptr);
         auto loadValue = rewriter.create<LLVM::LoadOp>(op->getLoc(), castedPtr, 1);
 
-        // Get set up for the builtin
-        std::string builtinName = getBuiltinName(op, loadSize);
+        // Get set up for the intrinsic
+        std::string intrinsicName = getIntrinsicName(op, loadSize);
 
         // If the intrinsic declaration doesn't exist, create it
         auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-          StringAttr::get(context, builtinName));
+          StringAttr::get(context, intrinsicName));
 
         if (!func) {
           OpBuilder::InsertionGuard guard(rewriter);
           rewriter.setInsertionPointToStart(module.getBody());
           func = rewriter.create<LLVM::LLVMFuncOp>(
-              rewriter.getUnknownLoc(), builtinName,
+              rewriter.getUnknownLoc(), intrinsicName,
               LLVM::LLVMFunctionType::get(resultType,
                                           {resultType,
                                           loadType})
@@ -393,17 +393,17 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           //destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
 
           std::stringstream ss;
-          ss << "__builtin_aie_" << getVectorTypeString(resultType) << "undef";
-          std::string builtinName = ss.str();
+          ss << "__intrinsic_aie_" << getVectorTypeString(resultType) << "undef";
+          std::string intrinsicName = ss.str();
 
           auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-                StringAttr::get(rewriter.getContext(), builtinName));
+                StringAttr::get(rewriter.getContext(), intrinsicName));
 
           if (!func) {
             OpBuilder::InsertionGuard guard(rewriter);
             rewriter.setInsertionPointToStart(module.getBody());
             func = rewriter.create<LLVM::LLVMFuncOp>(
-                rewriter.getUnknownLoc(), builtinName,
+                rewriter.getUnknownLoc(), intrinsicName,
                 LLVM::LLVMFunctionType::get(resultType, {}));
             rewriter.setInsertionPoint(op);
           }
