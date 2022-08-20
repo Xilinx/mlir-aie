@@ -53,7 +53,7 @@ bool accIsDouble(VectorType type) {
   return (lanes * accWidth) > 384;
 }
 
-std::string getMulOrFMABuiltinName(Operation *op) {
+std::string getMulOrFMAIntrinsicName(Operation *op) {
   std::string baseName;
   Value lhs, rhs, result;
   if (auto mulOp = dyn_cast<xilinx::aievec::MulOp>(op)) {
@@ -70,14 +70,11 @@ std::string getMulOrFMABuiltinName(Operation *op) {
   VectorType resultType = result.getType().cast<VectorType>();
   int resultSize = getVectorLaneSize(resultType);
   std::stringstream ss;
-  ss << "__builtin_aie_";
+  ss << "llvm.aie.";
   if (auto intType = resultType.getElementType().dyn_cast<IntegerType>()) {
     ss << baseName;
-    ss << resultSize << "_"
-       << getVectorTypeString(lhs.getType().cast<VectorType>()) << "_"
-       << getVectorTypeString(rhs.getType().cast<VectorType>()) << "_"
-       << (accIsDouble(resultType) ? "bm" : "am")
-       << "_sw" << intType.getWidth();
+    ss << resultSize << "."
+       << getVectorTypeString(lhs.getType().cast<VectorType>());
   } else if (resultType.getElementType().dyn_cast<FloatType>()) {
     ss << "vfp" << baseName;
   }
@@ -175,15 +172,15 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
       auto confType = VectorType::get({2}, IntegerType::get(context, 32));
 
       // If the intrinsic declaration doesn't exist, create it
-      std::string builtinName = getMulOrFMABuiltinName(op);
+      std::string intrinsicName = getMulOrFMAIntrinsicName(op);
       auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, builtinName));
+        StringAttr::get(context, intrinsicName));
 
       if (!func) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
-            rewriter.getUnknownLoc(), builtinName,
+            rewriter.getUnknownLoc(), intrinsicName,
             LLVM::LLVMFunctionType::get(op.result().getType(),
                                         {op.lhs().getType(),
                                          op.rhs().getType(),
@@ -242,15 +239,15 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
       auto confType = VectorType::get({2}, IntegerType::get(context, 32));
 
       // If the intrinsic declaration doesn't exist, create it
-      std::string builtinName = getMulOrFMABuiltinName(op);
+      std::string intrinsicName = getMulOrFMAIntrinsicName(op);
       auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, builtinName));
+        StringAttr::get(context, intrinsicName));
 
       if (!func) {
         OpBuilder::InsertionGuard guard(rewriter);
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
-            rewriter.getUnknownLoc(), builtinName,
+            rewriter.getUnknownLoc(), intrinsicName,
             LLVM::LLVMFunctionType::get(op.result().getType(),
                                         {op.lhs().getType(),
                                          op.rhs().getType(),
