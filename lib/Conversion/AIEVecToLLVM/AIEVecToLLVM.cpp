@@ -300,11 +300,11 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
     static std::string getIntrinsicName(xilinx::aievec::UPDOp op, int loadSize) {
       auto resultType = op.result().getType().cast<VectorType>();
       std::stringstream ss;
-      ss << "llvm.aie.upd_";
+      ss << "llvm.aie.upd.";
       ss << (loadSize == 128   ? 'v'
              : loadSize == 256 ? 'w'
-                               : 'x') << "_";
-      ss << getVectorTypeString(resultType) << "_";
+                               : 'x') << ".";
+      ss << getVectorTypeString(resultType) << ".";
       // The index actually affects which intrinsic to call
       ss << (op.index() == 0 ? "lo" : "hi");
       return ss.str();
@@ -393,7 +393,7 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           //destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
 
           std::stringstream ss;
-          ss << "__intrinsic_aie_" << getVectorTypeString(resultType) << "undef";
+          ss << "llvm.aie." << getVectorTypeString(resultType) << ".undef";
           std::string intrinsicName = ss.str();
 
           auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
