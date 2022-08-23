@@ -60,8 +60,9 @@
 // CHECK:    }
 // CHECK:    %12 = AIE.core(%0) {
 // CHECK:      %c0 = arith.constant 0 : index
-// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      %c12 = arith.constant 12 : index
+// CHECK:      %c2 = arith.constant 2 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%3, Acquire, 0)
 // CHECK:        func.call @some_work(%2) : (memref<16xi32>) -> ()
@@ -74,8 +75,9 @@
 // CHECK:    }
 // CHECK:    %13 = AIE.core(%1) {
 // CHECK:      %c0 = arith.constant 0 : index
-// CHECK:      %c2 = arith.constant 2 : index
+// CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      %c12 = arith.constant 12 : index
+// CHECK:      %c2 = arith.constant 2 : index
 // CHECK:      scf.for %arg0 = %c0 to %c12 step %c2 {
 // CHECK:        AIE.useLock(%8, Acquire, 1)
 // CHECK:        func.call @some_work(%7) : (memref<16xi32>) -> ()
@@ -100,18 +102,13 @@ module @non_adjacency {
 
     %core12 = AIE.core(%tile12) {
         %c0 = arith.constant 0 : index
-        %c2 = arith.constant 2 : index
+        %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        scf.for %indexInHeight = %c0 to %height step %c2 {
-            %subview0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-
-            %subview1 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
+        scf.for %indexInHeight = %c0 to %height step %c1 {
+            %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
@@ -120,18 +117,13 @@ module @non_adjacency {
 
     %core33 = AIE.core(%tile33) {
         %c0 = arith.constant 0 : index
-        %c2 = arith.constant 2 : index
+        %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        scf.for %indexInHeight = %c0 to %height step %c2 { 
-            %subview0 = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem00) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-
-            %subview1 = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem10) : (memref<16xi32>) -> ()
+        scf.for %indexInHeight = %c0 to %height step %c1 { 
+            %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         }
         
