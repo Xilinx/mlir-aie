@@ -384,12 +384,12 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           rewriter.setInsertionPoint(op);
         }
 
+        // If this UPD is not working off of an existing destination vector,
+        // create an undefined vector as the destination
         Value destValue;
-        if (op.vector()) {
-          destValue = op.vector();
+        if (adaptor.vector()) {
+          destValue = adaptor.vector();
         } else {
-          // If this UPD is not working off of an existing destination vector,
-          // create an undefined vector as the destination
           //destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
 
           std::stringstream ss;
