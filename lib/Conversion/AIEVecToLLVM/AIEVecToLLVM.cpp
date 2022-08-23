@@ -419,6 +419,48 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
     }
 };
 
+class ConcatOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp>::ConvertOpToLLVMPattern;
+
+    static std::string getIntrinsicName(xilinx::aievec::ConcatOp op) {
+      auto sourceType = op.sources()[0].getType().cast<VectorType>();
+      std::stringstream ss;
+      ss << "llvm.aie.concat.";
+      ss << getVectorTypeString(sourceType, true);
+      // The index actually affects which intrinsic to call
+      return ss.str();
+    }
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::ConcatOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+
+      // If the intrinsic declaration doesn't exist, create it
+      std::string intrinsicName = getIntrinsicName(op);
+      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrinsicName));
+
+      // TODO: support for more than 2 vector concat
+      if (!func) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(module.getBody());
+        func = rewriter.create<LLVM::LLVMFuncOp>(
+            rewriter.getUnknownLoc(), intrinsicName,
+            LLVM::LLVMFunctionType::get(op.result().getType(),
+                                        {op.sources()[0].getType(),
+                                         op.sources()[1].getType()})
+                                       );
+        rewriter.setInsertionPoint(op);
+      }
+
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.sources()[0], op.sources()[1]});
+      return success();
+    }
+};
+
 class AddOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::AddOp> {
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::AddOp>::ConvertOpToLLVMPattern;
@@ -457,20 +499,6 @@ class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPSO
       auto module = op->getParentOfType<ModuleOp>();
       MLIRContext *context = rewriter.getContext();
       op.emitWarning() << "aie.ups conversion is not implemented\n";
-      return failure();
-    }
-};
-
-class ConcatOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp> {
-  public:
-    using ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp>::ConvertOpToLLVMPattern;
-
-    LogicalResult
-    matchAndRewrite(xilinx::aievec::ConcatOp op, OpAdaptor adaptor,
-                    ConversionPatternRewriter &rewriter) const override {
-      auto module = op->getParentOfType<ModuleOp>();
-      MLIRContext *context = rewriter.getContext();
-      op.emitWarning() << "aie.concat conversion is not implemented\n";
       return failure();
     }
 };
