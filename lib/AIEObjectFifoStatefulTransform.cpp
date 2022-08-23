@@ -16,8 +16,8 @@
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Location.h"
@@ -211,16 +211,16 @@ struct AIEObjectFifoStatefulTransformPass
   int computeLCM(std::set<int> values) {
     int lcm = 1;
     for (int i : values)
-        lcm = (i * lcm) / std::gcd(i, lcm);
+      lcm = (i * lcm) / std::gcd(i, lcm);
     return lcm;
   }
 
-  // Function to record operations in for loop body (without 
+  // Function to record operations in for loop body (without
   // terminator operation) and identify dependencies between them.
-  void identifyDependencies(mlir::scf::ForOp forLoop, 
-                            std::vector<Operation *> &operations, 
-                            DenseMap<Operation *, int> &opIndex, 
-                            std::vector<std::vector<int>> &dependencies ) {
+  void identifyDependencies(mlir::scf::ForOp forLoop,
+                            std::vector<Operation *> &operations,
+                            DenseMap<Operation *, int> &opIndex,
+                            std::vector<std::vector<int>> &dependencies) {
     Block *body = forLoop.getBody();
     auto withoutTerminator = --body->end();
     int index = 0;
@@ -255,14 +255,13 @@ struct AIEObjectFifoStatefulTransformPass
   // of times. Assumes builder insertion point is set.
   // If there is a dependency on a loop induction variable, the given
   // base mlir::Value is used to resolve it.
-  void duplicateBlock(OpBuilder &builder, int numDuplications, 
+  void duplicateBlock(OpBuilder &builder, int numDuplications,
                       std::vector<Operation *> &operations,
                       std::vector<std::vector<int>> &dependencies,
                       mlir::Value base, int64_t step, bool inLoop) {
     int originalIndex = 0;
-    std::vector<Operation *>
-        duplicatedOperations; // operations in current duplication
-                              // iteration
+    std::vector<Operation *> duplicatedOperations; // operations in current
+                                                   // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
       originalIndex = 0;
       duplicatedOperations.clear();
@@ -271,7 +270,7 @@ struct AIEObjectFifoStatefulTransformPass
         auto clone = op->clone();
         auto numOperands = clone->getNumOperands();
         for (int operandIndex = 0; (unsigned)operandIndex < numOperands;
-              operandIndex++) {
+             operandIndex++) {
           int originalDependencyIndex =
               dependencies[originalIndex][operandIndex];
           if (originalDependencyIndex >= 0) {
@@ -279,9 +278,9 @@ struct AIEObjectFifoStatefulTransformPass
             // same index in current duplication
             clone->setOperand(
                 operandIndex,
-                duplicatedOperations[originalDependencyIndex]
-                    ->getResult(0)); // TODO: what if operation has
-                                      // multiple results?
+                duplicatedOperations[originalDependencyIndex]->getResult(
+                    0)); // TODO: what if operation has
+                         // multiple results?
           } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
             int64_t increment_value = 0;
             if (inLoop) {
@@ -290,14 +289,12 @@ struct AIEObjectFifoStatefulTransformPass
             } else {
               increment_value = i * step;
             }
-            arith::ConstantOp increment =
-                builder.create<arith::ConstantOp>(
-                    builder.getUnknownLoc(),
-                    builder.getIndexAttr(increment_value),
-                    builder.getIndexType());
+            arith::ConstantOp increment = builder.create<arith::ConstantOp>(
+                builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
+                builder.getIndexType());
             arith::AddIOp sum = builder.create<arith::AddIOp>(
-                builder.getUnknownLoc(), builder.getIndexType(),
-                base, increment->getResult(0));
+                builder.getUnknownLoc(), builder.getIndexType(), base,
+                increment->getResult(0));
             clone->setOperand(operandIndex, sum->getResult(0));
           }
         }
@@ -310,7 +307,8 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   // Function that unrolls for-loops that contain objectFifo operations.
-  void unrollForLoops(ModuleOp &m, OpBuilder &builder, std::vector<TileOp> objectFifoTiles) {
+  void unrollForLoops(ModuleOp &m, OpBuilder &builder,
+                      std::vector<TileOp> objectFifoTiles) {
     for (auto coreOp : m.getOps<CoreOp>()) {
       if (std::find(objectFifoTiles.begin(), objectFifoTiles.end(),
                     coreOp.getTileOp()) != objectFifoTiles.end()) {
@@ -334,7 +332,8 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
 
-          unrollFactor = computeLCM(objFifoSizes); // also counts original loop body
+          unrollFactor =
+              computeLCM(objFifoSizes); // also counts original loop body
 
           if (found) {
             std::vector<Operation *>
@@ -344,15 +343,16 @@ struct AIEObjectFifoStatefulTransformPass
                 opIndex; // maps operations of original loop body to their
                          // position in it
             std::vector<std::vector<int>>
-                dependencies; // index in first vecotr corresponds to position in
-                             // original loop body dependency vector has size
-                             // equal to number of operands of that operation:
-                             //    * if LOOP_VAR_DEPENDENCY : operand is
-                             //    dependent on loop induction variable
-                             //    * if -1 : operand is not dependent on any
-                             //    operation in loop body
-                             //    * if >=0: operand is dependent on operation
-                             //    with that index in original loop body
+                dependencies; // index in first vecotr corresponds to position
+                              // in original loop body dependency vector has
+                              // size equal to number of operands of that
+                              // operation:
+                              //    * if LOOP_VAR_DEPENDENCY : operand is
+                              //    dependent on loop induction variable
+                              //    * if -1 : operand is not dependent on any
+                              //    operation in loop body
+                              //    * if >=0: operand is dependent on operation
+                              //    with that index in original loop body
 
             // find new loop size and step
             auto old_upper_bound = forLoop.getUpperBound()
@@ -365,14 +365,14 @@ struct AIEObjectFifoStatefulTransformPass
                                        .getValue();
             int64_t old_lower_value =
                 old_lower_bound.dyn_cast<IntegerAttr>().getInt();
-            auto old_step = forLoop.getStep()
-                                .getDefiningOp<arith::ConstantOp>()
-                                .getValue();
-            int64_t old_step_value =
-                old_step.dyn_cast<IntegerAttr>().getInt();
-            int64_t num_iter = (old_upper_value - old_lower_value) / old_step_value;
+            auto old_step =
+                forLoop.getStep().getDefiningOp<arith::ConstantOp>().getValue();
+            int64_t old_step_value = old_step.dyn_cast<IntegerAttr>().getInt();
+            int64_t num_iter =
+                (old_upper_value - old_lower_value) / old_step_value;
 
-            int64_t num_unrolls = 0; // number of times to unroll loop, not counting original body
+            int64_t num_unrolls =
+                0; // number of times to unroll loop, not counting original body
 
             identifyDependencies(forLoop, operations, opIndex, dependencies);
 
@@ -380,7 +380,8 @@ struct AIEObjectFifoStatefulTransformPass
               // duplicate loop body and remove loop
               num_unrolls = num_iter;
               builder.setInsertionPointAfter(forLoop);
-              duplicateBlock(builder, num_unrolls, operations, dependencies, forLoop.getLowerBound(), old_step_value, false);
+              duplicateBlock(builder, num_unrolls, operations, dependencies,
+                             forLoop.getLowerBound(), old_step_value, false);
               forLoop.getOperation()->erase();
 
             } else {
@@ -388,12 +389,14 @@ struct AIEObjectFifoStatefulTransformPass
 
               // create new upper bound and step
               int64_t new_step_value = (int64_t)unrollFactor * old_step_value;
-              int64_t remainder = ((old_upper_value - old_lower_value) % new_step_value) / old_step_value;
+              int64_t remainder =
+                  ((old_upper_value - old_lower_value) % new_step_value) /
+                  old_step_value;
               builder.setInsertionPoint(forLoop);
               if (remainder > 0) {
                 int64_t new_upper_bound =
                     ((old_upper_value - old_lower_value) / new_step_value) *
-                        new_step_value;
+                    new_step_value;
                 arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
                     builder.getUnknownLoc(),
                     builder.getIndexAttr(new_upper_bound),
@@ -401,17 +404,18 @@ struct AIEObjectFifoStatefulTransformPass
                 forLoop.setUpperBound(uBound);
               }
               arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
-                  builder.getUnknownLoc(),
-                  builder.getIndexAttr(new_step_value),
+                  builder.getUnknownLoc(), builder.getIndexAttr(new_step_value),
                   old_upper_bound.getType());
               forLoop.setStep(new_step);
 
               // duplicate loop body, insert before terminator operation
               builder.setInsertionPoint(&(body->back()));
-              duplicateBlock(builder, num_unrolls, operations, dependencies, forLoop.getInductionVar(), old_step_value, true);
+              duplicateBlock(builder, num_unrolls, operations, dependencies,
+                             forLoop.getInductionVar(), old_step_value, true);
               // duplicate remainder operations after loop body
               builder.setInsertionPointAfter(forLoop);
-              duplicateBlock(builder, remainder, operations, dependencies, forLoop.getUpperBound(), old_step_value, false);
+              duplicateBlock(builder, remainder, operations, dependencies,
+                             forLoop.getUpperBound(), old_step_value, false);
             }
           }
         });
