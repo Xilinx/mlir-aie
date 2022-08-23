@@ -26,6 +26,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
+#include <numeric>
 
 using namespace mlir;
 using namespace xilinx;
@@ -143,8 +144,10 @@ struct AIEObjectFifoStatefulTransformPass
     int relMode = lockMode == 0 ? 0 : 1;
     int offset = 0;
     MemRefType buffer = buff.getType();
-    int len =
-        buffer.getShape()[0]; // TODO: check if dimension is known (not <?xi32>)
+    int len = 1;
+    for (auto i : buffer.getShape()) {
+      len *= i;
+    }
 
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, acqMode,
                               LockAction::Acquire);
@@ -203,6 +206,110 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
+  // Function that computes the Least Common Multiplier of the values
+  // of a vector.
+  int computeLCM(std::set<int> values) {
+    int lcm = 1;
+    for (int i : values)
+        lcm = (i * lcm) / std::gcd(i, lcm);
+    return lcm;
+  }
+
+  // Function to record operations in for loop body (without 
+  // terminator operation) and identify dependencies between them.
+  void identifyDependencies(mlir::scf::ForOp forLoop, 
+                            std::vector<Operation *> &operations, 
+                            DenseMap<Operation *, int> &opIndex, 
+                            std::vector<std::vector<int>> &dependencies ) {
+    Block *body = forLoop.getBody();
+    auto withoutTerminator = --body->end();
+    int index = 0;
+    for (auto op = body->begin(); op != withoutTerminator; op++) {
+      operations.push_back(&(*op));
+      opIndex[&(*op)] = index;
+
+      // identify dependencies
+      auto numOperands = (&(*op))->getNumOperands();
+      std::vector<int> dependecyIndices;
+      for (int i = 0; (unsigned)i < numOperands; i++) {
+        auto operand = (&(*op))->getOperand(i);
+        int dependencyIndex = -1;
+
+        if (operand == forLoop.getInductionVar()) {
+          dependencyIndex = LOOP_VAR_DEPENDENCY;
+        } else {
+          auto definingOp = operand.getDefiningOp();
+          if (definingOp->getBlock()->getParentOp() == forLoop) {
+            dependencyIndex = opIndex[definingOp];
+          }
+        }
+        dependecyIndices.push_back(dependencyIndex);
+      }
+      dependencies.push_back(dependecyIndices);
+
+      index++;
+    }
+  }
+
+  // Function that duplicates given operations for the given number
+  // of times. Assumes builder insertion point is set.
+  // If there is a dependency on a loop induction variable, the given
+  // base mlir::Value is used to resolve it.
+  void duplicateBlock(OpBuilder &builder, int numDuplications, 
+                      std::vector<Operation *> &operations,
+                      std::vector<std::vector<int>> &dependencies,
+                      mlir::Value base, int64_t step, bool inLoop) {
+    int originalIndex = 0;
+    std::vector<Operation *>
+        duplicatedOperations; // operations in current duplication
+                              // iteration
+    for (int i = 0; i < numDuplications; i++) {
+      originalIndex = 0;
+      duplicatedOperations.clear();
+      for (auto op : operations) {
+        // for each operand, check whether there was a dependecy
+        auto clone = op->clone();
+        auto numOperands = clone->getNumOperands();
+        for (int operandIndex = 0; (unsigned)operandIndex < numOperands;
+              operandIndex++) {
+          int originalDependencyIndex =
+              dependencies[originalIndex][operandIndex];
+          if (originalDependencyIndex >= 0) {
+            // replace the operand with the result of operation with
+            // same index in current duplication
+            clone->setOperand(
+                operandIndex,
+                duplicatedOperations[originalDependencyIndex]
+                    ->getResult(0)); // TODO: what if operation has
+                                      // multiple results?
+          } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
+            int64_t increment_value = 0;
+            if (inLoop) {
+              // +1 because we do not duplicate original loop body
+              increment_value = (i + 1) * step;
+            } else {
+              increment_value = i * step;
+            }
+            arith::ConstantOp increment =
+                builder.create<arith::ConstantOp>(
+                    builder.getUnknownLoc(),
+                    builder.getIndexAttr(increment_value),
+                    builder.getIndexType());
+            arith::AddIOp sum = builder.create<arith::AddIOp>(
+                builder.getUnknownLoc(), builder.getIndexType(),
+                base, increment->getResult(0));
+            clone->setOperand(operandIndex, sum->getResult(0));
+          }
+        }
+
+        builder.insert(clone);
+        duplicatedOperations.push_back(clone);
+        originalIndex++;
+      }
+    }
+  }
+
+  // Function that unrolls for-loops that contain objectFifo operations.
   void unrollForLoops(ModuleOp &m, OpBuilder &builder, std::vector<TileOp> objectFifoTiles) {
     for (auto coreOp : m.getOps<CoreOp>()) {
       if (std::find(objectFifoTiles.begin(), objectFifoTiles.end(),
@@ -210,10 +317,11 @@ struct AIEObjectFifoStatefulTransformPass
 
         coreOp.walk([&](mlir::scf::ForOp forLoop) {
           // look for operations on objectFifos
-          // TODO: when multiple fifos in same loop, must use the smallest
+          // when multiple fifos in same loop, must use the smallest
           // common multiplier as the unroll factor
           bool found = false;
-          int objFifoSize = 0;
+          std::set<int> objFifoSizes;
+          int unrollFactor = 0;
           Block *body = forLoop.getBody();
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
@@ -222,19 +330,11 @@ struct AIEObjectFifoStatefulTransformPass
               found = true;
               ObjectFifoCreateOp op =
                   acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-              objFifoSize = op.size();
+              objFifoSizes.insert(op.size());
             }
           }
 
-          for (auto relOp : body->getOps<ObjectFifoReleaseOp>()) {
-            if (relOp.getOperation()->getParentOp() == forLoop) {
-              checkSplitFifo(relOp.getOperation());
-              found = true;
-              ObjectFifoCreateOp op =
-                  relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-              objFifoSize = op.size();
-            }
-          }
+          unrollFactor = computeLCM(objFifoSizes); // also counts original loop body
 
           if (found) {
             std::vector<Operation *>
@@ -244,7 +344,7 @@ struct AIEObjectFifoStatefulTransformPass
                 opIndex; // maps operations of original loop body to their
                          // position in it
             std::vector<std::vector<int>>
-                dependecies; // index in first vecotr corresponds to position in
+                dependencies; // index in first vecotr corresponds to position in
                              // original loop body dependency vector has size
                              // equal to number of operands of that operation:
                              //    * if LOOP_VAR_DEPENDENCY : operand is
@@ -265,123 +365,53 @@ struct AIEObjectFifoStatefulTransformPass
                                        .getValue();
             int64_t old_lower_value =
                 old_lower_bound.dyn_cast<IntegerAttr>().getInt();
-            int64_t remainder = 0;
+            auto old_step = forLoop.getStep()
+                                .getDefiningOp<arith::ConstantOp>()
+                                .getValue();
+            int64_t old_step_value =
+                old_step.dyn_cast<IntegerAttr>().getInt();
+            int64_t num_iter = (old_upper_value - old_lower_value) / old_step_value;
 
-            builder.setInsertionPoint(forLoop);
-            if ((old_upper_value - old_lower_value) % (int64_t)objFifoSize >
-                0) {
-              int64_t new_upper_bound =
-                  ((old_upper_value - old_lower_value) / (int64_t)objFifoSize) *
-                      (int64_t)objFifoSize +
-                  1; // +1 because upper bound is excluded
-              remainder =
-                  (old_upper_value - old_lower_value) % (int64_t)objFifoSize;
-              arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
+            int64_t num_unrolls = 0; // number of times to unroll loop, not counting original body
+
+            identifyDependencies(forLoop, operations, opIndex, dependencies);
+
+            if (num_iter <= unrollFactor) {
+              // duplicate loop body and remove loop
+              num_unrolls = num_iter;
+              builder.setInsertionPointAfter(forLoop);
+              duplicateBlock(builder, num_unrolls, operations, dependencies, forLoop.getLowerBound(), old_step_value, false);
+              forLoop.getOperation()->erase();
+
+            } else {
+              num_unrolls = unrollFactor - 1; // -1 without original loop body
+
+              // create new upper bound and step
+              int64_t new_step_value = (int64_t)unrollFactor * old_step_value;
+              int64_t remainder = ((old_upper_value - old_lower_value) % new_step_value) / old_step_value;
+              builder.setInsertionPoint(forLoop);
+              if (remainder > 0) {
+                int64_t new_upper_bound =
+                    ((old_upper_value - old_lower_value) / new_step_value) *
+                        new_step_value;
+                arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
+                    builder.getUnknownLoc(),
+                    builder.getIndexAttr(new_upper_bound),
+                    old_upper_bound.getType());
+                forLoop.setUpperBound(uBound);
+              }
+              arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
                   builder.getUnknownLoc(),
-                  builder.getIndexAttr(new_upper_bound),
+                  builder.getIndexAttr(new_step_value),
                   old_upper_bound.getType());
-              forLoop.setUpperBound(uBound);
-            }
-            arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
-                builder.getUnknownLoc(),
-                builder.getIndexAttr((int64_t)objFifoSize),
-                old_upper_bound.getType());
-            forLoop.setStep(new_step);
+              forLoop.setStep(new_step);
 
-            // record original loop body (without terminator operation) and
-            // identify dependencies
-            auto withoutTerminator = --body->end();
-            int index = 0;
-            for (auto op = body->begin(); op != withoutTerminator; op++) {
-              operations.push_back(&(*op));
-              opIndex[&(*op)] = index;
-
-              // identify dependencies
-              auto numOperands = (&(*op))->getNumOperands();
-              std::vector<int> dependecyIndices;
-              for (int i = 0; i < numOperands; i++) {
-                auto operand = (&(*op))->getOperand(i);
-                int dependencyIndex = -1;
-
-                // if operand not iterator variable
-                if (operand == forLoop.getInductionVar()) {
-                  dependencyIndex = LOOP_VAR_DEPENDENCY;
-                } else {
-                  auto definingOp = operand.getDefiningOp();
-                  if (definingOp->getBlock()->getParentOp() == forLoop) {
-                    dependencyIndex = opIndex[definingOp];
-                  }
-                }
-                dependecyIndices.push_back(dependencyIndex);
-              }
-              dependecies.push_back(dependecyIndices);
-
-              index++;
-            }
-
-            // duplicate loop body, insert before terminator operation
-            // TODO: if fewer loop iterations than objFifo elements, remove
-            // forLoop entirely?
-            int numDuplications = (objFifoSize - 1) + remainder;
-            int originalIndex = 0;
-            std::vector<Operation *>
-                duplicatedOperations; // operations in current duplication
-                                      // iteration
-            builder.setInsertionPoint(&(body->back()));
-            for (int i = 0; i < numDuplications; i++) {
-              // duplicate remaining iterations after loop
-              if (i == (objFifoSize - 1))
-                builder.setInsertionPointAfter(forLoop);
-
-              originalIndex = 0;
-              duplicatedOperations.clear();
-              for (auto op : operations) {
-                // for each operand, check whether there was a dependecy
-                auto clone = op->clone();
-                auto numOperands = clone->getNumOperands();
-                for (int operandIndex = 0; operandIndex < numOperands;
-                     operandIndex++) {
-                  int originalDependencyIndex =
-                      dependecies[originalIndex][operandIndex];
-                  if (originalDependencyIndex >= 0) {
-                    // replace the operand with the result of operation with
-                    // same index in current duplication
-                    clone->setOperand(
-                        operandIndex,
-                        duplicatedOperations[originalDependencyIndex]
-                            ->getResult(0)); // TODO: what if operation has
-                                             // multiple results?
-                  } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
-                    if (i >= (objFifoSize - 1)) {
-                      // special case when duplicating remaining iterations
-                      // after loop
-                      arith::ConstantOp increment =
-                          builder.create<arith::ConstantOp>(
-                              builder.getUnknownLoc(),
-                              builder.getIndexAttr(i - (objFifoSize - 1)),
-                              builder.getIndexType());
-                      arith::AddIOp sum = builder.create<arith::AddIOp>(
-                          builder.getUnknownLoc(), builder.getIndexType(),
-                          forLoop.getUpperBound(), increment->getResult(0));
-                      clone->setOperand(operandIndex, sum->getResult(0));
-                    } else {
-                      arith::ConstantOp increment =
-                          builder.create<arith::ConstantOp>(
-                              builder.getUnknownLoc(),
-                              builder.getIndexAttr(i + 1),
-                              builder.getIndexType());
-                      arith::AddIOp sum = builder.create<arith::AddIOp>(
-                          builder.getUnknownLoc(), builder.getIndexType(),
-                          forLoop.getInductionVar(), increment->getResult(0));
-                      clone->setOperand(operandIndex, sum->getResult(0));
-                    }
-                  }
-                }
-
-                builder.insert(clone);
-                duplicatedOperations.push_back(clone);
-                originalIndex++;
-              }
+              // duplicate loop body, insert before terminator operation
+              builder.setInsertionPoint(&(body->back()));
+              duplicateBlock(builder, num_unrolls, operations, dependencies, forLoop.getInductionVar(), old_step_value, true);
+              // duplicate remainder operations after loop body
+              builder.setInsertionPointAfter(forLoop);
+              duplicateBlock(builder, remainder, operations, dependencies, forLoop.getUpperBound(), old_step_value, false);
             }
           }
         });
