@@ -419,12 +419,132 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
     }
 };
 
+class AddOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::AddOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::AddOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::AddOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.add conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class SubOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SubOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::SubOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::SubOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.sub conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPSOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::UPSOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::UPSOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.ups conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class ConcatOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::ConcatOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.concat conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ExtOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::ExtOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::ExtOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.ext conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SelectOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::SelectOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::SelectOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.select conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class PackOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::PackOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::PackOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::PackOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.pack conversion is not implemented\n";
+      return failure();
+    }
+};
+
+class UnpackOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UnpackOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::UnpackOp>::ConvertOpToLLVMPattern;
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::UnpackOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+      op.emitWarning() << "aie.unpack conversion is not implemented\n";
+      return failure();
+    }
+};
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   patterns.add<xilinx::aievec::SRSOpConversion>(converter);
   patterns.add<xilinx::aievec::MulOpConversion>(converter);
   patterns.add<xilinx::aievec::FMAOpConversion>(converter);
   patterns.add<xilinx::aievec::UPDOpConversion>(converter);
+  patterns.add<xilinx::aievec::AddOpConversion>(converter);
+  patterns.add<xilinx::aievec::SubOpConversion>(converter);
+  patterns.add<xilinx::aievec::UPSOpConversion>(converter);
+  patterns.add<xilinx::aievec::ConcatOpConversion>(converter);
+  patterns.add<xilinx::aievec::ExtOpConversion>(converter);
+  patterns.add<xilinx::aievec::SelectOpConversion>(converter);
+  patterns.add<xilinx::aievec::PackOpConversion>(converter);
+  patterns.add<xilinx::aievec::UnpackOpConversion>(converter);
 }
 
 struct ConvertAIEVecToLLVMPass
