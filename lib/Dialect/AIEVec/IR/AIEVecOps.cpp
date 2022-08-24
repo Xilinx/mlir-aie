@@ -413,10 +413,17 @@ template <typename T> LogicalResult verifyMulFMAOp(T op) {
 
   // The datatype of accumulator must always be greater width
   if (atype.isa<IntegerType>()) {
+    if (!ltype.isa<IntegerType>())
+      return op.emitError("Integer result must have integer operands");
+
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return op.emitError("the element type of accumulator must have "
                           "wider width than that of the operand vectors");
   } else if (atype.isa<FloatType>()) {
+    if (!ltype.isa<FloatType>())
+      return op.emitError("Floating point result must have "
+                          "floating point operands");
+
     if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
       return op.emitError("the element type of accumulator must be "
                           "same width as the operand vectors");
