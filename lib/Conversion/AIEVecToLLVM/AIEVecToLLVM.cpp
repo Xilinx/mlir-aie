@@ -315,7 +315,6 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
       auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
         StringAttr::get(context, intrinsicName));
       auto shiftType = IntegerType::get(context, 8);
-      auto shiftVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), shiftType, rewriter.getI8IntegerAttr(op.shift()));
 
       if (!func) {
         OpBuilder::InsertionGuard guard(rewriter);
@@ -330,6 +329,7 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
       }
 
       // Create a constant for the shift value
+      auto shiftVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), shiftType, rewriter.getI8IntegerAttr(op.shift()));
       rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.source(), shiftVal});
       return success();
     }
