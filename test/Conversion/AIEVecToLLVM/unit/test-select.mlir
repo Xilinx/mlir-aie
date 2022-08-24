@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
+// RUN: aie-opt %s --lower-aievec | FileCheck %s
 module {
   func.func @test(%arg0: vector<32xi16>) {
     // check the parameters that go into separate constants
