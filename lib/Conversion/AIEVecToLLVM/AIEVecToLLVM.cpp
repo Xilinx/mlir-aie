@@ -584,6 +584,44 @@ class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::S
     }
 };
 
+class PackOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::PackOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::PackOp>::ConvertOpToLLVMPattern;
+
+    static std::string getIntrinsicName(xilinx::aievec::PackOp op) {
+      auto sourceType = op.source().getType().cast<VectorType>();
+      std::stringstream ss;
+      ss << "llvm.aie.pack." << getVectorTypeString(sourceType);
+      return ss.str();
+    }
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::PackOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+
+      // If the intrinsic declaration doesn't exist, create it
+      std::string intrinsicName = getIntrinsicName(op);
+      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrinsicName));
+
+      if (!func) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(module.getBody());
+        func = rewriter.create<LLVM::LLVMFuncOp>(
+            rewriter.getUnknownLoc(), intrinsicName,
+            LLVM::LLVMFunctionType::get(op.result().getType(),
+                                        {op.source().getType()})
+                                       );
+        rewriter.setInsertionPoint(op);
+      }
+
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.source()});
+      return success();
+    }
+};
+
 class AddOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::AddOp> {
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::AddOp>::ConvertOpToLLVMPattern;
@@ -622,20 +660,6 @@ class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPSO
       auto module = op->getParentOfType<ModuleOp>();
       MLIRContext *context = rewriter.getContext();
       op.emitWarning() << "aie.ups conversion is not implemented\n";
-      return failure();
-    }
-};
-
-class PackOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::PackOp> {
-  public:
-    using ConvertOpToLLVMPattern<xilinx::aievec::PackOp>::ConvertOpToLLVMPattern;
-
-    LogicalResult
-    matchAndRewrite(xilinx::aievec::PackOp op, OpAdaptor adaptor,
-                    ConversionPatternRewriter &rewriter) const override {
-      auto module = op->getParentOfType<ModuleOp>();
-      MLIRContext *context = rewriter.getContext();
-      op.emitWarning() << "aie.pack conversion is not implemented\n";
       return failure();
     }
 };
