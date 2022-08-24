@@ -507,6 +507,83 @@ class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ExtO
     }
 };
 
+class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SelectOp> {
+  public:
+    using ConvertOpToLLVMPattern<xilinx::aievec::SelectOp>::ConvertOpToLLVMPattern;
+
+    static std::string getIntrinsicName(xilinx::aievec::SelectOp op) {
+      auto xbuffType = op.xbuff().getType().cast<VectorType>();
+      std::stringstream ss;
+      ss << "llvm.aie.prim." << getVectorTypeString(xbuffType) << ".select";
+      return ss.str();
+    }
+
+    LogicalResult
+    matchAndRewrite(xilinx::aievec::SelectOp op, OpAdaptor adaptor,
+                    ConversionPatternRewriter &rewriter) const override {
+      auto module = op->getParentOfType<ModuleOp>();
+      MLIRContext *context = rewriter.getContext();
+
+      auto selectType = IntegerType::get(context, 32);
+      auto startType = IntegerType::get(context, 32);
+      auto offsetsType = VectorType::get({2}, IntegerType::get(context, 32));
+      auto confType = VectorType::get({2}, IntegerType::get(context, 32));
+
+      // If the intrinsic declaration doesn't exist, create it
+      std::string intrinsicName = getIntrinsicName(op);
+      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrinsicName));
+
+      if (!func) {
+        OpBuilder::InsertionGuard guard(rewriter);
+        rewriter.setInsertionPointToStart(module.getBody());
+        func = rewriter.create<LLVM::LLVMFuncOp>(
+            rewriter.getUnknownLoc(), intrinsicName,
+            LLVM::LLVMFunctionType::get(op.result().getType(),
+                                        {op.xbuff().getType(),
+                                         selectType,
+                                         startType, /* xstart */
+                                         startType, /* ystart */
+                                         offsetsType, /* xoffsets */
+                                         offsetsType, /* yoffsets */
+                                         confType})
+                                       );
+        rewriter.setInsertionPoint(op);
+      }
+
+      // Parse the string attribute values
+      uint32_t select = 0;
+      BufferParams x = {};
+      BufferParams y = {};
+      BufferParams z = {};
+
+      op.select().getAsInteger(0, select);
+      op.xstart().getAsInteger(0, x.start);
+      op.xoffsets().getAsInteger(0, x.offsets);
+      op.xoffsets_hi().getAsInteger(0, x.offsets_hi);
+      op.xsquare().getAsInteger(0, x.square);
+      op.ystart().getAsInteger(0, y.start);
+      op.yoffsets().getAsInteger(0, y.offsets);
+      op.yoffsets_hi().getAsInteger(0, y.offsets_hi);
+      op.ysquare().getAsInteger(0, y.square);
+
+      // Encode the configuration register
+      int32_t conf[2] = {0,0};
+      encodeConf(conf, x, z, false);
+      conf[1] |= encodeSquare(y.square) << 21;
+
+      // Create the constants and replace the op
+      auto selectVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), selectType, rewriter.getI32IntegerAttr(select));
+      auto xstartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(x.start));
+      auto ystartVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), startType, rewriter.getI32IntegerAttr(y.start));
+      auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({x.offsets, x.offsets_hi}));
+      auto yoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({y.offsets, y.offsets_hi}));
+      auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({conf[0], conf[1]}));
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.xbuff(), selectVal, xstartVal, ystartVal, xoffsetsVal, yoffsetsVal, confVal});
+      return success();
+    }
+};
+
 class AddOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::AddOp> {
   public:
     using ConvertOpToLLVMPattern<xilinx::aievec::AddOp>::ConvertOpToLLVMPattern;
@@ -545,20 +622,6 @@ class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPSO
       auto module = op->getParentOfType<ModuleOp>();
       MLIRContext *context = rewriter.getContext();
       op.emitWarning() << "aie.ups conversion is not implemented\n";
-      return failure();
-    }
-};
-
-class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SelectOp> {
-  public:
-    using ConvertOpToLLVMPattern<xilinx::aievec::SelectOp>::ConvertOpToLLVMPattern;
-
-    LogicalResult
-    matchAndRewrite(xilinx::aievec::SelectOp op, OpAdaptor adaptor,
-                    ConversionPatternRewriter &rewriter) const override {
-      auto module = op->getParentOfType<ModuleOp>();
-      MLIRContext *context = rewriter.getContext();
-      op.emitWarning() << "aie.select conversion is not implemented\n";
       return failure();
     }
 };
