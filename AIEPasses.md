@@ -98,6 +98,11 @@ each process.
 
 If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
 pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
+
+Extend the body of each loop that contains operations on objectFifos such that it is unrolled
+based on the number of elements in the objectFifos. If the number of iterations of the loop 
+cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
+the original loop.
 ### `-aie-register-objectFifos`: Generate acquire/release patterns for producer/consumer processes registered to an objectFifo
 Generate acquire/release patterns in the CoreOps of associated cores for each 
 aie.objectFifo.registerProcess operation. Patterns are generated as for loops
@@ -115,11 +120,6 @@ Other AIE operations (e.g. CoreOp, TileOp, LockOp) outside the core are removed.
 -tilecol : X coordinate of tile to generate code for
 -tilerow : Y coordinate of tile to generate code for
 ```
-### `-aie-unroll-objectFifos`: Identify and unroll loops that contain operations on objectFifos based on their number of elements
-Extend the body of each loop that contains operations on objectFifos such that it is unrolled
-based on the number of elements in the objectFifos. If the number of iterations of the loop 
-cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
-the original loop.
 ### `-aie-vector-opt`: optimize vector instructions for AIE
 After super-vectorization, some additional optimizations are important
 for improving QOR and enabling lowering to LLVM.
