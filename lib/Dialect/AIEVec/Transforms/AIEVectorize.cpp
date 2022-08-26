@@ -35,6 +35,10 @@ using namespace xilinx;
 using namespace xilinx::aievec;
 
 #define DEBUG_TYPE "aie-vect"
+static llvm::cl::opt<bool>
+    unalignedLoadsCheck("unaligned-loads-check",
+                        llvm::cl::desc("Enable the unaligned loads check"),
+                        llvm::cl::init(false));
 
 namespace {
 // A struct to pack the global state required for vectorization at one place.
@@ -2268,18 +2272,132 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
   }
 }
 
-// Compute the reuse interval for all the transfer_read operations. The
-// transfer_read operations capture the vector load. Since AIE only allows for
-// aligned vector loads, we need to compose multiple transfer reads together to
-// form intervals of certain width (128, 256, 512, or 1024), and create an AIE
-// vector from each interval.
-static void computeReuseInFunc(func::FuncOp func, VectState *state) {
+static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
+  VectorType vectorType = readOp.getResult().getType().cast<VectorType>();
+  unsigned lanes = getVectorLaneSize(vectorType);
+
+  AffineExpr linearAccess = constructLinearizedAffineExpr(readOp, state);
+  if (linearAccess.isSymbolicOrConstant()) {
+    return success();
+  }
+
+  MemRefType memRefType = readOp.getSource().getType().cast<MemRefType>();
+  MLIRContext *context = memRefType.getContext();
+  ArrayRef<int64_t> sizes = memRefType.getShape();
+  int numDims = sizes.size();
+
+  auto block = readOp->getBlock();
+  assert(state->blockToEnclosingLoops.count(block) &&
+         "enclosing loops should have been computed for the read operation\n");
+  auto enclosingLoops = state->blockToEnclosingLoops[block];
+
+  SmallVector<Value, 4> indices(readOp.getIndices().begin(),
+                                readOp.getIndices().end());
+
+  // If the lowest dim has iv, check whether its corresponding loop step can
+  // be divisible by the vector lanes.
+  int32_t step = 0;
+  if (auto dimExpr =
+          getAffineDimExpr(numDims - 1, context).dyn_cast<AffineDimExpr>()) {
+    auto index = indices[dimExpr.getPosition()];
+    // Iterate over all enclosing loops, and find the one that is variant in
+    // index.
+    for (auto loop : enclosingLoops) {
+      AffineForOp affineForOp = cast<AffineForOp>(loop);
+      auto iv = affineForOp.getInductionVar();
+      auto invariants = getInvariantAccesses(iv, indices);
+
+      if (!invariants.count(index)) {
+        step = affineForOp.getStep();
+        if (step % lanes) {
+          LLVM_DEBUG(llvm::dbgs() << "\n\n"
+                                  << *readOp
+                                  << "'s lowest dim's loop step cannot be "
+                                     "divisible by the vector lanes.\n\n");
+          return failure();
+        }
+
+        // To avoid generating the code with wrong results due to unaligned
+        // upper bound's affine_map offset and loop step, we need to check
+        // whether affine map's offset of loop upper bound can be divisible by
+        // the vector lanes.
+        AffineBound ub = affineForOp.getUpperBound();
+        AffineMap origUbMap = ub.getMap();
+        if (!origUbMap.isEmpty() && !origUbMap.isConstant()) {
+          AffineExpr origUbMapResult = origUbMap.getResult(0);
+          AffineExpr base;
+          int32_t offset;
+          std::tie(base, offset) = getBaseAndOffset(origUbMapResult);
+          if (offset % lanes) {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "\n\n"
+                       << *readOp
+                       << "'s lowest dim's loop upper bound's affine"
+                          " map's offset cannot be divisible by the vector "
+                          "lanes.\n\n");
+            return failure();
+          }
+        }
+      }
+    }
+  }
+
+  // For the higher dimension, check whether the lower dimensions' shape sizes
+  // can be divisible by the vector lanes.
+  for (int i = 1; i < numDims; ++i) {
+    // Skip checking the higher dimensions with dynamic size.
+    if (sizes[i] == -1) {
+      continue;
+    }
+
+    if (sizes[i] % lanes) {
+      LLVM_DEBUG(
+          llvm::dbgs()
+          << "\n\n"
+          << *readOp << "'s dim " << i
+          << "'s shape size cannot be divisible by the vector lanes.\n\n");
+      return failure();
+    }
+  }
+
+  return success();
+}
+
+static LogicalResult hasUnalignedLoads(func::FuncOp func, VectState *state) {
   // First compute the loops surrounding each load/store operation. This is
   // necessary to identify loads/stores that are nested together.
   for (AffineForOp forOp : func.getOps<AffineForOp>()) {
     SmallVector<Operation *, 8> enclosingLoops;
     enclosingLoops.push_back(forOp);
     computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
+  }
+
+  WalkResult result = func.walk([&](TransferReadOp op) {
+    if (failed(isUnalignedLoad(op, state))) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) {
+    return failure();
+  }
+
+  return success();
+}
+
+// Compute the reuse interval for all the transfer_read operations. The
+// transfer_read operations capture the vector load. Since AIE only allows for
+// aligned vector loads, we need to compose multiple transfer reads together to
+// form intervals of certain width (128, 256, 512, or 1024), and create an AIE
+// vector from each interval.
+static void computeReuseInFunc(func::FuncOp func, VectState *state) {
+  if (!unalignedLoadsCheck) {
+    for (AffineForOp forOp : func.getOps<AffineForOp>()) {
+      SmallVector<Operation *, 8> enclosingLoops;
+      enclosingLoops.push_back(forOp);
+      computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
+    }
   }
 
   // Now we can cluster all the transfer_read ops that have a potential of
@@ -2343,6 +2461,11 @@ void AIEVectorize::runOnOperation() {
     // Create a new global state
     VectState *state =
         new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
+
+    // Check whether there is any unalignment loads.
+    if (unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {
+      return;
+    }
 
     // Compute the reuse for all the transfer_read operations, and form the
     // initial vector sizes.
