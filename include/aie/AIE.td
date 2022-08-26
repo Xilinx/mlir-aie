@@ -94,8 +94,8 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
 
 def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let arguments = (
-    ins Confined<I32Attr, [IntMinValue<0>]>:$col,
-        Confined<I32Attr, [IntMinValue<0>]>:$row
+    ins ConfinedAttr<I32Attr, [IntMinValue<0>]>:$col,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$row
   );
 
   let summary = "Declare an AIE tile";
@@ -494,8 +494,8 @@ def AIE_ConnectionOp: AIE_Op<"connection", []> {
 
 def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
   let arguments = (
-    ins Confined<I8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
-        Confined<I8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
+    ins ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
+        ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
   );
   let summary = "Declare an arbiter of a switchbox with a master select value (arbiter + msel)";
   let description = [{
@@ -969,7 +969,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     ins AnyMemRef:$buffer,
         I32Attr:$offset,
         I32Attr:$len,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
   );
 
   let assemblyFormat = [{
@@ -1099,7 +1099,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   }];
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
   );
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
@@ -1146,7 +1146,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
   let arguments = (
     ins Index:$lock,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
         LockAction:$action,
         OptionalAttr<LockBlocking>:$blocking
   );
@@ -1558,7 +1558,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let arguments = (
     ins Index:$producerTile,
         Index:$consumerTile,
-        Confined<I32Attr, [IntMinValue<0>]>:$elemNumber
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
@@ -1599,7 +1599,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         AIE_ObjectFifoType:$fifo,
-        Confined<I32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
@@ -1638,7 +1638,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         AIE_ObjectFifoType:$fifo,
-        Confined<I32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let assemblyFormat = [{
@@ -1673,7 +1673,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
   let arguments = (
     ins AIE_ObjectFifoSubviewType:$subview, 
-        Confined<I32Attr, [IntMinValue<0>]>:$index
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$index
   );
 
   let results = (outs AnyMemRef:$output);
