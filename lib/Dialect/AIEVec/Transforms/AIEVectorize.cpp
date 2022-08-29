@@ -1939,7 +1939,7 @@ static void generateAIEAddOrSubOpsInFunc(func::FuncOp func, VectState *state) {
 // and then insert them in the front bb of that for op's region.
 static void insertUPDOpsInLoop(AffineForOp forOp, VectState *state) {
   // Recursively generate UPD ops in the nested for op's.
-  for (AffineForOp nestedOp : forOp.region().getOps<AffineForOp>())
+  for (AffineForOp nestedOp : forOp.getRegion().getOps<AffineForOp>())
     insertUPDOpsInLoop(nestedOp, state);
 
   // A map from an interval to the UPD op. The key gives the interval that
@@ -1954,7 +1954,7 @@ static void insertUPDOpsInLoop(AffineForOp forOp, VectState *state) {
   // register.
   DenseMap<Operation *, aievec::UPDOp> readOpToUpdMap;
   // Iterate over all the transfer_read ops within this loop
-  Region &region = forOp.region();
+  Region &region = forOp.getRegion();
   for (TransferReadOp readOp : region.getOps<TransferReadOp>()) {
     aievec::UPDOp updOp = generateUPDOp(readOp, memToUpdMap, region, state);
     readOpToUpdMap[readOp] = updOp;
@@ -2113,7 +2113,7 @@ static void
 computeEnclosingLoopsPerBlock(AffineForOp forOp, VectState *state,
                               SmallVector<Operation *, 8> &enclosingLoops) {
   // Form the loop band for nested for ops
-  for (AffineForOp nestedOp : forOp.region().getOps<AffineForOp>()) {
+  for (AffineForOp nestedOp : forOp.getRegion().getOps<AffineForOp>()) {
     enclosingLoops.push_back(nestedOp);
     computeEnclosingLoopsPerBlock(nestedOp, state, enclosingLoops);
     enclosingLoops.pop_back();
@@ -2121,7 +2121,7 @@ computeEnclosingLoopsPerBlock(AffineForOp forOp, VectState *state,
 
   // Iterate over all the transfer_read operations enclosed within the current
   // region, and store the for loop nesting for the read op.
-  for (TransferReadOp readOp : forOp.region().getOps<TransferReadOp>()) {
+  for (TransferReadOp readOp : forOp.getRegion().getOps<TransferReadOp>()) {
     // Find the block corresponding to this transfer_read
     Block *block = readOp->getBlock();
     state->blockToEnclosingLoops[block] = enclosingLoops;
