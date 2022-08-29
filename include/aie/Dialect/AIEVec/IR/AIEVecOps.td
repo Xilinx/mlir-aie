@@ -253,7 +253,7 @@ def AIEVec_UPSOp:
     NoSideEffect
   ]>, 
   Arguments<(ins AnyVector:$source, 
-          DefaultValuedAttr<Confined<I8Attr, [IntNonNegative]>, "0">:$shift)>,
+          DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE ups";
   let description = [{
@@ -273,7 +273,7 @@ def AIEVec_SRSOp:
     NoSideEffect
   ]>, 
   Arguments<(ins AnyVector:$source,
-          DefaultValuedAttr<Confined<I8Attr, [IntNonNegative]>, "0">:$shift)>,
+          DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE srs";
   let description = [{
@@ -292,7 +292,7 @@ def AIEVec_UPDOp:
   Arguments<(ins AnyShaped:$source, 
                  Variadic<Index>:$indices, 
                  DefaultValuedAttr<SI32Attr, "0">:$offset, 
-                 DefaultValuedAttr<Confined<I8Attr, 
+                 DefaultValuedAttr<ConfinedAttr<I8Attr, 
                         [IntMinValue<0>, IntMaxValue<1>]>, "0">:$index,
                  Optional<AnyVector>:$vector)>, 
   Results<(outs AnyVector:$result)> {
@@ -333,7 +333,7 @@ def AIEVec_ExtOp:
     NoSideEffect
   ]>, 
   Arguments<(ins AnyVector:$source, 
-             Confined<I8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
+             ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE ext";
   let description = [{
