@@ -278,25 +278,14 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
     If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
     pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
-  }];
 
-  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
-  let dependentDialects = [
-    "func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
-def AIEObjectFifoLoopUnroll : Pass<"aie-unroll-objectFifos", "ModuleOp"> {
-  let summary = "Identify and unroll loops that contain operations on objectFifos based on their number of elements";
-  let description = [{
     Extend the body of each loop that contains operations on objectFifos such that it is unrolled
     based on the number of elements in the objectFifos. If the number of iterations of the loop 
     cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
     the original loop.
   }];
 
-  let constructor = "xilinx::AIE::createAIEObjectFifoLoopUnrollPass()";
+  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
   let dependentDialects = [
     "scf::SCFDialect",
     "func::FuncDialect",

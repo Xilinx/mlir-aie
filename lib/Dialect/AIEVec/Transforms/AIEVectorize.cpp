@@ -2294,8 +2294,8 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
   SmallVector<Value, 4> indices(readOp.getIndices().begin(),
                                 readOp.getIndices().end());
 
-  // If the lowest dim has iv, check whether its corresponding loop step can
-  // be divisible by the vector lanes.
+  // If the lowest dim has iv, check whether its corresponding loop step is
+  // divisible by the vector lanes.
   int32_t step = 0;
   if (auto dimExpr =
           getAffineDimExpr(numDims - 1, context).dyn_cast<AffineDimExpr>()) {
@@ -2312,14 +2312,14 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
         if (step % lanes) {
           LLVM_DEBUG(llvm::dbgs() << "\n\n"
                                   << *readOp
-                                  << "'s lowest dim's loop step cannot be "
+                                  << "'s lowest dim's loop step is not "
                                      "divisible by the vector lanes.\n\n");
           return failure();
         }
 
         // To avoid generating the code with wrong results due to unaligned
         // upper bound's affine_map offset and loop step, we need to check
-        // whether affine map's offset of loop upper bound can be divisible by
+        // whether affine map's offset of loop upper bound is divisible by
         // the vector lanes.
         AffineBound ub = affineForOp.getUpperBound();
         AffineMap origUbMap = ub.getMap();
@@ -2333,7 +2333,7 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
                        << "\n\n"
                        << *readOp
                        << "'s lowest dim's loop upper bound's affine"
-                          " map's offset cannot be divisible by the vector "
+                          " map's offset is not divisible by the vector "
                           "lanes.\n\n");
             return failure();
           }
@@ -2343,7 +2343,7 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
   }
 
   // For the higher dimension, check whether the lower dimensions' shape sizes
-  // can be divisible by the vector lanes.
+  // is divisible by the vector lanes.
   for (int i = 1; i < numDims; ++i) {
     // Skip checking the higher dimensions with dynamic size.
     if (sizes[i] == -1) {
@@ -2351,11 +2351,10 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
     }
 
     if (sizes[i] % lanes) {
-      LLVM_DEBUG(
-          llvm::dbgs()
-          << "\n\n"
-          << *readOp << "'s dim " << i
-          << "'s shape size cannot be divisible by the vector lanes.\n\n");
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\n"
+                 << *readOp << "'s dim " << i
+                 << "'s shape size is not divisible by the vector lanes.\n\n");
       return failure();
     }
   }
@@ -2364,14 +2363,6 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
 }
 
 static LogicalResult hasUnalignedLoads(func::FuncOp func, VectState *state) {
-  // First compute the loops surrounding each load/store operation. This is
-  // necessary to identify loads/stores that are nested together.
-  for (AffineForOp forOp : func.getOps<AffineForOp>()) {
-    SmallVector<Operation *, 8> enclosingLoops;
-    enclosingLoops.push_back(forOp);
-    computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
-  }
-
   WalkResult result = func.walk([&](TransferReadOp op) {
     if (failed(isUnalignedLoad(op, state))) {
       return WalkResult::interrupt();
@@ -2392,14 +2383,6 @@ static LogicalResult hasUnalignedLoads(func::FuncOp func, VectState *state) {
 // form intervals of certain width (128, 256, 512, or 1024), and create an AIE
 // vector from each interval.
 static void computeReuseInFunc(func::FuncOp func, VectState *state) {
-  if (!unalignedLoadsCheck) {
-    for (AffineForOp forOp : func.getOps<AffineForOp>()) {
-      SmallVector<Operation *, 8> enclosingLoops;
-      enclosingLoops.push_back(forOp);
-      computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
-    }
-  }
-
   // Now we can cluster all the transfer_read ops that have a potential of
   // vector-level data reuse.
   func.walk([&](TransferReadOp op) { computeReuse(op, state); });
@@ -2461,6 +2444,14 @@ void AIEVectorize::runOnOperation() {
     // Create a new global state
     VectState *state =
         new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
+
+    // First compute the loops surrounding each load/store operation. This is
+    // necessary to identify loads/stores that are nested together.
+    for (AffineForOp forOp : func.getOps<AffineForOp>()) {
+      SmallVector<Operation *, 8> enclosingLoops;
+      enclosingLoops.push_back(forOp);
+      computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
+    }
 
     // Check whether there is any unalignment loads.
     if (unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {

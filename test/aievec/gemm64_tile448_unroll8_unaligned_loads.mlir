@@ -1,9 +1,11 @@
 // This test case will directly return the result generated from -affine-super-vectorize
 // because in transfer_read %arg1[%arg5, %arg7], lower dim iv %arg7's corresponding loop
 // (affine.for %arg7 = #map0(%arg4) to #map1(%arg4))'s upper bound’s affine_map(<(d0) -> (d0 + 4)>)
-// result's offset(4) cannot be divisible by the vector lane size(8).
+// result's offset(4) is not divisible by the vector lane size(8).
 
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -unaligned-loads-check=true --debug-only=aie-vect 2>&1 | FileCheck %s
+
+//CHECK-LABEL: %1 = vector.transfer_read %arg1[%arg5, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>'s lowest dim's loop upper bound's affine map's offset is not divisible by the vector lanes.
 
 #map0 = affine_map<(d0) -> (d0)>
 #map1 = affine_map<(d0) -> (d0 + 4)>
@@ -72,7 +74,6 @@ module {
   }
 }
 
-//CHECK: %1 = vector.transfer_read %arg1[%arg5, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>'s lowest dim's loop upper bound's affine map's offset cannot be divisible by the vector lanes.
 
 //CHECK-LABEL:#map0 = affine_map<(d0) -> (d0)>
 //CHECK-NEXT: #map1 = affine_map<(d0) -> (d0 + 4)>

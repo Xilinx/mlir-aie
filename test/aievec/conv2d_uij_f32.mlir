@@ -106,3 +106,11 @@ func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046
 //CHECK-NEXT: %19 = aievec.mac %18, %0, %17 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: %20 = aievec.mac %18, %1, %19 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: vector.transfer_write %20, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<8xf32>, memref<2046x2046xf32>
+
+// This test case will directly return the result generated from -affine-super-vectorize when
+// -unaligned-loads-check=true. The reason is that in transfer_read %arg2[%arg3, %arg4],
+// dim 1's memref shape size(2046) is not divisible by the vector lanes(8).
+
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=0" -split-input-file | FileCheck %s -check-prefix=ALIGNMENT
+
+//ALIGNMENT: %0 = vector.transfer_read %arg2[%arg3, %arg4], %cst {in_bounds = [true]} : memref<2046x2046xf32>, vector<8xf32>'s dim 1's shape size is not divisible by the vector lanes.
