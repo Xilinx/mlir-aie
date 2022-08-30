@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="zero-offset=4" -split-input-file | FileCheck %s
+// RUN: aie-opt %s --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="zero-offset=4" -unaligned-loads-check=false -split-input-file | FileCheck %s
 
 //CHECK-LABEL: func.func @conv2d(%arg0: memref<2048x2048xi16>, %arg1: memref<12xi16>, %arg2: memref<2046x2046xi16>) {
 func.func @conv2d (%A: memref<2048x2048xi16>, %B: memref<12xi16>, %C: memref<2046x2046xi16>) {

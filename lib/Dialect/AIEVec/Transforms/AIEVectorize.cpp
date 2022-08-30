@@ -38,7 +38,7 @@ using namespace xilinx::aievec;
 static llvm::cl::opt<bool>
     unalignedLoadsCheck("unaligned-loads-check",
                         llvm::cl::desc("Enable the unaligned loads check"),
-                        llvm::cl::init(false));
+                        llvm::cl::init(true));
 
 namespace {
 // A struct to pack the global state required for vectorization at one place.
@@ -1939,7 +1939,7 @@ static void generateAIEAddOrSubOpsInFunc(func::FuncOp func, VectState *state) {
 // and then insert them in the front bb of that for op's region.
 static void insertUPDOpsInLoop(AffineForOp forOp, VectState *state) {
   // Recursively generate UPD ops in the nested for op's.
-  for (AffineForOp nestedOp : forOp.region().getOps<AffineForOp>())
+  for (AffineForOp nestedOp : forOp.getRegion().getOps<AffineForOp>())
     insertUPDOpsInLoop(nestedOp, state);
 
   // A map from an interval to the UPD op. The key gives the interval that
@@ -1954,7 +1954,7 @@ static void insertUPDOpsInLoop(AffineForOp forOp, VectState *state) {
   // register.
   DenseMap<Operation *, aievec::UPDOp> readOpToUpdMap;
   // Iterate over all the transfer_read ops within this loop
-  Region &region = forOp.region();
+  Region &region = forOp.getRegion();
   for (TransferReadOp readOp : region.getOps<TransferReadOp>()) {
     aievec::UPDOp updOp = generateUPDOp(readOp, memToUpdMap, region, state);
     readOpToUpdMap[readOp] = updOp;
@@ -2113,7 +2113,7 @@ static void
 computeEnclosingLoopsPerBlock(AffineForOp forOp, VectState *state,
                               SmallVector<Operation *, 8> &enclosingLoops) {
   // Form the loop band for nested for ops
-  for (AffineForOp nestedOp : forOp.region().getOps<AffineForOp>()) {
+  for (AffineForOp nestedOp : forOp.getRegion().getOps<AffineForOp>()) {
     enclosingLoops.push_back(nestedOp);
     computeEnclosingLoopsPerBlock(nestedOp, state, enclosingLoops);
     enclosingLoops.pop_back();
@@ -2121,7 +2121,7 @@ computeEnclosingLoopsPerBlock(AffineForOp forOp, VectState *state,
 
   // Iterate over all the transfer_read operations enclosed within the current
   // region, and store the for loop nesting for the read op.
-  for (TransferReadOp readOp : forOp.region().getOps<TransferReadOp>()) {
+  for (TransferReadOp readOp : forOp.getRegion().getOps<TransferReadOp>()) {
     // Find the block corresponding to this transfer_read
     Block *block = readOp->getBlock();
     state->blockToEnclosingLoops[block] = enclosingLoops;
@@ -2310,11 +2310,9 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
       if (!invariants.count(index)) {
         step = affineForOp.getStep();
         if (step % lanes) {
-          LLVM_DEBUG(llvm::dbgs() << "\n\n"
-                                  << *readOp
-                                  << "'s lowest dim's loop step is not "
-                                     "divisible by the vector lanes.\n\n");
-          return failure();
+          return readOp->emitError()
+                 << "Loop step of inner index of " << readOp->getName()
+                 << " is not divisible by number of vector lanes.";
         }
 
         // To avoid generating the code with wrong results due to unaligned
@@ -2329,13 +2327,10 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
           int32_t offset;
           std::tie(base, offset) = getBaseAndOffset(origUbMapResult);
           if (offset % lanes) {
-            LLVM_DEBUG(llvm::dbgs()
-                       << "\n\n"
-                       << *readOp
-                       << "'s lowest dim's loop upper bound's affine"
-                          " map's offset is not divisible by the vector "
-                          "lanes.\n\n");
-            return failure();
+            return readOp->emitError()
+                   << "Loop upper bound's affine map offset of inner index of "
+                   << readOp->getName()
+                   << " is not divisible by number of vector lanes.";
           }
         }
       }
@@ -2351,11 +2346,9 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
     }
 
     if (sizes[i] % lanes) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "\n\n"
-                 << *readOp << "'s dim " << i
-                 << "'s shape size is not divisible by the vector lanes.\n\n");
-      return failure();
+      return readOp->emitError()
+             << readOp->getName() << "'s shape size of index " << i
+             << " is not divisible by number of vector lanes.";
     }
   }
 
@@ -2455,6 +2448,8 @@ void AIEVectorize::runOnOperation() {
 
     // Check whether there is any unalignment loads.
     if (unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {
+      func.emitError() << "Cannot apply aie-vectorize to " << func->getName()
+                       << " because alignment check has failed.\n";
       return;
     }
 

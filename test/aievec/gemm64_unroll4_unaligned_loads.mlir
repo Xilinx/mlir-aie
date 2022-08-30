@@ -2,9 +2,11 @@
 // because in transfer_read %arg0[%arg3, %arg5], the lowest dim(%arg5)'s corresponding
 // loop step(4) is not divisible by the vector lanes(8).
 
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -unaligned-loads-check=true --debug-only=aie-vect -split-input-file 2>&1 | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize 2>&1 | FileCheck %s
 
-//CHECK-LABEL: %0 = vector.transfer_read %arg0[%arg3, %arg5], %cst {in_bounds = [true], permutation_map = affine_map<(d0, d1) -> (0)>} : memref<64x64xf32>, vector<8xf32>'s lowest dim's loop step is not divisible by the vector lanes.
+// CHECK-LABEL: Loop step of inner index of vector.transfer_read is not divisible by number of vector lanes.
+// CHECK-LABEL: Cannot apply aie-vectorize to func.func because alignment check has failed.
+
 module {
   func.func @matmul(%arg0: memref<64x64xf32>, %arg1: memref<64x64xf32>, %arg2: memref<64x64xf32>) {
     affine.for %arg3 = 0 to 64 {

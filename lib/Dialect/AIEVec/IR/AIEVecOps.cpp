@@ -122,10 +122,10 @@ ParseResult UPDOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
 
   // Populate operand size attribute in result
-  result.addAttribute(
-      UPDOp::getOperandSegmentSizeAttr(),
-      builder.getI32VectorAttr({1, static_cast<int32_t>(indices.size()),
-                                static_cast<int32_t>(hasVector.succeeded())}));
+  result.addAttribute(UPDOp::getOperandSegmentSizeAttr(),
+                      builder.getDenseI32ArrayAttr(
+                          {1, static_cast<int32_t>(indices.size()),
+                           static_cast<int32_t>(hasVector.succeeded())}));
 
   return parser.addTypeToList(vectorType, result.types);
 }
