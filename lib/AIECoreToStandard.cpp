@@ -181,6 +181,43 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
   }
 };
 
+struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
+  using OpConversionPattern<UseLockOp>::OpConversionPattern;
+  ModuleOp &module;
+
+  AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &m,
+                            PatternBenefit benefit = 1)
+      : OpConversionPattern<UseLockOp>(context, benefit), module(m) {}
+  LogicalResult
+  matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if(!isa<ModuleOp>(useLock->getParentOp())) {
+      std::string funcName = "llvm.aie.lock.";
+      if (useLock.acquire())
+        funcName += "acquire.reg";
+      else if (useLock.release())
+        funcName += "release.reg";
+
+      auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
+      assert(useLockFunc && "Could not find the intrinsic function!");
+
+      SmallVector<Value, 2> args;
+
+      args.push_back(rewriter.create<arith::IndexCastOp>(
+          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          useLock.lock()));
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          rewriter.getI32IntegerAttr(useLock.getLockValue())));
+
+      rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
+                                    args);
+    }
+    rewriter.eraseOp(useLock);
+    return success();
+  }
+};
+
 struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
   using OpConversionPattern<CoreOp>::OpConversionPattern;
   ModuleOp &module;
@@ -269,28 +306,6 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       if (EndOp end = dyn_cast<EndOp>(childOp)) {
         rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
                                         ValueRange({}));
-        rewriter.eraseOp(childOp);
-      } else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
-        std::string funcName = "llvm.aie.lock.";
-        if (useLock.acquire())
-          funcName += "acquire.reg";
-        else if (useLock.release())
-          funcName += "release.reg";
-
-        auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
-        assert(useLockFunc && "Could not find the intrinsic function!");
-
-        SmallVector<Value, 2> args;
-
-        args.push_back(rewriter.create<arith::IndexCastOp>(
-            useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-            useLock.lock()));
-        args.push_back(rewriter.create<arith::ConstantOp>(
-            useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-            rewriter.getI32IntegerAttr(useLock.getLockValue())));
-
-        rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
-                                      args);
         rewriter.eraseOp(childOp);
       }
     });
@@ -437,7 +452,8 @@ struct AIECoreToStandardPass
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering>(m.getContext(), m);
+                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering
+                 >(m.getContext(), m);
 
     patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                         tileToBuffers, 1, tileCol, tileRow);
@@ -449,8 +465,8 @@ struct AIECoreToStandardPass
         .add<AIEOpRemoval<AIE::TileOp>, AIEOpRemoval<AIE::FlowOp>,
              AIEOpRemoval<AIE::MemOp>, AIEOpRemoval<AIE::ShimDMAOp>,
              AIEOpRemoval<AIE::ShimMuxOp>, AIEOpRemoval<AIE::SwitchboxOp>,
-             AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::UseLockOp>,
-             AIEOpRemoval<AIE::BufferOp>, AIEOpRemoval<AIE::ExternalBufferOp>>(
+             AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::BufferOp>,
+             AIEOpRemoval<AIE::ExternalBufferOp>>(
             m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
