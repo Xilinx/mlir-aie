@@ -46,7 +46,7 @@ struct AIEAssignLockIDsPass
     // value to the key is a pair with the current potential lockID and a set
     // that stores the currently assigned lockIDs.
     for (auto lock : m.getOps<LockOp>()) {
-      if (lock.lockID().hasValue()) {
+      if (lock.lockID().has_value()) {
         Operation *lock_tile = lock.tile().getDefiningOp();
         tileToLastID[lock_tile].first = 0;
         tileToLastID[lock_tile].second.insert(lock.getLockID());
@@ -56,7 +56,7 @@ struct AIEAssignLockIDsPass
     // The second pass scans for locks with no lockIDs and assigns locks.
     for (auto lock : m.getOps<LockOp>()) {
       Operation *lock_tile = lock.tile().getDefiningOp();
-      if (!lock.lockID().hasValue()) {
+      if (!lock.lockID().has_value()) {
         if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
           // If the tile operation corresponding to the lock does not exist in
           // the data structure, initialize the lockID with 0 with an empty set.

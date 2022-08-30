@@ -462,7 +462,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                  << ", "
                  << "XAie_LockInit(" << lockID << "," << acqValue << "),"
                  << "XAie_LockInit(" << lockID << "," << relValue << "));\n";
-        uint64_t address = BaseAddr + offset;
         output << "XAie_DmaSetAddrLen(" << tileDMAInstRefStr(col, row, bdNum)
                << ", "
                << " /* addr */ "

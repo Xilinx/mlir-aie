@@ -1104,8 +1104,8 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
     int getLockID() { 
-      assert(lockID().hasValue() && "Lock has no ID value");
-      return lockID().getValue();
+      assert(lockID().has_value() && "Lock has no ID value");
+      return lockID().value();
     }
   }];
   let builders = [
