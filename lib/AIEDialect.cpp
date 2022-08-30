@@ -826,7 +826,7 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
   if (llvm::isa_and_nonnull<mlir::ModuleOp>((*this)->getParentOp()))
     return success();
 
-  // Otherwise, AIE.useLock should be inside CoreOp, MemOp, or ShimDMAOp
+  // Otherwise, AIE.useLock should be inside MemOp, or ShimDMAOp,
   if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::ShimDMAOp>::verifyTrait(
           *this)
           .succeeded()) {
@@ -843,13 +843,14 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
 
     return success();
 
-  } else if (HasSomeParent<xilinx::AIE::CoreOp>::verifyTrait(*this)
+  // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
+  } else if (HasSomeParent<xilinx::AIE::CoreOp, func::FuncOp>::verifyTrait(*this)
                  .succeeded()) {
     return success();
 
   } else {
     return (*this)->emitOpError() << "expects some parent op to be one of "
-                                  << "AIE::core, AIE::mem, or AIE::shimDMA";
+                                  << "AIE::core, func::func, AIE::mem, or AIE::shimDMA";
   }
 }
 
