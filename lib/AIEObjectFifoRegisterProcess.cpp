@@ -144,7 +144,13 @@ struct AIEObjectFifoRegisterProcessPass
       if (registerOp.port() == ObjectFifoPort::Produce) {
         tile = objFifo.getProducerTileOp();
       } else if (registerOp.port() == ObjectFifoPort::Consume) {
-        tile = objFifo.getConsumerTileOp();
+        // TODO: create a std::queue for each OF consumerTiles and pop from it until empty,
+        // i.e., more processes than workers
+        for (auto consumerTile : objFifo.consumerTiles()) {
+          TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+          tile = consumerTileOp;
+          break;
+        }
       }
 
       // retrieve core associated to above tile or create new one

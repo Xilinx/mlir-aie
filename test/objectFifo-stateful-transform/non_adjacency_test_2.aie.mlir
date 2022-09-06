@@ -16,7 +16,9 @@
 // CHECK: module @non_adjacency {
 // CHECK:    %0 = AIE.tile(1, 2)
 // CHECK:    %1 = AIE.tile(3, 3)
-// CHECK:    AIE.flow(%0, DMA : 0, %1, DMA : 1)
+// CHECK:    AIE.multicast(%0, DMA : 0) {
+// CHECK:      AIE.multi_dest<%1, DMA : 0>
+// CHECK:    }
 // CHECK:    %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
 // CHECK:    %3 = AIE.lock(%0, 0)
 // CHECK:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
@@ -116,7 +118,7 @@ module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 4) : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

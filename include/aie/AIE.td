@@ -1539,10 +1539,10 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
-    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
-    a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
-    buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
-    These elements represent the conceptual depth of the objectFifo.
+    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and one or 
+    more consumers, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+    buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
+    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
@@ -1550,27 +1550,67 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 
     Example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>> 
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between tiles 12 and 13 of 4 elements, each a buffer of 16 32-bit integers.
+    This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
   }];
 
   let arguments = (
     ins Index:$producerTile,
-        Index:$consumerTile,
+        Variadic<Index>:$consumerTiles,
         Confined<I32Attr, [IntMinValue<0>]>:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
 
   let assemblyFormat = [{
-    `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
+    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
 
   let extraClassDeclaration = [{
     int size() { return elemNumber(); }
     TileOp getProducerTileOp();
-    TileOp getConsumerTileOp();
+  }];
+}
+
+def AIE_ObjectFifoBroadcastOp: AIE_Op<"objectFifo.broadcast", []> {
+  let summary = "Broadcast operation for Object FIFOs";
+  let description = [{
+    The "aie.objectFifo.broadcast" operation is used to express broadcasting
+    from one source AIE tile to multiple destination AIE tiles. This operation
+    is converted to multiple aie.objectFifo.createObjectFifo operations based 
+    on tile adjacency between the source tile and each of the destination tiles.
+
+    This operation assumes that the AXI stream switch in the AIE array is configured
+    in circuit switch mode. 
+
+    Example:
+    ```
+      %tile11 = AIE.tile(1, 1);
+      %tile12 = AIE.tile(1, 2);
+      %tile13 = AIE.tile(1, 3);
+      %tile23 = AIE.tile(2, 3);
+      %broadFifo = AIE.objectFifo.broadcast(4, %tile11)(%tile12, %tile13, %tile23) : !AIE.objectFifo<memref<16xi32>>
+    ```
+    This operation establishes a broadcast objectFifo with 4 elements between source %tile11 and destinations %tile12,
+    %tile13 and %tile23.
+  }];
+
+  let arguments = (
+    ins Confined<I32Attr, [IntMinValue<0>]>:$elemNumber,
+        Index:$producerTile,
+        Variadic<Index>:$consumerTiles
+  );
+
+  let results = (outs AIE_ObjectFifoType:$fifo);
+
+  let assemblyFormat = [{
+    `(`  $elemNumber `,` $producerTile `)` `(` $consumerTiles `)` attr-dict `:` type($fifo)
+  }];
+
+  let extraClassDeclaration = [{
+    int size() { return elemNumber(); }
+    TileOp getProducerTileOp();
   }];
 }
 

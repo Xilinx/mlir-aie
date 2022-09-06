@@ -50,7 +50,7 @@ module @singleFifo {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%line_in:memref<16xi32>) -> () {
         return
