@@ -158,29 +158,40 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createDMA(OpBuilder &builder, ObjectFifoCreateOp op, DMAChan channelMode,
-                 int lockMode) {
+  void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op, 
+                 DMAChan channelMode, int lockMode) {
     int numBlocks = op.size();
-
     if (numBlocks == 0)
       return;
-
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
 
-    // create MemOp
-    builder.setInsertionPointAfter(locksPerFifo[op].back());
-    MemOp producerMem =
-        builder.create<MemOp>(builder.getUnknownLoc(), op.getProducerTileOp());
-    Region &r = producerMem.body();
-    r.push_back(new Block);
+    // search for MemOp
+    MemOp *producerMem = nullptr;
+    for (auto memOp : m.getOps<MemOp>()) {
+      if (memOp.tile() == op.producerTile()) {
+        producerMem = &memOp;
+        break;
+      }
+    }
+
+    // if none exists, create one
+    if (producerMem == nullptr) {
+      builder.setInsertionPointAfter(locksPerFifo[op].back());
+      MemOp newMemOp = builder.create<MemOp>(builder.getUnknownLoc(), op.getProducerTileOp());
+      producerMem = &newMemOp;
+      Region &r = producerMem->body();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+
+    Region &r = producerMem->body();
     Block &endBlock = r.back();
     Block *dmaBlock = builder.createBlock(&endBlock);
     Block *bdBlock = builder.createBlock(&endBlock);
-
-    // add terminator operation to end block
-    builder.setInsertionPointToStart(&endBlock);
-    builder.create<EndOp>(builder.getUnknownLoc());
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
@@ -595,19 +606,16 @@ struct AIEObjectFifoStatefulTransformPass
 
         } else {
           split = true;
-          int consMaxAcquire =
-              findObjectFifoSize(m, consumerTileOp, createOp);
-
           // objectFifos between non-adjacent tiles must be split into two, 
           // their elements will be created in next iterations
+          int consMaxAcquire = findObjectFifoSize(m, consumerTileOp, createOp);
           builder.setInsertionPointAfter(createOp);
           ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
               builder.getUnknownLoc(), fifo, consumerTile, consumerTile, 
               consMaxAcquire);
-
           // record that this objectFifo was split
           splitConsumerFifos.push_back(consumerFifo);
-        }
+        }                                  
       }
 
       // if split, the necessary size for producer fifo might change
@@ -640,7 +648,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumer : consumers) {
         // create consumer tile DMA
         builder.setInsertionPointAfter(consumer);
-        createDMA(builder, consumer, DMAChan::S2MM1, 1);
+        createDMA(m, builder, consumer, DMAChan::S2MM1, 1);
 
         builder.setInsertionPointToEnd(&b);
         builder.create<MultiDestOp>(builder.getUnknownLoc(), consumer.producerTile(), 
@@ -650,7 +658,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       // create producer tile DMA
       builder.setInsertionPointAfter(producer);
-      createDMA(builder, producer, DMAChan::MM2S0, 0);
+      createDMA(m, builder, producer, DMAChan::MM2S0, 0);
     }
 
     //===----------------------------------------------------------------------===//
