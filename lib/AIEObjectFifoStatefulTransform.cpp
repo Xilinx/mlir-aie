@@ -134,6 +134,16 @@ struct AIEObjectFifoStatefulTransformPass
     locksPerFifo[op] = locks;
   }
 
+  Block* findEndOpBlock(Region *r) {
+    Block *endBlock = nullptr;
+    for (auto &bl : r->getBlocks()) {
+      for (auto op : bl.getOps<EndOp>()) {
+        endBlock = &bl;
+      }
+    }
+    return endBlock;
+  }
+
   /// Function used to create a Bd block.
   /// If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a
   /// producerDMA (i.e. on consumer tile).
@@ -189,14 +199,16 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     Region &r = producerMem->body();
-    Block &endBlock = r.back();
-    Block *dmaBlock = builder.createBlock(&endBlock);
-    Block *bdBlock = builder.createBlock(&endBlock);
+    Block *endBlock = findEndOpBlock(&r);
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelMode, bdBlock,
-                               &endBlock);
+    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelMode, bdBlock, endBlock);
+    if (lastDmaBlock != nullptr)
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
     // create Bd blocks
     Block *succ;
@@ -206,7 +218,7 @@ struct AIEObjectFifoStatefulTransformPass
       if (i == numBlocks - 1) {
         succ = bdBlock;
       } else {
-        succ = builder.createBlock(&endBlock);
+        succ = builder.createBlock(endBlock);
       }
       builder.setInsertionPointToStart(curr);
       createBdBlock(builder, lockMode, buffersPerFifo[op][blockIndex],

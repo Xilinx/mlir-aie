@@ -96,31 +96,10 @@ module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %buff0 = AIE.buffer(%tile12) : memref<16xi32>
-    %lock0 = AIE.lock(%tile12, 0)
-    %buff1 = AIE.buffer(%tile12) : memref<16xi32>
-    %lock1 = AIE.lock(%tile12, 1)
-
     %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
-    }
-
-    %mem12 = AIE.mem(%tile12) {
-     %14 = AIE.dmaStart(MM2S1, ^bb1, ^bb3)
-    ^bb1:  // 2 preds: ^bb0, ^bb2
-     AIE.useLock(%lock0, Acquire, 1)
-     AIE.dmaBd(<%buff0 : memref<16xi32>, 0, 16>, 0)
-     AIE.useLock(%lock0, Release, 0)
-     cf.br ^bb2
-   ^bb2:  // pred: ^bb1
-     AIE.useLock(%lock1, Acquire, 1)
-     AIE.dmaBd(<%buff1 : memref<16xi32>, 0, 16>, 0)
-     AIE.useLock(%lock1, Release, 0)
-     cf.br ^bb1
-    ^bb3:  // pred: ^bb0
-     AIE.end
     }
 
     %core12 = AIE.core(%tile12) {
