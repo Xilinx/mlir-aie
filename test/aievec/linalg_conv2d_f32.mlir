@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-linalg-to-affine-loops --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -split-input-file | FileCheck %s
+// RUN: aie-opt %s --convert-linalg-to-affine-loops --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize -unaligned-loads-check=false -split-input-file | FileCheck %s
 
 //The affine dialect code is generated from the following linalg operator, with the maps inlined. 
 //CHECK-LABEL: func.func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>, %arg2: memref<10x10x254x254xf32>) {
