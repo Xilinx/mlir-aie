@@ -141,10 +141,10 @@ def run_flow(opts, tmpdirname):
       else:
         do_call(['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-      if(opts.xaie == 2):
-          do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
-      else:
+      if(opts.xaie == 1):
           do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
+      else:
+          do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
 
 
       # Lastly, compile the generated host interface with any ARM code.
@@ -163,10 +163,10 @@ def run_flow(opts, tmpdirname):
       cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
       cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
       cmd += ['-I%s' % tmpdirname]
-      if(opts.xaie == 2):
-        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
-      else:
+      if(opts.xaie == 1):
         cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+      else:
+        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
     
 
       if(len(opts.arm_args) > 0):
