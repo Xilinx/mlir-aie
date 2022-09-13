@@ -494,6 +494,10 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
                  << ", " << packetStr(packetID, packetType) << ");\n";
         }
+        if (foundBdPacket) {
+          output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
+                 << ", " << packetStr(packetID, packetType) << ");\n";
+        }
         output << "XAie_DmaEnableBd(" << tileDMAInstRefStr(col, row, bdNum)
                << ");\n";
         output << "XAie_DmaWriteBd(" << deviceInstRef << ", "
