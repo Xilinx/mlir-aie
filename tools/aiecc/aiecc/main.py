@@ -160,8 +160,11 @@ def run_flow(opts, tmpdirname):
         cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
         cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
         cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
-      cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
-      cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
+        cmd += ['-I%s/opt/xaienginev2/include' % opts.sysroot]
+        cmd += ['-L%s/opt/xaienginev2/lib' % opts.sysroot]
+      else:
+        cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
+        cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
       cmd += ['-I%s' % tmpdirname]
       if(opts.xaie == 1):
         cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
