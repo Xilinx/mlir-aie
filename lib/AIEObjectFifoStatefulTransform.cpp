@@ -90,6 +90,62 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
+// TileDMA Channel Analysis
+//===----------------------------------------------------------------------===//
+class DMAChannelAnalysis {
+  ModuleOp &module;
+  DenseMap<Value, int> masterChannelsPerTile;
+  DenseMap<Value, int> slaveChannelsPerTile;
+
+public:
+  DMAChannelAnalysis(ModuleOp &m) : module(m) {
+    // TODO: go over the channels used for each tile and update the master/slave
+    // channel maps
+    //for (auto memOp : module.getOps<MemOp>()) {
+    //  
+    //}
+  }
+
+  /// Given an AIE tile, returns its next usable master channel.
+  DMAChan getMasterDMAChannel(Value tile) {
+    if (!masterChannelsPerTile[tile]) {
+      masterChannelsPerTile[tile] = 1;
+      return DMAChan::MM2S0;
+    } else {
+      assert(masterChannelsPerTile[tile] < 2 && "All tile DMA master channels are already in use.");
+      masterChannelsPerTile[tile]++;
+      return DMAChan::MM2S1;
+    }
+  }
+
+  /// Given an AIE tile, returns its next usable slave channel.
+  DMAChan getSlaveDMAChannel(Value tile) {
+    if (!slaveChannelsPerTile[tile]) {
+      slaveChannelsPerTile[tile] = 1;
+      return DMAChan::S2MM0;
+    } else {
+      assert(slaveChannelsPerTile[tile] < 2 && "All tile DMA slave channels are already in use.");
+      slaveChannelsPerTile[tile]++;
+      return DMAChan::S2MM1;
+    }
+  }
+
+  /// Given a DMA channel, returns corresponding port number.
+  int channelToPortNum(DMAChan channel) {
+    switch (channel) {
+      case DMAChan::MM2S0:
+        return 0;
+      case DMAChan::MM2S1:
+        return 1;
+      case DMAChan::S2MM0:
+        return 0;
+      case DMAChan::S2MM1:
+        return 1;
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoStatefulTransformPass
@@ -106,7 +162,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
-  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &analysis,
+  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
                                 ObjectFifoCreateOp op) {
     std::vector<BufferOp> buffers;
     std::vector<LockOp> locks;
@@ -123,7 +179,7 @@ struct AIEObjectFifoStatefulTransformPass
       buffers.push_back(buff);
       buff_index++;
 
-      int lockID = analysis.getLockID(op.getProducerTileOp());
+      int lockID = lockAnalysis.getLockID(op.getProducerTileOp());
       assert(lockID >= 0 && "No more locks to allocate!");
       LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(),
                                            op.getProducerTileOp(), lockID);
@@ -187,7 +243,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     // if none exists, create one
     if (producerMem == nullptr) {
-      builder.setInsertionPointAfter(locksPerFifo[op].back());
+      builder.setInsertionPointToEnd(m.getBody());
       MemOp newMemOp = builder.create<MemOp>(builder.getUnknownLoc(), op.getProducerTileOp());
       producerMem = &newMemOp;
       Region &r = producerMem->body();
@@ -587,7 +643,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   void runOnOperation() override {
     ModuleOp m = getOperation();
-    LockAnalysis analysis(m);
+    LockAnalysis lockAnalysis(m);
+    DMAChannelAnalysis dmaAnalysis(m);
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     //===----------------------------------------------------------------------===//
@@ -636,7 +693,7 @@ struct AIEObjectFifoStatefulTransformPass
           findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
       }
       createOp->setAttr("elemNumber", builder.getI32IntegerAttr(prodMaxAcquire));
-      createObjectFifoElements(builder, analysis, createOp);
+      createObjectFifoElements(builder, lockAnalysis, createOp);
 
       if (split) {
         // register split consumer objectFifos
@@ -648,29 +705,29 @@ struct AIEObjectFifoStatefulTransformPass
     // Create multicast and tile DMAs
     //===----------------------------------------------------------------------===//
     for (auto [producer, consumers] : splitFifos) {
-      // TODO: create func to return correct channel number
+      // create producer tile DMA
+      DMAChan producerChan = dmaAnalysis.getMasterDMAChannel(producer.producerTile());
+      createDMA(m, builder, producer, producerChan, 0);
+
       // create multicast
       builder.setInsertionPointAfter(producer);
       MulticastOp multicast = builder.create<MulticastOp>(builder.getUnknownLoc(), 
-          producer.producerTile(), WireBundle::DMA, 0);
+          producer.producerTile(), WireBundle::DMA, dmaAnalysis.channelToPortNum(producerChan));
       Region &r = multicast.ports();
       r.push_back(new Block);
       Block &b = r.front();
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
-        builder.setInsertionPointAfter(consumer);
-        createDMA(m, builder, consumer, DMAChan::S2MM1, 1);
+        DMAChan consumerChan = dmaAnalysis.getSlaveDMAChannel(consumer.producerTile());
+        createDMA(m, builder, consumer, consumerChan, 1);
 
+        // create multicast destination
         builder.setInsertionPointToEnd(&b);
         builder.create<MultiDestOp>(builder.getUnknownLoc(), consumer.producerTile(), 
-            WireBundle::DMA, 0);
+            WireBundle::DMA, dmaAnalysis.channelToPortNum(consumerChan));
       }
       builder.create<EndOp>(builder.getUnknownLoc());
-
-      // create producer tile DMA
-      builder.setInsertionPointAfter(producer);
-      createDMA(m, builder, producer, DMAChan::MM2S0, 0);
     }
 
     //===----------------------------------------------------------------------===//
