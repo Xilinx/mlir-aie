@@ -735,7 +735,7 @@ LogicalResult xilinx::AIE::MemOp::verify() {
             << "Duplicate DMA channel " 
             << stringifyDMAChan(dmaChan.first) << dmaChan.second
             << " detected in MemOp!";
-      used_channels.insert(DMA_chan);
+      used_channels.insert(dmaChan);
     }
 
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {

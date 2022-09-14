@@ -221,7 +221,7 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
     for (auto op : r.getOps<cf::CondBranchOp>()) {
       DMAStartOp dmaSt =
           dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
-      int channelNum = dmaSt.getChannelNum();
+      int channelNum = dmaSt.channelIndex();
       dmas[std::make_pair(mem, channelNum)] = dmaSt;
       Block *firstBd = op.getTrueDest();
       Block *curBd = firstBd;
@@ -374,7 +374,7 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
     if (srcDma.isRecv())
       continue;
 
-    int srcChannelIndex = srcDma.getSendChannelIndex();
+    int srcChannelIndex = srcDma.channelIndex();
 
     Operation *srcMemOp = srcDmaOp->getParentOp();
     MemOp srcMem = dyn_cast<MemOp>(srcMemOp);
