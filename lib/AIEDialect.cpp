@@ -720,7 +720,7 @@ xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
 
 // MemOp
 LogicalResult xilinx::AIE::MemOp::verify() {
-  llvm::SmallSet<xilinx::AIE::DMAChan, 4> used_channels;
+  DenseSet<xilinx::AIE::DMAChannel> used_channels;
 
   assert(getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
   assert(!body().empty() && "MemOp should have non-empty body");
@@ -728,10 +728,12 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   for (auto &bodyOp : body().getOps()) {
     // check for duplicate DMA channels within the same MemOp
     if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      auto DMA_chan = DMA_start.dmaChan();
-      if (used_channels.contains(DMA_chan))
+      xilinx::AIE::DMAChannel dmaChan =
+          std::make_pair(DMA_start.dmaChan(), DMA_start.channelIndex());
+      if (used_channels.count(dmaChan))
         DMA_start.emitOpError()
-            << "Duplicate DMA channel " << stringifyDMAChan(DMA_chan)
+            << "Duplicate DMA channel " 
+            << stringifyDMAChan(dmaChan.first) << dmaChan.second
             << " detected in MemOp!";
       used_channels.insert(DMA_chan);
     }

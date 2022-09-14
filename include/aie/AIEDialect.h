@@ -162,6 +162,7 @@ public:
 typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
 typedef std::pair<int, int> TileID;
+typedef std::pair<DMAChan, int> DMAChannel;
 
 bool isValidTile(TileID src);
 
