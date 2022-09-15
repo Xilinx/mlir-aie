@@ -857,7 +857,7 @@ generateUPDOp(TransferReadOp readOp,
       // corresponding to the same read.
       updOp = state->builder.create<aievec::UPDOp>(
           readOp.getLoc(), updVecType, readOp.getSource(), indices,
-          start - offset, idx - 1, updOp ? updOp.result() : nullptr);
+          start - offset, idx - 1, updOp ? updOp.result() : TypedValue<VectorType>(nullptr));
 
       LLVM_DEBUG(llvm::dbgs() << "\n\nCreated UPD op " << updOp
                               << " for read op " << readOp);
