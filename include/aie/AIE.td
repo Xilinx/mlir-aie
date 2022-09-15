@@ -890,7 +890,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
 def S2MM:  I32EnumAttrCase<"S2MM", 0>;
 def MM2S:  I32EnumAttrCase<"MM2S", 1>;
 
-def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel direction",
+def DMAChannelDir: I32EnumAttr<"DMAChannelDir", "DMA Channel direction",
   [S2MM, MM2S]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -1018,23 +1018,23 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
   }];
 
   let arguments = (
-    ins DMAChan:$dmaChan, 
+    ins DMAChannelDir:$channelDir, 
         ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channelIndex
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $dmaChan `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
+    `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    bool isSend() { return (static_cast<int32_t>(dmaChan()) == 0); }
-    bool isRecv() { return (static_cast<int32_t>(dmaChan()) == 1); }
+    bool isSend() { return (static_cast<int32_t>(channelDir()) == 0); }
+    bool isRecv() { return (static_cast<int32_t>(channelDir()) == 1); }
   }];
 
   let builders = [
-    OpBuilder<(ins "DMAChan":$channel, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
+    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
     [{
-              build($_builder, $_state, $_builder.getIntegerType(1), channel, channelIndex, dest, chain);
+              build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
               }]>
   ];
 }

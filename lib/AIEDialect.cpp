@@ -729,11 +729,11 @@ LogicalResult xilinx::AIE::MemOp::verify() {
     // check for duplicate DMA channels within the same MemOp
     if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
       xilinx::AIE::DMAChannel dmaChan =
-          std::make_pair(DMA_start.dmaChan(), DMA_start.channelIndex());
+          std::make_pair(DMA_start.channelDir(), DMA_start.channelIndex());
       if (used_channels.count(dmaChan))
         DMA_start.emitOpError()
             << "Duplicate DMA channel " 
-            << stringifyDMAChan(dmaChan.first) << dmaChan.second
+            << stringifyDMAChannelDir(dmaChan.first) << dmaChan.second
             << " detected in MemOp!";
       used_channels.insert(dmaChan);
     }
