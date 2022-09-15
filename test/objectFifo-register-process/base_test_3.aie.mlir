@@ -58,7 +58,7 @@ module @registerPatterns  {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 
     %prodAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
     %prodRelPattern = arith.constant dense<[1]> : tensor<1xi32>

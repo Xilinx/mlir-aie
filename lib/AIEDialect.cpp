@@ -78,7 +78,7 @@ Optional<TileID> getMemWest(TileID src) {
     ret = src;
   else
     ret = std::make_pair(src.first - 1, src.second);
-  if (!isValidTile(ret.getValue()))
+  if (!isValidTile(ret.value()))
     ret.reset();
   return ret;
 }
@@ -90,20 +90,20 @@ Optional<TileID> getMemEast(TileID src) {
     ret = std::make_pair(src.first + 1, src.second);
   else
     ret = src;
-  if (!isValidTile(ret.getValue()))
+  if (!isValidTile(ret.value()))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemNorth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if (!isValidTile(ret.getValue()))
+  if (!isValidTile(ret.value()))
     ret.reset();
   return ret;
 }
 Optional<TileID> getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
-  if (!isValidTile(ret.getValue()))
+  if (!isValidTile(ret.value()))
     ret.reset();
   return ret;
 }
@@ -331,8 +331,8 @@ static ParseResult parse(Type &result, StringRef name,
   OptionalParseResult parseResult;
 
   parseResult = aieTypeParser(context, parser, name, result);
-  if (parseResult.hasValue())
-    return parseResult.getValue();
+  if (parseResult.has_value())
+    return parseResult.value();
 
   parser.emitError(parser.getNameLoc(), "unknown AIE dialect type: \"")
       << name << "\"";
@@ -774,7 +774,7 @@ template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
     Operation *operation = op->getParentOp();
     while (operation) {
-      if (llvm::isa<ParentOpTypes...>(operation))
+      if (llvm::isa_and_nonnull<ParentOpTypes...>(operation))
         return success();
       operation = operation->getParentOp();
     }
@@ -819,10 +819,10 @@ struct AcquireReleaseOneStateInDMABlock {
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
   // AIE.useLock may be used in a module to set the lock's default value
-  if (llvm::isa<mlir::ModuleOp>((*this)->getParentOp()))
+  if (llvm::isa_and_nonnull<mlir::ModuleOp>((*this)->getParentOp()))
     return success();
 
-  // Otherwise, AIE.useLock should be inside CoreOp, MemOp, or ShimDMAOp
+  // Otherwise, AIE.useLock should be inside MemOp, or ShimDMAOp,
   if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::ShimDMAOp>::verifyTrait(
           *this)
           .succeeded()) {
@@ -839,13 +839,14 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
 
     return success();
 
-  } else if (HasSomeParent<xilinx::AIE::CoreOp>::verifyTrait(*this)
+  // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
+  } else if (HasSomeParent<xilinx::AIE::CoreOp, func::FuncOp>::verifyTrait(*this)
                  .succeeded()) {
     return success();
 
   } else {
     return (*this)->emitOpError() << "expects some parent op to be one of "
-                                  << "AIE::core, AIE::mem, or AIE::shimDMA";
+                                  << "AIE::core, func::func, AIE::mem, or AIE::shimDMA";
   }
 }
 

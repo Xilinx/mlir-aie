@@ -117,8 +117,8 @@ void registerAIETranslations() {
           output << "// Memory map: name base_address num_bytes\n";
 
           auto doBuffer = [&](Optional<TileID> tile, int offset) {
-            if (tiles.count(tile.getValue()))
-              for (auto buf : buffers[tiles[tile.getValue()]])
+            if (tiles.count(tile.value()))
+              for (auto buf : buffers[tiles[tile.value()]])
                 writeBufferMap(output, buf, offset, NL);
           };
           if (auto tile = getMemSouth(srcCoord))
@@ -228,8 +228,8 @@ SECTIONS
   . = 0x24000;
 )THESCRIPT";
             auto doBuffer = [&](Optional<TileID> tile, int offset) {
-              if (tiles.count(tile.getValue()))
-                for (auto buf : buffers[tiles[tile.getValue()]])
+              if (tiles.count(tile.value()))
+                for (auto buf : buffers[tiles[tile.value()]])
                   writeLDScriptMap(output, buf, offset, NL);
             };
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
@@ -308,8 +308,8 @@ SECTIONS
                       "code memory\n";
 
             auto doBuffer = [&](Optional<TileID> tile, int offset) {
-              if (tiles.count(tile.getValue()))
-                for (auto buf : buffers[tiles[tile.getValue()]])
+              if (tiles.count(tile.value()))
+                for (auto buf : buffers[tiles[tile.value()]])
                   writeBCFMap(output, buf, offset, NL);
             };
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
