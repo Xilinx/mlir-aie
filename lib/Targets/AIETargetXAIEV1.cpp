@@ -354,13 +354,13 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         output << "XAieDma_TileSetStartBd("
                << "(" << tileDMAInstStr(col, row) << ")"
                << ", "
-               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChannelDir(op.channelDir()) 
-               << op.channelIndex()
+               << "XAIEDMA_TILE_CHNUM_"
+               << stringifyDMAChannelDir(op.channelDir()) << op.channelIndex()
                << ", "
                << " /* bd */ " << bdNum << ");\n";
         output << "XAieDma_TileChControl(" << tileDMAInstStr(col, row) << ", "
-               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChannelDir(op.channelDir())
-               << op.channelIndex()
+               << "XAIEDMA_TILE_CHNUM_"
+               << stringifyDMAChannelDir(op.channelDir()) << op.channelIndex()
                << ", " << resetDisable << ", " << enable << ");\n";
       }
     }
@@ -515,15 +515,15 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         int bdNum = blockMap[op.dest()];
 
         output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
-               << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChannelDir(op.channelDir())
-               << op.channelIndex()
+               << "XAIEDMA_SHIM_CHNUM_"
+               << stringifyDMAChannelDir(op.channelDir()) << op.channelIndex()
                << ", "
                << " /* bd */ " << bdNum << ");\n";
         // #define XAieDma_ShimChControl(DmaInstPtr, ChNum, PauseStrm,
         // PauseMm, Enable)
         output << "XAieDma_ShimChControl(&" << dmaName << ", "
-               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChannelDir(op.channelDir())
-               << op.channelIndex()
+               << "XAIEDMA_TILE_CHNUM_"
+               << stringifyDMAChannelDir(op.channelDir()) << op.channelIndex()
                << ", /* PauseStream */ " << disable << ", /* PauseMM */ "
                << disable << ", /* Enable */ " << enable << ");\n";
       }

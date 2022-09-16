@@ -159,8 +159,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createDMA(OpBuilder &builder, ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                 int channelIndex, int lockMode) {
+  void createDMA(OpBuilder &builder, ObjectFifoCreateOp op,
+                 DMAChannelDir channelDir, int channelIndex, int lockMode) {
     int numBlocks = op.size();
 
     if (numBlocks == 0)
@@ -185,8 +185,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, channelIndex, 
-                               bdBlock, &endBlock);
+    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
+                               channelIndex, bdBlock, &endBlock);
 
     // create Bd blocks
     Block *succ;
