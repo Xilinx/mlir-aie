@@ -108,11 +108,11 @@ public:
 
   /// Given an AIE tile, returns its next usable master channel.
   DMAChan getMasterDMAChannel(Value tile) {
-    if (!masterChannelsPerTile[tile]) {
-      masterChannelsPerTile[tile] = 1;
+    if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
+      masterChannelsPerTile[tile] = 0;
       return DMAChan::MM2S0;
     } else {
-      assert(masterChannelsPerTile[tile] < 2 && "All tile DMA master channels are already in use.");
+      assert(masterChannelsPerTile[tile] < 1 && "All tile DMA master channels are already in use.");
       masterChannelsPerTile[tile]++;
       return DMAChan::MM2S1;
     }
@@ -120,11 +120,11 @@ public:
 
   /// Given an AIE tile, returns its next usable slave channel.
   DMAChan getSlaveDMAChannel(Value tile) {
-    if (!slaveChannelsPerTile[tile]) {
-      slaveChannelsPerTile[tile] = 1;
+    if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
+      slaveChannelsPerTile[tile] = 0;
       return DMAChan::S2MM0;
     } else {
-      assert(slaveChannelsPerTile[tile] < 2 && "All tile DMA slave channels are already in use.");
+      assert(slaveChannelsPerTile[tile] < 1 && "All tile DMA slave channels are already in use.");
       slaveChannelsPerTile[tile]++;
       return DMAChan::S2MM1;
     }
@@ -521,7 +521,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// return 0.
   int updateAndReturnIndex(DenseMap<ObjectFifoCreateOp, int> &map,
                            ObjectFifoCreateOp op) {
-    if (!map[op]) {
+    if (map.find(op) == map.end()) {
       map[op] = 0;
       return 0;
     }

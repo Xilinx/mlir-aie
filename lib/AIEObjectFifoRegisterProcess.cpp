@@ -25,6 +25,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
+#include <queue>
 
 using namespace mlir;
 using namespace xilinx;
@@ -129,6 +130,7 @@ struct AIEObjectFifoRegisterProcessPass
   void runOnOperation() override {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DenseMap<ObjectFifoCreateOp, std::queue<Value>> consumersPerFifo;
     //===----------------------------------------------------------------------===//
     // Generate access patterns
     //===----------------------------------------------------------------------===//
@@ -139,24 +141,28 @@ struct AIEObjectFifoRegisterProcessPass
       auto elementType =
           objFifo.getType().dyn_cast<AIEObjectFifoType>().getElementType();
 
-      // identify tile on which to generate the pattern
-      TileOp tile;
-      if (registerOp.port() == ObjectFifoPort::Produce) {
-        tile = objFifo.getProducerTileOp();
-      } else if (registerOp.port() == ObjectFifoPort::Consume) {
-        // TODO: create a std::queue for each OF consumerTiles and pop from it until empty,
-        // i.e., more processes than workers
+      if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {
+        std::queue<Value> consumers;
         for (auto consumerTile : objFifo.consumerTiles()) {
-          TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-          tile = consumerTileOp;
-          break;
+          consumers.push(consumerTile);
         }
+        consumersPerFifo[objFifo] = consumers;
+      }
+
+      // identify tile on which to generate the pattern
+      Value tile;
+      if (registerOp.port() == ObjectFifoPort::Produce) {
+        tile = objFifo.producerTile();
+      } else if (registerOp.port() == ObjectFifoPort::Consume) {
+        assert(!consumersPerFifo[objFifo].empty() && "No more available consumer tiles for process.");
+        tile = consumersPerFifo[objFifo].front();
+        consumersPerFifo[objFifo].pop();
       }
 
       // retrieve core associated to above tile or create new one
       CoreOp *core = nullptr;
       for (auto coreOp : m.getOps<CoreOp>()) {
-        if ((coreOp.tile().getDefiningOp<TileOp>()) == tile) {
+        if (coreOp.tile() == tile) {
           core = &coreOp;
           break;
         }

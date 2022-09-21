@@ -44,17 +44,24 @@ module @broadcast {
     }
 
     %core13 = AIE.core(%tile13) {
+        %v1 = arith.constant 1 : i32
+        %v2 = arith.constant 2 : i32
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %lineWidth = arith.constant 16 : index
         
         %subview0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+        scf.for %indexInLine = %c0 to %lineWidth step %c1 {
+            memref.store %v1, %elem0[%indexInLine] : memref<16xi32>
+        }
         AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
         %subview1 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem1) : (memref<16xi32>) -> ()
+        scf.for %indexInLine = %c0 to %lineWidth step %c1 {
+            memref.store %v2, %elem1[%indexInLine] : memref<16xi32>
+        }
         AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         
         AIE.end
