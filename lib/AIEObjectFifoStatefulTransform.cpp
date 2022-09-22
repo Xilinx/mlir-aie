@@ -99,11 +99,20 @@ class DMAChannelAnalysis {
 
 public:
   DMAChannelAnalysis(ModuleOp &m) : module(m) {
-    // TODO: go over the channels used for each tile and update the master/slave
+    // go over the channels used for each tile and update the master/slave
     // channel maps
-    //for (auto memOp : module.getOps<MemOp>()) {
-    //  
-    //}
+    for (auto memOp : module.getOps<MemOp>()) {
+      Region &r = memOp.body();
+      for (auto &bl : r.getBlocks()) {
+        for (auto op : bl.getOps<DMAStartOp>()) {
+          if (op.isSend()) {
+            getMasterDMAChannel(memOp.tile());
+          } else {
+            getSlaveDMAChannel(memOp.tile());
+          }
+        }
+      }
+    }
   }
 
   /// Given an AIE tile, returns its next usable master channel.
