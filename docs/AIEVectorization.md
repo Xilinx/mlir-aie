@@ -46,7 +46,7 @@ The super-vectorizer blocks the loop by a factor of 8, replacing scalar operatio
 The ['AIE Vectorize' pass](https://xilinx.github.io/mlir-aie/AIEVecPasses.html) in this repository transforms the above vector code into AIEngine-specific vector operations, represented in the [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecOps.html).  These operations use types that are directly implementable in the AIEngine architecture and represent device specific features, such as the vector permute network.
 
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize < pointwise_mult_f32.mlir
+aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-affine-vectorize < pointwise_mult_f32.mlir
 ```
 ```
   func.func @pointwise_mult(%arg0: memref<2048xf32>, %arg1: memref<2048xf32>, %arg2: memref<2048xf32>) {
@@ -67,7 +67,7 @@ aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --a
 
 This code can be translated to C++ code that can be included in a Vitis design:
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < ../../aie/test/aievec/pointwise_mult_f32.mlir | aie-translate --aievec-to-cpp
+aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize < ../../aie/test/aievec/pointwise_mult_f32.mlir | aie-translate --aievec-to-cpp
 ```
 ```
 void pointwise_mult(float * restrict v1, float * restrict v2, float * restrict v3) {
@@ -92,7 +92,7 @@ void pointwise_mult(float * restrict v1, float * restrict v2, float * restrict v
 
 The AIEngine architecture supports a number of different datatypes, typically supporting different vector sizes.  For 16-bit values we can vectorize with 
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize < pointwise_mult_i16.mlir
+aie-opt -affine-super-vectorize="virtual-vector-size=16" --aie-affine-vectorize < pointwise_mult_i16.mlir
 ```
 ```
 func.func @pointwise_mult (%A: memref<2048xi16>, %B: memref<2048xi16>, %C: memref<2048xi16>) {
@@ -127,7 +127,7 @@ Results in:
 More complex algorithms with multiple loops can be more challenging to vectorize.  Finding a good vectorization scheme may require exploring a number of different vectorization possibilities.  Often it is beneficial to unroll inner loops whose bounds are too small to vectorize.  For instance, in a 2-D convolution, typical in machine learning, unrolling small loops results in a good vectorization strategy:
 
 ```
-aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < conv2d_i32.mlir
+aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize < conv2d_i32.mlir
 ```
 ```
   func.func @conv2d(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref<2046x2046xi32>) {
@@ -220,10 +220,10 @@ Resulting in
 
 Running the whole pipeline, we get:
 ```
-mlir-clang --function=conv2d conv2d_i32.c -S --raise-scf-to-affine | aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize | aie-translate --aievec-to-cpp
+mlir-clang --function=conv2d conv2d_i32.c -S --raise-scf-to-affine | aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-affine-vectorize | aie-translate --aievec-to-cpp
 ```
 ```
-mlir-clang --function=conv2d conv2d_i32.c -S --raise-scf-to-affine | aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-vectorize | aie-translate --aievec-to-cpp
+mlir-clang --function=conv2d conv2d_i32.c -S --raise-scf-to-affine | aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicalize -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --aie-affine-vectorize | aie-translate --aievec-to-cpp
 void conv2d(int32_t * restrict v4, size_t m1, int32_t * restrict v5, size_t m2, int32_t * restrict v6, size_t m3) {
   size_t v7 = 0;
   size_t v8 = 2;

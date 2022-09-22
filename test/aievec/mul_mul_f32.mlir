@@ -1,7 +1,7 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=10" -split-input-file | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize="shift=10" -split-input-file | FileCheck %s
 // XFAIL: *
 
-func @mul_mul (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>, %cc: f32) {
+func.func @mul_mul (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>, %cc: f32) {
 // CHECK-LABEL: func @mul_mul
 // CHECK:  %2 = aievec.upd %arg0[%arg4] {index = 0 : i8, offset = 0 : si32} : memref<2048xf32>, vector<8xf32>
 // CHECK:  %3 = aievec.upd %arg1[%arg4] {index = 0 : i8, offset = 0 : si32} : memref<2048xf32>, vector<8xf32>

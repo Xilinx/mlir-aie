@@ -14,6 +14,7 @@
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -28,11 +29,17 @@
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 
+namespace xilinx::aievec {
+#define GEN_PASS_DEF_AIEVECTORIZE
+#include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
+} // namespace xilinx::aievec
+
 using namespace mlir;
 using namespace arith;
 using namespace vector;
 using namespace xilinx;
 using namespace xilinx::aievec;
+using namespace xilinx::aievec::impl;
 
 #define DEBUG_TYPE "aie-vect"
 static llvm::cl::opt<bool>
@@ -2132,27 +2139,6 @@ static void redundantLoadStoreOptimization(ModuleOp module) {
   }
 }
 
-// Run a pre pipeline of cleanup passes (canonicalizer). Remove redundant
-// load/store operations in case the code was generated via unrolling
-static void preCanonicalizeIR(ModuleOp module) {
-  PassManager pm(module.getContext());
-  pm.addPass(createCanonicalizerPass());
-  assert(!failed(pm.run(module)));
-  redundantLoadStoreOptimization(module);
-}
-
-// Run a post pipeline of cleanup and optimization passes (canonicalizer, LICM,
-// CSE, etc). At the end, lower the output from affine to scf, so that we can
-// use EmitC functionality to generate the loops.
-static void postCanonicalizeIR(ModuleOp module) {
-  PassManager pm(module.getContext());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(createLoopInvariantCodeMotionPass());
-  pm.addPass(createLowerAffinePass());
-  assert(!failed(pm.run(module)));
-}
-
 // Iterate over the loop nestings to form loop nesting bands. Then for each
 // block within those bands, the enclosingLoops is set to the loop band.
 static void
@@ -2459,8 +2445,9 @@ static void reassociateOpsInFunc(func::FuncOp func, VectState *state) {
   reassociateAddOpInFunc(func, state);
 }
 
-struct AIEVectorize : public AIEVectorizeBase<AIEVectorize> {
-  AIEVectorize() = default;
+struct AIEVectorize : public aievec::impl::AIEVectorizeBase<AIEVectorize> {
+  using Base::Base;
+
   void runOnOperation() override;
 };
 
@@ -2479,8 +2466,9 @@ void AIEVectorize::runOnOperation() {
 
   ModuleOp module = getOperation();
 
-  // Canonicalize the incoming IR, mostly to simplify affine/compose apply ops
-  preCanonicalizeIR(module);
+  // Remove redundant load/store operations in case the code was generated via
+  // unrolling
+  redundantLoadStoreOptimization(module);
 
   // Iterate over all the functions in this module, and vectorize them
   for (func::FuncOp func : module.getOps<func::FuncOp>()) {
@@ -2538,12 +2526,33 @@ void AIEVectorize::runOnOperation() {
     // splat.
     insertUPDOpsInFunc(func, state);
   }
-
-  // Canonicalize the IR of all the functions in the module by running a set of
-  // cleanup passes.
-  postCanonicalizeIR(module);
 }
 
-std::unique_ptr<Pass> xilinx::aievec::createAIEVectorizePass() {
-  return std::make_unique<AIEVectorize>();
+//===---------------------------------------------------------------------------
+// Pipeline implementation
+//===---------------------------------------------------------------------------
+void xilinx::aievec::buildAIEAffineVectorizer(
+    OpPassManager &pm, const AIEAffineVectorizeOptions &options) {
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createAIEVectorize(options.getAIEVectorizeOptions()));
+  // Canonicalize the IR of all the functions in the module by running a set of
+  // cleanup passes.
+  // Run a post pipeline of cleanup and optimization passes (canonicalizer,
+  // LICM, CSE, etc). At the end, lower the output from affine to scf, so
+  // that we can use EmitC functionality to generate the loops.
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(createLoopInvariantCodeMotionPass());
+  pm.addPass(createLowerAffinePass());
+}
+
+//===---------------------------------------------------------------------------
+// Pipeline registration
+//===---------------------------------------------------------------------------
+void xilinx::aievec::registerAIEVecPipelines() {
+  PassPipelineRegistration<AIEAffineVectorizeOptions>(
+      "aie-affine-vectorize",
+      "This pipeline takes affine code and vectorizes it targeting Xilinx AIE "
+      "vector units.",
+      buildAIEAffineVectorizer);
 }

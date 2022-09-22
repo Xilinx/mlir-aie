@@ -49,10 +49,9 @@ class VectorDialect;
 namespace xilinx {
 namespace aievec {
 
+#define GEN_PASS_DECL_AIEVECTORIZE
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
-
-std::unique_ptr<Pass> createAIEVectorizePass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

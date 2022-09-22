@@ -3,7 +3,7 @@
 // (affine.for %arg7 = #map0(%arg4) to #map1(%arg4))'s upper bound’s affine_map(<(d0) -> (d0 + 4)>)
 // result's offset(4) is not divisible by the vector lane size(8).
 
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize 2>&1 | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize 2>&1 | FileCheck %s
 
 // CHECK-LABEL: Loop upper bound's affine map offset of inner index of vector.transfer_read is not divisible by number of vector lanes.
 // CHECK-LABEL: Cannot apply aie-vectorize to func.func because alignment check has failed.
@@ -75,76 +75,83 @@ module {
   }
 }
 
-// CHECK:       #map = affine_map<(d0) -> (d0)>
-// CHECK:       #map1 = affine_map<(d0) -> (d0 + 4)>
-// CHECK:       #map2 = affine_map<(d0, d1) -> (0)>
-// CHECK:       #map3 = affine_map<(d0) -> (d0 + 1)>
-// CHECK:       #map4 = affine_map<(d0) -> (d0 + 2)>
-// CHECK:       #map5 = affine_map<(d0) -> (d0 + 3)>
-// CHECK:       #map6 = affine_map<(d0) -> (d0 + 5)>
-// CHECK:       #map7 = affine_map<(d0) -> (d0 + 6)>
-// CHECK:       #map8 = affine_map<(d0) -> (d0 + 7)>
-// CHECK:       module {
-// CHECK:         func.func @matmul(%[[VAL_0:.*]]: memref<64x64xf32>, %[[VAL_1:.*]]: memref<64x64xf32>, %[[VAL_2:.*]]: memref<64x64xf32>) {
-// CHECK:           %[[VAL_3:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:           affine.for %[[VAL_4:.*]] = 0 to 64 step 4 {
-// CHECK:             affine.for %[[VAL_5:.*]] = 0 to 64 step 4 {
-// CHECK:               affine.for %[[VAL_6:.*]] = 0 to 64 step 8 {
-// CHECK:                 affine.for %[[VAL_7:.*]] = #map(%[[VAL_4]]) to #map1(%[[VAL_4]]) {
-// CHECK:                   affine.for %[[VAL_8:.*]] = #map(%[[VAL_5]]) to #map1(%[[VAL_5]]) step 8 {
-// CHECK:                     %[[VAL_9:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_6]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_10:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_6]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_11:.*]] = arith.mulf %[[VAL_9]], %[[VAL_10]] : vector<8xf32>
-// CHECK:                     %[[VAL_12:.*]] = vector.transfer_read %[[VAL_2]]{{\[}}%[[VAL_7]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_13:.*]] = arith.addf %[[VAL_12]], %[[VAL_11]] : vector<8xf32>
-// CHECK:                     %[[VAL_14:.*]] = affine.apply #map3(%[[VAL_6]])
-// CHECK:                     %[[VAL_15:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_14]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_16:.*]] = affine.apply #map3(%[[VAL_6]])
-// CHECK:                     %[[VAL_17:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_16]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_18:.*]] = arith.mulf %[[VAL_15]], %[[VAL_17]] : vector<8xf32>
-// CHECK:                     %[[VAL_19:.*]] = arith.addf %[[VAL_13]], %[[VAL_18]] : vector<8xf32>
-// CHECK:                     %[[VAL_20:.*]] = affine.apply #map4(%[[VAL_6]])
-// CHECK:                     %[[VAL_21:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_20]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_22:.*]] = affine.apply #map4(%[[VAL_6]])
-// CHECK:                     %[[VAL_23:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_22]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_24:.*]] = arith.mulf %[[VAL_21]], %[[VAL_23]] : vector<8xf32>
-// CHECK:                     %[[VAL_25:.*]] = arith.addf %[[VAL_19]], %[[VAL_24]] : vector<8xf32>
-// CHECK:                     %[[VAL_26:.*]] = affine.apply #map5(%[[VAL_6]])
-// CHECK:                     %[[VAL_27:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_26]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_28:.*]] = affine.apply #map5(%[[VAL_6]])
-// CHECK:                     %[[VAL_29:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_28]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_30:.*]] = arith.mulf %[[VAL_27]], %[[VAL_29]] : vector<8xf32>
-// CHECK:                     %[[VAL_31:.*]] = arith.addf %[[VAL_25]], %[[VAL_30]] : vector<8xf32>
-// CHECK:                     %[[VAL_32:.*]] = affine.apply #map1(%[[VAL_6]])
-// CHECK:                     %[[VAL_33:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_32]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_34:.*]] = affine.apply #map1(%[[VAL_6]])
-// CHECK:                     %[[VAL_35:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_34]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_36:.*]] = arith.mulf %[[VAL_33]], %[[VAL_35]] : vector<8xf32>
-// CHECK:                     %[[VAL_37:.*]] = arith.addf %[[VAL_31]], %[[VAL_36]] : vector<8xf32>
-// CHECK:                     %[[VAL_38:.*]] = affine.apply #map6(%[[VAL_6]])
-// CHECK:                     %[[VAL_39:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_38]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_40:.*]] = affine.apply #map6(%[[VAL_6]])
-// CHECK:                     %[[VAL_41:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_40]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_42:.*]] = arith.mulf %[[VAL_39]], %[[VAL_41]] : vector<8xf32>
-// CHECK:                     %[[VAL_43:.*]] = arith.addf %[[VAL_37]], %[[VAL_42]] : vector<8xf32>
-// CHECK:                     %[[VAL_44:.*]] = affine.apply #map7(%[[VAL_6]])
-// CHECK:                     %[[VAL_45:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_44]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_46:.*]] = affine.apply #map7(%[[VAL_6]])
-// CHECK:                     %[[VAL_47:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_46]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_48:.*]] = arith.mulf %[[VAL_45]], %[[VAL_47]] : vector<8xf32>
-// CHECK:                     %[[VAL_49:.*]] = arith.addf %[[VAL_43]], %[[VAL_48]] : vector<8xf32>
-// CHECK:                     %[[VAL_50:.*]] = affine.apply #map8(%[[VAL_6]])
-// CHECK:                     %[[VAL_51:.*]] = vector.transfer_read %[[VAL_0]]{{\[}}%[[VAL_7]], %[[VAL_50]]], %[[VAL_3]] {in_bounds = [true], permutation_map = #map2} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_52:.*]] = affine.apply #map8(%[[VAL_6]])
-// CHECK:                     %[[VAL_53:.*]] = vector.transfer_read %[[VAL_1]]{{\[}}%[[VAL_52]], %[[VAL_8]]], %[[VAL_3]] {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
-// CHECK:                     %[[VAL_54:.*]] = arith.mulf %[[VAL_51]], %[[VAL_53]] : vector<8xf32>
-// CHECK:                     %[[VAL_55:.*]] = arith.addf %[[VAL_49]], %[[VAL_54]] : vector<8xf32>
-// CHECK:                     vector.transfer_write %[[VAL_55]], %[[VAL_2]]{{\[}}%[[VAL_7]], %[[VAL_8]]] {in_bounds = [true]} : vector<8xf32>, memref<64x64xf32>
-// CHECK:                   }
-// CHECK:                 }
-// CHECK:               }
-// CHECK:             }
-// CHECK:           }
-// CHECK:           return
-// CHECK:         }
-// CHECK:       }
+//CHECK-LABEL:#map = affine_map<(d0, d1) -> (0)>
+//CHECK-NEXT: module {
+//CHECK-NEXT:  func.func @matmul(%arg0: memref<64x64xf32>, %arg1: memref<64x64xf32>, %arg2: memref<64x64xf32>) {
+//CHECK-NEXT:    %cst = arith.constant 0.000000e+00 : f32
+//CHECK-NEXT:    %c0 = arith.constant 0 : index
+//CHECK-NEXT:    %c64 = arith.constant 64 : index
+//CHECK-NEXT:    %c4 = arith.constant 4 : index
+//CHECK-NEXT:    scf.for %arg3 = %c0 to %c64 step %c4 {
+//CHECK-NEXT:      %c0_0 = arith.constant 0 : index
+//CHECK-NEXT:      %c64_1 = arith.constant 64 : index
+//CHECK-NEXT:      %c4_2 = arith.constant 4 : index
+//CHECK-NEXT:      scf.for %arg4 = %c0_0 to %c64_1 step %c4_2 {
+//CHECK-NEXT:        %c0_3 = arith.constant 0 : index
+//CHECK-NEXT:        %c64_4 = arith.constant 64 : index
+//CHECK-NEXT:        %c8 = arith.constant 8 : index
+//CHECK-NEXT:        scf.for %arg5 = %c0_3 to %c64_4 step %c8 {
+//CHECK-NEXT:          %c1 = arith.constant 1 : index
+//CHECK-NEXT:          %0 = arith.addi %arg5, %c1 : index
+//CHECK-NEXT:          %c2 = arith.constant 2 : index
+//CHECK-NEXT:          %1 = arith.addi %arg5, %c2 : index
+//CHECK-NEXT:          %c3 = arith.constant 3 : index
+//CHECK-NEXT:          %2 = arith.addi %arg5, %c3 : index
+//CHECK-NEXT:          %c4_5 = arith.constant 4 : index
+//CHECK-NEXT:          %3 = arith.addi %arg5, %c4_5 : index
+//CHECK-NEXT:          %c5 = arith.constant 5 : index
+//CHECK-NEXT:          %4 = arith.addi %arg5, %c5 : index
+//CHECK-NEXT:          %c6 = arith.constant 6 : index
+//CHECK-NEXT:          %5 = arith.addi %arg5, %c6 : index
+//CHECK-NEXT:          %c7 = arith.constant 7 : index
+//CHECK-NEXT:          %6 = arith.addi %arg5, %c7 : index
+//CHECK-NEXT:          %c4_6 = arith.constant 4 : index
+//CHECK-NEXT:          %7 = arith.addi %arg3, %c4_6 : index
+//CHECK-NEXT:          %c1_7 = arith.constant 1 : index
+//CHECK-NEXT:          scf.for %arg6 = %arg3 to %7 step %c1_7 {
+//CHECK-NEXT:            %c4_8 = arith.constant 4 : index
+//CHECK-NEXT:            %8 = arith.addi %arg4, %c4_8 : index
+//CHECK-NEXT:            %c8_9 = arith.constant 8 : index
+//CHECK-NEXT:            scf.for %arg7 = %arg4 to %8 step %c8_9 {
+//CHECK-NEXT:              %9 = vector.transfer_read %arg0[%arg6, %arg5], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %10 = vector.transfer_read %arg1[%arg5, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %11 = arith.mulf %9, %10 : vector<8xf32>
+//CHECK-NEXT:              %12 = vector.transfer_read %arg2[%arg6, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %13 = arith.addf %12, %11 : vector<8xf32>
+//CHECK-NEXT:              %14 = vector.transfer_read %arg0[%arg6, %0], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %15 = vector.transfer_read %arg1[%0, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %16 = arith.mulf %14, %15 : vector<8xf32>
+//CHECK-NEXT:              %17 = arith.addf %13, %16 : vector<8xf32>
+//CHECK-NEXT:              %18 = vector.transfer_read %arg0[%arg6, %1], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %19 = vector.transfer_read %arg1[%1, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %20 = arith.mulf %18, %19 : vector<8xf32>
+//CHECK-NEXT:              %21 = arith.addf %17, %20 : vector<8xf32>
+//CHECK-NEXT:              %22 = vector.transfer_read %arg0[%arg6, %2], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %23 = vector.transfer_read %arg1[%2, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %24 = arith.mulf %22, %23 : vector<8xf32>
+//CHECK-NEXT:              %25 = arith.addf %21, %24 : vector<8xf32>
+//CHECK-NEXT:              %26 = vector.transfer_read %arg0[%arg6, %3], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %27 = vector.transfer_read %arg1[%3, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %28 = arith.mulf %26, %27 : vector<8xf32>
+//CHECK-NEXT:              %29 = arith.addf %25, %28 : vector<8xf32>
+//CHECK-NEXT:              %30 = vector.transfer_read %arg0[%arg6, %4], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %31 = vector.transfer_read %arg1[%4, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %32 = arith.mulf %30, %31 : vector<8xf32>
+//CHECK-NEXT:              %33 = arith.addf %29, %32 : vector<8xf32>
+//CHECK-NEXT:              %34 = vector.transfer_read %arg0[%arg6, %5], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %35 = vector.transfer_read %arg1[%5, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %36 = arith.mulf %34, %35 : vector<8xf32>
+//CHECK-NEXT:              %37 = arith.addf %33, %36 : vector<8xf32>
+//CHECK-NEXT:              %38 = vector.transfer_read %arg0[%arg6, %6], %cst {in_bounds = [true], permutation_map = #map} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %39 = vector.transfer_read %arg1[%6, %arg7], %cst {in_bounds = [true]} : memref<64x64xf32>, vector<8xf32>
+//CHECK-NEXT:              %40 = arith.mulf %38, %39 : vector<8xf32>
+//CHECK-NEXT:              %41 = arith.addf %37, %40 : vector<8xf32>
+//CHECK-NEXT:              vector.transfer_write %41, %arg2[%arg6, %arg7] {in_bounds = [true]} : vector<8xf32>, memref<64x64xf32>
+//CHECK-NEXT:            }
+//CHECK-NEXT:          }
+//CHECK-NEXT:        }
+//CHECK-NEXT:      }
+//CHECK-NEXT:    }
+//CHECK-NEXT:    return
+//CHECK-NEXT:  }
+//CHECK-NEXT:}

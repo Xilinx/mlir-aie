@@ -18,7 +18,6 @@ include "mlir/Pass/PassBase.td"
 def AIEVectorize : Pass<"aie-vectorize", "ModuleOp"> {
   let summary = "Vectorize the output of affine "
                 "supervectorizer to AIE vector abstraction";
-  let constructor = "xilinx::aievec::createAIEVectorizePass()";
   let dependentDialects = ["AffineDialect", 
                            "xilinx::aievec::AIEVecDialect",
                            "arith::ArithDialect",

@@ -25,6 +25,7 @@
 #include "aie/AIEPasses.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 
 using namespace llvm;
@@ -35,6 +36,7 @@ int main(int argc, char **argv) {
   registerAllPasses();
   aie::registerAIEPasses();
   xilinx::aievec::registerAIEVecPasses();
+  xilinx::aievec::registerAIEVecPipelines();
 
   DialectRegistry registry;
   registerAllDialects(registry);
