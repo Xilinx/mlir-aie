@@ -74,7 +74,7 @@ module @test_buffer_merge0 {
   %buf32_0 = AIE.buffer(%t32) : memref<256xi32>
 
   %m34 = AIE.mem(%t34) {
-      %dmaSt = AIE.dmaStart(MM2S0, ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l34_0, Acquire, 1)
       AIE.dmaBd(<%buf34_0 : memref<256xi32>, 0, 256>, 0)
@@ -85,7 +85,7 @@ module @test_buffer_merge0 {
   }
 
   %m32 = AIE.mem(%t32) {
-      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l32_0, Acquire, 0)
       AIE.dmaBd(<%buf32_0 : memref<256xi32>, 0, 256>, 0)

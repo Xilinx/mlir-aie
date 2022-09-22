@@ -161,9 +161,9 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
   // Tile DMA
   %m73 = AIE.mem(%t73) {
-      %srcDma = AIE.dmaStart("S2MM0", ^bd0, ^dma0)
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
     ^dma0:
-      %dstDma = AIE.dmaStart("MM2S1", ^bd2, ^end)
+      %dstDma = AIE.dmaStart("MM2S", 1, ^bd2, ^end)
     ^bd0:
       AIE.useLock(%lock_73_a_ping, "Acquire", 0)
       AIE.dmaBd(<%buf_73_aping : memref<64xi16>, 0, 64>, 0)
@@ -190,9 +190,9 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
     // Tile DMA
   %m74 = AIE.mem(%t74) {
-      %srcDma = AIE.dmaStart("S2MM0", ^bd0, ^dma0)
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
     ^dma0:
-      %dstDma = AIE.dmaStart("MM2S1", ^bd2, ^end)
+      %dstDma = AIE.dmaStart("MM2S", 1, ^bd2, ^end)
     ^bd0:
       AIE.useLock(%lock_74_a_ping, "Acquire", 0)
       AIE.dmaBd(<%buf_74_aping : memref<64xi16>, 0, 64>, 0)
@@ -219,9 +219,9 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
   // Tile DMA
   %m75 = AIE.mem(%t75) {
-      %srcDma = AIE.dmaStart("S2MM0", ^bd0, ^dma0)
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
     ^dma0:
-      %dstDma = AIE.dmaStart("MM2S1", ^bd2, ^end)
+      %dstDma = AIE.dmaStart("MM2S", 1, ^bd2, ^end)
     ^bd0:
       AIE.useLock(%lock_75_a_ping, "Acquire", 0)
       AIE.dmaBd(<%buf_75_aping : memref<64xi16>, 0, 64>, 0)
@@ -280,9 +280,9 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %dma = AIE.shimDMA(%t70) {
       %lock1 = AIE.lock(%t70, 1)
       %lock2 = AIE.lock(%t70, 2)
-      AIE.dmaStart(MM2S0, ^bd0, ^dma)
+      AIE.dmaStart(MM2S, 0, ^bd0, ^dma)
     ^dma:
-      AIE.dmaStart(S2MM0, ^bd1, ^end)
+      AIE.dmaStart(S2MM, 0, ^bd1, ^end)
     ^bd0:
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer_in : memref<512 x i16>, 0, 512>, 0)
