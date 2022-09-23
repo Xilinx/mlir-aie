@@ -394,11 +394,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   // Function that unrolls for-loops that contain objectFifo operations.
   void unrollForLoops(ModuleOp &m, OpBuilder &builder,
-                      std::vector<TileOp> objectFifoTiles) {
+                      std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : m.getOps<CoreOp>()) {
-      if (std::find(objectFifoTiles.begin(), objectFifoTiles.end(),
-                    coreOp.getTileOp()) != objectFifoTiles.end()) {
-
+      if(objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         coreOp.walk([&](mlir::scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
@@ -658,12 +656,11 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     // Create objectFifos
     //===----------------------------------------------------------------------===//
-    // TODO: use a set to avoid duplicates?
-    std::vector<TileOp> objectFifoTiles; // track cores to check for loops during unrolling
+    std::set<TileOp> objectFifoTiles; // track cores to check for loops during unrolling
 
     for (auto createOp : m.getOps<ObjectFifoCreateOp>()) {
       AIEObjectFifoType fifo = createOp.getType().cast<AIEObjectFifoType>();
-      objectFifoTiles.push_back(createOp.getProducerTileOp());
+      objectFifoTiles.insert(createOp.getProducerTileOp());
       bool split = false;
       bool shared = false;
       int prodMaxAcquire = createOp.elemNumber();
@@ -671,7 +668,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       for (auto consumerTile : createOp.consumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-        objectFifoTiles.push_back(consumerTileOp);
+        objectFifoTiles.insert(consumerTileOp);
 
         bool memoryAdjacent =
             isLegalMemAffinity(createOp.getProducerTileOp().colIndex(),
