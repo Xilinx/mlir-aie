@@ -56,9 +56,9 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
-      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = i + 1",
+      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = j",
                      mlir_aie_read_buffer_out12(_xaie, i * LINE_WIDTH + j),
-                     (i + 1), errors);
+                     (j), errors);
     }
   }
 
@@ -75,9 +75,9 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
-      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = i + 1",
+      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = j",
                      mlir_aie_read_buffer_out14(_xaie, i * LINE_WIDTH + j),
-                     (i + 1), errors);
+                     (j), errors);
     }
   }
 
@@ -94,10 +94,21 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
-      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = i + 1",
+      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = j",
                      mlir_aie_read_buffer_out33(_xaie, i * LINE_WIDTH + j),
-                     (i + 1), errors);
+                     (j), errors);
     }
+  }
+
+  for (int i = 0; i < HEIGHT; i++) {
+    for (int j = 0; j < LINE_WIDTH; j++)
+      printf("%d ", mlir_aie_read_buffer_out12(_xaie, i * LINE_WIDTH + j));
+    printf("\n");
+  }
+  for (int i = 0; i < HEIGHT; i++) {
+    for (int j = 0; j < LINE_WIDTH; j++)
+      printf("%d ", mlir_aie_read_buffer_out14(_xaie, i * LINE_WIDTH + j));
+    printf("\n");
   }
 
   for (int i = 0; i < HEIGHT; i++) {

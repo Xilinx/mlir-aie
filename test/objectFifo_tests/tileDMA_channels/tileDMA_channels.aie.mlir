@@ -77,11 +77,9 @@ module @dmaChannels {
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
         
-        %value = arith.index_cast %valueIndex : index to i32
         scf.for %indexInLine = %c0 to %lineWidth step %c1 {
             %i = arith.index_cast %indexInLine : index to i32
-            %sum = arith.addi %value, %i : i32
-            memref.store %sum, %lineOut[%indexInLine] : memref<16xi32>
+            memref.store %i, %lineOut[%indexInLine] : memref<16xi32>
         }
         return
     }

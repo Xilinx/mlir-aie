@@ -202,9 +202,8 @@ struct AIEObjectFifoStatefulTransformPass
   Block* findEndOpBlock(Region *r) {
     Block *endBlock = nullptr;
     for (auto &bl : r->getBlocks()) {
-      for (auto op : bl.getOps<EndOp>()) {
+      if (!bl.getOps<EndOp>().empty())
         endBlock = &bl;
-      }
     }
     return endBlock;
   }

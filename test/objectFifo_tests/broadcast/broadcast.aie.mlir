@@ -29,7 +29,19 @@ module @broadcast {
     %buff_out_33 = AIE.buffer(%tile33) { sym_name = "out33" } :  memref<2x16xi32>
     %lock_out_33 = AIE.lock(%tile33, 0)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile13, {%tile12, %tile14, %tile33}, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile13, {%tile12, %tile14, %tile33}, 7) : !AIE.objectFifo<memref<16xi32>>
+
+    func.func @generateLineScalar(%lineOut : memref<16xi32>) -> () {
+        %c0 = arith.constant 0 : index
+        %c1 = arith.constant 1 : index
+        %lineWidth = arith.constant 16 : index
+        
+        scf.for %indexInLine = %c0 to %lineWidth step %c1 {
+            %value = arith.index_cast %indexInLine : index to i32
+            memref.store %value, %lineOut[%indexInLine] : memref<16xi32>
+        }
+        return
+    }
 
     func.func @storeLineScalar(%lineIn : memref<16xi32>, %row : index, %bufferOut : memref<2x16xi32>) -> () {
         %c0 = arith.constant 0 : index
@@ -44,24 +56,17 @@ module @broadcast {
     }
 
     %core13 = AIE.core(%tile13) {
-        %v1 = arith.constant 1 : i32
-        %v2 = arith.constant 2 : i32
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
-        %lineWidth = arith.constant 16 : index
         
         %subview0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        scf.for %indexInLine = %c0 to %lineWidth step %c1 {
-            memref.store %v1, %elem0[%indexInLine] : memref<16xi32>
-        }
+        func.call @generateLineScalar(%elem0) : (memref<16xi32>) -> ()
         AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
         %subview1 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        scf.for %indexInLine = %c0 to %lineWidth step %c1 {
-            memref.store %v2, %elem1[%indexInLine] : memref<16xi32>
-        }
+        func.call @generateLineScalar(%elem1) : (memref<16xi32>) -> ()
         AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         
         AIE.end
@@ -80,7 +85,7 @@ module @broadcast {
 
         %subview1 = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @storeLineScalar(%elem0, %c1, %buff_out_12) : (memref<16xi32>, index, memref<2x16xi32>) -> ()
+        func.call @storeLineScalar(%elem1, %c1, %buff_out_12) : (memref<16xi32>, index, memref<2x16xi32>) -> ()
         AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
         AIE.useLock(%lock_out_12, "Release", 1)
