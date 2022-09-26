@@ -635,6 +635,15 @@ struct AIEObjectFifoStatefulTransformPass
       }
     });
 
+    core->walk([&](mlir::scf::ForOp forOp) {
+      forOp->walk([&](ObjectFifoAcquireOp acqOp) {
+        if (acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo) {
+          if (acqOp.acqNumber() > maxAcquire)
+            maxAcquire = acqOp.acqNumber();
+        }
+      });
+    });
+
     if (maxAcquire > 0) {
       if ((maxAcquire == 1) && (objFifo.size() == 1)) {
         return 1;
