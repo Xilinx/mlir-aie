@@ -154,7 +154,8 @@ struct AIEObjectFifoRegisterProcessPass
       if (registerOp.port() == ObjectFifoPort::Produce) {
         tile = objFifo.producerTile();
       } else if (registerOp.port() == ObjectFifoPort::Consume) {
-        assert(!consumersPerFifo[objFifo].empty() && "No more available consumer tiles for process.");
+        assert(!consumersPerFifo[objFifo].empty() &&
+               "No more available consumer tiles for process.");
         tile = consumersPerFifo[objFifo].front();
         consumersPerFifo[objFifo].pop();
       }
