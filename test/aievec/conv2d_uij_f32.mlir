@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize="shift=0" -unaligned-loads-check=false -split-input-file | FileCheck %s
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=8 shift=0" -unaligned-loads-check=false -split-input-file | FileCheck %s
 
 //CHECK-LABEL: func.func @conv2d(%arg0: memref<2048x2048xf32>, %arg1: memref<9xf32>, %arg2: memref<2046x2046xf32>) {
 func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046x2046xf32>) {
@@ -111,7 +111,7 @@ func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046
 // -unaligned-loads-check=true. The reason is that in transfer_read %arg2[%arg3, %arg4],
 // dim 1's memref shape size(2046) is not divisible by the vector lanes(8).
 
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize="shift=0" -split-input-file 2>&1 | FileCheck %s -check-prefix=ALIGNMENT
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=8 shift=0" -split-input-file 2>&1 | FileCheck %s -check-prefix=ALIGNMENT
 
 // ALIGNMENT: vector.transfer_read's shape size of index 1 is not divisible by number of vector lanes.
 // ALIGNMENT: Cannot apply aie-vectorize to func.func because alignment check has failed.                         

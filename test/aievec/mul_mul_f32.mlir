@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize="shift=10" -split-input-file | FileCheck %s
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=8 shift=10" -split-input-file | FileCheck %s
 // XFAIL: *
 
 func.func @mul_mul (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>, %cc: f32) {

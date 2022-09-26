@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-affine-vectorize="shift=0 zero-offset=4" -split-input-file | FileCheck %s
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=16 shift=0 zero-offset=4" -split-input-file | FileCheck %s
 
 //CHECK-LABEL: func.func @conv2d_0
 func.func @conv2d_0 (%A: memref<?x?xi16>, %B: memref<?xi16>, %C: memref<?x?xi16>) {

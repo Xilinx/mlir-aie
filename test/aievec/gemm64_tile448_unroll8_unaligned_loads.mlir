@@ -3,7 +3,7 @@
 // (affine.for %arg7 = #map0(%arg4) to #map1(%arg4))'s upper bound’s affine_map(<(d0) -> (d0 + 4)>)
 // result's offset(4) is not divisible by the vector lane size(8).
 
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize 2>&1 | FileCheck %s
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=8" 2>&1 | FileCheck %s
 
 // CHECK-LABEL: Loop upper bound's affine map offset of inner index of vector.transfer_read is not divisible by number of vector lanes.
 // CHECK-LABEL: Cannot apply aie-vectorize to func.func because alignment check has failed.
@@ -61,7 +61,7 @@ module {
               %40 = arith.addf %39, %38 : f32
               affine.store %40, %arg2[%arg6, %arg7] : memref<64x64xf32>
               %42 = affine.load %arg0[%arg6, %arg5+7] : memref<64x64xf32>
-%43 = affine.load %arg1[%arg5+7, %arg7] : memref<64x64xf32>
+              %43 = affine.load %arg1[%arg5+7, %arg7] : memref<64x64xf32>
               %44 = arith.mulf %42, %43 : f32
               %45 = affine.load %arg2[%arg6, %arg7] : memref<64x64xf32>
               %46 = arith.addf %45, %44 : f32

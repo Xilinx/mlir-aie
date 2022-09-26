@@ -20,6 +20,7 @@
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -2533,10 +2534,14 @@ void AIEVectorize::runOnOperation() {
 //===---------------------------------------------------------------------------
 void xilinx::aievec::buildAIEAffineVectorizer(
     OpPassManager &pm, const AIEAffineVectorizeOptions &options) {
+  // Supervectorize code
+  pm.addPass(createAffineVectorize(options.getAffineVectorizeOptions()));
+  // Canonicalize vector code
   pm.addPass(createCanonicalizerPass());
+  // Convert standard vector ops to AIEVec vector ops
   pm.addPass(createAIEVectorize(options.getAIEVectorizeOptions()));
-  // Canonicalize the IR of all the functions in the module by running a set of
-  // cleanup passes.
+  // Canonicalize the IR of all the functions in the module by running a set
+  // of cleanup passes.
   // Run a post pipeline of cleanup and optimization passes (canonicalizer,
   // LICM, CSE, etc). At the end, lower the output from affine to scf, so
   // that we can use EmitC functionality to generate the loops.

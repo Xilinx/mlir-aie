@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-affine-vectorize="shift=10" -split-input-file | FileCheck %s
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=16 shift=10" -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @pointwise_mult(%arg0: memref<2048xi16>, %arg1: memref<2048xi16>, %arg2: memref<2048xi16>) {
 func.func @pointwise_mult (%A: memref<2048xi16>, %B: memref<2048xi16>, %C: memref<2048xi16>) {

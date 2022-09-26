@@ -2,7 +2,7 @@
 // because in transfer_read %arg0[%arg3, %arg5], the lowest dim(%arg5)'s corresponding
 // loop step(4) is not divisible by the vector lanes(8).
 
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-affine-vectorize 2>&1 | FileCheck %s
+// RUN: aie-opt %s --aie-affine-vectorize="virtual-vector-size=8" 2>&1 | FileCheck %s
 
 // CHECK-LABEL: Loop step of inner index of vector.transfer_read is not divisible by number of vector lanes.
 // CHECK-LABEL: Cannot apply aie-vectorize to func.func because alignment check has failed.

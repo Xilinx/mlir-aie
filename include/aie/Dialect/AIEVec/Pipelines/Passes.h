@@ -27,6 +27,18 @@ namespace aievec {
 struct AIEAffineVectorizeOptions
     : public PassPipelineOptions<AIEAffineVectorizeOptions> {
   // Affine supervectorizer options
+  PassOptions::ListOption<int64_t> vectorSizes{
+      *this, "virtual-vector-size",
+      llvm::cl::desc("Specify an n-D virtual vector size for vectorization")};
+  PassOptions::Option<bool> vectorizeReductions{
+      *this, "vectorize-reductions",
+      llvm::cl::desc("Vectorize known reductions expressed via iter_args. "
+                     "Switched off by default."),
+      llvm::cl::init(false)};
+
+  AffineVectorizeOptions getAffineVectorizeOptions() const {
+    return AffineVectorizeOptions{vectorSizes, {}, vectorizeReductions};
+  }
 
   // AIE vectorize options. Keep in sync with AIEVectorizePass options
   PassOptions::Option<unsigned> shiftParam{
