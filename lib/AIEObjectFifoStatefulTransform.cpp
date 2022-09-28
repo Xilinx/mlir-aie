@@ -678,8 +678,8 @@ struct AIEObjectFifoStatefulTransformPass
         if (createOp.consumerTiles().size() == 1) {
           bool memoryAdjacent = isLegalMemAffinity(
               createOp.getProducerTileOp().colIndex(),
-              createOp.getProducerTileOp().rowIndex(), consumerTileOp.colIndex(),
-              consumerTileOp.rowIndex());
+              createOp.getProducerTileOp().rowIndex(),
+              consumerTileOp.colIndex(), consumerTileOp.rowIndex());
           if (memoryAdjacent) {
             shared = true;
             break;
