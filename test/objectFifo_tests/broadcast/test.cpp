@@ -26,7 +26,7 @@
 #define mlir_aie_STACK_OFFSET 4096
 
 #define LINE_WIDTH 16
-#define HEIGHT 2
+#define HEIGHT 4
 
 #include "aie_inc.cpp"
 
@@ -53,15 +53,13 @@ int main(int argc, char *argv[]) {
   if (!mlir_aie_acquire_lock(_xaie, 1, 2, 0, 1, LOCK_TIMEOUT)) {
     printf("ERROR: timeout hit!\n");
   }
-
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
       mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = j",
-                     mlir_aie_read_buffer_out12(_xaie, i * LINE_WIDTH + j), (j),
-                     errors);
+                     mlir_aie_read_buffer_out12(_xaie, i * LINE_WIDTH + j),
+                     (j), errors);
     }
   }
-
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++)
       printf("%d ", mlir_aie_read_buffer_out12(_xaie, i * LINE_WIDTH + j));
@@ -72,15 +70,13 @@ int main(int argc, char *argv[]) {
   if (!mlir_aie_acquire_lock(_xaie, 1, 4, 0, 1, LOCK_TIMEOUT)) {
     printf("ERROR: timeout hit!\n");
   }
-
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
       mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = j",
-                     mlir_aie_read_buffer_out14(_xaie, i * LINE_WIDTH + j), (j),
-                     errors);
+                     mlir_aie_read_buffer_out14(_xaie, i * LINE_WIDTH + j),
+                     (j), errors);
     }
   }
-
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++)
       printf("%d ", mlir_aie_read_buffer_out14(_xaie, i * LINE_WIDTH + j));
@@ -91,26 +87,16 @@ int main(int argc, char *argv[]) {
   if (!mlir_aie_acquire_lock(_xaie, 3, 3, 0, 1, LOCK_TIMEOUT)) {
     printf("ERROR: timeout hit!\n");
   }
-
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
-      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = j",
-                     mlir_aie_read_buffer_out33(_xaie, i * LINE_WIDTH + j), (j),
-                     errors);
+      int test_value = 2 * j;
+      if (i == HEIGHT - 1)
+        test_value = j;
+      mlir_aie_check("After exchange. Check [i * LINE_WIDTH + j] = test_value",
+                     mlir_aie_read_buffer_out33(_xaie, i * LINE_WIDTH + j),
+                     (test_value), errors);
     }
   }
-
-  for (int i = 0; i < HEIGHT; i++) {
-    for (int j = 0; j < LINE_WIDTH; j++)
-      printf("%d ", mlir_aie_read_buffer_out12(_xaie, i * LINE_WIDTH + j));
-    printf("\n");
-  }
-  for (int i = 0; i < HEIGHT; i++) {
-    for (int j = 0; j < LINE_WIDTH; j++)
-      printf("%d ", mlir_aie_read_buffer_out14(_xaie, i * LINE_WIDTH + j));
-    printf("\n");
-  }
-
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++)
       printf("%d ", mlir_aie_read_buffer_out33(_xaie, i * LINE_WIDTH + j));

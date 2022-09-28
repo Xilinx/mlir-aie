@@ -14,7 +14,10 @@
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-// This test 
+// This test uses all four channels of the tileDMAs of tiles (1, 2) and (3, 3) as four object FIFOs.
+// Tile (3, 3) produces the input of two object FIFOs while tile (1, 2) copies these objects into
+// two other object FIFOs whose objects are read by tile (1, 3) and added together to produce the
+// final output. 
 
 module @dmaChannels {
     %tile12 = AIE.tile(1, 2)
@@ -71,8 +74,8 @@ module @dmaChannels {
         AIE.end
     }
 
-    // Fills the given memref with the same input index value.
-    func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {
+    // Fills the given memref.
+    func.func @generateLineScalar(%lineOut : memref<16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
         %lineWidth = arith.constant 16 : index
@@ -84,7 +87,7 @@ module @dmaChannels {
         return
     }
 
-    // Stores the given memref in the bufferOut at the given row index.
+    // Stores sum of two input memrefs in the bufferOut at the given row index.
     func.func @addAndStore(%lineIn0 : memref<16xi32>, %lineIn1 : memref<16xi32>, %row : index, %bufferOut : memref<10x16xi32>) -> () {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
@@ -114,8 +117,8 @@ module @dmaChannels {
             %subviewOut1 = AIE.objectFifo.acquire<Produce>(%objFifoIn1 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elemOut1 = AIE.objectFifo.subview.access %subviewOut1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 
-            func.call @generateLineScalar(%indexInHeight, %elemOut0) : (index, memref<16xi32>) -> ()
-            func.call @generateLineScalar(%indexInHeight, %elemOut1) : (index, memref<16xi32>) -> ()
+            func.call @generateLineScalar(%elemOut0) : (memref<16xi32>) -> ()
+            func.call @generateLineScalar(%elemOut1) : (memref<16xi32>) -> ()
 
             AIE.objectFifo.release<Produce>(%objFifoIn0 : !AIE.objectFifo<memref<16xi32>>, 1)
             AIE.objectFifo.release<Produce>(%objFifoIn1 : !AIE.objectFifo<memref<16xi32>>, 1)
