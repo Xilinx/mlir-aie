@@ -667,46 +667,45 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto createOp : m.getOps<ObjectFifoCreateOp>()) {
       AIEObjectFifoType fifo = createOp.getType().cast<AIEObjectFifoType>();
       objectFifoTiles.insert(createOp.getProducerTileOp());
-      bool split = false;
       bool shared = false;
-      int prodMaxAcquire = createOp.elemNumber();
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
 
       for (auto consumerTile : createOp.consumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
         objectFifoTiles.insert(consumerTileOp);
 
-        bool memoryAdjacent = isLegalMemAffinity(
-            createOp.getProducerTileOp().colIndex(),
-            createOp.getProducerTileOp().rowIndex(), consumerTileOp.colIndex(),
-            consumerTileOp.rowIndex());
-        if (memoryAdjacent) {
-          shared = true;
-
-        } else {
-          split = true;
-          // objectFifos between non-adjacent tiles must be split into two,
-          // their elements will be created in next iterations
-          int consMaxAcquire = findObjectFifoSize(m, consumerTileOp, createOp);
-          builder.setInsertionPointAfter(createOp);
-          ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
-              builder.getUnknownLoc(), fifo, consumerTile, consumerTile,
-              consMaxAcquire);
-          // record that this objectFifo was split
-          splitConsumerFifos.push_back(consumerFifo);
+        // if there is no broadcast, we can optimize in shared memory case
+        if (createOp.consumerTiles().size() == 1) {
+          bool memoryAdjacent = isLegalMemAffinity(
+              createOp.getProducerTileOp().colIndex(),
+              createOp.getProducerTileOp().rowIndex(), consumerTileOp.colIndex(),
+              consumerTileOp.rowIndex());
+          if (memoryAdjacent) {
+            shared = true;
+            break;
+          }
         }
+
+        // objectFifos between non-adjacent tiles must be split into two,
+        // their elements will be created in next iterations
+        int consMaxAcquire = findObjectFifoSize(m, consumerTileOp, createOp);
+        builder.setInsertionPointAfter(createOp);
+        ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
+            builder.getUnknownLoc(), fifo, consumerTile, consumerTile,
+            consMaxAcquire);
+        // record that this objectFifo was split
+        splitConsumerFifos.push_back(consumerFifo);
       }
 
       // if split, the necessary size for producer fifo might change
-      if (split && !shared) {
-        prodMaxAcquire =
+      if (shared) {
+        createObjectFifoElements(builder, lockAnalysis, createOp);
+      } else {
+        int prodMaxAcquire =
             findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
-      }
-      createOp->setAttr("elemNumber",
-                        builder.getI32IntegerAttr(prodMaxAcquire));
-      createObjectFifoElements(builder, lockAnalysis, createOp);
-
-      if (split) {
+        createOp->setAttr("elemNumber",
+                          builder.getI32IntegerAttr(prodMaxAcquire));
+        createObjectFifoElements(builder, lockAnalysis, createOp);
         // register split consumer objectFifos
         splitFifos[createOp] = splitConsumerFifos;
       }
