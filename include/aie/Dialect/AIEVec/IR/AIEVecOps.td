@@ -52,13 +52,13 @@ def AIEVec_AddOp:
   let extraClassDeclaration = [{
     // Get the attributes
     StringRef getStart(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xstart() : zstart(); }
+                            return idx==0 ? getXstart() : getZstart(); }
     StringRef getOffset(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xoffsets() : zoffsets(); }
+                            return idx==0 ? getXoffsets() : getZoffsets(); }
     StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xoffsets_hi() : zoffsets_hi(); } 
+                            return idx==0 ? getXoffsetsHi() : getZoffsetsHi(); } 
     StringRef getSquare(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xsquare() : zsquare(); }
+                            return idx==0 ? getXsquare() : getZsquare(); }
     // Get the attribute names
     StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xstart" : "zstart"; }
@@ -94,13 +94,13 @@ def AIEVec_SubOp:
   let extraClassDeclaration = [{
     // Get the attributes
     StringRef getStart(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xstart() : zstart(); }
+                            return idx==0 ? getXstart() : getZstart(); }
     StringRef getOffset(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xoffsets() : zoffsets(); }
+                            return idx==0 ? getXoffsets() : getZoffsets(); }
     StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xoffsets_hi() : zoffsets_hi(); } 
+                            return idx==0 ? getXoffsetsHi() : getZoffsetsHi(); } 
     StringRef getSquare(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xsquare() : zsquare(); }
+                            return idx==0 ? getXsquare() : getZsquare(); }
     // Get the attribute names
     StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xstart" : "zstart"; }
@@ -160,15 +160,15 @@ def AIEVec_FMAOp :
   let extraClassDeclaration = [{
     // Get the attributes
     StringRef getStart(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xstart() : zstart(); }
+                        return idx==0 ? getXstart() : getZstart(); }
     StringRef getOffset(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xoffsets() : zoffsets(); }
+                        return idx==0 ? getXoffsets() : getZoffsets(); }
     StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xoffsets_hi() : zoffsets_hi(); } 
+                        return idx==0 ? getXoffsetsHi() : getZoffsetsHi(); } 
     StringRef getStep(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xstep() : zstep(); }
+                        return idx==0 ? getXstep() : getZstep(); }
     StringRef getSquare(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xsquare() : zsquare(); }
+                        return idx==0 ? getXsquare() : getZsquare(); }
     // Get the attribute names
     StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1); 
                         return idx==0 ? "xstart" : "zstart"; }
@@ -225,15 +225,15 @@ def AIEVec_MulOp:
   let extraClassDeclaration = [{
     // Get the attributes
     StringRef getStart(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xstart() : zstart(); }
+                            return idx==0 ? getXstart() : getZstart(); }
     StringRef getOffset(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xoffsets() : zoffsets(); }
+                            return idx==0 ? getXoffsets() : getZoffsets(); }
     StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xoffsets_hi() : zoffsets_hi(); } 
+                            return idx==0 ? getXoffsetsHi() : getZoffsetsHi(); } 
     StringRef getStep(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xstep() : zstep(); }
+                            return idx==0 ? getXstep() : getZstep(); }
     StringRef getSquare(int idx) { assert(idx==0 || idx==1); 
-                            return idx==0 ? xsquare() : zsquare(); }
+                            return idx==0 ? getXsquare() : getZsquare(); }
     // Get the attribute names
     StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xstart" : "zstart"; }
@@ -383,13 +383,13 @@ def AIEVec_SelectOp:
   let extraClassDeclaration = [{
     // Get the attributes
     StringRef getStart(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xstart() : ystart(); }
+                        return idx==0 ? getXstart() : getYstart(); }
     StringRef getOffset(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xoffsets() : yoffsets(); }
+                        return idx==0 ? getXoffsets() : getYoffsets(); }
     StringRef getOffsetHi(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xoffsets_hi() : yoffsets_hi(); } 
+                        return idx==0 ? getXoffsetsHi() : getYoffsetsHi(); } 
     StringRef getSquare(int idx) { assert(idx==0 || idx==1); 
-                        return idx==0 ? xsquare() : ysquare(); }
+                        return idx==0 ? getXsquare() : getYsquare(); }
     // Get the attribute names
     StringRef getStartAttrName(int idx) { assert(idx==0 || idx==1); 
                         return idx==0 ? "xstart" : "ystart"; }
