@@ -189,7 +189,7 @@ struct AIEObjectFifoStatefulTransformPass
                                &endBlock);
 
     // create Bd blocks
-    Block *succ;
+    Block *succ = nullptr;
     Block *curr = bdBlock;
     int blockIndex = 0;
     for (int i = 0; i < numBlocks; i++) {
@@ -520,29 +520,21 @@ struct AIEObjectFifoStatefulTransformPass
   /// the maximum number of elements (of the original objectFifo) acquired
   /// by a process running on given tile. If no CoreOp exists for this tile
   /// return 0.
-  int findObjectFifoSize(ModuleOp &m, TileOp tile, ObjectFifoCreateOp objFifo) {
+  int findObjectFifoSize(ModuleOp &m, Value tile, ObjectFifoCreateOp objFifo) {
 
     if (objFifo.size() == 0)
       return 0;
 
-    CoreOp *core = nullptr;
+    int maxAcquire = 0;
     for (auto coreOp : m.getOps<CoreOp>()) {
-      if ((coreOp.tile().getDefiningOp<TileOp>()) == tile) {
-        core = &coreOp;
-        break;
+      if (coreOp.tile() == tile) {
+        coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
+          if (acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
+            if (acqOp.acqNumber() > maxAcquire)
+              maxAcquire = acqOp.acqNumber();
+        });
       }
     }
-
-    if (core == nullptr)
-      return 0;
-
-    int maxAcquire = 0;
-    core->walk([&](ObjectFifoAcquireOp acqOp) {
-      if (acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo) {
-        if (acqOp.acqNumber() > maxAcquire)
-          maxAcquire = acqOp.acqNumber();
-      }
-    });
 
     if (maxAcquire > 0) {
       if ((maxAcquire == 1) && (objFifo.size() == 1)) {
@@ -581,9 +573,9 @@ struct AIEObjectFifoStatefulTransformPass
       } else {
         // Find max acquire number for producer and consumer of objectFifo.
         int prodMaxAcquire =
-            findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
+            findObjectFifoSize(m, createOp.producerTile(), createOp);
         int consMaxAcquire =
-            findObjectFifoSize(m, createOp.getConsumerTileOp(), createOp);
+            findObjectFifoSize(m, createOp.consumerTile(), createOp);
 
         // objectFifos between non-adjacent tiles must be split into two new
         // ones, their elements will be created in next iterations
