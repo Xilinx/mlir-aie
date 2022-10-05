@@ -338,13 +338,13 @@ static bool writesToAccumulator(Operation *op) {
   if (!isAIEOp(op)) {
     return false;
   } else if (auto mulOp = dyn_cast<aievec::MulOp>(op)) {
-    return mulOp.result()
+    return mulOp.getResult()
         .getType()
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
   } else if (auto fmaOp = dyn_cast<aievec::FMAOp>(op)) {
-    return fmaOp.result()
+    return fmaOp.getResult()
         .getType()
         .cast<VectorType>()
         .getElementType()
@@ -858,7 +858,7 @@ generateUPDOp(TransferReadOp readOp,
       updOp = state->builder.create<aievec::UPDOp>(
           readOp.getLoc(), updVecType, readOp.getSource(), indices,
           start - offset, idx - 1,
-          updOp ? updOp.result() : TypedValue<VectorType>(nullptr));
+          updOp ? updOp.getResult() : TypedValue<VectorType>(nullptr));
 
       LLVM_DEBUG(llvm::dbgs() << "\n\nCreated UPD op " << updOp
                               << " for read op " << readOp);

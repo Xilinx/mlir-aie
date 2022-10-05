@@ -69,8 +69,8 @@ public:
     // go over the locks created for each tile and update the index in
     // locksPerTile
     for (auto lockOp : module.getOps<LockOp>()) {
-      auto tile = lockOp.tile();
-      auto lockID = lockOp.getLockID();
+      auto tile = lockOp.getTile();
+      auto lockID = lockOp.getLockIDValue();
 
       locksPerTile[std::make_pair(tile, lockID)] = 1;
     }
@@ -173,7 +173,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.setInsertionPointAfter(locksPerFifo[op].back());
     MemOp producerMem =
         builder.create<MemOp>(builder.getUnknownLoc(), op.getProducerTileOp());
-    Region &r = producerMem.body();
+    Region &r = producerMem.getBody();
     r.push_back(new Block);
     Block &endBlock = r.back();
     Block *dmaBlock = builder.createBlock(&endBlock);
@@ -327,7 +327,7 @@ struct AIEObjectFifoStatefulTransformPass
               checkSplitFifo(acqOp.getOperation());
               found = true;
               ObjectFifoCreateOp op =
-                  acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
+                  acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
               objFifoSizes.insert(op.size());
             }
           }
@@ -434,7 +434,7 @@ struct AIEObjectFifoStatefulTransformPass
       int lockID = acc[op];
       builder.create<UseLockOp>(builder.getUnknownLoc(),
                                 locksPerFifo[op][lockID], lockMode, lockAction);
-      acc[op] = (lockID + 1) % op.elemNumber();
+      acc[op] = (lockID + 1) % op.getElemNumber();
     }
   }
 
@@ -458,12 +458,12 @@ struct AIEObjectFifoStatefulTransformPass
     ObjectFifoPort port;
     if (isa<ObjectFifoAcquireOp>(op)) {
       ObjectFifoAcquireOp acqOp = dyn_cast<ObjectFifoAcquireOp>(op);
-      parentFifo = acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = acqOp.port();
+      parentFifo = acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+      port = acqOp.getPort();
     } else if (isa<ObjectFifoReleaseOp>(op)) {
       ObjectFifoReleaseOp relOp = dyn_cast<ObjectFifoReleaseOp>(op);
-      parentFifo = relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = relOp.port();
+      parentFifo = relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+      port = relOp.getPort();
     } else {
       assert(false && "checkSplitFifo() must be called on either "
                       "ObjectFifoAcquireOp or ObjectFifoReleaseOp");
@@ -486,12 +486,12 @@ struct AIEObjectFifoStatefulTransformPass
     ObjectFifoPort port;
     if (isa<ObjectFifoAcquireOp>(op)) {
       ObjectFifoAcquireOp acqOp = dyn_cast<ObjectFifoAcquireOp>(op);
-      objFifo = acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = acqOp.port();
+      objFifo = acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+      port = acqOp.getPort();
     } else if (isa<ObjectFifoReleaseOp>(op)) {
       ObjectFifoReleaseOp relOp = dyn_cast<ObjectFifoReleaseOp>(op);
-      objFifo = relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = relOp.port();
+      objFifo = relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+      port = relOp.getPort();
     } else {
       assert(false && "checkCorrectPort() must be called on either "
                       "ObjectFifoAcquireOp or ObjectFifoReleaseOp");
@@ -504,13 +504,13 @@ struct AIEObjectFifoStatefulTransformPass
         assert(false && "ObjectFifoAcquireOp or ObjectFifoReleaseOp must be "
                         "used inside a CoreOp");
     }
-    auto coreTile = dyn_cast<CoreOp>(coreOp).tile();
+    auto coreTile = dyn_cast<CoreOp>(coreOp).getTile();
     if (port == ObjectFifoPort::Produce) {
-      if (coreTile != objFifo.producerTile())
+      if (coreTile != objFifo.getProducerTile())
         assert(false && "Producer port of objectFifo accessed by core running "
                         "on non-producer tile");
     } else if (port == ObjectFifoPort::Consume) {
-      if (coreTile != objFifo.consumerTile())
+      if (coreTile != objFifo.getConsumerTile())
         assert(false && "Consumer port of objectFifo accessed by core running "
                         "on non-consumer tile");
     }
@@ -582,11 +582,11 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType fifo = createOp.getType().cast<AIEObjectFifoType>();
         ObjectFifoCreateOp producerFifo = builder.create<ObjectFifoCreateOp>(
-            builder.getUnknownLoc(), fifo, createOp.producerTile(),
-            createOp.producerTile(), prodMaxAcquire);
+            builder.getUnknownLoc(), fifo, createOp.getProducerTile(),
+            createOp.getProducerTile(), prodMaxAcquire);
         ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
-            builder.getUnknownLoc(), fifo, createOp.consumerTile(),
-            createOp.consumerTile(), consMaxAcquire);
+            builder.getUnknownLoc(), fifo, createOp.getConsumerTile(),
+            createOp.getConsumerTile(), consMaxAcquire);
 
         // record that this objectFifo was split
         splitFifos[createOp] = std::make_pair(producerFifo, consumerFifo);
@@ -603,9 +603,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       // create flow between tiles
       builder.setInsertionPointAfter(parentFifo);
-      builder.create<FlowOp>(builder.getUnknownLoc(), parentFifo.producerTile(),
-                             WireBundle::DMA, 0, parentFifo.consumerTile(),
-                             WireBundle::DMA, 1);
+      builder.create<FlowOp>(builder.getUnknownLoc(),
+                             parentFifo.getProducerTile(), WireBundle::DMA, 0,
+                             parentFifo.getConsumerTile(), WireBundle::DMA, 1);
 
       // create MemOps and DMA channels
       createDMA(builder, childProducerFifo, DMAChan::MM2S0, 0);
@@ -648,8 +648,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op =
-            releaseOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
-        auto port = releaseOp.port();
+            releaseOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+        auto port = releaseOp.getPort();
 
         // update index of next element to release for this objectFifo
         updateAndReturnIndex(relPerFifo, op);
@@ -673,9 +673,9 @@ struct AIEObjectFifoStatefulTransformPass
         checkCorrectPort(acquireOp.getOperation());
 
         builder.setInsertionPointAfter(acquireOp);
-        auto port = acquireOp.port();
+        auto port = acquireOp.getPort();
         ObjectFifoCreateOp op =
-            acquireOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
+            acquireOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
 
         // index of next element to acquire for this objectFifo
         int start = updateAndReturnIndex(
@@ -687,7 +687,7 @@ struct AIEObjectFifoStatefulTransformPass
         int numRel = 0;
         for (auto relOp : releaseOps) {
           ObjectFifoCreateOp otherOp =
-              relOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
+              relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
           // TODO: operations may not be in the same block: currently only
           // support one block level of difference
           if (op == otherOp) {
@@ -760,7 +760,7 @@ struct AIEObjectFifoStatefulTransformPass
         // create subview: buffers that were already acquired + new acquires
         for (int i = 0; i < numCreate; i++) {
           acquiredIndices.push_back(start);
-          start = (start + 1) % op.elemNumber();
+          start = (start + 1) % op.getElemNumber();
         }
         std::vector<BufferOp *> subviewRefs;
         for (auto index : acquiredIndices) {
@@ -775,13 +775,13 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         ObjectFifoAcquireOp acqOp =
-            accessOp.subview().getDefiningOp<ObjectFifoAcquireOp>();
-        auto users = accessOp.output().getUsers();
+            accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+        auto users = accessOp.getOutput().getUsers();
         assert((size_t)accessOp.getIndex() < subviews[acqOp].size() &&
                "Index out of bounds for subview: accessed farther than number "
                "of acquired elements.");
         for (auto user : users) {
-          user->replaceUsesOfWith(accessOp.output(),
+          user->replaceUsesOfWith(accessOp.getOutput(),
                                   *subviews[acqOp][accessOp.getIndex()]);
         }
       });
