@@ -201,9 +201,11 @@ struct AIEObjectFifoStatefulTransformPass
     locksPerFifo[op] = locks;
   }
 
-  Block *findEndOpBlock(Region *r) {
+  /// Function that returns a pointer to the block of an AIEMemOp
+  /// that contains the AIEEndOp.
+  Block *findEndOpBlock(MemOp *memOp) {
     Block *endBlock = nullptr;
-    for (auto &bl : r->getBlocks()) {
+    for (auto &bl : memOp->body().getBlocks()) {
       if (!bl.getOps<EndOp>().empty())
         endBlock = &bl;
     }
@@ -265,8 +267,7 @@ struct AIEObjectFifoStatefulTransformPass
       builder.create<EndOp>(builder.getUnknownLoc());
     }
 
-    Region &r = producerMem->body();
-    Block *endBlock = findEndOpBlock(&r);
+    Block *endBlock = findEndOpBlock(producerMem);
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
