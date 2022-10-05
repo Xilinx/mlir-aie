@@ -346,7 +346,7 @@ XAieTile_LockRelease(&(TileInst[7][2]), 1, 0x1, 0);
 
 [ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/non_adjacency_test_1.aie.mlir)
 
-An objectFIFO can be established between two tiles.
+An objectFIFO can be established between two or more tiles. Broadcast is possible from one producer tile to multiple consumer tiles.
 Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO. Instead, a pool of memory elements is allocated to the objectFIFO. 
 Processes can then write to and read from these memory elements after acquiring them.
 
@@ -354,7 +354,7 @@ Define two tiles and create an AIE.objectFifo of depth two between them, with th
 ```
 %tile12 = AIE.tile(1, 2)
 %tile33 = AIE.tile(3, 3)
-%objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+%objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 ```
 After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
 
@@ -421,7 +421,7 @@ module @objectFIFO  {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 
     %prodAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
     %prodRelPattern = arith.constant dense<[1]> : tensor<1xi32>
