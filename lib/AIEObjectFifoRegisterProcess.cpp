@@ -92,21 +92,21 @@ struct AIEObjectFifoRegisterProcessPass
     if (acqNumber.getInt() > 0) {
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
-          builder.getUnknownLoc(), acqType, regOp.getPortAttr(), regOp.fifo(),
-          acqNumber);
+          builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
+          regOp.getFifo(), acqNumber);
 
       // subview accesses
       ObjectFifoSubviewAccessOp acc;
       for (int i = 0; i < acqNumber.getInt(); i++) {
         acc = builder.create<ObjectFifoSubviewAccessOp>(
-            builder.getUnknownLoc(), elementType, acqOp.subview(),
+            builder.getUnknownLoc(), elementType, acqOp.getSubview(),
             builder.getIntegerAttr(builder.getI32Type(), i));
       }
 
       // apply kernel
       func::FuncOp func;
       for (auto funcOp : m.getOps<func::FuncOp>()) {
-        if (funcOp.getSymName() == regOp.callee()) {
+        if (funcOp.getSymName() == regOp.getCallee()) {
           func = funcOp;
           break;
         }
@@ -117,9 +117,9 @@ struct AIEObjectFifoRegisterProcessPass
 
     // releases
     if (relNumber.getInt() > 0) {
-      auto relOp = builder.create<ObjectFifoReleaseOp>(builder.getUnknownLoc(),
-                                                       regOp.getPortAttr(),
-                                                       regOp.fifo(), relNumber);
+      auto relOp = builder.create<ObjectFifoReleaseOp>(
+          builder.getUnknownLoc(), regOp.getPortAttr(), regOp.getFifo(),
+          relNumber);
       builder.setInsertionPointAfter(relOp);
     }
 
@@ -137,13 +137,13 @@ struct AIEObjectFifoRegisterProcessPass
     for (auto registerOp : m.getOps<ObjectFifoRegisterProcessOp>()) {
       builder.setInsertionPointToEnd(m.getBody());
       ObjectFifoCreateOp objFifo =
-          registerOp.fifo().getDefiningOp<ObjectFifoCreateOp>();
+          registerOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
       auto elementType =
           objFifo.getType().dyn_cast<AIEObjectFifoType>().getElementType();
 
       if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {
         std::queue<Value> consumers;
-        for (auto consumerTile : objFifo.consumerTiles()) {
+        for (auto consumerTile : objFifo.getConsumerTiles()) {
           consumers.push(consumerTile);
         }
         consumersPerFifo[objFifo] = consumers;
@@ -151,9 +151,9 @@ struct AIEObjectFifoRegisterProcessPass
 
       // identify tile on which to generate the pattern
       Value tile;
-      if (registerOp.port() == ObjectFifoPort::Produce) {
-        tile = objFifo.producerTile();
-      } else if (registerOp.port() == ObjectFifoPort::Consume) {
+      if (registerOp.getPort() == ObjectFifoPort::Produce) {
+        tile = objFifo.getProducerTile();
+      } else if (registerOp.getPort() == ObjectFifoPort::Consume) {
         assert(!consumersPerFifo[objFifo].empty() &&
                "No more available consumer tiles for process.");
         tile = consumersPerFifo[objFifo].front();
@@ -163,7 +163,7 @@ struct AIEObjectFifoRegisterProcessPass
       // retrieve core associated to above tile or create new one
       CoreOp *core = nullptr;
       for (auto coreOp : m.getOps<CoreOp>()) {
-        if (coreOp.tile() == tile) {
+        if (coreOp.getTile() == tile) {
           core = &coreOp;
           break;
         }
@@ -171,14 +171,14 @@ struct AIEObjectFifoRegisterProcessPass
       if (core == nullptr) {
         CoreOp coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
                                                builder.getIndexType(), tile);
-        Region &r = coreOp.body();
+        Region &r = coreOp.getBody();
         r.push_back(new Block);
         Block &block = r.back();
         builder.setInsertionPointToStart(&block);
         builder.create<EndOp>(builder.getUnknownLoc());
         core = &coreOp;
       }
-      Region &r = core->body();
+      Region &r = core->getBody();
       Block &endBlock = r.back();
       builder.setInsertionPointToStart(&endBlock);
 

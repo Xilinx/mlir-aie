@@ -135,7 +135,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
         MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(),
                                           builder.getIndexType(), tile);
-        Region &r = mem.body();
+        Region &r = mem.getBody();
         Block *endBlock = builder.createBlock(&r);
 
         // block terminator
@@ -161,12 +161,12 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           if (!cores[tileOp]) {
             core = builder.create<CoreOp>(builder.getUnknownLoc(),
                                           builder.getIndexType(), tile);
-            Region &r = core.body();
+            Region &r = core.getBody();
             currentBlock = builder.createBlock(&r);
             builder.setInsertionPointToStart(currentBlock);
           } else {
             core = cores[tileOp];
-            currentBlock = &core.body().back();
+            currentBlock = &core.getBody().back();
             builder.setInsertionPoint(currentBlock->getTerminator());
           }
 

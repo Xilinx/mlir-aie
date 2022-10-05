@@ -91,7 +91,7 @@ public:
       SwitchboxOp switchboxOp = builder.create<SwitchboxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
       // coordToTile[std::make_pair(col, row)]);
-      switchboxOp.ensureTerminator(switchboxOp.connections(), builder,
+      switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
       maxcol = std::max(maxcol, col);
@@ -108,7 +108,7 @@ public:
       assert(getTile(builder, col, row).isShimNOCTile());
       ShimMuxOp switchboxOp = builder.create<ShimMuxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
-      switchboxOp.ensureTerminator(switchboxOp.connections(), builder,
+      switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToShimMux[std::make_pair(col, row)] = switchboxOp;
       maxcol = std::max(maxcol, col);
@@ -153,7 +153,7 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
                << inIndex << ") -> (" << stringifyWireBundle(outBundle) << " : "
                << outIndex << ")\n");
 
-    Region &r = op.connections();
+    Region &r = op.getConnections();
     Block &b = r.front();
     auto point = rewriter.saveInsertionPoint();
     rewriter.setInsertionPoint(b.getTerminator());
@@ -187,8 +187,8 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       // on index 2 (enforce) in-bound connections from north to DMA channel 1
       // must come in on index 3
       if (op.rowIndex() == 0 && outBundle == WireBundle::South &&
-          flowOp.destBundle() == WireBundle::DMA) {
-        if (flowOp.destChannel() == 0)
+          flowOp.getDestBundle() == WireBundle::DMA) {
+        if (flowOp.getDestChannel() == 0)
           outIndex = 2;
         else
           outIndex = 3;
@@ -206,13 +206,13 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
       outIndex = validIndices[choice];
 
       for (auto connectOp : b.getOps<ConnectOp>()) {
-        if (connectOp.destBundle() == outBundle)
+        if (connectOp.getDestBundle() == outBundle)
           while (connectOp.destIndex() >= outIndex) {
             outIndex = validIndices[++choice];
           }
       }
       for (auto masterOp : b.getOps<MasterSetOp>()) {
-        if (masterOp.destBundle() == outBundle)
+        if (masterOp.getDestBundle() == outBundle)
           while (masterOp.destIndex() >= outIndex) {
             outIndex = validIndices[++choice];
           }
@@ -243,21 +243,22 @@ struct RouteFlows : public OpConversionPattern<AIE::FlowOp> {
   void rewrite(AIE::FlowOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    WireBundle sourceBundle = op.sourceBundle();
+    WireBundle sourceBundle = op.getSourceBundle();
     int sourceIndex = op.sourceIndex();
-    WireBundle destBundle = op.destBundle();
+    WireBundle destBundle = op.getDestBundle();
     int destIndex = op.destIndex();
 
     int col, row;
     if (FlowEndPoint source =
-            dyn_cast<FlowEndPoint>(op.source().getDefiningOp())) {
+            dyn_cast<FlowEndPoint>(op.getSource().getDefiningOp())) {
       col = source.colIndex();
       row = source.rowIndex();
     } else
       llvm_unreachable("Unimplemented case");
 
     int destcol, destrow;
-    if (FlowEndPoint dest = dyn_cast<FlowEndPoint>(op.dest().getDefiningOp())) {
+    if (FlowEndPoint dest =
+            dyn_cast<FlowEndPoint>(op.getDest().getDefiningOp())) {
       destcol = dest.colIndex();
       destrow = dest.rowIndex();
     } else

@@ -220,7 +220,7 @@ void buildPSRoute(
 }
 
 SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
-  for (auto i : tile.result().getUsers()) {
+  for (auto i : tile.getResult().getUsers()) {
     if (llvm::isa<SwitchboxOp>(*i)) {
       return llvm::cast<SwitchboxOp>(*i);
     }
@@ -280,7 +280,7 @@ struct AIERoutePacketFlowsPass
     DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
         switchboxes;
     for (auto pktflow : m.getOps<PacketFlowOp>()) {
-      Region &r = pktflow.ports();
+      Region &r = pktflow.getPorts();
       Block &b = r.front();
       int flowID = pktflow.IDInt();
       int xSrc, ySrc;
@@ -288,12 +288,13 @@ struct AIERoutePacketFlowsPass
 
       for (Operation &Op : b.getOperations()) {
         if (PacketSourceOp pktSource = dyn_cast<PacketSourceOp>(Op)) {
-          TileOp srcTile = dyn_cast<TileOp>(pktSource.tile().getDefiningOp());
+          TileOp srcTile =
+              dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
           xSrc = srcTile.colIndex();
           ySrc = srcTile.rowIndex();
           sourcePort = pktSource.port();
         } else if (PacketDestOp pktDest = dyn_cast<PacketDestOp>(Op)) {
-          TileOp destTile = dyn_cast<TileOp>(pktDest.tile().getDefiningOp());
+          TileOp destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
           int xDest = destTile.colIndex();
           int yDest = destTile.rowIndex();
           Port destPort = pktDest.port();
@@ -561,9 +562,9 @@ struct AIERoutePacketFlowsPass
       // Create a switchbox for the routes and insert inside it.
       builder.setInsertionPointAfter(tileOp);
       SwitchboxOp swbox = getOrCreateSwitchbox(builder, tile);
-      swbox.ensureTerminator(swbox.connections(), builder,
+      swbox.ensureTerminator(swbox.getConnections(), builder,
                              builder.getUnknownLoc());
-      Block &b = swbox.connections().front();
+      Block &b = swbox.getConnections().front();
       builder.setInsertionPoint(b.getTerminator());
 
       std::vector<bool> amselOpNeededVector(32);
@@ -638,13 +639,13 @@ struct AIERoutePacketFlowsPass
         if (slaveRules.count(slave) == 0) {
           packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
                                                       bundle, channel);
-          packetrules.ensureTerminator(packetrules.rules(), builder,
+          packetrules.ensureTerminator(packetrules.getRules(), builder,
                                        builder.getUnknownLoc());
           slaveRules[slave] = packetrules;
         } else
           packetrules = slaveRules[slave];
 
-        Block &rules = packetrules.rules().front();
+        Block &rules = packetrules.getRules().front();
         builder.setInsertionPoint(rules.getTerminator());
         builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
       }
@@ -668,14 +669,14 @@ struct AIERoutePacketFlowsPass
       if (&switchbox.getBody()->front() == switchbox.getBody()->getTerminator())
         continue;
 
-      Region &r = switchbox.connections();
+      Region &r = switchbox.getConnections();
       Block &b = r.front();
 
       // Find if the corresponding shimmux exsists or not
       int shim_exist = 0;
       ShimMuxOp shimOp;
       for (auto shimmux : m.getOps<ShimMuxOp>()) {
-        if (shimmux.tile() == tileOp) {
+        if (shimmux.getTile() == tileOp) {
           shim_exist = 1;
           shimOp = shimmux;
           break;
@@ -686,7 +687,7 @@ struct AIERoutePacketFlowsPass
         if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
 
           // check if there is MM2S DMA in the switchbox of the 0th row
-          if (pktrules.sourceBundle() == WireBundle::DMA) {
+          if (pktrules.getSourceBundle() == WireBundle::DMA) {
 
             // If there is, then it should be put into the corresponding shimmux
             // If shimmux not defined then create shimmux
@@ -694,14 +695,14 @@ struct AIERoutePacketFlowsPass
               builder.setInsertionPointAfter(tileOp);
               shimOp =
                   builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
-              Region &r1 = shimOp.connections();
+              Region &r1 = shimOp.getConnections();
               Block *b1 = builder.createBlock(&r1);
               builder.setInsertionPointToEnd(b1);
               builder.create<EndOp>(builder.getUnknownLoc());
               shim_exist = 1;
             }
 
-            Region &r0 = shimOp.connections();
+            Region &r0 = shimOp.getConnections();
             Block &b0 = r0.front();
             builder.setInsertionPointToStart(&b0);
 
@@ -709,7 +710,7 @@ struct AIERoutePacketFlowsPass
             pktrules->setAttr(
                 "sourceBundle",
                 builder.getI32IntegerAttr(3)); // WireBundle::South
-            if (pktrules.sourceChannel() == 0) {
+            if (pktrules.getSourceChannel() == 0) {
               pktrules->removeAttr("sourceChannel");
               pktrules->setAttr("sourceChannel",
                                 builder.getI32IntegerAttr(3)); // Channel 3
@@ -717,7 +718,7 @@ struct AIERoutePacketFlowsPass
                                         WireBundle::DMA, 0, WireBundle::North,
                                         3);
             }
-            if (pktrules.sourceChannel() == 1) {
+            if (pktrules.getSourceChannel() == 1) {
               pktrules->removeAttr("sourceChannel");
               pktrules->setAttr("sourceChannel",
                                 builder.getI32IntegerAttr(7)); // Channel 7
@@ -731,7 +732,7 @@ struct AIERoutePacketFlowsPass
         if (MasterSetOp mtset = dyn_cast<MasterSetOp>(Op)) {
 
           // check if there is S2MM DMA in the switchbox of the 0th row
-          if (mtset.destBundle() == WireBundle::DMA) {
+          if (mtset.getDestBundle() == WireBundle::DMA) {
 
             // If there is, then it should be put into the corresponding shimmux
             // If shimmux not defined then create shimmux
@@ -739,21 +740,21 @@ struct AIERoutePacketFlowsPass
               builder.setInsertionPointAfter(tileOp);
               shimOp =
                   builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
-              Region &r1 = shimOp.connections();
+              Region &r1 = shimOp.getConnections();
               Block *b1 = builder.createBlock(&r1);
               builder.setInsertionPointToEnd(b1);
               builder.create<EndOp>(builder.getUnknownLoc());
               shim_exist = 1;
             }
 
-            Region &r0 = shimOp.connections();
+            Region &r0 = shimOp.getConnections();
             Block &b0 = r0.front();
             builder.setInsertionPointToStart(&b0);
 
             mtset->removeAttr("destBundle");
             mtset->setAttr("destBundle",
                            builder.getI32IntegerAttr(3)); // WireBundle::South
-            if (mtset.destChannel() == 0) {
+            if (mtset.getDestChannel() == 0) {
               mtset->removeAttr("destChannel");
               mtset->setAttr("destChannel",
                              builder.getI32IntegerAttr(2)); // Channel 2
@@ -761,7 +762,7 @@ struct AIERoutePacketFlowsPass
                                         WireBundle::North, 2, WireBundle::DMA,
                                         0);
             }
-            if (mtset.destChannel() == 1) {
+            if (mtset.getDestChannel() == 1) {
               mtset->removeAttr("destChannel");
               mtset->setAttr("destChannel",
                              builder.getI32IntegerAttr(3)); // Channel 3

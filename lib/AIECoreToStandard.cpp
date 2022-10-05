@@ -66,7 +66,7 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
     assert(func && "Could not find the intrinsic function!");
     SmallVector<Value, 1> args;
-    args.push_back(op.arg());
+    args.push_back(op.getArg());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
     rewriter.eraseOp(Op);
     return success();
@@ -98,8 +98,8 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     assert(putMSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    args.push_back(op.channel());
-    args.push_back(op.streamValue());
+    args.push_back(op.getChannel());
+    args.push_back(op.getStreamValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -128,7 +128,7 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
     auto getSSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     assert(getSSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    args.push_back(op.channel());
+    args.push_back(op.getChannel());
     auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                    getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
@@ -153,7 +153,7 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     assert(putMCDFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    args.push_back(op.cascadeValue());
+    args.push_back(op.getCascadeValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -205,7 +205,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
 
       args.push_back(rewriter.create<arith::IndexCastOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          useLock.lock()));
+          useLock.getLock()));
       args.push_back(rewriter.create<arith::ConstantOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(useLock.getLockValue())));
@@ -253,7 +253,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         rewriter.getUnknownLoc(), coreName,
         FunctionType::get(rewriter.getContext(), {}, {}));
 
-    rewriter.cloneRegionBefore(op.body(), coreFunc.getBody(),
+    rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
 
     // Create a main function that just calls the core function above.

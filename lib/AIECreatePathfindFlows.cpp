@@ -121,13 +121,14 @@ public:
     // for each flow in the module, add it to pathfinder
     // each source can map to multiple different destinations (fanout)
     for (FlowOp flowOp : module.getOps<FlowOp>()) {
-      TileOp srcTile = cast<TileOp>(flowOp.source().getDefiningOp());
-      TileOp dstTile = cast<TileOp>(flowOp.dest().getDefiningOp());
+      TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
+      TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
       Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
       Coord dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
       Port srcPort =
-          std::make_pair(flowOp.sourceBundle(), flowOp.sourceChannel());
-      Port dstPort = std::make_pair(flowOp.destBundle(), flowOp.destChannel());
+          std::make_pair(flowOp.getSourceBundle(), flowOp.getSourceChannel());
+      Port dstPort =
+          std::make_pair(flowOp.getDestBundle(), flowOp.getDestChannel());
       LLVM_DEBUG(llvm::dbgs()
                  << "\tAdding Flow: (" << srcCoords.first << ", "
                  << srcCoords.second << ")"
@@ -144,8 +145,8 @@ public:
       for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
         Coord existing_coord =
             std::make_pair(switchboxOp.colIndex(), switchboxOp.rowIndex());
-        Port existing_port =
-            std::make_pair(connectOp.destBundle(), connectOp.destChannel());
+        Port existing_port = std::make_pair(connectOp.getDestBundle(),
+                                            connectOp.getDestChannel());
         pathfinder.addFixedConnection(existing_coord, existing_port);
       }
     }
@@ -218,7 +219,7 @@ public:
       SwitchboxOp switchboxOp = builder.create<SwitchboxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
       // coordToTile[std::make_pair(col, row)]);
-      switchboxOp.ensureTerminator(switchboxOp.connections(), builder,
+      switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
       maxcol = std::max(maxcol, col);
@@ -235,7 +236,7 @@ public:
       assert(getTile(builder, col, row).isShimNOCTile());
       ShimMuxOp switchboxOp = builder.create<ShimMuxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
-      switchboxOp.ensureTerminator(switchboxOp.connections(), builder,
+      switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToShimMux[std::make_pair(col, row)] = switchboxOp;
       maxcol = std::max(maxcol, col);
@@ -281,7 +282,7 @@ ConvertFlowsToInterconnect(
                      Interconnect op, FlowOp flowOp, WireBundle inBundle,
                      int inIndex, WireBundle outBundle, int outIndex) const {
 
-    Region &r = op.connections();
+    Region &r = op.getConnections();
     Block &b = r.front();
     auto point = rewriter.saveInsertionPoint();
     rewriter.setInsertionPoint(b.getTerminator());
@@ -302,14 +303,14 @@ ConvertFlowsToInterconnect(
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
 
-    TileOp srcTile = cast<TileOp>(flowOp.source().getDefiningOp());
-    TileOp dstTile = cast<TileOp>(flowOp.dest().getDefiningOp());
+    TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
+    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
     TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
-    auto srcBundle = flowOp.sourceBundle();
-    auto srcChannel = flowOp.sourceChannel();
-    auto dstBundle = flowOp.destBundle();
-    auto dstChannel = flowOp.destChannel();
+    auto srcBundle = flowOp.getSourceBundle();
+    auto srcChannel = flowOp.getSourceChannel();
+    auto dstBundle = flowOp.getDestBundle();
+    auto dstChannel = flowOp.getDestChannel();
     Port srcPort = std::make_pair(srcBundle, srcChannel);
     // Port dstPort = std::make_pair(dstBundle, dstChannel);
     LLVM_DEBUG(llvm::dbgs()

@@ -110,12 +110,12 @@ struct GraphWriter {
         int targetIndex = userOperand.getOperandNumber();
         if (auto kernel = dyn_cast<KernelOp>(userOp)) {
           auto funcOp = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-              driverOp, kernel.calleeAttr());
+              driverOp, kernel.getCalleeAttr());
           Type opType = funcOp.getFunctionType().getInput(targetIndex);
           std::string targetKernelName = kernelOp2VarName[kernel];
           output << indent << "connect<" << getConnectionTypeString(opType)
                  << "> ";
-          output << getTempNetName() << " (" << driverOp.name() << ", "
+          output << getTempNetName() << " (" << driverOp.getName() << ", "
                  << targetKernelName << ".in[" << targetIndex << "]);\n";
         }
 
@@ -137,7 +137,7 @@ struct GraphWriter {
         int targetIndex = userOperand.getOperandNumber();
         if (auto kernel = dyn_cast<KernelOp>(userOp)) {
           auto funcOp = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-              kernel, kernel.calleeAttr());
+              kernel, kernel.getCalleeAttr());
           Type opType = funcOp.getFunctionType().getInput(targetIndex);
           auto targetKernelName = kernelOp2VarName[kernel];
           output << indent << "connect<" << getConnectionTypeString(opType)
@@ -147,12 +147,12 @@ struct GraphWriter {
                  << targetIndex << "]);\n";
         } else if (auto outputOp = dyn_cast<GraphOutputOp>(userOp)) {
           auto funcOp = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
-              source, source.calleeAttr());
+              source, source.getCalleeAttr());
           Type opType = funcOp.getFunctionType().getInput(sourceIndex);
           output << indent << "connect<" << getConnectionTypeString(opType)
                  << "> ";
           output << getTempNetName() << " (" << sourceKernelName << ".out["
-                 << sourceIndex << "], " << outputOp.name() << ");\n";
+                 << sourceIndex << "], " << outputOp.getName() << ");\n";
         }
 
         // todo: kernel should not drive graph input, add an mlir verifier
@@ -192,7 +192,7 @@ struct GraphWriter {
   void writeClass(ADF::GraphOp graph) {
     output << "#include <adf.h>\n";
     output << "using namespace adf;\n";
-    output << "class " << graph.name() << " : public graph {\n";
+    output << "class " << graph.getName() << " : public graph {\n";
     output << "private:\n";
     int kCnt = 1;
     {
@@ -211,13 +211,13 @@ struct GraphWriter {
     output << "\npublic:\n";
     Indent indent;
     for (auto op : graph.getBody()->getOps<GraphInputOp>())
-      output << indent << "input_port " << op.name() << ";\n";
+      output << indent << "input_port " << op.getName() << ";\n";
     for (auto op : graph.getBody()->getOps<GraphOutputOp>())
-      output << indent << "output_port " << op.name() << ";\n";
+      output << indent << "output_port " << op.getName() << ";\n";
     for (auto op : graph.getBody()->getOps<GraphInOutOp>())
-      output << indent << "inout_port " << op.name() << ";\n";
+      output << indent << "inout_port " << op.getName() << ";\n";
 
-    output << "\n" << indent << graph.name() << "() {\n";
+    output << "\n" << indent << graph.getName() << "() {\n";
     // initialize the kernel instances in the adf c++ graph
     {
       Indent indent;
@@ -225,7 +225,7 @@ struct GraphWriter {
         for (Block &block : region.getBlocks())
           for (auto kernel : block.getOps<KernelOp>()) {
             output << indent << kernelOp2VarName[kernel] << " = kernel::create("
-                   << kernel.callee().str() << ");\n";
+                   << kernel.getCallee().str() << ");\n";
           }
     }
 

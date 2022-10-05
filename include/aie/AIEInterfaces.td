@@ -41,7 +41,7 @@ def Interconnect : OpInterface<"Interconnect"> {
   let methods = [
     InterfaceMethod<[{
       }],
-      "::mlir::Region &", "connections", (ins )
+      "::mlir::Region &", "getConnections", (ins )
     >,
     InterfaceMethod<[{
       }],
