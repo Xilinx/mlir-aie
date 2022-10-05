@@ -81,18 +81,29 @@ int main(int argc, char *argv[]) {
   usleep(sleep_u);
   printf("before configure cores.\n");
 
+  mlir_aie_clear_tile_memory(_xaie, 7, 3);
+  mlir_aie_clear_tile_memory(_xaie, 7, 4);
+  mlir_aie_clear_tile_memory(_xaie, 6, 3);
+  mlir_aie_clear_tile_memory(_xaie, 6, 4);
   mlir_aie_configure_cores(_xaie);
 
   usleep(sleep_u);
-  printf("before configure sw.\n");
+  printf("before configure switchboxes.\n");
 
   mlir_aie_configure_switchboxes(_xaie);
+  mlir_aie_initialize_locks(_xaie);
+
+  mlir_aie_release_lock(_xaie, 6, 0, 0, 0, 0);
+  mlir_aie_release_lock(_xaie, 6, 0, 1, 0, 0);
+  mlir_aie_release_lock(_xaie, 6, 0, 2, 0, 0);
+  mlir_aie_release_lock(_xaie, 6, 0, 3, 0, 0);
+  mlir_aie_release_lock(_xaie, 7, 0, 0, 0, 0);
+  mlir_aie_release_lock(_xaie, 7, 0, 1, 0, 0);
 
   usleep(sleep_u);
-  printf("before DMA config\n");
+  printf("before configure DMA\n");
 
   mlir_aie_configure_dmas(_xaie);
-  mlir_aie_initialize_locks(_xaie);
   mlir_aie_init_mems(_xaie, 8);
   int errors = 0;
 
@@ -141,18 +152,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
 
-  mlir_aie_clear_tile_memory(_xaie, 7, 3);
-  mlir_aie_clear_tile_memory(_xaie, 7, 4);
-  mlir_aie_clear_tile_memory(_xaie, 6, 3);
-  mlir_aie_clear_tile_memory(_xaie, 6, 4);
-
-  for (int bd = 0; bd < DMA_COUNT; bd++) {
-    mlir_aie_write_buffer_buf73_2(_xaie, bd,
-                                  0); // Assign the accumulator matrix to 0
-    mlir_aie_write_buffer_buf63_2(_xaie, bd,
-                                  0); // Assign the accumulator matrix to 0
-  }
-
 #ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
   mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
@@ -167,7 +166,6 @@ int main(int argc, char *argv[]) {
 #endif
 
   printf("before core start\n");
-  usleep(sleep_u);
 
   mlir_aie_start_cores(_xaie);
 
@@ -212,8 +210,8 @@ int main(int argc, char *argv[]) {
   }
 
   // Check if the external buffer receives the correct result
-  int Header0 = mem_ptr6[0] | 31;
-  int Header1 = mem_ptr7[0] | 31;
+  int Header0 = mem_ptr6[0] & 31;
+  int Header1 = mem_ptr7[0] & 31;
 
   // Compare the result according to the header since the order of the result is
   // not known

@@ -36,7 +36,7 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
   std::map<StringRef, SmallVector<UseTokenOp, 4>> visitors;
   module.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseTokenOp>(Op)) {
-      StringRef tokenName = op.tokenName();
+      StringRef tokenName = op.getTokenName();
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
              "Token not found!");
       if (op.acquire()) {
@@ -50,7 +50,7 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
         }
       }
     } else if (auto op = dyn_cast<MemcpyOp>(Op)) {
-      StringRef tokenName = op.tokenName();
+      StringRef tokenName = op.getTokenName();
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
              "Token not found!");
       Operation *Op = op.getOperation();
@@ -71,7 +71,7 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
 
       for (auto pair : tokenPairs) {
         if (UseTokenOp aop = dyn_cast<UseTokenOp>(pair.first)) {
-          if (tokenName == aop.tokenName() && Op == aop.getOperation()) {
+          if (tokenName == aop.getTokenName() && Op == aop.getOperation()) {
             isReleased = true;
             break;
           }
