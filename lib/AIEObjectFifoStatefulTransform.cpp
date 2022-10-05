@@ -527,9 +527,9 @@ struct AIEObjectFifoStatefulTransformPass
 
     int maxAcquire = 0;
     for (auto coreOp : m.getOps<CoreOp>()) {
-      if (coreOp.tile() == tile) {
+      if (coreOp.getTile() == tile) {
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-          if (acqOp.fifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
+          if (acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
             if (acqOp.acqNumber() > maxAcquire)
               maxAcquire = acqOp.acqNumber();
         });
@@ -573,9 +573,9 @@ struct AIEObjectFifoStatefulTransformPass
       } else {
         // Find max acquire number for producer and consumer of objectFifo.
         int prodMaxAcquire =
-            findObjectFifoSize(m, createOp.producerTile(), createOp);
+            findObjectFifoSize(m, createOp.getProducerTile(), createOp);
         int consMaxAcquire =
-            findObjectFifoSize(m, createOp.consumerTile(), createOp);
+            findObjectFifoSize(m, createOp.getConsumerTile(), createOp);
 
         // objectFifos between non-adjacent tiles must be split into two new
         // ones, their elements will be created in next iterations
