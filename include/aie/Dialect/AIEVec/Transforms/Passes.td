@@ -36,4 +36,18 @@ def AIEVectorize : Pass<"aie-vectorize", "ModuleOp"> {
   ];
 }
 
+def AIEFoldRedundantMemOps : Pass<"aie-fold-redundant-mem-ops",
+                                      "func::FuncOp"> {
+  let summary = "Fold redundant vector load/stores (i.e., transfer ops) that"
+                " may have been generated in unolling.";
+  let description = "The redundant operations are folded in two steps: first, "
+                    "perform a store to load forwarding by removing loads that "
+                    "immediately follow a store to the same location; second, "
+                    "fold multiple stores to the same memory location without "
+                    "an interfering store to that memref, preserving only the "
+                    "last write. We assume that, for AIE vectorization, all the"
+                    " transfer reads/writes are within bounds.";
+  let dependentDialects = ["vector::VectorDialect"];
+}
+
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

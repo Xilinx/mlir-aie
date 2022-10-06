@@ -32,6 +32,7 @@
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_AIEVECTORIZE
+#define GEN_PASS_DEF_AIEFOLDREDUNDANTMEMOPS
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 } // namespace xilinx::aievec
 
@@ -2113,17 +2114,12 @@ template <typename TransferOp> static void setInBounds(TransferOp op) {
   op->setAttr(op.getInBoundsAttrName(), b.getBoolArrayAttr(bools));
 }
 
-// Remove redundant vector load/stores (i.e., transfer ops) that could be
-// generated post unolling. The redundant operations are removed in two steps:
-// first, we do a store to load forwarding. This removes the loads that
-// immediately succeed a store to the same location. Then it removes multiple
-// stores to the same memory location without an interfering store to that
-// memref. The only preserves the last write. These transformations are already
-// implemented in 'transferOpflowOpt' function. But these transformations only
-// work on reads/writes that are within bounds. We safely assume that for AIE
-// vectorization, all the transfer reads/writes are within bounds.
-static void redundantLoadStoreOptimization(ModuleOp module) {
-  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
+struct AIEFoldRedundantMemOps
+    : public aievec::impl::AIEFoldRedundantMemOpsBase<AIEFoldRedundantMemOps> {
+  using Base::Base;
+
+  void runOnOperation() override {
+    auto func = getOperation();
     // Mark all the transfer ops that have empty in_bounds as inbound
     func.walk([&](Operation *Op) {
       if (auto readOp = dyn_cast<TransferReadOp>(Op)) {
@@ -2134,11 +2130,11 @@ static void redundantLoadStoreOptimization(ModuleOp module) {
           setInBounds<TransferWriteOp>(writeOp);
       }
     });
-    // Now that all the transfer ops are marked inbound, remove redundant
-    // vector loads/stores
+    // With all the transfer ops are marked inbound, `transferOpflowOpt`
+    // removes redundant vector load/store ops
     transferOpflowOpt(func);
   }
-}
+};
 
 // Iterate over the loop nestings to form loop nesting bands. Then for each
 // block within those bands, the enclosingLoops is set to the loop band.
@@ -2467,10 +2463,6 @@ void AIEVectorize::runOnOperation() {
 
   ModuleOp module = getOperation();
 
-  // Remove redundant load/store operations in case the code was generated via
-  // unrolling
-  redundantLoadStoreOptimization(module);
-
   // Iterate over all the functions in this module, and vectorize them
   for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     // Create a new global state
@@ -2536,6 +2528,9 @@ void xilinx::aievec::buildAIEAffineVectorizer(
     OpPassManager &pm, const AIEAffineVectorizeOptions &options) {
   // Supervectorize code
   pm.addPass(createAffineVectorize(options.getAffineVectorizeOptions()));
+  // Remove redundant load/store operations in case the code was generated via
+  // unrolling
+  pm.addPass(createAIEFoldRedundantMemOps());
   // Canonicalize vector code
   pm.addPass(createCanonicalizerPass());
   // Convert standard vector ops to AIEVec vector ops

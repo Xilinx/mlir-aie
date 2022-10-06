@@ -46,10 +46,17 @@ class VectorDialect;
 // Registration
 //===----------------------------------------------------------------------===//
 
+namespace mlir {
+namespace func {
+class FuncOp;
+} // namespace func
+} // namespace mlir
+
 namespace xilinx {
 namespace aievec {
 
 #define GEN_PASS_DECL_AIEVECTORIZE
+#define GEN_PASS_DECL_AIEFOLDREDUNDANTMEMOPS
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 
