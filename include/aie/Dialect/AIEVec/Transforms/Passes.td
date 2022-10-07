@@ -15,7 +15,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AIEVectorize : Pass<"aie-vectorize", "ModuleOp"> {
+def AIEVectorize : Pass<"aie-vectorize", "func::FuncOp"> {
   let summary = "Vectorize the output of affine "
                 "supervectorizer to AIE vector abstraction";
   let dependentDialects = ["AffineDialect", 

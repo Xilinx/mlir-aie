@@ -2448,9 +2448,9 @@ struct AIEVectorize : public aievec::impl::AIEVectorizeBase<AIEVectorize> {
   void runOnOperation() override;
 };
 
-/// Generate AIE vector intrinsics for the current module. Assumption: the
+/// Generate AIE vector intrinsics for the current function. Assumption: the
 /// input to this function is the mlir output generated after vectorizing the
-/// scalar mlir input with affine superVectorizer. The vectorization factor
+/// scalar mlir input with affine supervectorizer. The vectorization factor
 /// should be appropriately set to a power of 2 (e.g., 8 for i32xi32 scheme, 16
 /// for i16xi16 scheme and i8xi8 scheme).
 void AIEVectorize::runOnOperation() {
@@ -2461,64 +2461,61 @@ void AIEVectorize::runOnOperation() {
   assert(dupFactor < 128 &&
          "Duplicate offset in the filter should be between 0 and 127");
 
-  ModuleOp module = getOperation();
+  func::FuncOp func = getOperation();
 
-  // Iterate over all the functions in this module, and vectorize them
-  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
-    // Create a new global state
-    VectState *state =
-        new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
+  // Create a new global state
+  VectState *state =
+      new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
 
-    // First compute the loops surrounding each load/store operation. This is
-    // necessary to identify loads/stores that are nested together.
-    for (AffineForOp forOp : func.getOps<AffineForOp>()) {
-      SmallVector<Operation *, 8> enclosingLoops;
-      enclosingLoops.push_back(forOp);
-      computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
-    }
-
-    // Check whether there is any unalignment loads.
-    if (unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {
-      func.emitError() << "Cannot apply aie-vectorize to " << func->getName()
-                       << " because alignment check has failed.\n";
-      return;
-    }
-
-    // Compute the reuse for all the transfer_read operations, and form the
-    // initial vector sizes.
-    computeReuseInFunc(func, state);
-    // We leverage the assumption that pointwise addition and multiplication
-    // are commutative and associative to reassociate the operands of some
-    // operators. This IR massaging makes it feasible to generate aie dialect
-    // fma/msc intrinsics.
-    reassociateOpsInFunc(func, state);
-    // Rewrite vector dialect add and mul operation chains as vector dialect
-    // fma operation if feasible.
-    rewriteFMAOpsInFunc(func, state);
-    // Coalesce vectors that only appear as LHS operands of mul/fma op if their
-    // size is <= 256 bits.
-    coalesceLHSOpVectorsInFunc(func, state);
-    // Check for opportunities of fusing FMA ops to exploit the column topology
-    // of the AIE vector intrinsic.
-    fuseFMAOpsForColumnTopology(func, state);
-    // For each vector dialect mul/fma op, compute the start and offset values
-    // of its operands. Finally, generate AIE dialect mul/FMA ops.
-    generateAIEMulOrFMAOpsInFunc(func, state);
-    // Insert SRS ops to move data from accumulator to vector when the producer
-    // is an AIE dialect op that writes to an accumulator, and the consumer
-    // isn't an AIE dialect op.
-    insertSRSOpsInFunc(func, state);
-    // For each vector dialect add/sub op, compute the start and offset values
-    // of its operands. Finally, generate AIE dialect add/sub ops. This should
-    // be done after srs ops are generated, so that the input to the add op is
-    // always vectors.
-    generateAIEAddOrSubOpsInFunc(func, state);
-    // Generate UPD ops that subsume all the transfer_read ops in affine
-    // dialect. This happens after generating aie dialect add/sub ops because
-    // those ops need to query transfer reads to know if their operand is
-    // splat.
-    insertUPDOpsInFunc(func, state);
+  // First compute the loops surrounding each load/store operation. This is
+  // necessary to identify loads/stores that are nested together.
+  for (AffineForOp forOp : func.getOps<AffineForOp>()) {
+    SmallVector<Operation *, 8> enclosingLoops;
+    enclosingLoops.push_back(forOp);
+    computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);
   }
+
+  // Check whether there is any unalignment loads.
+  if (unalignedLoadsCheck && failed(hasUnalignedLoads(func, state))) {
+    func.emitError() << "Cannot apply aie-vectorize to " << func->getName()
+                     << " because alignment check has failed.\n";
+    return;
+  }
+
+  // Compute the reuse for all the transfer_read operations, and form the
+  // initial vector sizes.
+  computeReuseInFunc(func, state);
+  // We leverage the assumption that pointwise addition and multiplication
+  // are commutative and associative to reassociate the operands of some
+  // operators. This IR massaging makes it feasible to generate aie dialect
+  // fma/msc intrinsics.
+  reassociateOpsInFunc(func, state);
+  // Rewrite vector dialect add and mul operation chains as vector dialect
+  // fma operation if feasible.
+  rewriteFMAOpsInFunc(func, state);
+  // Coalesce vectors that only appear as LHS operands of mul/fma op if their
+  // size is <= 256 bits.
+  coalesceLHSOpVectorsInFunc(func, state);
+  // Check for opportunities of fusing FMA ops to exploit the column topology
+  // of the AIE vector intrinsic.
+  fuseFMAOpsForColumnTopology(func, state);
+  // For each vector dialect mul/fma op, compute the start and offset values
+  // of its operands. Finally, generate AIE dialect mul/FMA ops.
+  generateAIEMulOrFMAOpsInFunc(func, state);
+  // Insert SRS ops to move data from accumulator to vector when the producer
+  // is an AIE dialect op that writes to an accumulator, and the consumer
+  // isn't an AIE dialect op.
+  insertSRSOpsInFunc(func, state);
+  // For each vector dialect add/sub op, compute the start and offset values
+  // of its operands. Finally, generate AIE dialect add/sub ops. This should
+  // be done after srs ops are generated, so that the input to the add op is
+  // always vectors.
+  generateAIEAddOrSubOpsInFunc(func, state);
+  // Generate UPD ops that subsume all the transfer_read ops in affine
+  // dialect. This happens after generating aie dialect add/sub ops because
+  // those ops need to query transfer reads to know if their operand is
+  // splat.
+  insertUPDOpsInFunc(func, state);
 }
 
 //===---------------------------------------------------------------------------
