@@ -397,8 +397,7 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
         Operation *destMemOp = mems[destSwbox.getTile().getDefiningOp()];
         xilinx::AIE::DMAChannel dmaChan =
             std::make_pair(DMAChannelDir::S2MM, destConnect.destIndex());
-        Operation *destDmaOp =
-            dmas[std::make_pair(destMemOp, dmaChan)];
+        Operation *destDmaOp = dmas[std::make_pair(destMemOp, dmaChan)];
         dmaConnections[srcDma].push_back(destDmaOp);
         dma2ConnectsMap[destDmaOp].push_back(destConnect);
       }
