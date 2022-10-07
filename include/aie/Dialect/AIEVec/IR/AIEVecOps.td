@@ -184,6 +184,33 @@ def AIEVec_FMAOp :
   }];
 }
 
+def AIEVec_FMAElemOp :
+  AIEVec_Op<"mac_elem", [
+    NoSideEffect
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+               DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML element-wise vector fused multiply-add";
+  let description = [{
+    Xilinx-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
+    and adds the result to an accumulator.
+    `$result = `$lhs * $rhs + $acc`.
+    Note: the same operator can be used as fmsub operator by setting the
+    'fmsub' bool to true.
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Value":$acc,
+            "bool":$fmsub),
+    [{build($_builder, $_state, acc.getType(), lhs, rhs, acc,
+            fmsub);}]>
+  ];
+  let extraClassDeclaration = [{
+    // Get the attribute names
+    StringRef getSubAttrName() { return "fmsub"; }
+  }];
+}
+
 def AIEVec_MulOp:
   AIEVec_Op<"mul", [
     NoSideEffect
@@ -246,6 +273,43 @@ def AIEVec_MulOp:
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xsquare" : "zsquare"; }
   }];
+}
+
+def AIEVec_MulElemOp:
+  AIEVec_Op<"mul_elem", [
+    NoSideEffect
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML vector element-wise multiply";
+  let description = [{
+    Xilinx-specific multiply operation that multiplies two 1-D vectors in the same channel.
+    The vector sizes are at least 512 bits.
+    `$result = `$lhs * $rhs`.
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Type":$accType),
+    [{build($_builder, $_state, accType, lhs, rhs);}]>
+  ];
+}
+
+def AIEVec_BroadcastOp:
+  AIEVec_Op<"broadcast", [
+    NoSideEffect
+  ]>,
+  Arguments<(ins AnyVector:$source,
+          DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$idx)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML broadcast";
+  let description = [{
+    Xilinx-specific broadcast intrinsic. Extract element index from vector and broadcasts its
+    value to all lanes of the vector.
+    `$result = broadcast($source, $idx)`
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$source, "int8_t":$idx),
+    [{build($_builder, $_state, source.getType(), source, idx);}]>
+  ];
 }
 
 def AIEVec_UPSOp:
