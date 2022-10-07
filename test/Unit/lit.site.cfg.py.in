@@ -1,0 +1,24 @@
+# -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2022, Advanced Micro Devices, Inc.
+#
+
+@LIT_SITE_CFG_IN_HEADER@
+
+config.llvm_src_root = "@LLVM_SOURCE_DIR@"
+config.llvm_obj_root = "@LLVM_BINARY_DIR@"
+config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
+config.llvm_libs_dir = "@LLVM_LIBS_DIR@"
+config.llvm_build_mode = "@LLVM_BUILD_MODE@"
+config.lit_tools_dir = "@LLVM_LIT_TOOLS_DIR@"
+config.aie_src_root = "@AIE_SOURCE_DIR@"
+config.aie_obj_root = "@AIE_BINARY_DIR@"
+config.target_triple = "@LLVM_TARGET_TRIPLE@"
+config.python_executable = "@Python3_EXECUTABLE@"
+
+# Let the main config do the real work.
+lit_config.load_config(config, "@AIE_SOURCE_DIR@/test/Unit/lit.cfg.py")

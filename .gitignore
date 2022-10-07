@@ -1,6 +1,7 @@
 /build*
 /install*
 .vscode
+.cache
 __pycache__
 
 /platforms/vck190_bare/petalinux/build

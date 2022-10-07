@@ -7,3 +7,6 @@
 
 add_subdirectory(ADF)
 add_subdirectory(AIEVec)
+add_subdirectory(Layout)
+add_subdirectory(Physical)
+add_subdirectory(Spatial)

@@ -45,5 +45,9 @@ add_mlir_dialect_library(AIE
   MLIRTransformUtils
   )
 
-add_subdirectory(Targets)
+add_subdirectory(Connectivity)
+add_subdirectory(Conversion)
 add_subdirectory(Dialect)
+add_subdirectory(Rewrite)
+add_subdirectory(Targets)
+add_subdirectory(Transform)

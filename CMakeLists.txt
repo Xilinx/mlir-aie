@@ -68,9 +68,11 @@ set(LLVM_LIT_ARGS "${LIT_ARGS_DEFAULT}" CACHE STRING "Default options for lit")
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules")
 include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
+include(AddPhy)
 include(HandleLLVMOptions)
 
 include_directories(${LLVM_INCLUDE_DIRS})
@@ -84,12 +86,21 @@ add_definitions(${LLVM_DEFINITIONS})
 add_custom_target(aie-headers)
 set_target_properties(aie-headers PROPERTIES FOLDER "Misc")
 add_dependencies(aie-headers mlir-headers)
+
+add_custom_target(phy-headers)
+set_target_properties(phy-headers PROPERTIES FOLDER "Misc")
+add_dependencies(phy-headers mlir-headers)
+
 # Make sure we build the docs
 add_custom_target(docs ALL)
 add_dependencies(docs mlir-doc)
 
+add_custom_target(phy-doc)
+add_dependencies(phy-doc mlir-doc)
+
 add_subdirectory(include)
 add_subdirectory(lib)
+add_subdirectory(unittests)
 add_subdirectory(test)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
@@ -106,9 +117,35 @@ if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "LICENSE.TXT"
     )
 
+  install(DIRECTORY include/phy
+    DESTINATION include
+    COMPONENT phy-headers
+    FILES_MATCHING
+    PATTERN "*.def"
+    PATTERN "*.h"
+    PATTERN "*.gen"
+    PATTERN "*.inc"
+    PATTERN "*.td"
+    PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "config.h" EXCLUDE
+    )
+
   install(DIRECTORY ${PROJECT_BINARY_DIR}/include/aie
     DESTINATION include
     COMPONENT aie-headers
+    FILES_MATCHING
+    PATTERN "*.def"
+    PATTERN "*.h"
+    PATTERN "*.gen"
+    PATTERN "*.inc"
+    PATTERN "*.td"
+    PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "config.h" EXCLUDE
+    )
+  
+  install(DIRECTORY ${PROJECT_BINARY_DIR}/include/phy
+    DESTINATION include
+    COMPONENT phy-headers
     FILES_MATCHING
     PATTERN "*.def"
     PATTERN "*.h"
@@ -123,6 +160,10 @@ if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     add_llvm_install_targets(install-aie-headers
                              DEPENDS aie-headers
                              COMPONENT aie-headers)
+
+    add_llvm_install_targets(install-phy-headers
+                             DEPENDS phy-headers
+                             COMPONENT phy-headers)
   endif()
 endif()
 

@@ -1,0 +1,48 @@
+##===- PhyConfig.cmake.in - find_package(Phy) support ---------*- cmake -*-===//
+##
+## Adapted from llvm/circt/cmake/modules/CIRCTConfig.cmake.in
+## This file allows users to call find_package(Phy) and pick up our targets.
+##
+## This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+## See https://llvm.org/LICENSE.txt for license information.
+## SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+##
+## Copyright (C) 2022, Advanced Micro Devices, Inc.
+##
+##===----------------------------------------------------------------------===//
+
+@PHY_CONFIG_CODE@
+
+find_package(MLIR REQUIRED CONFIG
+             HINTS "@PHY_CONFIG_MLIR_CMAKE_DIR@")
+
+set(PHY_EXPORTED_TARGETS "@PHY_EXPORTS@")
+set(PHY_CMAKE_DIR "@PHY_CONFIG_CMAKE_DIR@")
+set(PHY_BINARY_DIR "@PHY_CONFIG_BINARY_DIR@")
+set(PHY_INCLUDE_DIRS "@PHY_CONFIG_INCLUDE_DIRS@")
+set(PHY_LIBRARY_DIRS "@PHY_CONFIG_LIBRARY_DIRS@")
+set(PHY_TOOLS_DIR "@PHY_CONFIG_TOOLS_DIR@")
+
+set_property(GLOBAL PROPERTY PHY_ALL_LIBS "@PHY_ALL_LIBS@")
+set_property(GLOBAL PROPERTY PHY_DIALECT_LIBS "@PHY_DIALECT_LIBS@")
+set_property(GLOBAL PROPERTY PHY_CONVERSION_LIBS "@PHY_CONVERSION_LIBS@")
+set_property(GLOBAL PROPERTY PHY_TRANSLATION_LIBS "@PHY_TRANSLATION_LIBS@")
+
+# Provide all our library targets to users.
+@PHY_CONFIG_INCLUDE_EXPORTS@
+
+# By creating these targets here, subprojects that depend on Phy's
+# tablegen-generated headers can always depend on these targets whether building
+# in-tree with Phy or not.
+if(NOT TARGET phy-tablegen-targets)
+  add_custom_target(phy-tablegen-targets)
+endif()
+if(NOT TARGET phy-headers)
+  add_custom_target(phy-headers)
+endif()
+if(NOT TARGET phy-generic-headers)
+  add_custom_target(phy-generic-headers)
+endif()
+if(NOT TARGET phy-doc)
+  add_custom_target(phy-doc)
+endif()
