@@ -10,7 +10,6 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: andrab
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @non_adjacency {
