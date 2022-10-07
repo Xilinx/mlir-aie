@@ -41,27 +41,29 @@ struct AIEBroadcastPacketPass
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     for (auto broadcastpacket : m.getOps<BroadcastPacketOp>()) {
-      Region &r = broadcastpacket.ports();
+      Region &r = broadcastpacket.getPorts();
       Block &b = r.front();
       Port sourcePort = broadcastpacket.port();
-      TileOp srcTile = dyn_cast<TileOp>(broadcastpacket.tile().getDefiningOp());
+      TileOp srcTile =
+          dyn_cast<TileOp>(broadcastpacket.getTile().getDefiningOp());
 
       for (Operation &Op : b.getOperations()) {
         if (BPIDOp bpid = dyn_cast<BPIDOp>(Op)) {
-          Region &r_bpid = bpid.ports();
+          Region &r_bpid = bpid.getPorts();
           Block &b_bpid = r_bpid.front();
           int flowID = bpid.IDInt();
           builder.setInsertionPointAfter(broadcastpacket);
           PacketFlowOp pkFlow =
               builder.create<PacketFlowOp>(builder.getUnknownLoc(), flowID);
-          Region &r_pkFlow = pkFlow.ports();
+          Region &r_pkFlow = pkFlow.getPorts();
           Block *b_pkFlow = builder.createBlock(&r_pkFlow);
           builder.setInsertionPointToStart(b_pkFlow);
           builder.create<PacketSourceOp>(builder.getUnknownLoc(), srcTile,
                                          sourcePort.first, sourcePort.second);
           for (Operation &op : b_bpid.getOperations()) {
             if (BPDestOp bpdest = dyn_cast<BPDestOp>(op)) {
-              TileOp destTile = dyn_cast<TileOp>(bpdest.tile().getDefiningOp());
+              TileOp destTile =
+                  dyn_cast<TileOp>(bpdest.getTile().getDefiningOp());
               Port destPort = bpdest.port();
               builder.setInsertionPointToEnd(b_pkFlow);
               builder.create<PacketDestOp>(builder.getUnknownLoc(), destTile,

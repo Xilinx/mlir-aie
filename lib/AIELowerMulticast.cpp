@@ -40,13 +40,14 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     for (auto multicast : m.getOps<MulticastOp>()) {
-      Region &r = multicast.ports();
+      Region &r = multicast.getPorts();
       Block &b = r.front();
       Port sourcePort = multicast.port();
-      TileOp srcTile = dyn_cast<TileOp>(multicast.tile().getDefiningOp());
+      TileOp srcTile = dyn_cast<TileOp>(multicast.getTile().getDefiningOp());
       for (Operation &Op : b.getOperations()) {
         if (MultiDestOp multiDest = dyn_cast<MultiDestOp>(Op)) {
-          TileOp destTile = dyn_cast<TileOp>(multiDest.tile().getDefiningOp());
+          TileOp destTile =
+              dyn_cast<TileOp>(multiDest.getTile().getDefiningOp());
           Port destPort = multiDest.port();
           builder.create<FlowOp>(builder.getUnknownLoc(), srcTile,
                                  sourcePort.first, sourcePort.second, destTile,

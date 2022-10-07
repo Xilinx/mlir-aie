@@ -35,7 +35,7 @@ struct AIELocalizeLocksPass
     for (auto coreOp : moduleOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
 
-      TileOp thisTile = dyn_cast<TileOp>(coreOp.tile().getDefiningOp());
+      TileOp thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
       int row = thisTile.rowIndex();
 
@@ -54,7 +54,7 @@ struct AIELocalizeLocksPass
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
 
-        for (auto user : tile.result().getUsers())
+        for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
             if (isMemSouth(col, row, dstCol, dstRow))
               cardinalMemOffset = 0;
@@ -67,10 +67,10 @@ struct AIELocalizeLocksPass
             else
               llvm_unreachable("Found illegal lock user!");
 
-            int localLockIndex = cardinalMemOffset + lock.getLockID();
+            int localLockIndex = cardinalMemOffset + lock.getLockIDValue();
 
             OpBuilder builder =
-                OpBuilder::atBlockBegin(&(coreOp.body().front()));
+                OpBuilder::atBlockBegin(&(coreOp.getBody().front()));
 
             Value coreLockIDValue = builder.create<arith::ConstantIndexOp>(
                 builder.getUnknownLoc(), localLockIndex);

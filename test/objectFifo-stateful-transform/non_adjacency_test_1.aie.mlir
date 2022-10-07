@@ -10,7 +10,6 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: andrab
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @non_adjacency {
@@ -22,7 +21,7 @@
 // CHECK:    %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
 // CHECK:    %5 = AIE.lock(%0, 1)
 // CHECK:    %6 = AIE.mem(%0) {
-// CHECK:      %14 = AIE.dmaStart(MM2S0, ^bb1, ^bb3)
+// CHECK:      %14 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
 // CHECK:    ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:      AIE.useLock(%3, Acquire, 1)
 // CHECK:      AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
@@ -41,7 +40,7 @@
 // CHECK:    %9 = AIE.buffer(%1) {sym_name = "buff3"} : memref<16xi32>
 // CHECK:    %10 = AIE.lock(%1, 1)
 // CHECK:    %11 = AIE.mem(%1) {
-// CHECK:      %14 = AIE.dmaStart(S2MM1, ^bb1, ^bb3)
+// CHECK:      %14 = AIE.dmaStart(S2MM, 1, ^bb1, ^bb3)
 // CHECK:    ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:      AIE.useLock(%8, Acquire, 0)
 // CHECK:      AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)

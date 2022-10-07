@@ -220,8 +220,8 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
     for (auto placeOp : m.getOps<PlaceOp>()) {
       placeOps.push_back(placeOp);
-      Operation *sourceHerd = placeOp.sourceHerd().getDefiningOp();
-      Operation *destHerd = placeOp.destHerd().getDefiningOp();
+      Operation *sourceHerd = placeOp.getSourceHerd().getDefiningOp();
+      Operation *destHerd = placeOp.getDestHerd().getDefiningOp();
       int distX = placeOp.getDistXValue();
       int distY = placeOp.getDistYValue();
       distances[std::make_pair(sourceHerd, destHerd)] =
@@ -234,24 +234,25 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       routeOps.push_back(routeOp);
 
       AIE::SelectOp sourceHerds =
-          dyn_cast<AIE::SelectOp>(routeOp.sourceHerds().getDefiningOp());
+          dyn_cast<AIE::SelectOp>(routeOp.getSourceHerds().getDefiningOp());
       AIE::SelectOp destHerds =
-          dyn_cast<AIE::SelectOp>(routeOp.destHerds().getDefiningOp());
-      WireBundle sourceBundle = routeOp.sourceBundle();
-      WireBundle destBundle = routeOp.destBundle();
+          dyn_cast<AIE::SelectOp>(routeOp.getDestHerds().getDefiningOp());
+      WireBundle sourceBundle = routeOp.getSourceBundle();
+      WireBundle destBundle = routeOp.getDestBundle();
       int sourceChannel = routeOp.getSourceChannelValue();
       int destChannel = routeOp.getDestChannelValue();
 
       HerdOp sourceHerd =
-          dyn_cast<HerdOp>(sourceHerds.startHerd().getDefiningOp());
+          dyn_cast<HerdOp>(sourceHerds.getStartHerd().getDefiningOp());
       IterOp sourceIterX =
-          dyn_cast<IterOp>(sourceHerds.iterX().getDefiningOp());
+          dyn_cast<IterOp>(sourceHerds.getIterX().getDefiningOp());
       IterOp sourceIterY =
-          dyn_cast<IterOp>(sourceHerds.iterY().getDefiningOp());
+          dyn_cast<IterOp>(sourceHerds.getIterY().getDefiningOp());
 
-      HerdOp destHerd = dyn_cast<HerdOp>(destHerds.startHerd().getDefiningOp());
-      IterOp destIterX = dyn_cast<IterOp>(destHerds.iterX().getDefiningOp());
-      IterOp destIterY = dyn_cast<IterOp>(destHerds.iterY().getDefiningOp());
+      HerdOp destHerd =
+          dyn_cast<HerdOp>(destHerds.getStartHerd().getDefiningOp());
+      IterOp destIterX = dyn_cast<IterOp>(destHerds.getIterX().getDefiningOp());
+      IterOp destIterY = dyn_cast<IterOp>(destHerds.getIterY().getDefiningOp());
 
       int sourceStartX = sourceIterX.getStartValue();
       int sourceEndX = sourceIterX.getEndValue();
@@ -328,9 +329,9 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
                                                         herd, iterx, itery);
       SwitchboxOp swbox =
           builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
-      swbox.ensureTerminator(swbox.connections(), builder,
+      swbox.ensureTerminator(swbox.getConnections(), builder,
                              builder.getUnknownLoc());
-      Block &b = swbox.connections().front();
+      Block &b = swbox.getConnections().front();
       builder.setInsertionPoint(b.getTerminator());
 
       for (auto connect : connects) {
