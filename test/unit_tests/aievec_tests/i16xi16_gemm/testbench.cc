@@ -1,5 +1,5 @@
-#include <math.h>
 #include "testbench.h"
+#include <math.h>
 
 using namespace std;
 
@@ -19,11 +19,8 @@ int16_t ref_c_data[MAT_C_SIZE];
 #define INPUT_B_FILE "data/matrix_b_test.txt"
 #define OUTPUT_C_FILE "data/matrix_c_test.txt"
 
-#ifndef __chess__  
-int chess_cycle_count()
-{
-  return 0;
-}
+#ifndef __chess__
+int chess_cycle_count() { return 0; }
 #endif
 
 int main() {
@@ -79,14 +76,14 @@ int main() {
       mat_c_data[index++] = 0;
     }
   }
-/*
-  index = 0;
-  for (i = 0; i < N_SIZE; i++) {
-    for (j = 0; j < M_SIZE; j++) {
-      ref_c_data[index++] = 0;
+  /*
+    index = 0;
+    for (i = 0; i < N_SIZE; i++) {
+      for (j = 0; j < M_SIZE; j++) {
+        ref_c_data[index++] = 0;
+      }
     }
-  }
-*/
+  */
 
   // Compute matrix multiplication
   // reference(mat_a_data, mat_b_data, mat_c_data);
@@ -99,7 +96,6 @@ int main() {
 
   printf("Finish MATMUL!\n\n");
 
-
   index = 0;
   for (i = 0; i < N_SIZE; i++) {
     for (j = 0; j < M_SIZE; j++) {
@@ -109,17 +105,17 @@ int main() {
     }
   }
 
-/* 
-  for (i = 0; i < N_SIZE; i++) {
-    for (j = 0; j < M_SIZE; j++) {
-      for (k = 0; k < K_SIZE; k++) {
-        ref_c_data[i * M_SIZE + j] += mat_a_data[i * K_SIZE + k] * mat_b_data[k * M_SIZE + j];
+  /*
+    for (i = 0; i < N_SIZE; i++) {
+      for (j = 0; j < M_SIZE; j++) {
+        for (k = 0; k < K_SIZE; k++) {
+          ref_c_data[i * M_SIZE + j] += mat_a_data[i * K_SIZE + k] *
+    mat_b_data[k * M_SIZE + j];
+        }
+        printf("%d\n", ref_c_data[i * M_SIZE + j]);
       }
-      printf("%d\n", ref_c_data[i * M_SIZE + j]);
     }
-  }
-*/
-  
+  */
 
   // Compare results with reference result
   // NOTE: There will be some rounding errors in results so we accept absolute
@@ -131,7 +127,7 @@ int main() {
   int absErrorDiff = 0;
   for (int i = 0; i < MAT_C_SIZE; i++) {
     if (mat_c_data[i] != ref_c_data[i]) {
-        printf("%d got %d expected %d\n", i, mat_c_data[i], ref_c_data[i]);
+      printf("%d got %d expected %d\n", i, mat_c_data[i], ref_c_data[i]);
       absErrorDiff = fabs(mat_c_data[i] - ref_c_data[i]);
       if (absErrorDiff >= 5)
         printf("Delta found: Index %d is %d and should be %d\n", i,
@@ -142,7 +138,7 @@ int main() {
       errors++;
     }
   }
-  
+
   if (errors == 0 || max_error < 5) {
     printf("PASSED, Max delta: %d, pixel intensity\n\n", max_error);
   } else {
