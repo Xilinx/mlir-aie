@@ -15,7 +15,7 @@ module @test_error_shimdma_multi_state {
   %t30 = AIE.tile(3, 0)
   %l30_0 = AIE.lock(%t30, 0)
   AIE.shimDMA(%t30) {
-    AIE.dmaStart(MM2S0, ^bb1, ^end)
+    AIE.dmaStart(MM2S, 0, ^bb1, ^end)
   ^bb1:
     AIE.useLock(%l30_0, Acquire, 0)
     // This should fail because only one lock can be used in a ShimBd

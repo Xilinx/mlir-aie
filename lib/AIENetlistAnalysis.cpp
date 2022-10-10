@@ -221,8 +221,9 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
     for (auto op : r.getOps<cf::CondBranchOp>()) {
       DMAStartOp dmaSt =
           dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
-      int channelNum = dmaSt.getChannelNum();
-      dmas[std::make_pair(mem, channelNum)] = dmaSt;
+      xilinx::AIE::DMAChannel dmaChan =
+          std::make_pair(dmaSt.getChannelDir(), dmaSt.getChannelIndex());
+      dmas[std::make_pair(mem, dmaChan)] = dmaSt;
       Block *firstBd = op.getTrueDest();
       Block *curBd = firstBd;
 
@@ -374,7 +375,7 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
     if (srcDma.isRecv())
       continue;
 
-    int srcChannelIndex = srcDma.getSendChannelIndex();
+    int srcChannelIndex = srcDma.getChannelIndex();
 
     Operation *srcMemOp = srcDmaOp->getParentOp();
     MemOp srcMem = dyn_cast<MemOp>(srcMemOp);
@@ -394,9 +395,9 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
         SwitchboxOp destSwbox =
             dyn_cast<SwitchboxOp>(destConnect->getParentOp());
         Operation *destMemOp = mems[destSwbox.getTile().getDefiningOp()];
-        int destChannelIndex = destConnect.destIndex();
-        Operation *destDmaOp =
-            dmas[std::make_pair(destMemOp, destChannelIndex)];
+        xilinx::AIE::DMAChannel dmaChan =
+            std::make_pair(DMAChannelDir::S2MM, destConnect.destIndex());
+        Operation *destDmaOp = dmas[std::make_pair(destMemOp, dmaChan)];
         dmaConnections[srcDma].push_back(destDmaOp);
         dma2ConnectsMap[destDmaOp].push_back(destConnect);
       }

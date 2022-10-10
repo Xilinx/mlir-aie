@@ -887,13 +887,11 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   }];
 }
 
-def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
-def S2MM1:  I32EnumAttrCase<"S2MM1", 1>;
-def MM2S0:  I32EnumAttrCase<"MM2S0", 2>;
-def MM2S1:  I32EnumAttrCase<"MM2S1", 3>;
+def S2MM:  I32EnumAttrCase<"S2MM", 0>;
+def MM2S:  I32EnumAttrCase<"MM2S", 1>;
 
-def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
-  [S2MM0, S2MM1, MM2S0, MM2S1]> {
+def DMAChannelDir: I32EnumAttr<"DMAChannelDir", "DMA Channel direction",
+  [S2MM, MM2S]> {
 
   let cppNamespace = "xilinx::AIE";
 }
@@ -1018,32 +1016,24 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
     or to a basic block for another dmaStart, to an AIE.end operation.
   }];
 
-  let arguments = (ins DMAChan:$dmaChan);
+  let arguments = (
+    ins DMAChannelDir:$channelDir, 
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channelIndex
+  );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $dmaChan `,` $dest `,` $chain `)` attr-dict
+    `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    bool isSend() { return ((static_cast<int32_t>(getDmaChan()) == 2) ||
-                            (static_cast<int32_t>(getDmaChan()) == 3)); }
-    bool isRecv() { return ((static_cast<int32_t>(getDmaChan()) == 0) ||
-                            (static_cast<int32_t>(getDmaChan()) == 1)); }
-    int getSendChannelIndex() {
-      return static_cast<int32_t>(getDmaChan()) - 2;
-    }
-    int getRecvChannelIndex() {
-      return static_cast<int32_t>(getDmaChan()) - 0;
-    }
-    int getChannelNum() {
-      return static_cast<int32_t>(getDmaChan());
-    }
+    bool isSend() { return (static_cast<int32_t>(getChannelDir()) == 1); }
+    bool isRecv() { return (static_cast<int32_t>(getChannelDir()) == 0); }
   }];
 
   let builders = [
-    OpBuilder<(ins "DMAChan":$channel, "Block *":$dest, "Block *":$chain),
+    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
     [{
-              build($_builder, $_state, $_builder.getIntegerType(1), channel, dest, chain);
+              build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
               }]>
   ];
 }

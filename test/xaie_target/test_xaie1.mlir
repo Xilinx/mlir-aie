@@ -28,7 +28,7 @@ module @test_xaie1 {
   %l33_0 = AIE.lock(%t33, 0)
 
   %m33 = AIE.mem(%t33) {
-      %srcDma = AIE.dmaStart(MM2S0, ^bd0, ^end)
+      %srcDma = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l33_0, Acquire, 0)
       AIE.dmaBd(<%buf33_1 : memref<256xi32>, 0, 256>, 0)

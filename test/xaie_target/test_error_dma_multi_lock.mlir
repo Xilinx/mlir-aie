@@ -16,7 +16,7 @@ module @test_error_dma_multi_lock {
   %l33_0 = AIE.lock(%t33, 0)
   %l33_1 = AIE.lock(%t33, 1)
   AIE.mem(%t33) {
-    AIE.dmaStart(MM2S0, ^bb1, ^end)
+    AIE.dmaStart(MM2S, 0, ^bb1, ^end)
   ^bb1:
     AIE.useLock(%l33_0, Acquire, 1)
     // This should fail because only one lock can be used in a DmaBd

@@ -86,7 +86,7 @@ module @test_lock6 {
   AIE.token(0) {sym_name = "token1"}
 
   %m33 = AIE.mem(%t33) {
-      %dmaSt = AIE.dmaStart(MM2S0, ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
     ^bd0:
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
@@ -97,7 +97,7 @@ module @test_lock6 {
   }
 
   %m44 = AIE.mem(%t44) {
-      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
       AIE.useToken @token1(Acquire, 1)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
@@ -108,9 +108,9 @@ module @test_lock6 {
   }
 
   %m55 = AIE.mem(%t55) {
-      %dmaSt0 = AIE.dmaStart(S2MM0, ^bd0, ^dma0)
+      %dmaSt0 = AIE.dmaStart(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
-      %dmaSt1 = AIE.dmaStart("S2MM1", ^bd1, ^end)
+      %dmaSt1 = AIE.dmaStart("S2MM", 1, ^bd1, ^end)
     ^bd0:
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf55_0 : memref<256xi32>, 0, 256>, 0)

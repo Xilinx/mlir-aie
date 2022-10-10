@@ -15,7 +15,7 @@ module @test_error_dma_multi_state {
   %t33 = AIE.tile(3, 3)
   %l33_0 = AIE.lock(%t33, 0)
   AIE.mem(%t33) {
-    AIE.dmaStart(MM2S0, ^bb1, ^end)
+    AIE.dmaStart(MM2S, 0, ^bb1, ^end)
   ^bb1:
     AIE.useLock(%l33_0, Acquire, 0)
     // This should fail because only one state can be acquired in a DmaBd
