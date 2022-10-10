@@ -411,7 +411,7 @@ An op to start DMA
 Syntax:
 
 ```
-operation ::= `AIE.dmaStart` `(` $dmaChan `,` $dest `,` $chain `)` attr-dict
+operation ::= `AIE.dmaStart` `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
 ```
 
 This operation declares a DMA channel to be used for data transfer.  It usually exists inside
@@ -439,7 +439,8 @@ Traits: HasParent<MemOp, func::FuncOp, ShimDMAOp>, Terminator
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-| `dmaChan` | xilinx::AIE::DMAChanAttr | DMA Channel number
+| `channelDir` | xilinx::AIE::DMAChannelDirAttr | DMA Channel direction
+| `channelIndex` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1
 
 #### Results:
 
