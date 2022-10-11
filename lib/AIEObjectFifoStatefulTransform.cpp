@@ -701,7 +701,8 @@ struct AIEObjectFifoStatefulTransformPass
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-      createDMA(m, builder, producer, producerChan.first, producerChan.second, 0);
+      createDMA(m, builder, producer, producerChan.first, producerChan.second,
+                0);
 
       // create multicast
       builder.setInsertionPointAfter(producer);
@@ -716,7 +717,8 @@ struct AIEObjectFifoStatefulTransformPass
         // create consumer tile DMA
         xilinx::AIE::DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
-        createDMA(m, builder, consumer, consumerChan.first, consumerChan.second, 1);
+        createDMA(m, builder, consumer, consumerChan.first, consumerChan.second,
+                  1);
 
         // create multicast destination
         builder.setInsertionPointToEnd(&b);
