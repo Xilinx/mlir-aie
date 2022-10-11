@@ -48,7 +48,7 @@
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %13 = AIE.mem(%0) {
-// CHECK:     %14 = AIE.dmaStart(MM2S0, ^bb1, ^bb3)
+// CHECK:     %14 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
 // CHECK:   ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:     AIE.useLock(%3, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
@@ -60,14 +60,14 @@
 // CHECK:     AIE.useLock(%5, Release, 0)
 // CHECK:     cf.br ^bb1
 // CHECK:   ^bb3:  // pred: ^bb0
-// CHECK:     %15 = AIE.dmaStart(S2MM0, ^bb4, ^bb5)
+// CHECK:     %15 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
 // CHECK:   ^bb4:  // 2 preds: ^bb3, ^bb4
 // CHECK:     AIE.useLock(%7, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%6 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%7, Release, 1)
 // CHECK:     cf.br ^bb4
 // CHECK:   ^bb5:  // pred: ^bb3
-// CHECK:     %16 = AIE.dmaStart(MM2S1, ^bb6, ^bb8)
+// CHECK:     %16 = AIE.dmaStart(MM2S, 1, ^bb6, ^bb8)
 // CHECK:   ^bb6:  // 2 preds: ^bb5, ^bb7
 // CHECK:     AIE.useLock(%9, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%8 : memref<16xi32>, 0, 16>, 0)
@@ -116,7 +116,7 @@ module @tileDMA_channels {
     }
 
     %mem12 = AIE.mem(%tile12) {
-        %dma1 = AIE.dmaStart(MM2S0, ^bb1, ^bb3)
+        %dma1 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
     ^bb1:
         AIE.useLock(%lock0, Acquire, 1)
         AIE.dmaBd(<%buff0 : memref<16xi32>, 0, 16>, 0)
@@ -128,7 +128,7 @@ module @tileDMA_channels {
         AIE.useLock(%lock1, Release, 0)
         cf.br ^bb1
     ^bb3:
-        %dma2 = AIE.dmaStart(S2MM0, ^bb4, ^bb5)
+        %dma2 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
     ^bb4:
         AIE.useLock(%lock2, Acquire, 0)
         AIE.dmaBd(<%buff2 : memref<16xi32>, 0, 16>, 0)

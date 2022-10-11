@@ -40,7 +40,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
 
   void createDMABlocksAndOps(MemOp &mem, StringRef tokenName, int acquireTknVal,
                              int releaseTknVal, Value buf, int offset, int len,
-                             DMAChan dmaChannel,
+                             DMAChannelDir dmaDir, int channelIndex,
                              ConversionPatternRewriter &rewriter) const {
 
     Region &r = mem.getBody();
@@ -49,8 +49,8 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     Block *bdBlock = rewriter.createBlock(&endBlock);
 
     rewriter.setInsertionPointToStart(dmaBlock);
-    rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel, bdBlock,
-                                &endBlock);
+    rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaDir, channelIndex,
+                                bdBlock, &endBlock);
 
     // Setup bd Block
     // It should contain locking operations (lock or token) as well as DMABD op
@@ -84,9 +84,11 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     MemOp dstMem = dstTileOp(op).getMemOp();
 
     createDMABlocksAndOps(srcMem, tokenName, acquireTknVal, releaseTknVal,
-                          srcBuf, srcOffset, srcLen, DMAChan::MM2S0, rewriter);
+                          srcBuf, srcOffset, srcLen, DMAChannelDir::MM2S, 0,
+                          rewriter);
     createDMABlocksAndOps(dstMem, tokenName, acquireTknVal, releaseTknVal,
-                          dstBuf, dstOffset, dstLen, DMAChan::S2MM0, rewriter);
+                          dstBuf, dstOffset, dstLen, DMAChannelDir::S2MM, 0,
+                          rewriter);
 
     rewriter.eraseOp(Op);
     return success();

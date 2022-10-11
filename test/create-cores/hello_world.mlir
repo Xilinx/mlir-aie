@@ -14,7 +14,7 @@
 // CHECK:   %0 = AIE.tile(3, 3)
 // CHECK:   %1 = AIE.buffer(%0) : memref<512xi32>
 // CHECK:   %2 = AIE.mem(%0) {
-// CHECK:     %10 = AIE.dmaStart(MM2S0, ^bb1, ^bb2)
+// CHECK:     %10 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:
 // CHECK:     AIE.useToken @token0(Acquire, 1)
 // CHECK:     AIE.dmaBd(<%1 : memref<512xi32>, 0, 512>, 0)
@@ -26,7 +26,7 @@
 // CHECK:   %3 = AIE.tile(4, 4)
 // CHECK:   %4 = AIE.buffer(%3) : memref<512xi32>
 // CHECK:   %5 = AIE.mem(%3) {
-// CHECK:     %10 = AIE.dmaStart(S2MM0, ^bb1, ^bb2)
+// CHECK:     %10 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:
 // CHECK:     AIE.useToken @token0(Acquire, 1)
 // CHECK:     AIE.dmaBd(<%4 : memref<512xi32>, 0, 512>, 0)

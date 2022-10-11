@@ -338,9 +338,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<DMAStartOp>()) {
         int bdNum = blockMap[op.getDest()];
 
-        llvm::StringRef dmaChan = stringifyDMAChan(op.getDmaChan());
-        llvm::StringRef dmaDir = dmaChan.substr(0, 4);
-        llvm::StringRef chNum = dmaChan.substr(4, 1);
+        llvm::StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
+        int chNum = op.getChannelIndex();
 
         output << "XAie_DmaChannelPushBdToQueue(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "
@@ -507,9 +506,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<DMAStartOp>()) {
         int bdNum = blockMap[op.getDest()];
 
-        llvm::StringRef dmaChan = stringifyDMAChan(op.getDmaChan());
-        llvm::StringRef dmaDir = dmaChan.substr(0, 4);
-        llvm::StringRef chNum = dmaChan.substr(4, 1);
+        llvm::StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
+        int chNum = op.getChannelIndex();
 
         output << "XAie_DmaChannelPushBdToQueue(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "

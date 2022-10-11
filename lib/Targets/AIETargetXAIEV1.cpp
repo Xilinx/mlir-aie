@@ -354,12 +354,15 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         output << "XAieDma_TileSetStartBd("
                << "(" << tileDMAInstStr(col, row) << ")"
                << ", "
-               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.getDmaChan())
-               << ", "
+               << "XAIEDMA_TILE_CHNUM_"
+               << stringifyDMAChannelDir(op.getChannelDir())
+               << op.getChannelIndex() << ", "
                << " /* bd */ " << bdNum << ");\n";
         output << "XAieDma_TileChControl(" << tileDMAInstStr(col, row) << ", "
-               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.getDmaChan())
-               << ", " << resetDisable << ", " << enable << ");\n";
+               << "XAIEDMA_TILE_CHNUM_"
+               << stringifyDMAChannelDir(op.getChannelDir())
+               << op.getChannelIndex() << ", " << resetDisable << ", " << enable
+               << ");\n";
       }
     }
   }
@@ -513,15 +516,18 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         int bdNum = blockMap[op.getDest()];
 
         output << "XAieDma_ShimSetStartBd(&" << dmaName << ", "
-               << "XAIEDMA_SHIM_CHNUM_" << stringifyDMAChan(op.getDmaChan())
-               << ", "
+               << "XAIEDMA_SHIM_CHNUM_"
+               << stringifyDMAChannelDir(op.getChannelDir())
+               << op.getChannelIndex() << ", "
                << " /* bd */ " << bdNum << ");\n";
         // #define XAieDma_ShimChControl(DmaInstPtr, ChNum, PauseStrm,
         // PauseMm, Enable)
         output << "XAieDma_ShimChControl(&" << dmaName << ", "
-               << "XAIEDMA_TILE_CHNUM_" << stringifyDMAChan(op.getDmaChan())
-               << ", /* PauseStream */ " << disable << ", /* PauseMM */ "
-               << disable << ", /* Enable */ " << enable << ");\n";
+               << "XAIEDMA_TILE_CHNUM_"
+               << stringifyDMAChannelDir(op.getChannelDir())
+               << op.getChannelIndex() << ", /* PauseStream */ " << disable
+               << ", /* PauseMM */ " << disable << ", /* Enable */ " << enable
+               << ");\n";
       }
     }
   }

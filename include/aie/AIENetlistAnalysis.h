@@ -41,7 +41,7 @@ class NetlistAnalysis {
   DenseMap<Operation *, SwitchboxOp> &switchboxes;
   DenseMap<Operation *, SmallVector<Operation *, 4>> bufferUsers;
   DenseMap<Operation *, SmallVector<Operation *, 4>> dma2BufMap;
-  DenseMap<std::pair<Operation *, int>, Operation *> dmas;
+  DenseMap<std::pair<Operation *, xilinx::AIE::DMAChannel>, Operation *> dmas;
   DenseMap<Operation *, SmallVector<Operation *, 4>> dmaConnections;
   DenseMap<Operation *, SmallVector<Operation *, 4>> dma2ConnectsMap;
   DenseMap<Operation *, Operation *> lockPairs;

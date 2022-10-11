@@ -116,43 +116,33 @@ public:
   }
 
   /// Given an AIE tile, returns its next usable master channel.
-  DMAChan getMasterDMAChannel(Value tile) {
+  xilinx::AIE::DMAChannel getMasterDMAChannel(Value tile) {
+    xilinx::AIE::DMAChannel dmaChan;
     if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
       masterChannelsPerTile[tile] = 0;
-      return DMAChan::MM2S0;
+      dmaChan = std::make_pair(DMAChannelDir::MM2S, 0);
     } else {
       assert(masterChannelsPerTile[tile] < 1 &&
              "All tile DMA master channels are already in use.");
       masterChannelsPerTile[tile]++;
-      return DMAChan::MM2S1;
+      dmaChan = std::make_pair(DMAChannelDir::MM2S, 1);
     }
+    return dmaChan;
   }
 
   /// Given an AIE tile, returns its next usable slave channel.
-  DMAChan getSlaveDMAChannel(Value tile) {
+  xilinx::AIE::DMAChannel getSlaveDMAChannel(Value tile) {
+    xilinx::AIE::DMAChannel dmaChan;
     if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
       slaveChannelsPerTile[tile] = 0;
-      return DMAChan::S2MM0;
+      dmaChan = std::make_pair(DMAChannelDir::S2MM, 0);
     } else {
       assert(slaveChannelsPerTile[tile] < 1 &&
              "All tile DMA slave channels are already in use.");
       slaveChannelsPerTile[tile]++;
-      return DMAChan::S2MM1;
+      dmaChan = std::make_pair(DMAChannelDir::S2MM, 1);
     }
-  }
-
-  /// Given a DMA channel, returns corresponding port number.
-  int channelToPortNum(DMAChan channel) {
-    switch (channel) {
-    case DMAChan::MM2S0:
-      return 0;
-    case DMAChan::MM2S1:
-      return 1;
-    case DMAChan::S2MM0:
-      return 0;
-    case DMAChan::S2MM1:
-      return 1;
-    }
+    return dmaChan;
   }
 };
 
@@ -237,7 +227,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
   void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
-                 DMAChan channelMode, int lockMode) {
+                 DMAChannelDir channelDir, int channelIndex, int lockMode) {
     int numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -274,8 +264,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelMode, bdBlock,
-                               endBlock);
+    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
+                               channelIndex, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -709,30 +699,30 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     for (auto [producer, consumers] : splitFifos) {
       // create producer tile DMA
-      DMAChan producerChan =
+      xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-      createDMA(m, builder, producer, producerChan, 0);
+      createDMA(m, builder, producer, producerChan.first, producerChan.second, 0);
 
       // create multicast
       builder.setInsertionPointAfter(producer);
       MulticastOp multicast = builder.create<MulticastOp>(
           builder.getUnknownLoc(), producer.getProducerTile(), WireBundle::DMA,
-          dmaAnalysis.channelToPortNum(producerChan));
+          producerChan.second);
       Region &r = multicast.getPorts();
       r.push_back(new Block);
       Block &b = r.front();
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
-        DMAChan consumerChan =
+        xilinx::AIE::DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
-        createDMA(m, builder, consumer, consumerChan, 1);
+        createDMA(m, builder, consumer, consumerChan.first, consumerChan.second, 1);
 
         // create multicast destination
         builder.setInsertionPointToEnd(&b);
         builder.create<MultiDestOp>(builder.getUnknownLoc(),
                                     consumer.getProducerTile(), WireBundle::DMA,
-                                    dmaAnalysis.channelToPortNum(consumerChan));
+                                    consumerChan.second);
       }
       builder.create<EndOp>(builder.getUnknownLoc());
     }

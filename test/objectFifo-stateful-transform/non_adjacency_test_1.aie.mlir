@@ -60,7 +60,7 @@
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %12 = AIE.mem(%0) {
-// CHECK:     %14 = AIE.dmaStart(MM2S0, ^bb1, ^bb3)
+// CHECK:     %14 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
 // CHECK:   ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:     AIE.useLock(%3, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
@@ -75,7 +75,7 @@
 // CHECK:     AIE.end
 // CHECK:   }
 // CHECK:   %13 = AIE.mem(%1) {
-// CHECK:     %14 = AIE.dmaStart(S2MM0, ^bb1, ^bb3)
+// CHECK:     %14 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
 // CHECK:   ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:     AIE.useLock(%7, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%6 : memref<16xi32>, 0, 16>, 0)
