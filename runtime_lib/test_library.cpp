@@ -33,50 +33,10 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   if (!ctx)
     return 0;
 
-<<<<<<< HEAD
   return ctx;
 }
 
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) { free(ctx); }
-=======
-  ctx->AieConfigPtr.AieGen = XAIE_DEV_GEN_AIE;
-  ctx->AieConfigPtr.BaseAddr = XAIE_BASE_ADDR;
-  ctx->AieConfigPtr.ColShift = XAIE_COL_SHIFT;
-  ctx->AieConfigPtr.RowShift = XAIE_ROW_SHIFT;
-  ctx->AieConfigPtr.NumRows = XAIE_NUM_ROWS;
-  ctx->AieConfigPtr.NumCols = XAIE_NUM_COLS;
-  ctx->AieConfigPtr.ShimRowNum = XAIE_SHIM_ROW;
-  ctx->AieConfigPtr.MemTileRowStart = XAIE_RES_TILE_ROW_START;
-  ctx->AieConfigPtr.MemTileNumRows = XAIE_RES_TILE_NUM_ROWS;
-  //  ctx->AieConfigPtr.ReservedRowStart = XAIE_RES_TILE_ROW_START;
-  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;
-  ctx->AieConfigPtr.AieTileRowStart = XAIE_AIE_TILE_ROW_START;
-  ctx->AieConfigPtr.AieTileNumRows = XAIE_AIE_TILE_NUM_ROWS;
-  ctx->AieConfigPtr.PartProp = {0};
-  ctx->DevInst = {0};
-
-  /*
-    XAIEGBL_HWCFG_SET_CONFIG((&xaie->AieConfig),
-                             XAIE_NUM_ROWS, XAIE_NUM_COLS, 0x800);
-    XAieGbl_HwInit(&xaie->AieConfig);
-    xaie->AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&xaie->AieInst,
-                          &xaie->TileInst[0][0], xaie->AieConfigPtr);
-
-    _air_host_active_libxaie1 = xaie;
-  */
-  return ctx;
-}
-
-void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
-  //  if (xaie == _air_host_active_libxaie1)
-  //    _air_host_active_libxaie1 = nullptr;
-  AieRC RC = XAie_Finish(&(ctx->DevInst));
-  if (RC != XAIE_OK) {
-    printf("Failed to finish tiles.\n");
-  }
-  free(ctx);
-}
 
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   XAIEGBL_HWCFG_SET_CONFIG((&(ctx->AieConfig)), XAIE_NUM_ROWS, XAIE_NUM_COLS,
@@ -461,12 +421,9 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
  */
 #else
 
-<<<<<<< HEAD
 // namespace aie_device {
 //}
 
-=======
->>>>>>> Moved aie bar mapping into test_library
 aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   aie_libxaie_ctx_t *ctx =
       (aie_libxaie_ctx_t *)malloc(sizeof(aie_libxaie_ctx_t));
