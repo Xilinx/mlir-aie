@@ -15,13 +15,10 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <string>
 
 extern "C" {
 extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
 }
-
-volatile void *_aie_base = nullptr;
 
 /*
  ******************************************************************************
@@ -43,28 +40,7 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) { free(ctx); }
 =======
   ctx->AieConfigPtr.AieGen = XAIE_DEV_GEN_AIE;
-//#ifdef AIR_PCIE
-  // TODO really discover the bus id
-  std::string aie_bar = "/sys/bus/pci/devices/0000:21:00.0/resource2";
-
-  int fda;
-  if((fda = open(aie_bar.c_str(), O_RDWR | O_SYNC)) == -1) {
-      printf("[ERROR] Failed to open device file\n");
-      return nullptr;
-  }
-
-  // Map the memory region into userspace
-  _aie_base = mmap(NULL,    // virtual address
-                      0x20000000,             // length
-                      PROT_READ | PROT_WRITE, // prot
-                      MAP_SHARED,             // flags
-                      fda,                    // device fd
-                      0);                     // offset
-  if (!_aie_base) return nullptr;
-  ctx->AieConfigPtr.BaseAddr = (uint64_t)_aie_base;
-//#else
-//  xaie->AieConfigPtr.BaseAddr = XAIE_BASE_ADDR;
-//#endif
+  ctx->AieConfigPtr.BaseAddr = XAIE_BASE_ADDR;
   ctx->AieConfigPtr.ColShift = XAIE_COL_SHIFT;
   ctx->AieConfigPtr.RowShift = XAIE_ROW_SHIFT;
   ctx->AieConfigPtr.NumRows = XAIE_NUM_ROWS;
