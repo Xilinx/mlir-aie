@@ -357,17 +357,9 @@ static bool writesToAccumulator(Operation *op) {
         .getElementType()
         .isa<IntegerType>();
   } else if (auto fma_elemOp = dyn_cast<aievec::FMAElemOp>(op)) {
-    return fma_elemOp.getResult()
-        .getType()
-        .cast<VectorType>()
-        .getElementType()
-        .isa<IntegerType>();
+    return true;
   } else if (auto mul_elemOp = dyn_cast<aievec::MulElemOp>(op)) {
-    return mul_elemOp.getResult()
-        .getType()
-        .cast<VectorType>()
-        .getElementType()
-        .isa<IntegerType>();
+    return true;
   } else if (isa<aievec::UPSOp>(op))
     return true;
   else
@@ -569,7 +561,7 @@ static aievec::BroadcastOp generateBroadcastOp(Value source, int8_t idx,
   aievec::BroadcastOp broadcastOp =
       state->builder.create<aievec::BroadcastOp>(loc, type, source, idx);
 
-  assert(broadcastOp && "could not create broad op");
+  assert(broadcastOp && "could not create broadcast op");
   return broadcastOp;
 }
 
@@ -721,7 +713,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
                    .getElementType()
                    .isa<IntegerType>();
 
-  if (isInt && !writesToAccumulator(acc.getDefiningOp())) {
+  if ((isInt || AIEML) && !writesToAccumulator(acc.getDefiningOp())) {
     acc = generateUPSOp(acc, state, fmaOp->getLoc());
     LLVM_DEBUG(llvm::dbgs()
                << "\n\nCreated UPS op " << acc << " to move the output of "
@@ -735,7 +727,11 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   if (!isSimpleVectIntrinsic(fmaOp, state)) {
     AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
     assert(lstat.vecSizeInBits % 256 == 0);
-    if (AIEML) {
+    AIEVecAttributes rstat = getOperandVecStats(fmaOp, state, 1);
+
+    // Check the legality of generating a broadcast op by checking whether
+    // zbuffer is a splat
+    if (AIEML && rstat.isSplat) {
       rhs = generateBroadcastOp(rhs, stoi(opAttr.start[1]), state,
                                 fmaOp->getLoc());
     } else {

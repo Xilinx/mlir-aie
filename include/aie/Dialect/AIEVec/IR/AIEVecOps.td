@@ -307,7 +307,7 @@ def AIEVec_BroadcastOp:
     `$result = broadcast($source, $idx)`
   }];
   let builders = [
-    OpBuilder<(ins "Value":$source, "int8_t":$idx),
+    OpBuilder<(ins "Value":$source, "int32_t":$idx),
     [{build($_builder, $_state, source.getType(), source, idx);}]>
   ];
 }

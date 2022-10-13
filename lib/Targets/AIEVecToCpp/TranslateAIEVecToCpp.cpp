@@ -92,7 +92,8 @@ struct CppEmitter {
 
   /// Emits type 'type' or returns failure. stdintType is true when the
   // type is from stdint.h
-  LogicalResult emitType(Location loc, Type type, bool stdintType = true);
+  LogicalResult emitType(Location loc, Type type, bool stdintType = true,
+                         bool isAcc = false);
 
   /// Emits array of types as a std::tuple of the emitted types.
   /// - emits void for an empty array;
@@ -108,8 +109,8 @@ struct CppEmitter {
   LogicalResult emitVariableAssignment(OpResult result);
 
   /// Emits a variable declaration for a result of an operation.
-  LogicalResult emitVariableDeclaration(OpResult result,
-                                        bool trailingSemicolon);
+  LogicalResult emitVariableDeclaration(OpResult result, bool trailingSemicolon,
+                                        bool isAcc = false);
 
   /// Emits the variable declaration and assignment prefix for 'op'.
   /// - emits separate variable followed by std::tie for multi-valued operation;
@@ -117,7 +118,7 @@ struct CppEmitter {
   /// - emits nothing if no value produced by op;
   /// Emits final '=' operator where a type is produced. Returns failure if
   /// any result type could not be converted.
-  LogicalResult emitAssignPrefix(Operation &op);
+  LogicalResult emitAssignPrefix(Operation &op, bool isAcc = false);
 
   /// Emits a label for the block.
   LogicalResult emitLabel(Block &block);
@@ -237,7 +238,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
     Value source = srsOp.getSource();
     // If the underlying element types are float, then we do not really need an
     // srs op if source of srsOp has only one use.
-    if (eltType.isa<FloatType>() && accType.getElementType().isa<FloatType>() &&
+    if (!AIEML && eltType.isa<FloatType>() &&
         source.getDefiningOp()->hasOneUse()) {
       StringRef srcName = emitter.getOrCreateName(source);
       emitter.setName(srsOp->getResult(0), srcName);
@@ -252,7 +253,7 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
     Value source = upsOp.getSource();
     // If the underlying element types are float, then we do not really need a
     // ups op if the source accumulator has only one use.
-    if (eltType.isa<FloatType>() && accType.getElementType().isa<FloatType>() &&
+    if (!AIEML && eltType.isa<FloatType>() &&
         source.getDefiningOp()->hasOneUse()) {
       StringRef srcName = emitter.getOrCreateName(source);
       emitter.setName(upsOp->getResult(0), srcName);
@@ -472,7 +473,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
 
   raw_indented_ostream &os = emitter.ostream();
   Value result = updOp.getResult();
-  VectorType resultType = updOp.getResult().getType().cast<VectorType>();
+  VectorType resultType = result.getType().cast<VectorType>();
   int32_t vecSizeInBits = getVectorSizeInBits(resultType);
   int32_t elementSizeInBits = getElementSizeInBits(resultType);
 
@@ -575,7 +576,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the accumulator
-  if (failed(emitter.emitAssignPrefix(*upsOp)))
+  if (failed(emitter.emitAssignPrefix(*upsOp, true)))
     return failure();
 
   // The source vector should have already been emitted
@@ -583,38 +584,38 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
     return failure();
 
   VectorType accType = upsOp.getResult().getType().cast<VectorType>();
+  unsigned lanes = getVectorLaneSize(accType);
   Type eltType = accType.getElementType();
 
   // If the underlying element types are float, then we do not really need a
   // ups op. We can simply generate an assignment
-  if (eltType.isa<FloatType>()) {
+  if (!AIEML && eltType.isa<FloatType>()) {
     os << emitter.getOrCreateName(source);
     return success();
   }
 
   // Determine if it is lups or ups based on accumulator type
-  unsigned lanes = getVectorLaneSize(accType);
   auto iType = eltType.dyn_cast<IntegerType>();
   auto fType = eltType.dyn_cast<FloatType>();
-  unsigned width = 0;
   if (iType) {
-    width = iType.getWidth();
-    if (width == 80)
+    if (iType.getWidth() == 80)
       os << "l";
   }
 
   if (iType && AIEML) {
     os << "ups_to_v" << lanes << "acc" << iType.getWidth();
-  } else if (fType && AIEML && fType.getWidth() == 16) {
-    os << "ups_to_v" << lanes << "accfloat";
+  } else if (fType && AIEML) {
+    os << "ups_to_v16accfloat";
   } else {
     os << "ups";
   }
 
   os << "(";
   os << emitter.getOrCreateName(source);
-  os << ", ";
-  os << std::to_string(shift);
+  if (!(fType && AIEML)) {
+    os << ", ";
+    os << std::to_string(shift);
+  }
   os << ")";
 
   return success();
@@ -644,13 +645,21 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   // If the underlying element types are float, then we do not really need an
   // srs op. We can simply generate an assignment
   if (eltType.isa<FloatType>()) {
-    unsigned width = eltType.cast<FloatType>().getWidth();
-    if (width == 32) {
+    if (AIEML) {
+      unsigned width = eltType.cast<FloatType>().getWidth();
+      if (width == 32) {
+        os << "srs";
+      } else if (width == 16) {
+        os << "to_v16bfloat16";
+      }
+      os << "(";
       os << emitter.getOrCreateName(source);
-    } else if (width == 16) {
-      os << "to_v16bfloat16";
+      os << ")";
+      return success();
+    } else {
+      os << emitter.getOrCreateName(source);
+      return success();
     }
-    return success();
   }
 
   // Otheriwse, get the datatype width of the source accumulator and result
@@ -2026,12 +2035,14 @@ LogicalResult CppEmitter::emitVariableAssignment(OpResult result) {
 }
 
 LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
-                                                  bool trailingSemicolon) {
+                                                  bool trailingSemicolon,
+                                                  bool isAcc) {
   if (hasValueInScope(result)) {
     return result.getDefiningOp()->emitError(
         "result variable for the operation already declared");
   }
-  if (failed(emitType(result.getOwner()->getLoc(), result.getType())))
+  if (failed(
+          emitType(result.getOwner()->getLoc(), result.getType(), true, isAcc)))
     return failure();
   os << " " << getOrCreateName(result);
   if (trailingSemicolon)
@@ -2039,7 +2050,7 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
   return success();
 }
 
-LogicalResult CppEmitter::emitAssignPrefix(Operation &op) {
+LogicalResult CppEmitter::emitAssignPrefix(Operation &op, bool isAcc) {
   switch (op.getNumResults()) {
   case 0:
     break;
@@ -2049,7 +2060,8 @@ LogicalResult CppEmitter::emitAssignPrefix(Operation &op) {
       if (failed(emitVariableAssignment(result)))
         return failure();
     } else {
-      if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/false)))
+      if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/false,
+                                         isAcc)))
         return failure();
       os << " = ";
     }
@@ -2123,7 +2135,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   return success();
 }
 
-LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType) {
+LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
+                                   bool isAcc) {
   if (auto iType = type.dyn_cast<IntegerType>()) {
     switch (iType.getWidth()) {
     case 1:
@@ -2147,6 +2160,8 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType) {
   }
   if (auto fType = type.dyn_cast<FloatType>()) {
     switch (fType.getWidth()) {
+    case 16:
+      return (os << "bfloat16"), success();
     case 32:
       return (os << "float"), success();
     case 64:
@@ -2194,19 +2209,24 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType) {
       return failure();
 
     unsigned dimSize = tType.getDimSize(tType.getRank() - 1);
-    os << "v" << std::to_string(dimSize);
 
     if (eltType.isa<IntegerType>()) {
+      os << "v" << std::to_string(dimSize);
       auto iType = eltType.cast<IntegerType>();
       unsigned width = iType.getWidth();
       if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32)) {
         return (os << "acc" << width), success();
       }
-    } else if (dimSize == 16 && eltType.isa<FloatType>()) {
-      auto fType = eltType.cast<FloatType>();
-      unsigned width = fType.getWidth();
-      if (width >= 48) {
-        return (os << "accfloat"), success();
+    } else if (eltType.isa<FloatType>()) {
+      if (AIEML) {
+        if (isAcc) {
+          return (os << "v16accfloat"), success();
+        } else {
+          return (os << "v" << std::to_string(dimSize) << "bfloat16"),
+                 success();
+        }
+      } else {
+        os << "v" << std::to_string(dimSize);
       }
     }
 
