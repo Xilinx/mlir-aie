@@ -66,7 +66,7 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
     assert(func && "Could not find the intrinsic function!");
     SmallVector<Value, 1> args;
-    args.push_back(op.arg());
+    args.push_back(op.getArg());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
     rewriter.eraseOp(Op);
     return success();
@@ -98,8 +98,8 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     assert(putMSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    args.push_back(op.channel());
-    args.push_back(op.streamValue());
+    args.push_back(op.getChannel());
+    args.push_back(op.getStreamValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -128,7 +128,7 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
     auto getSSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     assert(getSSFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    args.push_back(op.channel());
+    args.push_back(op.getChannel());
     auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                    getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
@@ -153,7 +153,7 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     assert(putMCDFunc && "Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
-    args.push_back(op.cascadeValue());
+    args.push_back(op.getCascadeValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
     rewriter.eraseOp(Op);
     return success();
@@ -177,6 +177,43 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, ValueRange({}));
     rewriter.replaceOp(op, getSCDCall.getResult(0));
+    return success();
+  }
+};
+
+struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
+  using OpConversionPattern<UseLockOp>::OpConversionPattern;
+  ModuleOp &module;
+
+  AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &m,
+                            PatternBenefit benefit = 1)
+      : OpConversionPattern<UseLockOp>(context, benefit), module(m) {}
+  LogicalResult
+  matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if(!isa<ModuleOp>(useLock->getParentOp())) {
+      std::string funcName = "llvm.aie.lock.";
+      if (useLock.acquire())
+        funcName += "acquire.reg";
+      else if (useLock.release())
+        funcName += "release.reg";
+
+      auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
+      assert(useLockFunc && "Could not find the intrinsic function!");
+
+      SmallVector<Value, 2> args;
+
+      args.push_back(rewriter.create<arith::IndexCastOp>(
+          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          useLock.getLock()));
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+          rewriter.getI32IntegerAttr(useLock.getLockValue())));
+
+      rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
+                                    args);
+    }
+    rewriter.eraseOp(useLock);
     return success();
   }
 };
@@ -216,7 +253,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         rewriter.getUnknownLoc(), coreName,
         FunctionType::get(rewriter.getContext(), {}, {}));
 
-    rewriter.cloneRegionBefore(op.body(), coreFunc.getBody(),
+    rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
 
     // Create a main function that just calls the core function above.
@@ -269,28 +306,6 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       if (EndOp end = dyn_cast<EndOp>(childOp)) {
         rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
                                         ValueRange({}));
-        rewriter.eraseOp(childOp);
-      } else if (UseLockOp useLock = dyn_cast<UseLockOp>(childOp)) {
-        std::string funcName = "llvm.aie.lock.";
-        if (useLock.acquire())
-          funcName += "acquire.reg";
-        else if (useLock.release())
-          funcName += "release.reg";
-
-        auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
-        assert(useLockFunc && "Could not find the intrinsic function!");
-
-        SmallVector<Value, 2> args;
-
-        args.push_back(rewriter.create<arith::IndexCastOp>(
-            useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-            useLock.lock()));
-        args.push_back(rewriter.create<arith::ConstantOp>(
-            useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-            rewriter.getI32IntegerAttr(useLock.getLockValue())));
-
-        rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
-                                      args);
         rewriter.eraseOp(childOp);
       }
     });
@@ -437,7 +452,8 @@ struct AIECoreToStandardPass
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering>(m.getContext(), m);
+                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering
+                 >(m.getContext(), m);
 
     patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                         tileToBuffers, 1, tileCol, tileRow);
@@ -449,8 +465,8 @@ struct AIECoreToStandardPass
         .add<AIEOpRemoval<AIE::TileOp>, AIEOpRemoval<AIE::FlowOp>,
              AIEOpRemoval<AIE::MemOp>, AIEOpRemoval<AIE::ShimDMAOp>,
              AIEOpRemoval<AIE::ShimMuxOp>, AIEOpRemoval<AIE::SwitchboxOp>,
-             AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::UseLockOp>,
-             AIEOpRemoval<AIE::BufferOp>, AIEOpRemoval<AIE::ExternalBufferOp>>(
+             AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::BufferOp>,
+             AIEOpRemoval<AIE::ExternalBufferOp>>(
             m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))

@@ -45,7 +45,7 @@ def run_flow(opts, tmpdirname):
     chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
     file_with_addresses = os.path.join(tmpdirname, 'input_with_addresses.mlir')
-    do_call(['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-unroll-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
+    do_call(['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', file_with_addresses])
     t = do_run(['aie-translate', '--aie-generate-corelist', file_with_addresses])
     cores = eval(t.stdout)
 
@@ -132,18 +132,19 @@ def run_flow(opts, tmpdirname):
             '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
 
+
     def process_arm_cgen():
       # Generate the included host interface
       file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
       if(opts.pathfinder):
-        do_call(['aie-opt', '--aie-create-pathfinder-flows', file_with_addresses, '-o', file_physical]);
+        do_call(['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
       else:
-        do_call(['aie-opt', '--aie-create-flows', file_with_addresses, '-o', file_physical]);
+        do_call(['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
-      if(opts.xaie == 2):
-          do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
-      else:
+      if(opts.xaie == 1):
           do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
+      else:
+          do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
 
 
       # Lastly, compile the generated host interface with any ARM code.
@@ -153,19 +154,22 @@ def run_flow(opts, tmpdirname):
       cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
-        if(opts.xaie == 2):
-            cmd += ['-DLIBXAIENGINEV2']
-            cmd += ['-I%s/usr/include/c++/10.2.0' % opts.sysroot]
-            cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
-            cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
-            cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
-      cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
-      cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
-      cmd += ['-I%s' % tmpdirname]
       if(opts.xaie == 2):
-        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
+        cmd += ['-DLIBXAIENGINEV2']
+        cmd += ['-I%s/usr/include/c++/10.2.0' % opts.sysroot]
+        cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
+        cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
+        cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
+        cmd += ['-I%s/opt/xaienginev2/include' % opts.sysroot]
+        cmd += ['-L%s/opt/xaienginev2/lib' % opts.sysroot]
       else:
+        cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
+        cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
+      cmd += ['-I%s' % tmpdirname]
+      if(opts.xaie == 1):
         cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
+      else:
+        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
     
 
       if(len(opts.arm_args) > 0):

@@ -7,6 +7,7 @@
 
 add_mlir_dialect_library(AIE
   AIEAssignBuffers.cpp
+  AIEAssignLockIDs.cpp
   AIEDialect.cpp
   AIETokenAnalysis.cpp
   AIENetlistAnalysis.cpp
@@ -18,13 +19,14 @@ add_mlir_dialect_library(AIE
   AIECreateLocks.cpp
   AIECoreToStandard.cpp
   AIEHerdRouting.cpp
+  AIECreateBroadcastPacket.cpp
+  AIELowerMulticast.cpp
   AIECreatePacketFlows.cpp
   AIELowerMemcpy.cpp
   AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp
   AIEObjectFifoStatefulTransform.cpp
-  AIEObjectFifoLoopUnroll.cpp
   AIEObjectFifoRegisterProcess.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include

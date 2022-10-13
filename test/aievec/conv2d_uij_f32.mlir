@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=0" -split-input-file | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=0" -unaligned-loads-check=false -split-input-file | FileCheck %s
 
 //CHECK-LABEL: func.func @conv2d(%arg0: memref<2048x2048xf32>, %arg1: memref<9xf32>, %arg2: memref<2046x2046xf32>) {
 func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046x2046xf32>) {
@@ -106,3 +106,12 @@ func.func @conv2d (%A: memref<2048x2048xf32>, %B: memref<9xf32>, %C: memref<2046
 //CHECK-NEXT: %19 = aievec.mac %18, %0, %17 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: %20 = aievec.mac %18, %1, %19 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xf32>, vector<8xf32>, vector<8xf32>
 //CHECK-NEXT: vector.transfer_write %20, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<8xf32>, memref<2046x2046xf32>
+
+// This test case will directly return the result generated from -affine-super-vectorize when
+// -unaligned-loads-check=true. The reason is that in transfer_read %arg2[%arg3, %arg4],
+// dim 1's memref shape size(2046) is not divisible by the vector lanes(8).
+
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize="shift=0" -split-input-file 2>&1 | FileCheck %s -check-prefix=ALIGNMENT
+
+// ALIGNMENT: vector.transfer_read's shape size of index 1 is not divisible by number of vector lanes.
+// ALIGNMENT: Cannot apply aie-vectorize to func.func because alignment check has failed.                         

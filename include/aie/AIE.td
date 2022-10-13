@@ -94,8 +94,8 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
 
 def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let arguments = (
-    ins Confined<I32Attr, [IntMinValue<0>]>:$col,
-        Confined<I32Attr, [IntMinValue<0>]>:$row
+    ins ConfinedAttr<I32Attr, [IntMinValue<0>]>:$col,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$row
   );
 
   let summary = "Declare an AIE tile";
@@ -114,22 +114,22 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let extraClassDeclaration = [{
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);
-    int colIndex() { return col(); }
-    int rowIndex() { return row(); }
-    bool isShimTile() { return row() == 0; }
+    int colIndex() { return getCol(); }
+    int rowIndex() { return getRow(); }
+    bool isShimTile() { return getRow() == 0; }
     bool isShimNOCTile();
     bool isShimPLTile();
     bool isShimNOCorPLTile();
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
     MemOp getMemOp() {
-      auto users = result().getUsers();
+      auto users = getResult().getUsers();
       for(auto user : users)
         if(auto memOp = llvm::dyn_cast<MemOp>(*user))
           return memOp;
       return nullptr;
     }
     CoreOp getCoreOp() {
-      auto users = result().getUsers();
+      auto users = getResult().getUsers();
       for(auto user : users)
         if(auto coreOp = llvm::dyn_cast<CoreOp>(*user))
           return coreOp;
@@ -362,7 +362,7 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
   }];
   let assemblyFormat = [{ `(` $col `)` attr-dict }];
   let extraClassDeclaration = [{
-    int colIndex() { return col(); }
+    int colIndex() { return getCol(); }
   }];
 }
 
@@ -394,10 +394,10 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
     `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel(); }
-    int destIndex() { return destChannel(); }
-    Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
-    Port destPort() { return std::make_pair(destBundle(), destIndex()); }
+    int sourceIndex() { return getSourceChannel(); }
+    int destIndex() { return getDestChannel(); }
+    Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
+    Port destPort() { return std::make_pair(getDestBundle(), destIndex()); }
   }];
 }
 
@@ -429,8 +429,8 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel(); }
-    int destIndex() { return destChannel(); }
+    int sourceIndex() { return getSourceChannel(); }
+    int destIndex() { return getDestChannel(); }
   }];
   // let builders = [
   //   OpBuilder<(ins "Value":$source, "int":$sourceBundle,
@@ -475,8 +475,8 @@ def AIE_ConnectionOp: AIE_Op<"connection", []> {
     `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel(); }
-    int destIndex() { return destChannel(); }
+    int sourceIndex() { return getSourceChannel(); }
+    int destIndex() { return getDestChannel(); }
   }];
   // let builders = [
   //   OpBuilder<(ins "Value":$source, "int":$sourceBundle,
@@ -494,8 +494,8 @@ def AIE_ConnectionOp: AIE_Op<"connection", []> {
 
 def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
   let arguments = (
-    ins Confined<I8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
-        Confined<I8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
+    ins ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
+        ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
   );
   let summary = "Declare an arbiter of a switchbox with a master select value (arbiter + msel)";
   let description = [{
@@ -522,8 +522,8 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
     `<` $arbiterID `>` `(` $msel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int arbiterIndex() { return arbiterID(); }
-    int getMselValue() { return msel(); }
+    int arbiterIndex() { return getArbiterID(); }
+    int getMselValue() { return getMsel(); }
   }];
 
   let builders = [
@@ -569,8 +569,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(o
     `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int destIndex() { return destChannel(); }
-    Port destPort() { return std::make_pair(destBundle(), destIndex()); }
+    int destIndex() { return getDestChannel(); }
+    Port destPort() { return std::make_pair(getDestBundle(), destIndex()); }
   }];
 }
 
@@ -620,8 +620,8 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
   }];
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return sourceChannel(); }
-    Port sourcePort() { return std::make_pair(sourceBundle(), sourceIndex()); }
+    int sourceIndex() { return getSourceChannel(); }
+    Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
   }];
 }
 
@@ -663,8 +663,8 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
     ```
   }];
   let extraClassDeclaration = [{
-    int maskInt() { return mask(); }
-    int valueInt() { return value(); }
+    int maskInt() { return getMask(); }
+    int valueInt() { return getValue(); }
   }];
   let assemblyFormat = [{
     `(` $mask `,` $value `,` $amsel `)` attr-dict
@@ -677,6 +677,142 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   //           amsel);
   //     }]>
   // ];
+}
+
+def AIE_BroadcastPacketOp: AIE_Op<"broadcast_packet", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "Combination of broadcast and packet-switch";
+  let description = [{
+    An abstraction of broadcast and packet-switched flow. During place and
+    route, it will be replaced by packet-switched flow and further replaced 
+    by MasterSets and PacketRules inside switchboxes.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.broadcast_packet(%70, "DMA" : 0){
+        AIE.bp_id(0x0){
+          AIE.bp_dest<%73, "DMA" : 0>
+          AIE.bp_dest<%63, "DMA" : 0>
+        }
+        AIE.bp_id(0x1){
+          AIE.bp_dest<%74, "DMA" : 0>
+          AIE.bp_dest<%64, "DMA" : 0>
+        }
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return getChannel(); }
+    Port port() { return std::make_pair(getBundle(), channelIndex()); }
+  }];
+}
+
+def AIE_BPIDOp: AIE_Op<"bp_id", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins I8Attr:$ID
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "A set of packets that share the same ID";
+  let description = [{
+    A set of destination packets that share the same source and ID. This must exist
+    within an [AIE.broadcast_packet] operation.
+    See [AIE.broadcast_packet]for an example.
+  }];
+  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let extraClassDeclaration = [{
+    int IDInt() { return getID(); }
+  }];
+}
+
+def AIE_BPDestOp: AIE_Op<"bp_dest", [HasParent<"BPIDOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port";
+  let description = [{
+    An object representing the destination of a  Broad Packet. This must exist
+    within an [AIE.bp_id] operation.
+    See [AIE.broadcast_packet] for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return getChannel(); }
+    Port port() { return std::make_pair(getBundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MulticastOp: AIE_Op<"multicast", [SingleBlockImplicitTerminator<"EndOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let regions = (region AnyRegion:$ports);
+  let summary = "An abstraction of multicast";
+  let description = [{
+    An abstraction of broadcast. During place and
+    route, it will be replaced by multiple flows.
+
+    Example:
+    ```
+      %70 = AIE.tile(7, 0)
+      %73 = AIE.tile(7, 3)
+      %74 = AIE.tile(7, 4)
+      %63 = AIE.tile(6, 3)
+      %64 = AIE.tile(6, 4)
+      AIE.multicast(%70, "DMA" : 0){
+        AIE.multi_dest<%73, "DMA" : 0>
+        AIE.multi_dest<%74, "DMA" : 0>
+        AIE.multi_dest<%63, "DMA" : 0>
+        AIE.multi_dest<%64, "DMA" : 0>
+      }
+    ```
+  }];
+  let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int channelIndex() { return getChannel(); }
+    Port port() { return std::make_pair(getBundle(), channelIndex()); }
+  }];
+}
+
+def AIE_MultiDestOp: AIE_Op<"multi_dest", [HasParent<"MulticastOp">]> {
+  let arguments = (
+    ins Index:$tile,
+        WireBundle:$bundle,
+        I32Attr:$channel
+  );
+  let summary = "A destination port of multicast flow";
+  let description = [{
+    An object representing the destination of a multicast flow. This must exist
+    within an [AIE.multicast] operation. There can be multiple destinations within an
+    AIE.multicast Op.
+
+    See [AIE.multicast]for an example.
+  }];
+  let assemblyFormat = [{
+    `<` $tile `,` $bundle `:` $channel `>` attr-dict
+  }];
+  let extraClassDeclaration = [{
+    int channelIndex() { return getChannel(); }
+    Port port() { return std::make_pair(getBundle(), channelIndex()); }
+  }];
 }
 
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
@@ -702,7 +838,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int IDInt() { return ID(); }
+    int IDInt() { return getID(); }
   }];
 }
 
@@ -723,8 +859,8 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int channelIndex() { return channel(); }
-    Port port() { return std::make_pair(bundle(), channelIndex()); }
+    int channelIndex() { return getChannel(); }
+    Port port() { return std::make_pair(getBundle(), channelIndex()); }
   }];
 }
 
@@ -746,18 +882,16 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int channelIndex() { return channel(); }
-    Port port() { return std::make_pair(bundle(), channelIndex()); }
+    int channelIndex() { return getChannel(); }
+    Port port() { return std::make_pair(getBundle(), channelIndex()); }
   }];
 }
 
-def S2MM0:  I32EnumAttrCase<"S2MM0", 0>;
-def S2MM1:  I32EnumAttrCase<"S2MM1", 1>;
-def MM2S0:  I32EnumAttrCase<"MM2S0", 2>;
-def MM2S1:  I32EnumAttrCase<"MM2S1", 3>;
+def S2MM:  I32EnumAttrCase<"S2MM", 0>;
+def MM2S:  I32EnumAttrCase<"MM2S", 1>;
 
-def DMAChan: I32EnumAttr<"DMAChan", "DMA Channel number",
-  [S2MM0, S2MM1, MM2S0, MM2S1]> {
+def DMAChannelDir: I32EnumAttr<"DMAChannelDir", "DMA Channel direction",
+  [S2MM, MM2S]> {
 
   let cppNamespace = "xilinx::AIE";
 }
@@ -795,8 +929,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getPacketType() { return packet_type(); }
-    int getPacketID() { return packet_id(); }
+    int getPacketID() { return getPacketId(); }
   }];
 
 }
@@ -833,7 +966,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     ins AnyMemRef:$buffer,
         I32Attr:$offset,
         I32Attr:$len,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
   );
 
   let assemblyFormat = [{
@@ -841,10 +974,10 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getOffsetValue() { return offset(); }
-    int getLenValue() { return len(); }
-    bool isA() { return (AB() == 0); }
-    bool isB() { return (AB() == 1); }
+    int getOffsetValue() { return getOffset(); }
+    int getLenValue() { return getLen(); }
+    bool isA() { return (getAB() == 0); }
+    bool isB() { return (getAB() == 1); }
   }];
 
   // let builders = [
@@ -883,32 +1016,24 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
     or to a basic block for another dmaStart, to an AIE.end operation.
   }];
 
-  let arguments = (ins DMAChan:$dmaChan);
+  let arguments = (
+    ins DMAChannelDir:$channelDir, 
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channelIndex
+  );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
-    `(` $dmaChan `,` $dest `,` $chain `)` attr-dict
+    `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
-    bool isSend() { return ((static_cast<int32_t>(dmaChan()) == 2) ||
-                            (static_cast<int32_t>(dmaChan()) == 3)); }
-    bool isRecv() { return ((static_cast<int32_t>(dmaChan()) == 0) ||
-                            (static_cast<int32_t>(dmaChan()) == 1)); }
-    int getSendChannelIndex() {
-      return static_cast<int32_t>(dmaChan()) - 2;
-    }
-    int getRecvChannelIndex() {
-      return static_cast<int32_t>(dmaChan()) - 0;
-    }
-    int getChannelNum() {
-      return static_cast<int32_t>(dmaChan());
-    }
+    bool isSend() { return (static_cast<int32_t>(getChannelDir()) == 1); }
+    bool isRecv() { return (static_cast<int32_t>(getChannelDir()) == 0); }
   }];
 
   let builders = [
-    OpBuilder<(ins "DMAChan":$channel, "Block *":$dest, "Block *":$chain),
+    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
     [{
-              build($_builder, $_state, $_builder.getIntegerType(1), channel, dest, chain);
+              build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
               }]>
   ];
 }
@@ -947,7 +1072,8 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
 def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
-    This operation creates a physical lock.
+    This operation creates a physical lock. For this operation the lockID variable is optional. 
+    However, if that is the case then the lockID must be assigned using the AIEAssignLockIDs pass. 
 
     Example:
     ```
@@ -955,14 +1081,21 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
       %lck = AIE.lock(%tile33, 7)
     ```
     This operation represents a lock that lives in the Memory module of Tile(3, 3) with a lockID of 7
+
+    Case when LockID is not assigned:
+      Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
+      After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
   }];
   let arguments = (
     ins Index:$tile,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>:$lockID
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
   );
-  let assemblyFormat = [{ `(` $tile `,` $lockID `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getLockID() { return lockID(); }
+    int getLockIDValue() { 
+      assert(getLockID().has_value() && "Lock has no ID value");
+      return getLockID().value();
+    }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile, "int":$lockID), [{
@@ -972,6 +1105,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
         $_builder.getI32IntegerAttr(lockID));
       }]>
   ];
+  // let hasCanonicalizer = 1;
 }
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
@@ -1001,7 +1135,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
   let arguments = (
     ins Index:$lock,
-        Confined<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
         LockAction:$action,
         OptionalAttr<LockBlocking>:$blocking
   );
@@ -1017,10 +1151,10 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   ];
 
   let extraClassDeclaration = [{
-    bool acquire() { return (action() == LockAction::Acquire); }
-    bool release() { return (action() == LockAction::Release); }
-    int getLockValue() { return value(); }
-    int getTimeout() { if(auto val = blocking()) return (int)*val; else return 1;}
+    bool acquire() { return (getAction() == LockAction::Acquire); }
+    bool release() { return (getAction() == LockAction::Release); }
+    int getLockValue() { return getValue(); }
+    int getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
   }];
 }
 
@@ -1115,7 +1249,7 @@ def AIE_TokenOp: AIE_Op<"token", [Symbol]> {
   let arguments = (ins I32Attr:$value);
   let assemblyFormat = [{ `(` $value `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getTokenValue() { return value(); }
+    int getTokenValue() { return getValue(); }
   }];
 }
 
@@ -1133,9 +1267,9 @@ def AIE_UseTokenOp: AIE_Op<"useToken", []> {
   let assemblyFormat = [{ $tokenName `(` $action `,` $value `)` attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    bool acquire() { return (action() == LockAction::Acquire); }
-    bool release() { return (action() == LockAction::Release); }
-    int getTokenValue() { return value(); }
+    bool acquire() { return (getAction() == LockAction::Acquire); }
+    bool release() { return (getAction() == LockAction::Release); }
+    int getTokenValue() { return getValue(); }
   }];
 }
 
@@ -1168,12 +1302,12 @@ def AIE_MemcpyOp: AIE_Op<"memcpy", []> {
         attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
   }];
   let extraClassDeclaration = [{
-    int getAcquireTokenValue() { return acqValue(); }
-    int getReleaseTokenValue() { return relValue(); }
-    int getSrcOffsetValue() { return srcOffset(); }
-    int getDstOffsetValue() { return dstOffset(); }
-    int getSrcLenValue() { return srcLen(); }
-    int getDstLenValue() { return dstLen(); }
+    int getAcquireTokenValue() { return getAcqValue(); }
+    int getReleaseTokenValue() { return getRelValue(); }
+    int getSrcOffsetValue() { return getSrcOffset(); }
+    int getDstOffsetValue() { return getDstOffset(); }
+    int getSrcLenValue() { return getSrcLen(); }
+    int getDstLenValue() { return getDstLen(); }
   }];
 }
 
@@ -1191,8 +1325,8 @@ def AIE_GetStreamOp: AIE_Op<"getStream", [HasParent<"CoreOp">]>,
     `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
   }];
   let extraClassDeclaration = [{
-    bool isWideStream() { return streamValue().getType().isInteger(128); }
-    bool isFloatStream() { return streamValue().getType().isa<FloatType>(); }
+    bool isWideStream() { return getStreamValue().getType().isInteger(128); }
+    bool isFloatStream() { return getStreamValue().getType().isa<FloatType>(); }
   }];
 }
 
@@ -1209,8 +1343,8 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
     `(` $streamValue `:` type($streamValue) `,` $channel `:` type($channel) `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    bool isWideStream() { return streamValue().getType().isInteger(128); }
-    bool isFloatStream() { return streamValue().getType().isa<FloatType>(); }
+    bool isWideStream() { return getStreamValue().getType().isInteger(128); }
+    bool isFloatStream() { return getStreamValue().getType().isa<FloatType>(); }
   }];
 }
 
@@ -1264,8 +1398,8 @@ def AIE_HerdOp: AIE_Op<"herd", []>, Results<(outs Index)> {
         I32Attr:$height
   );
   let extraClassDeclaration = [{
-    int getHerdWidth()   { return width(); }
-    int getHerdHeight()  { return height(); }
+    int getHerdWidth()   { return getWidth(); }
+    int getHerdHeight()  { return getHeight(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
     StringAttr name() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
@@ -1301,8 +1435,8 @@ def AIE_PlaceOp: AIE_Op<"place", []> {
   );
   let assemblyFormat = [{ `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getDistXValue() { return distX(); }
-    int getDistYValue() { return distY(); }
+    int getDistXValue() { return getDistX(); }
+    int getDistYValue() { return getDistY(); }
   }];
 }
 
@@ -1324,8 +1458,8 @@ def AIE_RouteOp: AIE_Op<"route", []> {
         `<` $destHerds   `,` $destBundle   `:` $destChannel   `>` `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int getSourceChannelValue()  { return sourceChannel(); }
-    int getDestChannelValue()  { return destChannel(); }
+    int getSourceChannelValue()  { return getSourceChannel(); }
+    int getDestChannelValue()  { return getDestChannel(); }
   }];
 }
 
@@ -1346,9 +1480,9 @@ def AIE_IterOp: AIE_Op<"iter", []>, Results<(outs Index)> {
   );
   let assemblyFormat = [{ `(` $start `,` $end `,` $stride `)` attr-dict }];
   let extraClassDeclaration = [{
-    int getStartValue()  { return start(); }
-    int getEndValue()    { return end(); }
-    int getStrideValue() { return stride(); }
+    int getStartValue()  { return getStart(); }
+    int getEndValue()    { return getEnd(); }
+    int getStrideValue() { return getStride(); }
   }];
   let builders = [
     OpBuilder<(ins "int":$start, "int":$end, "int":$stride), [{
@@ -1413,7 +1547,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let arguments = (
     ins Index:$producerTile,
         Index:$consumerTile,
-        Confined<I32Attr, [IntMinValue<0>]>:$elemNumber
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
@@ -1423,7 +1557,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   }];
 
   let extraClassDeclaration = [{
-    int size() { return elemNumber(); }
+    int size() { return getElemNumber(); }
     TileOp getProducerTileOp();
     TileOp getConsumerTileOp();
   }];
@@ -1454,7 +1588,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         AIE_ObjectFifoType:$fifo,
-        Confined<I32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
@@ -1465,19 +1599,12 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
   let hasVerifier = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$subview, "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
-    [{
-      build($_builder, $_state, subview, port, fifo, size);
-    }]>
-  ];
-
   let extraClassDeclaration = [{
-    Value getAIEObjectFifo() { return fifo(); }
+    Value getAIEObjectFifo() { return getFifo(); }
     AIEObjectFifoType getAIEObjectFifoType() {
       return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
     }
-    int acqNumber() { return size(); }
+    int acqNumber() { return getSize(); }
   }];
 }
 
@@ -1500,7 +1627,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         AIE_ObjectFifoType:$fifo,
-        Confined<I32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let assemblyFormat = [{
@@ -1509,19 +1636,12 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
 
   let hasVerifier = 1;
 
-  let builders = [
-    OpBuilder<(ins "xilinx::AIE::ObjectFifoPort":$port, "Value":$fifo, "IntegerAttr":$size),
-    [{
-      build($_builder, $_state, port, fifo, size);
-    }]>
-  ];
-
   let extraClassDeclaration = [{
-    Value getAIEObjectFifo() { return fifo(); }
+    Value getAIEObjectFifo() { return getFifo(); }
     AIEObjectFifoType getAIEObjectFifoType() {
       return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
     }
-    int relNumber() { return size(); }
+    int relNumber() { return getSize(); }
   }];
 }
 
@@ -1542,7 +1662,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
   let arguments = (
     ins AIE_ObjectFifoSubviewType:$subview, 
-        Confined<I32Attr, [IntMinValue<0>]>:$index
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$index
   );
 
   let results = (outs AnyMemRef:$output);
@@ -1555,10 +1675,6 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   let builders = [
     OpBuilder<(ins "Value":$subview, "size_t":$index)>
   ];
-
-  let extraClassDeclaration = [{
-    int getIndex() { return index(); }
-  }];
 }
 
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
@@ -1590,22 +1706,21 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         AIE_ObjectFifoType:$fifo,
-        I32Tensor:$acquirePattern,
-        I32Tensor:$releasePattern,
+        I32Tensor:$acquirePatternTensor,
+        I32Tensor:$releasePatternTensor,
         FlatSymbolRefAttr:$callee,
         Index:$length
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePattern `:` type($acquirePattern) `,` $releasePattern `:` type($releasePattern) `,` $callee `,` $length`)` 
+    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    ObjectFifoPortAttr getPortAttr() { return portAttr(); }
-    DenseIntElementsAttr getAcquirePattern() { return acquirePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
-    DenseIntElementsAttr getReleasePattern() { return releasePattern().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
-    int getProcessLength() { return length().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
+    DenseIntElementsAttr getAcquirePattern() { return getAcquirePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
+    DenseIntElementsAttr getReleasePattern() { return getReleasePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
+    int getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
   }];
 }

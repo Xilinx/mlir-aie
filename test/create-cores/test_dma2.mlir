@@ -15,7 +15,7 @@
 // CHECK-NEXT:  %0 = AIE.tile(1, 1)
 // CHECK-NEXT:  %1 = AIE.buffer(%0) : memref<256xi32>
 // CHECK-NEXT:  %2 = AIE.mem(%0) {
-// CHECK-NEXT:    %17 = AIE.dmaStart(MM2S0)
+// CHECK-NEXT:    %17 = AIE.dmaStart(MM2S, 0)
 // CHECK-NEXT:    AIE.terminator(^bb3, ^bb1)
 // CHECK-NEXT:  ^bb1:  // pred: ^bb0
 // CHECK-NEXT:    cond_br %17, ^bb2, ^bb3
@@ -30,7 +30,7 @@
 // CHECK-NEXT:  %3 = AIE.tile(2, 2)
 // CHECK-NEXT:  %4 = AIE.buffer(%3) : memref<256xi32>
 // CHECK-NEXT:  %5 = AIE.mem(%3) {
-// CHECK-NEXT:    %17 = AIE.dmaStart(MM2S0)
+// CHECK-NEXT:    %17 = AIE.dmaStart(MM2S, 0)
 // CHECK-NEXT:    AIE.terminator(^bb3, ^bb1)
 // CHECK-NEXT:  ^bb1:  // pred: ^bb0
 // CHECK-NEXT:    cond_br %17, ^bb2, ^bb3
@@ -46,8 +46,8 @@
 // CHECK-NEXT:  %7 = AIE.buffer(%6) : memref<256xi32>
 // CHECK-NEXT:  %8 = AIE.buffer(%6) : memref<256xi32>
 // CHECK-NEXT:  %9 = AIE.mem(%6) {
-// CHECK-NEXT:    %17 = AIE.dmaStart(S2MM0)
-// CHECK-NEXT:    %18 = AIE.dmaStart(S2MM0)
+// CHECK-NEXT:    %17 = AIE.dmaStart(S2MM, 0)
+// CHECK-NEXT:    %18 = AIE.dmaStart(S2MM, 0)
 // CHECK-NEXT:    AIE.terminator(^bb5, ^bb1, ^bb3)
 // CHECK-NEXT:  ^bb1:  // pred: ^bb0
 // CHECK-NEXT:    cond_br %17, ^bb2, ^bb5

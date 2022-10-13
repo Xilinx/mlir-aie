@@ -22,11 +22,11 @@ endif()
 
 if(POLICY CMP0116)
   cmake_policy(SET CMP0116 OLD)
-endif()
+endif() 
 
 project(AIE LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 set(AIE_COMPILER "XCHESSCC" CACHE STRING "Backend compiler selection")

@@ -30,6 +30,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
 #include <map>
+#include <set>
 
 using namespace mlir;
 
@@ -161,6 +162,7 @@ public:
 typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
 typedef std::pair<int, int> TileID;
+typedef std::pair<DMAChannelDir, int> DMAChannel;
 
 bool isValidTile(TileID src);
 
@@ -201,6 +203,7 @@ namespace AIE {
 #include "aie/AIEPasses.h.inc"
 
 std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignBufferAddressesPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateCoresPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLocksPass();
@@ -209,7 +212,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createAIEHerdRoutingPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMemcpyPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMulticastPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIEBroadcastPacketPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();

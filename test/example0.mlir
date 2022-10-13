@@ -44,9 +44,9 @@ module @example0 {
   %buf44 = AIE.buffer(%t44) : memref<256xi32>
 
   %m33 = AIE.mem(%t33) {
-      %dmaSt0 = AIE.dmaStart(MM2S0, ^bd0, ^dma0)
+      %dmaSt0 = AIE.dmaStart(MM2S, 0, ^bd0, ^dma0)
     ^dma0:
-      %dmaSt1 = AIE.dmaStart("MM2S1", ^bd1, ^end)
+      %dmaSt1 = AIE.dmaStart("MM2S", 1, ^bd1, ^end)
     ^bd0:
       AIE.useLock(%l33_0, Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
@@ -62,7 +62,7 @@ module @example0 {
   }
 
   %m42 = AIE.mem(%t42) {
-      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l42_0, Acquire, 0)
       AIE.dmaBd(<%buf42 : memref<256xi32>, 0, 256>, 0)
@@ -73,7 +73,7 @@ module @example0 {
   }
 
   %m44 = AIE.mem(%t44) {
-      %dmaSt = AIE.dmaStart(S2MM0, ^bd0, ^end)
+      %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l44_0, Acquire, 1)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)

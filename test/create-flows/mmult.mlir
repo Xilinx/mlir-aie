@@ -46,7 +46,7 @@ module @aie.herd_0  {
   %9 = AIE.lock(%3, 0)
   %10 = AIE.buffer(%3) {sym_name = "buf9"} : memref<16x16xf32, 2>
   %11 = AIE.mem(%3)  {
-    %63 = AIE.dmaStart(S2MM0, ^bb1, ^bb5)
+    %63 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb5)
   ^bb1:  // 2 preds: ^bb0, ^bb2
     AIE.useLock(%9, Acquire, 0)
     AIE.dmaBd(<%10 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -58,14 +58,14 @@ module @aie.herd_0  {
     AIE.useLock(%4, Release, 1)
     cf.br ^bb1
   ^bb3:  // pred: ^bb5
-    %64 = AIE.dmaStart(S2MM1, ^bb4, ^bb7)
+    %64 = AIE.dmaStart(S2MM, 1, ^bb4, ^bb7)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     AIE.useLock(%7, Acquire, 0)
     AIE.dmaBd(<%8 : memref<16x16xf32, 2>, 0, 256>, 0)
     AIE.useLock(%7, Release, 1)
     cf.br ^bb4
   ^bb5:  // pred: ^bb0
-    %65 = AIE.dmaStart(MM2S0, ^bb6, ^bb3)
+    %65 = AIE.dmaStart(MM2S, 0, ^bb6, ^bb3)
   ^bb6:  // 2 preds: ^bb5, ^bb6
     AIE.useLock(%5, Acquire, 1)
     AIE.dmaBd(<%6 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -87,7 +87,7 @@ module @aie.herd_0  {
   %23 = AIE.lock(%17, 0)
   %24 = AIE.buffer(%17) {sym_name = "buf6"} : memref<16x16xf32, 2>
   %25 = AIE.mem(%17)  {
-    %63 = AIE.dmaStart(S2MM0, ^bb1, ^bb5)
+    %63 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb5)
   ^bb1:  // 2 preds: ^bb0, ^bb2
     AIE.useLock(%23, Acquire, 0)
     AIE.dmaBd(<%24 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -99,14 +99,14 @@ module @aie.herd_0  {
     AIE.useLock(%18, Release, 1)
     cf.br ^bb1
   ^bb3:  // pred: ^bb5
-    %64 = AIE.dmaStart(S2MM1, ^bb4, ^bb7)
+    %64 = AIE.dmaStart(S2MM, 1, ^bb4, ^bb7)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     AIE.useLock(%21, Acquire, 0)
     AIE.dmaBd(<%22 : memref<16x16xf32, 2>, 0, 256>, 0)
     AIE.useLock(%21, Release, 1)
     cf.br ^bb4
   ^bb5:  // pred: ^bb0
-    %65 = AIE.dmaStart(MM2S0, ^bb6, ^bb3)
+    %65 = AIE.dmaStart(MM2S, 0, ^bb6, ^bb3)
   ^bb6:  // 2 preds: ^bb5, ^bb6
     AIE.useLock(%19, Acquire, 1)
     AIE.dmaBd(<%20 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -128,7 +128,7 @@ module @aie.herd_0  {
   %37 = AIE.lock(%31, 0)
   %38 = AIE.buffer(%31) {sym_name = "buf3"} : memref<16x16xf32, 2>
   %39 = AIE.mem(%31)  {
-    %63 = AIE.dmaStart(S2MM0, ^bb1, ^bb5)
+    %63 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb5)
   ^bb1:  // 2 preds: ^bb0, ^bb2
     AIE.useLock(%37, Acquire, 0)
     AIE.dmaBd(<%38 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -140,14 +140,14 @@ module @aie.herd_0  {
     AIE.useLock(%32, Release, 1)
     cf.br ^bb1
   ^bb3:  // pred: ^bb5
-    %64 = AIE.dmaStart(S2MM1, ^bb4, ^bb7)
+    %64 = AIE.dmaStart(S2MM, 1, ^bb4, ^bb7)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     AIE.useLock(%35, Acquire, 0)
     AIE.dmaBd(<%36 : memref<16x16xf32, 2>, 0, 256>, 0)
     AIE.useLock(%35, Release, 1)
     cf.br ^bb4
   ^bb5:  // pred: ^bb0
-    %65 = AIE.dmaStart(MM2S0, ^bb6, ^bb3)
+    %65 = AIE.dmaStart(MM2S, 0, ^bb6, ^bb3)
   ^bb6:  // 2 preds: ^bb5, ^bb6
     AIE.useLock(%33, Acquire, 1)
     AIE.dmaBd(<%34 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -169,7 +169,7 @@ module @aie.herd_0  {
   %51 = AIE.lock(%45, 0)
   %52 = AIE.buffer(%45) {sym_name = "buf0"} : memref<16x16xf32, 2>
   %53 = AIE.mem(%45)  {
-    %63 = AIE.dmaStart(S2MM0, ^bb1, ^bb5)
+    %63 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb5)
   ^bb1:  // 2 preds: ^bb0, ^bb2
     AIE.useLock(%51, Acquire, 0)
     AIE.dmaBd(<%52 : memref<16x16xf32, 2>, 0, 256>, 0)
@@ -181,14 +181,14 @@ module @aie.herd_0  {
     AIE.useLock(%46, Release, 1)
     cf.br ^bb1
   ^bb3:  // pred: ^bb5
-    %64 = AIE.dmaStart(S2MM1, ^bb4, ^bb7)
+    %64 = AIE.dmaStart(S2MM, 1, ^bb4, ^bb7)
   ^bb4:  // 2 preds: ^bb3, ^bb4
     AIE.useLock(%49, Acquire, 0)
     AIE.dmaBd(<%50 : memref<16x16xf32, 2>, 0, 256>, 0)
     AIE.useLock(%49, Release, 1)
     cf.br ^bb4
   ^bb5:  // pred: ^bb0
-    %65 = AIE.dmaStart(MM2S0, ^bb6, ^bb3)
+    %65 = AIE.dmaStart(MM2S, 0, ^bb6, ^bb3)
   ^bb6:  // 2 preds: ^bb5, ^bb6
     AIE.useLock(%47, Acquire, 1)
     AIE.dmaBd(<%48 : memref<16x16xf32, 2>, 0, 256>, 0)

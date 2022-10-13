@@ -213,14 +213,14 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     {
       // Assign each block a BD number
       int bdNum = 0;
-      for (auto &block : memOp.body()) {
+      for (auto &block : memOp.getBody()) {
         if (!block.getOps<DMABDOp>().empty()) {
           blockMap[&block] = bdNum;
           bdNum++;
         }
       }
     }
-    for (auto &block : memOp.body()) {
+    for (auto &block : memOp.getBody()) {
       bool foundBdPacket = false;
       int packetType = 0;
       int packetID = 0;
@@ -242,9 +242,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
         ShapedType bufferType =
-            op.buffer().getType().cast<::mlir::MemRefType>();
+            op.getBuffer().getType().cast<::mlir::MemRefType>();
         if (op.isA()) {
-          BaseAddrA = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+          BaseAddrA = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
           lenA = op.getLenValue();
           bytesA = bufferType.getElementTypeBitWidth() / 8;
           offsetA = op.getOffsetValue();
@@ -252,7 +252,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           hasA = true;
         }
         if (op.isB()) {
-          BaseAddrB = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+          BaseAddrB = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
           lenB = op.getLenValue();
           bytesB = bufferType.getElementTypeBitWidth() / 8;
           offsetB = op.getOffsetValue();
@@ -273,8 +273,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       StringRef relEnable = disable;
       int lockID;
       for (auto op : block.getOps<UseLockOp>()) {
-        LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
-        lockID = lock.getLockID();
+        LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+        lockID = lock.getLockIDValue();
         if (op.acquire()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
@@ -334,13 +334,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
 
-    for (auto &block : memOp.body()) {
+    for (auto &block : memOp.getBody()) {
       for (auto op : block.getOps<DMAStartOp>()) {
-        int bdNum = blockMap[op.dest()];
+        int bdNum = blockMap[op.getDest()];
 
-        llvm::StringRef dmaChan = stringifyDMAChan(op.dmaChan());
-        llvm::StringRef dmaDir = dmaChan.substr(0, 4);
-        llvm::StringRef chNum = dmaChan.substr(4, 1);
+        llvm::StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
+        int chNum = op.getChannelIndex();
 
         output << "XAie_DmaChannelPushBdToQueue(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "
@@ -371,14 +370,14 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     {
       // Assign each block a BD number
       int bdNum = 0;
-      for (auto &block : op.body()) {
+      for (auto &block : op.getBody()) {
         if (!block.getOps<DMABDOp>().empty()) {
           blockMap[&block] = bdNum;
 
           uint64_t BaseAddr = 0;
           uint64_t offset = 0;
           for (auto op : block.getOps<DMABDOp>()) {
-            BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+            BaseAddr = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
             offset = op.getOffsetValue();
           }
           uint64_t address = BaseAddr + offset;
@@ -406,7 +405,10 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
     output << "void mlir_aie_configure_shimdma_" << col << row << "(" << ctx_p
            << ") {\n";
-    for (auto &block : op.body()) {
+    for (auto &block : op.getBody()) {
+      bool foundBdPacket = false;
+      int packetType = 0;
+      int packetID = 0;
       bool foundBd = false;
       int len = 0;
       uint64_t bytes = 0;
@@ -417,9 +419,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         foundBd = true;
         len = op.getLenValue();
         ShapedType bufferType =
-            op.buffer().getType().cast<::mlir::MemRefType>();
+            op.getBuffer().getType().cast<::mlir::MemRefType>();
         bytes = bufferType.getElementTypeBitWidth() / 8;
-        BaseAddr = NL.getBufferBaseAddress(op.buffer().getDefiningOp());
+        BaseAddr = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
         offset = op.getOffsetValue();
       }
 
@@ -429,8 +431,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       StringRef relEnable = disable;
       int lockID = 0;
       for (auto op : block.getOps<UseLockOp>()) {
-        LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
-        lockID = lock.getLockID();
+        LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+        lockID = lock.getLockIDValue();
         hasLock = true;
         if (op.acquire()) {
           acqEnable = enable;
@@ -439,6 +441,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           relEnable = enable;
           relValue = op.getLockValue();
         }
+      }
+
+      for (auto op : block.getOps<DMABDPACKETOp>()) {
+        foundBdPacket = true;
+        packetType = op.getPacketType();
+        packetID = op.getPacketID();
       }
 
       int bdNum = blockMap[&block];
@@ -453,7 +461,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                  << ", "
                  << "XAie_LockInit(" << lockID << "," << acqValue << "),"
                  << "XAie_LockInit(" << lockID << "," << relValue << "));\n";
-        uint64_t address = BaseAddr + offset;
         output << "XAie_DmaSetAddrLen(" << tileDMAInstRefStr(col, row, bdNum)
                << ", "
                << " /* addr */ "
@@ -482,6 +489,10 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                  << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
                                                  // disable this?
         }
+        if (foundBdPacket) {
+          output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
+                 << ", " << packetStr(packetID, packetType) << ");\n";
+        }
         output << "XAie_DmaEnableBd(" << tileDMAInstRefStr(col, row, bdNum)
                << ");\n";
         output << "XAie_DmaWriteBd(" << deviceInstRef << ", "
@@ -491,13 +502,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
 
-    for (auto &block : op.body()) {
+    for (auto &block : op.getBody()) {
       for (auto op : block.getOps<DMAStartOp>()) {
-        int bdNum = blockMap[op.dest()];
+        int bdNum = blockMap[op.getDest()];
 
-        llvm::StringRef dmaChan = stringifyDMAChan(op.dmaChan());
-        llvm::StringRef dmaDir = dmaChan.substr(0, 4);
-        llvm::StringRef chNum = dmaChan.substr(4, 1);
+        llvm::StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
+        int chNum = op.getChannelIndex();
 
         output << "XAie_DmaChannelPushBdToQueue(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "
@@ -525,11 +535,11 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   for (auto op : module.getOps<UseLockOp>()) {
     int lockVal = op.getLockValue();
     int timeOut = op.getTimeout();
-    LockOp lock = dyn_cast<LockOp>(op.lock().getDefiningOp());
-    TileOp tile = dyn_cast<TileOp>(lock.tile().getDefiningOp());
+    LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+    TileOp tile = dyn_cast<TileOp>(lock.getTile().getDefiningOp());
     int col = tile.colIndex();
     int row = tile.rowIndex();
-    int lockID = lock.getLockID();
+    int lockID = lock.getLockIDValue();
     if (op.acquire()) {
       output << "XAie_LockAcquire(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", " << tileLockStr(lockID, lockVal)
@@ -550,14 +560,14 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
-    Region &r = switchboxOp.connections();
+    Region &r = switchboxOp.getConnections();
     Block &b = r.front();
     bool isEmpty = b.getOps<ConnectOp>().empty() &&
                    b.getOps<MasterSetOp>().empty() &&
                    b.getOps<PacketRulesOp>().empty();
     bool isParam = false;
 
-    if (isa<TileOp>(switchboxOp.tile().getDefiningOp())) {
+    if (isa<TileOp>(switchboxOp.getTile().getDefiningOp())) {
       int col = switchboxOp.colIndex();
       int row = switchboxOp.rowIndex();
       if (!isEmpty) {
@@ -567,14 +577,14 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         output << "y = " << row << ";\n";
       }
     } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
-                   switchboxOp.tile().getDefiningOp())) {
+                   switchboxOp.getTile().getDefiningOp())) {
       // parameterize streamswitch's configuration
       isParam = true;
-      HerdOp sourceHerd = dyn_cast<HerdOp>(sel.startHerd().getDefiningOp());
+      HerdOp sourceHerd = dyn_cast<HerdOp>(sel.getStartHerd().getDefiningOp());
       std::string sourceHerdName(sourceHerd.name().getValue());
 
-      IterOp iterX = dyn_cast<IterOp>(sel.iterX().getDefiningOp());
-      IterOp iterY = dyn_cast<IterOp>(sel.iterY().getDefiningOp());
+      IterOp iterX = dyn_cast<IterOp>(sel.getIterX().getDefiningOp());
+      IterOp iterY = dyn_cast<IterOp>(sel.getIterY().getDefiningOp());
       int startXValue = iterX.getStartValue();
       int endXValue = iterX.getEndValue();
       int strideXValue = iterX.getStrideValue();
@@ -598,50 +608,53 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     for (auto connectOp : b.getOps<ConnectOp>()) {
       output << "XAie_StrmConnCctEnable(" << deviceInstRef << ", "
              << tileLocStr("x", "y") << ", "
-             << stringifyWireBundle(connectOp.sourceBundle()).upper() << ", "
+             << stringifyWireBundle(connectOp.getSourceBundle()).upper() << ", "
              << connectOp.sourceIndex() << ", "
-             << stringifyWireBundle(connectOp.destBundle()).upper() << ", "
+             << stringifyWireBundle(connectOp.getDestBundle()).upper() << ", "
              << connectOp.destIndex() << ");\n";
     }
 
     for (auto connectOp : b.getOps<MasterSetOp>()) {
       int mask = 0;
       int arbiter = -1;
-      for (auto val : connectOp.amsels()) {
+      for (auto val : connectOp.getAmsels()) {
         AMSelOp amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
         arbiter = amsel.arbiterIndex();
         int msel = amsel.getMselValue();
         mask |= (1 << msel);
       }
+      bool isdma = (connectOp.getDestBundle() == WireBundle::DMA);
 
       output << "XAie_StrmPktSwMstrPortEnable(" << deviceInstRef << ", "
              << tileLocStr("x", "y") << ", "
-             << stringifyWireBundle(connectOp.destBundle()).upper() << ", "
+             << stringifyWireBundle(connectOp.getDestBundle()).upper() << ", "
              << connectOp.destIndex() << ", "
              << "/* drop_header */ "
-             << "XAIE_SS_PKT_DROP_HEADER"
-             << ", " // TODO is this right default???
+             << (isdma ? "XAIE_SS_PKT_DROP_HEADER"
+                       : "XAIE_SS_PKT_DONOT_DROP_HEADER")
+             << ", "
              << "/* arbiter */ " << arbiter << ", "
-             << "/* MSelEn */ 1);\n"; // TODO do I need mask instead???
+             << "/* MSelEn */ "
+             << "0x" << llvm::utohexstr(mask) << ");\n";
     }
 
     for (auto connectOp : b.getOps<PacketRulesOp>()) {
       int slot = 0;
-      Block &block = connectOp.rules().front();
+      Block &block = connectOp.getRules().front();
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
-        AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.amsel().getDefiningOp());
+        AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
         output << "XAie_StrmPktSwSlavePortEnable(" << deviceInstRef << ", "
                << tileLocStr("x", "y") << ", "
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << ", "
-               << connectOp.sourceIndex() << ");\n";
+               << stringifyWireBundle(connectOp.getSourceBundle()).upper()
+               << ", " << connectOp.sourceIndex() << ");\n";
 
         // TODO Need to better define packet id,type used here
         output << "XAie_StrmPktSwSlaveSlotEnable(" << deviceInstRef << ", "
                << tileLocStr("x", "y") << ", "
-               << stringifyWireBundle(connectOp.sourceBundle()).upper() << ", "
-               << connectOp.sourceIndex() << ", "
+               << stringifyWireBundle(connectOp.getSourceBundle()).upper()
+               << ", " << connectOp.sourceIndex() << ", "
                << "/* slot */ " << slot << ", "
                << "/* packet */ " << packetStr(slotOp.valueInt(), /*type*/ 0)
                << ", "
@@ -659,11 +672,11 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
   }
   for (auto op : module.getOps<ShimMuxOp>()) {
-    Region &r = op.connections();
+    Region &r = op.getConnections();
     Block &b = r.front();
     bool isEmpty = b.getOps<ConnectOp>().empty();
 
-    if (isa<TileOp>(op.tile().getDefiningOp())) {
+    if (isa<TileOp>(op.getTile().getDefiningOp())) {
       int col = op.colIndex();
       int row = op.rowIndex();
       if (!isEmpty) {
@@ -677,7 +690,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
 
     for (auto connectOp : b.getOps<ConnectOp>()) {
-      if (connectOp.sourceBundle() == WireBundle::North) {
+      if (connectOp.getSourceBundle() == WireBundle::North) {
         // demux!
         output
             << "XAie_EnableAieToShimDmaStrmPort(" << deviceInstRef << ", "
@@ -686,7 +699,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
             //               <<
             //               stringifyWireBundle(connectOp.sourceBundle()).upper()
             << connectOp.sourceIndex() << ");\n";
-      } else if (connectOp.destBundle() == WireBundle::North) {
+      } else if (connectOp.getDestBundle() == WireBundle::North) {
         // mux
         output
             << "XAie_EnableShimDmaToAieStrmPort(" << deviceInstRef << ", "
@@ -699,19 +712,19 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     }
   }
   for (auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
-    Region &r = switchboxOp.connections();
+    Region &r = switchboxOp.getConnections();
     Block &b = r.front();
     bool isEmpty = b.getOps<ConnectOp>().empty();
-    int col = switchboxOp.col();
+    int col = switchboxOp.getCol();
     if (!isEmpty) {
       output << "// Shim Switch column " << col << "\n";
     }
     for (auto connectOp : b.getOps<ConnectOp>()) {
       output << "XAie_StrmConnCctEnable(" << deviceInstRef << ", "
              << tileLocStr(col, 0) << ", "
-             << stringifyWireBundle(connectOp.sourceBundle()).upper() << ", "
+             << stringifyWireBundle(connectOp.getSourceBundle()).upper() << ", "
              << connectOp.sourceIndex() << ", "
-             << stringifyWireBundle(connectOp.destBundle()).upper() << ", "
+             << stringifyWireBundle(connectOp.getDestBundle()).upper() << ", "
              << connectOp.destIndex() << ");\n";
     }
   }

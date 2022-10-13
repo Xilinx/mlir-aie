@@ -25,10 +25,10 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 static TileOp srcTileOp(xilinx::AIE::MemcpyOp op) {
-  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.srcTile().getDefiningOp());
+  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getSrcTile().getDefiningOp());
 }
 static TileOp dstTileOp(xilinx::AIE::MemcpyOp op) {
-  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.dstTile().getDefiningOp());
+  return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getDstTile().getDefiningOp());
 }
 
 struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
@@ -40,17 +40,17 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
 
   void createDMABlocksAndOps(MemOp &mem, StringRef tokenName, int acquireTknVal,
                              int releaseTknVal, Value buf, int offset, int len,
-                             DMAChan dmaChannel,
+                             DMAChannelDir dmaDir, int channelIndex,
                              ConversionPatternRewriter &rewriter) const {
 
-    Region &r = mem.body();
+    Region &r = mem.getBody();
     Block &endBlock = r.back();
     Block *dmaBlock = rewriter.createBlock(&endBlock);
     Block *bdBlock = rewriter.createBlock(&endBlock);
 
     rewriter.setInsertionPointToStart(dmaBlock);
-    rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaChannel, bdBlock,
-                                &endBlock);
+    rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaDir, channelIndex,
+                                bdBlock, &endBlock);
 
     // Setup bd Block
     // It should contain locking operations (lock or token) as well as DMABD op
@@ -69,10 +69,10 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   LogicalResult matchAndRewrite(MemcpyOp op, OpAdaptor adaptor,
                                 ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-    Value srcBuf = op.srcBuf();
-    Value dstBuf = op.dstBuf();
+    Value srcBuf = op.getSrcBuf();
+    Value dstBuf = op.getDstBuf();
 
-    StringRef tokenName = op.tokenName();
+    StringRef tokenName = op.getTokenName();
     int acquireTknVal = op.getAcquireTokenValue();
     int releaseTknVal = op.getReleaseTokenValue();
     int srcOffset = op.getSrcOffsetValue();
@@ -84,9 +84,11 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     MemOp dstMem = dstTileOp(op).getMemOp();
 
     createDMABlocksAndOps(srcMem, tokenName, acquireTknVal, releaseTknVal,
-                          srcBuf, srcOffset, srcLen, DMAChan::MM2S0, rewriter);
+                          srcBuf, srcOffset, srcLen, DMAChannelDir::MM2S, 0,
+                          rewriter);
     createDMABlocksAndOps(dstMem, tokenName, acquireTknVal, releaseTknVal,
-                          dstBuf, dstOffset, dstLen, DMAChan::S2MM0, rewriter);
+                          dstBuf, dstOffset, dstLen, DMAChannelDir::S2MM, 0,
+                          rewriter);
 
     rewriter.eraseOp(Op);
     return success();
@@ -109,17 +111,17 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     DenseMap<Value, int> destChannel;
     for (auto op : m.getOps<MemcpyOp>()) {
       builder.setInsertionPoint(op);
-      TileOp srcTile = dyn_cast<TileOp>(op.srcTile().getDefiningOp());
-      TileOp dstTile = dyn_cast<TileOp>(op.dstTile().getDefiningOp());
+      TileOp srcTile = dyn_cast<TileOp>(op.getSrcTile().getDefiningOp());
+      TileOp dstTile = dyn_cast<TileOp>(op.getDstTile().getDefiningOp());
       // TODO: perhaps a better approach is to not assert here, but rather have
       // a subsequent pass that legally relocates the ports
-      assert(destChannel[op.dstTile()] <= 2 &&
+      assert(destChannel[op.getDstTile()] <= 2 &&
              "Could not allocate more than two dest. channel when creating "
              "FlowOp");
       builder.create<FlowOp>(builder.getUnknownLoc(), srcTile, WireBundle::DMA,
                              0, dstTile, WireBundle::DMA,
-                             destChannel[op.dstTile()]);
-      destChannel[op.dstTile()]++;
+                             destChannel[op.getDstTile()]);
+      destChannel[op.getDstTile()]++;
     }
 
     ConversionTarget target(getContext());

@@ -39,10 +39,10 @@ void AIEVecDialect::initialize() {
 // Print out UPD op.
 void UPDOp::print(OpAsmPrinter &p) {
   // Print the source memref
-  p << " " << source() << "[" << indices() << "]";
+  p << " " << getSource() << "[" << getIndices() << "]";
   // Now print the optional vector that links upd idx=1 with idx=0
-  if (vector())
-    p << ", " << vector();
+  if (getVector())
+    p << ", " << getVector();
 
   // Print the attributes, but don't print the operand segment sizes
   SmallVector<StringRef, 3> elidedAttrs;
@@ -50,25 +50,25 @@ void UPDOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << source().getType() << ", " << result().getType();
+  p << " : " << getSource().getType() << ", " << getResult().getType();
 }
 
 // Verify UPD op.
 LogicalResult UPDOp::verify() {
   // Verify the types: source is memref, and result is vector
-  MemRefType sourceType = source().getType().dyn_cast<MemRefType>();
-  VectorType resultType = result().getType().dyn_cast<VectorType>();
+  MemRefType sourceType = getSource().getType().dyn_cast<MemRefType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return emitError("requires memref type");
   if (!resultType)
     return emitError("requires vector type");
-  if (indices().empty())
+  if (getIndices().empty())
     return emitError("upd source cannot come from scalar value");
 
   // If this UPD op is linked to another UPD op, then verify that the linked
   // vector and the result vector match.
-  if (vector()) {
-    Type vecType = vector().getType().dyn_cast<VectorType>();
+  if (getVector()) {
+    Type vecType = getVector().getType().dyn_cast<VectorType>();
     if (vecType != resultType)
       return emitError("result types of linked UPD ops do not match");
   }
@@ -122,10 +122,10 @@ ParseResult UPDOp::parse(OpAsmParser &parser, OperationState &result) {
       return failure();
 
   // Populate operand size attribute in result
-  result.addAttribute(
-      UPDOp::getOperandSegmentSizeAttr(),
-      builder.getI32VectorAttr({1, static_cast<int32_t>(indices.size()),
-                                static_cast<int32_t>(hasVector.succeeded())}));
+  result.addAttribute(UPDOp::getOperandSegmentSizeAttr(),
+                      builder.getDenseI32ArrayAttr(
+                          {1, static_cast<int32_t>(indices.size()),
+                           static_cast<int32_t>(hasVector.succeeded())}));
 
   return parser.addTypeToList(vectorType, result.types);
 }
@@ -137,20 +137,20 @@ ParseResult UPDOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out SRS op.
 void SRSOp::print(OpAsmPrinter &p) {
   // Print the source accumulator
-  p << " " << source();
+  p << " " << getSource();
 
   // Print the attributes
   p.printOptionalAttrDict((*this)->getAttrs());
 
   // And now print the types
-  p << " : " << source().getType() << ", " << result().getType();
+  p << " : " << getSource().getType() << ", " << getResult().getType();
 }
 
 // Verify SRS op.
 LogicalResult SRSOp::verify() {
   // Verify the types
-  VectorType sourceType = source().getType().dyn_cast<VectorType>();
-  VectorType resultType = result().getType().dyn_cast<VectorType>();
+  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return emitError("requires accumulator type");
   if (!resultType)
@@ -223,20 +223,20 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out UPS op.
 void UPSOp::print(OpAsmPrinter &p) {
   // Print the source vector
-  p << " " << source();
+  p << " " << getSource();
 
   // Print the attributes
   p.printOptionalAttrDict((*this)->getAttrs());
 
   // And now print the types
-  p << " : " << source().getType() << ", " << result().getType();
+  p << " : " << getSource().getType() << ", " << getResult().getType();
 }
 
 // Verify UPS op.
 LogicalResult UPSOp::verify() {
   // Verify the types
-  VectorType sourceType = source().getType().dyn_cast<VectorType>();
-  VectorType resultType = result().getType().dyn_cast<VectorType>();
+  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
   if (!sourceType)
     return emitError("requires vector type");
   if (!resultType)
@@ -313,7 +313,7 @@ ParseResult UPSOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print the accumulator
 template <typename T> inline void printAccumulator(OpAsmPrinter &p, T op);
 template <> inline void printAccumulator(OpAsmPrinter &p, aievec::FMAOp op) {
-  p << ", " << op.acc();
+  p << ", " << op.getAcc();
 }
 template <> inline void printAccumulator(OpAsmPrinter &p, aievec::MulOp op) {}
 
@@ -323,7 +323,7 @@ inline void elideFMSubAttr(T op, SmallVector<StringRef, 10> &elidedAttrs);
 template <>
 inline void elideFMSubAttr(aievec::FMAOp op,
                            SmallVector<StringRef, 10> &elidedAttrs) {
-  if (!op.fmsub())
+  if (!op.getFmsub())
     elidedAttrs.push_back(op.getSubAttrName());
 }
 template <>
@@ -333,9 +333,9 @@ inline void elideFMSubAttr(aievec::MulOp,
 // Print out Mul and FMA op.
 template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
   // Print the left operand
-  p << " " << op.lhs();
+  p << " " << op.getLhs();
   // Print the right operand
-  p << ", " << op.rhs();
+  p << ", " << op.getRhs();
   // For fma op, print the accumulator
   printAccumulator(p, op);
 
@@ -357,8 +357,8 @@ template <typename T> static void printMulFMAOp(OpAsmPrinter &p, T op) {
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << op.lhs().getType() << ", " << op.rhs().getType();
-  p << ", " << op.result().getType();
+  p << " : " << op.getLhs().getType() << ", " << op.getRhs().getType();
+  p << ", " << op.getResult().getType();
 }
 
 void MulOp::print(OpAsmPrinter &p) { printMulFMAOp<aievec::MulOp>(p, *this); }
@@ -370,13 +370,14 @@ void aievec::FMAOp::print(OpAsmPrinter &p) {
 // Verify Mul and FMA op.
 template <typename T> LogicalResult verifyMulFMAOp(T op) {
   // Verify the types
-  VectorType lhsType = op.lhs().getType().template dyn_cast<VectorType>();
-  VectorType rhsType = op.rhs().getType().template dyn_cast<VectorType>();
+  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType)
     return op.emitError("requires vector type");
 
-  VectorType resultType = op.result().getType().template dyn_cast<VectorType>();
+  VectorType resultType =
+      op.getResult().getType().template dyn_cast<VectorType>();
   if (!resultType)
     return op.emitError("requires vector type");
 
@@ -413,10 +414,17 @@ template <typename T> LogicalResult verifyMulFMAOp(T op) {
 
   // The datatype of accumulator must always be greater width
   if (atype.isa<IntegerType>()) {
+    if (!ltype.isa<IntegerType>())
+      return op.emitError("Integer result must have integer operands");
+
     if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
       return op.emitError("the element type of accumulator must have "
                           "wider width than that of the operand vectors");
   } else if (atype.isa<FloatType>()) {
+    if (!ltype.isa<FloatType>())
+      return op.emitError("Floating point result must have "
+                          "floating point operands");
+
     if (ltypeWidth != atypeWidth || rtypeWidth != atypeWidth)
       return op.emitError("the element type of accumulator must be "
                           "same width as the operand vectors");
@@ -502,9 +510,9 @@ ParseResult FMAOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out Add and Sub op.
 template <typename T> void printAddSubOp(OpAsmPrinter &p, T op) {
   // Print the lhs operand
-  p << " " << op.lhs();
+  p << " " << op.getLhs();
   // Print the rhs operand
-  p << ", " << op.rhs();
+  p << ", " << op.getRhs();
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
@@ -521,8 +529,8 @@ template <typename T> void printAddSubOp(OpAsmPrinter &p, T op) {
   p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << op.lhs().getType() << ", " << op.rhs().getType();
-  p << ", " << op.result().getType();
+  p << " : " << op.getLhs().getType() << ", " << op.getRhs().getType();
+  p << ", " << op.getResult().getType();
 }
 
 void aievec::AddOp::print(OpAsmPrinter &p) {
@@ -536,9 +544,10 @@ void aievec::SubOp::print(OpAsmPrinter &p) {
 // Verify Add and Sub op.
 template <typename T> LogicalResult verifyAddSubOp(T op) {
   // Verify the types
-  VectorType resultType = op.result().getType().template dyn_cast<VectorType>();
-  VectorType lhsType = op.lhs().getType().template dyn_cast<VectorType>();
-  VectorType rhsType = op.rhs().getType().template dyn_cast<VectorType>();
+  VectorType resultType =
+      op.getResult().getType().template dyn_cast<VectorType>();
+  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
 
   if (!lhsType || !rhsType || !resultType)
     return op.emitError("requires vector type");
@@ -612,29 +621,31 @@ ParseResult SubOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out Concat op.
 void ConcatOp::print(OpAsmPrinter &p) {
   // Print the source vectors
-  assert(!sources().empty() && "concat source empty");
-  p << " " << sources();
+  assert(!getSources().empty() && "concat source empty");
+  p << " " << getSources();
 
   // Print the attributes
   p.printOptionalAttrDict((*this)->getAttrs());
 
   // And now print the types
-  p << " : " << sources().getTypes().front() << ", " << result().getType();
+  p << " : " << getSources().getTypes().front() << ", "
+    << getResult().getType();
 }
 
 // Verify Concat op.
 LogicalResult ConcatOp::verify() {
   // Must be concatenating at least two sources
-  if (sources().size() < 2)
+  if (getSources().size() < 2)
     return emitError("Must concatenate at least two vectors");
 
   // Verify the types
-  VectorType sourceType = sources().getTypes().front().dyn_cast<VectorType>();
-  VectorType resultType = result().getType().dyn_cast<VectorType>();
+  VectorType sourceType =
+      getSources().getTypes().front().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return emitError("requires vector type");
 
-  SmallVector<Value, 8> srcs(sources().begin(), sources().end());
+  SmallVector<Value, 8> srcs(getSources().begin(), getSources().end());
   // All the sources must have the same type
   for (auto source : srcs) {
     VectorType type = source.getType().dyn_cast<VectorType>();
@@ -700,20 +711,20 @@ ParseResult ConcatOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out Ext op.
 void ExtOp::print(OpAsmPrinter &p) {
   // Print the source vector
-  p << " " << source();
+  p << " " << getSource();
 
   // Print the attributes
   p.printOptionalAttrDict((*this)->getAttrs());
 
   // And now print the types
-  p << " : " << source().getType() << ", " << result().getType();
+  p << " : " << getSource().getType() << ", " << getResult().getType();
 }
 
 // Verify Ext op.
 LogicalResult ExtOp::verify() {
   // Verify the types
-  VectorType sourceType = source().getType().dyn_cast<VectorType>();
-  VectorType resultType = result().getType().dyn_cast<VectorType>();
+  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return emitError("requires vector type");
 
@@ -731,7 +742,7 @@ LogicalResult ExtOp::verify() {
 
   // Verify validity of index
   unsigned factor = sourceLanes / resultLanes;
-  if (index() >= factor)
+  if (getIndex() >= factor)
     return emitError("index out of bounds");
 
   // The datatype of source and result must match
@@ -785,10 +796,10 @@ ParseResult ExtOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out select op.
 void aievec::SelectOp::print(OpAsmPrinter &p) {
   // Print the xbuff
-  p << " " << xbuff();
+  p << " " << getXbuff();
   // Print the start, offsets, etc. for xbuff
-  if (ybuff())
-    p << ", " << ybuff();
+  if (getYbuff())
+    p << ", " << getYbuff();
 
   // Print the attributes, but don't print attributes that are empty strings
   SmallVector<StringRef, 10> elidedAttrs;
@@ -805,17 +816,17 @@ void aievec::SelectOp::print(OpAsmPrinter &p) {
   p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 
   // And now print the types
-  p << " : " << xbuff().getType();
-  if (ybuff())
-    p << ", " << ybuff().getType();
-  p << ", " << result().getType();
+  p << " : " << getXbuff().getType();
+  if (getYbuff())
+    p << ", " << getYbuff().getType();
+  p << ", " << getResult().getType();
 }
 
 // Verify select op.
 LogicalResult aievec::SelectOp::verify() {
   // Verify the types
-  VectorType resultType = result().getType().dyn_cast<VectorType>();
-  VectorType xbuffType = xbuff().getType().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  VectorType xbuffType = getXbuff().getType().dyn_cast<VectorType>();
 
   if (!resultType || !xbuffType)
     return emitError("requires vector type");
@@ -827,8 +838,8 @@ LogicalResult aievec::SelectOp::verify() {
     return emitError("types of result and xbuff must match");
 
   // If yuff is present, its vector type should be same as xbuff
-  if (ybuff()) {
-    VectorType ybuffType = ybuff().getType().dyn_cast<VectorType>();
+  if (getYbuff()) {
+    VectorType ybuffType = getYbuff().getType().dyn_cast<VectorType>();
     if (xbuffType != ybuffType)
       return emitError("types of xbuff and ybuff must match");
   }
@@ -898,13 +909,13 @@ ParseResult SelectOp::parse(OpAsmParser &parser, OperationState &result) {
 // Print out Pack and Unpack op.
 template <typename T> static void printPackUnpackOp(OpAsmPrinter &p, T op) {
   // Print the source vector
-  p << " " << op.source();
+  p << " " << op.getSource();
 
   // Print the attributes
   p.printOptionalAttrDict(op->getAttrs());
 
   // And now print the types
-  p << " : " << op.source().getType() << ", " << op.result().getType();
+  p << " : " << op.getSource().getType() << ", " << op.getResult().getType();
 }
 
 void PackOp::print(OpAsmPrinter &p) { printPackUnpackOp<PackOp>(p, *this); }
@@ -914,8 +925,10 @@ void UnpackOp::print(OpAsmPrinter &p) { printPackUnpackOp<UnpackOp>(p, *this); }
 // Verify Pack and Unpack op.
 template <typename T> LogicalResult verifyPackUnpackOp(T op) {
   // Verify the types
-  VectorType sourceType = op.source().getType().template dyn_cast<VectorType>();
-  VectorType resultType = op.result().getType().template dyn_cast<VectorType>();
+  VectorType sourceType =
+      op.getSource().getType().template dyn_cast<VectorType>();
+  VectorType resultType =
+      op.getResult().getType().template dyn_cast<VectorType>();
   if (!sourceType || !resultType)
     return op.emitError("requires vector type");
 

@@ -27,6 +27,15 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 }
 
+def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "ModuleOp"> {
+  let summary = "Assigns the lockIDs of locks that do not have IDs.";
+  let description = [{
+    Assigns the lockIDs of locks that do not have IDs.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignLockIDsPass()";
+}
+
 def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
@@ -99,6 +108,7 @@ def AIECreateLocks : Pass<"aie-create-locks", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIECreateLocksPass()";
 }
+
 def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
   let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
   let description = [{
@@ -175,6 +185,32 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   ];
 }
 
+def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "ModuleOp"> {
+  let summary = "Replace combination of broadcast and packet-switch by packet-flow";
+  let description = [{
+    Replace combination of broadcast and packet-switch by packet-flow  
+  }];
+
+  let constructor = "xilinx::AIE::createAIEBroadcastPacketPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEMulticast : Pass<"aie-lower-multicast", "ModuleOp"> {
+  let summary = "Lower AIE.multicast operation to AIE.flow operations";
+  let description = [{
+    This pass replaces AIE.multicast operation with the equivalent number of AIE.flow 
+    operations. The lowered AIE.flow operations have the same source port but different
+    destinations.
+  }];
+
+  let constructor = "xilinx::AIE::createAIELowerMulticastPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "ModuleOp"> {
   let summary = "Route aie.packetflow operations through switchboxes";
   let description = [{
@@ -214,6 +250,10 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIELowerMemcpyPass()";
+  let dependentDialects = [
+    "func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
 }
 
 def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
@@ -238,25 +278,13 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
     If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
     pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
-  }];
-
-  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
-  let dependentDialects = [
-    "func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
-def AIEObjectFifoLoopUnroll : Pass<"aie-unroll-objectFifos", "ModuleOp"> {
-  let summary = "Identify and unroll loops that contain operations on objectFifos based on their number of elements";
-  let description = [{
     Extend the body of each loop that contains operations on objectFifos such that it is unrolled
     based on the number of elements in the objectFifos. If the number of iterations of the loop 
     cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
     the original loop.
   }];
 
-  let constructor = "xilinx::AIE::createAIEObjectFifoLoopUnrollPass()";
+  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
   let dependentDialects = [
     "scf::SCFDialect",
     "func::FuncDialect",

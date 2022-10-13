@@ -39,20 +39,21 @@ private:
                << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first)
                << " " << masterPort.second << "\n");
     for (auto wireOp : module.getOps<WireOp>()) {
-      if (wireOp.source().getDefiningOp() == op &&
-          wireOp.sourceBundle() == masterPort.first) {
-        Operation *other = wireOp.dest().getDefiningOp();
-        Port otherPort = std::make_pair(wireOp.destBundle(), masterPort.second);
+      if (wireOp.getSource().getDefiningOp() == op &&
+          wireOp.getSourceBundle() == masterPort.first) {
+        Operation *other = wireOp.getDest().getDefiningOp();
+        Port otherPort =
+            std::make_pair(wireOp.getDestBundle(), masterPort.second);
         LLVM_DEBUG(llvm::dbgs() << "Connects To:" << *other << " "
                                 << stringifyWireBundle(otherPort.first) << " "
                                 << otherPort.second << "\n");
         return std::make_pair(other, otherPort);
       }
-      if (wireOp.dest().getDefiningOp() == op &&
-          wireOp.destBundle() == masterPort.first) {
-        Operation *other = wireOp.source().getDefiningOp();
+      if (wireOp.getDest().getDefiningOp() == op &&
+          wireOp.getDestBundle() == masterPort.first) {
+        Operation *other = wireOp.getSource().getDefiningOp();
         Port otherPort =
-            std::make_pair(wireOp.sourceBundle(), masterPort.second);
+            std::make_pair(wireOp.getSourceBundle(), masterPort.second);
         LLVM_DEBUG(llvm::dbgs() << "Connects To:" << *other << " "
                                 << stringifyWireBundle(otherPort.first) << " "
                                 << otherPort.second << "\n");
@@ -84,10 +85,10 @@ private:
                    << stringifyWireBundle(connectOp.sourcePort().first) << " "
                    << (int)sourcePort.first << "\n");
         for (auto masterSetOp : b.getOps<MasterSetOp>())
-          for (Value amsel : masterSetOp.amsels())
+          for (Value amsel : masterSetOp.getAmsels())
             for (auto ruleOp :
-                 connectOp.rules().front().getOps<PacketRuleOp>()) {
-              if (ruleOp.amsel() == amsel) {
+                 connectOp.getRules().front().getOps<PacketRuleOp>()) {
+              if (ruleOp.getAmsel() == amsel) {
                 LLVM_DEBUG(llvm::dbgs()
                            << "To:"
                            << stringifyWireBundle(masterSetOp.destPort().first)
@@ -131,11 +132,10 @@ private:
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.
-      if (!nextConnection.hasValue())
+      if (!nextConnection.has_value())
         continue;
 
-      worklist.push_back(
-          std::make_pair(nextConnection.getValue(), newMaskValue));
+      worklist.push_back(std::make_pair(nextConnection.value(), newMaskValue));
     }
     return worklist;
   }
@@ -162,9 +162,9 @@ public:
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
 
     // If there is no wire to traverse, then just return no connection
-    if (!t.hasValue())
+    if (!t.has_value())
       return connectedTiles;
-    worklist.push_back(std::make_pair(t.getValue(), std::make_pair(0, 0)));
+    worklist.push_back(std::make_pair(t.value(), std::make_pair(0, 0)));
 
     while (!worklist.empty()) {
       PacketConnection t = worklist.back();
@@ -178,7 +178,8 @@ public:
         connectedTiles.push_back(t);
       } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
+            getConnectionsThroughSwitchbox(switchOp.getConnections(),
+                                           otherPort);
         std::vector<PacketConnection> newWorkList =
             maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
         // append to the worklist
@@ -191,7 +192,8 @@ public:
         }
       } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
         std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.connections(), otherPort);
+            getConnectionsThroughSwitchbox(switchOp.getConnections(),
+                                           otherPort);
         std::vector<PacketConnection> newWorkList =
             maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
         // append to the worklist
@@ -236,9 +238,9 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
         } else {
           PacketFlowOp flowOp =
               rewriter.create<PacketFlowOp>(Op->getLoc(), maskValue.second);
-          flowOp.ensureTerminator(flowOp.ports(), rewriter, Op->getLoc());
+          flowOp.ensureTerminator(flowOp.getPorts(), rewriter, Op->getLoc());
           OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-          rewriter.setInsertionPoint(flowOp.ports().front().getTerminator());
+          rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
           rewriter.create<PacketSourceOp>(Op->getLoc(), Op->getResult(0),
                                           bundle, (int)i);
           rewriter.create<PacketDestOp>(Op->getLoc(), destOp->getResult(0),

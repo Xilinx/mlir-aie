@@ -1,4 +1,4 @@
-﻿
+﻿﻿
 # AIE Basic Design Patterns
 
 This document is an introduction to using the AIE dialect in practice and provides basic patterns that one would use in order to generate low level configurations for the AI engine. 
@@ -367,10 +367,10 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 {
-		%subview = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 		%elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+		AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 	}
 	
 	AIE.end
@@ -382,10 +382,10 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 { 
-		%subview = AIE.objectFifo.acquire{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 		%elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release{ port = "consume" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+		AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 	}
 	
 	AIE.end
@@ -400,15 +400,15 @@ For correct execution, loops that contain objectFIFO operations must be unrolled
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c2 {
-		%subview0 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%subview0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 		%elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem00) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+		AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 
-		%subview1 = AIE.objectFifo.acquire{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+		%subview1 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 		%elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 		call @some_work(%elem10) : (memref<16xi32>) -> ()
-		AIE.objectFifo.release{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+		AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
 	}
 	
 	AIE.end
@@ -430,6 +430,43 @@ module @objectFIFO  {
         return
     }
 
-    AIE.objectFifo.registerProcess{ port = "produce" }(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
+    AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
 }
+```
+
+## Using AIE broadcast_packet
+
+[broadcast_packet Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/23_broadcast_packet/aie.mlir)
+
+The broadcast_packet operation is a logical connection that combines broadcast and packet-switch data transferring mechanism.
+
+In this operation, the data streams with different packet-IDs will time-multiplexed use the single source port to broadcast 
+data to multiple destinations.
+
+The following example shows that two streams of data with different packet-ID (0x0 and 0x1) will time-multiplexed share the same 
+source port (%t72, "DMA" : 0) to broadcast data to %t73, %t63(ID: 0x0) and %t74, %t64(ID: 0x1).
+
+Define tiles
+```
+%t72 = AIE.tile(7, 2)
+%t63 = AIE.tile(6, 3)
+%t64 = AIE.tile(6, 4)
+%t73 = AIE.tile(7, 3)
+%t74 = AIE.tile(7, 4)
+
+```
+
+broadcast_packet 
+```
+AIE.broadcast_packet(%t72, "DMA" : 0){
+  AIE.bp_id(0x0){
+    AIE.bp_dest<%t73, "DMA" : 0>
+    AIE.bp_dest<%t63, "DMA" : 0>
+  }
+  AIE.bp_id(0x1){
+    AIE.bp_dest<%t74, "DMA" : 0>
+    AIE.bp_dest<%t64, "DMA" : 0>
+  }
+}
+
 ```
