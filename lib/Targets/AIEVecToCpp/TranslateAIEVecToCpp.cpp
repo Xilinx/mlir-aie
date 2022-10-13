@@ -576,7 +576,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the accumulator
-  if (failed(emitter.emitAssignPrefix(*upsOp, true)))
+  if (failed(emitter.emitAssignPrefix(*upsOp, /*isAcc=*/true)))
     return failure();
 
   // The source vector should have already been emitted
@@ -655,11 +655,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
       os << "(";
       os << emitter.getOrCreateName(source);
       os << ")";
-      return success();
     } else {
       os << emitter.getOrCreateName(source);
-      return success();
     }
+    return success();
   }
 
   // Otheriwse, get the datatype width of the source accumulator and result

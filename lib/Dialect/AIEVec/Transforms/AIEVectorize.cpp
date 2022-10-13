@@ -356,14 +356,11 @@ static bool writesToAccumulator(Operation *op) {
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
-  } else if (auto fma_elemOp = dyn_cast<aievec::FMAElemOp>(op)) {
+  } else if (isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::UPSOp>(op)) {
     return true;
-  } else if (auto mul_elemOp = dyn_cast<aievec::MulElemOp>(op)) {
-    return true;
-  } else if (isa<aievec::UPSOp>(op))
-    return true;
-  else
+  } else {
     return false;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -724,6 +721,11 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   // for rhs.
   Value lhs = fmaOp.getLhs();
   Value rhs = fmaOp.getRhs();
+
+  // Check if this is an fmsub op, and if so, then we need to generate msc op
+  bool isSub = state->mscOps.count(fmaOp);
+  Operation *xfmaOp = nullptr;
+
   if (!isSimpleVectIntrinsic(fmaOp, state)) {
     AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
     assert(lstat.vecSizeInBits % 256 == 0);
@@ -734,6 +736,9 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
     if (AIEML && rstat.isSplat) {
       rhs = generateBroadcastOp(rhs, stoi(opAttr.start[1]), state,
                                 fmaOp->getLoc());
+      // Create AIEML dalect fma_elem/msc_elem op
+      xfmaOp = state->builder.create<aievec::FMAElemOp>(fmaOp->getLoc(), lhs,
+                                                        rhs, acc, isSub);
     } else {
       if (lstat.vecSizeInBits == 256) {
         VectorType concatType =
@@ -741,24 +746,13 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
         SmallVector<Value> sources = {lhs, lhs};
         lhs = generateConcatOp(sources, state, fmaOp->getLoc(), concatType);
       }
+      // Create AIE dialect fma/msc op
+      xfmaOp = state->builder.create<aievec::FMAOp>(
+          fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
+          opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0],
+          opAttr.square[0], opAttr.start[1], opAttr.offset[1],
+          opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1], isSub);
     }
-  }
-
-  // Check if this is an fmsub op, and if so, then we need to generate msc op
-  bool isSub = state->mscOps.count(fmaOp);
-  Operation *xfmaOp = nullptr;
-
-  if (AIEML) {
-    // Create AIEML dalect fma_elem/msc_elem op
-    xfmaOp = state->builder.create<aievec::FMAElemOp>(fmaOp->getLoc(), lhs, rhs,
-                                                      acc, isSub);
-  } else {
-    // Create AIE dialect fma/msc op
-    xfmaOp = state->builder.create<aievec::FMAOp>(
-        fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
-        opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
-        opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
-        opAttr.square[1], isSub);
   }
 
   assert(xfmaOp && "could not create fma op");
