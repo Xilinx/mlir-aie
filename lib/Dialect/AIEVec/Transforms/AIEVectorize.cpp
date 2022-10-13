@@ -356,11 +356,8 @@ static bool writesToAccumulator(Operation *op) {
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
-  } else if (isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::UPSOp>(op)) {
-    return true;
-  } else {
-    return false;
   }
+  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::UPSOp>(op);
 }
 
 //===----------------------------------------------------------------------===//
