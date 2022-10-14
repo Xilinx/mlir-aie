@@ -342,21 +342,21 @@ static bool isWellFormedVectorOp(Operation *Op) {
 // based on operation type and operand types
 static bool writesToAccumulator(Operation *op) {
   // Integer muls and FMAs write to accumulator
-  if (!isAIEOp(op)) {
+  if (!isAIEOp(op))
     return false;
-  } else if (auto mulOp = dyn_cast<aievec::MulOp>(op)) {
+  if (auto mulOp = dyn_cast<aievec::MulOp>(op))
     return mulOp.getResult()
         .getType()
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
-  } else if (auto fmaOp = dyn_cast<aievec::FMAOp>(op)) {
+  if (auto fmaOp = dyn_cast<aievec::FMAOp>(op))
     return fmaOp.getResult()
         .getType()
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
-  }
+
   return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::UPSOp>(op);
 }
 
