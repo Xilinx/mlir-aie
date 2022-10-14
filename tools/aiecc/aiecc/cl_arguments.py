@@ -66,6 +66,10 @@ def parse_args():
             default=aie_disable_compile,
             action='store_false',
             help='Disable compiling of AIE code')
+    parser.add_argument('--host-target',
+            dest="host_target",
+            default="aarch64-linux-gnu",
+            help='Target architecture of the host program')
     parser.add_argument('--compile-host',
             dest="compile_host",
             default=not host_disable_compile,
