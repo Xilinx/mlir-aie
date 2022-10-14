@@ -1588,7 +1588,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
     attr-dict `(` $tile `,` $fifo `:` type($fifo) `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
   }];
 
-  //let hasVerifier = 1; TODO: add verfier that tile is shimTile
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     AIEObjectFifoType getFifoType() {

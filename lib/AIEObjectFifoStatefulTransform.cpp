@@ -35,7 +35,6 @@ using namespace xilinx::AIE;
 #define DEBUG_TYPE "aie-objectFifo-stateful-transform"
 
 #define LOOP_VAR_DEPENDENCY -2
-#define SHIM_ROW 0
 
 //===----------------------------------------------------------------------===//
 // Conversion Pattern
@@ -182,15 +181,11 @@ struct AIEObjectFifoStatefulTransformPass
     AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
 
-    bool shimTile = false;
-    if (op.getProducerTileOp().rowIndex() == SHIM_ROW) 
-      shimTile = true;
-
     builder.setInsertionPointAfter(op);
     for (int i = 0; i < op.size(); i++) {
       // if shimTile external buffers sare collected from input code
       // just create as many locks as there are external buffers
-      if (!shimTile) {
+      if (!op.getProducerTileOp().isShimTile()) {
         BufferOp buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, op.getProducerTileOp());
         buff.getOperation()->setAttr(
@@ -269,7 +264,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// op tile row value.
   void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, 
                  int channelIndex, int lockMode) {
-    if (op.getProducerTileOp().rowIndex() == SHIM_ROW) 
+    if (op.getProducerTileOp().isShimTile()) 
       createShimDMA(m, builder, op, channelDir, channelIndex, lockMode);
     else
       createTileDMA(m, builder, op, channelDir, channelIndex, lockMode);
@@ -746,7 +741,7 @@ struct AIEObjectFifoStatefulTransformPass
       return 0;
 
     // if shimTile size is equal to number of external buffers
-    if (tile.getDefiningOp<TileOp>().rowIndex() == SHIM_ROW) {
+    if (tile.getDefiningOp<TileOp>().isShimTile()) {
       for (auto regOp : m.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
         if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
           return regOp.getExternalBuffers().size();
@@ -814,12 +809,12 @@ struct AIEObjectFifoStatefulTransformPass
 
         ObjectFifoCreateOp producerFifo = createObjectFifo(builder, datatype, 
             createOp.getProducerTile(), createOp.getProducerTile(), prodMaxAcquire);
-        if (createOp.getProducerTileOp().rowIndex() == SHIM_ROW) 
+        if (createOp.getProducerTileOp().isShimTile()) 
           detectExternalBuffers(m, createOp, producerFifo, createOp.getProducerTile());
 
         ObjectFifoCreateOp consumerFifo = createObjectFifo(builder, datatype, 
             createOp.getConsumerTile(), createOp.getConsumerTile(), consMaxAcquire);
-        if (createOp.getConsumerTileOp().rowIndex() == SHIM_ROW) 
+        if (createOp.getConsumerTileOp().isShimTile()) 
           detectExternalBuffers(m, createOp, consumerFifo, createOp.getConsumerTile());
 
         // record that this objectFifo was split
@@ -835,7 +830,7 @@ struct AIEObjectFifoStatefulTransformPass
       ObjectFifoCreateOp childProducerFifo = entry.second.first;
       ObjectFifoCreateOp childConsumerFifo = entry.second.second;
 
-    // create MemOps and DMA channels
+      // create MemOps and DMA channels
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(childProducerFifo.getProducerTile());
       createDMA(m, builder, childProducerFifo, producerChan.first, producerChan.second, 0);
@@ -844,7 +839,7 @@ struct AIEObjectFifoStatefulTransformPass
           dmaAnalysis.getSlaveDMAChannel(childConsumerFifo.getProducerTile());
       createDMA(m, builder, childConsumerFifo, consumerChan.first, consumerChan.second, 1);
 
-     // create flow between tiles
+      // create flow between tiles
       builder.setInsertionPointAfter(parentFifo);
       builder.create<FlowOp>(builder.getUnknownLoc(),
                              parentFifo.getProducerTile(), WireBundle::DMA, producerChan.second,

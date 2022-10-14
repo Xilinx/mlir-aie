@@ -390,6 +390,14 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getConsumerTileOp() {
   return cast<xilinx::AIE::TileOp>(getConsumerTile().getDefiningOp());
 }
 
+// ObjectFifoRegisterExternalBuffersOp
+LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
+  if (!getTile().getDefiningOp<TileOp>().isShimTile())
+    return emitError("Tile in ObjectFifoRegisterExternalBuffersOp is not a shim tile");
+
+  return success();
+}
+
 // ObjectFifoAcquireOp
 LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
