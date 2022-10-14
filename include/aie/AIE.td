@@ -1563,6 +1563,40 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   }];
 }
 
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", []> {
+  let summary = "Registers external buffers to given object fifo to use in the shim tile";
+  let description = [{
+    The "aie.objectFifo.registerExternalBuffers" operation 
+
+    Example:
+    ```
+      %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
+      %buffer_in_0  = AIE.external_buffer 0x020100004000 : memref<512 x i16>
+      %buffer_in_1  = AIE.external_buffer 0x020100006000 : memref<512 x i16>
+      AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1})
+    ```
+    This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in shimTile %t70.
+  }];
+
+  let arguments = (
+    ins Index:$tile,
+        AIE_ObjectFifoType:$fifo,
+        Variadic<AnyMemRef>:$externalBuffers
+  );
+
+  let assemblyFormat = [{
+    attr-dict `(` $tile `,` $fifo `:` type($fifo) `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+  }];
+
+  //let hasVerifier = 1; TODO: add verfier that tile is shimTile
+
+  let extraClassDeclaration = [{
+    AIEObjectFifoType getFifoType() {
+      return getFifo().getType().cast<AIEObjectFifoType>();
+    }
+  }];
+}
+
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{

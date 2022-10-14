@@ -91,6 +91,63 @@ public:
 };
 
 //===----------------------------------------------------------------------===//
+// TileDMA Channel Analysis
+//===----------------------------------------------------------------------===//
+class DMAChannelAnalysis {
+  ModuleOp &module;
+  DenseMap<Value, int> masterChannelsPerTile;
+  DenseMap<Value, int> slaveChannelsPerTile;
+
+public:
+  DMAChannelAnalysis(ModuleOp &m) : module(m) {
+    // go over the channels used for each tile and update the master/slave
+    // channel maps
+    for (auto memOp : module.getOps<MemOp>()) {
+      Region &r = memOp.getBody();
+      for (auto &bl : r.getBlocks()) {
+        for (auto op : bl.getOps<DMAStartOp>()) {
+          if (op.isSend()) {
+            getMasterDMAChannel(memOp.getTile());
+          } else {
+            getSlaveDMAChannel(memOp.getTile());
+          }
+        }
+      }
+    }
+  }
+
+  /// Given an AIE tile, returns its next usable master channel.
+  xilinx::AIE::DMAChannel getMasterDMAChannel(Value tile) {
+    xilinx::AIE::DMAChannel dmaChan;
+    if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
+      masterChannelsPerTile[tile] = 0;
+      dmaChan = std::make_pair(DMAChannelDir::MM2S, 0);
+    } else {
+      assert(masterChannelsPerTile[tile] < 1 &&
+             "All tile DMA master channels are already in use.");
+      masterChannelsPerTile[tile]++;
+      dmaChan = std::make_pair(DMAChannelDir::MM2S, 1);
+    }
+    return dmaChan;
+  }
+
+  /// Given an AIE tile, returns its next usable slave channel.
+  xilinx::AIE::DMAChannel getSlaveDMAChannel(Value tile) {
+    xilinx::AIE::DMAChannel dmaChan;
+    if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
+      slaveChannelsPerTile[tile] = 0;
+      dmaChan = std::make_pair(DMAChannelDir::S2MM, 0);
+    } else {
+      assert(slaveChannelsPerTile[tile] < 1 &&
+             "All tile DMA slave channels are already in use.");
+      slaveChannelsPerTile[tile]++;
+      dmaChan = std::make_pair(DMAChannelDir::S2MM, 1);
+    }
+    return dmaChan;
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoStatefulTransformPass
@@ -100,7 +157,7 @@ struct AIEObjectFifoStatefulTransformPass
       buffersPerFifo; // maps each objFifo to its corresponding buffer
   DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
       externalBuffersPerFifo; // maps each objFifo to its corresponding 
-                              // external_buffer
+                              // external buffers
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
   DenseMap<ObjectFifoCreateOp,
@@ -109,12 +166,18 @@ struct AIEObjectFifoStatefulTransformPass
                       // corresponding producer and consumer objectFifos
   int buff_index = 0; // used to give objectFifo buffer elements a symbolic name
 
+  ObjectFifoCreateOp createObjectFifo(OpBuilder &builder, AIEObjectFifoType datatype, 
+                                      Value prodTile, Value consTile, int depth) {
+    ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
+        builder.getUnknownLoc(), datatype, prodTile, consTile, depth);
+    return fifo;
+  }
+
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
-  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &analysis,
+  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
                                 ObjectFifoCreateOp op) {
     std::vector<BufferOp> buffers;
-    std::vector<ExternalBufferOp> external_buffers;
     std::vector<LockOp> locks;
     AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
@@ -125,14 +188,9 @@ struct AIEObjectFifoStatefulTransformPass
 
     builder.setInsertionPointAfter(op);
     for (int i = 0; i < op.size(); i++) {
-      if (shimTile) {
-        uint64_t address = 0x020100004000;
-        ExternalBufferOp buff = builder.create<ExternalBufferOp>(
-            builder.getUnknownLoc(), elemType, address);
-        external_buffers.push_back(buff);
-        buff_index++;
-
-      } else {
+      // if shimTile external buffers sare collected from input code
+      // just create as many locks as there are external buffers
+      if (!shimTile) {
         BufferOp buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, op.getProducerTileOp());
         buff.getOperation()->setAttr(
@@ -142,7 +200,7 @@ struct AIEObjectFifoStatefulTransformPass
         buff_index++;
       }
 
-      int lockID = analysis.getLockID(op.getProducerTileOp());
+      int lockID = lockAnalysis.getLockID(op.getProducerTileOp());
       assert(lockID >= 0 && "No more locks to allocate!");
       LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(),
                                            op.getProducerTileOp(), lockID);
@@ -150,8 +208,18 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     buffersPerFifo[op] = buffers;
-    externalBuffersPerFifo[op] = external_buffers;
     locksPerFifo[op] = locks;
+  }
+
+  /// Function that returns a pointer to the block of a Region
+  /// that contains the AIEEndOp.
+  Block *findEndOpBlock(Region *r) {
+    Block *endBlock = nullptr;
+    for (auto &bl : r->getBlocks()) {
+      if (!bl.getOps<EndOp>().empty())
+        endBlock = &bl;
+    }
+    return endBlock;
   }
 
   /// Function used to create a Bd block.
@@ -199,17 +267,17 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function that either calls createTileDMA() or createShimDMA() based on
   /// op tile row value.
-  void createDMA(OpBuilder &builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, 
+  void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, 
                  int channelIndex, int lockMode) {
     if (op.getProducerTileOp().rowIndex() == SHIM_ROW) 
-      createShimDMA(builder, op, channelDir, channelIndex, lockMode);
+      createShimDMA(m, builder, op, channelDir, channelIndex, lockMode);
     else
-      createTileDMA(builder, op, channelDir, channelIndex, lockMode);
+      createTileDMA(m, builder, op, channelDir, channelIndex, lockMode);
   }
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createTileDMA(OpBuilder &builder, ObjectFifoCreateOp op,
+  void createTileDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
                      DMAChannelDir channelDir, int channelIndex, int lockMode) {
     int numBlocks = op.size();
 
@@ -219,24 +287,40 @@ struct AIEObjectFifoStatefulTransformPass
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
 
-    // create MemOp
-    builder.setInsertionPointAfter(locksPerFifo[op].back());
-    MemOp producerMem =
-        builder.create<MemOp>(builder.getUnknownLoc(), op.getProducerTileOp());
-    Region &r = producerMem.getBody();
-    r.push_back(new Block);
-    Block &endBlock = r.back();
-    Block *dmaBlock = builder.createBlock(&endBlock);
-    Block *bdBlock = builder.createBlock(&endBlock);
+    // search for MemOp
+    MemOp *producerMem = nullptr;
+    for (auto memOp : m.getOps<MemOp>()) {
+      if (memOp.getTile() == op.getProducerTile()) {
+        producerMem = &memOp;
+        break;
+      }
+    }
 
-    // add terminator operation to end block
-    builder.setInsertionPointToStart(&endBlock);
-    builder.create<EndOp>(builder.getUnknownLoc());
+    // if none exists, create one
+    if (producerMem == nullptr) {
+      builder.setInsertionPointToEnd(m.getBody());
+      MemOp newMemOp = builder.create<MemOp>(builder.getUnknownLoc(),
+                                             op.getProducerTileOp());
+      producerMem = &newMemOp;
+      Region &r = producerMem->getBody();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+
+    Block *endBlock = findEndOpBlock(&(producerMem->getBody()));
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, bdBlock, &endBlock);
+                               channelIndex, bdBlock, endBlock);
+    if (lastDmaBlock != nullptr)
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
     // create Bd blocks
     Block *succ = nullptr;
@@ -246,7 +330,7 @@ struct AIEObjectFifoStatefulTransformPass
       if (i == numBlocks - 1) {
         succ = bdBlock;
       } else {
-        succ = builder.createBlock(&endBlock);
+        succ = builder.createBlock(endBlock);
       }
       builder.setInsertionPointToStart(curr);
       createBdBlock(builder, lockMode, buffersPerFifo[op][blockIndex],
@@ -258,9 +342,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a ShimDMAOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createShimDMA(OpBuilder &builder, ObjectFifoCreateOp op, 
+  void createShimDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op, 
                      DMAChannelDir channelDir, int channelIndex, int lockMode) {
-    int numBlocks = op.size();
+    int numBlocks = 1;
 
     if (numBlocks == 0)
       return;
@@ -268,24 +352,41 @@ struct AIEObjectFifoStatefulTransformPass
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
 
-    // create MemOp
-    builder.setInsertionPointAfter(locksPerFifo[op].back());
-    ShimDMAOp producerMem =
-        builder.create<ShimDMAOp>(builder.getUnknownLoc(), builder.getIndexType(), op.getProducerTile());
-    Region &r = producerMem.getBody();
-    r.push_back(new Block);
-    Block &endBlock = r.back();
-    Block *dmaBlock = builder.createBlock(&endBlock);
-    Block *bdBlock = builder.createBlock(&endBlock);
+    // search for ShimDMAOp
+    ShimDMAOp *producerMem = nullptr;
+    for (auto memOp : m.getOps<ShimDMAOp>()) {
+      if (memOp.getTile() == op.getProducerTile()) {
+        producerMem = &memOp;
+        break;
+      }
+    }
 
-    // add terminator operation to end block
-    builder.setInsertionPointToStart(&endBlock);
-    builder.create<EndOp>(builder.getUnknownLoc());
+    // if none exists, create one
+    if (producerMem == nullptr) {
+      builder.setInsertionPointToEnd(m.getBody());
+      ShimDMAOp newMemOp = builder.create<ShimDMAOp>(builder.getUnknownLoc(), 
+                                    builder.getIndexType(), op.getProducerTile());
+      producerMem = &newMemOp;
+      Region &r = producerMem->getBody();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+
+    Block *endBlock = findEndOpBlock(&(producerMem->getBody()));
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
-    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir, 
-                               channelIndex, bdBlock, &endBlock);
+    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
+                               channelIndex, bdBlock, endBlock);
+    if (lastDmaBlock != nullptr)
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
 
     // create Bd blocks
     Block *succ;
@@ -295,7 +396,7 @@ struct AIEObjectFifoStatefulTransformPass
       if (i == numBlocks - 1) {
         succ = bdBlock;
       } else {
-        succ = builder.createBlock(&endBlock);
+        succ = builder.createBlock(endBlock);
       }
       builder.setInsertionPointToStart(curr);
       createBdBlockExternal(builder, lockMode, externalBuffersPerFifo[op][blockIndex],
@@ -549,6 +650,27 @@ struct AIEObjectFifoStatefulTransformPass
     return map[op];
   }
 
+  /// Function used to add an external buffer to the externalBuffersPerFifo map.
+  void addExternalBuffer(ObjectFifoCreateOp fifo, ExternalBufferOp buff) {
+    if (externalBuffersPerFifo.find(fifo) == externalBuffersPerFifo.end()) {
+      std::vector<ExternalBufferOp> buffs;
+      externalBuffersPerFifo[fifo] = buffs;
+    }
+    externalBuffersPerFifo[fifo].push_back(buff);
+  }
+
+  /// Function used to detect all external buffers associated with parent objectFifo 
+  /// and tile then map them to child objectFifo.
+  void detectExternalBuffers(ModuleOp &m, ObjectFifoCreateOp parent, 
+                             ObjectFifoCreateOp child, Value tile) {
+    for (auto regOp : m.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
+      if (regOp.getTile() == tile && regOp.getFifo() == parent) {
+        for (auto extBuff : regOp.getExternalBuffers()) 
+          addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
+      }
+    }
+  }
+
   /// Function used to check whether objectFifo accessed by op has been split.
   /// If yes, it replaces the parent objectFifo with the correct child based on
   /// port.
@@ -620,9 +742,16 @@ struct AIEObjectFifoStatefulTransformPass
   /// by a process running on given tile. If no CoreOp exists for this tile
   /// return 0.
   int findObjectFifoSize(ModuleOp &m, Value tile, ObjectFifoCreateOp objFifo) {
-
     if (objFifo.size() == 0)
       return 0;
+
+    // if shimTile size is equal to number of external buffers
+    if (tile.getDefiningOp<TileOp>().rowIndex() == SHIM_ROW) {
+      for (auto regOp : m.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
+        if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
+          return regOp.getExternalBuffers().size();
+      }
+    }
 
     int maxAcquire = 0;
     for (auto coreOp : m.getOps<CoreOp>()) {
@@ -649,7 +778,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   void runOnOperation() override {
     ModuleOp m = getOperation();
-    LockAnalysis analysis(m);
+    LockAnalysis lockAnalysis(m);
+    DMAChannelAnalysis dmaAnalysis(m);
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
     //===----------------------------------------------------------------------===//
@@ -666,8 +796,9 @@ struct AIEObjectFifoStatefulTransformPass
                              createOp.getProducerTileOp().rowIndex(),
                              createOp.getConsumerTileOp().colIndex(),
                              createOp.getConsumerTileOp().rowIndex());
+
       if (memoryAdjacent) {
-        createObjectFifoElements(builder, analysis, createOp);
+        createObjectFifoElements(builder, lockAnalysis, createOp);
 
       } else {
         // Find max acquire number for producer and consumer of objectFifo.
@@ -679,13 +810,17 @@ struct AIEObjectFifoStatefulTransformPass
         // objectFifos between non-adjacent tiles must be split into two new
         // ones, their elements will be created in next iterations
         builder.setInsertionPointAfter(createOp);
-        AIEObjectFifoType fifo = createOp.getType().cast<AIEObjectFifoType>();
-        ObjectFifoCreateOp producerFifo = builder.create<ObjectFifoCreateOp>(
-            builder.getUnknownLoc(), fifo, createOp.getProducerTile(),
-            createOp.getProducerTile(), prodMaxAcquire);
-        ObjectFifoCreateOp consumerFifo = builder.create<ObjectFifoCreateOp>(
-            builder.getUnknownLoc(), fifo, createOp.getConsumerTile(),
-            createOp.getConsumerTile(), consMaxAcquire);
+        AIEObjectFifoType datatype = createOp.getType().cast<AIEObjectFifoType>();
+
+        ObjectFifoCreateOp producerFifo = createObjectFifo(builder, datatype, 
+            createOp.getProducerTile(), createOp.getProducerTile(), prodMaxAcquire);
+        if (createOp.getProducerTileOp().rowIndex() == SHIM_ROW) 
+          detectExternalBuffers(m, createOp, producerFifo, createOp.getProducerTile());
+
+        ObjectFifoCreateOp consumerFifo = createObjectFifo(builder, datatype, 
+            createOp.getConsumerTile(), createOp.getConsumerTile(), consMaxAcquire);
+        if (createOp.getConsumerTileOp().rowIndex() == SHIM_ROW) 
+          detectExternalBuffers(m, createOp, consumerFifo, createOp.getConsumerTile());
 
         // record that this objectFifo was split
         splitFifos[createOp] = std::make_pair(producerFifo, consumerFifo);
@@ -700,15 +835,20 @@ struct AIEObjectFifoStatefulTransformPass
       ObjectFifoCreateOp childProducerFifo = entry.second.first;
       ObjectFifoCreateOp childConsumerFifo = entry.second.second;
 
-      // create flow between tiles
+    // create MemOps and DMA channels
+      xilinx::AIE::DMAChannel producerChan =
+          dmaAnalysis.getMasterDMAChannel(childProducerFifo.getProducerTile());
+      createDMA(m, builder, childProducerFifo, producerChan.first, producerChan.second, 0);
+
+      xilinx::AIE::DMAChannel consumerChan =
+          dmaAnalysis.getSlaveDMAChannel(childConsumerFifo.getProducerTile());
+      createDMA(m, builder, childConsumerFifo, consumerChan.first, consumerChan.second, 1);
+
+     // create flow between tiles
       builder.setInsertionPointAfter(parentFifo);
       builder.create<FlowOp>(builder.getUnknownLoc(),
-                             parentFifo.getProducerTile(), WireBundle::DMA, 0,
-                             parentFifo.getConsumerTile(), WireBundle::DMA, 1);
-
-      // create MemOps and DMA channels
-      createDMA(builder, childProducerFifo, DMAChannelDir::MM2S, 0, 0);
-      createDMA(builder, childConsumerFifo, DMAChannelDir::S2MM, 1, 1);
+                             parentFifo.getProducerTile(), WireBundle::DMA, producerChan.second,
+                             parentFifo.getConsumerTile(), WireBundle::DMA, consumerChan.second);
     }
 
     //===----------------------------------------------------------------------===//
@@ -892,6 +1032,7 @@ struct AIEObjectFifoStatefulTransformPass
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
