@@ -40,6 +40,9 @@ static llvm::cl::opt<bool>
                         llvm::cl::desc("Enable the unaligned loads check"),
                         llvm::cl::init(true));
 
+static llvm::cl::opt<bool> AIEML("aieml", llvm::cl::desc("AI Engine-ML"),
+                                 llvm::cl::init(false));
+
 namespace {
 // A struct to pack the global state required for vectorization at one place.
 // Local to this translation unit.
@@ -219,6 +222,10 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op) {
                   : (lsize == 16 && rsize == 8) ? 64
                                                 : 32;
 
+  if (AIEML) {
+    width *= 2;
+  }
+
   // Now the computation
   int32_t m = 1;
   if (lsize == 32)
@@ -335,24 +342,22 @@ static bool isWellFormedVectorOp(Operation *Op) {
 // based on operation type and operand types
 static bool writesToAccumulator(Operation *op) {
   // Integer muls and FMAs write to accumulator
-  if (!isAIEOp(op)) {
+  if (!isAIEOp(op))
     return false;
-  } else if (auto mulOp = dyn_cast<aievec::MulOp>(op)) {
+  if (auto mulOp = dyn_cast<aievec::MulOp>(op))
     return mulOp.getResult()
         .getType()
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
-  } else if (auto fmaOp = dyn_cast<aievec::FMAOp>(op)) {
+  if (auto fmaOp = dyn_cast<aievec::FMAOp>(op))
     return fmaOp.getResult()
         .getType()
         .cast<VectorType>()
         .getElementType()
         .isa<IntegerType>();
-  } else if (isa<aievec::UPSOp>(op))
-    return true;
-  else
-    return false;
+
+  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::UPSOp>(op);
 }
 
 //===----------------------------------------------------------------------===//
@@ -530,7 +535,7 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
 static aievec::UPSOp generateUPSOp(Value source, VectState *state,
                                    Location loc) {
   Type sourceType = source.getType();
-  Type accType = getVectorOpDestType(sourceType.cast<VectorType>());
+  Type accType = getVectorOpDestType(sourceType.cast<VectorType>(), AIEML);
   assert(!writesToAccumulator(source.getDefiningOp()) &&
          "ups source should not be accumulator");
 
@@ -540,6 +545,18 @@ static aievec::UPSOp generateUPSOp(Value source, VectState *state,
 
   assert(upsOp && "could not create ups op");
   return upsOp;
+}
+
+// Generate and return a Broadcast op.
+static aievec::BroadcastOp generateBroadcastOp(Value source, int8_t idx,
+                                               VectState *state, Location loc) {
+  VectorType type = source.getType().cast<VectorType>();
+  // Create a new Broadcast instruction
+  aievec::BroadcastOp broadcastOp =
+      state->builder.create<aievec::BroadcastOp>(loc, type, source, idx);
+
+  assert(broadcastOp && "could not create broadcast op");
+  return broadcastOp;
 }
 
 // Generate and return a Concat op.
@@ -673,52 +690,79 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
+  Value lhs = fmaOp.getLhs();
+  Value rhs = fmaOp.getRhs();
   Value acc = fmaOp.getAcc();
-  // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
-  // op for i8xi8 scheme. Find the paired accumulator.
-  if (i8xi8_pairedOp) {
-    Operation *defOp = fmaOp.getAcc().getDefiningOp();
-    if (state->pairedOp.count(defOp))
-      acc = state->pairedOp[defOp]->getResult(0);
-  }
 
-  // We need to generate a UPS op for the integer path if the accumulator is
-  // coming from a vector register.
+  // Check if this is an fmsub op, and if so, then we need to generate msc op
+  bool isSub = state->mscOps.count(fmaOp);
+  Operation *xfmaOp = nullptr;
+
+  // We need to generate a UPS op for the integer and AIEML path if the
+  // accumulator is coming from a vector register.
   bool isInt = fmaOp.getLhs()
                    .getType()
                    .cast<VectorType>()
                    .getElementType()
                    .isa<IntegerType>();
 
-  if (isInt && !writesToAccumulator(acc.getDefiningOp())) {
-    acc = generateUPSOp(acc, state, fmaOp->getLoc());
-    LLVM_DEBUG(llvm::dbgs()
-               << "\n\nCreated UPS op " << acc << " to move the output of "
-               << fmaOp << " into accumulator");
-  }
-  // If the lhs operand vector is not >= twice the rhs operand vector, then use
-  // concat operator.
-  Value lhs = fmaOp.getLhs();
-  if (!isSimpleVectIntrinsic(fmaOp, state)) {
-    AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
-    assert(lstat.vecSizeInBits % 256 == 0);
-    if (lstat.vecSizeInBits == 256) {
-      VectorType concatType =
-          createVectorType(512 / lstat.elementSizeInBits, lstat.elementType);
-      SmallVector<Value> sources = {lhs, lhs};
-      lhs = generateConcatOp(sources, state, fmaOp->getLoc(), concatType);
+  if (AIEML) {
+    if (!writesToAccumulator(acc.getDefiningOp())) {
+      acc = generateUPSOp(acc, state, fmaOp->getLoc());
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\nCreated UPS op " << acc << " to move the output of "
+                 << fmaOp << " into accumulator");
     }
+
+    if (!isSimpleVectIntrinsic(fmaOp, state)) {
+      // If targeting for AIE-ML intrinsics, use broadcast operator for rhs.
+      // Check the legality of generating a broadcast op by checking whether
+      // zbuffer is a splat
+      AIEVecAttributes rstat = getOperandVecStats(fmaOp, state, 1);
+      if (rstat.isSplat) {
+        rhs = generateBroadcastOp(rhs, stoi(opAttr.start[1]), state,
+                                  fmaOp->getLoc());
+      }
+    }
+    // Create AIEML dalect fma_elem/msc_elem op
+    xfmaOp = state->builder.create<aievec::FMAElemOp>(fmaOp->getLoc(), lhs, rhs,
+                                                      acc, isSub);
+  } else {
+    // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
+    // op for i8xi8 scheme. Find the paired accumulator.
+    if (i8xi8_pairedOp) {
+      Operation *defOp = fmaOp.getAcc().getDefiningOp();
+      if (state->pairedOp.count(defOp))
+        acc = state->pairedOp[defOp]->getResult(0);
+    }
+
+    if (isInt && !writesToAccumulator(acc.getDefiningOp())) {
+      acc = generateUPSOp(acc, state, fmaOp->getLoc());
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\nCreated UPS op " << acc << " to move the output of "
+                 << fmaOp << " into accumulator");
+    }
+
+    // If the lhs operand vector is not >= twice the rhs operand vector, then
+    // use concat operator.
+    if (!isSimpleVectIntrinsic(fmaOp, state)) {
+      AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
+      assert(lstat.vecSizeInBits % 256 == 0);
+
+      if (lstat.vecSizeInBits == 256) {
+        VectorType concatType =
+            createVectorType(512 / lstat.elementSizeInBits, lstat.elementType);
+        SmallVector<Value> sources = {lhs, lhs};
+        lhs = generateConcatOp(sources, state, fmaOp->getLoc(), concatType);
+      }
+    }
+    // Create AIE dialect fma/msc op
+    xfmaOp = state->builder.create<aievec::FMAOp>(
+        fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
+        opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
+        opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
+        opAttr.square[1], isSub);
   }
-
-  // Check if this is an fmsub op, and if so, then we need to generate msc op
-  bool isSub = state->mscOps.count(fmaOp);
-
-  // Create AIE dialect fma/msc op
-  Operation *xfmaOp = state->builder.create<aievec::FMAOp>(
-      fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
-      opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
-      opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
-      opAttr.square[1], isSub);
 
   assert(xfmaOp && "could not create fma op");
   return xfmaOp;
@@ -735,7 +779,7 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
          opAttr.start.size() == 2);
 
   Type opType =
-      getVectorOpDestType(mulOp.getType().template cast<VectorType>());
+      getVectorOpDestType(mulOp.getType().template cast<VectorType>(), AIEML);
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
@@ -840,8 +884,9 @@ generateUPDOp(TransferReadOp readOp,
 
   // If the extent <= 256 bits, we can directly copy data from mem into vector
   // without using a upd. So we try to chunk the interval into sub-intervals of
-  // width >= 256 bits.
-  int32_t incr = std::max(256, intervalWidth / 2);
+  // width >= 256 bits. For AIEML, the size should be doubled.
+  int width = AIEML ? 512 : 256;
+  int32_t incr = std::max(width, intervalWidth / 2);
   int8_t idx = 1;
   for (int32_t start = interval.first; start < interval.second;
        start += incr, ++idx) {
@@ -1335,7 +1380,7 @@ static void computeZbuffAttr_i16xi16(
     AIEOpAttributes &opAttr) {
   std::string startStr, offsetStr, offsetHiStr, stepStr;
   // zstart must be 4b value.
-  assert(start < 16 && "zstart must be 4b value");
+  assert(start < (AIEML ? 32 : 16) && "zstart must be 4b value");
   startStr = std::to_string(start);
 
   // If zbuff comes from splat, use default offsets
@@ -1618,12 +1663,12 @@ static void computeXbuffAttributes(
     AIEOpAttributes &opAttr) {
   // Branch to different schemes
   // Case 1: 32x32 real
-  if (scheme.lanes == 8 && scheme.cols == 1 && scheme.xbits == 32 &&
-      scheme.zbits == 32)
+  if ((scheme.lanes == 8 || (AIEML && scheme.lanes == 16)) &&
+      scheme.cols == 1 && scheme.xbits == 32 && scheme.zbits == 32)
     computeBuffAttr_i32xi32(scheme.lanes, start, accIncr, opAttr);
   // Case 2: 16x16 real
-  else if (scheme.lanes == 16 && scheme.cols == 2 && scheme.xbits == 16 &&
-           scheme.zbits == 16) {
+  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+           scheme.cols == 2 && scheme.xbits == 16 && scheme.zbits == 16) {
     // We only support a loop increment of <= 1
     assert((accIncr <= 1 || accIncr % 2 == 0) &&
            "loop step size value not supported");
@@ -1654,12 +1699,12 @@ static void computeZbuffAttributes(
     AIEOpAttributes &opAttr) {
   // Branch to different schemes
   // Case 1: 32x32 real
-  if (scheme.lanes == 8 && scheme.cols == 1 && scheme.xbits == 32 &&
-      scheme.zbits == 32)
+  if ((scheme.lanes == 8 || (AIEML && scheme.lanes == 16)) &&
+      scheme.cols == 1 && scheme.xbits == 32 && scheme.zbits == 32)
     computeBuffAttr_i32xi32(scheme.lanes, start, accIncr, opAttr);
   // Case 2: 16x16 real
-  else if (scheme.lanes == 16 && scheme.cols == 2 && scheme.xbits == 16 &&
-           scheme.zbits == 16) {
+  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+           scheme.cols == 2 && scheme.xbits == 16 && scheme.zbits == 16) {
     // We only support a loop increment of <= 1
     assert(accIncr <= 1 && "loop step size greater than 1 not supported");
     // Get the zero offset in filter if the user provided it in the command
@@ -2243,6 +2288,10 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
         break;
       }
     }
+  }
+
+  if (AIEML) {
+    minVecSize *= 2;
   }
 
   bool found = false;
