@@ -690,14 +690,13 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
+  Value lhs = fmaOp.getLhs();
+  Value rhs = fmaOp.getRhs();
   Value acc = fmaOp.getAcc();
-  // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
-  // op for i8xi8 scheme. Find the paired accumulator.
-  if (i8xi8_pairedOp) {
-    Operation *defOp = fmaOp.getAcc().getDefiningOp();
-    if (state->pairedOp.count(defOp))
-      acc = state->pairedOp[defOp]->getResult(0);
-  }
+
+  // Check if this is an fmsub op, and if so, then we need to generate msc op
+  bool isSub = state->mscOps.count(fmaOp);
+  Operation *xfmaOp = nullptr;
 
   // We need to generate a UPS op for the integer path if the accumulator is
   // coming from a vector register.
@@ -707,49 +706,62 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
                    .getElementType()
                    .isa<IntegerType>();
 
-  if ((isInt || AIEML) && !writesToAccumulator(acc.getDefiningOp())) {
-    acc = generateUPSOp(acc, state, fmaOp->getLoc());
-    LLVM_DEBUG(llvm::dbgs()
-               << "\n\nCreated UPS op " << acc << " to move the output of "
-               << fmaOp << " into accumulator");
-  }
-  // If the lhs operand vector is not >= twice the rhs operand vector, then use
-  // concat operator. If targeting for AIE-ML intrinsics, use broadcast operator
-  // for rhs.
-  Value lhs = fmaOp.getLhs();
-  Value rhs = fmaOp.getRhs();
+  if (AIEML) {
+    if (!writesToAccumulator(acc.getDefiningOp())) {
+      acc = generateUPSOp(acc, state, fmaOp->getLoc());
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\nCreated UPS op " << acc << " to move the output of "
+                 << fmaOp << " into accumulator");
+    }
 
-  // Check if this is an fmsub op, and if so, then we need to generate msc op
-  bool isSub = state->mscOps.count(fmaOp);
-  Operation *xfmaOp = nullptr;
+    if (!isSimpleVectIntrinsic(fmaOp, state)) {
+      // If targeting for AIE-ML intrinsics, use broadcast operator for rhs.
+      // Check the legality of generating a broadcast op by checking whether
+      // zbuffer is a splat
+      AIEVecAttributes rstat = getOperandVecStats(fmaOp, state, 1);
+      if (rstat.isSplat) {
+        rhs = generateBroadcastOp(rhs, stoi(opAttr.start[1]), state,
+                                  fmaOp->getLoc());
+      }
+    }
+    // Create AIEML dalect fma_elem/msc_elem op
+    xfmaOp = state->builder.create<aievec::FMAElemOp>(fmaOp->getLoc(), lhs, rhs,
+                                                      acc, isSub);
+  } else {
+    // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
+    // op for i8xi8 scheme. Find the paired accumulator.
+    if (i8xi8_pairedOp) {
+      Operation *defOp = fmaOp.getAcc().getDefiningOp();
+      if (state->pairedOp.count(defOp))
+        acc = state->pairedOp[defOp]->getResult(0);
+    }
 
-  if (!isSimpleVectIntrinsic(fmaOp, state)) {
-    AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
-    assert(lstat.vecSizeInBits % 256 == 0);
-    AIEVecAttributes rstat = getOperandVecStats(fmaOp, state, 1);
+    if (isInt && !writesToAccumulator(acc.getDefiningOp())) {
+      acc = generateUPSOp(acc, state, fmaOp->getLoc());
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\nCreated UPS op " << acc << " to move the output of "
+                 << fmaOp << " into accumulator");
+    }
 
-    // Check the legality of generating a broadcast op by checking whether
-    // zbuffer is a splat
-    if (AIEML && rstat.isSplat) {
-      rhs = generateBroadcastOp(rhs, stoi(opAttr.start[1]), state,
-                                fmaOp->getLoc());
-      // Create AIEML dalect fma_elem/msc_elem op
-      xfmaOp = state->builder.create<aievec::FMAElemOp>(fmaOp->getLoc(), lhs,
-                                                        rhs, acc, isSub);
-    } else {
+    // If the lhs operand vector is not >= twice the rhs operand vector, then
+    // use concat operator.
+    if (!isSimpleVectIntrinsic(fmaOp, state)) {
+      AIEVecAttributes lstat = getOperandVecStats(fmaOp, state, 0);
+      assert(lstat.vecSizeInBits % 256 == 0);
+
       if (lstat.vecSizeInBits == 256) {
         VectorType concatType =
             createVectorType(512 / lstat.elementSizeInBits, lstat.elementType);
         SmallVector<Value> sources = {lhs, lhs};
         lhs = generateConcatOp(sources, state, fmaOp->getLoc(), concatType);
       }
-      // Create AIE dialect fma/msc op
-      xfmaOp = state->builder.create<aievec::FMAOp>(
-          fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
-          opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0],
-          opAttr.square[0], opAttr.start[1], opAttr.offset[1],
-          opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1], isSub);
     }
+    // Create AIE dialect fma/msc op
+    xfmaOp = state->builder.create<aievec::FMAOp>(
+        fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
+        opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
+        opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
+        opAttr.square[1], isSub);
   }
 
   assert(xfmaOp && "could not create fma op");
