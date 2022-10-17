@@ -698,8 +698,8 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   bool isSub = state->mscOps.count(fmaOp);
   Operation *xfmaOp = nullptr;
 
-  // We need to generate a UPS op for the integer path if the accumulator is
-  // coming from a vector register.
+  // We need to generate a UPS op for the integer and AIEML path if the
+  // accumulator is coming from a vector register.
   bool isInt = fmaOp.getLhs()
                    .getType()
                    .cast<VectorType>()
