@@ -44,6 +44,36 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.broadcast` (::xilinx::aievec::BroadcastOp)
+
+AIE-ML broadcast
+
+Xilinx-specific broadcast intrinsic. Extract element index from vector and broadcasts its
+value to all lanes of the vector.
+`$result = broadcast($source, $idx)`
+
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `idx` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose value is non-negative
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.concat` (::xilinx::aievec::ConcatOp)
 
 AIE concat
@@ -100,6 +130,40 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.mac_elem` (::xilinx::aievec::FMAElemOp)
+
+AIE-ML element-wise vector fused multiply-add
+
+Xilinx-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
+and adds the result to an accumulator.
+`$result = `$lhs * $rhs + $acc`.
+Note: the same operator can be used as fmsub operator by setting the
+'fmsub' bool to true.
+
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `fmsub` | ::mlir::BoolAttr | bool attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+| `acc` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.mac` (::xilinx::aievec::FMAOp)
 
 AIE vector fused multiply-add
@@ -140,6 +204,31 @@ Effects: MemoryEffects::Effect{}
 | `lhs` | vector of any type values
 | `rhs` | vector of any type values
 | `acc` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.mul_elem` (::xilinx::aievec::MulElemOp)
+
+AIE-ML vector element-wise multiply
+
+Xilinx-specific multiply operation that multiplies two 1-D vectors in the same channel.
+The vector sizes are at least 512 bits.
+`$result = `$lhs * $rhs`.
+
+Interfaces: NoSideEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
 
 #### Results:
 
