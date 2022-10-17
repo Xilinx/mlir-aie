@@ -16,8 +16,13 @@
 // CHECK:   %0 = AIE.external_buffer 0 : memref<256xi32>
 // CHECK:   %1 = AIE.tile(6, 0)
 // CHECK:   %2 = AIE.lock(%1, 0)
-// CHECK:   %3 = AIE.shimDMA(%1)  {
-// CHECK:     %9 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
+// CHECK:   %3 = AIE.core(%1)  {
+// CHECK:     AIE.useLock(%2, Acquire, 1)
+// CHECK:     AIE.useLock(%2, Release, 0)
+// CHECK:     AIE.end
+// CHECK:   }
+// CHECK:   %4 = AIE.shimDMA(%1)  {
+// CHECK:     %10 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:  // pred: ^bb0
 // CHECK:     AIE.useLock(%2, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%0 : memref<256xi32>, 0, 256>, 0)
@@ -26,25 +31,25 @@
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
 // CHECK:     AIE.end
 // CHECK:   }
-// CHECK:   %4 = AIE.tile(3, 3)
-// CHECK:   %5 = AIE.lock(%4, 0)
-// CHECK:   %6 = AIE.buffer(%4) : memref<256xi32>
-// CHECK:   %7 = AIE.core(%4)  {
-// CHECK:     AIE.useLock(%5, Acquire, 0)
-// CHECK:     AIE.useLock(%5, Release, 1)
+// CHECK:   %5 = AIE.tile(3, 3)
+// CHECK:   %6 = AIE.lock(%5, 0)
+// CHECK:   %7 = AIE.buffer(%5) : memref<256xi32>
+// CHECK:   %8 = AIE.core(%5)  {
+// CHECK:     AIE.useLock(%6, Acquire, 0)
+// CHECK:     AIE.useLock(%6, Release, 1)
 // CHECK:     AIE.end
 // CHECK:   }
-// CHECK:   %8 = AIE.mem(%4)  {
-// CHECK:     %9 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+// CHECK:   %9 = AIE.mem(%5)  {
+// CHECK:     %10 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:   ^bb1:  // pred: ^bb0
-// CHECK:     AIE.useLock(%5, Acquire, 1)
-// CHECK:     AIE.dmaBd(<%6 : memref<256xi32>, 0, 256>, 0)
-// CHECK:     AIE.useLock(%5, Release, 0)
+// CHECK:     AIE.useLock(%6, Acquire, 1)
+// CHECK:     AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
+// CHECK:     AIE.useLock(%6, Release, 0)
 // CHECK:     cf.br ^bb2
 // CHECK:   ^bb2:  // 2 preds: ^bb0, ^bb1
 // CHECK:     AIE.end
 // CHECK:   }
-// CHECK:   AIE.flow(%4, DMA : 0, %1, DMA : 0)
+// CHECK:   AIE.flow(%5, DMA : 0, %1, DMA : 0)
 // CHECK: }
 
 // Generate LockOp in the top-level module
