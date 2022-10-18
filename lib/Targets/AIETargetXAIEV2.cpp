@@ -123,8 +123,24 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     int row = tileOp.rowIndex();
     if (tileOp.isShimTile()) {
       // Resets no needed with V2 kernel driver
+      output << "{\n";
+      output << "u64 tileAddr = _XAie_GetTileAddr(" << deviceInstRef << ", "
+             << row << ", " << col << ");\n";
+      output << "XAie_Write32(" << deviceInstRef << ", tileAddr + 0x00036048"
+             << ", !!1); // 1 == ResetEnable\n";
+      output << "XAie_Write32(" << deviceInstRef << ", tileAddr + 0x00036048"
+             << ", !!0); // 0 == ResetDisable\n";
+      output << "}\n";
     } else {
       // Resets no needed with V2 kernel driver
+      output << "XAie_CoreReset(" << deviceInstRef << ", "
+             << tileLocStr(col, row) << ");\n";
+      output << "XAie_CoreDisable(" << deviceInstRef << ", "
+             << tileLocStr(col, row) << ");\n";
+      // Release locks
+      output << "for (int l=0; l<16; l++)\n"
+             << "  XAie_LockRelease(" << deviceInstRef << ", "
+             << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0);\n";
       if (auto coreOp = tileOp.getCoreOp()) {
         std::string fileName;
         if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
