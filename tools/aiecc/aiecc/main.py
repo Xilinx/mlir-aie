@@ -151,15 +151,19 @@ def run_flow(opts, tmpdirname):
       if not opts.compile_host:
         return
 
-      cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+      if(opts.host_target):
+        cmd = ['clang','--target=%s' % opts.host_target, '-std=c++11']
+      else:
+        cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
       if(opts.xaie == 2):
         cmd += ['-DLIBXAIENGINEV2']
-        cmd += ['-I%s/usr/include/c++/10.2.0' % opts.sysroot]
-        cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
-        cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
-        cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
+        if(opts.host_target == 'aarch64-linux-gnu'):
+          cmd += ['-I%s/usr/include/c++/10.2.0' % opts.sysroot]
+          cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
+          cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
+          cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
         cmd += ['-I%s/opt/xaienginev2/include' % opts.sysroot]
         cmd += ['-L%s/opt/xaienginev2/lib' % opts.sysroot]
       else:

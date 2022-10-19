@@ -68,13 +68,18 @@ inline bool isAIEOp(Operation *op) {
 
 // Determine the output type for a vector operation based on whether
 // it operates on integer or floating point data.
-inline VectorType getVectorOpDestType(VectorType type) {
+inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
   Type stype = type.getElementType();
 
   if (IntegerType itype = stype.dyn_cast<IntegerType>()) {
     // Integer vector types are sized for the appropriate accumulators
     assert(itype.getWidth() <= 64);
-    unsigned width = itype.getWidth() <= 16 ? 48 : 80;
+    unsigned width = 0;
+    if (AIEML) {
+      width = itype.getWidth() <= 16 ? 32 : 64;
+    } else {
+      width = itype.getWidth() <= 16 ? 48 : 80;
+    }
 
     Type ctype = mlir::IntegerType::get(itype.getContext(), width);
     return VectorType::get(type.getShape(), ctype);
