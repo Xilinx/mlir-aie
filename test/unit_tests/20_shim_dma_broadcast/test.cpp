@@ -43,19 +43,18 @@ int main(int argc, char *argv[]) {
   mlir_aie_initialize_locks(_xaie);
   mlir_aie_configure_dmas(_xaie);
 
-  #define DMA_COUNT 512
+#define DMA_COUNT 512
   mlir_aie_init_mems(_xaie, 1);
-  uint32_t *ddr_ptr_in =
-      (uint32_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  uint32_t *ddr_ptr_in = (uint32_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(ddr_ptr_in + i) = i + 1;
   }
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
 
-  #ifdef LIBXAIENGINEV2
-    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
-    mlir_aie_configure_shimdma_70(_xaie);
-  #endif
+#ifdef LIBXAIENGINEV2
+  mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
+  mlir_aie_configure_shimdma_70(_xaie);
+#endif
 
   // We're going to stamp over the memory
   for (int i = 0; i < DMA_COUNT; i++) {
