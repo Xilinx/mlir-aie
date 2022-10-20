@@ -54,7 +54,7 @@ module @benchmark_02_LM2DDR {
   }
 
   //Declare the buffers
-  %buffer_out = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out = AIE.external_buffer : memref<7168xi32>
 
 
 

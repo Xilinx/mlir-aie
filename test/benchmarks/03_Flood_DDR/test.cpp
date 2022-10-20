@@ -71,8 +71,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_init_mems(_xaie, 1);
 
 
-    int *ddr_ptr = mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT*16);
-    // int *ddr_ptr7 = mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+    int *ddr_ptr = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT*16);
+    // int *ddr_ptr7 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
     // int *phy_addr_ptr = (int*)XAie_MemGetPAddr(_xaie->buffers[0]);
     printf("virtual addr is %x\n", (u64)ddr_ptr);
 

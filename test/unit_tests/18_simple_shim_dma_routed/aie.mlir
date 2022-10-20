@@ -15,7 +15,7 @@ module @test09_simple_shim_dma {
   %t70 = AIE.tile(7, 0)
   %t72 = AIE.tile(7, 2)
 
-  %buffer = AIE.external_buffer 0x020100004000 : memref<512 x i32>
+  %buffer = AIE.external_buffer : memref<512 x i32>
 
   %dma = AIE.shimDMA(%t70) {
     %lock1 = AIE.lock(%t70, 1)

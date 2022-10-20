@@ -104,8 +104,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer 0x020100004000 : memref<512 x i32>
-  %buffer_out = AIE.external_buffer 0x020100006000 : memref<512 x i32>
+  %buffer_in  = AIE.external_buffer : memref<512 x i32>
+  %buffer_out = AIE.external_buffer : memref<512 x i32>
 
   // Shim DMA connection to kernel
   AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)

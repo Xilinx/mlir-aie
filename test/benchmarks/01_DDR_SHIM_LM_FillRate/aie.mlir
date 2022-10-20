@@ -14,7 +14,7 @@ module @benchmark01_DDR_SHIM_fill_rate {
   %t71 = AIE.tile(7, 1)
   //%t72 = AIE.tile(7, 2)
 
-  %buffer = AIE.external_buffer 0x020100004000 : memref<7168xi32>
+  %buffer = AIE.external_buffer : memref<7168xi32>
 
   // Fixup
   %sw = AIE.switchbox(%t70) {

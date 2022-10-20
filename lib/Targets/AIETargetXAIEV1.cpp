@@ -379,8 +379,6 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   // XAieDma_ShimBdSetPkt(XAieDma_Shim *DmaInstPtr, u8 BdNum, u8 PktEn, u8
   // PktType, u8 PktId); void XAieDma_ShimBdSetNext(XAieDma_Shim
   // *DmaInstPtr, u8 BdNum, u8 NextBd); void
-  // XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum, u16
-  // AddrHigh, u32 AddrLow, u32 Length); void
   // XAieDma_ShimBdWrite(XAieDma_Shim *DmaInstPtr, u8 BdNum); void
   // XAieDma_ShimBdClear(XAieDma_Shim *DmaInstPtr, u8 BdNum); void
   // XAieDma_ShimBdClearAll(XAieDma_Shim *DmaInstPtr); u8
@@ -421,7 +419,6 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       int len = 0;
       uint64_t bytes = 0;
       uint64_t offset = 0;
-      uint64_t BaseAddr = 0;
 
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
@@ -429,7 +426,6 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
         bytes = bufferType.getElementTypeBitWidth() / 8;
-        BaseAddr = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
         offset = op.getOffsetValue();
       }
 
@@ -468,16 +464,6 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
                  << " /* lockID */ " << lockID << ", " << relEnable << ", "
                  << " /* release */ " << relValue << ", " << acqEnable << ", "
                  << " /* acquire */ " << acqValue << ");\n";
-        // void XAieDma_ShimBdSetAddr(XAieDma_Shim *DmaInstPtr, u8 BdNum,
-        // u16 AddrHigh, u32 AddrLow, u32 Length);
-        uint64_t address = BaseAddr + offset;
-        output << "XAieDma_ShimBdSetAddr(&" << dmaName << ", "
-               << " /* bd */ " << bdNum << ", "
-               << "HIGH_ADDR((u64)0x" << llvm::utohexstr(address) << "), "
-               << "LOW_ADDR((u64)0x" << llvm::utohexstr(address) << "), " <<
-            // " /* addrA */ "  << "0x" << llvm::utohexstr(BaseAddrA +
-            // offsetA) << ", " <<
-            " /* len */ " << len << " * " << bytes << ");\n";
 
         // void XAieDma_ShimBdSetAxi(XAieDma_Shim *DmaInstPtr, u8 BdNum,
         // u8 Smid, u8 BurstLen, u8 Qos, u8 Cache, u8 Secure);

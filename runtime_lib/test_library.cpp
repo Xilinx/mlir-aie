@@ -946,8 +946,7 @@ void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {
   ctx->buffers = (XAie_MemInst **)malloc(numBufs * sizeof(XAie_MemInst *));
 }
 
-int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr,
-                        int size) {
+int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
   //  ctx->InBuffers = (XAie_MemInst**)malloc(sizeof(XAie_MemInst*));
   //  XAie_MemInst *IN;
   ctx->buffers[bufIdx] =
