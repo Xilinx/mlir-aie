@@ -114,6 +114,11 @@ def parse_args():
             default=1,
             action='store',
             help='Compile with max n-threads in the machine (default is 1).  An argument of zero corresponds to the maximum number of threads on the machine.')
+    parser.add_argument('--profile',
+            dest="profiling",
+            default=False,
+            action='store_true',
+            help='Profile commands to find the most expensive executions.')
 
 
     opts = parser.parse_args(sys.argv[1:])
