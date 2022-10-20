@@ -119,7 +119,7 @@ main(int argc, char *argv[])
   // }
   // fclose(file);
 
-    #define DMA_COUNT 512
+#define DMA_COUNT 512
 
   mlir_aie_init_mems(_xaie, 2);
   u_int16_t *ddr_ptr_in = (u_int16_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
