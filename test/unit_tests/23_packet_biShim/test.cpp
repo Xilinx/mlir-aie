@@ -106,10 +106,10 @@ int main(int argc, char *argv[]) {
 
   for (int i = 0; i < DMA_COUNT + 1; i++) {
     if (i == 0) {
-      *mem_ptr1 = 1;
+      mem_ptr1[0] = 1;
     } else {
-      *(mem_ptr0 + i - 1) = 72;
-      *(mem_ptr1 + i) = 1;
+      mem_ptr0[i - 1] = 72;
+      mem_ptr1[i] = 1;
     }
   }
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
   }
   printf("It took %d tries.\n", tries);
 
-  mlir_aie_init_mems(_xaie, 1);
+  mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
   for (int bd = 0; bd < DMA_COUNT + 1; bd++) {
     if (bd == 0) {
