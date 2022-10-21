@@ -39,9 +39,7 @@ main(int argc, char *argv[])
 
   mlir_aie_init_mems(_xaie, 1);
 
-#define DMA_COUNT 512
-  // libxaiev1; returns physical addr to bram.
-  // libxaiev2: returns virtual addr to allocated buffer in ddr
+  #define DMA_COUNT 512
   int *mem_ptr = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(mem_ptr + i) = i + 1;

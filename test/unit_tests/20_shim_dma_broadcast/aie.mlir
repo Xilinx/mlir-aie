@@ -11,7 +11,7 @@
 // RUN: aiecc.py --pathfinder --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @test09_simple_shim_dma {
+module @test20_shim_dma_broadcast {
   %t70 = AIE.tile(7, 0)
   %t72 = AIE.tile(7, 2)
   %t73 = AIE.tile(7, 3)
@@ -79,8 +79,4 @@ module @test09_simple_shim_dma {
     ^end:
       AIE.end
   }
-
-  
-
-
 }
