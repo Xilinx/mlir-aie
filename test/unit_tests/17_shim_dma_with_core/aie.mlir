@@ -12,7 +12,7 @@
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
+module @test17_shim_dma_with_core{
   %t73 = AIE.tile(7, 3)
   %t72 = AIE.tile(7, 2)
   %t71 = AIE.tile(7, 1)
