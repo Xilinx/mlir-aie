@@ -59,7 +59,7 @@ Define the locks and buffers
 Start the Memory Map to Stream DMA from the source:
 ```
 %mem71 = AIE.mem(%tile71) {
-	%dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
+	%dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
 	^bd0:
 		AIE.useLock(%lock71, "Acquire", 0) // Acquire in State 0
 		AIE.dmaBd(<%buf71 : memref<512xi32>, 0, 512>, 0)
@@ -73,7 +73,7 @@ Start the Stream to Memory Map DMA from the destination:
 
 ```
 %mem72 = AIE.mem(%tile72) {
-	%dma0 = AIE.dmaStart("S2MM0", ^bd0, ^end)
+	%dma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
 	^bd0:
 		AIE.useLock(%lock72, "Acquire", 0)
 		AIE.dmaBd(<%buf72 : memref<512xi32>, 0, 512>, 0)
@@ -115,7 +115,7 @@ This example uses the same setup as the previous. For Tile (7,2) we can define a
 Then we can write the Stream to Memory Map DMA transfer with 2 buffer descriptors:
 ```
 %mem72 = AIE.mem(%t72) {
-	%dma0 = AIE.dmaStart("S2MM0", ^bd0, ^end)
+	%dma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
 	^bd0:
 		AIE.useLock(%lock72_0, "Acquire", 0)
 		AIE.dmaBd(<%buf72_0: memref<256xi32>, 0, 256>, 0)
@@ -172,7 +172,7 @@ We use a similar example to the single buffered communication:
 Start the Memory Map to Stream DMA from the source:
 ```
 %mem71 = AIE.mem(%tile71) {
-	%dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
+	%dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
 	^bd0:
 		AIE.useLock(%lock71, "Acquire", 1) // Acquire in State 0
 		AIE.dmaBd(<%buf71 : memref<512xi32>, 0, 512>, 0)
@@ -186,7 +186,7 @@ Start the Stream to Memory Map DMA from the destination:
 
 ```
 %mem72 = AIE.mem(%tile72) {
-	%dma0 = AIE.dmaStart("S2MM0", ^bd0, ^end)
+	%dma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
 	^bd0:
 		AIE.useLock(%lock72, "Acquire", 0)
 		AIE.dmaBd(<%buf72 : memref<512xi32>, 0, 512>, 0)
@@ -229,7 +229,7 @@ We can then use the shimDMA to read/write from that location:
 %lock70 = AIE.lock(%t70, 1)
 
 %mem70 = AIE.mem(%tile70) {
-	%dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end) \\Read
+	%dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end) \\Read
 	^bd0:
 		AIE.useLock(%lock70 , "Acquire", 0)
 		AIE.dmaBd(<%ext_buffer : memref<512xi32>, 0, 512>, 0)
@@ -275,7 +275,7 @@ module {
 
 %m72 = AIE.mem(%t72) {
 
-	%srcDma = AIE.dmaStart("MM2S0", ^bd0, ^end)
+	%srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
 	^bd0:
 		AIE.useLock(%l72_0, "Acquire", 1)
 		AIE.dmaBd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
