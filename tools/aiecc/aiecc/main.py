@@ -193,7 +193,8 @@ def run_flow(opts, tmpdirname):
         # In some of our sysroots, it seems that we find a lib/gcc, but it
         # doesn't have a corresponding include/gcc directory.  Instead
         # force using '/usr/lib,include/gcc'
-        cmd += ['--gcc-toolchain=%s/usr' % opts.sysroot]
+        if(opts.host_target == 'aarch64-linux-gnu'):
+          cmd += ['--gcc-toolchain=%s/usr' % opts.sysroot]
       if(opts.xaie == 2):
         cmd += ['-DLIBXAIENGINEV2']
         cmd += ['-I%s/opt/xaienginev2/include' % opts.sysroot]
