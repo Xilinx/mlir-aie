@@ -50,6 +50,7 @@ config.vitis_root = "@VITIS_ROOT@"
 config.vitis_aietools_dir = "@VITIS_AIETOOLS_DIR@"
 config.vitis_sysroot = "@VitisSysroot@"
 config.libxaie_dir = "@XILINX_XAIE_LIBS@"
+config.has_libxaie = @LibXAIE_FOUND@
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.
