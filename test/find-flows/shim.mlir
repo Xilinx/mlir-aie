@@ -12,8 +12,8 @@
 
 // CHECK: %0 = AIE.tile(2, 1)
 // CHECK: %1 = AIE.tile(2, 0)
-// CHECK: %7 = AIE.shimDMA(%1)
-// CHECK: AIE.flow(%0, Core : 0, %7, DMA : 0)
+// CHECK: %6 = AIE.shimDMA(%1)
+// CHECK: AIE.flow(%0, Core : 0, %6, DMA : 0)
 module {
   %t21 = AIE.tile(2, 1)
   %t20 = AIE.tile(2, 0)
@@ -22,9 +22,6 @@ module {
   }
   %s21 = AIE.switchbox(%t21)  {
     AIE.connect<Core : 0, South : 0>
-  }
-  %c20 = AIE.core(%t20)  {
-    AIE.end
   }
   %s20 = AIE.switchbox(%t20)  {
     AIE.connect<North : 0, South : 2>

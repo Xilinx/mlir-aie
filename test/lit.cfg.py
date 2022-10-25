@@ -37,6 +37,7 @@ config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 config.substitutions.append(('%VITIS_SYSROOT%', config.vitis_sysroot))
 config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib")))
+config.substitutions.append(('%aietools', config.vitis_aietools_dir))
 
 if(config.enable_board_tests):
     config.substitutions.append(('%run_on_board', "echo %T >> /home/xilinx/testlog | sync | sudo"))

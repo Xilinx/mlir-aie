@@ -60,6 +60,14 @@ int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                               timeout);
 }
 
+int mlir_aie_get_lock_status(aie_libxaie_ctx_t *ctx, int col, int row, int lockid) {
+  u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
+  u32 locks;
+  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
+  u32 two_bits = (locks >> (lock_id * 2)) & 0x3;
+  return two_bits;
+}
+
 u32 mlir_aie_read32(aie_libxaie_ctx_t *ctx, u64 addr) {
   return XAieGbl_Read32(addr);
 }
