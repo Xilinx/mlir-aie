@@ -32,10 +32,10 @@ module @test {
     %size = arith.constant 1024 : i32
 
     %Frac = arith.constant 1024.0 : f32
-    %DiffRe = std.subf %MaxRe, %MinRe : f32
-    %StepRe = std.divf %DiffRe, %Frac : f32
-    %DiffIm = std.subf %MaxIm, %MinIm : f32
-    %StepIm = std.divf %DiffIm, %Frac : f32
+    %DiffRe = arith.subf %MaxRe, %MinRe : f32
+    %StepRe = arith.divf %DiffRe, %Frac : f32
+    %DiffIm = arith.subf %MaxIm, %MinIm : f32
+    %StepIm = arith.divf %DiffIm, %Frac : f32
 
     %lb = arith.constant 0 : index
     %ub = arith.constant 1024 : index
@@ -44,7 +44,7 @@ module @test {
 
     %sum = scf.for %iv = %lb to %ub step %step
       iter_args(%Im = %MinIm) -> (f32) {
-      %Im_next = addf %Im, %StepIm : f32
+      %Im_next = arith.addf %Im, %StepIm : f32
       AIE.useLock(%lock13_3, "Acquire", 1) // acquire
       func.call @do_line(%buf13_0, %MinRe, %StepRe, %Im, %size) : (memref<32x32xi32>, f32, f32, f32, i32) -> ()
       AIE.useLock(%lock13_3, "Release", 0) // release for write
