@@ -187,13 +187,16 @@ def run_flow(opts, tmpdirname):
         cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
       if(opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
+        # In order to find the toolchain in the sysroot, we need to have
+        # a 'target' that includes 'linux' and for the 'lib/gcc/$target/$version'
+        # directory to have a corresponding 'include/gcc/$target/$version'.
+        # In some of our sysroots, it seems that we find a lib/gcc, but it
+        # doesn't have a corresponding include/gcc directory.  Instead
+        # force using '/usr/lib,include/gcc'
+        if(opts.host_target == 'aarch64-linux-gnu'):
+          cmd += ['--gcc-toolchain=%s/usr' % opts.sysroot]
       if(opts.xaie == 2):
         cmd += ['-DLIBXAIENGINEV2']
-        if(opts.host_target == 'aarch64-linux-gnu'):
-          cmd += ['-I%s/usr/include/c++/10.2.0' % opts.sysroot]
-          cmd += ['-I%s/usr/include/c++/10.2.0/aarch64-xilinx-linux' % opts.sysroot]
-          cmd += ['-I%s/usr/include/c++/10.2.0/backward' % opts.sysroot]
-          cmd += ['-L%s/usr/lib/aarch64-xilinx-linux/10.2.0' % opts.sysroot]
         cmd += ['-I%s/opt/xaienginev2/include' % opts.sysroot]
         cmd += ['-L%s/opt/xaienginev2/lib' % opts.sysroot]
       else:
