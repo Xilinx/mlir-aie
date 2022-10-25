@@ -57,9 +57,6 @@ module {
   %s21 = AIE.switchbox(%t21)  {
     AIE.connect<Core : 0, South : 0>
   }
-  %c20 = AIE.core(%t20)  {
-    AIE.end
-  }
   %s20 = AIE.switchbox(%t20)  {
     AIE.connect<North : 0, South : 2>
   }

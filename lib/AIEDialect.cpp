@@ -698,6 +698,8 @@ LogicalResult xilinx::AIE::PacketFlowOp::verify() {
 LogicalResult xilinx::AIE::CoreOp::verify() {
   assert(getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
   assert(!getBody().empty() && "CoreOp should have non-empty body");
+  assert(!getTile().getDefiningOp<TileOp>().isShimTile() &&
+         "CoreOp cannot be created on shim tile, i.e. row == 0.");
 
   return success();
 }

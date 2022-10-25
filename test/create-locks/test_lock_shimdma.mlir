@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: andrab
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // CHECK-LABELs: module @test_lock_shimdma  {
