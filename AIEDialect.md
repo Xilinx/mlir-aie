@@ -414,12 +414,13 @@ Syntax:
 operation ::= `AIE.dmaStart` `(` $channelDir `,` $channelIndex `,` $dest `,` $chain `)` attr-dict
 ```
 
-This operation declares a DMA channel to be used for data transfer.  It usually exists inside
+This operation declares a DMA channel to be used for data transfer. It usually exists inside
 either a MemOp (representing a TileDMA channel), or in a ShimDMAOp (representing a ShimDMA channel).
+A channel is defined by a direction (i.e., MM2S or S2MM) and an index.
 
 Example:
 ```
-    AIE.dmaStart("MM2S0", ^bd0, ^end)
+    AIE.dmaStart("MM2S", 0, ^bd0, ^end)
   ^bd0:
     AIE.useLock(%lock0, "Acquire", 0)
     AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 16>, 0)
