@@ -43,9 +43,8 @@ struct AIENormalizeAddressSpacesPass
     ModuleOp m = getOperation();
 
     ConversionTarget target(getContext());
-    target.addDynamicallyLegalOp<memref::GlobalOp>([](memref::GlobalOp op) {
-      return op.type().cast<MemRefType>().getMemorySpace() == 0;
-    });
+    target.addDynamicallyLegalOp<memref::GlobalOp>(
+        [](memref::GlobalOp op) { return op.getType().getMemorySpace() == 0; });
     RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
 

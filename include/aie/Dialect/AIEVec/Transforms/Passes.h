@@ -25,7 +25,7 @@ class FuncDialect;
 } // end namespace func
 
 namespace arith {
-class ArithmeticDialect;
+class ArithDialect;
 } // end namespace arith
 
 namespace memref {

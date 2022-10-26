@@ -31,7 +31,7 @@ class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIEVec_AddOp:
   AIEVec_Op<"add", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -73,7 +73,7 @@ def AIEVec_AddOp:
 
 def AIEVec_SubOp:
   AIEVec_Op<"sub", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -115,7 +115,7 @@ def AIEVec_SubOp:
 
 def AIEVec_FMAOp :
   AIEVec_Op<"mac", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -186,7 +186,7 @@ def AIEVec_FMAOp :
 
 def AIEVec_FMAElemOp :
   AIEVec_Op<"mac_elem", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
                DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
@@ -213,7 +213,7 @@ def AIEVec_FMAElemOp :
 
 def AIEVec_MulOp:
   AIEVec_Op<"mul", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -277,7 +277,7 @@ def AIEVec_MulOp:
 
 def AIEVec_MulElemOp:
   AIEVec_Op<"mul_elem", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
@@ -295,7 +295,7 @@ def AIEVec_MulElemOp:
 
 def AIEVec_BroadcastOp:
   AIEVec_Op<"broadcast", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$source,
           DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$idx)>,
@@ -314,7 +314,7 @@ def AIEVec_BroadcastOp:
 
 def AIEVec_UPSOp:
   AIEVec_Op<"ups", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source, 
           DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
@@ -334,7 +334,7 @@ def AIEVec_UPSOp:
 
 def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source,
           DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
@@ -350,7 +350,7 @@ def AIEVec_SRSOp:
 
 def AIEVec_UPDOp:
   AIEVec_Op<"upd", [
-    NoSideEffect,
+    Pure,
     AttrSizedOperandSegments
   ]>, 
   Arguments<(ins AnyShaped:$source, 
@@ -379,7 +379,7 @@ def AIEVec_UPDOp:
 
 def AIEVec_ConcatOp:
   AIEVec_Op<"concat", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins Variadic<AnyVector>:$sources)>, 
   Results<(outs AnyVector:$result)> {
@@ -394,7 +394,7 @@ def AIEVec_ConcatOp:
 
 def AIEVec_ExtOp:
   AIEVec_Op<"ext", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source, 
              ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
@@ -410,7 +410,7 @@ def AIEVec_ExtOp:
 
 def AIEVec_SelectOp:
   AIEVec_Op<"select", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$xbuff,
                DefaultValuedStrAttr<StrAttr, "">:$select,
@@ -468,7 +468,7 @@ def AIEVec_SelectOp:
 
 def AIEVec_PackOp:
   AIEVec_Op<"pack", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source)>,
   Results<(outs AnyVector:$result)> {
@@ -482,7 +482,7 @@ def AIEVec_PackOp:
 
 def AIEVec_UnpackOp:
   AIEVec_Op<"unpack", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source)>,
   Results<(outs AnyVector:$result)> {

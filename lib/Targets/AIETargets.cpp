@@ -31,7 +31,7 @@
 #include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 using namespace mlir;
@@ -93,7 +93,7 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset,
 
 void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationMMap(
-      "aie-generate-mmap",
+      "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
         DenseMap<std::pair<int, int>, Operation *> tiles;
         DenseMap<Operation *, CoreOp> cores;
@@ -137,7 +137,7 @@ void registerAIETranslations() {
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -178,7 +178,7 @@ void registerAIETranslations() {
   // }
 
   TranslateFromMLIRRegistration registrationLDScript(
-      "aie-generate-ldscript",
+      "aie-generate-ldscript", "Generate AIE loader script",
       [](ModuleOp module, raw_ostream &output) {
         DenseMap<std::pair<int, int>, Operation *> tiles;
         DenseMap<Operation *, CoreOp> cores;
@@ -259,7 +259,7 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
@@ -275,7 +275,7 @@ SECTIONS
   // _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
 
   TranslateFromMLIRRegistration registrationBCF(
-      "aie-generate-bcf",
+      "aie-generate-bcf", "Generate AIE bcf",
       [](ModuleOp module, raw_ostream &output) {
         DenseMap<std::pair<int, int>, Operation *> tiles;
         DenseMap<Operation *, CoreOp> cores;
@@ -339,14 +339,14 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
       });
 
   TranslateFromMLIRRegistration registrationCoreList(
-      "aie-generate-corelist",
+      "aie-generate-corelist", "Generate python list of cores",
       [](ModuleOp module, raw_ostream &output) {
         output << "[";
         for (auto tileOp : module.getOps<TileOp>()) {
@@ -368,13 +368,13 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
       });
   TranslateFromMLIRRegistration registrationXADF(
-      "adf-generate-cpp-graph",
+      "adf-generate-cpp-graph", "Translate ADFDialect to C++ graph",
       [](ModuleOp module, raw_ostream &output) {
         return ADFGenerateCPPGraph(module, output);
       },
@@ -384,13 +384,13 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
       });
   TranslateFromMLIRRegistration registrationXAIE(
-      "aie-generate-xaie",
+      "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
         if (xaieTarget == "v2")
           return AIETranslateToXAIEV2(module, output);
@@ -402,13 +402,13 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
       });
   TranslateFromMLIRRegistration registrationXJSON(
-      "aie-flows-to-json",
+      "aie-flows-to-json", "Translate AIE flows to JSON",
       [](ModuleOp module, raw_ostream &output) {
         return AIEFlowsToJSON(module, output);
       },
@@ -417,7 +417,7 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();

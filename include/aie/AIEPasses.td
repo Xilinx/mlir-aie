@@ -289,7 +289,7 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   let dependentDialects = [
     "scf::SCFDialect",
     "func::FuncDialect",
-    "arith::ArithmeticDialect",
+    "arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -306,7 +306,7 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "ModuleOp"> 
   let dependentDialects = [
     "scf::SCFDialect",
     "func::FuncDialect",
-    "arith::ArithmeticDialect",
+    "arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
