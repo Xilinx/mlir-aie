@@ -11,50 +11,50 @@
 // RUN: aie-opt --aie-create-cores --aie-lower-memcpy %s | FileCheck %s
 
 // CHECK-LABEL: module @hello_world {
-// CHECK:   %0 = AIE.tile(3, 3)
-// CHECK:   %1 = AIE.buffer(%0) : memref<512xi32>
-// CHECK:   %2 = AIE.mem(%0) {
-// CHECK:     %10 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
-// CHECK:   ^bb1:
-// CHECK:     AIE.useToken @token0(Acquire, 1)
-// CHECK:     AIE.dmaBd(<%1 : memref<512xi32>, 0, 512>, 0)
-// CHECK:     AIE.useToken @token0(Release, 2)
-// CHECK:     cf.br ^bb2
-// CHECK:   ^bb2:
-// CHECK:     AIE.end
-// CHECK:   }
-// CHECK:   %3 = AIE.tile(4, 4)
-// CHECK:   %4 = AIE.buffer(%3) : memref<512xi32>
-// CHECK:   %5 = AIE.mem(%3) {
-// CHECK:     %10 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
-// CHECK:   ^bb1:
-// CHECK:     AIE.useToken @token0(Acquire, 1)
-// CHECK:     AIE.dmaBd(<%4 : memref<512xi32>, 0, 512>, 0)
-// CHECK:     AIE.useToken @token0(Release, 2)
-// CHECK:     cf.br ^bb2
-// CHECK:   ^bb2:
-// CHECK:     AIE.end
-// CHECK:   }
-// CHECK:   %6 = memref.alloc() : memref<512xi32>
-// CHECK:   %7 = memref.alloc() : memref<512xi32>
-// CHECK:   AIE.token(0) {sym_name = "token0"}
-// CHECK:   %8 = AIE.core(%0) {
-// CHECK:     AIE.useToken @token0(Acquire, 0)
-// CHECK:     %c16 = arith.constant 16 : index
-// CHECK:     %c1_i32 = arith.constant 1 : i32
-// CHECK:     memref.store %c1_i32, %1[%c16] : memref<512xi32>
-// CHECK:     AIE.useToken @token0(Release, 1)
-// CHECK:     AIE.end
-// CHECK:   }
-// CHECK:   %9 = AIE.core(%3) {
-// CHECK:     AIE.useToken @token0(Acquire, 2)
-// CHECK:     %c16 = arith.constant 16 : index
-// CHECK:     %10 = memref.load %4[%c16] : memref<512xi32>
-// CHECK:     AIE.useToken @token0(Release, 3)
-// CHECK:     AIE.end
-// CHECK:   }
-// CHECK:   AIE.flow(%0, DMA : 0, %3, DMA : 0)
-// CHECK: }
+// CHECK:         %[[VAL_0:.*]] = AIE.tile(3, 3)
+// CHECK:         %[[VAL_1:.*]] = AIE.buffer(%[[VAL_0]]) : memref<512xi32>
+// CHECK:         %[[VAL_2:.*]] = AIE.mem(%[[VAL_0]]) {
+// CHECK:           %[[VAL_3:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+// CHECK:         ^bb1:
+// CHECK:           AIE.useToken @token0(Acquire, 1)
+// CHECK:           AIE.dmaBd(<%[[VAL_1]] : memref<512xi32>, 0, 512>, 0)
+// CHECK:           AIE.useToken @token0(Release, 2)
+// CHECK:           cf.br ^bb2
+// CHECK:         ^bb2:
+// CHECK:           AIE.end
+// CHECK:         }
+// CHECK:         %[[VAL_4:.*]] = AIE.tile(4, 4)
+// CHECK:         %[[VAL_5:.*]] = AIE.buffer(%[[VAL_4]]) : memref<512xi32>
+// CHECK:         %[[VAL_6:.*]] = AIE.mem(%[[VAL_4]]) {
+// CHECK:           %[[VAL_7:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
+// CHECK:         ^bb1:
+// CHECK:           AIE.useToken @token0(Acquire, 1)
+// CHECK:           AIE.dmaBd(<%[[VAL_5]] : memref<512xi32>, 0, 512>, 0)
+// CHECK:           AIE.useToken @token0(Release, 2)
+// CHECK:           cf.br ^bb2
+// CHECK:         ^bb2:
+// CHECK:           AIE.end
+// CHECK:         }
+// CHECK:         %[[VAL_8:.*]] = memref.alloc() : memref<512xi32>
+// CHECK:         %[[VAL_9:.*]] = memref.alloc() : memref<512xi32>
+// CHECK:         AIE.token(0) {sym_name = "token0"}
+// CHECK:         %[[VAL_10:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:           AIE.useToken @token0(Acquire, 0)
+// CHECK:           %[[VAL_11:.*]] = arith.constant 16 : index
+// CHECK:           %[[VAL_12:.*]] = arith.constant 1 : i32
+// CHECK:           memref.store %[[VAL_12]], %[[VAL_1]]{{\[}}%[[VAL_11]]] : memref<512xi32>
+// CHECK:           AIE.useToken @token0(Release, 1)
+// CHECK:           AIE.end
+// CHECK:         }
+// CHECK:         %[[VAL_13:.*]] = AIE.core(%[[VAL_4]]) {
+// CHECK:           AIE.useToken @token0(Acquire, 2)
+// CHECK:           %[[VAL_14:.*]] = arith.constant 16 : index
+// CHECK:           %[[VAL_15:.*]] = memref.load %[[VAL_5]]{{\[}}%[[VAL_14]]] : memref<512xi32>
+// CHECK:           AIE.useToken @token0(Release, 3)
+// CHECK:           AIE.end
+// CHECK:         }
+// CHECK:         AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_4]], DMA : 0)
+// CHECK:       }
 
 module @hello_world {
 
