@@ -149,13 +149,13 @@ class flow_runner:
       elif(opts.compile):
         file_core_llvmir_stripped = self.tmpcorefile(core, "stripped.ll")
         await self.do_call(task, ['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
-        await self.do_call(task, ['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--filetype=obj', '-o', file_core_obj])
+        await self.do_call(task, ['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', file_core_obj])
         if(opts.link and opts.xbridge):
           link_with_obj = self.extract_input_files(file_core_bcf)
           await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
         elif(opts.link):
           await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
-                            '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+                            '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
 
       self.progress_bar.update(self.progress_bar.task_completed,advance=1)
       if(task):
