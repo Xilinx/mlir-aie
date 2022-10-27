@@ -119,6 +119,16 @@ def parse_args():
             default=False,
             action='store_true',
             help='Profile commands to find the most expensive executions.')
+    parser.add_argument('-n',
+            dest="execute",
+            default=True,
+            action='store_false',
+            help='Disable actually executing any commands.')
+    parser.add_argument('--progress',
+            dest="progress",
+            default=False,
+            action='store_true',
+            help='Show progress visualization')
 
 
     opts = parser.parse_args(sys.argv[1:])
