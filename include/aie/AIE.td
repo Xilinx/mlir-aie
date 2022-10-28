@@ -1569,10 +1569,10 @@ def AIE_SelectOp: AIE_Op<"select", []>, Results<(outs Index)> {
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
-    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and
-    a consumer, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
-    buffers (of given output type) and their locks in the Memory Module of the producer tile after lowering. 
-    These elements represent the conceptual depth of the objectFifo.
+    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and one or 
+    more consumers, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+    buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
+    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
@@ -1580,27 +1580,26 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 
     Example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>> 
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between tiles 12 and 13 of 4 elements, each a buffer of 16 32-bit integers.
+    This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
   }];
 
   let arguments = (
     ins Index:$producerTile,
-        Index:$consumerTile,
+        Variadic<Index>:$consumerTiles,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
 
   let assemblyFormat = [{
-    `(` $producerTile `,` $consumerTile `,` $elemNumber`)` attr-dict `:` type($fifo)
+    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
 
   let extraClassDeclaration = [{
     int size() { return getElemNumber(); }
     TileOp getProducerTileOp();
-    TileOp getConsumerTileOp();
   }];
 }
 

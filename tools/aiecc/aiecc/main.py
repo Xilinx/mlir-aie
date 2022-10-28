@@ -174,9 +174,9 @@ class flow_runner:
       # Generate the included host interface
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
       if(self.opts.pathfinder):
-        await self.do_call(task, ['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', self.file_with_addresses, '-o', file_physical]);
+        await self.do_call(task, ['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', self.file_with_addresses, '-o', file_physical]);
       else:
-        await self.do_call(task, ['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', self.file_with_addresses, '-o', file_physical]);
+        await self.do_call(task, ['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', self.file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(self.tmpdirname, 'aie_inc.cpp')
       if(opts.xaie == 1):
           await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
@@ -226,7 +226,7 @@ class flow_runner:
       self.limit = asyncio.Semaphore(nworkers)
 
       self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
-      await self.do_call(None, ['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
+      await self.do_call(None, ['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
       t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
       cores = eval(t.stdout)
 
