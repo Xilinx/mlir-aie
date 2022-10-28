@@ -415,7 +415,7 @@ operation ::= `AIE.dmaStart` `(` $channelDir `,` $channelIndex `,` $dest `,` $ch
 ```
 
 This operation declares a DMA channel to be used for data transfer. It usually exists inside
-either a MemOp (representing a TileDMA channel), or in a ShimDMAOp (representing a ShimDMA channel).
+either a MemOp (representing a TileDMA), or in a ShimDMAOp (representing a ShimDMA).
 A channel is defined by a direction (i.e., MM2S or S2MM) and an index.
 
 Example:
@@ -430,7 +430,7 @@ Example:
     AIE.end
 ```
 
-Comceptually, the AIE.dmaStart operation is a terminator that either passes
+Conceptually, the AIE.dmaStart operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
 or to a basic block for another dmaStart, to an AIE.end operation.
 
@@ -498,23 +498,23 @@ Declare a buffer in external memory
 Syntax:
 
 ```
-operation ::= `AIE.external_buffer` $address attr-dict `:` type($buffer)
+operation ::= `AIE.external_buffer` attr-dict `:` type($buffer)
 ```
 
 This operation represents a buffer that exists in some physical
-location in a device, most likely external memory.
+location in a device, most likely external memory. The exact address
+of the external buffer is passed by the mlir_aie_external_set_addr()
+and mlir_aie_external_set_addr_myBuffer_ functions in the associated 
+.cpp test file. 
+
+These external buffers are used within the buffer descriptors of a 
+shimDMA, i.e., within AIE_DMABdOp operations of a AIE_ShimDMAOp.
 
 Example:
 ```
-  %buf = AIE.external_buffer 0x200000 : memref<256xi64>
+  %buf = AIE.external_buffer : memref<256xi64>
 ```
-This operation represents a buffer living at physical address 0x200000.
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `address` | ::mlir::IntegerAttr | 64-bit signless integer attribute
+This operation represents an external buffer.
 
 #### Results:
 
@@ -820,7 +820,22 @@ operation ::= `AIE.mem` `(` $tile `)` regions attr-dict
 
 This operation creates a Memory module that belongs to a tile.
 The region of a MemOp is used to setup the DMAs and Block Descriptors.
-See DMAOp and DMABdOp for more concrete examples.
+See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.
+
+Example:
+```
+  m73 = AIE.mem(%t73) {
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      AIE.useLock(%lock, "Acquire", 0)
+      AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+      AIE.useLock(%lock, "Release", 1)
+      cf.br ^bd0
+    ^end:
+      AIE.end
+  }
+```
+Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
 
 Interfaces: CallableOpInterface, FlowEndPoint
 
@@ -1523,6 +1538,26 @@ Syntax:
 operation ::= `AIE.shimDMA` `(` $tile `)` regions attr-dict
 ```
 
+This operation creates a DMA that belongs to a shim tile.
+The region of a ShimDMAOp is used to setup the DMAs and Block Descriptors.
+
+Example:
+```
+  %buf = AIE.external_buffer : memref<256xi64>
+  %lock1 = AIE.lock(%t70, 1)
+
+  %dma = AIE.shimDMA(%t70) {
+      AIE.dmaStart(MM2S, 0, ^bd0, ^end)
+    ^bd0:
+      AIE.useLock(%lock1, Acquire, 1)
+      AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
+      AIE.useLock(%lock1, Release, 0)
+      cf.br ^bd0
+    ^end:
+      AIE.end
+  }
+```
+Create the shimDMA for tile %t70 and setup one DMA channel and one Buffer Descriptor.
 
 Interfaces: FlowEndPoint
 
