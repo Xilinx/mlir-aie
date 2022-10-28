@@ -26,12 +26,10 @@
 // CHECK: XAieDma_Shim ShimDMAInst_2_0;
 // CHECK: XAieDma_ShimInitialize(&(ctx->TileInst[2][0]), &ShimDMAInst_2_0);
 // CHECK: XAieDma_ShimBdSetLock(&ShimDMAInst_2_0,  /* bd */ 0,  /* lockID */ 0, XAIE_ENABLE,  /* release */ 1, XAIE_ENABLE,  /* acquire */ 0);
-// CHECK: XAieDma_ShimBdSetAddr(&ShimDMAInst_2_0,  /* bd */ 0, HIGH_ADDR((u64)0x1234567890), LOW_ADDR((u64)0x1234567890),  /* len */ 16 * 4);
 // CHECK: XAieDma_ShimBdSetAxi(&ShimDMAInst_2_0, /* bd */ 0, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
 // CHECK: XAieDma_ShimBdSetNext(&ShimDMAInst_2_0,  /* bd */ 0,  /* nextbd */ 0);
 // CHECK: XAieDma_ShimBdWrite(&ShimDMAInst_2_0,  /* bd */ 0);
 // XAieDma_ShimBdSetLock(&ShimDMAInst_2_0,  /* bd */ 1,  /* lockID */ 1, XAIE_ENABLE,  /* release */ 0, XAIE_ENABLE,  /* acquire */ 1);
-// CHECK: XAieDma_ShimBdSetAddr(&ShimDMAInst_2_0,  /* bd */ 1, HIGH_ADDR((u64)0x1234567890), LOW_ADDR((u64)0x1234567890),  /* len */ 4 * 4);
 // CHECK: XAieDma_ShimBdSetAxi(&ShimDMAInst_2_0, /* bd */ 1, /* smid */ 0, /* burstlen */ 4, /* QOS */ 0, /* Cache */ 0, /* secure */ XAIE_ENABLE);
 // CHECK: XAieDma_ShimBdSetNext(&ShimDMAInst_2_0,  /* bd */ 1,  /* nextbd */ 1);
 // CHECK: XAieDma_ShimBdWrite(&ShimDMAInst_2_0,  /* bd */ 1);
@@ -48,7 +46,7 @@
 // CHECK:        XAIETILE_SHIM_STRM_DEM_DMA);
 
 module {
-  %buffer = AIE.external_buffer 0x1234567890 : memref<16 x f32>
+  %buffer = AIE.external_buffer : memref<16 x f32>
   %t21 = AIE.tile(2, 1)
   %t20 = AIE.tile(2, 0)
   %c21 = AIE.core(%t21)  {

@@ -9,12 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license && jackl
-// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
+// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc %S/dequant.cc %S/pass.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
-
   %t74 = AIE.tile(7, 4)
   %t75 = AIE.tile(7, 5)
 
@@ -55,16 +54,13 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
 
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
+  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
-  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
     %buffer_size =  arith.constant 64 : i32
@@ -94,8 +90,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     }
 
     AIE.end
-
-  } { link_with="dequant.o" }
+  } { link_with="pass.o" }
 
   %c74 = AIE.core(%t74) { 
     %buffer_size =  arith.constant 64 : i32
@@ -126,8 +121,6 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
     AIE.end
   } { link_with="pass.o" }
-
-
   
     %c75 = AIE.core(%t75) { 
     %buffer_size =  arith.constant 64 : i32
@@ -188,7 +181,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       AIE.end
   }
 
-    // Tile DMA
+  // Tile DMA
   %m74 = AIE.mem(%t74) {
       %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
     ^dma0:
@@ -247,34 +240,12 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer 0x020100004000 : memref<512 x i16>
-  %buffer_out = AIE.external_buffer 0x020100006000 : memref<512 x i16>
+  %buffer_in  = AIE.external_buffer : memref<512 x i16>
+  %buffer_out = AIE.external_buffer : memref<512 x i16>
 
   // Shim DMA connection to kernel
-  AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-
-  %sw73  = AIE.switchbox(%t73) {
-    AIE.connect<"DMA" : 1, "North" : 3>
-  }
-  %sw74  = AIE.switchbox(%t74) {
-    AIE.connect<"South" : 3, "DMA" : 0>
-    AIE.connect<"DMA" : 1, "North" : 3>
-  }
-
-  %sw75  = AIE.switchbox(%t75) {
-    AIE.connect<"South" : 3, "DMA" : 0>
-  }
-
-  AIE.flow(%t75, "DMA" : 1, %t71, "South" : 2)
-
-  %sw1  = AIE.switchbox(%t70) {
-    AIE.connect<"South" : 3, "North" : 3>
-    AIE.connect<"North" : 2, "South" : 2>
-  }
-  %mux1 = AIE.shimmux  (%t70) {
-    AIE.connect<"DMA"   : 0, "North" : 3> 
-    AIE.connect<"North" : 2, "DMA" : 0>
-  }
+  AIE.flow(%t70, DMA : 0, %t73, DMA : 0)
+  AIE.flow(%t75, DMA : 0, %t70, DMA : 0)
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
@@ -296,6 +267,4 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     ^end:
       AIE.end
   }
-
-
 }

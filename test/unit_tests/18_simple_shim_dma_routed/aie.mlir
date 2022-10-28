@@ -11,11 +11,11 @@
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @test09_simple_shim_dma {
+module @test18_simple_shim_dma_routed {
   %t70 = AIE.tile(7, 0)
   %t72 = AIE.tile(7, 2)
 
-  %buffer = AIE.external_buffer 0x020100004000 : memref<512 x i32>
+  %buffer = AIE.external_buffer : memref<512 x i32>
 
   %dma = AIE.shimDMA(%t70) {
     %lock1 = AIE.lock(%t70, 1)
@@ -54,8 +54,4 @@ module @test09_simple_shim_dma {
     ^end:
       AIE.end
   }
-
-  
-
-
 }

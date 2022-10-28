@@ -109,22 +109,14 @@ int main(int argc, char *argv[]) {
 
   printf("Finish configure\n");
 #define DMA_COUNT 1024
-  int *mem_ptr0 =
-      mlir_aie_mem_alloc(_xaie, 0, 0x0000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr1 =
-      mlir_aie_mem_alloc(_xaie, 1, 0x1000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr2 =
-      mlir_aie_mem_alloc(_xaie, 2, 0x2000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr3 =
-      mlir_aie_mem_alloc(_xaie, 3, 0x3000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr4 =
-      mlir_aie_mem_alloc(_xaie, 4, 0x4000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr5 =
-      mlir_aie_mem_alloc(_xaie, 5, 0x5000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr6 =
-      mlir_aie_mem_alloc(_xaie, 6, 0x6000 + 0x020100000000LL, DMA_COUNT + 1);
-  int *mem_ptr7 =
-      mlir_aie_mem_alloc(_xaie, 7, 0x8000 + 0x020100000000LL, DMA_COUNT + 1);
+  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
+  int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
+  int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
+  int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
+  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
+  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT + 1; i++) {

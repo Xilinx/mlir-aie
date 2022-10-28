@@ -9,8 +9,8 @@ module @aie_module  {
   %lock2 = AIE.lock(%t70, 2)
 
   %11 = AIE.buffer(%t72) {sym_name = "buf1"} : memref<256xi32>
-  %buf_i = AIE.external_buffer 0x020100004000 : memref<256xi32>
-  %buf_o = AIE.external_buffer 0x020100006000 : memref<257xi32>
+  %buf_i = AIE.external_buffer : memref<256xi32>
+  %buf_o = AIE.external_buffer : memref<257xi32>
 
   %12 = AIE.mem(%t72)  {
     %srcDma = AIE.dmaStart("S2MM", 0, ^bb2, ^dma0)
@@ -31,20 +31,20 @@ module @aie_module  {
   }
 
   %dma = AIE.shimDMA(%t70)  {
-    AIE.dmaStart("MM2S", 0, ^bb2, ^dma0)
+    AIE.dmaStart("MM2S", 0, ^bb0, ^dma0)
   ^dma0:
-    AIE.dmaStart("S2MM", 0, ^bb3, ^end)
-  ^bb2:
+    AIE.dmaStart("S2MM", 0, ^bb1, ^end)
+  ^bb0:
     AIE.useLock(%lock1, Acquire, 1)
     AIE.dmaBdPacket(0x2, 3)
     AIE.dmaBd(<%buf_i : memref<256xi32>, 0, 256>, 0)
     AIE.useLock(%lock1, Release, 0)
-    cf.br ^bb2
-  ^bb3:
+    cf.br ^bb0
+  ^bb1:
     AIE.useLock(%lock2, Acquire, 0)
     AIE.dmaBd(<%buf_o : memref<257xi32>, 0, 257>, 0)
     AIE.useLock(%lock2, Release, 1)
-    cf.br ^bb3
+    cf.br ^bb1
   ^end:
     AIE.end
   }

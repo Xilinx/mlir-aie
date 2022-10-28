@@ -16,7 +16,7 @@ module @test09_simple_shim_dma {
   %t71 = AIE.tile(7, 1)
   %t72 = AIE.tile(7, 2)
 
-  %buffer = AIE.external_buffer 0x020100004000 : memref<512 x i32>
+  %buffer = AIE.external_buffer : memref<512 x i32>
 
   // Fixup
   %sw = AIE.switchbox(%t70) {

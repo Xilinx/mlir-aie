@@ -390,22 +390,18 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         if (!block.getOps<DMABDOp>().empty()) {
           blockMap[&block] = bdNum;
 
-          uint64_t BaseAddr = 0;
           uint64_t offset = 0;
           for (auto op : block.getOps<DMABDOp>()) {
-            BaseAddr = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
             offset = op.getOffsetValue();
           }
-          uint64_t address = BaseAddr + offset;
 
           output << "static u64 _mlir_aie_external_myBuffer_" << col << row
-                 << "_" << bdNum << " = "
-                 << "0x" << llvm::utohexstr(address) << ";\n";
+                 << "_" << bdNum << ";\n";
 
           output << "void mlir_aie_external_set_addr_myBuffer_" << col << row
                  << "_" << bdNum << "(u64 addr) {\n"
                  << "    _mlir_aie_external_myBuffer_" << col << row << "_"
-                 << bdNum << " = addr;\n"
+                 << bdNum << " = addr + " << llvm::utohexstr(offset) << ";\n"
                  << "}\n";
 
           output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
@@ -429,7 +425,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       int len = 0;
       uint64_t bytes = 0;
       uint64_t offset = 0;
-      uint64_t BaseAddr = 0;
 
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
@@ -437,7 +432,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
         bytes = bufferType.getElementTypeBitWidth() / 8;
-        BaseAddr = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
         offset = op.getOffsetValue();
       }
 
