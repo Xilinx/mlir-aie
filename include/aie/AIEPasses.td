@@ -159,19 +159,6 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp">
   ];
 }
 
-def AIERouteFlows : Pass<"aie-create-flows", "ModuleOp"> {
-  let summary = "Route aie.flow operations through switchboxes";
-  let description = [{
-    Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
-    operations.  
-  }];
-
-  let constructor = "xilinx::AIE::createAIERouteFlowsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
 def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   let summary = "Route aie.flow operations through switchboxes with Pathfinder algorithm";
   let description = [{
