@@ -14,7 +14,9 @@ Xilinx-specific advanced add operation that adds two 1-D vectors
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs + $rhs`.
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -52,7 +54,9 @@ Xilinx-specific broadcast intrinsic. Extract element index from vector and broad
 value to all lanes of the vector.
 `$result = broadcast($source, $idx)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -83,7 +87,9 @@ vectors into a bigger vector. The verifier confirms that all the
 input vectors have the same number of lanes.
 `$result = concat($sources[0], $sources[1], ...)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -108,7 +114,9 @@ the source vector, and transfers the data from those lanes to the
 result. The lane selection is controlled by index.
 `$result = ext($source, $index)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -140,7 +148,9 @@ and adds the result to an accumulator.
 Note: the same operator can be used as fmsub operator by setting the
 'fmsub' bool to true.
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -177,7 +187,9 @@ the result and acc are 48-bit or 80-bit accumulator.
 Note: the same operator can be used as fmsub operator by setting the 
 'fmsub' bool to true.
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -219,7 +231,9 @@ Xilinx-specific multiply operation that multiplies two 1-D vectors in the same c
 The vector sizes are at least 512 bits.
 `$result = `$lhs * $rhs`.
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -246,7 +260,9 @@ is at least twice the size of right operand vector. For integers, the
 lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
 `$result = `$lhs * $rhs`.
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -286,7 +302,9 @@ Xilinx-specific pack intrinsic. Pack a vector of 16-bit values into
 a vector of 8-bit values.
 `$result = pack($source)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -311,7 +329,9 @@ accumulator data type to AIE vector data types. The adjustment in
 precision is controlled by the shift parameter.
 `$result = srs($source, $shift)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -343,7 +363,9 @@ If the bit in select is 0(1), it returns the value in the first(second)
 set of lanes.
 `$result = `select32($select, $xbuff, $xstart, $xoffsets, $ystart, $yoffsets)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -382,7 +404,9 @@ Xilinx-specific advanced sub operation that subtracts two 1-D vectors
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs - $rhs`.
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -422,9 +446,9 @@ upd intrinsic combines the load of data from memory into a vector
 register, and then updating the lanes of the result vector using it. 
 `$result = upd($source[$indices], $offset, $index)`
 
-Traits: AttrSizedOperandSegments
+Traits: AlwaysSpeculatableImplTrait, AttrSizedOperandSegments
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -458,7 +482,9 @@ to accumulator data type. The adjustment in precision is controlled by
 the shift parameter.
 `$result = ups($source, $shift)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
@@ -488,7 +514,9 @@ Xilinx-specific unpack intrinsic. Unpack a vector of 8-bit values into
 a vector of 16-bit values.
 `$result = unpack($source)`
 
-Interfaces: NoSideEffect (MemoryEffectOpInterface)
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
