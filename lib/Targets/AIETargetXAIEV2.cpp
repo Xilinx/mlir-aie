@@ -121,7 +121,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   for (auto tileOp : module.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
-    if (tileOp.isShimTile()) {
+    if (tileOp.isShimNOCorPLTile()) {
       // Resets no needed with V2 kernel driver
       output << "{\n";
       output << "u64 tileAddr = _XAie_GetTileAddr(" << deviceInstRef << ", "

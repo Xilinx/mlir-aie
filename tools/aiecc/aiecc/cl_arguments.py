@@ -90,11 +90,6 @@ def parse_args():
             default=aie_disable_link,
             action='store_false',
             help='Disable linking of AIE code')
-    parser.add_argument('--pathfinder',
-            dest="pathfinder",
-            default=False,
-            action='store_true',
-            help='Compile using pathfinder router')
     parser.add_argument('--aie-generate-xaiev2',
             dest="xaie",
             default=2,
