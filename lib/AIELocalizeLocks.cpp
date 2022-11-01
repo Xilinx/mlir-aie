@@ -11,7 +11,7 @@
 
 #include "aie/AIEDialect.h"
 #include "aie/AIETokenAnalysis.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -27,7 +27,7 @@ using namespace xilinx::AIE;
 struct AIELocalizeLocksPass
     : public AIELocalizeLocksBase<AIELocalizeLocksPass> {
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<arith::ArithmeticDialect>();
+    registry.insert<arith::ArithDialect>();
   }
   void runOnOperation() override {
 

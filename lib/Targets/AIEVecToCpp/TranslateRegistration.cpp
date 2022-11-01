@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "TranslateAIEVecToCpp.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
@@ -36,13 +36,13 @@ namespace aievec {
 
 void registerAIEVecToCppTranslation() {
   TranslateFromMLIRRegistration reg(
-      "aievec-to-cpp",
+      "aievec-to-cpp", "Translate AIEVecDialect dialect to C++",
       [](ModuleOp module, raw_ostream &output) {
         return aievec::translateAIEVecToCpp(module, output);
       },
       [](DialectRegistry &registry) {
         // clang-format off
-        registry.insert<arith::ArithmeticDialect,
+        registry.insert<arith::ArithDialect,
                         emitc::EmitCDialect,
                         LLVM::LLVMDialect,
                         math::MathDialect,

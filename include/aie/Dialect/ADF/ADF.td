@@ -94,7 +94,7 @@ def cacc80 : ADF_DataType<"cacc80">;
 // ADF Operations
 //===----------------------------------------------------------------------===//
 
-def GraphOp : ADF_Op<"graph", [NoSideEffect, SingleBlock, NoTerminator]> {
+def GraphOp : ADF_Op<"graph", [Pure, SingleBlock, NoTerminator]> {
   let summary = "An ADF graph operation";
   let description = [{
     An operation that represents an ADF graph.  This operation determines
@@ -113,7 +113,7 @@ def GraphOp : ADF_Op<"graph", [NoSideEffect, SingleBlock, NoTerminator]> {
   let assemblyFormat = "`(` $name `)` regions attr-dict";
 }
 
-def GraphInputOp : ADF_Op<"input_port", [ConstantLike, NoSideEffect]> {
+def GraphInputOp : ADF_Op<"input_port", [ConstantLike, Pure]> {
   let summary = "Graph input port operation";
   let description = [{
     An operation representing a primary input of an ADF graph. 
@@ -144,7 +144,7 @@ def GraphInputOp : ADF_Op<"input_port", [ConstantLike, NoSideEffect]> {
 }
 
 
-def KernelOp : ADF_Op<"kernel", [NoSideEffect]> {
+def KernelOp : ADF_Op<"kernel", [Pure]> {
   let summary = "call and instantiate a kernel node with proper connections";
   let description = [{
     An operation representing a primitive node in the graph.
@@ -167,7 +167,7 @@ def KernelOp : ADF_Op<"kernel", [NoSideEffect]> {
 }
 
 
-def GraphOutputOp : ADF_Op<"output_port", [NoSideEffect]> {
+def GraphOutputOp : ADF_Op<"output_port", [Pure]> {
   let summary = "Graph output port operation";
   let description = [{
     An operation representing a primary input of an ADF graph. 
@@ -186,7 +186,7 @@ def GraphOutputOp : ADF_Op<"output_port", [NoSideEffect]> {
   }];
 }
 
-def GraphInOutOp : ADF_Op<"inout_port", [NoSideEffect]> {
+def GraphInOutOp : ADF_Op<"inout_port", [Pure]> {
   let summary = "Graph input/output port operation";
   let description = [{
     An operation representing a dual input/output of an ADF graph.

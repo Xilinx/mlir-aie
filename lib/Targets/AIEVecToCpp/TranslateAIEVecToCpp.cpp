@@ -13,7 +13,7 @@
 #include "TranslateAIEVecToCpp.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -286,9 +286,9 @@ static LogicalResult parseMemRefDynamicDims(CppEmitter &emitter,
   func.walk([&](mlir::Operation *Op) {
     if (auto op = dyn_cast<memref::DimOp>(Op)) {
       // Extract the source memref, result, and index
-      Value source = op.source();
-      Value result = op.result();
-      auto indexOp = dyn_cast<arith::ConstantOp>(op.index().getDefiningOp());
+      Value source = op.getSource();
+      Value result = op.getResult();
+      auto indexOp = dyn_cast<arith::ConstantOp>(op.getIndex().getDefiningOp());
       assert(indexOp && "Failed to get the index value of dimOp");
       // Get the constant index value
       llvm::APInt idxVal = indexOp.getValue().cast<IntegerAttr>().getValue();
@@ -2109,11 +2109,11 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<cf::BranchOp, func::CallOp, cf::CondBranchOp, func::FuncOp,
                 ModuleOp, func::ReturnOp>(
               [&](auto op) { return printOperation(*this, op); })
-          // Arithmetic ops.
+          // Arith ops.
           .Case<arith::ConstantOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Extra ops added for AIE
-          //  Arithmetic ops.
+          //  Arith ops.
           .Case<arith::AddIOp>(
               [&](auto op) { return printOperation<arith::AddIOp>(*this, op); })
           // Vector ops
