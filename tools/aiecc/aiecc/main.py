@@ -183,10 +183,9 @@ class flow_runner:
       else:
           await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
 
+      cmd = ['clang','-std=c++11']
       if(opts.host_target):
-        cmd = ['clang','--target=%s' % opts.host_target, '-std=c++11']
-      else:
-        cmd = ['clang','--target=aarch64-linux-gnu', '-std=c++11']
+        cmd += ['--target=%s' % opts.host_target]
       if(self.opts.sysroot):
         cmd += ['--sysroot=%s' % opts.sysroot]
         # In order to find the toolchain in the sysroot, we need to have
