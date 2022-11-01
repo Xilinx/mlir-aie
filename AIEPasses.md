@@ -34,9 +34,6 @@ will result in:
 ```
 In this case, each argument to aie_task results in an explicit buffer accessed by the core.
 
-### `-aie-create-flows`: Route aie.flow operations through switchboxes
-Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
-operations.  
 ### `-aie-create-locks`: Generate physical lock ops from logical lock (token) ops
 Tokens represent high-level buffer synchronization through a sequence of
 pipeline stages.  This pass lowers token operations into physical aie.lock
