@@ -136,10 +136,7 @@ def run_flow(opts, tmpdirname):
     def process_arm_cgen():
       # Generate the included host interface
       file_physical = os.path.join(tmpdirname, 'input_physical.mlir')
-      if(opts.pathfinder):
-        do_call(['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
-      else:
-        do_call(['aie-opt', '--aie-create-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
+      do_call(['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(tmpdirname, 'aie_inc.cpp')
       if(opts.xaie == 1):
           do_call(['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
