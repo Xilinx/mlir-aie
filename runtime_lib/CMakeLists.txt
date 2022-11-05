@@ -13,23 +13,24 @@ set(INSTALLS
 
 # Stuff into the build area:
 add_custom_target(aie-copy-runtime-libs ALL)
-
 # Extract me_basic.o from libme.a, which is shipped with Vitis.
-add_custom_target(aie-copy-runtime-libs-me_basic ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o)
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
+add_custom_target(me_basic ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o)
+if(DEFINED VITIS_ROOT)
+    # Compile me_basic.o
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
+                    COMMAND ${VITIS_XCHESSCC} -p me -P ${VITIS_AIETOOLS_DIR}/data/cervino/lib
+                    -I ${VITIS_AIETOOLS_DIR}/data/cervino/lib/runtime/include/
+                    -d -c ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.c
+                    -o ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
+                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.c)
+else()
     # Exists in the source tree.. just copy it.
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
                     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o
                     ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
                     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
-elseif(DEFINED VITIS_ROOT)
-    # Extract from Vitis.
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
-                       COMMAND ar -x ${VITIS_LIBME} me_basic.o)
-else()
-    message(WARNING "No source of me_basic.o... Hope you don't need it!")
 endif()
-add_dependencies(aie-copy-runtime-libs aie-copy-runtime-libs-me_basic )
+add_dependencies(aie-copy-runtime-libs me_basic )
 
 # copy libc and libm from Vitis
 if(DEFINED VITIS_ROOT)
