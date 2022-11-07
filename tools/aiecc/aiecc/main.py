@@ -52,7 +52,7 @@ class flow_runner:
         ret = 0
       end = time.time()
       if(self.opts.verbose):
-          print("Done %.3f-%.3f=%.3f %s" % (start, end, end-start, commandstr))
+          print("Done in %.3f sec: %s" % (end-start, commandstr))
       self.runtimes[commandstr] = end-start
       if(task):
         self.progress_bar.update(task, advance=1, command="")
@@ -144,7 +144,7 @@ class flow_runner:
           await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
         elif(self.opts.link):
           await self.do_call(task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
-          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
+          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
                        '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
       elif(opts.compile):
         file_core_llvmir_stripped = self.tmpcorefile(core, "stripped.ll")
