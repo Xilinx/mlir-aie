@@ -9,7 +9,6 @@
 #include "../PassDetail.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/TypeUtilities.h"
 
@@ -60,14 +59,14 @@ std::string getMulOrFMAIntrinsicName(Operation *op) {
   Value lhs, rhs, result;
   if (auto mulOp = dyn_cast<xilinx::aievec::MulOp>(op)) {
     baseName = "mul";
-    lhs = mulOp.lhs();
-    rhs = mulOp.rhs();
-    result = mulOp.result();
+    lhs = mulOp.getLhs();
+    rhs = mulOp.getRhs();
+    result = mulOp.getResult();
   } else if (auto fmaOp = dyn_cast<xilinx::aievec::FMAOp>(op)) {
     baseName = "mac";
-    lhs = fmaOp.lhs();
-    rhs = fmaOp.rhs();
-    result = fmaOp.result();
+    lhs = fmaOp.getLhs();
+    rhs = fmaOp.getRhs();
+    result = fmaOp.getResult();
   }
   VectorType resultType = result.getType().cast<VectorType>();
   int resultSize = getVectorLaneSize(resultType);
@@ -154,10 +153,10 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.lhs().getType(),
-                                         op.rhs().getType(),
-                                         op.acc().getType(),
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getLhs().getType(),
+                                         op.getRhs().getType(),
+                                         op.getAcc().getType(),
                                          startType, /* xstart */
                                          startType, /* ystart */
                                          startType, /* zstart */
@@ -171,20 +170,20 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
       // Parse the string attribute values
       BufferParams x = {};
       BufferParams z = {};
-      op.xstart().getAsInteger(0, x.start);
-      op.xoffsets().getAsInteger(0, x.offsets);
-      op.xoffsets_hi().getAsInteger(0, x.offsets_hi);
-      op.xstep().getAsInteger(0, x.step);
-      op.xsquare().getAsInteger(0, x.square);
-      op.zstart().getAsInteger(0, z.start);
-      op.zoffsets().getAsInteger(0, z.offsets);
-      op.zoffsets_hi().getAsInteger(0, z.offsets_hi);
-      op.zstep().getAsInteger(0, z.step);
-      op.zsquare().getAsInteger(0, z.square);
+      op.getXstart().getAsInteger(0, x.start);
+      op.getXoffsets().getAsInteger(0, x.offsets);
+      op.getXoffsetsHi().getAsInteger(0, x.offsets_hi);
+      op.getXstep().getAsInteger(0, x.step);
+      op.getXsquare().getAsInteger(0, x.square);
+      op.getZstart().getAsInteger(0, z.start);
+      op.getZoffsets().getAsInteger(0, z.offsets);
+      op.getZoffsetsHi().getAsInteger(0, z.offsets_hi);
+      op.getZstep().getAsInteger(0, z.step);
+      op.getZsquare().getAsInteger(0, z.square);
 
       // Encode the configuration register
       uint32_t conf[2] = {0,0};
-      encodeConf(conf, x, z, op.fmsub());
+      encodeConf(conf, x, z, op.getFmsub());
 
 
       // Create the constants and replace the op
@@ -194,7 +193,7 @@ class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::FMAO
       auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({(int32_t) x.offsets, (int32_t) x.offsets_hi}));
       auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({(int32_t) z.offsets, (int32_t) z.offsets_hi}));
       auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({(int32_t) conf[0], (int32_t) conf[1]}));
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), op.rhs(), op.acc(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getLhs(), op.getRhs(), op.getAcc(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
       return success();
     }
 };
@@ -223,9 +222,9 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.lhs().getType(),
-                                         op.rhs().getType(),
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getLhs().getType(),
+                                         op.getRhs().getType(),
                                          startType, /* xstart */
                                          startType, /* ystart */
                                          startType, /* zstart */
@@ -239,16 +238,16 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
       // Parse the string attribute values
       BufferParams x = {};
       BufferParams z = {};
-      op.xstart().getAsInteger(0, x.start);
-      op.xoffsets().getAsInteger(0, x.offsets);
-      op.xoffsets_hi().getAsInteger(0, x.offsets_hi);
-      op.xstep().getAsInteger(0, x.step);
-      op.xsquare().getAsInteger(0, x.square);
-      op.zstart().getAsInteger(0, z.start);
-      op.zoffsets().getAsInteger(0, z.offsets);
-      op.zoffsets_hi().getAsInteger(0, z.offsets_hi);
-      op.zstep().getAsInteger(0, z.step);
-      op.zsquare().getAsInteger(0, z.square);
+      op.getXstart().getAsInteger(0, x.start);
+      op.getXoffsets().getAsInteger(0, x.offsets);
+      op.getXoffsetsHi().getAsInteger(0, x.offsets_hi);
+      op.getXstep().getAsInteger(0, x.step);
+      op.getXsquare().getAsInteger(0, x.square);
+      op.getZstart().getAsInteger(0, z.start);
+      op.getZoffsets().getAsInteger(0, z.offsets);
+      op.getZoffsetsHi().getAsInteger(0, z.offsets_hi);
+      op.getZstep().getAsInteger(0, z.step);
+      op.getZsquare().getAsInteger(0, z.square);
 
       // Encode the configuration register
       uint32_t conf[2] = {0,0};
@@ -261,7 +260,7 @@ class MulOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::MulO
       auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({(int32_t) x.offsets, (int32_t) x.offsets_hi}));
       auto zoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({(int32_t) z.offsets, (int32_t) z.offsets_hi}));
       auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({(int32_t) conf[0], (int32_t) conf[1]}));
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.lhs(), op.rhs(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getLhs(), op.getRhs(), xstartVal, ystartVal, zstartVal, xoffsetsVal, zoffsetsVal, confVal});
       return success();
     }
 };
@@ -289,8 +288,8 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
       ss << "llvm.aie.";
 
       // determine the prefix
-      auto sourceType = op.source().getType().cast<VectorType>();
-      auto resultType = op.result().getType().cast<VectorType>();
+      auto sourceType = op.getSource().getType().cast<VectorType>();
+      auto resultType = op.getResult().getType().cast<VectorType>();
       auto sourceElType = sourceType.getElementType().cast<IntegerType>();
       auto resultElType = resultType.getElementType().cast<IntegerType>();
 
@@ -323,16 +322,16 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.source().getType(),
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getSource().getType(),
                                          shiftType})
                                        );
         rewriter.setInsertionPoint(op);
       }
 
       // Create a constant for the shift value
-      auto shiftVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), shiftType, rewriter.getI32IntegerAttr(op.shift()));
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.source(), shiftVal});
+      auto shiftVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), shiftType, rewriter.getI32IntegerAttr(op.getShift()));
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getSource(), shiftVal});
       return success();
     }
 };
@@ -342,7 +341,7 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
     using ConvertOpToLLVMPattern<xilinx::aievec::UPDOp>::ConvertOpToLLVMPattern;
 
     static std::string getIntrinsicName(xilinx::aievec::UPDOp op, int loadSize) {
-      auto resultType = op.result().getType().cast<VectorType>();
+      auto resultType = op.getResult().getType().cast<VectorType>();
       std::stringstream ss;
       ss << "llvm.aie.upd.";
       ss << (loadSize == 128   ? 'v'
@@ -350,7 +349,7 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
                                : 'x') << ".";
       ss << getVectorTypeString(resultType) << ".";
       // The index actually affects which intrinsic to call
-      ss << (op.index() == 0 ? "lo" : "hi");
+      ss << (op.getIndex() == 0 ? "lo" : "hi");
       return ss.str();
     }
 
@@ -363,12 +362,12 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
       // A bit more complicated: load the vector, then update result vector
       // AIE1 is capable of 128-bit on one bank and 256-bit loads on even-odd banks
       // Identify size of update
-      int vecSizeInBits = getVectorSizeInBits(op.result().getType().cast<VectorType>());
+      int vecSizeInBits = getVectorSizeInBits(op.getResult().getType().cast<VectorType>());
 
       auto ptr = this->getStridedElementPtr(op->getLoc(),
-          op.source().getType().cast<MemRefType>(),
-          adaptor.source(),
-          adaptor.indices(),
+          op.getSource().getType().cast<MemRefType>(),
+          adaptor.getSource(),
+          adaptor.getIndices(),
           rewriter);
 
       if (vecSizeInBits <= 256) {
@@ -377,8 +376,8 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
         // look at the indices to calculate the address
         // thanks vector for telling me about this function :)
         auto vectorPtrType = LLVM::LLVMPointerType::get(
-          op.result().getType().cast<VectorType>(),
-          op.source().getType().cast<MemRefType>().getMemorySpaceAsInt());
+          op.getResult().getType().cast<VectorType>(),
+          op.getSource().getType().cast<MemRefType>().getMemorySpaceAsInt());
         auto castedPtr = rewriter.create<LLVM::BitcastOp>(op->getLoc(),
           vectorPtrType,
           ptr);
@@ -396,14 +395,14 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
 
         // Create a vectorType for the load proper
         // Load half of the final result vector
-        auto resultType = op.result().getType().cast<VectorType>();
+        auto resultType = op.getResult().getType().cast<VectorType>();
         int lanes = getVectorLaneSize(resultType);
         auto loadType = VectorType::get({(int64_t) lanes/2}, resultType.getElementType());
 
         // Load the vector
         auto vectorPtrType = LLVM::LLVMPointerType::get(
           loadType,
-          op.source().getType().cast<MemRefType>().getMemorySpaceAsInt());
+          op.getSource().getType().cast<MemRefType>().getMemorySpaceAsInt());
         auto castedPtr = rewriter.create<LLVM::BitcastOp>(op->getLoc(),
           vectorPtrType,
           ptr);
@@ -431,8 +430,8 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
         // If this UPD is not working off of an existing destination vector,
         // create an undefined vector as the destination
         Value destValue;
-        if (adaptor.vector()) {
-          destValue = adaptor.vector();
+        if (adaptor.getVector()) {
+          destValue = adaptor.getVector();
         } else {
           //destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
 
@@ -468,7 +467,7 @@ class ConcatOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::C
     using ConvertOpToLLVMPattern<xilinx::aievec::ConcatOp>::ConvertOpToLLVMPattern;
 
     static std::string getIntrinsicName(xilinx::aievec::ConcatOp op) {
-      auto sourceType = op.sources()[0].getType().cast<VectorType>();
+      auto sourceType = op.getSources()[0].getType().cast<VectorType>();
       std::stringstream ss;
       ss << "llvm.aie.concat.";
       ss << getVectorTypeString(sourceType, true);
@@ -493,14 +492,14 @@ class ConcatOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::C
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.sources()[0].getType(),
-                                         op.sources()[1].getType()})
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getSources()[0].getType(),
+                                         op.getSources()[1].getType()})
                                        );
         rewriter.setInsertionPoint(op);
       }
 
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.sources()[0], op.sources()[1]});
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getSources()[0], op.getSources()[1]});
       return success();
     }
 };
@@ -510,8 +509,8 @@ class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ExtO
     using ConvertOpToLLVMPattern<xilinx::aievec::ExtOp>::ConvertOpToLLVMPattern;
 
     static std::string getIntrinsicName(xilinx::aievec::ExtOp op) {
-      auto sourceType = op.source().getType().cast<VectorType>();
-      auto resultType = op.result().getType().cast<VectorType>();
+      auto sourceType = op.getSource().getType().cast<VectorType>();
+      auto resultType = op.getResult().getType().cast<VectorType>();
       int resultSize = getVectorSizeInBits(resultType);
       std::stringstream ss;
       ss << "llvm.aie.ext.";
@@ -520,7 +519,7 @@ class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ExtO
              : 'x') << ".";
       ss << getVectorTypeString(sourceType, true) << ".";
       // The index actually affects which intrinsic to call
-      ss << (op.index() == 0 ? "lo" : "hi");
+      ss << (op.getIndex() == 0 ? "lo" : "hi");
       return ss.str();
     }
 
@@ -540,13 +539,13 @@ class ExtOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::ExtO
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.source().getType()})
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getSource().getType()})
                                        );
         rewriter.setInsertionPoint(op);
       }
 
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.source()});
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getSource()});
       return success();
     }
 };
@@ -556,7 +555,7 @@ class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::S
     using ConvertOpToLLVMPattern<xilinx::aievec::SelectOp>::ConvertOpToLLVMPattern;
 
     static std::string getIntrinsicName(xilinx::aievec::SelectOp op) {
-      auto xbuffType = op.xbuff().getType().cast<VectorType>();
+      auto xbuffType = op.getXbuff().getType().cast<VectorType>();
       std::stringstream ss;
       ss << "llvm.aie.prim." << getVectorTypeString(xbuffType) << ".select";
       return ss.str();
@@ -583,8 +582,8 @@ class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::S
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.xbuff().getType(),
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getXbuff().getType(),
                                          selectType,
                                          startType, /* xstart */
                                          startType, /* ystart */
@@ -601,15 +600,15 @@ class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::S
       BufferParams y = {};
       BufferParams z = {};
 
-      op.select().getAsInteger(0, select);
-      op.xstart().getAsInteger(0, x.start);
-      op.xoffsets().getAsInteger(0, x.offsets);
-      op.xoffsets_hi().getAsInteger(0, x.offsets_hi);
-      op.xsquare().getAsInteger(0, x.square);
-      op.ystart().getAsInteger(0, y.start);
-      op.yoffsets().getAsInteger(0, y.offsets);
-      op.yoffsets_hi().getAsInteger(0, y.offsets_hi);
-      op.ysquare().getAsInteger(0, y.square);
+      op.getSelect().getAsInteger(0, select);
+      op.getXstart().getAsInteger(0, x.start);
+      op.getXoffsets().getAsInteger(0, x.offsets);
+      op.getXoffsetsHi().getAsInteger(0, x.offsets_hi);
+      op.getXsquare().getAsInteger(0, x.square);
+      op.getYstart().getAsInteger(0, y.start);
+      op.getYoffsets().getAsInteger(0, y.offsets);
+      op.getYoffsetsHi().getAsInteger(0, y.offsets_hi);
+      op.getYsquare().getAsInteger(0, y.square);
 
       // Encode the configuration register
       uint32_t conf[2] = {0,0};
@@ -623,7 +622,7 @@ class SelectOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::S
       auto xoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({(int32_t) x.offsets, (int32_t) x.offsets_hi}));
       auto yoffsetsVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), offsetsType, rewriter.getI32VectorAttr({(int32_t) y.offsets, (int32_t) y.offsets_hi}));
       auto confVal = rewriter.create<LLVM::ConstantOp>(op->getLoc(), confType, rewriter.getI32VectorAttr({(int32_t) conf[0], (int32_t) conf[1]}));
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.xbuff(), selectVal, xstartVal, ystartVal, xoffsetsVal, yoffsetsVal, confVal});
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getXbuff(), selectVal, xstartVal, ystartVal, xoffsetsVal, yoffsetsVal, confVal});
       return success();
     }
 };
@@ -633,7 +632,7 @@ class PackOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::Pac
     using ConvertOpToLLVMPattern<xilinx::aievec::PackOp>::ConvertOpToLLVMPattern;
 
     static std::string getIntrinsicName(xilinx::aievec::PackOp op) {
-      auto sourceType = op.source().getType().cast<VectorType>();
+      auto sourceType = op.getSource().getType().cast<VectorType>();
       std::stringstream ss;
       ss << "llvm.aie.pack." << getVectorTypeString(sourceType);
       return ss.str();
@@ -655,13 +654,13 @@ class PackOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::Pac
         rewriter.setInsertionPointToStart(module.getBody());
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(op.result().getType(),
-                                        {op.source().getType()})
+            LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                        {op.getSource().getType()})
                                        );
         rewriter.setInsertionPoint(op);
       }
 
-      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.source()});
+      rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func, ValueRange{op.getSource()});
       return success();
     }
 };
