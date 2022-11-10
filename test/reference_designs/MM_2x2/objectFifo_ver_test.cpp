@@ -1,4 +1,4 @@
-//===- test.cpp -------------------------------------------------*- C++ -*-===//
+//===- objectFifo_ver_test.cpp -------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -110,14 +110,22 @@ int main(int argc, char *argv[]) {
 
   printf("Finish configure\n");
 #define DMA_COUNT 1024
-  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-  int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
-  int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
-  int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
-  int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
-  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
-  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
+  int *mem_ptr0 =
+      mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  int *mem_ptr1 =
+      mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  int *mem_ptr2 =
+      mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
+  int *mem_ptr3 =
+      mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
+  int *mem_ptr4 =
+      mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
+  int *mem_ptr5 =
+      mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
+  int *mem_ptr6 =
+      mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
+  int *mem_ptr7 =
+      mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT + 1; i++) {
@@ -148,14 +156,15 @@ int main(int argc, char *argv[]) {
 #ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
   mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
-  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr2);
-  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr3);
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr4);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr5);
-  mlir_aie_external_set_addr_myBuffer_70_2((u64)mem_ptr6);
-  mlir_aie_external_set_addr_myBuffer_70_3((u64)mem_ptr7);
-  mlir_aie_configure_shimdma_70(_xaie);
+  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr6);
+  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr7);
+  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr2);
+  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr3);
+  mlir_aie_external_set_addr_myBuffer_100_0((u64)mem_ptr4);
+  mlir_aie_external_set_addr_myBuffer_100_1((u64)mem_ptr5);
   mlir_aie_configure_shimdma_60(_xaie);
+  mlir_aie_configure_shimdma_70(_xaie);
+  mlir_aie_configure_shimdma_100(_xaie);
 #endif
 
   printf("before core start\n");
@@ -164,43 +173,12 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_release_lock(_xaie, 6, 0, 0, 1, 0);
   mlir_aie_release_lock(_xaie, 6, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 2, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 3, 1, 0);
   mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
   mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
+  mlir_aie_release_lock(_xaie, 10, 0, 0, 1, 0);
+  mlir_aie_release_lock(_xaie, 10, 0, 1, 1, 0);
 
   usleep(sleep_u);
-  // Check if the local buffer contain the correct data
-  for (int bd = 0; bd < DMA_COUNT; bd++) {
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf63_0(_xaie, bd), 1, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf63_1(_xaie, bd), 3, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf63_3(_xaie, bd), 96, // Sub_sum0
-                   errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf64_0(_xaie, bd), 2, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf64_1(_xaie, bd), 4, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf64_2(_xaie, bd), 352, // Out_tile0
-                   errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf73_0(_xaie, bd), 1, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf73_1(_xaie, bd), 5, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf73_3(_xaie, bd), 160, // Sub_sum1
-                   errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf74_0(_xaie, bd), 2, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf74_1(_xaie, bd), 6, errors);
-    mlir_aie_check("Before release lock:",
-                   mlir_aie_read_buffer_buf74_2(_xaie, bd), 544, // Out_tile1
-                   errors);
-  }
 
   // Check if the external buffer receives the correct result
   int Header0 = mem_ptr6[0] & 31;
