@@ -155,7 +155,7 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>>
       buffersPerFifo; // maps each objFifo to its corresponding buffer
   DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
-      externalBuffersPerFifo; // maps each objFifo to its corresponding 
+      externalBuffersPerFifo; // maps each objFifo to its corresponding
                               // external buffers
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
@@ -164,8 +164,10 @@ struct AIEObjectFifoStatefulTransformPass
                       // corresponding consumer objectFifos
   int buff_index = 0; // used to give objectFifo buffer elements a symbolic name
 
-  ObjectFifoCreateOp createObjectFifo(OpBuilder &builder, AIEObjectFifoType datatype, 
-                                      Value prodTile, Value consTile, int depth) {
+  ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
+                                      AIEObjectFifoType datatype,
+                                      Value prodTile, Value consTile,
+                                      int depth) {
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), datatype, prodTile, consTile, depth);
     return fifo;
@@ -219,7 +221,8 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create a Bd block.
   /// If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a
   /// producerDMA (i.e. on consumer tile).
-  void createBdBlock(OpBuilder &builder, int lockMode, BufferOp buff, LockOp lock, Block *succ) {
+  void createBdBlock(OpBuilder &builder, int lockMode, BufferOp buff,
+                     LockOp lock, Block *succ) {
     int acqMode = lockMode == 0 ? 1 : 0;
     int relMode = lockMode == 0 ? 0 : 1;
     int offset = 0;
@@ -240,8 +243,8 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create a Bd block with an ExternalBufferOp.
   /// If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a
   /// producerDMA (i.e. on consumer tile).
-  void createBdBlockExternal(OpBuilder &builder, int lockMode, ExternalBufferOp buff, 
-                             LockOp lock, Block *succ) {
+  void createBdBlockExternal(OpBuilder &builder, int lockMode,
+                             ExternalBufferOp buff, LockOp lock, Block *succ) {
     int acqMode = lockMode == 0 ? 1 : 0;
     int relMode = lockMode == 0 ? 0 : 1;
     int offset = 0;
@@ -261,9 +264,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function that either calls createTileDMA() or createShimDMA() based on
   /// op tile row value.
-  void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, 
-                 int channelIndex, int lockMode) {
-    if (op.getProducerTileOp().isShimTile()) 
+  void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
+                 DMAChannelDir channelDir, int channelIndex, int lockMode) {
+    if (op.getProducerTileOp().isShimTile())
       createShimDMA(m, builder, op, channelDir, channelIndex, lockMode);
     else
       createTileDMA(m, builder, op, channelDir, channelIndex, lockMode);
@@ -334,7 +337,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a ShimDMAOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createShimDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op, 
+  void createShimDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
                      DMAChannelDir channelDir, int channelIndex, int lockMode) {
     int numBlocks = 1;
 
@@ -356,8 +359,9 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     if (producerMem == nullptr) {
       builder.setInsertionPointToEnd(m.getBody());
-      ShimDMAOp newMemOp = builder.create<ShimDMAOp>(builder.getUnknownLoc(), 
-                                    builder.getIndexType(), op.getProducerTile());
+      ShimDMAOp newMemOp = builder.create<ShimDMAOp>(builder.getUnknownLoc(),
+                                                     builder.getIndexType(),
+                                                     op.getProducerTile());
       producerMem = &newMemOp;
       Region &r = producerMem->getBody();
       r.push_back(new Block);
@@ -379,7 +383,6 @@ struct AIEObjectFifoStatefulTransformPass
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
-
     // create Bd blocks
     Block *succ;
     Block *curr = bdBlock;
@@ -391,8 +394,9 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
       }
       builder.setInsertionPointToStart(curr);
-      createBdBlockExternal(builder, lockMode, externalBuffersPerFifo[op][blockIndex],
-                    locksPerFifo[op][blockIndex], succ);
+      createBdBlockExternal(builder, lockMode,
+                            externalBuffersPerFifo[op][blockIndex],
+                            locksPerFifo[op][blockIndex], succ);
       curr = succ;
       blockIndex++;
     }
@@ -650,13 +654,13 @@ struct AIEObjectFifoStatefulTransformPass
     externalBuffersPerFifo[fifo].push_back(buff);
   }
 
-  /// Function used to detect all external buffers associated with parent objectFifo 
-  /// and tile then map them to child objectFifo.
-  void detectExternalBuffers(ModuleOp &m, ObjectFifoCreateOp parent, 
+  /// Function used to detect all external buffers associated with parent
+  /// objectFifo and tile then map them to child objectFifo.
+  void detectExternalBuffers(ModuleOp &m, ObjectFifoCreateOp parent,
                              ObjectFifoCreateOp child, Value tile) {
     for (auto regOp : m.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
       if (regOp.getTile() == tile && regOp.getFifo() == parent) {
-        for (auto extBuff : regOp.getExternalBuffers()) 
+        for (auto extBuff : regOp.getExternalBuffers())
           addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
       }
     }
@@ -811,20 +815,22 @@ struct AIEObjectFifoStatefulTransformPass
         // their elements will be created in next iterations
         int consMaxAcquire = findObjectFifoSize(m, consumerTileOp, createOp);
         builder.setInsertionPointAfter(createOp);
-        AIEObjectFifoType datatype = createOp.getType().cast<AIEObjectFifoType>();
+        AIEObjectFifoType datatype =
+            createOp.getType().cast<AIEObjectFifoType>();
 
-        ObjectFifoCreateOp consumerFifo = createObjectFifo(builder, datatype, 
-            consumerTile, consumerTile, consMaxAcquire);
+        ObjectFifoCreateOp consumerFifo = createObjectFifo(
+            builder, datatype, consumerTile, consumerTile, consMaxAcquire);
 
-        if (consumerTile.getDefiningOp<TileOp>().isShimTile()) 
+        if (consumerTile.getDefiningOp<TileOp>().isShimTile())
           detectExternalBuffers(m, createOp, consumerFifo, consumerTile);
 
         // record that this objectFifo was split
         splitConsumerFifos.push_back(consumerFifo);
       }
 
-      if (createOp.getProducerTileOp().isShimTile()) 
-        detectExternalBuffers(m, createOp, createOp, createOp.getProducerTile());
+      if (createOp.getProducerTileOp().isShimTile())
+        detectExternalBuffers(m, createOp, createOp,
+                              createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
@@ -1058,7 +1064,8 @@ struct AIEObjectFifoStatefulTransformPass
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(m.getContext(), m);
-    patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(
+        m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);

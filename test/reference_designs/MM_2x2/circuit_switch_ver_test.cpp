@@ -1,4 +1,5 @@
-//===- circuit_switch_ver_test.cpp -------------------------------------------------*- C++ -*-===//
+//===- circuit_switch_ver_test.cpp
+//-------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -110,22 +111,14 @@ int main(int argc, char *argv[]) {
 
   printf("Finish configure\n");
 #define DMA_COUNT 1024
-  int *mem_ptr0 =
-      mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int *mem_ptr1 =
-      mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-  int *mem_ptr2 =
-      mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
-  int *mem_ptr3 =
-      mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
-  int *mem_ptr4 =
-      mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
-  int *mem_ptr5 =
-      mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
-  int *mem_ptr6 =
-      mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
-  int *mem_ptr7 =
-      mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
+  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
+  int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
+  int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
+  int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
+  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
+  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT + 1; i++) {

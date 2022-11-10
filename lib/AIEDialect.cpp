@@ -389,7 +389,8 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 // ObjectFifoRegisterExternalBuffersOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
   if (!getTile().getDefiningOp<TileOp>().isShimTile())
-    return emitError("Tile in ObjectFifoRegisterExternalBuffersOp is not a shim tile");
+    return emitError(
+        "Tile in ObjectFifoRegisterExternalBuffersOp is not a shim tile");
 
   return success();
 }
