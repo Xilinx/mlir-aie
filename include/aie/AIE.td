@@ -1604,18 +1604,22 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 }
 
 def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", []> {
-  let summary = "Registers external buffers to given object fifo to use in the shim tile";
+  let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
-    The "aie.objectFifo.registerExternalBuffers" operation 
+    The "aie.objectFifo.registerExternalBuffers" operation is used to register one or multiple external buffers 
+    to the shim tile(s) used in an objectFifo creation. During the objectFifo lowering pass, shim DMAs that are
+    generated for those shim tiles will use the registered external buffers. This is currently done because 
+    external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
+    same objectFifos.
 
     Example:
     ```
       %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
       %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
       %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-      AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1})
+      AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
-    This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in shimTile %t70.
+    This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
   }];
 
   let arguments = (
