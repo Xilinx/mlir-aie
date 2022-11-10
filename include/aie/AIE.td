@@ -1611,8 +1611,8 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
     Example:
     ```
       %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
-      %buffer_in_0  = AIE.external_buffer 0x020100004000 : memref<512 x i16>
-      %buffer_in_1  = AIE.external_buffer 0x020100006000 : memref<512 x i16>
+      %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
+      %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
       AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1})
     ```
     This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in shimTile %t70.
