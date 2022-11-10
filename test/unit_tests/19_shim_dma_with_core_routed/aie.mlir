@@ -9,10 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 //  clang -O2 --target=aie -c %S/kernel.cc
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
+module @test19_shim_dma_with_core_routed{
   %t73 = AIE.tile(7, 3)
   %t70 = AIE.tile(7, 0)
 
@@ -102,8 +102,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer 0x020100004000 : memref<512 x i32>
-  %buffer_out = AIE.external_buffer 0x020100006000 : memref<512 x i32>
+  %buffer_in  = AIE.external_buffer : memref<512 x i32>
+  %buffer_out = AIE.external_buffer : memref<512 x i32>
 
   // Shim DMA connection to kernel
   AIE.flow(%t70, "DMA" : 0, %t73, "DMA" : 0)

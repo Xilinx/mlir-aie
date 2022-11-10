@@ -11,7 +11,7 @@
 //  clang -O2 --target=aie -c %S/kernel.cc
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
-// RUN: aiecc.py --xbridge --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --xbridge --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
@@ -92,8 +92,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer 0x020100004000 : memref<512 x i32>
-  %buffer_out = AIE.external_buffer 0x020100006000 : memref<512 x i32>
+  %buffer_in  = AIE.external_buffer : memref<512 x i32>
+  %buffer_out = AIE.external_buffer : memref<512 x i32>
 
   // Shim DMA connection to kernel
   AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)

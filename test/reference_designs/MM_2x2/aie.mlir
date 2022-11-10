@@ -1,6 +1,6 @@
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @MM_2x2 {
@@ -13,14 +13,14 @@ module @MM_2x2 {
   %t73 = AIE.tile(7, 3)
   %t74 = AIE.tile(7, 4)
 
-  %buffer0 = AIE.external_buffer 0x020100000000 : memref<1024 x i32>     //LHS_tile0
-  %buffer1 = AIE.external_buffer 0x020100001000 : memref<1024 x i32>     //LHS_tile1
-  %buffer2 = AIE.external_buffer 0x020100002000 : memref<1024 x i32>     //RHS_tile0
-  %buffer3 = AIE.external_buffer 0x020100003000 : memref<1024 x i32>     //RHS_tile1
-  %buffer4 = AIE.external_buffer 0x020100004000 : memref<1024 x i32>     //RHS_tile2
-  %buffer5 = AIE.external_buffer 0x020100005000 : memref<1024 x i32>     //RHS_tile3
-  %buffer6 = AIE.external_buffer 0x020100006000 : memref<1025 x i32>     //Out_tile0
-  %buffer7 = AIE.external_buffer 0x020100008000 : memref<1025 x i32>     //Out_tile1
+  %buffer0 = AIE.external_buffer : memref<1024 x i32>     //LHS_tile0
+  %buffer1 = AIE.external_buffer : memref<1024 x i32>     //LHS_tile1
+  %buffer2 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile0
+  %buffer3 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile1
+  %buffer4 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile2
+  %buffer5 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile3
+  %buffer6 = AIE.external_buffer : memref<1025 x i32>     //Out_tile0
+  %buffer7 = AIE.external_buffer : memref<1025 x i32>     //Out_tile1
 
 
   %buf63_0 = AIE.buffer(%t63) {sym_name = "buf63_0"} : memref<1024xi32>  //LHS_tile0

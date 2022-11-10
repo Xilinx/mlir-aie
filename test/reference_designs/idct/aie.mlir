@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license && jackl
-// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc %S/dequant.cc %S/pass.cc
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @idct {
@@ -55,16 +55,13 @@ module @idct {
 
 
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
+  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
-  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  // func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
     %buffer_size =  arith.constant 64 : i32
@@ -82,20 +79,19 @@ module @idct {
       
       AIE.useLock(%lock_73_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_ping, "Acquire", 0) // acquire for write
-      func.call @dequant_8x8(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @pass(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_73_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_73_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_73_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_pong, "Acquire", 0) // acquire for write
-      func.call @dequant_8x8(%buf_73_apong, %buf_73_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @pass(%buf_73_apong, %buf_73_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_73_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_73_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
-
-  } { link_with="dequant.o" }
+  } { link_with="pass.o" }
 
   %c74 = AIE.core(%t74) { 
     %buffer_size =  arith.constant 64 : i32
@@ -126,8 +122,6 @@ module @idct {
 
     AIE.end
   } { link_with="pass.o" }
-
-
   
     %c75 = AIE.core(%t75) { 
     %buffer_size =  arith.constant 64 : i32
@@ -188,7 +182,7 @@ module @idct {
       AIE.end
   }
 
-    // Tile DMA
+  // Tile DMA
   %m74 = AIE.mem(%t74) {
       %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
     ^dma0:
@@ -247,34 +241,12 @@ module @idct {
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer 0x020100004000 : memref<512 x i16>
-  %buffer_out = AIE.external_buffer 0x020100006000 : memref<512 x i16>
+  %buffer_in  = AIE.external_buffer : memref<512 x i16>
+  %buffer_out = AIE.external_buffer : memref<512 x i16>
 
   // Shim DMA connection to kernel
-  AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-
-  %sw73  = AIE.switchbox(%t73) {
-    AIE.connect<"DMA" : 1, "North" : 3>
-  }
-  %sw74  = AIE.switchbox(%t74) {
-    AIE.connect<"South" : 3, "DMA" : 0>
-    AIE.connect<"DMA" : 1, "North" : 3>
-  }
-
-  %sw75  = AIE.switchbox(%t75) {
-    AIE.connect<"South" : 3, "DMA" : 0>
-  }
-
-  AIE.flow(%t75, "DMA" : 1, %t71, "South" : 2)
-
-  %sw1  = AIE.switchbox(%t70) {
-    AIE.connect<"South" : 3, "North" : 3>
-    AIE.connect<"North" : 2, "South" : 2>
-  }
-  %mux1 = AIE.shimmux  (%t70) {
-    AIE.connect<"DMA"   : 0, "North" : 3> 
-    AIE.connect<"North" : 2, "DMA" : 0>
-  }
+  AIE.flow(%t70, DMA : 0, %t73, DMA : 0)
+  AIE.flow(%t75, DMA : 0, %t70, DMA : 0)
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
@@ -296,6 +268,4 @@ module @idct {
     ^end:
       AIE.end
   }
-
-
 }

@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 // In this test, two objectFifos are created between three tiles; tile (1, 3) is both a
@@ -27,8 +27,8 @@ module @twoFilter2D  {
     %buff_out = AIE.buffer(%tile14) { sym_name = "out" } :  memref<10x16xi32>
     %lock_out = AIE.lock(%tile14, 0)
 
-    %objFifoOne = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>>
-    %objFifoTwo = AIE.objectFifo.createObjectFifo(%tile13, %tile14, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifoOne = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifoTwo = AIE.objectFifo.createObjectFifo(%tile13, {%tile14}, 4) : !AIE.objectFifo<memref<16xi32>>
 
     // Kernel Functions
     func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {

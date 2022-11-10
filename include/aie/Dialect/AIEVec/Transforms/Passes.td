@@ -21,7 +21,7 @@ def AIEVectorize : Pass<"aie-vectorize", "ModuleOp"> {
   let constructor = "xilinx::aievec::createAIEVectorizePass()";
   let dependentDialects = ["AffineDialect", 
                            "xilinx::aievec::AIEVecDialect",
-                           "arith::ArithmeticDialect",
+                           "arith::ArithDialect",
                            "memref::MemRefDialect",
                            "scf::SCFDialect", 
                            "vector::VectorDialect"];

@@ -8,11 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: andrab
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // CHECK-LABELs: module @test_lock_shimdma  {
 // CHECK:   AIE.token(0) {sym_name = "token0"}
-// CHECK:   %0 = AIE.external_buffer 0 : memref<256xi32>
+// CHECK:   %0 = AIE.external_buffer : memref<256xi32>
 // CHECK:   %1 = AIE.tile(6, 0)
 // CHECK:   %2 = AIE.lock(%1, 0)
 // CHECK:   %3 = AIE.core(%1)  {
@@ -57,7 +58,7 @@
 // single producer, single consumer
 module @test_lock_shimdma {
   AIE.token(0) {sym_name = "token0"}
-  %buf_ext = AIE.external_buffer 0 : memref<256xi32>
+  %buf_ext = AIE.external_buffer : memref<256xi32>
 
   %t60 = AIE.tile(6, 0)
   %c60 = AIE.core(%t60) {

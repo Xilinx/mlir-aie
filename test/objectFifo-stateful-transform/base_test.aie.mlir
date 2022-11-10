@@ -1,4 +1,4 @@
-//===- base_test_1.aie.mlir --------------------------*- MLIR -*-===//
+//===- base_test.aie.mlir --------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -24,7 +24,9 @@
 // CHECK:   %8 = AIE.lock(%0, 2)
 // CHECK:   %9 = AIE.buffer(%0) {sym_name = "buff3"} : memref<16xi32>
 // CHECK:   %10 = AIE.lock(%0, 3)
-// CHECK:   AIE.flow(%0, DMA : 0, %2, DMA : 1)
+// CHECK:   AIE.multicast(%0, DMA : 0) {
+// CHECK:     AIE.multi_dest<%2, DMA : 0>
+// CHECK:   }
 // CHECK: }
 
 module @elementGeneration {
@@ -33,9 +35,9 @@ module @elementGeneration {
     %tile33 = AIE.tile(3, 3)
 
     // In the shared memory case, the number of elements does not change.
-    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile12, %tile13, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) : !AIE.objectFifo<memref<16xi32>>
 
     // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
     // the processes running on each core (here nothing is specified so it cannot be derived).
-    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 }

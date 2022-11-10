@@ -12,7 +12,7 @@
 #include "aie/AIENetlistAnalysis.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -292,11 +292,11 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
         auto symName = buffer.name().getValue();
         auto allocated = rewriter.create<memref::GetGlobalOp>(
             rewriter.getUnknownLoc(), t, symName);
-        newAllocated[buffer] = allocated.result();
+        newAllocated[buffer] = allocated.getResult();
         // Assume that buffers are aligned so they can be vectorized.
         rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
                                                    allocated, 32);
-        rewriter.replaceOp(buffer, allocated.result());
+        rewriter.replaceOp(buffer, allocated.getResult());
       }
     }
 
@@ -446,7 +446,7 @@ struct AIECoreToStandardPass
     target.addLegalDialect<cf::ControlFlowDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
-    target.addLegalDialect<arith::ArithmeticDialect>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();
 
     RewritePatternSet patterns(&getContext());

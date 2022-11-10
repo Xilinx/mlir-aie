@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <thread>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -62,23 +63,30 @@ main(int argc, char *argv[])
 
     int errors = 0;
 
-    // // Load IDCT Data:
-    // File *file = fopen("image.txt")
-    // int image[512];
-    // int num;
-    // while(fscanf(file, "%d", &num) > 0){
-    //     image[i] = num;
-    //     i++;
-    // }
-    // fclose(file);
+    // Load IDCT Data
+    FILE *file = fopen("image.txt", "r");
+    if (file == NULL) {
+        perror("Error opening file: ");
+        return 1;
+    }
+    int image[512];
+    int num;
+    int i = 0;
+    while(fscanf(file, "%d\n", &num) > 0 && i < 512) {
+        image[i] = num;
+        i++;
+    }
+    fclose(file);
+    printf("IDCT data loaded.\n");
 
+    // Write IDCT Data to DDR and prepare output
     #define DMA_COUNT 512
 
     mlir_aie_init_mems(_xaie, 2);
     u_int16_t *ddr_ptr_in =
-        (u_int16_t *)mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+        (u_int16_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
     u_int16_t *ddr_ptr_out =
-        (u_int16_t *)mlir_aie_mem_alloc(_xaie, 1, 0x6000 + 0x020100000000LL, DMA_COUNT);
+        (u_int16_t *)mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
     for (u_int16_t i = 0; i < DMA_COUNT; i++) {
         *(ddr_ptr_in + i) = i;
         *(ddr_ptr_out + i) = 0;
@@ -113,59 +121,6 @@ main(int argc, char *argv[])
     // pc6.set();
     // pc7.set();
 
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     uint32_t d = ddr_ptr_in[i];
-    //     printf("ddr_ptr_in[%d] = %d\n", i, d);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_a73_ping(i, 0x0);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_a73_pong(i, 0x0);
-    // }
-
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_b73_ping(i, 0x0);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_b73_pong(i, 0x0);
-    // }
-
-    //   for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_a74_ping(i, 0x0);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_a74_pong(i, 0x0);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_b74_ping(i, 0x0);
-    // }
- 
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_b74_pong(i, 0x0);
-    // }
-
-    //     for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_a75_ping(i, 0x0);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_a75_pong(i, 0x0);
-    // }
-    
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_b75_ping(i, 0x0);
-    // }
-
-    // for (int i=0; i<DMA_COUNT; i++) {
-    //     mlir_write_buffer_b75_pong(i, 0x0);
-    // }
-
     mlir_aie_clear_tile_memory(_xaie, 7, 3);
     mlir_aie_clear_tile_memory(_xaie, 7, 4);
     mlir_aie_clear_tile_memory(_xaie, 7, 5);
@@ -183,7 +138,7 @@ main(int argc, char *argv[])
     // locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
     // printf("Locks70 = %08X\n", locks70);
 
-    // printf("Release lock for accessing DDR.\n");
+    printf("Release lock for accessing DDR.\n");
     mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
     mlir_aie_release_lock(_xaie, 7, 0, 1, 0, 0);
 
@@ -202,61 +157,6 @@ main(int argc, char *argv[])
     // mlir_aie_check("After", mlir_read_buffer_a_pong(0), 448, errors);
     // mlir_aie_check("After", mlir_read_buffer_b_ping(0), 385, errors);
     // mlir_aie_check("After", mlir_read_buffer_b_pong(0), 449, errors);    
-
-    // Dump contents of ddr_ptr_out
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_a73_ping(i);
-    //         printf("buffer out a ping 73 [%d] = %d\n", i, d);
-    //     }
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_a73_pong(i);
-    //         printf("buffer out a pong 73 [%d] = %d\n", i, d);
-    //     }
-
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_b73_ping(i);
-    //         printf("buffer out b ping 73 [%d] = %d\n", i, d);
-    //     }
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_b73_pong(i);
-    //         printf("buffer out b pong 73 [%d] = %d\n", i, d);
-    //     }
-
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_a74_ping(i);
-    //         printf("buffer out a ping 74 [%d] = %d\n", i, d);
-    //     }
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_a74_pong(i);
-    //         printf("buffer out a pong 74 [%d] = %d\n", i, d);
-    //     }
-
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_b74_ping(i);
-    //         printf("buffer out b ping 74 [%d] = %d\n", i, d);
-    //     }
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_b74_pong(i);
-    //         printf("buffer out b pong 74 [%d] = %d\n", i, d);
-    //     }
-
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_a75_ping(i);
-    //         printf("buffer out a ping 75 [%d] = %d\n", i, d);
-    //     }
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_a75_pong(i);
-    //         printf("buffer out a pong 75 [%d] = %d\n", i, d);
-    //     }
-
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_b75_ping(i);
-    //         printf("buffer out b ping 75 [%d] = %d\n", i, d);
-    //     }
-    // for (int i=0; i<16; i++) {
-    //         uint32_t d = mlir_read_buffer_b75_ping(i);
-    //         printf("buffer out b pong 75 [%d] = %d\n", i, d);
-    //     }
 
     printf("reached1: ");
     mlir_aie_acquire_lock(_xaie, 7, 0, 1, 1, 0);

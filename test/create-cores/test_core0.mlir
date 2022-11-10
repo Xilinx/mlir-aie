@@ -11,20 +11,20 @@
 // RUN: aie-opt --aie-create-cores %s | FileCheck %s
 
 // CHECK-LABEL: module @test_core0 {
-// CHECK-NEXT:    %0 = AIE.tile(1, 1)
-// CHECK-NEXT:    %1 = AIE.buffer(%0) : memref<256xi32>
-// CHECK-NEXT:    %2 = AIE.mem(%0) {
-// CHECK-NEXT:        AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %3 = memref.alloc() : memref<256xi32>
-// CHECK-NEXT:    func.func @host_task() {
-// CHECK-NEXT:      return
-// CHECK-NEXT:    }
-// CHECK-NEXT:    %4 = AIE.core(%0) {
-// CHECK-NEXT:      AIE.end
-// CHECK-NEXT:    }
-// CHECK-NEXT:    func.call @host_task() : () -> ()
-// CHECK-NEXT:  }
+// CHECK:         %[[VAL_0:.*]] = AIE.tile(1, 1)
+// CHECK:         %[[VAL_1:.*]] = AIE.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:         %[[VAL_2:.*]] = AIE.mem(%[[VAL_0]]) {
+// CHECK:           AIE.end
+// CHECK:         }
+// CHECK:         %[[VAL_3:.*]] = memref.alloc() : memref<256xi32>
+// CHECK:         func.func @host_task() {
+// CHECK:           return
+// CHECK:         }
+// CHECK:         %[[VAL_4:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:           AIE.end
+// CHECK:         }
+// CHECK:         func.call @host_task() : () -> ()
+// CHECK:       }
 
 // Lowering Std::FuncOp and Std::CallOp with (aie.x, aie.y) attributes to AIE::CoreOp,
 // AIE::MemOp, and AIE::TileOp

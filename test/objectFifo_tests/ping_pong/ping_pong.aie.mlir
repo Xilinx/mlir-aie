@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 // This test uses a special case of the objectFifo, an objectFifo with two elements. 
@@ -26,7 +26,7 @@ module @ping_pong {
     %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
     %lock_out = AIE.lock(%tile33, 0)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, %tile33, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 
     // Fills the given memref with the same input index value.
     func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {

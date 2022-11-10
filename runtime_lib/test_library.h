@@ -275,7 +275,7 @@ void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row);
 void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row);
 
 void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs);
-int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr, int size);
+int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size);
 void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx);
 void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx);
 

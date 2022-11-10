@@ -31,7 +31,7 @@ class AIEVec_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIEVec_AddOp:
   AIEVec_Op<"add", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -73,7 +73,7 @@ def AIEVec_AddOp:
 
 def AIEVec_SubOp:
   AIEVec_Op<"sub", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -115,7 +115,7 @@ def AIEVec_SubOp:
 
 def AIEVec_FMAOp :
   AIEVec_Op<"mac", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -184,9 +184,36 @@ def AIEVec_FMAOp :
   }];
 }
 
+def AIEVec_FMAElemOp :
+  AIEVec_Op<"mac_elem", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+               DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML element-wise vector fused multiply-add";
+  let description = [{
+    Xilinx-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
+    and adds the result to an accumulator.
+    `$result = `$lhs * $rhs + $acc`.
+    Note: the same operator can be used as fmsub operator by setting the
+    'fmsub' bool to true.
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Value":$acc,
+            "bool":$fmsub),
+    [{build($_builder, $_state, acc.getType(), lhs, rhs, acc,
+            fmsub);}]>
+  ];
+  let extraClassDeclaration = [{
+    // Get the attribute names
+    StringRef getSubAttrName() { return "fmsub"; }
+  }];
+}
+
 def AIEVec_MulOp:
   AIEVec_Op<"mul", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
                DefaultValuedStrAttr<StrAttr, "">:$xstart,
@@ -248,9 +275,46 @@ def AIEVec_MulOp:
   }];
 }
 
+def AIEVec_MulElemOp:
+  AIEVec_Op<"mul_elem", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML vector element-wise multiply";
+  let description = [{
+    Xilinx-specific multiply operation that multiplies two 1-D vectors in the same channel.
+    The vector sizes are at least 512 bits.
+    `$result = `$lhs * $rhs`.
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Type":$accType),
+    [{build($_builder, $_state, accType, lhs, rhs);}]>
+  ];
+}
+
+def AIEVec_BroadcastOp:
+  AIEVec_Op<"broadcast", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$source,
+          DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$idx)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML broadcast";
+  let description = [{
+    Xilinx-specific broadcast intrinsic. Extract element index from vector and broadcasts its
+    value to all lanes of the vector.
+    `$result = broadcast($source, $idx)`
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$source, "int32_t":$idx),
+    [{build($_builder, $_state, source.getType(), source, idx);}]>
+  ];
+}
+
 def AIEVec_UPSOp:
   AIEVec_Op<"ups", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source, 
           DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
@@ -270,7 +334,7 @@ def AIEVec_UPSOp:
 
 def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source,
           DefaultValuedAttr<ConfinedAttr<I8Attr, [IntNonNegative]>, "0">:$shift)>,
@@ -286,7 +350,7 @@ def AIEVec_SRSOp:
 
 def AIEVec_UPDOp:
   AIEVec_Op<"upd", [
-    NoSideEffect,
+    Pure,
     AttrSizedOperandSegments
   ]>, 
   Arguments<(ins AnyShaped:$source, 
@@ -315,7 +379,7 @@ def AIEVec_UPDOp:
 
 def AIEVec_ConcatOp:
   AIEVec_Op<"concat", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins Variadic<AnyVector>:$sources)>, 
   Results<(outs AnyVector:$result)> {
@@ -330,7 +394,7 @@ def AIEVec_ConcatOp:
 
 def AIEVec_ExtOp:
   AIEVec_Op<"ext", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source, 
              ConfinedAttr<I8Attr, [IntMinValue<0>, IntMaxValue<8>]>:$index)>,
@@ -346,7 +410,7 @@ def AIEVec_ExtOp:
 
 def AIEVec_SelectOp:
   AIEVec_Op<"select", [
-    NoSideEffect
+    Pure
   ]>,
   Arguments<(ins AnyVector:$xbuff,
                DefaultValuedStrAttr<StrAttr, "">:$select,
@@ -404,7 +468,7 @@ def AIEVec_SelectOp:
 
 def AIEVec_PackOp:
   AIEVec_Op<"pack", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source)>,
   Results<(outs AnyVector:$result)> {
@@ -418,7 +482,7 @@ def AIEVec_PackOp:
 
 def AIEVec_UnpackOp:
   AIEVec_Op<"unpack", [
-    NoSideEffect
+    Pure
   ]>, 
   Arguments<(ins AnyVector:$source)>,
   Results<(outs AnyVector:$result)> {

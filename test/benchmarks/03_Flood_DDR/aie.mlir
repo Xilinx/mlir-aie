@@ -53,7 +53,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_20 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_20 = AIE.external_buffer : memref<7168xi32>
 
 
   %t30 = AIE.tile(3, 0)
@@ -98,7 +98,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_30 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_30 = AIE.external_buffer : memref<7168xi32>
 
   %t60 = AIE.tile(6, 0)
   %t61 = AIE.tile(6, 1)
@@ -142,7 +142,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_60 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_60 = AIE.external_buffer : memref<7168xi32>
 
 
   %t70 = AIE.tile(7, 0)
@@ -190,7 +190,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_70 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_70 = AIE.external_buffer : memref<7168xi32>
 
   %t100 = AIE.tile(10, 0)
   %t101 = AIE.tile(10, 1)
@@ -237,7 +237,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_100 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_100 = AIE.external_buffer : memref<7168xi32>
 
   %t110 = AIE.tile(11, 0)
   %t111 = AIE.tile(11, 1)
@@ -281,7 +281,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_110 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_110 = AIE.external_buffer : memref<7168xi32>
    
 
   %t180 = AIE.tile(18, 0)
@@ -326,7 +326,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_180 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_180 = AIE.external_buffer : memref<7168xi32>
    
 
   %t190 = AIE.tile(19, 0)
@@ -371,7 +371,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_190 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_190 = AIE.external_buffer : memref<7168xi32>
 
 
   %t260 = AIE.tile(26, 0)
@@ -417,7 +417,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_260 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_260 = AIE.external_buffer : memref<7168xi32>
 
 
 
@@ -464,7 +464,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_270 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_270 = AIE.external_buffer : memref<7168xi32>
 
 
   %t340 = AIE.tile(34, 0)
@@ -509,7 +509,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_340 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_340 = AIE.external_buffer : memref<7168xi32>
 
 
 
@@ -555,7 +555,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_350 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_350 = AIE.external_buffer : memref<7168xi32>
 
 
 
@@ -590,7 +590,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_420 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_420 = AIE.external_buffer : memref<7168xi32>
 
 
   %t430 = AIE.tile(43, 0)
@@ -636,7 +636,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_430 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_430 = AIE.external_buffer : memref<7168xi32>
 
 
 
@@ -683,7 +683,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_460 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_460 = AIE.external_buffer : memref<7168xi32>
 
 
 
@@ -729,7 +729,7 @@ module @benchmark03_Flood_DDR {
       AIE.end
   }
 
-  %buffer_out_470 = AIE.external_buffer 0x020100006000 : memref<7168xi32>
+  %buffer_out_470 = AIE.external_buffer : memref<7168xi32>
 
 
 }

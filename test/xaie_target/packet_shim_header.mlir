@@ -24,7 +24,7 @@ module @aie_module  {
 
   %10 = AIE.lock(%t71, 1)
   %11 = AIE.buffer(%t71) {sym_name = "buf1"} : memref<32xi32, 2>
-  %buffer = AIE.external_buffer 0x020100004000 : memref<32xi32>
+  %buffer = AIE.external_buffer : memref<32xi32>
 
   %12 = AIE.mem(%t71)  {
     %srcDma = AIE.dmaStart("S2MM", 0, ^bb2, ^end)

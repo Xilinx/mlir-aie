@@ -100,10 +100,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 7, 2);
 
 #define DMA_COUNT 256
-  int *mem_ptr0 =
-      mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
-  int *mem_ptr1 =
-      mlir_aie_mem_alloc(_xaie, 0, 0x6000 + 0x020100000000LL, DMA_COUNT + 1);
+  mlir_aie_init_mems(_xaie, 2);
+  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT + 1);
 
   for (int i = 0; i < DMA_COUNT + 1; i++) {
     if (i == 0) {
@@ -113,6 +112,14 @@ int main(int argc, char *argv[]) {
       mem_ptr1[i] = 1;
     }
   }
+  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+  mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+
+#ifdef LIBXAIENGINEV2
+  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr0);
+  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr1);
+  mlir_aie_configure_shimdma_70(_xaie);
+#endif
 
   usleep(sleep_u);
 
@@ -132,6 +139,8 @@ int main(int argc, char *argv[]) {
     tries++;
   }
   printf("It took %d tries.\n", tries);
+
+  mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
   for (int bd = 0; bd < DMA_COUNT + 1; bd++) {
     if (bd == 0) {

@@ -28,8 +28,6 @@
 int
 main(int argc, char *argv[])
 {
-  auto col = 7;
-
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
@@ -42,10 +40,7 @@ main(int argc, char *argv[])
   mlir_aie_init_mems(_xaie, 1);
 
 #define DMA_COUNT 512
-  // libxaiev1; returns physical addr to bram.
-  // libxaiev2: returns virtual addr to allocated buffer in ddr
-  int *mem_ptr =
-      mlir_aie_mem_alloc(_xaie, 0, 0x4000 + 0x020100000000LL, DMA_COUNT);
+  int *mem_ptr = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(mem_ptr + i) = i + 1;
   }
