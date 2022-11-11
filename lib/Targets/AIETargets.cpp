@@ -390,7 +390,7 @@ SECTIONS
         registry.insert<LLVM::LLVMDialect>();
       });
   TranslateFromMLIRRegistration registrationAirbin(
-      "aie-generate-airbin",
+      "aie-generate-airbin", "Generate configuration binary blob",
       [](ModuleOp module, raw_ostream &output) {
         return AIETranslateToAirbin(module, output);
       },
@@ -399,7 +399,7 @@ SECTIONS
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
         registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithmeticDialect>();
+        registry.insert<arith::ArithDialect>();
         registry.insert<memref::MemRefDialect>();
         registry.insert<VectorDialect>();
         registry.insert<LLVM::LLVMDialect>();
