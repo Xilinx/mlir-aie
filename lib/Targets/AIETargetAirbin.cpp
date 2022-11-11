@@ -1521,6 +1521,63 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
   }
 }
 
+static uint8_t tile_cfg_name(uint64_t in) {
+  switch (in)  {
+    case 0x3f000:
+      return 1;//".ssmast";
+      break;
+    case 0x3f100:
+      return 2;//".ssslve";
+      break;
+    case 0x3f200:
+      return 3;//".sspckt";
+      break;
+    case 0x20000:
+      return 7;//".prgm.mem";
+      break;
+    case 0x1d000:
+      return 8;//".tdma.bd";
+      break;
+    case 0x1de00:
+      return 9;//".tdma.ctl";
+      break;
+    case 0x0:
+      return 11;//".data.mem";
+      break;
+    default:
+      return 0;
+      break;
+  }
+  return 0;
+}
+
+static uint8_t shim_cfg_name(uint64_t in) {
+  switch (in)  {
+    case 0x3f000:
+      return 1;//".ssmast";
+      break;
+    case 0x3f100:
+      return 2;//".ssslve";
+      break;
+    case 0x3f200:
+      return 3;//".sspckt";
+      break;
+    case 0x1d000:
+      return 4;//".sdma.bd";
+      break;
+    case 0x1f000:
+      return 5;//".shmmux";
+      break;
+    case 0x1d140:
+      return 6;//".sdma.ctl";
+      break;
+    default:
+      return 0;
+      break;
+  }
+  return 0;
+}
+
 static std::vector<std::vector<Write>> group_sections() {
   std::vector<std::vector<Write>> sections{{}};
 
@@ -1590,6 +1647,11 @@ make_section_headers(const std::vector<std::vector<Write>> &group_writes) {
     seen_size += section.size() * 2 * sizeof(uint32_t) + section.size();
 
     header.tile = section.front().tile();
+    if (section.front().tile() & 0xF) {
+      header.name = tile_cfg_name(section.front().relativeDest());
+    } else {
+      header.name = shim_cfg_name(section.front().relativeDest());
+    }
     leftMostColumn =
         std::min(leftMostColumn,
                  static_cast<uint8_t>(header.tile >> TILE_ADDR_ROW_WIDTH));
