@@ -477,7 +477,8 @@ static BDInfo getBDInfo(Block &block, const NetlistAnalysis &NL) {
     auto bufferType = op.getBuffer().getType().cast<::mlir::MemRefType>();
 
     if (op.isA()) {
-      bdInfo.BaseAddrA = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
+      bdInfo.BaseAddrA =
+          NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
       bdInfo.lenA = op.getLenValue();
       bdInfo.bytesA = bufferType.getElementTypeBitWidth() / 8u;
       bdInfo.offsetA = op.getOffsetValue();
@@ -486,7 +487,8 @@ static BDInfo getBDInfo(Block &block, const NetlistAnalysis &NL) {
     }
 
     if (op.isB()) {
-      bdInfo.BaseAddrB = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
+      bdInfo.BaseAddrB =
+          NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
       bdInfo.lenB = op.getLenValue();
       bdInfo.bytesB = bufferType.getElementTypeBitWidth() / 8u;
       bdInfo.offsetB = op.getOffsetValue();
@@ -826,20 +828,20 @@ void XAieDma_TileBdSetPkt(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 PktEn,
         if (bdNum != 0xFFU) {
 
           uint32_t chNum = op.getChannelIndex();
-          //switch (op.dmaChan()) {
-          //case DMAChan::S2MM0:
+          // switch (op.dmaChan()) {
+          // case DMAChan::S2MM0:
           //  chNum = 0;
           //  break;
-          //case DMAChan::S2MM1:
+          // case DMAChan::S2MM1:
           //  chNum = 1;
           //  break;
-          //case DMAChan::MM2S0:
+          // case DMAChan::MM2S0:
           //  chNum = 2;
           //  break;
-          //case DMAChan::MM2S1:
+          // case DMAChan::MM2S1:
           //  chNum = 3;
           //  break;
-          //default:
+          // default:
           //  UNREACHABLE;
           //}
 
@@ -1183,8 +1185,9 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
       */
       for (auto tile : switchbox_set) {
 
-        auto slave_port = computeSlavePort(
-            connectOp.getSourceBundle(), connectOp.sourceIndex(), tile.isShim());
+        auto slave_port =
+            computeSlavePort(connectOp.getSourceBundle(),
+                             connectOp.sourceIndex(), tile.isShim());
 
         auto master_port = computeMasterPort(
             connectOp.getDestBundle(), connectOp.destIndex(), tile.isShim());
@@ -1335,8 +1338,9 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           // NOTE: the same for both DMAs and non-DMAs
           static constexpr auto STREAM_SWITCH_SLAVE_ADDR = 0x3F100u;
 
-          auto slavePort = computeSlavePort(
-              connectOp.getSourceBundle(), connectOp.sourceIndex(), tile.isShim());
+          auto slavePort =
+              computeSlavePort(connectOp.getSourceBundle(),
+                               connectOp.sourceIndex(), tile.isShim());
           write32({tile, STREAM_SWITCH_SLAVE_ADDR + 4u * slavePort},
                   streamEnable(enable) | streamPacketEnable(enable));
 
@@ -1463,8 +1467,8 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         Address addr{currentTile.value(), 0x1F004u};
         auto currentMask = read32(addr);
 
-        write32(addr,
-                currentMask | inputMaskFor(connectOp.getDestBundle(), shiftAmt));
+        write32(addr, currentMask |
+                          inputMaskFor(connectOp.getDestBundle(), shiftAmt));
 
       } else if (connectOp.getDestBundle() == WireBundle::North) {
         // mux
@@ -1491,8 +1495,8 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         Address addr{currentTile.value(), 0x1F000u};
         auto currentMask = read32(addr);
 
-        write32(addr,
-                currentMask | inputMaskFor(connectOp.getSourceBundle(), shiftAmt));
+        write32(addr, currentMask |
+                          inputMaskFor(connectOp.getSourceBundle(), shiftAmt));
       }
     }
   }
@@ -1522,58 +1526,58 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
 }
 
 static uint8_t tile_cfg_name(uint64_t in) {
-  switch (in)  {
-    case 0x3f000:
-      return 1;//".ssmast";
-      break;
-    case 0x3f100:
-      return 2;//".ssslve";
-      break;
-    case 0x3f200:
-      return 3;//".sspckt";
-      break;
-    case 0x20000:
-      return 7;//".prgm.mem";
-      break;
-    case 0x1d000:
-      return 8;//".tdma.bd";
-      break;
-    case 0x1de00:
-      return 9;//".tdma.ctl";
-      break;
-    case 0x0:
-      return 11;//".data.mem";
-      break;
-    default:
-      return 0;
-      break;
+  switch (in) {
+  case 0x3f000:
+    return 1; //".ssmast";
+    break;
+  case 0x3f100:
+    return 2; //".ssslve";
+    break;
+  case 0x3f200:
+    return 3; //".sspckt";
+    break;
+  case 0x20000:
+    return 7; //".prgm.mem";
+    break;
+  case 0x1d000:
+    return 8; //".tdma.bd";
+    break;
+  case 0x1de00:
+    return 9; //".tdma.ctl";
+    break;
+  case 0x0:
+    return 11; //".data.mem";
+    break;
+  default:
+    return 0;
+    break;
   }
   return 0;
 }
 
 static uint8_t shim_cfg_name(uint64_t in) {
-  switch (in)  {
-    case 0x3f000:
-      return 1;//".ssmast";
-      break;
-    case 0x3f100:
-      return 2;//".ssslve";
-      break;
-    case 0x3f200:
-      return 3;//".sspckt";
-      break;
-    case 0x1d000:
-      return 4;//".sdma.bd";
-      break;
-    case 0x1f000:
-      return 5;//".shmmux";
-      break;
-    case 0x1d140:
-      return 6;//".sdma.ctl";
-      break;
-    default:
-      return 0;
-      break;
+  switch (in) {
+  case 0x3f000:
+    return 1; //".ssmast";
+    break;
+  case 0x3f100:
+    return 2; //".ssslve";
+    break;
+  case 0x3f200:
+    return 3; //".sspckt";
+    break;
+  case 0x1d000:
+    return 4; //".sdma.bd";
+    break;
+  case 0x1f000:
+    return 5; //".shmmux";
+    break;
+  case 0x1d140:
+    return 6; //".sdma.ctl";
+    break;
+  default:
+    return 0;
+    break;
   }
   return 0;
 }
