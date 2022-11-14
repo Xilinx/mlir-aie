@@ -8,10 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: %run_on_board ./test.elf
+// REQUIRES: xaiev1
+
 module @benchmark09_shim_broadcast {
 
   %t70 = AIE.tile(7, 0)
   %t3 = AIE.tile(3,0)
   %60 = AIE.tile(6,0)
-
+  
 }

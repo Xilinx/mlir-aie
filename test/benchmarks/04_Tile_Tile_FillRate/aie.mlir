@@ -8,6 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: %run_on_board ./test.elf
+// REQUIRES: xaiev1
+
 module @test04_tile_tiledma {
   %tile13 = AIE.tile(1, 3)
   %tile14 = AIE.tile(1, 4)
