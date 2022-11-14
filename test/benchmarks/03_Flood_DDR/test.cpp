@@ -194,6 +194,8 @@ int main(int argc, char *argv[]) {
     XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), XAIE_PL_MOD, 2,
                                XAIE_EVENT_LOCK_1_ACQUIRED_PL); // Start
 
+    std::vector<int> shim_cols = {2,  3,  6,  7,  10, 11, 18,
+                                  19, 26, 27, 34, 35, 42, 46};
 
     EventMonitor pc2(_xaie, 2, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
@@ -262,39 +264,11 @@ int main(int argc, char *argv[]) {
 
     // iterate over the buffer
     usleep(1000);
-    // XAie_StartTransaction(&(_xaie->DevInst), XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
-    mlir_aie_release_lock(_xaie, 2, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 3, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 6, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 7, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 10, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 11, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 18, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 19, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 26, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 27, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 34, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 35, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 42, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 43, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 46, 0, 1, 1,
-                         0); // Release lock for reading from DDR
-    mlir_aie_release_lock(_xaie, 47, 0, 1, 1,
-                         0); // Release lock for reading from DDR
+    // XAie_StartTransaction(&(_xaie->DevInst),
+    // XAIE_TRANSACTION_DISABLE_AUTO_FLUSH); Release shim_locks for reading from
+    // DDR
+    for (int col : shim_cols)
+      mlir_aie_release_lock(_xaie, col, 0, 1, 1, 0);
     // XAie_SubmitTransaction(&(_xaie->DevInst), NULL);
 
     usleep(5000);

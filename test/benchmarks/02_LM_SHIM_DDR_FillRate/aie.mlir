@@ -8,6 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: %run_on_board ./test.elf
+// REQUIRES: xaiev1
+
 module @benchmark_02_LM2DDR {
   %t70 = AIE.tile(7, 0)
   %t71 = AIE.tile(7, 1)
