@@ -38,6 +38,7 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
 
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) { free(ctx); }
 
+// Return zero on success
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   XAIEGBL_HWCFG_SET_CONFIG((&(ctx->AieConfig)), XAIE_NUM_ROWS, XAIE_NUM_COLS,
                            0x800);
@@ -48,18 +49,23 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   return 0;
 }
 
+// Return non-zero on success.
 int mlir_aie_acquire_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout) {
   return XAieTile_LockAcquire(&(ctx->TileInst[col][row]), lockid, lockval,
                               timeout);
 }
 
+// Return non-zero on success.
 int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout) {
   return XAieTile_LockRelease(&(ctx->TileInst[col][row]), lockid, lockval,
                               timeout);
 }
 
+// Return a 2-bit lock status.
+// The low-order bit is 1 if the lock has been acquired.
+// The higher-order bit has the lock value.
 int mlir_aie_get_lock_status(aie_libxaie_ctx_t *ctx, int col, int row, int lockid) {
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
   u32 locks;
@@ -68,6 +74,7 @@ int mlir_aie_get_lock_status(aie_libxaie_ctx_t *ctx, int col, int row, int locki
   return two_bits;
 }
 
+// Return the read value.
 u32 mlir_aie_read32(aie_libxaie_ctx_t *ctx, u64 addr) {
   return XAieGbl_Read32(addr);
 }
@@ -76,6 +83,7 @@ void mlir_aie_write32(aie_libxaie_ctx_t *ctx, u64 addr, u32 val) {
   XAieGbl_Write32(addr, val);
 }
 
+// Return the read value.
 u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
                               u64 addr) {
   return XAieTile_DmReadWord(&(ctx->TileInst[col][row]), addr);
@@ -86,14 +94,14 @@ void mlir_aie_data_mem_wr_word(aie_libxaie_ctx_t *ctx, int col, int row,
   XAieTile_DmWriteWord(&(ctx->TileInst[col][row]), addr, data);
 }
 
+// Return the tile address.
 u64 mlir_aie_get_tile_addr(aie_libxaie_ctx_t *ctx, int col, int row) {
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
   return (u64)(tile->TileAddr);
 }
 
+// Print the (non-zero) contents of the data memory of the given core.
 void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = tile.ColId;
-  // int row = tile.RowId;
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
 
   for (int i = 0; i < 0x2000; i++) {
@@ -103,19 +111,18 @@ void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
+// Zero the data memory of the given core.
 void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = tile.ColId;
-  // int row = tile.RowId;
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
 
+  // FIXME: how do we make this architecture-independent?
   for (int i = 0; i < 0x2000; i++) {
     XAieTile_DmWriteWord(tile, (i * 4), 0);
   }
 }
 
+// Print the status of the given Tile DMA.  (row must be greater than zero)
 void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = tile.ColId;
-  // int row = tile.RowId;
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
 
   u32 dma_mm2s_status = XAieGbl_Read32(tile->TileAddr + 0x0001DF10);
@@ -202,9 +209,8 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
+// Print the status of the given Shim DMA.  (row must be zero)
 void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = loc.Col;
-  // int row = loc.Row;
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
 
   u32 dma_mm2s_status = XAieGbl_Read32(tile->TileAddr + 0x0001D164);
@@ -288,8 +294,6 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
 /// Print the status of a core represented by the given tile, at the given
 /// coordinates.
 void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = tile.ColId;
-  // int row = tile.RowId;
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
   u32 status, coreTimerLow, PC, LR, SP, locks, R0, R4;
 
@@ -360,9 +364,14 @@ static void clear_range(u64 TileAddr, u64 low, u64 high) {
     // }
   }
 }
+
+// Disable and clear the configuration of the given tile (row must be greater
+// than zero), The overwrites with zeros the accessible configuration including
+// program memory, tile dma configuration, and stream switch configuration. Note
+// that this does not completely reset the tile.  In particular, the tile DMA
+// may be stalled waiting for a lock and data may remain resident in any queues.
+// It also does not change the state of any locks.
 void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = tile.ColId;
-  // int row = tile.RowId;
   u64 TileAddr = ctx->TileInst[col][row].TileAddr;
   struct XAieGbl_Tile *tile = &(ctx->TileInst[col][row]);
 
@@ -386,9 +395,13 @@ void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
   clear_range(TileAddr, 0x3F200, 0x3F3AC);
 }
 
+// Disable and clear the configuration of the given tile (row must be zero),
+// The overwrites with zeros the accessible configuration including program
+// memory, tile dma configuration, and stream switch configuration.  Note that
+// this does not completely reset the tile.  In particular, the tile DMA may be
+// stalled waiting for a lock and data may remain resident in any queues. It
+// also does not change the state of any locks.
 void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = tile.ColId;
-  // int row = tile.RowId;
   u64 TileAddr = ctx->TileInst[col][row].TileAddr;
 
   // ShimDMA
@@ -408,6 +421,8 @@ void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
 
 void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {} // Placeholder
 
+// Allocate a buffer of the given size.  Note that the allocation is not
+// guaranteed to be aligned to any boundary.
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, u64 addr,
                         int size) {
   int fd = open("/dev/mem", O_RDWR | O_SYNC);
@@ -424,7 +439,7 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
 
 /*
  ******************************************************************************
- * LIBXAIENGIENV2
+ * LIBXAIENGINEV2
  ******************************************************************************
  */
 #else
@@ -477,6 +492,7 @@ void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
   free(ctx);
 }
 
+// Return zero on success
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   AieRC RC = XAIE_OK;
 
@@ -512,12 +528,14 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   return 0;
 }
 
+// Return non-zero on success
 int mlir_aie_acquire_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout) {
   return (XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(col, row),
                            XAie_LockInit(lockid, lockval), timeout) == XAIE_OK);
 }
 
+// Return non-zero on success
 int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout) {
   return (XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(col, row),
@@ -551,8 +569,6 @@ u64 mlir_aie_get_tile_addr(aie_libxaie_ctx_t *ctx, int col, int row) {
 }
 
 void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = loc.Col;
-  // int row = loc.Row;
   for (int i = 0; i < 0x2000; i++) {
     uint32_t d;
     AieRC rc = XAie_DataMemRdWord(&(ctx->DevInst), XAie_TileLoc(col, row),
@@ -563,16 +579,12 @@ void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
 }
 
 void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = loc.Col;
-  // int row = loc.Row;
   for (int i = 0; i < 0x2000; i++) {
     XAie_DataMemWrWord(&(ctx->DevInst), XAie_TileLoc(col, row), (i * 4), 0);
   }
 }
 
 void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = loc.Col;
-  // int row = loc.Row;
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 
   u32 dma_mm2s_status;
