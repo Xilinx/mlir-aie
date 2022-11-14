@@ -281,12 +281,12 @@ module @broadcast {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        //scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c1 {
             %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-        //}
+        }
         
         AIE.end
     }
@@ -296,12 +296,12 @@ module @broadcast {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        //scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c1 {
             %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-        //}
+        }
         
         AIE.end
     }
@@ -311,14 +311,14 @@ module @broadcast {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        //scf.for %indexInHeight = %c0 to %height step %c1 {
+        scf.for %indexInHeight = %c0 to %height step %c1 {
             %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2)
-        //
+        }
         
         AIE.end
     }
@@ -328,7 +328,7 @@ module @broadcast {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        //scf.for %indexInHeight = %c0 to %height step %c1 { 
+        scf.for %indexInHeight = %c0 to %height step %c1 { 
             %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
@@ -337,7 +337,7 @@ module @broadcast {
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-        //}
+        }
         
         AIE.end
     }
@@ -347,14 +347,14 @@ module @broadcast {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        //scf.for %indexInHeight = %c0 to %height step %c1 { 
+        scf.for %indexInHeight = %c0 to %height step %c1 { 
             %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
-        //}
+        }
         
         AIE.end
     }
