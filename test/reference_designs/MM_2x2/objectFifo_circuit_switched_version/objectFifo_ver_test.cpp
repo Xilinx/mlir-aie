@@ -173,37 +173,29 @@ int main(int argc, char *argv[]) {
 
   usleep(sleep_u);
 
-  // Check if the external buffer receives the correct result
-  int Header0 = mem_ptr6[0] & 31;
-  int Header1 = mem_ptr7[0] & 31;
-
-  // Compare the result according to the header since the order of the result is
-  // not known
-  if (Header0 == 6 && Header1 == 7) {
-    for (int idx0 = 1; idx0 < 1025; ++idx0) {
-      if (mem_ptr6[idx0] != 352) {
-        printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
-        errors++;
-      }
-      if (mem_ptr7[idx0] != 544) {
-        printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
-        errors++;
-      }
+  for (int idx0 = 1; idx0 < 1025; ++idx0) {
+    if (mem_ptr6[idx0] != 352) {
+      printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
+      errors++;
+    }
+    if (mem_ptr7[idx0] != 544) {
+      printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
+      errors++;
     }
   }
 
-  if (Header0 == 7 && Header1 == 6) {
-    for (int idx0 = 1; idx0 < 1025; ++idx0) {
-      if (mem_ptr6[idx0] != 544) {
-        printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
-        errors++;
-      }
-      if (mem_ptr7[idx0] != 352) {
-        printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
-        errors++;
-      }
-    }
-  }
+  // if (Header0 == 7 && Header1 == 6) {
+  //   for (int idx0 = 1; idx0 < 1025; ++idx0) {
+  //     if (mem_ptr6[idx0] != 544) {
+  //       printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
+  //       errors++;
+  //     }
+  //     if (mem_ptr7[idx0] != 352) {
+  //       printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
+  //       errors++;
+  //     }
+  //   }
+  // }
 
   int res = 0;
   if (!errors) {

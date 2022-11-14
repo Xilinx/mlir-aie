@@ -1,4 +1,5 @@
-//===- test.cpp -------------------------------------------------*- C++ -*-===//
+//===- circuit_switch_ver_test.cpp
+//-------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -90,20 +91,11 @@ int main(int argc, char *argv[]) {
 
   usleep(sleep_u);
   printf("before configure switchboxes.\n");
-
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  mlir_aie_release_lock(_xaie, 6, 0, 0, 0, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 1, 0, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 2, 0, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 3, 0, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 0, 0, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 0, 0);
-
   usleep(sleep_u);
   printf("before configure DMA\n");
-
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_init_mems(_xaie, 8);
   int errors = 0;
@@ -116,24 +108,19 @@ int main(int argc, char *argv[]) {
   int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
   int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
   int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
-  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
-  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
+  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT);
+  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT);
 
   // initialize the external buffers
-  for (int i = 0; i < DMA_COUNT + 1; i++) {
-    if (i == 0) {
-      *(mem_ptr6 + i) = 99;
-      *(mem_ptr7 + i) = 99;
-    } else {
-      *(mem_ptr0 + i - 1) = 1; // LHS_tile0
-      *(mem_ptr1 + i - 1) = 2; // LHS_tile1
-      *(mem_ptr2 + i - 1) = 3; // RHS_tile0
-      *(mem_ptr3 + i - 1) = 4; // RHS_tile1
-      *(mem_ptr4 + i - 1) = 5; // RHS_tile2
-      *(mem_ptr5 + i - 1) = 6; // RHS_tile3
-      *(mem_ptr6 + i) = 99;    // Out_tile0
-      *(mem_ptr7 + i) = 99;    // Out_tile1
-    }
+  for (int i = 0; i < DMA_COUNT; i++) {
+    *(mem_ptr0 + i) = 1;  // LHS_tile0
+    *(mem_ptr1 + i) = 2;  // LHS_tile1
+    *(mem_ptr2 + i) = 3;  // RHS_tile0
+    *(mem_ptr3 + i) = 4;  // RHS_tile1
+    *(mem_ptr4 + i) = 5;  // RHS_tile2
+    *(mem_ptr5 + i) = 6;  // RHS_tile3
+    *(mem_ptr6 + i) = 101; // Out_tile0
+    *(mem_ptr7 + i) = 101; // Out_tile1
   }
 
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
@@ -148,19 +135,18 @@ int main(int argc, char *argv[]) {
 #ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
   mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
-  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr2);
-  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr3);
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr4);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr5);
-  mlir_aie_external_set_addr_myBuffer_70_2((u64)mem_ptr6);
-  mlir_aie_external_set_addr_myBuffer_70_3((u64)mem_ptr7);
-  mlir_aie_configure_shimdma_70(_xaie);
+  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr6);
+  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr7);
+  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr2);
+  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr3);
+  mlir_aie_external_set_addr_myBuffer_100_0((u64)mem_ptr4);
+  mlir_aie_external_set_addr_myBuffer_100_1((u64)mem_ptr5);
   mlir_aie_configure_shimdma_60(_xaie);
+  mlir_aie_configure_shimdma_70(_xaie);
+  mlir_aie_configure_shimdma_100(_xaie);
 #endif
 
   printf("before core start\n");
-
-  mlir_aie_start_cores(_xaie);
 
   mlir_aie_release_lock(_xaie, 6, 0, 0, 1, 0);
   mlir_aie_release_lock(_xaie, 6, 0, 1, 1, 0);
@@ -168,6 +154,10 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_lock(_xaie, 6, 0, 3, 1, 0);
   mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
   mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
+  mlir_aie_release_lock(_xaie, 10, 0, 0, 1, 0);
+  mlir_aie_release_lock(_xaie, 10, 0, 1, 1, 0);
+
+  mlir_aie_start_cores(_xaie);
 
   usleep(sleep_u);
   // Check if the local buffer contain the correct data
@@ -202,35 +192,35 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
-  // Check if the external buffer receives the correct result
-  int Header0 = mem_ptr6[0] & 31;
-  int Header1 = mem_ptr7[0] & 31;
+  mlir_aie_acquire_lock(_xaie, 6, 4, 2, 0, 10000);
+  mlir_aie_acquire_lock(_xaie, 7, 4, 2, 0, 10000);
 
-  // Compare the result according to the header since the order of the result is
-  // not known
-  if (Header0 == 6 && Header1 == 7) {
-    for (int idx0 = 1; idx0 < 1025; ++idx0) {
-      if (mem_ptr6[idx0] != 352) {
-        printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
-        errors++;
-      }
-      if (mem_ptr7[idx0] != 544) {
-        printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
-        errors++;
-      }
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+  usleep(sleep_u);
+
+  mlir_aie_acquire_lock(_xaie, 6, 0, 2, 0, 10000);
+  mlir_aie_acquire_lock(_xaie, 6, 0, 3, 0, 10000);
+
+  for (int idx0 = 0; idx0 < 1024; ++idx0) {
+    if (mem_ptr6[idx0] != 352) {
+      printf("Out_tile0[%d]=%d\n", idx0, mem_ptr6[idx0]);
+      errors++;
     }
-  }
-
-  if (Header0 == 7 && Header1 == 6) {
-    for (int idx0 = 1; idx0 < 1025; ++idx0) {
-      if (mem_ptr6[idx0] != 544) {
-        printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
-        errors++;
-      }
-      if (mem_ptr7[idx0] != 352) {
-        printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
-        errors++;
-      }
+    if (mem_ptr7[idx0] != 544) {
+      printf("Out_tile1[%d]=%d\n", idx0, mem_ptr7[idx0]);
+      errors++;
     }
   }
 
