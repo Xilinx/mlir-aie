@@ -11,9 +11,9 @@
 // This file contains common libraries used for testing.
 
 #include "test_library.h"
-#include <cmath>
-#include <stdio.h>
+#include "math.h"
 #include <fcntl.h>
+#include <stdio.h>
 #include <sys/mman.h>
 
 extern "C" {
@@ -1004,10 +1004,11 @@ void computeStats(u32 performance_counter[], int n) {
   float sdev_0 = 0;
 
   for (int i = 0; i < n; i++) {
-    sdev_0 += std::pow(((float)performance_counter[i] - mean_0), 2);
+    float x = (float)performance_counter[i] - mean_0;
+    sdev_0 += x * x;
   }
 
-  sdev_0 = std::sqrt(sdev_0 / n);
+  sdev_0 = sqrtf(sdev_0 / n);
 
   printf("Mean and Standard Devation: %f, %f \n", mean_0, sdev_0);
 }
