@@ -19,9 +19,9 @@ module @test04_shared_memory {
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
   %buf14_0 = AIE.buffer(%tile14) { sym_name = "c" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock
-  %lock13_5 = AIE.lock(%tile13, 5) // interbuffer lock
-  %lock14_7 = AIE.lock(%tile14, 7) // output buffer lock
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "hidden_lock" } // interbuffer lock
+  %lock14_7 = AIE.lock(%tile14, 7) { sym_name = "output_lock" } // output buffer lock
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)

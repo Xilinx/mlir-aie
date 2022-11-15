@@ -1128,10 +1128,29 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
   );
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
+    bool hasName() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+    StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return attr;
+      } else {
+        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
+          "' attribute specified";
+      }
+      llvm_unreachable("unreachable");
+    }
     int getLockIDValue() { 
       assert(getLockID().has_value() && "Lock has no ID value");
       return getLockID().value();
     }
+    int colIndex();
+    int rowIndex();
+    TileOp getTileOp();
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile, "int":$lockID), [{
@@ -1263,6 +1282,24 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
   }];
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];
+  let extraClassDeclaration = [{
+    bool hasName() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+    StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return attr;
+      } else {
+        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
+          "' attribute specified";
+      }
+      llvm_unreachable("unreachable");
+    }
+  }];
 }
 
 def AIE_TokenOp: AIE_Op<"token", [Symbol]> {

@@ -45,8 +45,8 @@ module @test14_stream_packet {
   %buf73 = AIE.buffer(%t73) {sym_name = "buf73" } : memref<256xi32>
   %buf71 = AIE.buffer(%t71) {sym_name = "buf71" } : memref<256xi32>
 
-  %l73 = AIE.lock(%t73, 0)
-  %l71 = AIE.lock(%t71, 0)
+  %l73 = AIE.lock(%t73, 0) {sym_name = "lock73" }
+  %l71 = AIE.lock(%t71, 0) {sym_name = "lock71" }
 
   %m73 = AIE.mem(%t73) {
       %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)

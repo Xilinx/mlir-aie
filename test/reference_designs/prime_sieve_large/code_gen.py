@@ -10,7 +10,12 @@ import re
 import math
 import random
 
-def prime_gen():
+# The number of cores to use.  Will generate a 2D chain of cores of the given size.
+arrayrows = 7 # must be odd
+arraycols = 48 # must be even
+bufsize = 4096 # must fit in data memory
+
+def prime_gen(primecount):
     lower = 2
     upper = 10000
 
@@ -25,20 +30,29 @@ def prime_gen():
             else:
                 results.append(num)
                 prime_cnt = prime_cnt + 1
-        if (prime_cnt == 500):
+        if (prime_cnt == primecount):
             break
 
     print("prime_cnt = %d" %(prime_cnt))
+    print("lastprime = %d" % results[prime_cnt])
     return results
 
 
 
 
 def main():
-    prime_nums = prime_gen()
+    global arrayrows
+    global arraycols
+    global bufsize
+    primecount = arrayrows * arraycols
 
-    rows = 9 + 1 # row 0 is reserved
-    cols = 40 + 1
+    prime_nums = prime_gen(primecount)
+    print("Generating %d Cores" % (arrayrows * arraycols))
+    if (prime_nums[-1] >= bufsize):
+        print("Need a larger buffer to find %d is prime.  Please increase the 'bufsize' parameter" % prime_nums[-1])
+
+    rows = arrayrows + 1 # row 0 is reserved
+    cols = arraycols + 1
 
     f = open("aie.mlir", "w+")
     # declare tile, column by row
@@ -73,6 +87,13 @@ def main():
             for row in range (rows-1, 0, -1): # row 8 -> 1
                 f.write("  %%tile%d_%d = AIE.tile(%d, %d)\n" %(col, row, col, row))
             
+    # %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+
+    # %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+    # %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+
+    # AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+
 
 
     f.write("\n")
@@ -82,76 +103,86 @@ def main():
                 f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d, 0)\n" %(col, row, col, row))
         else:
             for row in range (rows-1, 0, -1): # row 8 -> 1
-                f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d, 0)\n" %(col, row, col, row))
+                symbol = ""
+                if (col == cols-1 and row == 1):
+                    symbol = " { sym_name = \"prime_output_lock\" }" 
+                f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d, 0)%s\n" %(col, row, col, row, symbol))
 
 
     f.write("\n")
-    f.write("  %buf1_1 = AIE.buffer(%tile1_1) { sym_name = \"a\"         } : memref<256xi32>\n")
+
     prime_itr = 1;
+    row = 1
     for col in range (1, cols): # col 0 is reserved in aie
-        if (col % 2 == 1):
-            for row in range (1, rows): # row 1 -> 8
-                if (col == 1 and row == 1):
-                    continue
-
-                f.write("  %%buf%d_%d = AIE.buffer(%%tile%d_%d) { sym_name = \"prime%d\"    } : memref<256xi32>\n" %(col, row, col, row, prime_nums[prime_itr]))
+        for i in range (1, rows):
+            if(row == 1 and col == 1):
+                symbol = "a"
+            elif(row == 1 and col == cols-1):
+                symbol = "prime_output"
+            else:
+                symbol = "prime%d" % prime_nums[prime_itr]
                 prime_itr = prime_itr + 1
-        else:
-            for row in range (rows-1, 0, -1): # row 8 -> 1
-                f.write("  %%buf%d_%d = AIE.buffer(%%tile%d_%d) { sym_name = \"prime%d\"    } : memref<256xi32>\n" %(col, row, col, row, prime_nums[prime_itr]))
-                prime_itr = prime_itr + 1
-       
 
+            f.write("  %%buf%d_%d = AIE.buffer(%%tile%d_%d) { sym_name = \"%s\" } : memref<%dxi32>\n" %(col, row, col, row, symbol, bufsize))
+
+            if (col % 2 == 1):
+                if (row != rows-1):
+                    # odd columns go up
+                    row = row + 1
+            else:
+                if (row != 1):
+                    # even columns go down
+                    row = row - 1
 
 
     # unchanged part
-    f.write("""  
+    tilecode = """  
   %core1_1 = AIE.core(%tile1_1) {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
-    %sum_0 = constant 2 : i32
-    %t = constant 1 : i32
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %cend = arith.constant """ + str(bufsize) + """: index
+    %sum_0 = arith.constant 2 : i32
+    %t = arith.constant 1 : i32
   
     // output integers starting with 2...
-    scf.for %arg0 = %c0 to %c64 step %c1
+    scf.for %arg0 = %c0 to %cend step %c1
       iter_args(%sum_iter = %sum_0) -> (i32) {
-      %sum_next = addi %sum_iter, %t : i32
-      memref.store %sum_iter, %buf1_1[%arg0] : memref<256xi32>
+      %sum_next = arith.addi %sum_iter, %t : i32
+      memref.store %sum_iter, %buf1_1[%arg0] : memref<""" + str(bufsize) + """xi32>
       scf.yield %sum_next : i32
     }
-    AIE.useLock(%lock1_1, "Release", 1, 0)
+    AIE.useLock(%lock1_1, "Release", 1)
     AIE.end
   }
-  func.func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
-    %c0 = constant 0 : index
-    %c1 = constant 1 : index
-    %c64 = constant 64 : index
-    %count_0 = constant 0 : i32
+  func.func @do_sieve(%bufin: memref<""" + str(bufsize) + """xi32>, %bufout:memref<""" + str(bufsize) + """xi32>) -> () {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %cend = arith.constant """ + str(bufsize) + """ : index
+    %count_0 = arith.constant 0 : i32
   
     // The first number we receive is prime
-    %prime = memref.load %bufin[%c0] : memref<256xi32>
+    %prime = memref.load %bufin[%c0] : memref<""" + str(bufsize) + """xi32>
   
     // Step through the remaining inputs and sieve out multiples of %prime
-    scf.for %arg0 = %c1 to %c64 step %c1
+    scf.for %arg0 = %c1 to %cend step %c1
       iter_args(%count_iter = %prime, %in_iter = %c1, %out_iter = %c0) -> (i32, index, index) {
       // Get the next input value
-      %in_val = memref.load %bufin[%in_iter] : memref<256xi32>
+      %in_val = memref.load %bufin[%in_iter] : memref<""" + str(bufsize) + """xi32>
   
       // Potential next counters
-      %count_inc = addi %count_iter, %prime: i32
-      %in_inc = addi %in_iter, %c1 : index
-      %out_inc = addi %out_iter, %c1 : index
+      %count_inc = arith.addi %count_iter, %prime: i32
+      %in_inc = arith.addi %in_iter, %c1 : index
+      %out_inc = arith.addi %out_iter, %c1 : index
   
       // Compare the input value with the counter
-      %b = cmpi "slt", %in_val, %count_iter : i32
+      %b = arith.cmpi "slt", %in_val, %count_iter : i32
       %count_next, %in_next, %out_next = scf.if %b -> (i32, index, index) {
         // Input is less than counter.
         // Pass along the input and continue to the next one.
-        memref.store %in_val, %bufout[%out_iter] : memref<256xi32>
+        memref.store %in_val, %bufout[%out_iter] : memref<""" + str(bufsize) + """xi32>
         scf.yield %count_iter, %in_inc, %out_inc : i32, index, index
       } else {
-        %b2 = cmpi "eq", %in_val, %count_iter : i32
+        %b2 = arith.cmpi "eq", %in_val, %count_iter : i32
         %in_next = scf.if %b2 -> (index) {
           // Input is equal to the counter.
           // Increment the counter and continue to the next input.
@@ -167,75 +198,37 @@ def main():
     }
     return
   }
-  """)
+  """
+    f.write(tilecode)
 
 
     f.write("\n")
-    last_index_from_pre_column = [-1, -1]
     for col in range (1, cols): # col 0 is reserved in aie
-        if (col == 1):
-            for row in range (2, rows): # core (1,1) is the initial core and has been handled before
+        for i in range (1, rows):
+            if(row == 1 and col == 1):
+                None
+            else:
                 f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col, row - 1 ))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col, row     ))
-                f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row - 1, col, row))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col, row - 1 ))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row     ))
+                f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1)\n" %(col_p, row_p))
+                f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0)\n" %(col,   row  ))
+                f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<%dxi32>, memref<%dxi32>) -> ()\n" %(col_p, row_p, col, row, bufsize, bufsize))
+                f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0)\n" %(col_p, row_p))
+                f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1)\n" %(col, row   ))
                 f.write("    AIE.end\n")
                 f.write("  }\n\n")
-                if (row == rows - 1):
-                    last_index_from_pre_column = [col, row]
+                    
+            col_p = col
+            row_p = row
 
-        elif (col % 2 == 1):
-            for row in range (1, rows):
-                if (row == 1):
-                    col_p = last_index_from_pre_column[0] 
-                    row_p = last_index_from_pre_column[1]
-                    f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col_p, row_p))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col,   row  ))
-                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col_p, row_p, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col_p, row_p))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
-                    f.write("    AIE.end\n")
-                    f.write("  }\n\n")
-                else:
-                    f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col, row - 1))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col, row   ))
-                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row - 1, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col, row - 1))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
-                    f.write("    AIE.end\n")
-                    f.write("  }\n\n")
+            if (col % 2 == 1):
+                if (row != rows-1):
+                    # odd columns go up
+                    row = row + 1
+            else:
+                if (row != 1):
+                    # even columns go down
+                    row = row - 1
 
-                if (row == rows - 1):
-                    last_index_from_pre_column = [col, row]
-        else: # col % 2 == 0
-            for row in range (rows - 1, 0, -1):
-                if (row == rows - 1):
-                    col_p = last_index_from_pre_column[0] 
-                    row_p = last_index_from_pre_column[1]
-                    f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col_p, row_p))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col,   row  ))
-                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col_p, row_p, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col_p, row_p))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
-                    f.write("    AIE.end\n")
-                    f.write("  }\n\n")
-                else:
-                    f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1, 0)\n" %(col, row + 1))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0, 0)\n" %(col, row   ))
-                    f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<256xi32>, memref<256xi32>) -> ()\n" %(col, row + 1, col, row))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0, 0)\n" %(col, row + 1))
-                    f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1, 0)\n" %(col, row   ))
-                    f.write("    AIE.end\n")
-                    f.write("  }\n\n")
-
-                if (row == 1):
-                    last_index_from_pre_column = [col, row]
     f.write("}\n")
 
 

@@ -844,11 +844,31 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       output << "}\n";
     };
 
-    // if(tiles.count(tile.getValue()))
     for (auto buf : buffers[tileOp])
       bufferAccessor(coord, buf);
-    // };
   }
+  auto lockAccessor = [&](LockOp lock) {
+    int col = lock.colIndex();
+    int row = lock.rowIndex();
+    if(!lock.hasName()) return;
+    std::string lockName(lock.name().getValue());
+    output << "int mlir_aie_acquire_" << lockName << "(" << ctx_p
+           << ", int value, int timeout) {\n";
+    output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    output << "  return !XAieTile_LockAcquire(" << tileInstStr(col, row)
+           << ", id, value, timeout);\n";
+    output << "}\n";
+    output << "int mlir_aie_release_" << lockName << "(" << ctx_p
+           << ", int value, int timeout) {\n";
+    output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    output << "  return !XAieTile_LockRelease(" << tileInstStr(col, row)
+           << ", id, value, timeout);\n";
+    output << "}\n";
+  };
+
+  for (auto lock : module.getOps<LockOp>())
+    lockAccessor(lock);
+
   return success();
 }
 } // namespace AIE

@@ -42,8 +42,11 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Acquire input buffer lock first.\n");
-    mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
-
+    if(mlir_aie_acquire_input_lock(_xaie, 0, 0)) {
+      errors++;
+      printf("ERROR: timeout hit!\n");
+    }
+    
     mlir_aie_clear_tile_memory(_xaie, 1, 3);
     mlir_aie_clear_tile_memory(_xaie, 3, 3);
     mlir_aie_write_buffer_a13(_xaie, 3, 7); // set input value
@@ -70,10 +73,11 @@ main(int argc, char *argv[])
                    0, errors);
 
     printf("Release input buffer lock.\n");
-    mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0); // Should this part of setup???
+    mlir_aie_release_input_lock(_xaie, 1, 0); // Should this part of setup???
 
     printf("Waiting to acquire output lock for read ...\n");
-    if (!mlir_aie_acquire_lock(_xaie, 3, 3, 7, 1, LOCK_TIMEOUT)) {
+    if (mlir_aie_acquire_output_lock(_xaie, 1, LOCK_TIMEOUT)) {
+      errors++;
       printf("ERROR: timeout hit!\n");
     }
 

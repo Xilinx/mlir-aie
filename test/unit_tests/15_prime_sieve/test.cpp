@@ -45,7 +45,8 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Waiting for the result ...\n");
-    if (!mlir_aie_acquire_lock(_xaie, 1, 6, 0, 1, 100)) {
+    if (mlir_aie_acquire_output_lock(_xaie, 1, 100)) {
+      errors++;
       printf("ERROR: timeout hit!\n");
     }
 

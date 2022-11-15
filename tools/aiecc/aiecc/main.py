@@ -237,6 +237,18 @@ class flow_runner:
         await self.do_call(None, ['sed', '-i', 's/noalias_sidechannel[^,]*,//', self.chess_intrinsic_wrapper])
         await self.do_call(None, ['sed', '-i', 's/nocallback[^,]*,//', self.chess_intrinsic_wrapper])
 
+      self.file_opt_with_addresses = os.path.join(self.tmpdirname, 'input_opt_with_addresses.mlir')
+      await self.do_call(None, ['aie-opt', '--aie-localize-locks',
+                          '--aie-standard-lowering',
+                          '--aie-normalize-address-spaces',
+                          '--canonicalize',
+                          '--cse',
+                          '--convert-vector-to-llvm',
+                          '--convert-memref-to-llvm',
+                          '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
+                          '--convert-cf-to-llvm',
+                          '--canonicalize', '--cse', self.file_with_addresses, '-o', self.file_opt_with_addresses])
+
       with Progress(
         *Progress.get_default_columns(),
         TimeElapsedColumn(),

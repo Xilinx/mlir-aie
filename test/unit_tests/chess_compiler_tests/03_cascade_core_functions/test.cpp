@@ -50,14 +50,13 @@ main(int argc, char *argv[])
                    errors);
 
     printf("Release input buffer lock.\n");
-    mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
+    mlir_aie_release_input_lock(_xaie, 1, 0);
 
-    int tries = 1;
     printf("Waiting to acquire output lock for read ...\n");
-    while (tries < 1000 && !mlir_aie_acquire_lock(_xaie, 2, 3, 7, 1, 0)) {
-      tries++;
+    if(mlir_aie_acquire_output_lock(_xaie, 1, 1000)) {
+      errors++;
+      printf("ERROR: Failed to acquire output lock!\n");
     }
-    printf("It took %d tries.\n", tries);
 
     mlir_aie_dump_tile_memory(_xaie, 1, 3);
     mlir_aie_dump_tile_memory(_xaie, 2, 3);

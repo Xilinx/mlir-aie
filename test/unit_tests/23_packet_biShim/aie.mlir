@@ -4,13 +4,13 @@ module @aie_module  {
   %t70 = AIE.tile(7, 0)
   %t72 = AIE.tile(7, 2)
 
-  %10 = AIE.lock(%t72, 1)
-  %lock1 = AIE.lock(%t70, 1)
-  %lock2 = AIE.lock(%t70, 2)
+  %10 = AIE.lock(%t72, 1) {sym_name = "inter_lock"}
+  %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock"}
+  %lock2 = AIE.lock(%t70, 2) {sym_name = "output_lock"}
 
   %11 = AIE.buffer(%t72) {sym_name = "buf1"} : memref<256xi32>
-  %buf_i = AIE.external_buffer : memref<256xi32>
-  %buf_o = AIE.external_buffer : memref<257xi32>
+  %buf_i = AIE.external_buffer {sym_name = "input"} : memref<256xi32>
+  %buf_o = AIE.external_buffer {sym_name = "output"} : memref<257xi32>
 
   %12 = AIE.mem(%t72)  {
     %srcDma = AIE.dmaStart("S2MM", 0, ^bb2, ^dma0)

@@ -19,8 +19,8 @@ module @test_chesss_01_precompiled_core_function {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3)
-  %lock13_5 = AIE.lock(%tile13, 5)
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" }
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "output_lock" }
 
   func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> ()
 

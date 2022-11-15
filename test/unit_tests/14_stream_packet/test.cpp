@@ -38,8 +38,8 @@ main(int argc, char *argv[])
   mlir_aie_configure_cores(_xaie);
 
   // get locks
-  mlir_aie_acquire_lock(_xaie, 7, 3, 0, 0, 0);
-  mlir_aie_acquire_lock(_xaie, 7, 1, 0, 0, 0);
+  mlir_aie_acquire_lock73(_xaie, 0, 0);
+  mlir_aie_acquire_lock71(_xaie, 0, 0);
 
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
@@ -71,8 +71,8 @@ main(int argc, char *argv[])
 
   usleep(10000);
 
-  mlir_aie_release_lock(_xaie, 7, 3, 0, 0, 0); // Release lock
-  mlir_aie_release_lock(_xaie, 7, 1, 0, 0, 0); // Release lock
+  mlir_aie_release_lock73(_xaie, 0, 0); // Release lock
+  mlir_aie_release_lock71(_xaie, 0, 0); // Release lock
 
   int errors = 0;
   for (int i=0; i<count; i++) {

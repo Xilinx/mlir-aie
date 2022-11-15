@@ -11,7 +11,8 @@ alignas(v16int16) int16_t dequant_lut[DCT8x8_BLOCK_WIDTH*DCT8x8_BLOCK_HEIGHT] = 
 		36, 46, 48, 49, 56, 50, 52, 50
 };
 
-void dequant_8x8(int16_t  *restrict input,
+
+void extern "C" dequant_8x8(int16_t  *restrict input,
              int16_t *restrict output)
 {
     // int16_t *restrict new_ptr_in = (int16_t *) input; 

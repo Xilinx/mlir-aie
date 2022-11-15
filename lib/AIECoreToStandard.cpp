@@ -218,6 +218,79 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
   }
 };
 
+
+struct AIEBufferToStandard : public OpConversionPattern<ModuleOp> {
+  using OpConversionPattern<CoreOp>::OpConversionPattern;
+  ModuleOp &module;
+  BlockAndValueMapping &mapper;
+  DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
+
+  AIEBufferToStandard(
+      MLIRContext *context, ModuleOp &m, BlockAndValueMapping &mapper,
+      DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers,
+      PatternBenefit benefit = 1, int tileCol = 1, int tileRow = 1)
+      : OpConversionPattern<ModuleOp>(context, benefit), module(m),
+        mapper(mapper), tileToBuffers(tileToBuffers) {}
+  LogicalResult
+  matchAndRewrite(ModuleOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+ 
+    DenseMap<Operation *, Value> newAllocated;
+
+    for (auto buffer : op.getOps<BufferOp>()) {
+      TileOp tile = buffer.getTileOp();
+      int dstCol = tile.colIndex();
+      int dstRow = tile.rowIndex();
+
+      rewriter.setInsertionPoint(buffer);
+      auto symName = buffer.name().getValue();
+      rewriter.create<memref::GlobalOp>(
+          rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
+          buffer.getType(), nullptr, false, nullptr);
+
+      for (auto uses : op.getUses()) {
+        Operation *user =  uses.getUser();
+        rewriter.setInsertPoint(user);
+        auto allocated = rewriter.create<memref::GetGlobalOp>(
+            rewriter.getUnknownLoc(), t, symName);
+       // newAllocated[buffer] = allocated.getResult();
+        // Assume that buffers are aligned so they can be vectorized.
+        rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
+                                                   allocated, 32);
+        uses.set(allocated.getResult());
+        // rewriter.replaceOp(buffer, allocated.getResult());
+      }
+
+      // rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
+      // for (auto buffer : buffers) {
+      //   MemRefType t = buffer.getType().cast<MemRefType>();
+      //   auto symName = buffer.name().getValue();
+      //   auto allocated = rewriter.create<memref::GetGlobalOp>(
+      //       rewriter.getUnknownLoc(), t, symName);
+      //   newAllocated[buffer] = allocated.getResult();
+      //   // Assume that buffers are aligned so they can be vectorized.
+      //   rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
+      //                                              allocated, 32);
+      //   rewriter.replaceOp(buffer, allocated.getResult());
+      // }
+    }
+
+    // m.getBody().walk([&](Operation *childOp) {
+    //   rewriter.setInsertionPointAfter(childOp);
+
+    //   if (EndOp end = dyn_cast<EndOp>(childOp)) {
+    //     rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
+    //                                     ValueRange({}));
+    //     rewriter.eraseOp(childOp);
+    //   }
+    // });
+
+    rewriter.eraseOp(Op);
+    return success();
+  }
+};
+
 struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
   using OpConversionPattern<CoreOp>::OpConversionPattern;
   ModuleOp &module;

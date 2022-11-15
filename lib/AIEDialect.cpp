@@ -820,6 +820,12 @@ struct AcquireReleaseOneStateInDMABlock {
   }
 };
 
+xilinx::AIE::TileOp xilinx::AIE::LockOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+}
+int xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
+
 LogicalResult xilinx::AIE::UseLockOp::verify() {
   // AIE.useLock may be used in a module to set the lock's default value
   if (llvm::isa_and_nonnull<mlir::ModuleOp>((*this)->getParentOp()))

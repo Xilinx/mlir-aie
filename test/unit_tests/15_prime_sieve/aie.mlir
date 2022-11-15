@@ -17,10 +17,10 @@ module @test15_prime_sieve {
   %tile15 = AIE.tile(1, 5)
   %tile16 = AIE.tile(1, 6)
 
-  %lock13_0 = AIE.lock(%tile13, 0)
+  %lock13_0 = AIE.lock(%tile13, 0) { sym_name = "input_lock" }
   %lock14_0 = AIE.lock(%tile14, 0)
   %lock15_0 = AIE.lock(%tile15, 0)
-  %lock16_0 = AIE.lock(%tile16, 0)
+  %lock16_0 = AIE.lock(%tile16, 0) { sym_name = "output_lock" }
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf14_0 = AIE.buffer(%tile14) { sym_name = "prime2" } : memref<256xi32>
   %buf15_0 = AIE.buffer(%tile15) { sym_name = "prime3" } : memref<256xi32>

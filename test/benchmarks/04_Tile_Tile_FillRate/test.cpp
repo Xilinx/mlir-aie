@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
     mlir_aie_initialize_locks(_xaie);
 
     // printf("Acquire input buffer lock first.\n");
-    mlir_aie_acquire_lock(_xaie, 1, 3, 5, 0, 0); 
+    mlir_aie_acquire_input_lock(_xaie, 0, 0); 
 
     mlir_aie_configure_dmas(_xaie);
     mlir_aie_init_mems(_xaie, 1);
@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
                         XAIE_MEM_MOD, 2,
                         XAIE_EVENT_LOCK_5_ACQ_MEM); // Start
 
-    mlir_aie_release_lock(_xaie, 1, 3, 5, 1, 0);
+    mlir_aie_release_input_lock(_xaie, 1, 0);
     usleep(100);
 
     pc0_times[iters] = pc0.diff();
