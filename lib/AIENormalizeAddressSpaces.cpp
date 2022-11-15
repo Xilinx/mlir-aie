@@ -42,11 +42,23 @@ struct AIENormalizeAddressSpacesPass
   void runOnOperation() override {
     ModuleOp m = getOperation();
 
+    TypeConverter converter;
+    converter.addConversion([&](Type type) -> Optional<Type> {
+      return memRefToDefaultAddressSpace(type);
+    });
+
     ConversionTarget target(getContext());
     target.addDynamicallyLegalOp<memref::GlobalOp>(
         [](memref::GlobalOp op) { return op.getType().getMemorySpace() == 0; });
+
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType());
+    });
+
     RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
 
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
