@@ -63,3 +63,22 @@ def Interconnect : OpInterface<"Interconnect"> {
     >
   ];
 }
+
+def TileElement : OpInterface<"TileElement"> {
+  let description = [{
+    Interface for operations that exist in a TileOp.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [
+    InterfaceMethod<[{
+        Return the location of the Tile where the element is located.
+      }],
+      "xilinx::AIE::TileID", "getTileID", (ins ),
+      /*methodBody=*/  [{}],
+      /*defaultImpl=*/ [{
+        ConcreteOp op = cast<ConcreteOp>(this->getOperation());
+        return op.getTileOp().getTileID();
+      }]
+    >
+  ];
+}
