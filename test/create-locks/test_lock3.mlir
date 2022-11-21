@@ -32,7 +32,7 @@
 // CHECK-NEXT:    %10 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK-NEXT:  ^bb1:
 // CHECK-NEXT:    AIE.useLock(%1, Acquire, 0)
-// CHECK-NEXT:    AIE.dmaBd(<%4 : memref<256xi32>, 0, 256>, 0)
+// CHECK-NEXT:    AIE.dmaBd(<%5 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%1, Release, 1)
 // CHECK-NEXT:    cf.br ^bb2
 // CHECK-NEXT:  ^bb2:
@@ -78,7 +78,7 @@ module @test_lock3 {
       %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
       AIE.useToken @token0(Acquire, 1)
-      AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
+      AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
       cf.br ^end
     ^end:

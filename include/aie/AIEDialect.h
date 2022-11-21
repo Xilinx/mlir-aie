@@ -43,6 +43,12 @@ class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {};
 } // namespace OpTrait
 } // namespace mlir
 
+namespace xilinx {
+namespace AIE {
+typedef std::pair<int, int> TileID;
+}
+} // namespace xilinx
+
 /// Include the generated interface declarations.
 #include "aie/AIEInterfaces.h.inc"
 
@@ -161,7 +167,6 @@ public:
 
 typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
-typedef std::pair<int, int> TileID;
 typedef std::pair<DMAChannelDir, int> DMAChannel;
 
 bool isValidTile(TileID src);

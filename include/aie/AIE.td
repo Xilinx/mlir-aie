@@ -116,6 +116,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     int getNumDestConnections(WireBundle bundle);
     int colIndex() { return getCol(); }
     int rowIndex() { return getRow(); }
+    TileID getTileID() { return std::make_pair(getCol(), getRow()); }
     bool isShimTile() { return getRow() == 0; }
     bool isShimNOCTile();
     bool isShimPLTile();
@@ -173,7 +174,8 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   let assemblyFormat = [{ attr-dict }];
 }
 
-def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, SingleBlockImplicitTerminator<"EndOp">]>,
+def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, TileElement,
+                                          SingleBlockImplicitTerminator<"EndOp">]>,
                      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -241,7 +243,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   ];
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect,
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
                                       SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -278,7 +280,8 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint/*, CallableOpInterface*/]>,
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
+                                      /*, CallableOpInterface*/]>,
                          Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
@@ -316,7 +319,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint/*, CallableOpInterface*/]>,
   }];
 }
 
-def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint]>, Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -1061,7 +1064,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
+def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
                      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
@@ -1093,6 +1096,7 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
   let extraClassDeclaration = [{
     int colIndex();
     int rowIndex();
+    TileOp getTileOp();
     int maxSizeInBytes() { return 32768; }
     // CallableOpInterface
     Region *getCallableRegion();
@@ -1105,7 +1109,7 @@ def AIE_MemOp: AIE_Op<"mem", [FlowEndPoint, CallableOpInterface]>,
   ];
 }
 
-def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
+def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
   let description = [{
     This operation creates a physical lock. For this operation the lockID variable is optional. 
@@ -1160,6 +1164,7 @@ def AIE_LockOp: AIE_Op<"lock", []>, Results<(outs Index)> {
         $_builder.getI32IntegerAttr(lockID));
       }]>
   ];
+  let hasVerifier = 1;
   // let hasCanonicalizer = 1;
 }
 
@@ -1213,7 +1218,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", [TileElement]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1230,6 +1235,7 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
   );
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     bool hasName() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
@@ -1260,7 +1266,7 @@ def AIE_BufferOp: AIE_Op<"buffer", []>, Results<(outs AnyMemRef)> {
     int64_t getAllocationSize();
     TileOp getTileOp();
   }];
-  }
+}
 
 def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";

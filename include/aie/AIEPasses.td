@@ -40,11 +40,13 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
 
-    Outline code inside a particular AIE.core operation into the llvm dialect.
+    Outline code inside AIE.core operations into the llvm dialect.
     BufferOp operations are converted to a GlobalMemrefOp and references to
     those buffers are converted to GetGlobalMemrefOp.  Other AIE operations
     inside the cores are generally lowered to appropriate function intrinsics.
     Other AIE operations (e.g. CoreOp, TileOp, LockOp) outside the core are removed.
+
+    Optionally, tileCol and tileRow can specify a single core to export
 
   }];
   let options = [
