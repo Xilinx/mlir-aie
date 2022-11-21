@@ -250,6 +250,8 @@ SECTIONS
                 auto fileName = std::string(fileAttr.getValue());
                 output << "INPUT(" << fileName << ")\n";
               }
+              output << "PROVIDE(_main = core" << tile.getCol() << tile.getRow()
+                     << ");\n";
             }
           }
         return success();
@@ -301,8 +303,11 @@ SECTIONS
         // _include _file rom.o
         for (auto tile : module.getOps<TileOp>())
           if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+            std::string corefunc = std::string("core") +
+                                   std::to_string(tile.getCol()) +
+                                   std::to_string(tile.getRow());
             output << "_entry_point _main_init\n";
-            output << "_symbol      _main _after _main_init\n";
+            output << "_symbol " << corefunc << " _after _main_init\n";
             output << "_symbol      _main_init 0\n";
             output << "_reserved DMb      0x00000 0x20000 //Don't put data in "
                       "code memory\n";
@@ -331,6 +336,8 @@ SECTIONS
                 output << "_include _file " << fileName << "\n";
               }
             }
+            output << "_resolve _main core" << tile.getCol() << tile.getRow()
+                   << "\n";
           }
         return success();
       },

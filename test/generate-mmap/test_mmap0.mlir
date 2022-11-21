@@ -38,8 +38,8 @@
 // CHECK: _symbol c 0x38050 1024
 
 // BCF44: _entry_point _main_init
-// BCF44: _symbol      _main _after _main_init
-// BCF44: _symbol      _main_init 0
+// BCF44: _symbol core44 _after _main_init
+// BCF44: _symbol _main_init 0
 // BCF44: _reserved DMb      0x00000 0x20000 //Don't put data in code memory
 // BCF44: _symbol z 0x20000 0x20
 // BCF44: _extern z
