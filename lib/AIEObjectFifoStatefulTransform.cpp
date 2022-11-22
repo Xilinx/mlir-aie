@@ -339,11 +339,9 @@ struct AIEObjectFifoStatefulTransformPass
   /// It uses creatBdBlock(), see there for lockMode input.
   void createShimDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
                      DMAChannelDir channelDir, int channelIndex, int lockMode) {
-    int numBlocks = 1;
-
+    int numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
-
     assert(numBlocks <= 14 &&
            "Cannot have more than 16 blocks in a DMA channel.");
 

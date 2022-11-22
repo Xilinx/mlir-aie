@@ -1,4 +1,4 @@
-//===- objectFifo_ver.mlir --------------------------*- MLIR -*-===//
+//===- aie.mlir --------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -46,13 +46,13 @@ module @MM_2x2 {
   %buffer3 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile1
   %buffer4 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile2
   %buffer5 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile3
-  %buffer6 = AIE.external_buffer : memref<1025 x i32>     //Out_tile0
-  %buffer7 = AIE.external_buffer : memref<1025 x i32>     //Out_tile1
+  %buffer6 = AIE.external_buffer : memref<1024 x i32>     //Out_tile0
+  %buffer7 = AIE.external_buffer : memref<1024 x i32>     //Out_tile1
 
   AIE.objectFifo.registerExternalBuffers(%t60, %of_LHS0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer0}) : (memref<1024xi32>)
   AIE.objectFifo.registerExternalBuffers(%t60, %of_LHS1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer1}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t60, %of_Out0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer6}) : (memref<1025xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t60, %of_Out1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer7}) : (memref<1025xi32>)
+  AIE.objectFifo.registerExternalBuffers(%t60, %of_Out0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer6}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers(%t60, %of_Out1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer7}) : (memref<1024xi32>)
 
   AIE.objectFifo.registerExternalBuffers(%t70, %of_RHS0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer2}) : (memref<1024xi32>)
   AIE.objectFifo.registerExternalBuffers(%t70, %of_RHS1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer3}) : (memref<1024xi32>)

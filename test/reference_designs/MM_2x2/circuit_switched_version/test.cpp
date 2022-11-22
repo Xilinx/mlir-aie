@@ -1,4 +1,4 @@
-//===- circuit_switch_ver_test.cpp
+//===- test.cpp
 //-------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -119,8 +119,8 @@ int main(int argc, char *argv[]) {
     *(mem_ptr3 + i) = 4;  // RHS_tile1
     *(mem_ptr4 + i) = 5;  // RHS_tile2
     *(mem_ptr5 + i) = 6;  // RHS_tile3
-    *(mem_ptr6 + i) = 101; // Out_tile0
-    *(mem_ptr7 + i) = 101; // Out_tile1
+    *(mem_ptr6 + i) = 99; // Out_tile0
+    *(mem_ptr7 + i) = 99; // Out_tile1
   }
 
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
@@ -192,26 +192,14 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
-  mlir_aie_acquire_lock(_xaie, 6, 4, 2, 0, 10000);
-  mlir_aie_acquire_lock(_xaie, 7, 4, 2, 0, 10000);
+  mlir_aie_acquire_lock(_xaie, 6, 4, 2, 0, 0);
+  mlir_aie_acquire_lock(_xaie, 7, 4, 2, 0, 0);
 
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
+  u32 sleep_long = 5000000;
+  usleep(sleep_long);
 
-  mlir_aie_acquire_lock(_xaie, 6, 0, 2, 0, 10000);
-  mlir_aie_acquire_lock(_xaie, 6, 0, 3, 0, 10000);
+  mlir_aie_acquire_lock(_xaie, 6, 0, 2, 0, 0);
+  mlir_aie_acquire_lock(_xaie, 6, 0, 3, 0, 0);
 
   for (int idx0 = 0; idx0 < 1024; ++idx0) {
     if (mem_ptr6[idx0] != 352) {

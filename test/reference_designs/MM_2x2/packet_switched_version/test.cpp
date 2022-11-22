@@ -201,20 +201,8 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
-  usleep(sleep_u);
+  u32 sleep_long = 5000000;
+  usleep(sleep_long);
 
   // Check if the external buffer receives the correct result
   int Header0 = mem_ptr6[0] & 31;
