@@ -53,15 +53,14 @@ module @idct {
   %lock_75_b_ping = AIE.lock(%t75, 5) // b_ping
   %lock_75_b_pong = AIE.lock(%t75, 6) // b_pong
 
+  AIE.flow(%t70, DMA : 0, %t73, DMA : 0)
+  AIE.flow(%t73, DMA : 1, %t74, DMA : 0)
+  AIE.flow(%t74, DMA : 1, %t75, DMA : 0)
+  AIE.flow(%t75, DMA : 1, %t70, DMA : 0)
 
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
-  func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
     %buffer_size =  arith.constant 64 : i32
@@ -79,19 +78,19 @@ module @idct {
       
       AIE.useLock(%lock_73_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_ping, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @dequant_8x8(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_73_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_73_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_73_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_pong, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_73_apong, %buf_73_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @dequant_8x8(%buf_73_apong, %buf_73_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_73_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_73_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
-  } { link_with="pass.o" }
+  } { link_with="dequant.o" }
 
   %c74 = AIE.core(%t74) { 
     %buffer_size =  arith.constant 64 : i32
@@ -109,19 +108,19 @@ module @idct {
       
       AIE.useLock(%lock_74_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_ping, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_h(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_74_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_74_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_74_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_pong, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_74_apong, %buf_74_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_h(%buf_74_apong, %buf_74_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_74_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_74_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
-  } { link_with="pass.o" }
+  } { link_with="idct_horizontal.o" }
   
     %c75 = AIE.core(%t75) { 
     %buffer_size =  arith.constant 64 : i32
@@ -139,19 +138,19 @@ module @idct {
       
       AIE.useLock(%lock_75_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_ping, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_v(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_75_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_75_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_75_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_pong, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_75_apong, %buf_75_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_v(%buf_75_apong, %buf_75_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_75_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_75_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
-  } { link_with="pass.o" }
+  } { link_with="idct_vertical.o" }
 
   // Tile DMA
   %m73 = AIE.mem(%t73) {
@@ -244,10 +243,6 @@ module @idct {
   %buffer_in  = AIE.external_buffer : memref<512 x i16>
   %buffer_out = AIE.external_buffer : memref<512 x i16>
 
-  // Shim DMA connection to kernel
-  AIE.flow(%t70, DMA : 0, %t73, DMA : 0)
-  AIE.flow(%t75, DMA : 0, %t70, DMA : 0)
-
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
       %lock1 = AIE.lock(%t70, 1)
@@ -256,14 +251,14 @@ module @idct {
     ^dma:
       AIE.dmaStart(S2MM, 0, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
+      AIE.useLock(%lock1, "Acquire", 1)
       AIE.dmaBd(<%buffer_in : memref<512 x i16>, 0, 512>, 0)
-      AIE.useLock(%lock1, Release, 0)
+      AIE.useLock(%lock1, "Release", 0)
       cf.br ^bd0
     ^bd1:
-      AIE.useLock(%lock2, Acquire, 1)
+      AIE.useLock(%lock2, "Acquire", 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i16>, 0, 512>, 0)
-      AIE.useLock(%lock2, Release, 0)
+      AIE.useLock(%lock2, "Release", 0)
       cf.br ^bd1
     ^end:
       AIE.end

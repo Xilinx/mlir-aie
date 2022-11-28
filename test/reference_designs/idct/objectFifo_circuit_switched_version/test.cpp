@@ -23,13 +23,62 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
+#define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
+#define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
 #define MLIR_STACK_OFFSET 4096
 
 #include "aie_inc.cpp"
 
-int main(int argc, char *argv[]) {
+// Taken from /reference_designs/MM_2x2/test.cpp.
+#define MAP_SIZE 16UL
+#define MAP_MASK (MAP_SIZE - 1)
+void devmemRW32(uint32_t address, uint32_t value, bool write) {
+  int fd;
+  uint32_t *map_base;
+  uint32_t read_result;
+  uint32_t offset = address - 0xF70A0000;
+
+  if ((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1)
+    printf("ERROR!!!! open(devmem)\n");
+  printf("\n/dev/mem opened.\n");
+  fflush(stdout);
+
+  map_base = (uint32_t *)mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fd, 0xF70A0000);
+  if (map_base == (void *)-1)
+    printf("ERROR!!!! map_base\n");
+  printf("Memory mapped at address %p.\n", map_base);
+  fflush(stdout);
+
+  read_result = map_base[uint32_t(offset / 4)];
+  printf("Value at address 0x%X: 0x%X\n", address, read_result);
+  fflush(stdout);
+
+  if (write) {
+    map_base[uint32_t(offset / 4)] = value;
+    // msync(map_base, MAP_SIZE, MS_SYNC);
+    read_result = map_base[uint32_t(offset / 4)];
+    printf("Written 0x%X; readback 0x%X\n", value, read_result);
+    fflush(stdout);
+  }
+
+  // msync(map_base, MAP_SIZE, MS_SYNC);
+  if (munmap(map_base, MAP_SIZE) == -1)
+    printf("ERROR!!!! unmap_base\n");
+  printf("/dev/mem closed.\n");
+  fflush(stdout);
+  close(fd);
+}
+
+int main(int argc, char *argv[]) 
+{
+  devmemRW32(0xF70A000C, 0xF9E8D7C6, true);
+  devmemRW32(0xF70A0000, 0x04000000, true);
+  devmemRW32(0xF70A0004, 0x040381B1, true);
+  devmemRW32(0xF70A0000, 0x04000000, true);
+  devmemRW32(0xF70A0004, 0x000381B1, true);
+  devmemRW32(0xF70A000C, 0x12341234, true);
+
   printf("test start.\n");
 
   // int n = 1;
@@ -44,6 +93,10 @@ int main(int argc, char *argv[]) {
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
+
+  mlir_aie_clear_tile_memory(_xaie, 7, 3);
+  mlir_aie_clear_tile_memory(_xaie, 7, 4);
+  mlir_aie_clear_tile_memory(_xaie, 7, 5);
 
   mlir_aie_configure_cores(_xaie);
   mlir_aie_configure_switchboxes(_xaie);
@@ -62,40 +115,39 @@ int main(int argc, char *argv[]) {
 
   int errors = 0;
 
+  #define DMA_COUNT 512
+
   // Load IDCT Data
   FILE *file = fopen("image.txt", "r");
   if (file == NULL) {
     perror("Error opening file: ");
     return 1;
   }
-  int image[512];
+  int image[DMA_COUNT];
   int num;
   int i = 0;
-  while (fscanf(file, "%d\n", &num) > 0 && i < 512) {
+  while (fscanf(file, "%d\n", &num) > 0 && i < DMA_COUNT) {
     image[i] = num;
     i++;
   }
   fclose(file);
   printf("IDCT data loaded.\n");
 
-// Write IDCT Data to DDR and prepare output
-#define DMA_COUNT 512
-
   mlir_aie_init_mems(_xaie, 2);
-  u_int16_t *ddr_ptr_in = (u_int16_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  u_int16_t *ddr_ptr_out = (u_int16_t *)mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-  for (u_int16_t i = 0; i < DMA_COUNT; i++) {
-    *(ddr_ptr_in + i) = i;
+  int16_t *ddr_ptr_in = (int16_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  int16_t *ddr_ptr_out = (int16_t *)mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  for (int16_t i = 0; i < DMA_COUNT; i++) {
+    *(ddr_ptr_in + i) = image[i];
     *(ddr_ptr_out + i) = 0;
   }
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-#ifdef LIBXAIENGINEV2
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)ddr_ptr_out);
-  mlir_aie_configure_shimdma_70(_xaie);
-#endif
+  #ifdef LIBXAIENGINEV2
+    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
+    mlir_aie_external_set_addr_myBuffer_70_1((u64)ddr_ptr_out);
+    mlir_aie_configure_shimdma_70(_xaie);
+  #endif
 
   // EventMonitor pc0(_xaie, 7, 3, 0, XAIE_EVENT_LOCK_3_ACQ_MEM,
   // XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); EventMonitor
@@ -126,26 +178,22 @@ int main(int argc, char *argv[]) {
   // pc6.set();
   // pc7.set();
 
-  mlir_aie_clear_tile_memory(_xaie, 7, 3);
-  mlir_aie_clear_tile_memory(_xaie, 7, 4);
-  mlir_aie_clear_tile_memory(_xaie, 7, 5);
-
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
-
-  printf("Start cores\n");
-  mlir_aie_start_cores(_xaie);
-
-  // usleep(sleep_u);
-  // printf("after core start\n");
-  // ACDC_print_tile_status(TileInst[7][3]);
-  // u32 locks70;
-  // locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
-  // printf("Locks70 = %08X\n", locks70);
 
   printf("Release lock for accessing DDR.\n");
   mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
   mlir_aie_release_lock(_xaie, 7, 0, 1, 0, 0);
+
+  printf("Start cores\n");
+  mlir_aie_start_cores(_xaie);
+
+  usleep(sleep_u);
+  printf("after core start\n");
+  mlir_aie_print_tile_status(_xaie, 7, 3);
+  // u32 locks70;
+  // locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
+  // printf("Locks70 = %08X\n", locks70);
 
   usleep(1000);
   // pc0_times[0] = pc0.diff();
@@ -163,18 +211,14 @@ int main(int argc, char *argv[]) {
   // mlir_aie_check("After", mlir_read_buffer_b_ping(0), 385, errors);
   // mlir_aie_check("After", mlir_read_buffer_b_pong(0), 449, errors);
 
-  printf("reached1: ");
   mlir_aie_acquire_lock(_xaie, 7, 0, 1, 1, 0);
-
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
-  // for (uint16_t i=0; i<DMA_COUNT; i++) {
-  //     uint16_t d = ddr_ptr_out[i];
-  //     printf("ddr_ptr_out[%d] = %d\n", i, d);
-  // }
+  u32 sleep_long = 5000000;
+  usleep(sleep_long);
 
-  for (int i = 0; i < 512; i++)
-    mlir_aie_check("DDR out", ddr_ptr_out[i], i, errors);
+  for (int i = 0; i < DMA_COUNT; i++)
+    mlir_aie_check("DDR out", ddr_ptr_out[i], image[i], errors);
 
   // computeStats(pc0_times, n);
   // computeStats(pc1_times, n);
@@ -187,8 +231,6 @@ int main(int argc, char *argv[]) {
 
   int res = 0;
 
-  printf("reached2: ");
-
   if (!errors) {
     printf("PASS!\n");
     res = 0;
@@ -196,8 +238,6 @@ int main(int argc, char *argv[]) {
     printf("Fail!\n");
     res = -1;
   }
-
-  printf("reached3: ");
 
   mlir_aie_deinit_libxaie(_xaie);
   printf("test done.\n");

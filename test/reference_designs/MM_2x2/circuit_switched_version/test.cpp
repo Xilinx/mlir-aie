@@ -192,14 +192,10 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
-  mlir_aie_acquire_lock(_xaie, 6, 4, 2, 0, 0);
-  mlir_aie_acquire_lock(_xaie, 7, 4, 2, 0, 0);
-
-  u32 sleep_long = 5000000;
-  usleep(sleep_long);
-
   mlir_aie_acquire_lock(_xaie, 6, 0, 2, 0, 0);
   mlir_aie_acquire_lock(_xaie, 6, 0, 3, 0, 0);
+  mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 
   for (int idx0 = 0; idx0 < 1024; ++idx0) {
     if (mem_ptr6[idx0] != 352) {

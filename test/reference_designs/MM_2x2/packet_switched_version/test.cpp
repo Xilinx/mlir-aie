@@ -201,8 +201,8 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
-  u32 sleep_long = 5000000;
-  usleep(sleep_long);
+  mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 
   // Check if the external buffer receives the correct result
   int Header0 = mem_ptr6[0] & 31;

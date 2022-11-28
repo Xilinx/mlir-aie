@@ -38,11 +38,7 @@ module @idct {
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
   // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
   // func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
   func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
     %buffer_size =  arith.constant 64 : i32
@@ -63,14 +59,14 @@ module @idct {
       %outputSubview = AIE.objectFifo.acquire<Produce>(%of_t73_t74 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
 
-      func.call @pass(%input, %output) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @dequant_8x8(%input, %output) : (memref<64xi16>, memref<64xi16>) -> ()
       
       AIE.objectFifo.release<Consume>(%of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, 1)
       AIE.objectFifo.release<Produce>(%of_t73_t74 : !AIE.objectFifo<memref<64xi16>>, 1)
     }
 
     AIE.end
-  } { link_with="pass.o" }
+  } { link_with="dequant.o" }
 
   %c74 = AIE.core(%t74) { 
     %buffer_size =  arith.constant 64 : i32

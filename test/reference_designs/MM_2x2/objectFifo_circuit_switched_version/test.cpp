@@ -157,8 +157,10 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_start_cores(_xaie);
 
-  u32 sleep_long = 5000000;
-  usleep(sleep_long);
+  usleep(sleep_u);
+
+  mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 
   for (int idx0 = 0; idx0 < 1024; ++idx0) {
     if (mem_ptr6[idx0] != 352) {
