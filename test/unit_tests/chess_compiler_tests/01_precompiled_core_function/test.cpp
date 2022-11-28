@@ -57,7 +57,7 @@ main(int argc, char *argv[])
     mlir_aie_release_input_lock(_xaie, 1, 0);
 
     printf("Waiting to acquire output lock for read ...\n");
-    if(mlir_aie_acquire_output_lock(_xaie, 1, 1000)) {
+    if (mlir_aie_acquire_output_lock(_xaie, 1, 1000)) {
       errors++;
       printf("ERROR: Failed to acquire output lock!\n");
     }

@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
   usleep(sleep_u);
 
   printf("Waiting to acquire output lock for read ...\n");
-  if(mlir_aie_acquire_output_lock(_xaie, 1, 1000)) {
+  if (mlir_aie_acquire_output_lock(_xaie, 1, 1000)) {
     errors++;
   }
 

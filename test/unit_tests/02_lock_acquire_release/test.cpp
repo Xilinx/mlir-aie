@@ -38,14 +38,13 @@ main(int argc, char *argv[])
     mlir_aie_initialize_locks(_xaie);
     mlir_aie_configure_dmas(_xaie);
 
-
     int errors = 0;
 
     // This should timeout and return an error condition.
-    if(mlir_aie_acquire_lock1(_xaie, 1, 0)) {
-        // Succeeded!  Which is an error.
-        printf("Error: Lock acquired successfully in wrong state!\n");
-        errors++;
+    if (mlir_aie_acquire_lock1(_xaie, 1, 0)) {
+      // Succeeded!  Which is an error.
+      printf("Error: Lock acquired successfully in wrong state!\n");
+      errors++;
     }
 
     mlir_aie_acquire_lock1(_xaie, 0, 0);

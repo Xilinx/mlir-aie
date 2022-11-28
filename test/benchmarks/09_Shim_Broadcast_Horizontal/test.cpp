@@ -53,8 +53,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
 
-    mlir_aie_acquire_lock1(_xaie, 0, 0); 
-    mlir_aie_acquire_lock2(_xaie, 0, 0); 
+    mlir_aie_acquire_lock1(_xaie, 0, 0);
+    mlir_aie_acquire_lock2(_xaie, 0, 0);
 
     mlir_aie_configure_dmas(_xaie);
 

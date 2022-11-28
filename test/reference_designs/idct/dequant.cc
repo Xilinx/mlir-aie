@@ -11,26 +11,22 @@ alignas(v16int16) int16_t dequant_lut[DCT8x8_BLOCK_WIDTH*DCT8x8_BLOCK_HEIGHT] = 
 		36, 46, 48, 49, 56, 50, 52, 50
 };
 
+void extern "C" dequant_8x8(int16_t *restrict input, int16_t *restrict output) {
+  // int16_t *restrict new_ptr_in = (int16_t *) input;
+  // int16_t *restrict new_ptr_out = (int16_t *) output;
 
-void extern "C" dequant_8x8(int16_t  *restrict input,
-             int16_t *restrict output)
-{
-    // int16_t *restrict new_ptr_in = (int16_t *) input; 
-    // int16_t *restrict new_ptr_out = (int16_t *) output; 
+  v16int16 *restrict ptr_in = (v16int16 *)input;
+  v16int16 *restrict ptr_out = (v16int16 *)output;
 
-    v16int16 *restrict ptr_in  = (v16int16 *)input;
-    v16int16 *restrict ptr_out = (v16int16 *)output;
-    
-    v16int16 *restrict ptr_dq = (v16int16 *)dequant_lut;
+  v16int16 *restrict ptr_dq = (v16int16 *)dequant_lut;
 
-    v16int16 dequant, in_lo_0, in_lo_1, in_hi_0, in_hi_1;
-    v16acc48 dq_inp_0, dq_inp_1;
+  v16int16 dequant, in_lo_0, in_lo_1, in_hi_0, in_hi_1;
+  v16acc48 dq_inp_0, dq_inp_1;
 
- 
-    in_lo_0 = *ptr_in++;
-    in_lo_1 = *ptr_in++;
-    
-    dequant = *ptr_dq++;
+  in_lo_0 = *ptr_in++;
+  in_lo_1 = *ptr_in++;
+
+  dequant = *ptr_dq++;
     
 #if (NUM_DCT8x8_BLOCKS_PER_ITERATION > 1)
     for (int j=0; j<NUM_DCT8x8_BLOCKS_PER_ITERATION; ++j)
@@ -64,5 +60,4 @@ void extern "C" dequant_8x8(int16_t  *restrict input,
         dequant = *ptr_dq++;
 #endif
     }
-
 }

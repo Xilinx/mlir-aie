@@ -171,10 +171,10 @@ main(int argc, char *argv[])
 
     usleep(sleep_u);
 
-    if(mlir_aie_acquire_input_lock(_xaie, /*r/w*/ 0, 0)) {
+    if (mlir_aie_acquire_input_lock(_xaie, /*r/w*/ 0, 0)) {
       errors++;
     }
-    if(mlir_aie_acquire_output_lock(_xaie, /*r/w*/ 0, 0)) {
+    if (mlir_aie_acquire_output_lock(_xaie, /*r/w*/ 0, 0)) {
       errors++;
     }
 

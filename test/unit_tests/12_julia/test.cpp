@@ -61,7 +61,7 @@ main(int argc, char *argv[])
 
     int tries = 1;
     printf("Waiting to acquire lock ...\n");
-    if(mlir_aie_acquire_output_lock(_xaie, 0, 1000)) {
+    if (mlir_aie_acquire_output_lock(_xaie, 0, 1000)) {
       errors++;
     }
 

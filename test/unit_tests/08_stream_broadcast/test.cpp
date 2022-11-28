@@ -43,10 +43,9 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Acquire input buffer lock first.\n");
-    if(mlir_aie_acquire_input_lock(_xaie, 0, 0)) {
+    if (mlir_aie_acquire_input_lock(_xaie, 0, 0)) {
       errors++;
-
-    } 
+    }
 
     mlir_aie_clear_tile_memory(_xaie, 1, 3);
     mlir_aie_clear_tile_memory(_xaie, 3, 2);

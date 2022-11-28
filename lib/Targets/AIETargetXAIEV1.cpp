@@ -850,7 +850,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   auto lockAccessor = [&](LockOp lock) {
     int col = lock.colIndex();
     int row = lock.rowIndex();
-    if(!lock.hasName()) return;
+    if (!lock.hasName())
+      return;
     std::string lockName(lock.name().getValue());
     output << "int mlir_aie_acquire_" << lockName << "(" << ctx_p
            << ", int value, int timeout) {\n";

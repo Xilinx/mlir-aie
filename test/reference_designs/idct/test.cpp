@@ -22,9 +22,7 @@
 
 #include "aie_inc.cpp"
 
-int
-main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   printf("test start.\n");
 
   int n = 1;

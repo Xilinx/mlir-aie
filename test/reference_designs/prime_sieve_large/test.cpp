@@ -43,7 +43,8 @@ int main(int argc, char *argv[]) {
     printf("ERROR: timeout hit!\n");
   }
 
-  mlir_aie_check("primes[0]", mlir_aie_read_buffer_prime_output(_xaie, 0), 7, errors);
+  mlir_aie_check("primes[0]", mlir_aie_read_buffer_prime_output(_xaie, 0), 7,
+                 errors);
   mlir_aie_check("primes[1]", mlir_aie_read_buffer_prime_output(_xaie, 1), 11,
                  errors);
   mlir_aie_check("primes[2]", mlir_aie_read_buffer_prime_output(_xaie, 2), 13,
