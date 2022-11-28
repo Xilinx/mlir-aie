@@ -84,6 +84,38 @@ class flow_runner:
       t = self.do_run(['awk', '/_include _file/ {print($3)}', file_core_bcf])
       return ' '.join(t.stdout.split())
 
+  # In order to run xchesscc on modern ll code, we need a bunch of hacks.
+  async def chesshack(self, task, llvmir):
+      llvmir_chesshack = llvmir + "chesshack.ll"
+      await self.do_call(task, ['cp', llvmir, llvmir_chesshack])
+      await self.do_call(task, ['sed', '-i', 's/noundef//', llvmir_chesshack])
+      await self.do_call(task, ['sed', '-i', 's/noalias_sidechannel[^,],//', llvmir_chesshack])
+      llvmir_chesslinked = llvmir + "chesslinked.ll"
+      # Note that chess-clang comes from a time before opaque pointers
+      #await self.do_call(task, ['clang', "-Xclang -no-opaque-pointers", llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-emit-llvm', '-o', llvmir_chesslinked])
+      global llvmlink
+      await self.do_call(task, [llvmlink, '--opaque-pointers=0', llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-o', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', 's/noundef//', llvmir_chesslinked])
+      # Formal function argument names not used in older LLVM
+      await self.do_call(task, ['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/mustprogress//g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/poison/undef/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/nocallback//g', llvmir_chesslinked])
+      return llvmir_chesslinked
+
+  async def prepare_for_chesshack(self, task):
+      if(opts.xchesscc == True):
+        thispath = os.path.dirname(os.path.realpath(__file__))
+        chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
+
+        self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
+        await self.do_call(task, ['xchesscc_wrapper', '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
+        await self.do_call(task, ['sed', '-i', 's/^target.*//', self.chess_intrinsic_wrapper])
+
+        await self.do_call(task, ['sed', '-i', 's/noalias_sidechannel[^,]*,//', self.chess_intrinsic_wrapper])
+        await self.do_call(task, ['sed', '-i', 's/nocallback[^,]*,//', self.chess_intrinsic_wrapper])
+
+
   async def process_core(self, core):
     async with self.limit:
       if(self.stopall):
@@ -101,60 +133,64 @@ class flow_runner:
         task = None
 
       (corecol, corerow, elf_file) = core
-      file_core = self.tmpcorefile(core, "mlir")
-      await self.do_call(task, ['aie-opt', '--aie-localize-locks',
-                          '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2],
-                          self.file_with_addresses, '-o', file_core])
-
-      file_opt_core = self.tmpcorefile(core, "opt.mlir")
-      await self.do_call(task, ['aie-opt', '--aie-normalize-address-spaces',
-                          '--canonicalize',
-                          '--cse',
-                          '--convert-vector-to-llvm',
-                          '--convert-memref-to-llvm',
-                          '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
-                          '--convert-cf-to-llvm',
-                          '--canonicalize', '--cse', file_core, '-o', file_opt_core])
+      if(not opts.unified):
+        file_core = self.tmpcorefile(core, "mlir")
+        await self.do_call(task, ['aie-opt', '--aie-localize-locks',
+                            '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2],
+                            self.file_with_addresses, '-o', file_core])
+        file_opt_core = self.tmpcorefile(core, "opt.mlir")
+        await self.do_call(task, ['aie-opt', '--aie-normalize-address-spaces',
+                            '--canonicalize',
+                            '--cse',
+                            '--convert-vector-to-llvm',
+                            '--convert-memref-to-llvm',
+                            '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
+                            '--convert-cf-to-llvm',
+                            '--canonicalize', '--cse', file_core, '-o', file_opt_core])
       if(self.opts.xbridge):
         file_core_bcf = self.tmpcorefile(core, "bcf")
         await self.do_call(task, ['aie-translate', self.file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
       else:
         file_core_ldscript = self.tmpcorefile(core, "ld.script")
         await self.do_call(task, ['aie-translate', self.file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
-      file_core_llvmir = self.tmpcorefile(core, "ll")
-      await self.do_call(task, ['aie-translate', '--mlir-to-llvmir', '--opaque-pointers=0', file_opt_core, '-o', file_core_llvmir])
+      if(not self.opts.unified):
+        file_core_llvmir = self.tmpcorefile(core, "ll")
+        await self.do_call(task, ['aie-translate', '--opaque-pointers=0', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
+        file_core_obj = self.tmpcorefile(core, "o")
+
       file_core_elf = elf_file if elf_file else self.corefile(".", core, "elf")
-      file_core_obj = self.tmpcorefile(core, "o")
 
       if(opts.compile and opts.xchesscc):
-        file_core_llvmir_chesshack = self.tmpcorefile(core, "chesshack.ll")
-        await self.do_call(task, ['cp', file_core_llvmir, file_core_llvmir_chesshack])
-        await self.do_call(task, ['sed', '-i', 's/noundef//', file_core_llvmir_chesshack])
-        await self.do_call(task, ['sed', '-i', 's/noalias_sidechannel[^,],//', file_core_llvmir_chesshack])
-        file_core_llvmir_chesslinked = self.tmpcorefile(core, "chesslinked.ll")
-        await self.do_call(task, ['llvm-link', file_core_llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-o', file_core_llvmir_chesslinked])
-        await self.do_call(task, ['sed', '-i', 's/noundef//', file_core_llvmir_chesslinked])
-        # Formal function argument names not used in older LLVM
-        await self.do_call(task, ['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', file_core_llvmir_chesslinked])
-        await self.do_call(task, ['sed', '-i', '-E', 's/mustprogress//g', file_core_llvmir_chesslinked])
-        await self.do_call(task, ['sed', '-i', '-E', 's/poison/undef/g', file_core_llvmir_chesslinked])
-        await self.do_call(task, ['sed', '-i', '-E', 's/nocallback//g', file_core_llvmir_chesslinked])
-        if(self.opts.link and self.opts.xbridge):
-          link_with_obj = self.extract_input_files(file_core_bcf)
-          await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
-        elif(self.opts.link):
-          await self.do_call(task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
-          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
-                       '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
+        if(not opts.unified):
+          file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir)
+          if(self.opts.link and self.opts.xbridge):
+            link_with_obj = self.extract_input_files(file_core_bcf)
+            await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+          elif(self.opts.link):
+            await self.do_call(task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
+            await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
+                        '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
+        else:
+          file_core_obj = self.file_obj
+          if(opts.link and opts.xbridge):
+            link_with_obj = self.extract_input_files(file_core_bcf)
+            await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+          elif(opts.link):
+            await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
+                              '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
+
       elif(opts.compile):
-        file_core_llvmir_stripped = self.tmpcorefile(core, "stripped.ll")
-        await self.do_call(task, ['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
-        await self.do_call(task, ['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', file_core_obj])
+        if(not opts.unified):
+          file_core_llvmir_stripped = self.tmpcorefile(core, "stripped.ll")
+          await self.do_call(task, ['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
+          await self.do_call(task, ['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', file_core_obj])
+        else:
+          file_core_obj = self.file_obj
         if(opts.link and opts.xbridge):
           link_with_obj = self.extract_input_files(file_core_bcf)
           await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
         elif(opts.link):
-          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm,
+          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
                             '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
 
       self.progress_bar.update(self.progress_bar.task_completed,advance=1)
@@ -220,43 +256,50 @@ class flow_runner:
         nworkers = os.cpu_count()
 
       self.limit = asyncio.Semaphore(nworkers)
-
-      self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
-      await self.do_call(None, ['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
-      t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
-      cores = eval(t.stdout)
-
-      if(opts.xchesscc == True):
-        thispath = os.path.dirname(os.path.realpath(__file__))
-        chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
-
-        self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
-        await self.do_call(None, ['xchesscc_wrapper', '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
-        await self.do_call(None, ['sed', '-i', 's/^target.*//', self.chess_intrinsic_wrapper])
-
-        await self.do_call(None, ['sed', '-i', 's/noalias_sidechannel[^,]*,//', self.chess_intrinsic_wrapper])
-        await self.do_call(None, ['sed', '-i', 's/nocallback[^,]*,//', self.chess_intrinsic_wrapper])
-
-      self.file_opt_with_addresses = os.path.join(self.tmpdirname, 'input_opt_with_addresses.mlir')
-      await self.do_call(None, ['aie-opt', '--aie-localize-locks',
-                          '--aie-standard-lowering',
-                          '--aie-normalize-address-spaces',
-                          '--canonicalize',
-                          '--cse',
-                          '--convert-vector-to-llvm',
-                          '--convert-memref-to-llvm',
-                          '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
-                          '--convert-cf-to-llvm',
-                          '--canonicalize', '--cse', self.file_with_addresses, '-o', self.file_opt_with_addresses])
-
       with Progress(
         *Progress.get_default_columns(),
         TimeElapsedColumn(),
         MofNCompleteColumn(),
         TextColumn("{task.fields[command]}")) as progress:
+        self.progress_bar = progress
+        progress.task = progress.add_task("[green] MLIR compilation:", total=1, command="1 Worker")
+
+        self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
+        await self.do_call(progress.task, ['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
+        t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
+        cores = eval(t.stdout)
+
+        await self.prepare_for_chesshack(progress.task)
+
+        if(opts.unified):
+          self.file_opt_with_addresses = os.path.join(self.tmpdirname, 'input_opt_with_addresses.mlir')
+          await self.do_call(progress.task, ['aie-opt', '--aie-localize-locks',
+                              '--aie-standard-lowering',
+                              '--aie-normalize-address-spaces',
+                              '--canonicalize',
+                              '--cse',
+                              '--convert-vector-to-llvm',
+                              '--convert-memref-to-llvm',
+                              '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
+                              '--convert-cf-to-llvm',
+                              '--canonicalize', '--cse', self.file_with_addresses, '-o', self.file_opt_with_addresses])
+
+          self.file_llvmir = os.path.join(self.tmpdirname, 'input.ll')
+          await self.do_call(progress.task, ['aie-translate', '--opaque-pointers=0', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
+
+          self.file_llvmir_stripped = os.path.join(self.tmpdirname, 'input.stripped.ll')
+          await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>,strip', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_stripped])
+
+          self.file_obj = os.path.join(self.tmpdirname, 'input.o')
+          if(opts.compile and opts.xchesscc):
+            file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir_stripped)
+            await self.do_call(progress.task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
+          else:
+            await self.do_call(progress.task, ['llc', self.file_llvmir_stripped, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', self.file_obj])
+
+        progress.update(progress.task,advance=0,visible=False)
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
-        self.progress_bar = progress
         processes = [self.process_arm_cgen()]
         for core in cores:
           processes.append(self.process_core(core))
@@ -275,6 +318,8 @@ def main(builtin_params={}):
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
     peano_path = os.path.join(thispath, '..', '..', 'peano', 'bin')
+    global llvmlink
+    llvmlink = os.path.join(thispath, '..', '..', 'peano', 'bin', 'llvm-link')
 
     if('VITIS' not in os.environ):
       # Try to find vitis in the path
