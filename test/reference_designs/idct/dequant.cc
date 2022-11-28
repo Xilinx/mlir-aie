@@ -27,7 +27,7 @@ void extern "C" dequant_8x8(int16_t *restrict input, int16_t *restrict output) {
   in_lo_1 = *ptr_in++;
 
   dequant = *ptr_dq++;
-    
+
 #if (NUM_DCT8x8_BLOCKS_PER_ITERATION > 1)
     for (int j=0; j<NUM_DCT8x8_BLOCKS_PER_ITERATION; ++j)
         chess_prepare_for_pipelining
