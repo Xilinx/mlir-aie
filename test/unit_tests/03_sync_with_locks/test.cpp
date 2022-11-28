@@ -45,7 +45,10 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Acquire input buffer lock first.\n");
-    mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0);
+    if (mlir_aie_acquire_lock1(_xaie, 0, 0)) {
+      errors++;
+      printf("ERROR: timeout hit!\n");
+    }
     mlir_aie_write_buffer_a(_xaie, 3, 7);
 
     printf("Start cores\n");
@@ -55,10 +58,11 @@ main(int argc, char *argv[])
                    errors);
 
     printf("Release input buffer lock.\n");
-    mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
+    mlir_aie_release_lock1(_xaie, 1, 0);
 
     printf("Waiting to acquire output lock for read ...\n");
-    if (!mlir_aie_acquire_lock(_xaie, 1, 3, 5, 1, LOCK_TIMEOUT)) {
+    if (mlir_aie_acquire_lock2(_xaie, 1, LOCK_TIMEOUT)) {
+      errors++;
       printf("ERROR: timeout hit!\n");
     }
     mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b(_xaie, 5), 35,

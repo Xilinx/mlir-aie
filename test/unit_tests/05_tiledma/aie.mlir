@@ -21,10 +21,10 @@ module @test05_tiledma {
   %buf33_0 = AIE.buffer(%tile33) { sym_name = "a33" } : memref<256xi32>
   %buf33_1 = AIE.buffer(%tile33) { sym_name = "b33" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock
-  %lock13_5 = AIE.lock(%tile13, 5) // interbuffer lock
-  %lock33_6 = AIE.lock(%tile33, 6) // interbuffer lock
-  %lock33_7 = AIE.lock(%tile33, 7) // output buffer lock
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "interlock1" } // interbuffer lock
+  %lock33_6 = AIE.lock(%tile33, 6) { sym_name = "interlock2" } // interbuffer lock
+  %lock33_7 = AIE.lock(%tile33, 7) { sym_name = "output_lock" } // output buffer lock
 
   AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
   AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 3> }

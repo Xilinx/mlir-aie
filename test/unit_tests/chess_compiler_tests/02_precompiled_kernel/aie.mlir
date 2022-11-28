@@ -19,8 +19,8 @@ module @test_chess_02_deprecated_precompiled_kernel {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3)
-  %lock13_5 = AIE.lock(%tile13, 5)
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" }
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "output_lock" }
 
   %core13 = AIE.core(%tile13) { AIE.end } { elf_file = "custom_1_3.elf" }
 

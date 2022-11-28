@@ -23,7 +23,7 @@ module @test12_stream_delay {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a13" } : memref<512xi32>
 
 
-  %lock13_5 = AIE.lock(%tile13, 5) // interbuffer lock
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "input_lock" }
 
   AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "East": 1> }
   AIE.switchbox(%tile23) { AIE.connect<"West": 1, "East": 1> }

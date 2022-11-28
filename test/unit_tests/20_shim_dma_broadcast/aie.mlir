@@ -16,11 +16,10 @@ module @test20_shim_dma_broadcast {
   %t72 = AIE.tile(7, 2)
   %t73 = AIE.tile(7, 3)
 
-  %buffer = AIE.external_buffer : memref<512 x i32>
+  %buffer = AIE.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
+  %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock" }
 
   %dma = AIE.shimDMA(%t70) {
-    %lock1 = AIE.lock(%t70, 1)
-
       AIE.dmaStart(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
