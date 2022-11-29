@@ -265,7 +265,16 @@ class flow_runner:
         progress.task = progress.add_task("[green] MLIR compilation:", total=1, command="1 Worker")
 
         self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
-        await self.do_call(progress.task, ['aie-opt', '--lower-affine', '--aie-register-objectFifos', '--aie-objectFifo-stateful-transform', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', '--aie-assign-buffer-addresses', '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
+        await self.do_call(progress.task, ['aie-opt',
+                                          '--lower-affine',
+                                          '--aie-assign-lock-ids',
+                                          '--aie-register-objectFifos',
+                                          '--aie-objectFifo-stateful-transform',
+                                          '--aie-lower-broadcast-packet',
+                                          '--aie-create-packet-flows',
+                                          '--aie-lower-multicast',
+                                          '--aie-assign-buffer-addresses',
+                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
 
