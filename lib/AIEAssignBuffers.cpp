@@ -14,6 +14,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/Twine.h"
 
 #define DEBUG_TYPE "aie-assign-buffers"
 
@@ -66,11 +67,25 @@ struct AIEAssignBufferAddressesPass
 
       // Address range owned by the tile is 0x8000,
       // but we need room at the bottom for stack.
-      int address = 0x1000;
+      int stacksize = 0x1000;
+      int address = stacksize;
       for (auto buffer : buffers)
         address = assignAddress(buffer, address, builder);
       if (address > 0x8000) {
-        tile.emitOpError("allocated buffers exceeded available memory");
+        InFlightDiagnostic error =
+            tile.emitOpError("allocated buffers exceeded available memory\n");
+        auto &note = error.attachNote() << "MemoryMap:\n";
+        auto printbuffer = [&](StringRef name, int address, int size) {
+          note << "\t" << name << " \t"
+               << ": 0x" << llvm::utohexstr(address) << "-0x"
+               << llvm::utohexstr(address + size - 1) << " \t(" << size
+               << " bytes)\n";
+        };
+        printbuffer("(stack)", 0, 0x1000);
+        for (auto buffer : buffers)
+          printbuffer(buffer.name(), buffer.address(),
+                      buffer.getAllocationSize());
+        return signalPassFailure();
       }
     }
   }
