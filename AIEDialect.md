@@ -179,6 +179,8 @@ Example:
 ```
 This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
 
+Interfaces: TileElement
+
 #### Operands:
 
 | Operand | Description |
@@ -303,7 +305,7 @@ AIE.core(%tile) {
 } { elf_file = "core_33.elf" }
 ```
 
-Interfaces: FlowEndPoint
+Interfaces: FlowEndPoint, TileElement
 
 #### Operands:
 
@@ -736,6 +738,8 @@ Case when LockID is not assigned:
   Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
   After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
 
+Interfaces: TileElement
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
@@ -837,7 +841,7 @@ Example:
 ```
 Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
 
-Interfaces: CallableOpInterface, FlowEndPoint
+Interfaces: CallableOpInterface, FlowEndPoint, TileElement
 
 #### Operands:
 
@@ -1559,7 +1563,7 @@ Example:
 ```
 Create the shimDMA for tile %t70 and setup one DMA channel and one Buffer Descriptor.
 
-Interfaces: FlowEndPoint
+Interfaces: FlowEndPoint, TileElement
 
 #### Operands:
 
@@ -1598,7 +1602,7 @@ aie.shimmux(%tile) {
 
 Traits: SingleBlockImplicitTerminator<EndOp>
 
-Interfaces: Interconnect
+Interfaces: Interconnect, TileElement
 
 #### Operands:
 
@@ -1673,7 +1677,7 @@ aie.switchbox(%tile) {
 
 Traits: SingleBlockImplicitTerminator<EndOp>
 
-Interfaces: Interconnect
+Interfaces: Interconnect, TileElement
 
 #### Operands:
 

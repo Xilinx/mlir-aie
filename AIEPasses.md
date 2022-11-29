@@ -105,11 +105,13 @@ Generate acquire/release patterns in the CoreOps of associated cores for each
 aie.objectFifo.registerProcess operation. Patterns are generated as for loops
 of different sizes depending on input patterns.
 ### `-aie-standard-lowering`: Lowering operations in AIE cores' regions to Standard
-Outline code inside a particular AIE.core operation into the llvm dialect.
+Outline code inside AIE.core operations into the llvm dialect.
 BufferOp operations are converted to a GlobalMemrefOp and references to
 those buffers are converted to GetGlobalMemrefOp.  Other AIE operations
 inside the cores are generally lowered to appropriate function intrinsics.
 Other AIE operations (e.g. CoreOp, TileOp, LockOp) outside the core are removed.
+
+Optionally, tileCol and tileRow can specify a single core to export
 
 
 #### Options
