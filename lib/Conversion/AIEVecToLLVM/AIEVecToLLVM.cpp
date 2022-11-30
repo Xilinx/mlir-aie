@@ -287,7 +287,7 @@ class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::SRSO
       std::stringstream ss;
       ss << "llvm.aie.";
 
-      // determine the prefix
+      // Determine the prefix
       auto sourceType = op.getSource().getType().cast<VectorType>();
       auto resultType = op.getResult().getType().cast<VectorType>();
       auto sourceElType = sourceType.getElementType().cast<IntegerType>();
@@ -348,7 +348,7 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
              : loadSize == 256 ? 'w'
                                : 'x') << ".";
       ss << getVectorTypeString(resultType) << ".";
-      // The index actually affects which intrinsic to call
+      // The index affects which intrinsic to call
       ss << (op.getIndex() == 0 ? "lo" : "hi");
       return ss.str();
     }
@@ -371,7 +371,7 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           rewriter);
 
       if (vecSizeInBits <= 256) {
-        // total <=256-bit updates are much simpler:
+        // Total <=256-bit updates are much simpler:
         // we can do a direct load into the vector register
         // look at the indices to calculate the address
         auto vectorPtrType = LLVM::LLVMPointerType::get(
@@ -382,10 +382,10 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           ptr);
         rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, castedPtr, 1);
       } else {
-        // total >256-bit updates will require upd ops to fill the whole vector
+        // Total >256-bit updates will require upd ops to fill the whole vector
         // each UDP op represents one of these 256-bit loads and updates
 
-        // determine the load size
+        // Determine the load size
         // TODO: no examples of 1024-bit output vectors: doesn't feel right
         // to attempt a 512-bit load to do an update like this
         int loadSize = vecSizeInBits == 256   ? 128
@@ -426,12 +426,16 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
           rewriter.setInsertionPoint(op);
         }
 
-        // If this UPD is not working off of an existing destination vector,
-        // create an undefined vector as the destination
+        // Determine what the destination is
         Value destValue;
         if (adaptor.getVector()) {
+          // This UPD is using an existing destination vector
           destValue = adaptor.getVector();
         } else {
+          // If this UPD is not working off of an existing destination vector,
+          // create an undefined vector as the destination
+
+          // TODO: determine if the undef intrinsic is needed or if an LLVM undef suffices
           //destValue = rewriter.create<LLVM::UndefOp>(op->getLoc(), resultType);
 
           std::stringstream ss;
@@ -470,7 +474,6 @@ class ConcatOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::C
       std::stringstream ss;
       ss << "llvm.aie.concat.";
       ss << getVectorTypeString(sourceType, true);
-      // The index actually affects which intrinsic to call
       return ss.str();
     }
 
