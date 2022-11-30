@@ -214,9 +214,6 @@ int main(int argc, char *argv[])
   mlir_aie_acquire_lock(_xaie, 7, 0, 1, 1, 0);
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
-  u32 sleep_long = 5000000;
-  usleep(sleep_long);
-
   for (int i = 0; i < DMA_COUNT; i++)
     mlir_aie_check("DDR out", ddr_ptr_out[i], image[i], errors);
 

@@ -27,7 +27,7 @@ module @MM_2x2 {
 
   %t100 = AIE.tile(10, 0)
 
-  %of_LHS0 = AIE.objectFifo.createObjectFifo(%t60, {%t63, %t73}, 1) : !AIE.objectFifo<memref<1024xi32>>
+  %of_LHS0 = AIE.objectFifo.createObjectFifo(%t60, {%t63, %t73}, 1) {sym_name = ""} : !AIE.objectFifo<memref<1024xi32>>
   %of_LHS1 = AIE.objectFifo.createObjectFifo(%t60, {%t64, %t74}, 1) : !AIE.objectFifo<memref<1024xi32>>
   %of_RHS0 = AIE.objectFifo.createObjectFifo(%t70, {%t63}, 1) : !AIE.objectFifo<memref<1024xi32>>
   %of_RHS1 = AIE.objectFifo.createObjectFifo(%t70, {%t64}, 1) : !AIE.objectFifo<memref<1024xi32>>

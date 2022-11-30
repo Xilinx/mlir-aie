@@ -14,7 +14,6 @@
 // RUN: %run_on_board ./test.elf
 
 module @idct {
-
   %t74 = AIE.tile(7, 4)
   %t75 = AIE.tile(7, 5)
 

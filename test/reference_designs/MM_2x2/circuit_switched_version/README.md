@@ -1,8 +1,8 @@
-## MM_2x2 Design Example : Packet-Switch Version
+## MM_2x2 Design Example : Circuit-Switch Version
 
 ### Overall Description<br>
-This is an end-to-end matrix multiply example with sizes (32 * 64) * (64 * 64) which uses the broadcast_packet data transferring mechanism.<br>
-This design uses 4 AIEs for computation and 2 Shim tiles for data movement to and from external memory. <br>
+This is an end-to-end matrix multiply example with sizes (32 * 64) * (64 * 64) which uses the AXI stream switch in circuit mode to transfer data.<br>
+This design uses 4 AIEs for computation and 3 Shim tiles for data movement to and from external memory. <br>
 
 ### Computation Kernel<br>
 &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &emsp; &nbsp; LHS &emsp; &nbsp; &nbsp; RHS &emsp; &emsp; Acc &emsp; &emsp; Output<br>
@@ -14,7 +14,7 @@ The following figure shows the mapping strategy of this design in which LHS and 
 
 
 ### AIE array Layout and Data Communication<br>
-1. The communication from tile (6,0) MM2S0 channel is a broadcast_packet in which tile0 of LHS is broadcast to tile(6,3) and tile (7,3). The data in tile1 of LHS is broadcast to tile (6,4) and tile (7,4) by time-multiplexedly using the same DMA channel with different packet IDs.<br> 
+1. The communication from tile (6,0) MM2S0 channel is a broadcast in which tile0 of LHS is broadcast to tile(6,3) and tile (7,3). The data in tile1 of LHS is broadcast to tile (6,4) and tile (7,4)  via channel MM2S1. As the channels are not time-multiplexed, 4 more output channels, i.e., 2 Shim tiles, are required to communicate the RHS tiles to the 4 AIEs. <br> 
 2. One thing to notice is that the accumulator matrices are set to zero in the local memories of the AIEs on tile (6,3) and tile (7,3). <br>
 3. The accumulator matrices resulting from computation on tiles (6, 3) and (7, 3) are respectively communicated to tiles (6, 4) and (7, 4) via shared memory. <br>
 ![image](https://user-images.githubusercontent.com/77606152/182739011-d27f9e43-7468-43b5-bbfe-1ed399bfb2c6.png)
