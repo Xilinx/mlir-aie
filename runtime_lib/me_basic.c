@@ -103,7 +103,7 @@ void _main_init(int argc, char **argv) property(envelope) {
   exit(main(argc, argv)); // run program and stop simulation (never returns)
 }
 
-void __cxa_finalize(void *d) {}
+void __cxa_finalize(void *) {}
 
 // From me_defs.c
 const int chess_storage(% 32) ZERO[8] = {0, 0, 0, 0, 0, 0, 0, 0};
