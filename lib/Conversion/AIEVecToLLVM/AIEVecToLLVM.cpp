@@ -38,8 +38,8 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false, bool acc =
   auto size = getVectorLaneSize(type);
   ss << "v" << size;
   if (auto intType  = type.getElementType().dyn_cast<IntegerType>()) {
-    ss << (abbrev ? "i" :
-                    acc ? "acc" :
+    ss << (acc ? "acc" :
+                 abbrev ? "i" :
                           "int") << intType.getWidth();
   } else if (auto floatType = type.getElementType().dyn_cast<FloatType>()) {
     ss << (abbrev ? "f" : "float");
