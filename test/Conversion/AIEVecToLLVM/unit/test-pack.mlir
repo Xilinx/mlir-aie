@@ -1,5 +1,4 @@
 // RUN: aie-opt %s --lower-aievec | FileCheck %s
-// Test a direct load to vector register that does not actually need an update
 module {
   func.func @test() {
     %0 = llvm.mlir.undef: vector<16xi16>
