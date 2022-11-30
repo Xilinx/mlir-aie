@@ -374,7 +374,6 @@ class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<xilinx::aievec::UPDO
         // total <=256-bit updates are much simpler:
         // we can do a direct load into the vector register
         // look at the indices to calculate the address
-        // thanks vector for telling me about this function :)
         auto vectorPtrType = LLVM::LLVMPointerType::get(
           op.getResult().getType().cast<VectorType>(),
           op.getSource().getType().cast<MemRefType>().getMemorySpaceAsInt());
