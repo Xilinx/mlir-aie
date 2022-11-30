@@ -77,8 +77,8 @@ int main() {
   int stride = imageWidth + kernelSize - 1 + pad;
 
   // Print image size
-  printf("width: %d, height: %d, stride = %d, pad = %d\n", imageWidth, imageHeight,
-         stride, pad);
+  printf("width: %d, height: %d, stride = %d, pad = %d\n", imageWidth,
+         imageHeight, stride, pad);
 
   // Read in image to local memory
   for (k = 0; k < imageHeight + kernelSize - 1; k++) {
@@ -95,7 +95,10 @@ int main() {
   }
 
   // Compute convolution
+  auto cyclesBegin = chess_cycle_count();
   conv2d(in_data, kernelCoeff, out_data);
+  auto cyclesEnd = chess_cycle_count();
+  printf("Cycle count: %d\n", (int)(cyclesEnd - cyclesBegin));
 
   // Compare results with reference image
   // NOTE: There will be some rounding errors in results so we accept absolute
@@ -122,14 +125,14 @@ int main() {
       errors++;
     }
   }
-  
+
   if (errors == 0 || max_error < 1) {
     printf("PASSED, Max delta: %d, pixel intensity\n\n", max_error);
   } else {
     printf("FAIL. Number of deltas = %d, Max delta: %d, pixel intensity\n\n",
            errors, max_error);
   }
-  
+
   fclose(fpin);
   fclose(fpref);
 
