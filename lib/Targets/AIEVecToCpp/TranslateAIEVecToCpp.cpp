@@ -772,6 +772,67 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate the shift intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::ShiftOp shiftOp) {
+  SmallVector<Value> sources = shiftOp.getSources();
+  int32_t shift = shiftOp.getShift();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*shiftOp)))
+    return failure();
+
+  os << "shift_bytes";
+  os << "(";
+  // Print the lhs, rhs and shift
+  for (auto source : sources) {
+    // source should have already been emitted
+    if (!emitter.hasValueInScope(source))
+      return failure();
+    os << emitter.getOrCreateName(source);
+    os << ", ";
+    if (sources.size() == 1) {
+      VectorType sourceType = source.getType().cast<VectorType>();
+      int32_t eltSize = getElementSizeInBits(sourceType);
+      if (eltSize == 16) {
+        os << "undef_v32int16(), ";
+      } else {
+        os << "undef_v64int8(), ";
+      }
+    }
+  }
+  os << std::to_string(shift);
+  os << ")";
+  return success();
+}
+
+// Generate the shuffle intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::ShuffleOp shuffleOp) {
+  Value source = shuffleOp.getSource();
+  unsigned mode = shuffleOp.getMode();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*shuffleOp)))
+    return failure();
+
+  os << "shuffle";
+  os << "(";
+  // Print the source and mode
+  // source should have already been emitted
+  if (!emitter.hasValueInScope(source))
+    return failure();
+  os << emitter.getOrCreateName(source);
+  os << ", ";
+  os << std::to_string(mode);
+  os << ")";
+  return success();
+}
+
 // Generate the select intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::SelectOp selectOp) {
@@ -955,6 +1016,27 @@ static LogicalResult printFMAOrMulElemOperand(CppEmitter &emitter, T op,
   return success();
 }
 
+// Print lhs or rhs operand of mul_conv/mac_conv intrinsic
+template <typename T>
+static LogicalResult printFMAOrMulConvOperand(CppEmitter &emitter, T op,
+                                              int32_t M, int32_t N,
+                                              unsigned opNum) {
+  // We currently only support printing operands 0 and 1
+  if (opNum > 1)
+    return failure();
+
+  // The operand should have already been emitted
+  Value operand = opNum == 0 ? op.getLhs() : op.getRhs();
+  if (!emitter.hasValueInScope(operand))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << emitter.getOrCreateName(operand);
+
+  return success();
+}
+
 // Generate the Mul op
 static LogicalResult printOperation(CppEmitter &emitter, aievec::MulOp mulOp) {
   auto lhs = mulOp.getLhs();
@@ -1049,6 +1131,55 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << ", ";
   if (failed(printFMAOrMulElemOperand<aievec::MulElemOp>(emitter, mul_elemOp,
                                                          iType, lsize, 0)))
+    return failure();
+  os << ")";
+
+  return success();
+}
+
+// Generate the MulConv op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::MulConvOp mul_convOp) {
+  auto lhs = mul_convOp.getLhs();
+  auto rhs = mul_convOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  std::string opname;
+  opname = "mul_conv";
+
+  // Create opname based on the source type
+  VectorType lhsType = mul_convOp.getLhs().getType().cast<VectorType>();
+  Type eltType = lhsType.getElementType();
+  int32_t lsize = getElementSizeInBits(lhsType);
+  auto iType = eltType.dyn_cast<IntegerType>();
+
+  // Only support int16 and int8 cases
+  if (!iType || !(lsize == 16 || lsize == 8)) {
+    return failure();
+  }
+
+  int32_t M = mul_convOp.getM();
+  int32_t N = mul_convOp.getN();
+  opname += ("_" + std::to_string(M) + "x" + std::to_string(N));
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the accumulator
+  if (failed(emitter.emitAssignPrefix(*mul_convOp)))
+    return failure();
+
+  os << opname;
+  os << "(";
+
+  if (failed(printFMAOrMulConvOperand<aievec::MulConvOp>(emitter, mul_convOp, M,
+                                                         N, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printFMAOrMulConvOperand<aievec::MulConvOp>(emitter, mul_convOp, M,
+                                                         N, 1)))
     return failure();
   os << ")";
 
@@ -1270,6 +1401,59 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
   // Finally, set the name of the result to the accumulator's name
   emitter.setName(fma_elemOp->getResult(0), accName);
+
+  return success();
+}
+
+// Generate the FMAConv op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::FMAConvOp fma_convOp) {
+  auto acc = fma_convOp.getAcc();
+  auto lhs = fma_convOp.getLhs();
+  auto rhs = fma_convOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(acc) || !emitter.hasValueInScope(lhs) ||
+      !emitter.hasValueInScope(rhs))
+    return failure();
+
+  std::string opname;
+  opname = fma_convOp.getFmsub() ? "msc_conv" : "mac_conv";
+  // Create opname based on the lhs and rhs type
+  VectorType lhsType = fma_convOp.getLhs().getType().cast<VectorType>();
+  Type eltType = lhsType.getElementType();
+  int32_t lsize = getElementSizeInBits(lhsType);
+  auto iType = eltType.dyn_cast<IntegerType>();
+
+  // Only support int16 and int8 cases
+  if (!iType || !(lsize == 16 || lsize == 8)) {
+    return failure();
+  }
+
+  int32_t M = fma_convOp.getM();
+  int32_t N = fma_convOp.getN();
+  opname += ("_" + std::to_string(M) + "x" + std::to_string(N));
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  StringRef accName = emitter.getOrCreateName(acc);
+  os << accName;
+  os << " = ";
+  os << opname;
+  os << "(";
+  if (failed(printFMAOrMulConvOperand<aievec::FMAConvOp>(emitter, fma_convOp, M,
+                                                         N, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printFMAOrMulConvOperand<aievec::FMAConvOp>(emitter, fma_convOp, M,
+                                                         N, 1)))
+    return failure();
+  os << ", ";
+  os << accName;
+  os << ")";
+
+  // Finally, set the name of the result to the accumulator's name
+  emitter.setName(fma_convOp->getResult(0), accName);
 
   return success();
 }
@@ -2122,7 +2306,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<aievec::AddOp, aievec::ConcatOp, aievec::ExtOp, aievec::FMAOp,
                 aievec::MulOp, aievec::PackOp, aievec::SelectOp, aievec::SRSOp,
                 aievec::SubOp, aievec::UPDOp, aievec::UPSOp, aievec::FMAElemOp,
-                aievec::MulElemOp, aievec::BroadcastOp>(
+                aievec::MulElemOp, aievec::BroadcastOp, aievec::MulConvOp,
+                aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");

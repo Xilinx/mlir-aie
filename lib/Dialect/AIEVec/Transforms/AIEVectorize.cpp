@@ -357,7 +357,8 @@ static bool writesToAccumulator(Operation *op) {
         .getElementType()
         .isa<IntegerType>();
 
-  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::UPSOp>(op);
+  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::FMAConvOp,
+             aievec::MulConvOp, aievec::UPSOp>(op);
 }
 
 //===----------------------------------------------------------------------===//
@@ -679,6 +680,108 @@ static aievec::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
   return subOp;
 }
 
+static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
+                                       VectState *state, Location loc,
+                                       int32_t shiftBytes,
+                                       VectorType resType = nullptr) {
+  // If the number of sources is 1, this means it will concat an undefined
+  // vector then shift.
+  assert((sources.size() == 1 || sources.size() == 2) &&
+         "the number of sources should be 1 or 2");
+
+  VectorType vecType = sources.back().getType().cast<VectorType>();
+
+  for (auto source : sources) {
+    VectorType type = source.getType().cast<VectorType>();
+    assert(type == vecType && "sources of concat op not of same type");
+  }
+
+  if (!resType) {
+    unsigned lanes = getVectorLaneSize(vecType);
+    Type scalarType = vecType.getElementType();
+    resType = createVectorType(lanes, scalarType);
+  }
+
+  auto shiftOp =
+      state->builder.create<aievec::ShiftOp>(loc, resType, sources, shiftBytes);
+
+  return shiftOp;
+}
+
+static aievec::ShuffleOp generateShuffleOp(Value source, VectState *state,
+                                           Location loc, unsigned mode,
+                                           VectorType resType = nullptr) {
+  VectorType vecType = source.getType().cast<VectorType>();
+
+  if (!resType) {
+    unsigned lanes = 512 / getElementSizeInBits(vecType);
+    Type scalarType = vecType.getElementType();
+    resType = createVectorType(lanes, scalarType);
+  }
+
+  auto shuffleOp =
+      state->builder.create<aievec::ShuffleOp>(loc, resType, source, mode);
+
+  return shuffleOp;
+}
+
+static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
+                                                AIEOpAttributes &opAttr,
+                                                VectState *state) {
+  // Assert that we have computed the attributes (start, offset, etc.) for both
+  // left and right operands of the fma operation.
+  assert(opAttr.start.size() == opAttr.offset.size() &&
+         opAttr.start.size() == 2 && state->dupFactor == 2);
+
+  VectorType vType = Op->getOperand(1).getType().cast<VectorType>();
+  Type stype = vType.getElementType();
+  IntegerType itype = stype.cast<IntegerType>();
+  unsigned width = itype.getWidth() <= 8 ? 32 : 64;
+  int32_t M = 32;
+  int32_t N = 8;
+
+  Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+  Type opType = VectorType::get(vType.getShape(), ctype);
+  Value lhs = Op->getOperand(1);
+  Value rhs = Op->getOperand(0);
+  auto defOp = Op->getOperand(0).getDefiningOp();
+  state->builder.setInsertionPointAfter(defOp);
+  Location loc = defOp->getLoc();
+
+  Operation *shuffleOp = generateShuffleOp(defOp->getResult(0), state, loc, 0);
+
+  int32_t shiftBytes = stoi(opAttr.start[0]) * getElementSizeInBits(vType) / 8 /
+                       state->dupFactor;
+
+  if (shiftBytes) {
+    state->builder.setInsertionPointAfter(shuffleOp);
+    loc = shuffleOp->getLoc();
+    SmallVector<Value> sources = {shuffleOp->getResult(0)};
+    rhs = generateShiftOp(sources, state, loc, shiftBytes);
+  } else {
+    rhs = shuffleOp->getResult(0);
+  }
+
+  state->builder.setInsertionPoint(Op);
+  loc = Op->getLoc();
+
+  Operation *convOp = nullptr;
+
+  if (isa<MulIOp>(Op)) {
+    convOp =
+        state->builder.create<aievec::MulConvOp>(loc, opType, lhs, rhs, M, N);
+  }
+
+  if (isa<vector::FMAOp>(Op)) {
+    Value acc = Op->getOperand(2);
+    bool isSub = state->mscOps.count(Op);
+    convOp = state->builder.create<aievec::FMAConvOp>(loc, opType, lhs, rhs,
+                                                      acc, M, N, isSub);
+  }
+
+  return convOp;
+}
+
 // Generate and return an FMA operation in AIE dialect. This operation will
 // have the start and offset fields for each operand. If the acc operand of
 // fmaOp is a transfer_read operation, then we need to add an SRS instruction
@@ -833,15 +936,20 @@ generateUPDOp(TransferReadOp readOp,
   Type updVecType = createVectorType(intervalWidthInBytes, elementType);
 
   // Compute the mid value of the interval. This is useful because for
-  // intervalWidth > 256, we can split the load into two steps: the bits to the
-  // left/right of mid will be loaded using upd idx=0/idx=1 operator.
+  // intervalWidth > 256 or 512 if it is AIEML, we can split the load into two
+  // steps: the bits to the left/right of mid will be loaded using upd
+  // idx=0/idx=1 operator.
   int32_t mid = interval.first + intervalWidth / 2;
   // Compute the (aligned) extent of interval that this read requires to be
   // loaded.
-  int32_t lb =
-      intervalWidth <= 256 || extent.first < mid ? interval.first : mid;
-  int32_t ub =
-      intervalWidth <= 256 || extent.second > mid ? interval.second : mid;
+  int32_t lb = intervalWidth <= (AIEML && elementSizeInBits == 8 ? 512 : 256) ||
+                       extent.first < mid
+                   ? interval.first
+                   : mid;
+  int32_t ub = intervalWidth <= (AIEML && elementSizeInBits == 8 ? 512 : 256) ||
+                       extent.second > mid
+                   ? interval.second
+                   : mid;
 
   // Find if we have already created upd op idx=0/idx=1 for this interval
   aievec::UPDOp updOp = nullptr;
@@ -885,7 +993,10 @@ generateUPDOp(TransferReadOp readOp,
   // If the extent <= 256 bits, we can directly copy data from mem into vector
   // without using a upd. So we try to chunk the interval into sub-intervals of
   // width >= 256 bits. For AIEML, the size should be doubled.
-  int width = AIEML ? 512 : 256;
+  int width = AIEML ? elementSizeInBits == 8
+                          ? 512
+                          : std::max(width, getVectorSizeInBits(vecType))
+                    : 256;
   int32_t incr = std::max(width, intervalWidth / 2);
   int8_t idx = 1;
   for (int32_t start = interval.first; start < interval.second;
@@ -1237,8 +1348,9 @@ static void fuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
 // for schemes that require two AIE dialect fma ops to be generated for one
 // vector dialect fma op; the only difference between the attributes of the two
 // AIE dialect fma ops is the start field.
-static void generateMulOrFMAOp(Operation *Op, AIEOpAttributes &opAttr,
-                               VectState *state, std::string nextStart = "") {
+static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
+                               AIEOpAttributes &opAttr, VectState *state,
+                               std::string nextStart = "") {
   // Assert that we computed the attributes for both the operands
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
@@ -1275,17 +1387,27 @@ static void generateMulOrFMAOp(Operation *Op, AIEOpAttributes &opAttr,
   // i8xi8 scheme generates two AIE dialect mul/fma ops for each vector dialect
   // mul/fma op. Generate the paired mul/fma op if nextStart is not empty.
   if (!nextStart.empty()) {
-    opAttr.start[1] = nextStart;
-    Operation *pairedOp = genOp(Op, opAttr, state, true);
-    LLVM_DEBUG(llvm::dbgs() << "\n\nGenerated the paired AIE dialect "
-                            << "mul/fma op for 8x8 scheme " << *repOp);
-    // Link the two mul/fma ops
-    assert(!state->pairedOp.count(repOp));
-    state->pairedOp[repOp] = pairedOp;
-    // If any of the uses of incoming op is not a mul/fma op, then we need to
-    // concatenate the paired ops and generate a v16xi8 vector.
-    if (llvm::any_of(Op->getUsers(), notMulOrFMAOp))
-      repOp = concatAndInterleave_i8xi8(repOp, pairedOp, state, Op->getLoc());
+    if (AIEML && scheme.lanes == 32 && scheme.xbits == 8 && scheme.zbits == 8) {
+      repOp = generateMulOrFMAConvOpForInt8(Op, opAttr, state);
+      if (llvm::any_of(repOp->getUsers(), notMulOrFMAOp)) {
+        Type i8Type = mlir::IntegerType::get(
+            repOp->getResult(0).getType().getContext(), 8);
+        repOp =
+            generateSRSOp(repOp->getResult(0), i8Type, state, repOp->getLoc());
+      }
+    } else {
+      opAttr.start[1] = nextStart;
+      Operation *pairedOp = genOp(Op, opAttr, state, true);
+      LLVM_DEBUG(llvm::dbgs() << "\n\nGenerated the paired AIE dialect "
+                              << "mul/fma op for 8x8 scheme " << *repOp);
+      // Link the two mul/fma ops
+      assert(!state->pairedOp.count(repOp));
+      state->pairedOp[repOp] = pairedOp;
+      // If any of the uses of incoming op is not a mul/fma op, then we need to
+      // concatenate the paired ops and generate a v16xi8 vector.
+      if (llvm::any_of(Op->getUsers(), notMulOrFMAOp))
+        repOp = concatAndInterleave_i8xi8(repOp, pairedOp, state, Op->getLoc());
+    }
   }
 
   // Replace all the uses of the vector mul/fma op with the AIE mul/fma op, and
@@ -1675,8 +1797,8 @@ static void computeXbuffAttributes(
     computeXbuffAttr_i16xi16(scheme.lanes, start, accIncr, colOffset, opAttr);
   }
   // Case 3: 8x8 real
-  else if (scheme.lanes == 16 && scheme.cols == 8 && scheme.xbits == 8 &&
-           scheme.zbits == 8) {
+  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+           scheme.cols == 8 && scheme.xbits == 8 && scheme.zbits == 8) {
     // We only support a loop increment of <= 1
     assert(accIncr <= 1 && "loop step size greater than 1 not supported");
     // If we were not able to fuse any of the macs to exploit column topology,
@@ -1715,8 +1837,8 @@ static void computeZbuffAttributes(
                              colOffset, opAttr);
   }
   // Case 3: 8x8 real
-  else if (scheme.lanes == 16 && scheme.cols == 8 && scheme.xbits == 8 &&
-           scheme.zbits == 8) {
+  else if ((scheme.lanes == 16 || (AIEML && scheme.lanes == 32)) &&
+           scheme.cols == 8 && scheme.xbits == 8 && scheme.zbits == 8) {
     // We only support a loop increment of <= 1
     assert(accIncr <= 1 && "loop step size greater than 1 not supported");
     computeZbuffAttr_i8xi8(scheme.lanes, start, accIncr, colOffset, opAttr,
@@ -1728,6 +1850,15 @@ static void computeZbuffAttributes(
 // For this mul/FMA operator, generate AIE dialect mul/FMA op based on
 // different vector schemes.
 static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
+  int32_t lanes, cols;
+  std::tie(lanes, cols) = getNumRowsAndCols(Op);
+  // Get the data sizes for left and right operands of mul/fma
+  int32_t xbits =
+      getElementSizeInBits(Op->getOperand(0).getType().cast<VectorType>());
+  int32_t zbits =
+      getElementSizeInBits(Op->getOperand(1).getType().cast<VectorType>());
+  Scheme scheme(lanes, cols, xbits, zbits);
+
   // First check if this operation requires simple vector operation, and not an
   // advanced scheme.
   if (isSimpleVectIntrinsic(Op, state)) {
@@ -1742,22 +1873,13 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
       opAttr.square.push_back("");
       opAttr.step.push_back("");
     }
-    generateMulOrFMAOp(Op, opAttr, state);
+    generateMulOrFMAOp(Op, scheme, opAttr, state);
     return;
   }
 
   // Otherwise generate mul or fma op based on advanced scheme. Get the rows,
   // cols, and datatype size for the vector scheme, and pack all that
   // information in the Scheme struct.
-  int32_t lanes, cols;
-  std::tie(lanes, cols) = getNumRowsAndCols(Op);
-  // Get the data sizes for left and right operands of mul/fma
-  int32_t xbits =
-      getElementSizeInBits(Op->getOperand(0).getType().cast<VectorType>());
-  int32_t zbits =
-      getElementSizeInBits(Op->getOperand(1).getType().cast<VectorType>());
-  Scheme scheme(lanes, cols, xbits, zbits);
-
   // If element size is < 32 bits ,we can fuse multiple FMAs together to
   // exploit the column topology of FMA intrinsic.
   auto colOffset = state->opToColOffsets.count(Op) ? state->opToColOffsets[Op]
@@ -1794,7 +1916,7 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
                              state->zeroOffset, nextStart, opAttr);
   }
   // And now generate the mul/fma op
-  generateMulOrFMAOp(Op, opAttr, state, nextStart);
+  generateMulOrFMAOp(Op, scheme, opAttr, state, nextStart);
 }
 
 // If the datatype allows it, fuse a mul or fma op with other fma ops to
