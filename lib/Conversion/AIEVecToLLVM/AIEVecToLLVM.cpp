@@ -94,8 +94,8 @@ uint32_t encodeSquare(uint32_t square) {
 }
 
 // Encode the configuration register with buffer parameters and options
-// TODO: struct to handle this? Would that be too much public information?
-void encodeConf(uint32_t conf[2], BufferParams &x, BufferParams &z, bool sub) {
+// TODO: struct to handle this?
+void encodeConf(uint32_t conf[2], const BufferParams &x, const BufferParams &z, bool sub) {
   conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
   conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
   conf[1] |= sub << 17;
