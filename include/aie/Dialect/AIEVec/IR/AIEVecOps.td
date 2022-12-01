@@ -499,7 +499,7 @@ def AIEVec_ShiftOp:
     Pure
   ]>,
   Arguments<(ins Variadic<AnyVector>:$sources,
-             DefaultValuedAttr<SI32Attr, "0">:$shift)>,
+             DefaultValuedAttr<I32Attr, "0">:$shift)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 concat and shift";
   let description = [{
@@ -516,7 +516,7 @@ def AIEVec_ShuffleOp:
     Pure
   ]>,
   Arguments<(ins AnyVector:$source,
-             DefaultValuedAttr<UI32Attr, "0">:$mode)>,
+             DefaultValuedAttr<I32Attr, "0">:$mode)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
@@ -530,8 +530,8 @@ def AIEVec_MulConvOp:
     Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
-             DefaultValuedAttr<SI32Attr, "0">:$M,
-             DefaultValuedAttr<SI32Attr, "0">:$N)>,
+             DefaultValuedAttr<I32Attr, "0">:$M,
+             DefaultValuedAttr<I32Attr, "0">:$N)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 multiply convolution";
   let description = [{
@@ -551,8 +551,8 @@ def AIEVec_FMAConvOp:
     Pure
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
-             DefaultValuedAttr<SI32Attr, "0">:$M,
-             DefaultValuedAttr<SI32Attr, "0">:$N,
+             DefaultValuedAttr<I32Attr, "0">:$M,
+             DefaultValuedAttr<I32Attr, "0">:$N,
              DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 multiply accumulate convolution";

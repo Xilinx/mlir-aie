@@ -218,9 +218,8 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op) {
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
-  int32_t width = (lsize == 8 && rsize == 8)    ? 128
-                  : (lsize == 16 && rsize == 8) ? 64
-                                                : 32;
+  int32_t width =
+      (lsize == 8 && rsize == 8) ? 128 : (lsize == 16 && rsize == 8) ? 64 : 32;
 
   if (AIEML) {
     width *= 2;
@@ -725,6 +724,9 @@ static aievec::ShuffleOp generateShuffleOp(Value source, VectState *state,
   return shuffleOp;
 }
 
+// For AIEML, i8xi8 scheme generates one MulConvOp or FMAConvOp for each vector
+// dialect mul/fma op instead of generating two AIE dialect mul/fma ops for each
+// vector dialect mul/fma in AIE1.
 static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
                                                 AIEOpAttributes &opAttr,
                                                 VectState *state) {
@@ -748,11 +750,15 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
   state->builder.setInsertionPointAfter(defOp);
   Location loc = defOp->getLoc();
 
+  // Since we do not need to use duplicated data like in AIE1, if a dup-factor
+  // exists, we extract the identical data by shuffle op. We use mode 0 to
+  // extract the elements with even indices for i8 type data.
   Operation *shuffleOp = generateShuffleOp(defOp->getResult(0), state, loc, 0);
 
   int32_t shiftBytes = stoi(opAttr.start[0]) * getElementSizeInBits(vType) / 8 /
                        state->dupFactor;
 
+  // Generate a shift_bytes operation for rhs if xstart is not 0
   if (shiftBytes) {
     state->builder.setInsertionPointAfter(shuffleOp);
     loc = shuffleOp->getLoc();
@@ -1346,8 +1352,9 @@ static void fuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
 // Given the operation attributes (start, offset, step, square, etc.), generate
 // an AIE mul/fma op for the incoming vector mul/fma Op. 'nextStart' is used
 // for schemes that require two AIE dialect fma ops to be generated for one
-// vector dialect fma op; the only difference between the attributes of the two
-// AIE dialect fma ops is the start field.
+// vector dialect fma op for AIE1; the only difference between the attributes of
+// the two AIE dialect fma ops is the start field. For AIEML, i8xi8 scheme
+// generates one MulConvOp or FMAConvOp for each vector dialect mul/fma op.
 static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
                                AIEOpAttributes &opAttr, VectState *state,
                                std::string nextStart = "") {
@@ -1384,8 +1391,10 @@ static void generateMulOrFMAOp(Operation *Op, Scheme &scheme,
   Operation *repOp = genOp(Op, opAttr, state);
   LLVM_DEBUG(llvm::dbgs() << "\n\nGenerated AIE dialect mul/fma op " << *repOp);
 
-  // i8xi8 scheme generates two AIE dialect mul/fma ops for each vector dialect
-  // mul/fma op. Generate the paired mul/fma op if nextStart is not empty.
+  // For AIE1, i8xi8 scheme generates two AIE dialect mul/fma ops for each
+  // vector dialect mul/fma op. Generate the paired mul/fma op if nextStart is
+  // not empty. For AIEML, i8xi8 scheme generates one MulConvOp or FMAConvOp for
+  // each vector dialect mul/fma op.
   if (!nextStart.empty()) {
     if (AIEML && scheme.lanes == 32 && scheme.xbits == 8 && scheme.zbits == 8) {
       repOp = generateMulOrFMAConvOpForInt8(Op, opAttr, state);
@@ -1569,9 +1578,8 @@ static void computeXbuffAttr_i8xi8(
 
   // Now compute the square for zbuff. We want a {0,x,0,x} pattern.
   int32_t offsetWithoutDup = colOffset / 2;
-  int32_t rstep = offsetWithoutDup >= 2 ? 2
-                  : colOffset == -1     ? 1
-                                        : offsetWithoutDup;
+  int32_t rstep =
+      offsetWithoutDup >= 2 ? 2 : colOffset == -1 ? 1 : offsetWithoutDup;
   assert(m4Offset == 0 || rstep <= 1);
 
   SmallVector<int32_t> sqPattern = {rstep, 0, rstep, 0};

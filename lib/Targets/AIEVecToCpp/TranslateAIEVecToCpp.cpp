@@ -772,6 +772,17 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate undefined vector strings based on the vector lanes, source type and
+// element size of a vector
+static std::string getUndefVector(VectorType sourceType) {
+  unsigned lanes = getVectorLaneSize(sourceType);
+  Type eltType = sourceType.getElementType();
+  int32_t eltSize = getElementSizeInBits(sourceType);
+  return "undef_v" + std::to_string(lanes) +
+         (eltType.isa<FloatType>() ? "float" : "int") +
+         std::to_string(eltSize) + "()";
+}
+
 // Generate the shift intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ShiftOp shiftOp) {
@@ -795,12 +806,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
     os << ", ";
     if (sources.size() == 1) {
       VectorType sourceType = source.getType().cast<VectorType>();
-      int32_t eltSize = getElementSizeInBits(sourceType);
-      if (eltSize == 16) {
-        os << "undef_v32int16(), ";
-      } else {
-        os << "undef_v64int8(), ";
-      }
+      os << getUndefVector(sourceType);
+      os << ", ";
     }
   }
   os << std::to_string(shift);
