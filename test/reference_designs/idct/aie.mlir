@@ -62,19 +62,11 @@ module @idct {
   func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
-    %buffer_size =  arith.constant 64 : i32
-
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
     
-    %sum_0 = arith.constant 0 : i32
-    %inc = arith.constant 1 : i32
-    %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
       AIE.useLock(%lock_73_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_ping, "Acquire", 0) // acquire for write
       func.call @dequant_8x8(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
@@ -92,19 +84,11 @@ module @idct {
   } { link_with="dequant.o" }
 
   %c74 = AIE.core(%t74) { 
-    %buffer_size =  arith.constant 64 : i32
-
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
     
-    %sum_0 = arith.constant 0 : i32
-    %inc = arith.constant 1 : i32
-    %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
       AIE.useLock(%lock_74_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_ping, "Acquire", 0) // acquire for write
       func.call @idct_8x8_mmult_h(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
@@ -122,19 +106,11 @@ module @idct {
   } { link_with="idct_horizontal.o" }
   
     %c75 = AIE.core(%t75) { 
-    %buffer_size =  arith.constant 64 : i32
-
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
     
-    %sum_0 = arith.constant 0 : i32
-    %inc = arith.constant 1 : i32
-    %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
       AIE.useLock(%lock_75_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_ping, "Acquire", 0) // acquire for write
       func.call @idct_8x8_mmult_v(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
