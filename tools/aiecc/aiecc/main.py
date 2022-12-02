@@ -327,8 +327,10 @@ def main(builtin_params={}):
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
     peano_path = os.path.join(thispath, '..', '..', 'peano', 'bin')
+    if(not os.path.exists(peano_path)):
+      peano_path = os.path.join(thispath, '..', '..', '..', 'peano', 'bin')
     global llvmlink
-    llvmlink = os.path.join(thispath, '..', '..', 'peano', 'bin', 'llvm-link')
+    llvmlink = os.path.join(thispath, peano_path, 'llvm-link')
 
     if('VITIS' not in os.environ):
       # Try to find vitis in the path
