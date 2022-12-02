@@ -8,6 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: %run_on_board ./test.elf
+// REQUIRES: xaiev1
+
 module @test04_tile_tiledma {
   %tile13 = AIE.tile(1, 3)
   %tile14 = AIE.tile(1, 4)
@@ -16,7 +20,7 @@ module @test04_tile_tiledma {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a13" } : memref<512xi32>
 
 
-  %lock13_5 = AIE.lock(%tile13, 5) // interbuffer lock
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "input_lock" }
 
   AIE.switchbox(%tile13) { AIE.connect<"DMA": 0, "North": 1> }
   AIE.switchbox(%tile14) { AIE.connect<"South": 1, "DMA": 1> }

@@ -16,8 +16,8 @@ module @test02_lock_acquire_release {
 
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3)
-  %lock13_5 = AIE.lock(%tile13, 5)
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "lock1" }
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "lock2" }
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 0) // acquire for write (e.g. input ping)

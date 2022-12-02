@@ -102,8 +102,11 @@ module @test19_shim_dma_with_core_routed{
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer : memref<512 x i32>
-  %buffer_out = AIE.external_buffer : memref<512 x i32>
+  %buffer_in  = AIE.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
+  %buffer_out = AIE.external_buffer {sym_name = "output_buffer" } : memref<512 x i32>
+
+  %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock" }
+  %lock2 = AIE.lock(%t70, 2) {sym_name = "output_lock" }
 
   // Shim DMA connection to kernel
   AIE.flow(%t70, "DMA" : 0, %t73, "DMA" : 0)
@@ -111,8 +114,6 @@ module @test19_shim_dma_with_core_routed{
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
-      %lock1 = AIE.lock(%t70, 1)
-      %lock2 = AIE.lock(%t70, 2)
       AIE.dmaStart(MM2S, 0, ^bd0, ^dma)
     ^dma:
       AIE.dmaStart(S2MM, 0, ^bd1, ^end)

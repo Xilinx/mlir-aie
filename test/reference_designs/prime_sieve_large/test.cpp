@@ -20,15 +20,6 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-
-#define MLIR_STACK_OFFSET 4096
-
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
@@ -48,15 +39,15 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   printf("Waiting for the result ...\n");
-  if (!mlir_aie_acquire_lock(_xaie, 1, 6, 0, 1, 100)) {
+  if (!mlir_aie_acquire_prime_output_lock(_xaie, 1, 100000)) {
     printf("ERROR: timeout hit!\n");
   }
 
-  mlir_aie_dump_tile_memory(_xaie, 1, 6);
-  mlir_aie_check("prime5[0]", mlir_aie_read_buffer_prime5(_xaie, 0), 7, errors);
-  mlir_aie_check("prime5[1]", mlir_aie_read_buffer_prime5(_xaie, 1), 11,
+  mlir_aie_check("primes[0]", mlir_aie_read_buffer_prime_output(_xaie, 0), 7,
                  errors);
-  mlir_aie_check("prime5[2]", mlir_aie_read_buffer_prime5(_xaie, 2), 13,
+  mlir_aie_check("primes[1]", mlir_aie_read_buffer_prime_output(_xaie, 1), 11,
+                 errors);
+  mlir_aie_check("primes[2]", mlir_aie_read_buffer_prime_output(_xaie, 2), 13,
                  errors);
 
   int res = 0;

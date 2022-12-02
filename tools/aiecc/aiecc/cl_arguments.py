@@ -114,6 +114,16 @@ def parse_args():
             default=False,
             action='store_true',
             help='Profile commands to find the most expensive executions.')
+    parser.add_argument('--unified',
+            dest="unified",
+            default=aie_unified_compile,
+            action='store_true',
+            help='Compile all cores together in a single process')
+    parser.add_argument('--no-unified',
+            dest="unified",
+            default=not aie_unified_compile,
+            action='store_false',
+            help='Compile cores independently in separate processes')
     parser.add_argument('-n',
             dest="execute",
             default=True,

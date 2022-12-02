@@ -20,8 +20,8 @@ module {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf23_0 = AIE.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock
-  %lock23_7 = AIE.lock(%tile23, 7) // output buffer lock
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
+  %lock23_7 = AIE.lock(%tile23, 7) { sym_name = "output_lock" } // output buffer lock
   
   func.func private @do_mul(%A: memref<256xi32>) -> ()
   func.func private @do_mac(%A: memref<256xi32>) -> ()

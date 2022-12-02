@@ -22,10 +22,6 @@
 //CHECK11:    call @llvm.aie.put.mcd(%c64_i384) : (i384) -> ()
 //CHECK11:    return
 //CHECK11:  }
-//CHECK11:  func.func @_main() {
-//CHECK11:    call @core11() : () -> ()
-//CHECK11:    return
-//CHECK11:  }
 
 //CHECK21:  func.func @core21() {
 //CHECK21:    %c0_i32 = arith.constant 0 : i32
@@ -36,11 +32,6 @@
 //CHECK21:    %3 = call @llvm.aie.get.scd() : () -> i384
 //CHECK21:    return
 //CHECK21:  }
-//CHECK21:  func.func @_main() {
-//CHECK21:    call @core21() : () -> ()
-//CHECK21:    return
-//CHECK21:  }
-
 
 // Test LLVM lowering to some AIE scalar intrinsic functions (streams, cascades)
 // Each core's region is lowered to LLVM Dialect

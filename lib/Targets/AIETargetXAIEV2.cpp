@@ -375,6 +375,23 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   }
   output << "} // mlir_aie_configure_dmas\n\n";
 
+  for (auto op : module.getOps<ExternalBufferOp>()) {
+    if (op.hasName()) {
+      output << "static u64 _mlir_aie_external_" << op.name().getValue()
+             << ";\n";
+      output << "static bool _mlir_aie_external_set_" << op.name().getValue()
+             << " = false;\n";
+
+      output << "void mlir_aie_external_set_addr_" << op.name().getValue()
+             << "(u64 addr) {\n"
+             << "    _mlir_aie_external_set_" << op.name().getValue()
+             << " = true;\n"
+             << "    _mlir_aie_external_" << op.name().getValue()
+             << " = addr;\n"
+             << "}\n";
+    }
+  }
+
   // ShimDMA Config
   //  int index = 0;
   for (auto op : module.getOps<ShimDMAOp>()) {
@@ -393,22 +410,18 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           uint64_t offset = 0;
           for (auto op : block.getOps<DMABDOp>()) {
             offset = op.getOffsetValue();
+            auto buffer = cast<xilinx::AIE::ExternalBufferOp>(
+                op.getBuffer().getDefiningOp());
+
+            output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
+                   << "_" << bdNum << "(void) {\n"
+                   << "    assert(_mlir_aie_external_set_"
+                   << buffer.name().getValue() << ");\n"
+                   << "    return _mlir_aie_external_"
+                   << buffer.name().getValue() << " + "
+                   << llvm::utohexstr(offset) << ";\n"
+                   << "}\n";
           }
-
-          output << "static u64 _mlir_aie_external_myBuffer_" << col << row
-                 << "_" << bdNum << ";\n";
-
-          output << "void mlir_aie_external_set_addr_myBuffer_" << col << row
-                 << "_" << bdNum << "(u64 addr) {\n"
-                 << "    _mlir_aie_external_myBuffer_" << col << row << "_"
-                 << bdNum << " = addr + " << llvm::utohexstr(offset) << ";\n"
-                 << "}\n";
-
-          output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
-                 << "_" << bdNum << "(void) {\n"
-                 << "    return _mlir_aie_external_myBuffer_" << col << row
-                 << "_" << bdNum << ";\n"
-                 << "}\n";
 
           bdNum++;
         }
@@ -808,8 +821,32 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     // if(tiles.count(tile.getValue()))
     for (auto buf : buffers[tileOp])
       bufferAccessor(coord, buf);
-    // };
   }
+
+  auto lockAccessor = [&](LockOp lock) {
+    int col = lock.colIndex();
+    int row = lock.rowIndex();
+    if (!lock.hasName())
+      return;
+    std::string lockName(lock.name().getValue());
+    output << "int mlir_aie_acquire_" << lockName << "(" << ctx_p
+           << ", int value, int timeout) {\n";
+    output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
+           << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
+           << ", timeout);\n";
+    output << "}\n";
+    output << "int mlir_aie_release_" << lockName << "(" << ctx_p
+           << ", int value, int timeout) {\n";
+    output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    output << "  return XAie_LockRelease(" << deviceInstRef << ", "
+           << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
+           << ", timeout);\n";
+    output << "}\n";
+  };
+
+  for (auto lock : module.getOps<LockOp>())
+    lockAccessor(lock);
 
   return success();
 }

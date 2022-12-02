@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 #ifndef AIE_TEST_LIBRARY_H
 #define AIE_TEST_LIBRARY_H
-#include <cmath>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <xaiengine.h>

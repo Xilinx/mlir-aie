@@ -19,7 +19,7 @@ module @test {
 
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<2xi32>
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<4096xi32>
-  %lock13_3 = AIE.lock(%tile13, 3)
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "output_lock" } 
 
   func.func private @func(%A: memref<2xi32>, %B: memref<4096xi32>) -> ()
 

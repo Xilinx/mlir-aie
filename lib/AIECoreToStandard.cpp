@@ -218,6 +218,38 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
   }
 };
 
+struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
+  using OpConversionPattern<BufferOp>::OpConversionPattern;
+  AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
+                      BlockAndValueMapping &mapper, PatternBenefit benefit = 1)
+      : OpConversionPattern<BufferOp>(context, benefit) {}
+  LogicalResult
+  matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.setInsertionPoint(buffer);
+    MemRefType t = buffer.getType().cast<MemRefType>();
+    auto symName = buffer.name().getValue();
+    rewriter.create<memref::GlobalOp>(
+        rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
+        buffer.getType(), nullptr, false, nullptr);
+
+    for (auto &use : llvm::make_early_inc_range(buffer.getResult().getUses())) {
+      Operation *user = use.getOwner();
+      rewriter.setInsertionPoint(user);
+      auto allocated = rewriter.create<memref::GetGlobalOp>(
+          rewriter.getUnknownLoc(), t, symName);
+      // Assume that buffers are aligned so they can be vectorized.
+      rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
+                                                 allocated, 32);
+
+      use.set(allocated.getResult());
+    }
+
+    rewriter.eraseOp(buffer);
+    return success();
+  }
+};
+
 struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
   using OpConversionPattern<CoreOp>::OpConversionPattern;
   ModuleOp &module;
@@ -243,7 +275,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
     int row = op.rowIndex();
 
     // Only pull code for the indicated function
-    if ((tileRow != row) || (tileCol != col)) {
+    if (((tileRow != row) && (tileRow != -1)) ||
+        ((tileCol != col) && (tileCol != -1))) {
       rewriter.eraseOp(Op);
       return success();
     }
@@ -255,50 +288,6 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
 
     rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
-
-    // Create a main function that just calls the core function above.
-    auto mainFunc = rewriter.create<func::FuncOp>(
-        rewriter.getUnknownLoc(), "_main",
-        FunctionType::get(rewriter.getContext(), {}, {}));
-    rewriter.setInsertionPointToStart(mainFunc.addEntryBlock());
-    SmallVector<Value, 8> args;
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), coreFunc,
-                                  args); // call with no args.
-    rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
-                                    args); // return nothing
-
-    DenseMap<Operation *, Value> newAllocated;
-
-    for (auto map : tileToBuffers) {
-      Operation *tileOp = map.first;
-      SmallVector<BufferOp, 4> buffers(map.second);
-      TileOp tile = dyn_cast<TileOp>(tileOp);
-      int dstCol = tile.colIndex();
-      int dstRow = tile.rowIndex();
-
-      if (!isLegalMemAffinity(col, row, dstCol, dstRow))
-        continue;
-
-      rewriter.setInsertionPoint(coreFunc);
-      for (auto buffer : buffers) {
-        auto symName = buffer.name().getValue();
-        rewriter.create<memref::GlobalOp>(
-            rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-            buffer.getType(), nullptr, false, nullptr);
-      }
-      rewriter.setInsertionPointToStart(&coreFunc.getBody().front());
-      for (auto buffer : buffers) {
-        MemRefType t = buffer.getType().cast<MemRefType>();
-        auto symName = buffer.name().getValue();
-        auto allocated = rewriter.create<memref::GetGlobalOp>(
-            rewriter.getUnknownLoc(), t, symName);
-        newAllocated[buffer] = allocated.getResult();
-        // Assume that buffers are aligned so they can be vectorized.
-        rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
-                                                   allocated, 32);
-        rewriter.replaceOp(buffer, allocated.getResult());
-      }
-    }
 
     coreFunc.getBody().walk([&](Operation *childOp) {
       rewriter.setInsertionPointAfter(childOp);
@@ -455,6 +444,7 @@ struct AIECoreToStandardPass
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering
                  >(m.getContext(), m);
 
+    patterns.add<AIEBufferToStandard>(m.getContext());
     patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                         tileToBuffers, 1, tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))

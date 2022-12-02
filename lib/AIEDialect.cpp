@@ -163,6 +163,49 @@ bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
 
+// Walk the operation hierarchy until we find a containing TileElement.
+// If no parent is a TileElement, then return null.
+static xilinx::AIE::TileElement getParentTileElement(Operation *op) {
+  auto parent = op->getParentOp();
+  while (!llvm::isa_and_nonnull<mlir::ModuleOp>(parent)) {
+    if (auto element = llvm::dyn_cast<xilinx::AIE::TileElement>(parent))
+      return element;
+    parent = parent->getParentOp();
+  }
+  return llvm::dyn_cast<xilinx::AIE::TileElement>(parent);
+}
+
+struct UsesAreAccessable {
+  static LogicalResult verifyTrait(Operation *op) {
+    auto thisElement = cast<xilinx::AIE::TileElement>(op);
+    auto thisID = thisElement.getTileID();
+    auto users = op->getResult(0).getUsers();
+    for (auto user : users) {
+      // AIE.useLock may be used in a module to set the lock's default value
+      if (llvm::isa_and_nonnull<mlir::ModuleOp>(user->getParentOp()))
+        return success();
+      if (auto element = getParentTileElement(user)) {
+
+        auto tileID = element.getTileID();
+        if (!xilinx::AIE::isLegalMemAffinity(tileID.first, tileID.second,
+                                             thisID.first, thisID.second))
+          return (op->emitOpError("in Column ")
+                  << thisID.first << " and Row " << thisID.second
+                  << " is accessed from an unreachable tile in Column "
+                  << tileID.first << " and Row " << tileID.second)
+                     .attachNote(user->getLoc())
+                 << "user";
+      } else {
+        // This should probably be caught elsewhere as well.
+        return op->emitOpError("is accessed outside of a tile")
+                   .attachNote(user->getLoc())
+               << "user";
+      }
+    }
+    return success();
+  }
+};
+
 namespace detail {
 /// This class represents the internal storage of the AIE `ObjectFifoType`.
 struct AIEObjectFifoTypeStorage : public mlir::TypeStorage {
@@ -715,6 +758,12 @@ int64_t xilinx::AIE::BufferOp::getAllocationSize() {
 xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+LogicalResult xilinx::AIE::BufferOp::verify() {
+  auto result = UsesAreAccessable::verifyTrait(*this);
+  if (result.failed())
+    return result;
+  return success();
+}
 
 // MemOp
 LogicalResult xilinx::AIE::MemOp::verify() {
@@ -745,6 +794,9 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   return success();
 }
 
+xilinx::AIE::TileOp xilinx::AIE::MemOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+}
 int xilinx::AIE::MemOp::colIndex() {
   Operation *Op = getTile().getDefiningOp();
   xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
@@ -782,6 +834,34 @@ template <typename... ParentOpTypes> struct HasSomeParent {
       operation = operation->getParentOp();
     }
     return failure();
+  }
+};
+
+xilinx::AIE::TileOp xilinx::AIE::LockOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+}
+int xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
+
+LogicalResult xilinx::AIE::LockOp::verify() {
+  auto result = UsesAreAccessable::verifyTrait(*this);
+  if (result.failed())
+    return result;
+  return success();
+}
+
+struct UsesReachableLock {
+  static LogicalResult verifyTrait(Operation *op) {
+    auto useLock = dyn_cast<xilinx::AIE::UseLockOp>(op);
+    auto lock =
+        dyn_cast<xilinx::AIE::LockOp>(useLock.getLock().getDefiningOp());
+    auto parent = dyn_cast<xilinx::AIE::TileElement>(useLock->getParentOp());
+    auto tileID = parent.getTileID();
+
+    if (!xilinx::AIE::isLegalMemAffinity(tileID.first, tileID.second,
+                                         lock.colIndex(), lock.rowIndex()))
+      return failure();
+    return success();
   }
 };
 

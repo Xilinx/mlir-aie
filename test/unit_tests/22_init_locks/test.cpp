@@ -52,10 +52,11 @@ int main(int argc, char *argv[]) {
                  errors);
 
   printf("Release input buffer lock.\n");
-  mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
+  mlir_aie_release_lock_a(_xaie, 1, 0);
 
   printf("Waiting to acquire output lock for read ...\n");
-  if (!mlir_aie_acquire_lock(_xaie, 1, 3, 5, 1, LOCK_TIMEOUT)) {
+  if (mlir_aie_acquire_lock_b(_xaie, 1, LOCK_TIMEOUT)) {
+    errors++;
     printf("ERROR: timeout hit!\n");
   }
   mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b(_xaie, 5), 35,
