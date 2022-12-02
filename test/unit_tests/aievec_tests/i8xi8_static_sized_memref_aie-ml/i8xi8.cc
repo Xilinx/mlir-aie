@@ -36,6 +36,7 @@ int main() {
 
   // Load kernel coefficients from input file stream.
   // We want 4 elements per row
+  // The filter values must be duplicated at least twice for the i8xi8 scheme
   int kernelSize;
   fscanf(fpin, "%d", &kernelSize);
   int index = 0;
