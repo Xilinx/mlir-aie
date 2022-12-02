@@ -108,9 +108,9 @@ jobs:
       # We'll be running clang-tidy later in this flow.
       - name: Install clang-tidy
         run: |
-          sudo apt-get install -y clang-tidy-9
+          sudo apt-get install -y clang-tidy-12
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
-            /usr/bin/clang-tidy-9 100
+            /usr/bin/clang-tidy-12 100
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
@@ -164,7 +164,7 @@ jobs:
         if: ${{ always() }}
         run: |
           # Run clang-format
-          git clang-format-11 $DIFF_COMMIT
+          git clang-format-12 $DIFF_COMMIT
           git diff --ignore-submodules > clang-format.patch
           if [ -s clang-format.patch ]; then
             echo "Clang-format found formatting problems in the following " \
@@ -182,7 +182,7 @@ jobs:
         if: ${{ always() }}
         run: |
           git diff -U0 $DIFF_COMMIT | \
-            clang-tidy-diff-9.py -path build_assert -p1 -fix
+            clang-tidy-diff-12.py -path build_assert -p1 -fix
           git diff --ignore-submodules > clang-tidy.patch
           if [ -s clang-tidy.patch ]; then
             echo "Clang-tidy problems in the following files. " \
