@@ -67,8 +67,8 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
     return
 }
 
-//CHECK-NEXT:    %c0 = arith.constant 0 : index
-//CHECK-NEXT:    %[[T0]] = aievec.upd %[[A1]][%c0] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
+//CHECK-NEXT:    %[[C00]] = arith.constant 0 : index
+//CHECK-NEXT:    %[[T0]] = aievec.upd %[[A1]][%[[C00]]] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
 //CHECK-NEXT:    %[[T1]] = aievec.shuffle %[[T0]] {mode = 0 : i32} : vector<64xi8>, vector<64xi8>
 //CHECK-NEXT:    %[[T2]] = aievec.shift %[[T1]] {shift = 8 : i32} : vector<64xi8>, vector<64xi8>
 //CHECK-NEXT:    %[[T3]] = aievec.shift %[[T1]] {shift = 16 : i32} : vector<64xi8>, vector<64xi8>
