@@ -13,11 +13,11 @@ Each of the 4 AIEs computes (32 * 32) * (32 * 32) + (32 * 32) = (32 * 32). In th
 
 ### Mapping Strategy<br>
 The following figure shows the mapping strategy of this design in which LHS and Output each have two (32 * 32) tiles, RHS has four (32 * 32) tiles.<br>
-![image](https://user-images.githubusercontent.com/77606152/182739157-8b34291b-7c7b-4796-a27a-907dcb0eca07.png)
+![image](../design_pictures/MM_2x2_kernel.png)
 
 
 ### AIE array Layout and Data Communication<br>
 1. The communication from tile (6,0) MM2S0 channel is a broadcast in which tile0 of LHS is broadcast to tile(6,3) and tile (7,3). The data in tile1 of LHS is broadcast to tile (6,4) and tile (7,4)  via channel MM2S1. As the channels are not time-multiplexed, 4 more output channels, i.e., 2 Shim DMAs (7, 0) and (10, 0), are required to communicate the RHS tiles to the 4 AIEs. <br> 
 2. One thing to notice is that the accumulator matrices are set to zero in the local memories of the AIEs on tile (6,3) and tile (7,3). <br>
 3. The accumulator matrices resulting from computation on tiles (6, 3) and (7, 3) are respectively communicated to tiles (6, 4) and (7, 4) via shared memory. <br>
-![image](https://user-images.githubusercontent.com/77606152/182739011-d27f9e43-7468-43b5-bbfe-1ed399bfb2c6.png)
+![image](../design_pictures/MM_2x2_circuit_switch.png)
