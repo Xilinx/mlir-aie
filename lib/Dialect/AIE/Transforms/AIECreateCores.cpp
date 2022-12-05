@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/AIETokenAnalysis.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -180,11 +180,15 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
             Value arg = func.getArgument(operandID);
             Value buf = buffers[callOperands[operandID]];
             if (arg.getType().isIntOrFloat()) {
-              assert(t.getShape().size() == 1 && "Expected MemRefType of shape 1");
-              assert(t.getShape()[0] == 1 && "Expected MemRefType of single element");
+              assert(t.getShape().size() == 1 &&
+                     "Expected MemRefType of shape 1");
+              assert(t.getShape()[0] == 1 &&
+                     "Expected MemRefType of single element");
 
-              Value zero = builder.create<arith::ConstantIndexOp>(builder.getUnknownLoc(), 0);
-              auto loadOp = builder.create<memref::LoadOp>(builder.getUnknownLoc(), arg.getType(), buf, zero);
+              Value zero = builder.create<arith::ConstantIndexOp>(
+                  builder.getUnknownLoc(), 0);
+              auto loadOp = builder.create<memref::LoadOp>(
+                  builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
             } else {
               mapper.map(arg, buf);

@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -30,8 +30,9 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
       : OpConversionPattern<MyOp>(context, benefit), module(m) {}
 
-  LogicalResult matchAndRewrite(MyOp op, OpAdaptor operands,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MyOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
 
     rewriter.eraseOp(Op);

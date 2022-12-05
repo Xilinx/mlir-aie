@@ -922,14 +922,16 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
 
     return success();
 
-  // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
-  } else if (HasSomeParent<xilinx::AIE::CoreOp, func::FuncOp>::verifyTrait(*this)
+    // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
+  } else if (HasSomeParent<xilinx::AIE::CoreOp, func::FuncOp>::verifyTrait(
+                 *this)
                  .succeeded()) {
     return success();
 
   } else {
-    return (*this)->emitOpError() << "expects some parent op to be one of "
-                                  << "AIE::core, func::func, AIE::mem, or AIE::shimDMA";
+    return (*this)->emitOpError()
+           << "expects some parent op to be one of "
+           << "AIE::core, func::func, AIE::mem, or AIE::shimDMA";
   }
 }
 

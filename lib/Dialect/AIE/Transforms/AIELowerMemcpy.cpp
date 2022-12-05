@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/AIETokenAnalysis.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -66,8 +66,9 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     rewriter.create<cf::BranchOp>(rewriter.getUnknownLoc(), &endBlock);
   }
 
-  LogicalResult matchAndRewrite(MemcpyOp op, OpAdaptor adaptor,
-                                ConversionPatternRewriter &rewriter) const override {
+  LogicalResult
+  matchAndRewrite(MemcpyOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
     Value srcBuf = op.getSrcBuf();
     Value dstBuf = op.getDstBuf();

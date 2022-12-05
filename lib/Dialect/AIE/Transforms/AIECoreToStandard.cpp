@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -186,12 +186,12 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
   ModuleOp &module;
 
   AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &m,
-                            PatternBenefit benefit = 1)
+                          PatternBenefit benefit = 1)
       : OpConversionPattern<UseLockOp>(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if(!isa<ModuleOp>(useLock->getParentOp())) {
+    if (!isa<ModuleOp>(useLock->getParentOp())) {
       std::string funcName = "llvm.aie.lock.";
       if (useLock.acquire())
         funcName += "acquire.reg";
@@ -441,8 +441,8 @@ struct AIECoreToStandardPass
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering
-                 >(m.getContext(), m);
+                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering>(
+        m.getContext(), m);
 
     patterns.add<AIEBufferToStandard>(m.getContext());
     patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
@@ -456,8 +456,7 @@ struct AIECoreToStandardPass
              AIEOpRemoval<AIE::MemOp>, AIEOpRemoval<AIE::ShimDMAOp>,
              AIEOpRemoval<AIE::ShimMuxOp>, AIEOpRemoval<AIE::SwitchboxOp>,
              AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::BufferOp>,
-             AIEOpRemoval<AIE::ExternalBufferOp>>(
-            m.getContext(), m);
+             AIEOpRemoval<AIE::ExternalBufferOp>>(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();

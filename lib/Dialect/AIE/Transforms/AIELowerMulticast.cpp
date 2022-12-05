@@ -1,5 +1,5 @@
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"

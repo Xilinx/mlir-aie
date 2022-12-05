@@ -30,8 +30,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #include "AIETargets.h"
 
