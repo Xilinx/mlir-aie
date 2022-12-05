@@ -20,5 +20,5 @@ The following figure shows the mapping strategy of this design in which LHS and 
 <p align="center">
   <img
     src="../design_pictures/MM_2x2_packet_switch.png"
-    style="max-width: 200px">
+    width="100">
 </p>
