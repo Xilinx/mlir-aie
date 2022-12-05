@@ -16,7 +16,7 @@ The following figure shows the mapping strategy of this design in which LHS and 
 <p align="center">
   <img
     src="../design_pictures/MM_2x2_kernel.png"
-    width="850">
+    width="750">
 </p>
 
 
