@@ -29,6 +29,8 @@ target_link_libraries(aie-translate
   ${dialect_libs}
   ${translation_libs}
   AIE
+  AIETransforms
+  AIEUtils
   AIETargets
   MLIRIR
   MLIRParser

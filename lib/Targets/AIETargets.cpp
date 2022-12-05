@@ -28,9 +28,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 
-#include "aie/AIEDialect.h"
 #include "aie/AIENetlistAnalysis.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
