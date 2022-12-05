@@ -159,7 +159,7 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>
       splitFifos;     // maps each objFifo between non-adjacent tiles to its
                       // corresponding consumer objectFifos
-  int buff_index = 0; // used to give objectFifo buffer elements a symbolic name
+  int of_elem_index = 0; // used to give objectFifo buffer elements a symbolic name
 
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
@@ -172,19 +172,25 @@ struct AIEObjectFifoStatefulTransformPass
 
     builder.setInsertionPointAfter(op);
     for (int i = 0; i < op.size(); i++) {
+      // create aie buffer
       BufferOp buff = builder.create<BufferOp>(
           builder.getUnknownLoc(), elemType, op.getProducerTileOp());
       buff.getOperation()->setAttr(
           "sym_name",
-          builder.getStringAttr("buff" + std::to_string(buff_index)));
+          builder.getStringAttr("of_buff" + std::to_string(of_elem_index)));
       buffers.push_back(buff);
-      buff_index++;
 
+      // create corresponding aie lock
       int lockID = lockAnalysis.getLockID(op.getProducerTileOp());
       assert(lockID >= 0 && "No more locks to allocate!");
       LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(),
                                            op.getProducerTileOp(), lockID);
+      lock.getOperation()->setAttr(
+          "sym_name",
+          builder.getStringAttr("of_lock" + std::to_string(of_elem_index)));
       locks.push_back(lock);
+
+      of_elem_index++;
     }
 
     buffersPerFifo[op] = buffers;
