@@ -27,5 +27,5 @@ The following figure shows the mapping strategy of this design in which LHS and 
 <p align="center">
   <img
     src="../design_pictures/MM_2x2_circuit_switch.png"
-    width="650">
+    width="750">
 </p>
