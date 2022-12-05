@@ -91,6 +91,17 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset,
   output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
 }
 
+// Return the base address of the memory associated with this tile.
+static int internalMemAddress(TileID src) {
+  bool IsEvenRow = ((src.second % 2) == 0);
+  if (IsEvenRow)
+    // Internal is West
+    return 0x28000;
+  else
+    // Internal is East
+    return 0x38000;
+}
+
 void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -207,7 +218,7 @@ SECTIONS
 {
   . = 0x0;
   .text : { 
-     // the _main_init symbol from me_basic.o has to come at address zero.
+     /* the _main_init symbol from me_basic.o has to come at address zero. */
      *me_basic.o(.text)
      . = 0x200;
      _ctors_start = .;
@@ -223,24 +234,31 @@ SECTIONS
      *(.data*);
      *(.rodata*)
   } > data
-  . = 0x20000;
-  _sp_start_value_DM_stack = .;
-  . = 0x24000;
 )THESCRIPT";
-            auto doBuffer = [&](Optional<TileID> tile, int offset) {
-              if (tiles.count(tile.value()))
-                for (auto buf : buffers[tiles[tile.value()]])
-                  writeLDScriptMap(output, buf, offset, NL);
+            auto doBuffer = [&](Optional<TileID> tile, int offset,
+                                std::string dir) {
+              if (tile) {
+                if (tiles.count(tile.value()))
+                  for (auto buf : buffers[tiles[tile.value()]])
+                    writeLDScriptMap(output, buf, offset, NL);
+              } else
+                output << "/* No tile with memoy exists to the " << dir
+                       << ". */\n";
+              output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
+              output << ". += 0x" << llvm::utohexstr(0x8000) << ";\n";
             };
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
-            if (auto tile = getMemSouth(srcCoord))
-              doBuffer(tile, 0x00020000);
-            if (auto tile = getMemWest(srcCoord))
-              doBuffer(tile, 0x00028000);
-            if (auto tile = getMemNorth(srcCoord))
-              doBuffer(tile, 0x00030000);
-            if (auto tile = getMemEast(srcCoord))
-              doBuffer(tile, 0x00038000);
+
+            // Stack
+            output << ". = 0x" << llvm::utohexstr(internalMemAddress(srcCoord))
+                   << ";\n";
+            output << "_sp_start_value_DM_stack = .;\n";
+            output << ". += 0x" << llvm::utohexstr(0x400) << ";\n";
+
+            doBuffer(getMemSouth(srcCoord), 0x00020000, std::string("south"));
+            doBuffer(getMemWest(srcCoord), 0x00028000, std::string("west"));
+            doBuffer(getMemNorth(srcCoord), 0x00030000, std::string("north"));
+            doBuffer(getMemEast(srcCoord), 0x00038000, std::string("east"));
             output << "  .bss : { *(.bss) } > data\n";
             output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
             output << "}\n";
@@ -312,21 +330,26 @@ SECTIONS
             output << "_reserved DMb      0x00000 0x20000 //Don't put data in "
                       "code memory\n";
 
-            auto doBuffer = [&](Optional<TileID> tile, int offset) {
-              if (tiles.count(tile.value()))
-                for (auto buf : buffers[tiles[tile.value()]])
-                  writeBCFMap(output, buf, offset, NL);
+            auto doBuffer = [&](Optional<TileID> tile, int offset,
+                                std::string dir) {
+              if (tile) {
+                if (tiles.count(tile.value()))
+                  for (auto buf : buffers[tiles[tile.value()]])
+                    writeBCFMap(output, buf, offset, NL);
+              } else
+                output << "_reserved DMb 0x" << llvm::utohexstr(offset)
+                       << " 0x8000 "
+                       << "// No tile with memoy exists to the " << dir
+                       << ".\n";
             };
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
-            if (auto tile = getMemSouth(srcCoord))
-              doBuffer(tile, 0x00020000);
-            if (auto tile = getMemWest(srcCoord))
-              doBuffer(tile, 0x00028000);
-            if (auto tile = getMemNorth(srcCoord))
-              doBuffer(tile, 0x00030000);
-            if (auto tile = getMemEast(srcCoord))
-              doBuffer(tile, 0x00038000);
-            output << "_stack    DM_stack 0x20000  0x400 //stack for core\n";
+            doBuffer(getMemSouth(srcCoord), 0x00020000, std::string("south"));
+            doBuffer(getMemWest(srcCoord), 0x00028000, std::string("west"));
+            doBuffer(getMemNorth(srcCoord), 0x00030000, std::string("north"));
+            doBuffer(getMemEast(srcCoord), 0x00038000, std::string("east"));
+            output << "_stack    DM_stack 0x"
+                   << llvm::utohexstr(internalMemAddress(srcCoord))
+                   << "  0x400 //stack for core\n";
             output << "_reserved DMb 0x40000 0xc0000 // And everything else "
                       "the core can't see\n";
             if (auto coreOp = tile.getCoreOp()) {
