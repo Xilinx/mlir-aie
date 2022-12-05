@@ -10,7 +10,11 @@ Each of the 4 AIEs computes (32 * 32) * (32 * 32) + (32 * 32) = (32 * 32). In th
 
 ### Mapping Strategy<br>
 The following figure shows the mapping strategy of this design in which LHS and Output each have two (32 * 32) tiles, RHS has four (32 * 32) tiles.<br>
-![image](../design_pictures/MM_2x2_kernel.png)
+<p align="center">
+  <img
+    src="../design_pictures/MM_2x2_kernel.png"
+    width="850">
+</p>
 
 
 ### AIE array Layout and Data Communication<br>
