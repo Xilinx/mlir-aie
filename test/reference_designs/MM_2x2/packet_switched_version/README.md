@@ -17,5 +17,7 @@ The following figure shows the mapping strategy of this design in which LHS and 
 1. The communication from tile (6,0) MM2S0 channel is a broadcast_packet in which tile0 of LHS is broadcast to tile(6,3) and tile (7,3). The data in tile1 of LHS is broadcast to tile (6,4) and tile (7,4) by time-multiplexedly using the same DMA channel with different packet IDs.<br> 
 2. One thing to notice is that the accumulator matrices are set to zero in the local memories of the AIEs on tile (6,3) and tile (7,3). <br>
 3. The accumulator matrices resulting from computation on tiles (6, 3) and (7, 3) are respectively communicated to tiles (6, 4) and (7, 4) via shared memory. <br>
-![image](../design_pictures/MM_2x2_packet_switch.png)
+<img
+  src="../design_pictures/MM_2x2_packet_switch.png"
+  style="display: inline-block; margin: 0 auto; max-width: 300px">
 
