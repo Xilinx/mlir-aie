@@ -56,6 +56,10 @@ def parse_args():
             default=not aie_compile_with_xchesscc,
             action='store_false',
             help='Compile using peano')
+    parser.add_argument('--peano',
+            dest="peano_install_dir",
+            default=peano_install_dir,
+            help='Root directory where peano compiler is installed')
     parser.add_argument('--compile',
             dest="compile",
             default=not aie_disable_compile,
@@ -114,6 +118,16 @@ def parse_args():
             default=False,
             action='store_true',
             help='Profile commands to find the most expensive executions.')
+    parser.add_argument('--unified',
+            dest="unified",
+            default=aie_unified_compile,
+            action='store_true',
+            help='Compile all cores together in a single process')
+    parser.add_argument('--no-unified',
+            dest="unified",
+            default=not aie_unified_compile,
+            action='store_false',
+            help='Compile cores independently in separate processes')
     parser.add_argument('-n',
             dest="execute",
             default=True,

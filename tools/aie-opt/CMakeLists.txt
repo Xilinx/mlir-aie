@@ -30,6 +30,8 @@ set(LIBS
   MLIROptLib
   ADF
   AIE
+  AIETransforms
+  AIEUtils
   MLIRAIEVec
   MLIRAIEVecTransforms
   )

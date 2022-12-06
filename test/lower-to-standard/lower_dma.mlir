@@ -33,7 +33,7 @@ module @example0 {
   %l33_1 = AIE.lock(%t33, 1)
   %l43_0 = AIE.lock(%t43, 0)
 
-  %buf33 = AIE.buffer(%t11) { sym_name = "a" } : memref<256xi32>
+  %buf33 = AIE.buffer(%t33) { sym_name = "a" } : memref<256xi32>
   %buf43 = AIE.buffer(%t43) { sym_name = "b" } : memref<256xi32>
 
   %m33 = AIE.mem(%t33) {

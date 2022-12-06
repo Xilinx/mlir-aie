@@ -11,9 +11,10 @@ import math
 import random
 
 # The number of cores to use.  Will generate a 2D chain of cores of the given size.
-arrayrows = 7 # must be odd
-arraycols = 48 # must be even
-bufsize = 4096 # must fit in data memory
+arrayrows = 8
+arraycols = 50 # must be even
+startcol = 0
+bufsize = 3072 # must fit in data memory
 
 def prime_gen(primecount):
     lower = 2
@@ -79,13 +80,9 @@ def main():
 
     f.write("module @test16_prime_sieve_large {\n")
 
-    for col in range (1, cols): # col 0 is reserved in aie
-        if (col % 2 == 1):
-            for row in range (1, rows): # row 1 -> 8
-                f.write("  %%tile%d_%d = AIE.tile(%d, %d)\n" %(col, row, col, row))
-        else:
-            for row in range (rows-1, 0, -1): # row 8 -> 1
-                f.write("  %%tile%d_%d = AIE.tile(%d, %d)\n" %(col, row, col, row))
+    for col in range (startcol, startcol + arraycols): # col 0 is reserved in aie
+        for row in range (1, rows): # row 1 -> 8
+            f.write("  %%tile%d_%d = AIE.tile(%d, %d)\n" %(col, row, col, row))
             
     # %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
 
@@ -97,47 +94,78 @@ def main():
 
 
     f.write("\n")
-    for col in range (1, cols): # col 0 is reserved in aie
-        if (col % 2 == 1):
-            for row in range (1, rows): # row 1 -> 8
-                f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d, 0)\n" %(col, row, col, row))
-        else:
-            for row in range (rows-1, 0, -1): # row 8 -> 1
-                symbol = ""
-                if (col == cols-1 and row == 1):
-                    symbol = " { sym_name = \"prime_output_lock\" }" 
-                f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d, 0)%s\n" %(col, row, col, row, symbol))
+    col = startcol
+    for i in range (0, arraycols, 2):
+        for row in range (1, rows): # row 1 -> 8
+            if (row == rows - 1):
+                lockrow = row
+                lockcol = col + 1 if (row % 2 == 0) else col
+            else:
+                lockrow = row
+                lockcol = col
+            f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d)\n" %(col, row, lockcol, lockrow))
+
+        col = col + 1
+        for row in range (rows-1, 0, -1): # row 8 -> 1
+            symbol = ""
+            if ((i == arraycols-2) and row == 1):
+                symbol = " { sym_name = \"prime_output_lock\" }" 
+                lockrow = row
+                lockcol = col
+            elif (row == 1):
+                lockrow = row
+                lockcol = col + 1 if (row % 2 == 0) else col
+            else:
+                lockrow = row
+                lockcol = col
+            f.write("  %%lock%d_%d = AIE.lock(%%tile%d_%d)%s\n" %(col, row, lockcol, lockrow, symbol))
+        col = col + 1
 
 
     f.write("\n")
 
+    # row and column to generate for.  lastrow indicates that we shift one column to the right
+    # for the next core.
+    global prime_itr
     prime_itr = 1;
+    def gen_buffer(row, col, lastrow):
+        global prime_itr
+        if(row == 1 and col == startcol):
+            symbol = "a"
+            lockrow = row
+            lockcol = col
+        elif(row == 1 and col == startcol + arraycols - 1):
+            symbol = "prime_output"
+            lockrow = row
+            lockcol = col
+        else:
+            symbol = "prime%d" % prime_nums[prime_itr]
+            prime_itr = prime_itr + 1
+            if(lastrow):
+                lockrow = row
+                lockcol = col + 1 if (row % 2 == 0) else col
+            else:
+                lockrow = row
+                lockcol = col
+        f.write("  %%buf%d_%d = AIE.buffer(%%tile%d_%d) { sym_name = \"%s\" } : memref<%dxi32>\n" %(col, row, lockcol, lockrow, symbol, bufsize))
+
+    col = startcol
     row = 1
-    for col in range (1, cols): # col 0 is reserved in aie
-        for i in range (1, rows):
-            if(row == 1 and col == 1):
-                symbol = "a"
-            elif(row == 1 and col == cols-1):
-                symbol = "prime_output"
-            else:
-                symbol = "prime%d" % prime_nums[prime_itr]
-                prime_itr = prime_itr + 1
-
-            f.write("  %%buf%d_%d = AIE.buffer(%%tile%d_%d) { sym_name = \"%s\" } : memref<%dxi32>\n" %(col, row, col, row, symbol, bufsize))
-
-            if (col % 2 == 1):
-                if (row != rows-1):
-                    # odd columns go up
-                    row = row + 1
-            else:
-                if (row != 1):
-                    # even columns go down
-                    row = row - 1
-
+    for i in range (0, arraycols, 2): # col 0 is reserved in aie
+        for j in range (arrayrows-1):
+            gen_buffer(row, col, False)
+            row = row + 1
+        gen_buffer(row, col, True)
+        col = col + 1
+        for j in range (arrayrows-1):
+            gen_buffer(row, col, False)
+            row = row - 1
+        gen_buffer(row, col, True)
+        col = col + 1
 
     # unchanged part
     tilecode = """  
-  %core1_1 = AIE.core(%tile1_1) {
+  %core""" + str(startcol) + """_1 = AIE.core(%tile""" + str(startcol) + """_1) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %cend = arith.constant """ + str(bufsize) + """: index
@@ -148,10 +176,10 @@ def main():
     scf.for %arg0 = %c0 to %cend step %c1
       iter_args(%sum_iter = %sum_0) -> (i32) {
       %sum_next = arith.addi %sum_iter, %t : i32
-      memref.store %sum_iter, %buf1_1[%arg0] : memref<""" + str(bufsize) + """xi32>
+      memref.store %sum_iter, %buf""" + str(startcol) + """_1[%arg0] : memref<""" + str(bufsize) + """xi32>
       scf.yield %sum_next : i32
     }
-    AIE.useLock(%lock1_1, "Release", 1)
+    AIE.useLock(%lock""" + str(startcol) + """_1, "Release", 1)
     AIE.end
   }
   func.func @do_sieve(%bufin: memref<""" + str(bufsize) + """xi32>, %bufout:memref<""" + str(bufsize) + """xi32>) -> () {
@@ -203,31 +231,42 @@ def main():
 
 
     f.write("\n")
-    for col in range (1, cols): # col 0 is reserved in aie
-        for i in range (1, rows):
-            if(row == 1 and col == 1):
-                None
-            else:
-                f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1)\n" %(col_p, row_p))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0)\n" %(col,   row  ))
-                f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<%dxi32>, memref<%dxi32>) -> ()\n" %(col_p, row_p, col, row, bufsize, bufsize))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0)\n" %(col_p, row_p))
-                f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1)\n" %(col, row   ))
-                f.write("    AIE.end\n")
-                f.write("  }\n\n")
-                    
+    def gen_core(col, row, col_p, row_p):
+        if(col == startcol and row == 1):
+            None
+        else:
+            f.write("  %%core%d_%d = AIE.core(%%tile%d_%d) {\n" %(col, row, col, row))
+            f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 1)\n" %(col_p, row_p))
+            f.write("    AIE.useLock(%%lock%d_%d, \"Acquire\", 0)\n" %(col,   row  ))
+            f.write("    func.call @do_sieve(%%buf%d_%d, %%buf%d_%d) : (memref<%dxi32>, memref<%dxi32>) -> ()\n" %(col_p, row_p, col, row, bufsize, bufsize))
+            f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 0)\n" %(col_p, row_p))
+            f.write("    AIE.useLock(%%lock%d_%d, \"Release\", 1)\n" %(col, row   ))
+            f.write("    AIE.end\n")
+            f.write("  }\n\n")
+
+    col = startcol
+    row = 1
+    col_p = -1
+    row_p = -1
+    for i in range (0, arraycols, 2):
+        for j in range (1, arrayrows):
+            gen_core(col, row, col_p, row_p)
             col_p = col
             row_p = row
-
-            if (col % 2 == 1):
-                if (row != rows-1):
-                    # odd columns go up
-                    row = row + 1
-            else:
-                if (row != 1):
-                    # even columns go down
-                    row = row - 1
+            row = row + 1
+        gen_core(col, row, col_p, row_p)
+        col_p = col
+        row_p = row
+        col = col + 1
+        for j in range (1, arrayrows):
+            gen_core(col, row, col_p, row_p)
+            col_p = col
+            row_p = row
+            row = row - 1
+        gen_core(col, row, col_p, row_p)
+        col_p = col
+        row_p = row
+        col = col + 1
 
     f.write("}\n")
 
