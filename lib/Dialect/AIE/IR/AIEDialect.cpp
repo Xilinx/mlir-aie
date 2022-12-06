@@ -67,8 +67,9 @@ namespace xilinx {
 namespace AIE {
 
 bool isValidTile(TileID src) {
-  // FIXME: what about upper bound?
-  return src.first >= 0 && src.second >= 0;
+  // FIXME: Should be device specific
+  return src.first >= 0 && src.first <= 49 && src.second >= 0 &&
+         src.second <= 8;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemWest(TileID src) {
@@ -103,7 +104,8 @@ Optional<TileID> getMemNorth(TileID src) {
 }
 Optional<TileID> getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
-  if (!isValidTile(ret.value()))
+  // The first row doesn't have a tile memory south
+  if (!isValidTile(ret.value()) || ret->second == 0)
     ret.reset();
   return ret;
 }
