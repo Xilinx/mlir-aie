@@ -15,14 +15,15 @@ namespace mlir {
 class LLVMTypeConverter;
 class RewritePatternSet;
 class Pass;
-}
+} // namespace mlir
 
 namespace xilinx {
 namespace aievec {
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns);
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createConvertAIEVecToLLVMPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertAIEVecToLLVMPass();
 } // namespace aievec
 } // namespace xilinx
 

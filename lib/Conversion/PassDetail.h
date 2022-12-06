@@ -9,14 +9,13 @@
 #ifndef AIE_CONVERSION_PASSDETAIL_H_
 #define AIE_CONVERSION_PASSDETAIL_H_
 
-#include "mlir/Pass/Pass.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/FunctionInterfaces.h"
-
+#include "mlir/Pass/Pass.h"
 
 // Forward declaration from Dialect.h
-//template <typename mlir::ConcreteDialect>
-//void mlir::registerDialect(DialectRegistry &registry);
+// template <typename mlir::ConcreteDialect>
+// void mlir::registerDialect(DialectRegistry &registry);
 
 namespace xilinx {
 namespace aievec {
