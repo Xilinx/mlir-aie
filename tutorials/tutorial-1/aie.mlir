@@ -13,30 +13,32 @@
 // RUN: %run_on_board ./tutorial-1.elf
 
 
-// Declare this MLIR module. A wrapper that can contain all 
-// AIE tiles, buffers, and data movement
+// Declare this MLIR module. A block encapsulates all 
+// AIE tiles, buffers, and communication in an AI Engine design
 module @tutorial_1 {
 
-    // Declare tile in position col 1, row 4
+    // Declare tile object of the AIE class located at position col 1, row 4
     %tile14 = AIE.tile(1, 4)
 
     // Declare buffer for tile(1, 4) with symbolic name "a14" and 
     // size 256 deep x int32 wide. By default, the address of 
     // this buffer begins after the stack (1024 Bytes offset) and 
-    // all subsequent buffers are placed immediately following thee
-    // previous buffer in memory.
+    // all subsequent buffers are allocated one after another in memory.
     %buf = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
 
-    // declare kernel function name "extern_kernel" with one positional 
-    // function argument, in this case mapped to a memref
+    // Declare function signature of a function object (func.func) and
+    // define the kernel function name "extern_kernel" with one positional 
+    // function argument, memref that is 32b wide x 256 deep
     func.func private @extern_kernel(%b: memref<256xi32>) -> ()
 
-    // Define core algorithm for tile(1, 4)
-    // buf[3] = 14
+    // Define the algorithm for the core of tile(1, 4) which is mapped
+    // to an externally defined kernel function.
+    // kernel function: buf[3] = 14
     %core14 = AIE.core(%tile14) {
-        // Call function and map local buffer %buf to function argument
+        // Call kernel function and map buffer %buf to the function argument
         func.call @extern_kernel(%buf) : (memref<256xi32>) -> ()
         AIE.end
-    } { link_with="kernel.o" } // indicate kernel object name used by this core
+    } { link_with="kernel.o" } 
+    // Link externally compiled object file used in this core
 
 }

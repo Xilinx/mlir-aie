@@ -17,7 +17,7 @@
 // AIE tiles, buffers, and data movement
 module @tutorial_4 {
 
-    // 2 tiles in row 4 (col 1 and col 2)
+    // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left
     %tile14 = AIE.tile(1, 4) 
     %tile24 = AIE.tile(2, 4) // TODO Declare dummy tile for manual routing
