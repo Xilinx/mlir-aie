@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" -aieml=true --aie-vectorize="shift=0 dup-factor=2" | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" -aieml=true --aie-vectorize="shift=0 dup-factor=2" -canonicalize | FileCheck %s
 
 // CHECK-LABEL: func.func @conv2d(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
 func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi8>) {
@@ -67,28 +67,25 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
     return
 }
 
-//CHECK-NEXT:    %[[C00]] = arith.constant 0 : index
-//CHECK-NEXT:    %[[T0]] = aievec.upd %[[A1]][%[[C00]]] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
+//CHECK-NEXT:    %[[C32]] = arith.constant 32 : index
+//CHECK-NEXT:    %[[C256]] = arith.constant 256 : index
+//CHECK-NEXT:    %[[C2]] = arith.constant 2 : index
+//CHECK-NEXT:    %[[C1]] = arith.constant 1 : index
+//CHECK-NEXT:    %[[C16]] = arith.constant 16 : index
+//CHECK-NEXT:    %[[C0]] = arith.constant 0 : index
+//CHECK-NEXT:    %[[T0]] = aievec.upd %[[A1]][%[[C0]]] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
 //CHECK-NEXT:    %[[T1]] = aievec.shuffle %[[T0]] {mode = 0 : i32} : vector<64xi8>, vector<64xi8>
 //CHECK-NEXT:    %[[T2]] = aievec.shift %[[T1]] {shift = 8 : i32} : vector<64xi8>, vector<64xi8>
 //CHECK-NEXT:    %[[T3]] = aievec.shift %[[T1]] {shift = 16 : i32} : vector<64xi8>, vector<64xi8>
-//CHECK-NEXT:    %[[C0]] = arith.constant 0 : index
-//CHECK-NEXT:    %[[C16]] = arith.constant 16 : index
-//CHECK-NEXT:    %[[C1]] = arith.constant 1 : index
 //CHECK-NEXT:    scf.for %[[A3]] = %[[C0]] to %[[C16]] step %[[C1]] {
-//CHECK-NEXT:      %[[C2]] = arith.constant 1 : index
-//CHECK-NEXT:      %[[T4]] = arith.addi %[[A3]], %[[C2]] : index
-//CHECK-NEXT:      %[[C3]] = arith.constant 2 : index
-//CHECK-NEXT:      %[[T5]] = arith.addi %[[A3]], %[[C3]] : index
-//CHECK-NEXT:      %[[C4]] = arith.constant 0 : index
-//CHECK-NEXT:      %[[C5]] = arith.constant 256 : index
-//CHECK-NEXT:      %[[C6]] = arith.constant 32 : index
-//CHECK-NEXT:      scf.for %[[A4]] = %[[C4]] to %[[C5]] step %[[C6]] {
-//CHECK-NEXT:        %[[T6]] = aievec.upd %[[A0]][%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
+//CHECK-NEXT:      %[[T4]] = arith.addi %[[A3]], %[[C1]] : index
+//CHECK-NEXT:      %[[T5]] = arith.addi %[[A3]], %[[C2]] : index
+//CHECK-NEXT:      scf.for %[[A4]] = %[[C0]] to %[[C256]] step %[[C32]] {
+//CHECK-NEXT:        %[[T6]] = aievec.upd %arg0[%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
 //CHECK-NEXT:        %[[T7]] = aievec.mul_conv %[[T6]], %[[T1]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
-//CHECK-NEXT:        %[[T8]] = aievec.upd %[[A0]][[[T4]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
+//CHECK-NEXT:        %[[T8]] = aievec.upd %arg0[%[[T4]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
 //CHECK-NEXT:        %[[T9]] = aievec.fma_conv %[[T8]], %[[T2]], %[[T7]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
-//CHECK-NEXT:        %[[T10]] = aievec.upd %[[A0]][[[T5]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
+//CHECK-NEXT:        %[[T10]] = aievec.upd %arg0[%[[T5]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
 //CHECK-NEXT:        %[[T11]] = aievec.fma_conv %[[T10]], %[[T3]], %[[T9]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
 //CHECK-NEXT:        %[[T12]] = aievec.srs %[[T11]] {shift = 0 : i8} : vector<32xi32>, vector<32xi8>
 //CHECK-NEXT:        vector.transfer_write %[[T12]], %[[A2]][%[[A3]], %[[A4]]] {in_bounds = [true]} : vector<32xi8>, memref<16x256xi8>
