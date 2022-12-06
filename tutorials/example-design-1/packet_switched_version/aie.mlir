@@ -1,6 +1,6 @@
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @MM_2x2 {
@@ -171,6 +171,7 @@ module @MM_2x2 {
 
   %lock64_0 = AIE.lock(%t64, 0)
   %lock64_1 = AIE.lock(%t64, 1)
+  %lock64_2 = AIE.lock(%t64, 2)
   %m64 = AIE.mem(%t64)  {
   AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
   ^dma0:
@@ -189,7 +190,7 @@ module @MM_2x2 {
     AIE.dmaStart("MM2S", 0, ^bd2, ^end)
   ^bd2:
     AIE.useLock(%lock64_2, Acquire, 1)
-    AIE.dmaBdPacket(0, 6)
+    AIE.dmaBdPacket(0x0, 0x6)
     AIE.dmaBd(<%buf64_2 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock64_2, Release, 0)
     cf.br ^bd2
@@ -214,7 +215,6 @@ module @MM_2x2 {
   } { link_with="kernel.o" }
 
 
-  %lock64_2 = AIE.lock(%t64, 2)
   %core64 = AIE.core(%t64) { 
     AIE.useLock(%lock63_3, "Acquire", 1)
     AIE.useLock(%lock64_0, "Acquire", 1)
@@ -253,8 +253,8 @@ module @MM_2x2 {
 
   %lock74_0 = AIE.lock(%t74, 0)
   %lock74_1 = AIE.lock(%t74, 1)
+  %lock74_2 = AIE.lock(%t74, 2)
   %m74 = AIE.mem(%t74)  {
-  
   AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
   ^dma0:
     AIE.dmaStart("S2MM", 1, ^bd1, ^dma1)
@@ -272,7 +272,7 @@ module @MM_2x2 {
     AIE.dmaStart("MM2S", 0, ^bd2, ^end)
   ^bd2:
     AIE.useLock(%lock74_2, Acquire, 1)
-    AIE.dmaBdPacket(0, 7)
+    AIE.dmaBdPacket(0x0, 0x7)
     AIE.dmaBd(<%buf74_2 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock74_2, Release, 0)
     cf.br ^bd2
@@ -293,7 +293,6 @@ module @MM_2x2 {
     AIE.end
   } { link_with="kernel.o" }
 
-  %lock74_2 = AIE.lock(%t74, 2)
   %core74 = AIE.core(%t74) { 
     AIE.useLock(%lock73_2, "Acquire", 1)
     AIE.useLock(%lock74_0, "Acquire", 1)
