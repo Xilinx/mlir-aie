@@ -19,7 +19,7 @@ module @module_name {
 }
 ```
 
-1. Take a look at the source file [aie.mlir](aie.mlir) and identify the module name used in tutorial 1. <img src="../images/answer1.jpg" alt="tutorial_1" height=25>
+1. Take a look at the source file [aie.mlir](aie.mlir) and identify the module name used in tutorial 1. <img src="../images/answer1.jpg" title="tutorial_1" height=25>
 
 ## <ins>Tile Components</ins>
 AI Engine tiles are the basic building blocks of AIE designs and can be declared as `AIE.tile(col,row)`. Examples incude:
@@ -77,12 +77,12 @@ We will be introducing more components and the ways these components are customi
     ```
     This will run the kernel compilation tool (xchesscc) on the kernel code for a single AI Engine which will be covered in more detail in tutorial 2. It then run the python script which executes the generated `mlir-aie` tools for compiling our design from the `aie.mlir` source.
     
-3. Take a look at `aie.mlir` to see how we mapped externally compiled AIE kernel objects. What name is the external function set to? <img src="../images/answer1.jpg" alt="extern_kernel" height=25>. Note that this name does not have to match the actual kernel name but is used in our mlir file to reference a particular defined function. The function arguments though, do have to match the external function for it to be succesfully integrated.
+3. Take a look at `aie.mlir` to see how we mapped externally compiled AIE kernel objects. What name is the external function set to? <img src="../images/answer1.jpg" title="extern_kernel" height=25>. Note that this name does not have to match the actual kernel name but is used in our mlir file to reference a particular defined function. The function arguments though, do have to match the external function for it to be succesfully integrated.
     > There's is no current error checking to ensure this mapping matches
 
-4. The core is then linked to an object file where the function is defined. What is the name of the object file that the core in tile(1,4) is defined in? <img src="../images/answer1.jpg" alt="kernel.o" height=25> Matching kernel object files are necessary in order for successful elf integration at a later build stage. 
+4. The core is then linked to an object file where the function is defined. What is the name of the object file that the core in tile(1,4) is defined in? <img src="../images/answer1.jpg" title="kernel.o" height=25> Matching kernel object files are necessary in order for successful elf integration at a later build stage. 
 
-5. Take a look at the kernel source in `kernel.cc`. What value does the kernel set the value of index 3 of buffer `buf` to? <img src="../images/answer1.jpg" alt="14" height=25>
+5. Take a look at the kernel source in `kernel.cc`. What value does the kernel set the value of index 3 of buffer `buf` to? <img src="../images/answer1.jpg" title="14" height=25>
 
 In addition to the generated core program (core_1_4.elf), to run our design on the board requires a host program which configures the AIE array and enables the AIE cores to run their individual programs. This host program can also serve as a testbench.
 
