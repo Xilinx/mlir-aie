@@ -94,7 +94,7 @@ class flow_runner:
       # Note that chess-clang comes from a time before opaque pointers
       #await self.do_call(task, ['clang', "-Xclang -no-opaque-pointers", llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-emit-llvm', '-o', llvmir_chesslinked])
       global llvmlink
-      await self.do_call(task, [llvmlink, '--opaque-pointers=0', llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-o', llvmir_chesslinked])
+      await self.do_call(task, ['llvm-link', '--opaque-pointers=0', llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-o', llvmir_chesslinked])
       await self.do_call(task, ['sed', '-i', 's/noundef//', llvmir_chesslinked])
       # Formal function argument names not used in older LLVM
       await self.do_call(task, ['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', llvmir_chesslinked])
