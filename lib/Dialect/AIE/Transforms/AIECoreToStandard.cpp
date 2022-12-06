@@ -281,7 +281,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       return success();
     }
 
-    std::string coreName("core" + std::to_string(col) + std::to_string(row));
+    std::string coreName("core_" + std::to_string(col) + "_" +
+                         std::to_string(row));
     auto coreFunc = rewriter.create<func::FuncOp>(
         rewriter.getUnknownLoc(), coreName,
         FunctionType::get(rewriter.getContext(), {}, {}));

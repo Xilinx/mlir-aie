@@ -11,11 +11,11 @@
 // RUN: aie-opt --aie-standard-lowering="tilecol=1 tilerow=1" %s | FileCheck --check-prefix=CHECK11 %s
 // RUN: aie-opt --aie-standard-lowering="tilecol=2 tilerow=1" %s | FileCheck --check-prefix=CHECK21 %s
 
-//CHECK11:  func.func @core11() {
+//CHECK11:  func.func @core_1_1() {
 //CHECK11:    %c0_i32 = arith.constant 0 : i32
 //CHECK11:    %c1_i32 = arith.constant 1 : i32
 //CHECK11:    %c16_i32 = arith.constant 16 : i32
-//CHECK11:    %c32_i128 = arith.constant 32 : i128
+//CHECK11:    %c32_i128 = arith.cogitnstant 32 : i128
 //CHECK11:    call @llvm.aie.put.ms(%c0_i32, %c16_i32) : (i32, i32) -> ()
 //CHECK11:    call @llvm.aie.put.wms(%c1_i32, %c32_i128) : (i32, i128) -> ()
 //CHECK11:    %c64_i384 = arith.constant 64 : i384
@@ -23,7 +23,7 @@
 //CHECK11:    return
 //CHECK11:  }
 
-//CHECK21:  func.func @core21() {
+//CHECK21:  func.func @core_2_1() {
 //CHECK21:    %c0_i32 = arith.constant 0 : i32
 //CHECK21:    %c1_i32 = arith.constant 1 : i32
 //CHECK21:    %0 = call @llvm.aie.get.ss(%c0_i32) : (i32) -> i32
