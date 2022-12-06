@@ -322,13 +322,15 @@ class flow_runner:
 
 
 def main(builtin_params={}):
+    global opts
+    opts = aiecc.cl_arguments.parse_args()
+    is_windows = platform.system() == 'Windows'
+
     thispath = os.path.dirname(os.path.realpath(__file__))
 
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
-    peano_path = os.path.join(thispath, '..', '..', 'peano', 'bin')
-    if(not os.path.exists(peano_path)):
-      peano_path = os.path.join(thispath, '..', '..', '..', 'peano', 'bin')
+    peano_path = os.path.join(opts.peano_install_dir, 'bin')
     global llvmlink
     llvmlink = os.path.join(thispath, peano_path, 'llvm-link')
 
@@ -362,10 +364,6 @@ def main(builtin_params={}):
     os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])
     os.environ['PATH'] = os.pathsep.join([peano_path, os.environ['PATH']])
     
-    global opts
-    opts = aiecc.cl_arguments.parse_args()
-    is_windows = platform.system() == 'Windows'
-
     if(opts.verbose):
         sys.stderr.write('\ncompiling %s\n' % opts.filename)
 
