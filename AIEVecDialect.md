@@ -138,6 +138,42 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.fma_conv` (::xilinx::aievec::FMAConvOp)
+
+AIE2 multiply accumulate convolution
+
+Xilinx-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
+operation of (M x N)matrix with (N x 1)kernel.
+`$result = mac_convMxN($lhs, $rhs, $acc)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `M` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `N` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `fmsub` | ::mlir::BoolAttr | bool attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+| `acc` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.mac_elem` (::xilinx::aievec::FMAElemOp)
 
 AIE-ML element-wise vector fused multiply-add
@@ -216,6 +252,40 @@ Effects: MemoryEffects::Effect{}
 | `lhs` | vector of any type values
 | `rhs` | vector of any type values
 | `acc` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.mul_conv` (::xilinx::aievec::MulConvOp)
+
+AIE2 multiply convolution
+
+Xilinx-specific multiply convolution intrinsic. Multiply convolution operation
+of (M x N)matrix with (N x 1)kernel.
+`$result = mul_convMxN($lhs, $rhs)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `M` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `N` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
 
 #### Results:
 
@@ -389,6 +459,71 @@ Effects: MemoryEffects::Effect{}
 | :-----: | ----------- |
 | `xbuff` | vector of any type values
 | `ybuff` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.shift` (::xilinx::aievec::ShiftOp)
+
+AIE2 concat and shift
+
+Xilinx-specific shift intrinsic. Concatenates two
+vectors into a bigger vector, interprets them as a vector of 128 bytes
+and returns v1::v2[shift: shift+64]. The verifier confirms that all the
+input vectors have the same number of lanes.
+`$result = shift($sources[0], $sources[1], $shift)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `shift` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `sources` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.shuffle` (::xilinx::aievec::ShuffleOp)
+
+AIE2 shuffle
+
+Xilinx-specific vector shuffle intrinsic by a specific shuffle mode.
+`$result = shuffle($source, $mode)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `mode` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
 
 #### Results:
 
