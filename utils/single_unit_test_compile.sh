@@ -29,7 +29,8 @@ export RUNTIME_LIB_DIR=$2
 #aiecc.py --sysroot=$SYSROOT_DIR aie.mlir -I${RUNTIME_LIB_DIR} \
 # ${RUNTIME_LIB_DIR}/test_library.cpp ./test.cpp -o test.elf
 
-aiecc.py --sysroot=$SYSROOT_DIR --aie-generate-xaiev2 ./aie.mlir \
+aiecc.py --sysroot=$SYSROOT_DIR --aie-generate-xaiev2 \
+    --host-target=aarch64-linux-gnu ./aie.mlir \
     -DLIBXAIENGINEV2 -I${RUNTIME_LIB_DIR} ${RUNTIME_LIB_DIR}/test_library.cpp \
     ./test.cpp -o test.elf
     
