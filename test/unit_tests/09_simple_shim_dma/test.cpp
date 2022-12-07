@@ -51,10 +51,8 @@ main(int argc, char *argv[])
     mlir_aie_write_buffer_buf72_0(_xaie, i, 0xdeadbeef);
   }
 
-#ifdef LIBXAIENGINEV2
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr);
+  mlir_aie_external_set_addr_buffer((u64)mem_ptr);
   mlir_aie_configure_shimdma_70(_xaie);
-#endif
 
   printf("\nAfter configure shimDMAs:\n");
   mlir_aie_print_tile_status(_xaie, 7, 2);
@@ -65,7 +63,7 @@ main(int argc, char *argv[])
   mlir_aie_start_cores(_xaie);
 
   // Release lock for reading from DDR
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
+  mlir_aie_release_buffer_lock(_xaie, 1, 0);
 
   printf("\nAfter release lock:\n");
   mlir_aie_print_tile_status(_xaie, 7, 2);

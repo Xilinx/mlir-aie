@@ -32,4 +32,4 @@ export RUNTIME_LIB_DIR=$2
 aiecc.py --sysroot=$SYSROOT_DIR --aie-generate-xaiev2 ./aie.mlir \
     -DLIBXAIENGINEV2 -I${RUNTIME_LIB_DIR} ${RUNTIME_LIB_DIR}/test_library.cpp \
     ./test.cpp -o test.elf
-
+    

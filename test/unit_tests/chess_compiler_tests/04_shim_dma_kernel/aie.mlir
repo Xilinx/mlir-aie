@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --xchesscc --xbridge --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
 // RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib +l acdc_project/core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
 // RUN: %run_on_board ./test.elf
 
@@ -61,8 +61,10 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer : memref<512 x i32>
-  %buffer_out = AIE.external_buffer : memref<512 x i32>
+  %buffer_in  = AIE.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
+  %buffer_out = AIE.external_buffer {sym_name = "output_buffer" } : memref<512 x i32>
+  %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock" }
+  %lock2 = AIE.lock(%t70, 2) {sym_name = "output_lock" }
 
   // Shim DMA connection to kernel
   AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
@@ -78,9 +80,6 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
-      %lock1 = AIE.lock(%t70, 1)
-//      AIE.dmaStart(MM2S, 0, ^bd0, ^end)
-      %lock2 = AIE.lock(%t70, 2)
       AIE.dmaStart(MM2S, 0, ^bd0, ^dma)
     ^dma:
       AIE.dmaStart(S2MM, 0, ^bd1, ^end)

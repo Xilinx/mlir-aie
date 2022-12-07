@@ -29,8 +29,8 @@ module @idct {
   %of_t75_t70 = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2) : !AIE.objectFifo<memref<64xi16>>
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer : memref<512xi16>
-  %buffer_out = AIE.external_buffer : memref<512xi16>
+  %buffer_in  = AIE.external_buffer { sym_name = "buffer_in" }  : memref<512xi16>
+  %buffer_out = AIE.external_buffer { sym_name = "buffer_out" }  : memref<512xi16>
 
   AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in}) : (memref<512xi16>)
   AIE.objectFifo.registerExternalBuffers(%t70, %of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, {%buffer_out}) : (memref<512xi16>)

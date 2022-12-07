@@ -116,8 +116,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
 #ifdef LIBXAIENGINEV2
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr0);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr1);
+  mlir_aie_external_set_addr_input((u64)mem_ptr0);
+  mlir_aie_external_set_addr_output((u64)mem_ptr1);
   mlir_aie_configure_shimdma_70(_xaie);
 #endif
 
@@ -125,20 +125,22 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
 
+  mlir_aie_release_output_lock(_xaie, 0, 0);
+  mlir_aie_release_inter_lock(_xaie, 0, 0);
+
   mlir_aie_start_cores(_xaie);
 
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 2, 0, 0);
-  mlir_aie_release_lock(_xaie, 7, 2, 1, 0, 0);
+  mlir_aie_release_input_lock(_xaie, 1, 0);
 
   usleep(sleep_u);
 
-  int tries = 1;
   printf("Waiting to acquire output lock for read ...\n");
-  while (tries < 1000 && !mlir_aie_acquire_lock(_xaie, 7, 0, 2, 1, 0)) {
-    tries++;
+  if (mlir_aie_acquire_output_lock(_xaie, 1, 1000)) {
+    errors++;
   }
-  printf("It took %d tries.\n", tries);
+
+  mlir_aie_print_dma_status(_xaie, 7, 2);
+  mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 

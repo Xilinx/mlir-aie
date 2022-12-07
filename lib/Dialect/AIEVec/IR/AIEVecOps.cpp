@@ -1284,5 +1284,350 @@ ParseResult UnpackOp::parse(OpAsmParser &parser, OperationState &result) {
   return parsePackUnpackOp(parser, result);
 }
 
+//===----------------------------------------------------------------------===//
+// ShiftOp
+//===----------------------------------------------------------------------===//
+
+// Print out Shift op.
+void ShiftOp::print(OpAsmPrinter &p) {
+  // Print the source vectors
+  assert(!getSources().empty() && "shift source empty");
+  p << " " << getSources();
+
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
+  // And now print the types
+  p << " : " << getSources().getTypes().front() << ", "
+    << getResult().getType();
+}
+
+// Verify Shift op.
+LogicalResult ShiftOp::verify() {
+  // The number of sources should be 1 or 2.
+  // If the number of sources is 1, this means it will concat an undefined
+  // vector then shift.
+  if (getSources().size() != 1 && getSources().size() != 2)
+    return emitError("sources cannot be empty and cannot concatenate more than "
+                     "two vectors before shift");
+
+  // Verify the types
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  if (!resultType)
+    return emitError("requires vector type");
+
+  SmallVector<Value, 8> srcs(getSources().begin(), getSources().end());
+  // All the sources and result must have the same type
+  for (auto source : srcs) {
+    VectorType type = source.getType().dyn_cast<VectorType>();
+    if (!type)
+      return emitError("requires vector type");
+    if (type != resultType)
+      return emitError("All sources must have same type");
+  }
+
+  return success();
+}
+
+// Parse Shift op.
+ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  SmallVector<OpAsmParser::UnresolvedOperand, 8> sources;
+
+  // Parse the source vectors
+  if (parser.parseOperandList(sources))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  // Currently there is one attribute in shift op
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "expects one attribute");
+
+  // Some verification
+  VectorType sourceType = types[0].dyn_cast<VectorType>();
+  VectorType resultType = types[1].dyn_cast<VectorType>();
+  if (!sourceType || !resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the source vectors in result
+  if (parser.resolveOperands(sources, sourceType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
+// ShuffleOp
+//===----------------------------------------------------------------------===//
+
+// Print out Shuffle op.
+void ShuffleOp::print(OpAsmPrinter &p) {
+  // Print the source vector
+  p << " " << getSource();
+
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
+  // And now print the types
+  p << " : " << getSource().getType() << ", " << getResult().getType();
+}
+
+// Verify Shuffle op.
+LogicalResult ShuffleOp::verify() {
+  // Verify the types
+  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  if (!sourceType || !resultType)
+    return emitError("requires vector type");
+
+  // The number of lanes must match
+  unsigned sourceLanes = getVectorLaneSize(sourceType);
+  unsigned resultLanes = getVectorLaneSize(resultType);
+  if (sourceLanes != resultLanes)
+    return emitError("The number of lanes in input and "
+                     "output vector must match");
+
+  Type stype = sourceType.getElementType();
+  unsigned stypeWidth = stype.getIntOrFloatBitWidth();
+  Type rtype = resultType.getElementType();
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
+
+  if (stypeWidth != rtypeWidth)
+    return emitError("The type width in input and "
+                     "output must match");
+
+  return success();
+}
+
+// Parse Shuffle op.
+ParseResult ShuffleOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source;
+
+  // Parse the source vector
+  if (parser.parseOperand(source))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  // Currently there is one attribute in shuffle op
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "expects one attribute");
+
+  // Some verification
+  VectorType sourceType = types[0].dyn_cast<VectorType>();
+  VectorType resultType = types[1].dyn_cast<VectorType>();
+  if (!sourceType || !resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the source vectors in result
+  if (parser.resolveOperand(source, sourceType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
+// MulConvOp and FMAConvOp
+//===----------------------------------------------------------------------===//
+
+// MulConvOp and FMAConvOp are structurally similar, except that FMAConv op
+// has few extra fields (accumulator, bool flag to indicate if it is fmsub,
+// etc.). We create some specializations to print those fields specifically for
+// FMAConvOp and MULConvOp.
+
+// Print the accumulator
+template <typename T> inline void printAccumulator(OpAsmPrinter &p, T op);
+template <>
+inline void printAccumulator(OpAsmPrinter &p, aievec::FMAConvOp op) {
+  p << ", " << op.getAcc();
+}
+template <>
+inline void printAccumulator(OpAsmPrinter &p, aievec::MulConvOp op) {}
+
+// Mark fmsub indicator as elided if the FMAElem op is not fmsub
+template <typename T>
+inline void elideFMSubAttr(T op, SmallVector<StringRef, 4> &elidedAttrs);
+template <>
+inline void elideFMSubAttr(aievec::FMAConvOp op,
+                           SmallVector<StringRef, 4> &elidedAttrs) {
+  if (!op.getFmsub())
+    elidedAttrs.push_back(op.getSubAttrName());
+}
+
+template <>
+inline void elideFMSubAttr(aievec::MulConvOp op,
+                           SmallVector<StringRef, 4> &elidedAttrs) {}
+
+// Print out MulConv and FMAConv op.
+template <typename T> static void printMulFMAConvOp(OpAsmPrinter &p, T op) {
+  // Print the left operand
+  p << " " << op.getLhs();
+  // Print the right operand
+  p << ", " << op.getRhs();
+  // For fma op, print the accumulator
+  printAccumulator(p, op);
+
+  // Print the attributes, but don't print attributes that are empty strings
+  SmallVector<StringRef, 4> elidedAttrs;
+  for (int idx = 0; idx < 2; ++idx) {
+    elideFMSubAttr(op, elidedAttrs);
+  }
+  p.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
+
+  // And now print the types
+  p << " : " << op.getLhs().getType() << ", " << op.getRhs().getType();
+  p << ", " << op.getResult().getType();
+}
+
+void MulConvOp::print(OpAsmPrinter &p) {
+  printMulFMAConvOp<aievec::MulConvOp>(p, *this);
+}
+
+void aievec::FMAConvOp::print(OpAsmPrinter &p) {
+  printMulFMAConvOp<aievec::FMAConvOp>(p, *this);
+}
+
+// Verify MulConv and FMAConv op.
+template <typename T> LogicalResult verifyMulFMAConvOp(T op) {
+  // Verify the types
+  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+
+  if (!lhsType || !rhsType)
+    return op.emitError("requires vector type");
+
+  unsigned M = op.getM();
+  unsigned N = op.getN();
+
+  if (M <= 0 || N <= 0 || 2 * M < M + N - 1) {
+    return op.emitError(
+        "M and N should be larger than 0 and 2*M should be no less than M+N-1");
+  }
+
+  VectorType resultType =
+      op.getResult().getType().template dyn_cast<VectorType>();
+
+  if (!resultType)
+    return op.emitError("requires vector type");
+
+  // Additional checks for FMAElem op
+  // Get the width of the underlying scalars of all the vectors
+  Type ltype = lhsType.getElementType();
+  Type rtype = rhsType.getElementType();
+  Type atype = resultType.getElementType();
+
+  // lhs and rhs vector's element type must match
+  if (ltype != rtype)
+    return op.emitError("The element type of lhs and rhs "
+                        "operand vectors must match");
+
+  if (!ltype.isa<IntegerType>() || !rtype.isa<IntegerType>() ||
+      !atype.isa<IntegerType>()) {
+    return op.emitError("requires integer type");
+  }
+
+  unsigned ltypeWidth = ltype.getIntOrFloatBitWidth();
+  unsigned rtypeWidth = rtype.getIntOrFloatBitWidth();
+  unsigned atypeWidth = atype.getIntOrFloatBitWidth();
+
+  // Checks on the number of lanes
+  unsigned accLanes = getVectorLaneSize(resultType);
+  unsigned rhsLanes = getVectorLaneSize(rhsType);
+  unsigned lhsLanes = getVectorLaneSize(lhsType);
+
+  // lane size must match
+  if (accLanes != M || accLanes != (rhsLanes / 2) || lhsLanes != rhsLanes) {
+    return op.emitError(
+        "The number of lanes in accumulator "
+        "must be the same as M and the half as lhs and rhs operand");
+  }
+
+  // The integer datatype of accumulator must always be greater width
+  if (ltypeWidth >= atypeWidth || rtypeWidth >= atypeWidth)
+    return op.emitError("the element type of accumulator must have "
+                        "wider width than that of the operand vectors");
+
+  return success();
+}
+
+LogicalResult aievec::MulConvOp::verify() {
+  return verifyMulFMAConvOp<aievec::MulConvOp>(*this);
+}
+
+LogicalResult aievec::FMAConvOp::verify() {
+  return verifyMulFMAConvOp<aievec::FMAConvOp>(*this);
+}
+
+// Parse MulConv and FMAConv op.
+ParseResult parseMulFMAConvOp(OpAsmParser &parser, OperationState &result,
+                              bool isFMAConvOp = true) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 3> types;
+  OpAsmParser::UnresolvedOperand lhs, rhs, acc;
+
+  // Parse the lhs and rhs
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs))
+    return failure();
+
+  // Parse the acc for FMA op
+  if (isFMAConvOp) {
+    if (parser.parseComma() || parser.parseOperand(acc))
+      return failure();
+  }
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  // Assert that there are three types: lhs, rhs, and acc
+  if (types.size() != 3)
+    return parser.emitError(typesLoc, "requires three types");
+
+  // Some verification
+  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  if (!lhsType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  if (!rhsType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Int ops use the accumulator
+  VectorType accType = types[2].dyn_cast<VectorType>();
+  if (!accType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the lhs and rhs operands, and result
+  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
+      parser.resolveOperand(rhs, rhsType, result.operands))
+    return failure();
+
+  // Populate acc operand for FMA op
+  if (isFMAConvOp) {
+    if (parser.resolveOperand(acc, accType, result.operands))
+      return failure();
+  }
+
+  return parser.addTypeToList(accType, result.types);
+}
+
+ParseResult MulConvOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseMulFMAConvOp(parser, result, false);
+}
+
+ParseResult FMAConvOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseMulFMAConvOp(parser, result, true);
+}
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.cpp.inc"

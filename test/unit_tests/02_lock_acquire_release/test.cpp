@@ -38,26 +38,28 @@ main(int argc, char *argv[])
     mlir_aie_initialize_locks(_xaie);
     mlir_aie_configure_dmas(_xaie);
 
-    //XAieLib_usleep(1000);
-
     int errors = 0;
 
-    // XAieTile_LockRelease(&(TileInst[j][i]), l, val, timeout)
-    // XAIeTile_LockAcquire(&(TileInst[j][i]), l, val, timeout)
-    //
-    mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0);
+    // This should timeout and return an error condition.
+    if (mlir_aie_acquire_lock1(_xaie, 1, 0)) {
+      // Succeeded!  Which is an error.
+      printf("Error: Lock acquired successfully in wrong state!\n");
+      errors++;
+    }
+
+    mlir_aie_acquire_lock1(_xaie, 0, 0);
     usleep(1000);
     u32 l = mlir_aie_read32(_xaie,
                             mlir_aie_get_tile_addr(_xaie, 1, 3) + 0x0001EF00);
     u32 s = (l >> 6) & 0x3;
     printf("Lock acquire 3: 0 is %x\n",s);
-    mlir_aie_acquire_lock(_xaie, 1, 3, 5, 0, 0);
+    mlir_aie_acquire_lock2(_xaie, 0, 0);
     usleep(1000);
     l = mlir_aie_read32(_xaie,
                         mlir_aie_get_tile_addr(_xaie, 1, 3) + 0x0001EF00);
     s = (l >> 10) & 0x3;
     printf("Lock acquire 5: 0 is %x\n",s);
-    mlir_aie_release_lock(_xaie, 1, 3, 5, 1, 0);
+    mlir_aie_release_lock2(_xaie, 1, 0);
     usleep(1000);
     l = mlir_aie_read32(_xaie,
                         mlir_aie_get_tile_addr(_xaie, 1, 3) + 0x0001EF00);

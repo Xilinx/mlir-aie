@@ -38,8 +38,8 @@
 // CHECK: _symbol c 0x38050 1024
 
 // BCF44: _entry_point _main_init
-// BCF44: _symbol      _main _after _main_init
-// BCF44: _symbol      _main_init 0
+// BCF44: _symbol core_4_4 _after _main_init
+// BCF44: _symbol _main_init 0
 // BCF44: _reserved DMb      0x00000 0x20000 //Don't put data in code memory
 // BCF44: _symbol z 0x20000 0x20
 // BCF44: _extern z
@@ -53,7 +53,7 @@
 // BCF44: _extern t
 // BCF44: _symbol y 0x38000 0x20
 // BCF44: _extern y
-// BCF44: _stack    DM_stack 0x20000  0x400 //stack for core
+// BCF44: _stack    DM_stack 0x28000  0x400 //stack for core
 // BCF44: _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
 
 
@@ -68,7 +68,7 @@
 // LD44: {
 // LD44:   . = 0x0;
 // LD44:  .text : {
-// LD44:     // the _main_init symbol from me_basic.o has to come at address zero.
+// LD44:     /* the _main_init symbol from me_basic.o has to come at address zero. */
 // LD44:     *me_basic.o(.text)
 // LD44:     . = 0x200;
 // LD44:     _ctors_start = .;
@@ -84,9 +84,9 @@
 // LD44:     *(.data*);
 // LD44:     *(.rodata*)
 // LD44:  } > data
-// LD44:   . = 0x20000;
+// LD44:   . = 0x28000;
 // LD44:   _sp_start_value_DM_stack = .;
-// LD44:   . = 0x24000;
+// LD44:   . += 0x400;
 // LD44: . = 0x20000
 // LD44: z = .;
 // LD44: . += 0x20

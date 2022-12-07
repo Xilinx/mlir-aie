@@ -37,8 +37,8 @@ module @test08_stream_broadcast {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a13" } : memref<256xi32>
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b13" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) // input buffer lock
-  %lock13_5 = AIE.lock(%tile13, 5) // interbuffer lock
+  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "input_lock" } // input buffer lock
+  %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "interlock_1" } // interbuffer lock
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
@@ -73,8 +73,8 @@ module @test08_stream_broadcast {
   %buf32_0 = AIE.buffer(%tile32) { sym_name = "a32" } : memref<256xi32>
   %buf32_1 = AIE.buffer(%tile32) { sym_name = "b32" } : memref<256xi32>
 
-  %lock32_6 = AIE.lock(%tile32, 6) // interbuffer lock
-  %lock32_7 = AIE.lock(%tile32, 7) // output buffer lock
+  %lock32_6 = AIE.lock(%tile32, 6) { sym_name = "interlock_2" } // interbuffer lock
+  %lock32_7 = AIE.lock(%tile32, 7) { sym_name = "output_lock1" } // output buffer lock
 
   %core32 = AIE.core(%tile32) {
     AIE.useLock(%lock32_6, "Acquire", 1) // acquire for read(e.g. input ping)
@@ -108,8 +108,8 @@ module @test08_stream_broadcast {
   %buf33_0 = AIE.buffer(%tile33) { sym_name = "a33" } : memref<256xi32>
   %buf33_1 = AIE.buffer(%tile33) { sym_name = "b33" } : memref<256xi32>
 
-  %lock33_6 = AIE.lock(%tile33, 6) // interbuffer lock
-  %lock33_7 = AIE.lock(%tile33, 7) // output buffer lock
+  %lock33_6 = AIE.lock(%tile33, 6) { sym_name = "interlock_3" } // interbuffer lock
+  %lock33_7 = AIE.lock(%tile33, 7) { sym_name = "output_lock2" } // output buffer lock
 
   %core33 = AIE.core(%tile33) {
     AIE.useLock(%lock33_6, "Acquire", 1) // acquire for read(e.g. input ping)
@@ -140,11 +140,11 @@ module @test08_stream_broadcast {
   }
 
   // Broadcast target tile #3 (tile34)
-  %buf34_0 = AIE.buffer(%tile34) { sym_name = "a34" } : memref<256xi32>
+  %buf34_0 = AIE.buffer(%tile34) { sym_name = "a34" }: memref<256xi32>
   %buf34_1 = AIE.buffer(%tile34) { sym_name = "b34" } : memref<256xi32>
 
-  %lock34_6 = AIE.lock(%tile34, 6) // interbuffer lock
-  %lock34_7 = AIE.lock(%tile34, 7) // output buffer lock
+  %lock34_6 = AIE.lock(%tile34, 6) { sym_name = "interlock_4" }  // interbuffer lock
+  %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "output_lock3" } // output buffer lock
 
   %core34 = AIE.core(%tile34) {
     AIE.useLock(%lock34_6, "Acquire", 1) // acquire for read(e.g. input ping)

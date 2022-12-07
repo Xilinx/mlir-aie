@@ -45,7 +45,7 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Acquire lock first.\n");
-    mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0); // Should this part of setup???
+    mlir_aie_acquire_inout_lock(_xaie, 0, 0); // Should this part of setup???
     mlir_aie_write_buffer_a(_xaie, 0, .0025f);
     mlir_aie_write_buffer_a(_xaie, 1, .0025f);
 
@@ -57,14 +57,13 @@ main(int argc, char *argv[])
     //                   errors);
 
     printf("Release lock.\n");
-    mlir_aie_release_lock(_xaie, 1, 3, 3, 1, 0);
+    mlir_aie_release_inout_lock(_xaie, 1, 0);
 
-    int tries = 1;
     printf("Waiting to acquire lock ...\n");
-    while (tries < 1000 && !mlir_aie_acquire_lock(_xaie, 1, 3, 3, 0, 0)) {
-      tries++;
+    if (mlir_aie_acquire_inout_lock(_xaie, 0, 1000)) {
+      errors++;
+      printf("ERROR: Failed to acquire output lock!\n");
     }
-    printf("It took %d tries.\n", tries);
 
     mlir_aie_check("After release lock:", mlir_aie_read_buffer_a(_xaie, 0),
                    20480, errors);

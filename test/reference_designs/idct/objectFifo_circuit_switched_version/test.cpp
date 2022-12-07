@@ -96,8 +96,8 @@ int main(int argc, char *argv[])
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
   #ifdef LIBXAIENGINEV2
-    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr_in);
-    mlir_aie_external_set_addr_myBuffer_70_1((u64)ddr_ptr_out);
+    mlir_aie_external_set_addr_buffer_in((u64)ddr_ptr_in);
+    mlir_aie_external_set_addr_buffer_out((u64)ddr_ptr_out);
     mlir_aie_configure_shimdma_70(_xaie);
   #endif
 
@@ -134,8 +134,8 @@ int main(int argc, char *argv[])
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 0, 0);
+  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_5_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
   // mlir_aie_check("After", mlir_read_buffer_b_ping(0), 385, errors);
   // mlir_aie_check("After", mlir_read_buffer_b_pong(0), 449, errors);
 
-  mlir_aie_acquire_lock(_xaie, 7, 0, 1, 1, 0);
+  mlir_aie_acquire_of_5_lock_0(_xaie, 1, 0);
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
   for (int i = 0; i < DMA_COUNT; i++)

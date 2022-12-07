@@ -8,6 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: %run_on_board ./test.elf
+// REQUIRES: xaiev1
+
 module @benchmark13_program_counter {
   %t73 = AIE.tile(7, 3)
 
