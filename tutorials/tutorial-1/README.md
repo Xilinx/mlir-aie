@@ -1,3 +1,12 @@
+<!---//===- README.md --------------------------*- Markdown -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// 
+//===----------------------------------------------------------------------===//-->
 
 ## MLIR Representation
 In the MLIR-based AI Engine representation, every physical component including connections are declared at the top level. All parameters and customizations of these components are then elaborated within the component body. We generally write the MLIR code in a file with the .mlir file extension as it integrates well with the lit based auto-test of LLVM, such as those found in `test` sub-folder.
