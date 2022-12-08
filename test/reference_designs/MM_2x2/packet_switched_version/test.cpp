@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2020 Xilinx Inc.
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -38,7 +38,6 @@ int main(int argc, char *argv[]) {
 
   usleep(sleep_u);
   printf("before configure switchboxes.\n");
-
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
@@ -106,32 +105,14 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
 
-  mlir_aie_start_cores(_xaie);
-
-  // Check if the local buffer contain the correct data
-  for (int bd = 0; bd < 4; bd++) {
-    mlir_aie_check("Before release lock LHS:",
-                   mlir_aie_read_buffer_buf63_0(_xaie, bd), 1, errors);
-    mlir_aie_check("Before release lock RHS:",
-                   mlir_aie_read_buffer_buf63_1(_xaie, bd), 3, errors);
-    mlir_aie_check("Before release lock ACC:",
-                   mlir_aie_read_buffer_buf63_3(_xaie, bd), 96, // Sub_sum0
-                   errors);
-    mlir_aie_check("Before release lock LHS:",
-                   mlir_aie_read_buffer_buf64_0(_xaie, bd), 2, errors);
-    mlir_aie_check("Before release lock RHS:",
-                   mlir_aie_read_buffer_buf64_1(_xaie, bd), 4, errors);
-    mlir_aie_check("Before release lock Out:",
-                   mlir_aie_read_buffer_buf64_2(_xaie, bd), 352, // Out_tile0
-                   errors);
-  }
-
   mlir_aie_release_LHS_tile0_lock(_xaie, 1, 0);
   mlir_aie_release_LHS_tile1_lock(_xaie, 1, 0);
   mlir_aie_release_RHS_tile0_lock(_xaie, 1, 0);
   mlir_aie_release_RHS_tile1_lock(_xaie, 1, 0);
   mlir_aie_release_RHS_tile2_lock(_xaie, 1, 0);
   mlir_aie_release_RHS_tile3_lock(_xaie, 1, 0);
+
+  mlir_aie_start_cores(_xaie);
 
   usleep(sleep_u);
   // Check if the local buffer contain the correct data
@@ -166,6 +147,9 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
+  mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
+
   // Check if the external buffer receives the correct result
   int Header0 = mem_ptr6[0] & 31;
   int Header1 = mem_ptr7[0] & 31;
@@ -186,19 +170,19 @@ int main(int argc, char *argv[]) {
         errors++;
       }
     }
-  }
-
-  if (Header0 == 7 && Header1 == 6) {
+  } else if (Header0 == 7 && Header1 == 6) {
     for (int idx0 = 1; idx0 < 1025; ++idx0) {
-      if (mem_ptr6[idx0] != 544) {
+      if (mem_ptr6[idx0] != 352) {
         printf("Out_tile0[%d]=%d\n", idx0 - 1, mem_ptr6[idx0]);
         errors++;
       }
-      if (mem_ptr7[idx0] != 352) {
+      if (mem_ptr7[idx0] != 544) {
         printf("Out_tile1[%d]=%d\n", idx0 - 1, mem_ptr7[idx0]);
         errors++;
       }
     }
+  } else {
+    errors++;
   }
 
   int res = 0;

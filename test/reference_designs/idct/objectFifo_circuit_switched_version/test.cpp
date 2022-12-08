@@ -14,11 +14,16 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+
+#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
+#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
+#define MLIR_STACK_OFFSET 4096
 
 #include "aie_inc.cpp"
 
@@ -49,10 +54,13 @@ int main(int argc, char *argv[]) {
   u32 sleep_u = 100000;
   usleep(sleep_u);
   printf("before DMA config\n");
+  mlir_aie_print_tile_status(_xaie, 7, 3);
+
   mlir_aie_configure_dmas(_xaie);
 
   usleep(sleep_u);
   printf("after DMA config\n");
+  mlir_aie_print_tile_status(_xaie, 7, 3);
 
   int errors = 0;
 
@@ -91,32 +99,24 @@ int main(int argc, char *argv[]) {
 #endif
 
   // EventMonitor pc0(_xaie, 7, 3, 0, XAIE_EVENT_LOCK_3_ACQ_MEM,
-  //                  XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM,
-  //                  XAIE_MEM_MOD);
-  // EventMonitor pc1(_xaie, 7, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM,
-  //                  XAIE_EVENT_LOCK_5_REL_MEM, XAIE_EVENT_NONE_MEM,
-  //                  XAIE_MEM_MOD);
+  // XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); EventMonitor
+  // pc1(_xaie, 7, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM, XAIE_EVENT_LOCK_5_REL_MEM,
+  // XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
 
   // EventMonitor pc2(_xaie, 6, 3, 0, XAIE_EVENT_LOCK_3_ACQ_MEM,
-  //                  XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM,
-  //                  XAIE_MEM_MOD);
-  // EventMonitor pc3(_xaie, 6, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM,
-  //                  XAIE_EVENT_LOCK_5_REL_MEM, XAIE_EVENT_NONE_MEM,
-  //                  XAIE_MEM_MOD);
+  // XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); EventMonitor
+  // pc3(_xaie, 6, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM, XAIE_EVENT_LOCK_5_REL_MEM,
+  // XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
 
   // EventMonitor pc4(_xaie, 5, 3, 0, XAIE_EVENT_LOCK_3_ACQ_MEM,
-  //                  XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM,
-  //                  XAIE_MEM_MOD);
-  // EventMonitor pc5(_xaie, 5, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM,
-  //                  XAIE_EVENT_LOCK_5_REL_MEM, XAIE_EVENT_NONE_MEM,
-  //                  XAIE_MEM_MOD);
+  // XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); EventMonitor
+  // pc5(_xaie, 5, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM, XAIE_EVENT_LOCK_5_REL_MEM,
+  // XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
 
   // EventMonitor pc6(_xaie, 7, 0, 0, XAIE_EVENT_LOCK_1_ACQUIRED_PL,
-  //                  XAIE_EVENT_LOCK_2_RELEASED_PL, XAIE_EVENT_NONE_PL,
-  //                  XAIE_PL_MOD);
+  // XAIE_EVENT_LOCK_2_RELEASED_PL, XAIE_EVENT_NONE_PL, XAIE_PL_MOD);
   // EventMonitor pc7(_xaie, 7, 0, 1, XAIE_EVENT_LOCK_2_ACQUIRED_PL,
-  //                  XAIE_EVENT_LOCK_2_RELEASED_PL, XAIE_EVENT_NONE_PL,
-  //                  XAIE_PL_MOD);
+  // XAIE_EVENT_LOCK_2_RELEASED_PL, XAIE_EVENT_NONE_PL, XAIE_PL_MOD);
 
   // pc0.set();
   // pc1.set();
@@ -127,17 +127,12 @@ int main(int argc, char *argv[]) {
   // pc6.set();
   // pc7.set();
 
-  // for (int i=0; i<DMA_COUNT; i++) {
-  //     int16_t d = ddr_ptr_out[i];
-  //     printf("ddr_ptr_out[%d] = %d\n", i, d);
-  // }
-
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_buffer_in_lock(_xaie, 1, 0);
-  mlir_aie_release_buffer_out_lock(_xaie, 1, 0);
+  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_5_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
@@ -165,62 +160,7 @@ int main(int argc, char *argv[]) {
   // mlir_aie_check("After", mlir_read_buffer_b_ping(0), 385, errors);
   // mlir_aie_check("After", mlir_read_buffer_b_pong(0), 449, errors);
 
-  // Dump contents of ddr_ptr_out
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_a73_ping(i);
-  //         printf("buffer out a ping 73 [%d] = %d\n", i, d);
-  //     }
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_a73_pong(i);
-  //         printf("buffer out a pong 73 [%d] = %d\n", i, d);
-  //     }
-
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_b73_ping(i);
-  //         printf("buffer out b ping 73 [%d] = %d\n", i, d);
-  //     }
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_b73_pong(i);
-  //         printf("buffer out b pong 73 [%d] = %d\n", i, d);
-  //     }
-
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_a74_ping(i);
-  //         printf("buffer out a ping 74 [%d] = %d\n", i, d);
-  //     }
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_a74_pong(i);
-  //         printf("buffer out a pong 74 [%d] = %d\n", i, d);
-  //     }
-
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_b74_ping(i);
-  //         printf("buffer out b ping 74 [%d] = %d\n", i, d);
-  //     }
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_b74_pong(i);
-  //         printf("buffer out b pong 74 [%d] = %d\n", i, d);
-  //     }
-
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_a75_ping(i);
-  //         printf("buffer out a ping 75 [%d] = %d\n", i, d);
-  //     }
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_a75_pong(i);
-  //         printf("buffer out a pong 75 [%d] = %d\n", i, d);
-  //     }
-
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_b75_ping(i);
-  //         printf("buffer out b ping 75 [%d] = %d\n", i, d);
-  //     }
-  // for (int i=0; i<16; i++) {
-  //         uint32_t d = mlir_read_buffer_b75_ping(i);
-  //         printf("buffer out b pong 75 [%d] = %d\n", i, d);
-  //     }
-
-  mlir_aie_acquire_buffer_out_lock(_xaie, 0, 0);
+  mlir_aie_acquire_of_5_lock_0(_xaie, 1, 0);
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
   for (int i = 0; i < DMA_COUNT; i++)
