@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   printf("Waiting to acquire output lock for read ...\n");
-  if (!mlir_aie_acquire_lock(_xaie, 3, 3, 0, 1, LOCK_TIMEOUT)) {
+  if (!!mlir_aie_acquire_lock_out(_xaie, 1, LOCK_TIMEOUT)) {
     printf("ERROR: timeout hit!\n");
   }
 

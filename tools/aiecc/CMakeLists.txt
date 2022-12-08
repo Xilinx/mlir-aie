@@ -51,6 +51,8 @@ else()
 set(CONFIG_DISABLE_LINK False)
 endif()
 
+set(CONFIG_PEANO_INSTALL_DIR ${PEANO_INSTALL_DIR})
+
 configure_file(aiecc/configure.py.in ${PROJECT_BINARY_DIR}/bin/aiecc/configure.py)
 install(PROGRAMS ${PROJECT_BINARY_DIR}/bin/aiecc/configure.py DESTINATION ${PYTHON_INSTALL_PATH}/aiecc)
 

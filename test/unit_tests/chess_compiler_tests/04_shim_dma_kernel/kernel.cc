@@ -36,31 +36,26 @@ inline void func(int32_t *a, int32_t *b)
     b[5] = val2;
 }
 
-void func_wrap()
-{
-    int bounds = 2;//iter;
+extern "C" void core_7_3() {
+  int bounds = 2; // iter;
 
-    // NOTE: odd iterations need locks reset externally when core is run again
-    while(bounds > 0) { // TODO: need to change this to start count at 0 so we do ping first
-        if((bounds & 0x1) == 0) {
-            acquire(A_PING,LOCK_READ); 
-            acquire(B_PING,LOCK_WRITE); 
-            func(a_ping, b_ping);
-            release(A_PING,LOCK_WRITE); 
-            release(B_PING,LOCK_READ); 
-        } else {
-            acquire(A_PONG,LOCK_READ); 
-            acquire(B_PONG,LOCK_WRITE); 
-            func(a_pong, b_pong);
-            release(A_PONG,LOCK_WRITE); 
-            release(B_PONG,LOCK_READ); 
-        }
-      bounds--;
+  // NOTE: odd iterations need locks reset externally when core is run again
+  while (
+      bounds >
+      0) { // TODO: need to change this to start count at 0 so we do ping first
+    if ((bounds & 0x1) == 0) {
+      acquire(A_PING, LOCK_READ);
+      acquire(B_PING, LOCK_WRITE);
+      func(a_ping, b_ping);
+      release(A_PING, LOCK_WRITE);
+      release(B_PING, LOCK_READ);
+    } else {
+      acquire(A_PONG, LOCK_READ);
+      acquire(B_PONG, LOCK_WRITE);
+      func(a_pong, b_pong);
+      release(A_PONG, LOCK_WRITE);
+      release(B_PONG, LOCK_READ);
     }
-}
-
-int main()
-{
-    func_wrap();
-    //printf("test is %d\n",buf[8]);
+    bounds--;
+  }
 }

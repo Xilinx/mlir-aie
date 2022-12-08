@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,7 +13,7 @@
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
+module @idct {
   %t74 = AIE.tile(7, 4)
   %t75 = AIE.tile(7, 5)
 
@@ -52,30 +52,21 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %lock_75_b_ping = AIE.lock(%t75, 5) // b_ping
   %lock_75_b_pong = AIE.lock(%t75, 6) // b_pong
 
+  AIE.flow(%t70, DMA : 0, %t73, DMA : 0)
+  AIE.flow(%t73, DMA : 1, %t74, DMA : 0)
+  AIE.flow(%t74, DMA : 1, %t75, DMA : 0)
+  AIE.flow(%t75, DMA : 1, %t70, DMA : 0)
 
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-
-  func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func1(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func2(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  // func.func private @func3(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
-    %buffer_size =  arith.constant 64 : i32
-
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
     
-    %sum_0 = arith.constant 0 : i32
-    %inc = arith.constant 1 : i32
-    %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
       AIE.useLock(%lock_73_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_73_b_ping, "Acquire", 0) // acquire for write
       func.call @dequant_8x8(%buf_73_aping, %buf_73_bping) : (memref<64xi16>, memref<64xi16>) -> ()
@@ -93,64 +84,48 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   } { link_with="dequant.o" }
 
   %c74 = AIE.core(%t74) { 
-    %buffer_size =  arith.constant 64 : i32
-
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
     
-    %sum_0 = arith.constant 0 : i32
-    %inc = arith.constant 1 : i32
-    %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
       AIE.useLock(%lock_74_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_ping, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_h(%buf_74_aping, %buf_74_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_74_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_74_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_74_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_74_b_pong, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_74_apong, %buf_74_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_h(%buf_74_apong, %buf_74_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_74_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_74_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
-  } { link_with="pass.o" }
+  } { link_with="idct_horizontal.o" }
   
     %c75 = AIE.core(%t75) { 
-    %buffer_size =  arith.constant 64 : i32
-
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
     
-    %sum_0 = arith.constant 0 : i32
-    %inc = arith.constant 1 : i32
-    %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
       AIE.useLock(%lock_75_a_ping, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_ping, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_v(%buf_75_aping, %buf_75_bping) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_75_a_ping, "Release", 0) // release for write
       AIE.useLock(%lock_75_b_ping, "Release", 1) // release for read
 
       AIE.useLock(%lock_75_a_pong, "Acquire", 1) // acquire for read
       AIE.useLock(%lock_75_b_pong, "Acquire", 0) // acquire for write
-      func.call @pass(%buf_75_apong, %buf_75_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_v(%buf_75_apong, %buf_75_bpong) : (memref<64xi16>, memref<64xi16>) -> ()
       AIE.useLock(%lock_75_a_pong, "Release", 0) // release for write
       AIE.useLock(%lock_75_b_pong, "Release", 1) // release for read      
     }
 
     AIE.end
-  } { link_with="pass.o" }
+  } { link_with="idct_vertical.o" }
 
   // Tile DMA
   %m73 = AIE.mem(%t73) {
@@ -243,10 +218,6 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %buffer_in  = AIE.external_buffer { sym_name = "buffer_in" } : memref<512 x i16>
   %buffer_out = AIE.external_buffer { sym_name = "buffer_out" } : memref<512 x i16>
 
-  // Shim DMA connection to kernel
-  AIE.flow(%t70, DMA : 0, %t73, DMA : 0)
-  AIE.flow(%t75, DMA : 0, %t70, DMA : 0)
-
   %lock1 = AIE.lock(%t70, 1) { sym_name = "buffer_in_lock" }
   %lock2 = AIE.lock(%t70, 2) { sym_name = "buffer_out_lock" }
 
@@ -256,14 +227,14 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     ^dma:
       AIE.dmaStart(S2MM, 0, ^bd1, ^end)
     ^bd0:
-      AIE.useLock(%lock1, Acquire, 1)
+      AIE.useLock(%lock1, "Acquire", 1)
       AIE.dmaBd(<%buffer_in : memref<512 x i16>, 0, 512>, 0)
-      AIE.useLock(%lock1, Release, 0)
+      AIE.useLock(%lock1, "Release", 0)
       cf.br ^bd0
     ^bd1:
-      AIE.useLock(%lock2, Acquire, 1)
+      AIE.useLock(%lock2, "Acquire", 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i16>, 0, 512>, 0)
-      AIE.useLock(%lock2, Release, 0)
+      AIE.useLock(%lock2, "Release", 0)
       cf.br ^bd1
     ^end:
       AIE.end
