@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --lower-aievec | FileCheck %s
+// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
 module {
   func.func @mac16(%arg0: vector<32xi16>, %arg1: vector<16xi16>, %arg2: vector<16xi48>) {
     %0 = aievec.mac %arg0, %arg1, %arg2 {xoffsets= "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "1", zoffsets = "0", zoffsets_hi = "0", zstart = "2", zstep = "1"} : vector<32xi16>, vector<16xi16>, vector<16xi48>

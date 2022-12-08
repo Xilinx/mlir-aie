@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --lower-aievec | FileCheck %s
+// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
 module {
   func.func @test() {
     %v8i48 = llvm.mlir.undef: vector<8xi48>

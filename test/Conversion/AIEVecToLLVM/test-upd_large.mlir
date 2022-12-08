@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --lower-aievec | FileCheck %s
+// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
 // Test loads and updates to a vector register
 module {
   func.func @test(%arg0: memref<4x32x64xi16>) {

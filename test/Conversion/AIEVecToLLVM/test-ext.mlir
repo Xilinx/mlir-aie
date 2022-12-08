@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --lower-aievec | FileCheck %s
+// RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
 // Test a direct load to vector register that does not actually need an update
 module {
   func.func @test() {

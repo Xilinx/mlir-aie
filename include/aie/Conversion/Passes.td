@@ -16,7 +16,7 @@ include "mlir/Pass/PassBase.td"
 //===----------------------------------------------------------------------===//
 // AIEVecToLLVM
 //===----------------------------------------------------------------------===//
-def ConvertAIEVecToLLVM : Pass<"lower-aievec", "ModuleOp"> {
+def ConvertAIEVecToLLVM : Pass<"convert-aievec-to-llvm", "ModuleOp"> {
   let summary = "Convert AIEVec dialect to LLVM dialect";
   let description = [{
     This pass converts AIEVec dialect ops to LLVM dialect calls to builtins.
