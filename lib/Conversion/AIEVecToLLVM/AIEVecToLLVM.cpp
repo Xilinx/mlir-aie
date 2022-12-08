@@ -48,14 +48,6 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false,
   return ss.str();
 }
 
-bool accIsDouble(VectorType type) {
-  auto lanes = getVectorLaneSize(type);
-  auto accWidth = type.getElementType().cast<IntegerType>().getWidth();
-  if (accWidth == 80)
-    accWidth = 96;
-  return (lanes * accWidth) > 384;
-}
-
 std::string getMulOrFMAIntrinsicName(Operation *op) {
   std::string baseName;
   Value lhs, rhs, result;
