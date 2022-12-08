@@ -27,11 +27,11 @@ module @broadcast {
     %tile33 = AIE.tile(3, 3)
 
     %buff_out_12 = AIE.buffer(%tile12) { sym_name = "out12" } :  memref<4x16xi32>
-    %lock_out_12 = AIE.lock(%tile12, 0)
+    %lock_out_12 = AIE.lock(%tile12, 0) { sym_name = "lock_out12" }
     %buff_out_14 = AIE.buffer(%tile14) { sym_name = "out14" } :  memref<4x16xi32>
-    %lock_out_14 = AIE.lock(%tile14, 0)
+    %lock_out_14 = AIE.lock(%tile14, 0) { sym_name = "lock_out14" }
     %buff_out_33 = AIE.buffer(%tile33) { sym_name = "out33" } :  memref<4x16xi32>
-    %lock_out_33 = AIE.lock(%tile33, 0)
+    %lock_out_33 = AIE.lock(%tile33, 0) { sym_name = "lock_out33" }
 
     %objFifo = AIE.objectFifo.createObjectFifo(%tile13, {%tile12, %tile14, %tile33}, 7) : !AIE.objectFifo<memref<16xi32>>
 
