@@ -15,6 +15,7 @@
 #define XILINX_INITALLDIALECTS_H_
 
 #include "aie/Dialect/ADF/ADFDialect.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "mlir/IR/Dialect.h"
 
@@ -26,8 +27,7 @@ inline void registerAllDialects(mlir::DialectRegistry &registry) {
   registry.insert<
     ADF::ADFDialect,
     aievec::AIEVecDialect,
-    // todo: initial AIE dialect here
-    // AIE::AIEDialect
+    AIE::AIEDialect
   >();
   // clang-format on
 }
