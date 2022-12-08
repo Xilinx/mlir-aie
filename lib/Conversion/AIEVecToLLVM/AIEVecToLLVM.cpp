@@ -104,8 +104,6 @@ public:
   LogicalResult
   matchAndRewrite(xilinx::aievec::AddOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
     op.emitWarning() << "aie.add conversion is not implemented\n";
     return failure();
   }
@@ -119,8 +117,6 @@ public:
   LogicalResult
   matchAndRewrite(xilinx::aievec::SubOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
     op.emitWarning() << "aie.sub conversion is not implemented\n";
     return failure();
   }
@@ -292,8 +288,6 @@ public:
   LogicalResult
   matchAndRewrite(xilinx::aievec::UPSOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
     op.emitWarning() << "aie.ups conversion is not implemented\n";
     return failure();
   }
@@ -711,8 +705,6 @@ public:
   LogicalResult
   matchAndRewrite(xilinx::aievec::UnpackOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
     op.emitWarning() << "aie.unpack conversion is not implemented\n";
     return failure();
   }
@@ -749,7 +741,7 @@ struct ConvertAIEVecToLLVMPass
 };
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-xilinx::aievec::createConvertAIEVecToLLVMPass() {
+createConvertAIEVecToLLVMPass() {
   return std::make_unique<ConvertAIEVecToLLVMPass>();
 }
 
