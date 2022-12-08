@@ -1,11 +1,9 @@
-//===- test.cpp
-//-------------------------------------------------*- C++ -*-===//
+//===- test.cpp -------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Xilinx Inc.
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
@@ -88,14 +86,14 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
 
 #ifdef LIBXAIENGINEV2
-  mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
-  mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
-  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr6);
-  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr7);
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr2);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr3);
-  mlir_aie_external_set_addr_myBuffer_100_0((u64)mem_ptr4);
-  mlir_aie_external_set_addr_myBuffer_100_1((u64)mem_ptr5);
+  mlir_aie_external_set_addr_LHS_tile0((u64)mem_ptr0);
+  mlir_aie_external_set_addr_LHS_tile1((u64)mem_ptr1);
+  mlir_aie_external_set_addr_RHS_tile0((u64)mem_ptr2);
+  mlir_aie_external_set_addr_RHS_tile1((u64)mem_ptr3);
+  mlir_aie_external_set_addr_RHS_tile2((u64)mem_ptr4);
+  mlir_aie_external_set_addr_RHS_tile3((u64)mem_ptr5);
+  mlir_aie_external_set_addr_Out_tile0((u64)mem_ptr6);
+  mlir_aie_external_set_addr_Out_tile1((u64)mem_ptr7);
   mlir_aie_configure_shimdma_60(_xaie);
   mlir_aie_configure_shimdma_70(_xaie);
   mlir_aie_configure_shimdma_100(_xaie);
@@ -103,17 +101,19 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
 
-  mlir_aie_release_lock(_xaie, 6, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 10, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 10, 0, 1, 1, 0);
+  mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_6_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_8_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_12_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_10_lock_0(_xaie, 1, 0);
 
   mlir_aie_start_cores(_xaie);
 
   usleep(sleep_u);
 
+  mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
+  mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
   mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 

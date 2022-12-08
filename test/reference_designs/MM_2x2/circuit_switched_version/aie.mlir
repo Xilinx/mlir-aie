@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Xilinx Inc.
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 // Date: Novembre 10th 2022
@@ -27,14 +26,23 @@ module @MM_2x2 {
 
   %t100 = AIE.tile(10, 0)
 
-  %buffer0 = AIE.external_buffer : memref<1024 x i32>     //LHS_tile0
-  %buffer1 = AIE.external_buffer : memref<1024 x i32>     //LHS_tile1
-  %buffer2 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile0
-  %buffer3 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile1
-  %buffer4 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile2
-  %buffer5 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile3
-  %buffer6 = AIE.external_buffer : memref<1024 x i32>     //Out_tile0
-  %buffer7 = AIE.external_buffer : memref<1024 x i32>     //Out_tile1
+  %buffer0 = AIE.external_buffer {sym_name = "LHS_tile0"} : memref<1024 x i32>     //LHS_tile0
+  %buffer1 = AIE.external_buffer {sym_name = "LHS_tile1"} : memref<1024 x i32>     //LHS_tile1
+  %buffer2 = AIE.external_buffer {sym_name = "RHS_tile0"} : memref<1024 x i32>     //RHS_tile0
+  %buffer3 = AIE.external_buffer {sym_name = "RHS_tile1"} : memref<1024 x i32>     //RHS_tile1
+  %buffer4 = AIE.external_buffer {sym_name = "RHS_tile2"} : memref<1024 x i32>     //RHS_tile2
+  %buffer5 = AIE.external_buffer {sym_name = "RHS_tile3"} : memref<1024 x i32>     //RHS_tile3
+  %buffer6 = AIE.external_buffer {sym_name = "Out_tile0"} : memref<1025 x i32>     //Out_tile0
+  %buffer7 = AIE.external_buffer {sym_name = "Out_tile1"} : memref<1025 x i32>     //Out_tile1
+
+  %lock60_0 = AIE.lock(%t60, 0) {sym_name = "LHS_tile0_lock"}
+  %lock60_1 = AIE.lock(%t60, 1) {sym_name = "LHS_tile1_lock"}
+  %lock60_2 = AIE.lock(%t60, 2) {sym_name = "RHS_tile0_lock"}
+  %lock60_3 = AIE.lock(%t60, 3) {sym_name = "RHS_tile1_lock"}
+  %lock70_0 = AIE.lock(%t70, 0) {sym_name = "RHS_tile2_lock"}
+  %lock70_1 = AIE.lock(%t70, 1) {sym_name = "RHS_tile3_lock"}
+  %lock100_0 = AIE.lock(%t100, 0) {sym_name = "Out_tile0_lock"}
+  %lock100_1 = AIE.lock(%t100, 1) {sym_name = "Out_tile1_lock"}
 
   %buf63_0 = AIE.buffer(%t63) {sym_name = "buf63_0"} : memref<1024xi32>  //LHS_tile0
   %buf63_1 = AIE.buffer(%t63) {sym_name = "buf63_1"} : memref<1024xi32>  //RHS_tile0
@@ -73,10 +81,6 @@ module @MM_2x2 {
   // Out_tile1
   AIE.flow(%t74, DMA : 0, %t60, DMA : 1)
 
-  %lock60_0 = AIE.lock(%t60, 0)
-  %lock60_1 = AIE.lock(%t60, 1)
-  %lock60_2 = AIE.lock(%t60, 2)
-  %lock60_3 = AIE.lock(%t60, 3)
   %dma60 = AIE.shimDMA(%t60) {
       AIE.dmaStart("MM2S", 0, ^bd4, ^dma2)
     ^dma2:
@@ -109,8 +113,6 @@ module @MM_2x2 {
       AIE.end
   }
 
-  %lock70_0 = AIE.lock(%t70, 0)
-  %lock70_1 = AIE.lock(%t70, 1)
   %dma70 = AIE.shimDMA(%t70) {
       AIE.dmaStart("MM2S", 0, ^bd4, ^dma2)
     ^dma2:
@@ -129,8 +131,6 @@ module @MM_2x2 {
       AIE.end
   }
 
-  %lock100_0 = AIE.lock(%t100, 0)
-  %lock100_1 = AIE.lock(%t100, 1)
   %dma100 = AIE.shimDMA(%t100) {
       AIE.dmaStart("MM2S", 0, ^bd4, ^dma2)
     ^dma2:

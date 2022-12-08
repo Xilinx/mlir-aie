@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Xilinx Inc.
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 // Date: Novembre 10th 2022
@@ -40,14 +39,14 @@ module @MM_2x2 {
   %of_ACC0 = AIE.objectFifo.createObjectFifo(%t63, {%t64}, 1) : !AIE.objectFifo<memref<1024xi32>>
   %of_ACC1 = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 1) : !AIE.objectFifo<memref<1024xi32>>
 
-  %buffer0 = AIE.external_buffer : memref<1024 x i32>     //LHS_tile0
-  %buffer1 = AIE.external_buffer : memref<1024 x i32>     //LHS_tile1
-  %buffer2 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile0
-  %buffer3 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile1
-  %buffer4 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile2
-  %buffer5 = AIE.external_buffer : memref<1024 x i32>     //RHS_tile3
-  %buffer6 = AIE.external_buffer : memref<1024 x i32>     //Out_tile0
-  %buffer7 = AIE.external_buffer : memref<1024 x i32>     //Out_tile1
+  %buffer0 = AIE.external_buffer {sym_name = "LHS_tile0"} : memref<1024 x i32>     //LHS_tile0
+  %buffer1 = AIE.external_buffer {sym_name = "LHS_tile1"} : memref<1024 x i32>     //LHS_tile1
+  %buffer2 = AIE.external_buffer {sym_name = "RHS_tile0"} : memref<1024 x i32>     //RHS_tile0
+  %buffer3 = AIE.external_buffer {sym_name = "RHS_tile1"} : memref<1024 x i32>     //RHS_tile1
+  %buffer4 = AIE.external_buffer {sym_name = "RHS_tile2"} : memref<1024 x i32>     //RHS_tile2
+  %buffer5 = AIE.external_buffer {sym_name = "RHS_tile3"} : memref<1024 x i32>     //RHS_tile3
+  %buffer6 = AIE.external_buffer {sym_name = "Out_tile0"} : memref<1024 x i32>     //Out_tile0
+  %buffer7 = AIE.external_buffer {sym_name = "Out_tile1"} : memref<1024 x i32>     //Out_tile1
 
   AIE.objectFifo.registerExternalBuffers(%t60, %of_LHS0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer0}) : (memref<1024xi32>)
   AIE.objectFifo.registerExternalBuffers(%t60, %of_LHS1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer1}) : (memref<1024xi32>)
