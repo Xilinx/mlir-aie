@@ -1065,6 +1065,40 @@ This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 e
 | :----: | ----------- |
 | `fifo` | AIE objectFifo type
 
+### `AIE.objectFifo.registerExternalBuffers` (::xilinx::AIE::ObjectFifoRegisterExternalBuffersOp)
+
+Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.registerExternalBuffers` attr-dict `(` $tile `,` $fifo `:` type($fifo) `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+```
+
+The "aie.objectFifo.registerExternalBuffers" operation is used to register one or multiple external buffers 
+to the shim tile(s) used in an objectFifo creation. During the objectFifo lowering pass, shim DMAs that are
+generated for those shim tiles will use the registered external buffers. This is currently done because 
+external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
+same objectFifos.
+
+Example:
+```
+  %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
+  %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
+  %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
+  AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+```
+This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+| `fifo` | AIE objectFifo type
+| `externalBuffers` | memref of any type values
+
 ### `AIE.objectFifo.registerProcess` (::xilinx::AIE::ObjectFifoRegisterProcessOp)
 
 Operation that produces the acquire/release patterns for a process registered to an objectFifo
