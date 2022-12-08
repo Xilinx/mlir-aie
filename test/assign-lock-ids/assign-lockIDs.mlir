@@ -40,6 +40,8 @@
 // CHECK:    %28 = AIE.lock(%3, 1)
 // CHECK:    %29 = AIE.lock(%3, 2)
 // CHECK:    %30 = AIE.lock(%3, 3)
+// CHECK:    %31 = AIE.tile(6, 0)
+// CHECK:    %32 = AIE.lock(%31, 0)
 
 module @test_assign_lockIDs {
   %t22 = AIE.tile(2, 2)
@@ -77,4 +79,7 @@ module @test_assign_lockIDs {
   %l34_1 = AIE.lock(%t34)
   %l34_2 = AIE.lock(%t34)
   %l34_3 = AIE.lock(%t34)
+
+  %t60 = AIE.tile(6, 0)
+  %l60 = AIE.lock(%t60)
 }
