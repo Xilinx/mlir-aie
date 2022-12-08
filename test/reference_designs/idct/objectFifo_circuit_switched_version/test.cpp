@@ -21,14 +21,13 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
+#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
+#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 #define MLIR_STACK_OFFSET 4096
 
 #include "aie_inc.cpp"
 
-int main(int argc, char *argv[]) 
-{
+int main(int argc, char *argv[]) {
   printf("test start.\n");
 
   // int n = 1;
@@ -65,7 +64,7 @@ int main(int argc, char *argv[])
 
   int errors = 0;
 
-  #define DMA_COUNT 512
+#define DMA_COUNT 512
 
   // Load IDCT Data
   FILE *file = fopen("image.txt", "r");
@@ -93,11 +92,11 @@ int main(int argc, char *argv[])
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-  #ifdef LIBXAIENGINEV2
-    mlir_aie_external_set_addr_buffer_in((u64)ddr_ptr_in);
-    mlir_aie_external_set_addr_buffer_out((u64)ddr_ptr_out);
-    mlir_aie_configure_shimdma_70(_xaie);
-  #endif
+#ifdef LIBXAIENGINEV2
+  mlir_aie_external_set_addr_buffer_in((u64)ddr_ptr_in);
+  mlir_aie_external_set_addr_buffer_out((u64)ddr_ptr_out);
+  mlir_aie_configure_shimdma_70(_xaie);
+#endif
 
   // EventMonitor pc0(_xaie, 7, 3, 0, XAIE_EVENT_LOCK_3_ACQ_MEM,
   // XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); EventMonitor

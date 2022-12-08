@@ -66,14 +66,14 @@ int main(int argc, char *argv[]) {
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT; i++) {
-      *(mem_ptr0 + i) = 1;  // LHS_tile0
-      *(mem_ptr1 + i) = 2;  // LHS_tile1
-      *(mem_ptr2 + i) = 3;  // RHS_tile0
-      *(mem_ptr3 + i) = 4;  // RHS_tile1
-      *(mem_ptr4 + i) = 5;  // RHS_tile2
-      *(mem_ptr5 + i) = 6;  // RHS_tile3
-      *(mem_ptr6 + i) = 99; // Out_tile0
-      *(mem_ptr7 + i) = 99; // Out_tile1
+    *(mem_ptr0 + i) = 1;  // LHS_tile0
+    *(mem_ptr1 + i) = 2;  // LHS_tile1
+    *(mem_ptr2 + i) = 3;  // RHS_tile0
+    *(mem_ptr3 + i) = 4;  // RHS_tile1
+    *(mem_ptr4 + i) = 5;  // RHS_tile2
+    *(mem_ptr5 + i) = 6;  // RHS_tile3
+    *(mem_ptr6 + i) = 99; // Out_tile0
+    *(mem_ptr7 + i) = 99; // Out_tile1
   }
 
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2

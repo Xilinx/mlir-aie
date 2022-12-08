@@ -189,11 +189,11 @@ struct AIEObjectFifoStatefulTransformPass
       // create as many locks as there are external buffers
       if (!op.getProducerTileOp().isShimTile()) {
         BufferOp buff = builder.create<BufferOp>(
-          builder.getUnknownLoc(), elemType, op.getProducerTileOp());
+            builder.getUnknownLoc(), elemType, op.getProducerTileOp());
         buff.getOperation()->setAttr(
             "sym_name",
-            builder.getStringAttr("of_" + std::to_string(of_index) + "_buff_" 
-              + std::to_string(of_elem_index)));
+            builder.getStringAttr("of_" + std::to_string(of_index) + "_buff_" +
+                                  std::to_string(of_elem_index)));
         buffers.push_back(buff);
       }
 
@@ -204,8 +204,8 @@ struct AIEObjectFifoStatefulTransformPass
                                            op.getProducerTileOp(), lockID);
       lock.getOperation()->setAttr(
           "sym_name",
-          builder.getStringAttr("of_" + std::to_string(of_index) + "_lock_" 
-            + std::to_string(of_elem_index)));
+          builder.getStringAttr("of_" + std::to_string(of_index) + "_lock_" +
+                                std::to_string(of_elem_index)));
       locks.push_back(lock);
 
       of_elem_index++;

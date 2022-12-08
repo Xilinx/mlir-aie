@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
 
   int errors = 0;
 
-  #define DMA_COUNT 512
+#define DMA_COUNT 512
 
   // Load IDCT Data
   FILE *file = fopen("image.txt", "r");
