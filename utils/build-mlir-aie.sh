@@ -48,7 +48,8 @@ cmake -GNinja \
     -DMLIR_DIR=${LLVM_DIR}/build/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/ \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
-    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_ASSERTIONS=ON \
     .. |& tee cmake.log
 
 #    -DVitisSysroot=${SYSROOT_DIR} \
