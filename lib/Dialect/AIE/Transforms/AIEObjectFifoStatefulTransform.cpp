@@ -160,9 +160,9 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
   DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>
-      splitFifos;     // maps each objFifo between non-adjacent tiles to its
-                      // corresponding consumer objectFifos
-  int of_index = 0;   // used to give objectFifo elements a symbolic name
+      splitFifos;   // maps each objFifo between non-adjacent tiles to its
+                    // corresponding consumer objectFifos
+  int of_index = 0; // used to give objectFifo elements a symbolic name
 
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
