@@ -494,4 +494,83 @@ def AIEVec_UnpackOp:
   }];
 }
 
+def AIEVec_ShiftOp:
+  AIEVec_Op<"shift", [
+    Pure
+  ]>,
+  Arguments<(ins Variadic<AnyVector>:$sources,
+             DefaultValuedAttr<I32Attr, "0">:$shift)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE2 concat and shift";
+  let description = [{
+    Xilinx-specific shift intrinsic. Concatenates two
+    vectors into a bigger vector, interprets them as a vector of 128 bytes
+    and returns v1::v2[shift: shift+64]. The verifier confirms that all the
+    input vectors have the same number of lanes.
+    `$result = shift($sources[0], $sources[1], $shift)`
+  }];
+}
+
+def AIEVec_ShuffleOp:
+  AIEVec_Op<"shuffle", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$source,
+             DefaultValuedAttr<I32Attr, "0">:$mode)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE2 shuffle";
+  let description = [{
+    Xilinx-specific vector shuffle intrinsic by a specific shuffle mode.
+    `$result = shuffle($source, $mode)`
+  }];
+}
+
+def AIEVec_MulConvOp:
+  AIEVec_Op<"mul_conv", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs,
+             DefaultValuedAttr<I32Attr, "0">:$M,
+             DefaultValuedAttr<I32Attr, "0">:$N)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE2 multiply convolution";
+  let description = [{
+    Xilinx-specific multiply convolution intrinsic. Multiply convolution operation
+    of (M x N)matrix with (N x 1)kernel.
+    `$result = mul_convMxN($lhs, $rhs)`
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Type":$accType,
+               "int32_t":$M, "int32_t":$N),
+    [{build($_builder, $_state, accType, lhs, rhs, M, N);}]>
+  ];
+}
+
+def AIEVec_FMAConvOp:
+  AIEVec_Op<"fma_conv", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+             DefaultValuedAttr<I32Attr, "0">:$M,
+             DefaultValuedAttr<I32Attr, "0">:$N,
+             DefaultValuedAttr<BoolAttr, "false">:$fmsub)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE2 multiply accumulate convolution";
+  let description = [{
+    Xilinx-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
+    operation of (M x N)matrix with (N x 1)kernel.
+    `$result = mac_convMxN($lhs, $rhs, $acc)`
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Value":$acc,
+               "int32_t":$M, "int32_t":$N, "bool":$fmsub),
+    [{build($_builder, $_state, lhs, rhs, acc, M, N, fmsub);}]>
+  ];
+
+   let extraClassDeclaration = [{
+     // Get the attributes name
+     StringRef getSubAttrName() { return "fmsub"; }
+   }];
+}
+
 #endif // AIEVEC_OPS

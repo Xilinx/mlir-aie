@@ -56,6 +56,10 @@ def parse_args():
             default=not aie_compile_with_xchesscc,
             action='store_false',
             help='Compile using peano')
+    parser.add_argument('--peano',
+            dest="peano_install_dir",
+            default=peano_install_dir,
+            help='Root directory where peano compiler is installed')
     parser.add_argument('--compile',
             dest="compile",
             default=not aie_disable_compile,

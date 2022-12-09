@@ -7,7 +7,7 @@
 // CHECK-NEXT:     call @llvm.aie.lock.acquire.reg(%0, %c0_i32) : (i32, i32) -> ()
 // CHECK-NEXT:     return
 // CHECK:   }
-// CHECK:   func.func @core13() {
+// CHECK:   func.func @core_1_3() {
 // CHECK:     %c48 = arith.constant 48 : index
 // CHECK:     call @kernel(%c48) : (index) -> ()
 // CHECK:     return

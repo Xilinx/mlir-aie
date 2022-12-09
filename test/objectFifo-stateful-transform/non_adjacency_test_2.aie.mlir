@@ -18,18 +18,18 @@
 // CHECK:   AIE.multicast(%0, DMA : 0) {
 // CHECK:     AIE.multi_dest<%1, DMA : 0>
 // CHECK:   }
-// CHECK:   %2 = AIE.buffer(%0) {sym_name = "buff0"} : memref<16xi32>
-// CHECK:   %3 = AIE.lock(%0, 0)
-// CHECK:   %4 = AIE.buffer(%0) {sym_name = "buff1"} : memref<16xi32>
-// CHECK:   %5 = AIE.lock(%0, 1)
-// CHECK:   %6 = AIE.buffer(%1) {sym_name = "buff2"} : memref<16xi32>
-// CHECK:   %7 = AIE.lock(%1, 0)
-// CHECK:   %8 = AIE.buffer(%1) {sym_name = "buff3"} : memref<16xi32>
-// CHECK:   %9 = AIE.lock(%1, 1)
-// CHECK:   %10 = AIE.buffer(%1) {sym_name = "buff4"} : memref<16xi32>
-// CHECK:   %11 = AIE.lock(%1, 2)
-// CHECK:   %12 = AIE.buffer(%1) {sym_name = "buff5"} : memref<16xi32>
-// CHECK:   %13 = AIE.lock(%1, 3)
+// CHECK:   %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
+// CHECK:   %3 = AIE.lock(%0, 0) {sym_name = "of_0_lock_0"}
+// CHECK:   %4 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
+// CHECK:   %5 = AIE.lock(%0, 1) {sym_name = "of_0_lock_1"}
+// CHECK:   %6 = AIE.buffer(%1) {sym_name = "of_1_buff_0"} : memref<16xi32>
+// CHECK:   %7 = AIE.lock(%1, 0) {sym_name = "of_1_lock_0"}
+// CHECK:   %8 = AIE.buffer(%1) {sym_name = "of_1_buff_1"} : memref<16xi32>
+// CHECK:   %9 = AIE.lock(%1, 1) {sym_name = "of_1_lock_1"}
+// CHECK:   %10 = AIE.buffer(%1) {sym_name = "of_1_buff_2"} : memref<16xi32>
+// CHECK:   %11 = AIE.lock(%1, 2) {sym_name = "of_1_lock_2"}
+// CHECK:   %12 = AIE.buffer(%1) {sym_name = "of_1_buff_3"} : memref<16xi32>
+// CHECK:   %13 = AIE.lock(%1, 3) {sym_name = "of_1_lock_3"}
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:     return
 // CHECK:   }

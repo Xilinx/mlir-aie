@@ -296,15 +296,15 @@ class flow_runner:
           self.file_llvmir = os.path.join(self.tmpdirname, 'input.ll')
           await self.do_call(progress.task, ['aie-translate', '--opaque-pointers=0', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
 
-          self.file_llvmir_stripped = os.path.join(self.tmpdirname, 'input.stripped.ll')
-          await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>,strip', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_stripped])
-
           self.file_obj = os.path.join(self.tmpdirname, 'input.o')
           if(opts.compile and opts.xchesscc):
-            file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir_stripped)
+            file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir)
             await self.do_call(progress.task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
           else:
-            await self.do_call(progress.task, ['llc', self.file_llvmir_stripped, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', self.file_obj])
+            self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
+            await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
+
+            await self.do_call(progress.task, ['llc', self.file_llvmir_opt, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', self.file_obj])
 
         progress.update(progress.task,advance=0,visible=False)
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
@@ -322,13 +322,20 @@ class flow_runner:
 
 
 def main(builtin_params={}):
+    global opts
+    opts = aiecc.cl_arguments.parse_args()
+    is_windows = platform.system() == 'Windows'
+
     thispath = os.path.dirname(os.path.realpath(__file__))
 
     # Assume that aie-opt, etc. binaries are relative to this script.
     aie_path = os.path.join(thispath, '..')
-    peano_path = os.path.join(thispath, '..', '..', 'peano', 'bin')
+    peano_path = os.path.join(opts.peano_install_dir, 'bin')
     global llvmlink
-    llvmlink = os.path.join(thispath, '..', '..', 'peano', 'bin', 'llvm-link')
+    if(os.path.exists(opts.peano_install_dir)):
+      llvmlink = os.path.join(thispath, peano_path, 'llvm-link')
+    else:
+      llvmlink = 'llvm-link'
 
     if('VITIS' not in os.environ):
       # Try to find vitis in the path
@@ -360,10 +367,6 @@ def main(builtin_params={}):
     os.environ['PATH'] = os.pathsep.join([aie_path, os.environ['PATH']])
     os.environ['PATH'] = os.pathsep.join([peano_path, os.environ['PATH']])
     
-    global opts
-    opts = aiecc.cl_arguments.parse_args()
-    is_windows = platform.system() == 'Windows'
-
     if(opts.verbose):
         sys.stderr.write('\ncompiling %s\n' % opts.filename)
 
