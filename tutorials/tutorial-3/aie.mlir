@@ -26,7 +26,7 @@ module @tutorial_3 {
     %buf = AIE.buffer(%tile24) { sym_name = "a24" } : memref<256xi32>
 
     // Declare shared lock (belonging to tile(2,4), lock ID=1)
-    %lock24_1 = AIE.lock(%tile24, 1)
+    %lock24_1 = AIE.lock(%tile24, 1) { sym_name = "lock_a24_1" }
 
     // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
     // with one positional function argument, in this case mapped to a memref

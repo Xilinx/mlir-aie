@@ -215,13 +215,14 @@ module @idct {
   }
 
   // DDR buffer
-  %buffer_in  = AIE.external_buffer : memref<512 x i16>
-  %buffer_out = AIE.external_buffer : memref<512 x i16>
+  %buffer_in  = AIE.external_buffer { sym_name = "buffer_in" } : memref<512 x i16>
+  %buffer_out = AIE.external_buffer { sym_name = "buffer_out" } : memref<512 x i16>
+
+  %lock1 = AIE.lock(%t70, 1) { sym_name = "buffer_in_lock" }
+  %lock2 = AIE.lock(%t70, 2) { sym_name = "buffer_out_lock" }
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
-      %lock1 = AIE.lock(%t70, 1)
-      %lock2 = AIE.lock(%t70, 2)
       AIE.dmaStart(MM2S, 0, ^bd0, ^dma)
     ^dma:
       AIE.dmaStart(S2MM, 0, ^bd1, ^end)

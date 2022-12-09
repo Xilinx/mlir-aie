@@ -20,16 +20,9 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-#define MLIR_STACK_OFFSET 4096
-
 #include "aie_inc.cpp"
 
-int main(int argc, char *argv[]) 
-{
-  printf("test start.\n");
-
+int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
@@ -48,6 +41,13 @@ int main(int argc, char *argv[])
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
+  mlir_aie_release_LHS_tile0_lock(_xaie, 0, 0);
+  mlir_aie_release_LHS_tile1_lock(_xaie, 0, 0);
+  mlir_aie_release_RHS_tile0_lock(_xaie, 0, 0);
+  mlir_aie_release_RHS_tile1_lock(_xaie, 0, 0);
+  mlir_aie_release_RHS_tile2_lock(_xaie, 0, 0);
+  mlir_aie_release_RHS_tile3_lock(_xaie, 0, 0);
+
   usleep(sleep_u);
   printf("before configure DMA\n");
 
@@ -57,22 +57,14 @@ int main(int argc, char *argv[])
 
   printf("Finish configure\n");
 #define DMA_COUNT 1024
-  int *mem_ptr0 =
-      mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int *mem_ptr1 =
-      mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-  int *mem_ptr2 =
-      mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
-  int *mem_ptr3 =
-      mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
-  int *mem_ptr4 =
-      mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
-  int *mem_ptr5 =
-      mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
-  int *mem_ptr6 =
-      mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
-  int *mem_ptr7 =
-      mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
+  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
+  int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
+  int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
+  int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
+  int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT + 1);
+  int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT + 1);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT + 1; i++) {
@@ -100,45 +92,43 @@ int main(int argc, char *argv[])
   mlir_aie_sync_mem_dev(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
 
-#ifdef LIBXAIENGINEV2
-  mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
-  mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
-  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr2);
-  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr3);
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr4);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr5);
-  mlir_aie_external_set_addr_myBuffer_70_2((u64)mem_ptr6);
-  mlir_aie_external_set_addr_myBuffer_70_3((u64)mem_ptr7);
+  mlir_aie_external_set_addr_LHS_tile0((u64)mem_ptr0);
+  mlir_aie_external_set_addr_LHS_tile1((u64)mem_ptr1);
+  mlir_aie_external_set_addr_RHS_tile0((u64)mem_ptr2);
+  mlir_aie_external_set_addr_RHS_tile1((u64)mem_ptr3);
+  mlir_aie_external_set_addr_RHS_tile2((u64)mem_ptr4);
+  mlir_aie_external_set_addr_RHS_tile3((u64)mem_ptr5);
+  mlir_aie_external_set_addr_Out_tile0((u64)mem_ptr6);
+  mlir_aie_external_set_addr_Out_tile1((u64)mem_ptr7);
   mlir_aie_configure_shimdma_70(_xaie);
   mlir_aie_configure_shimdma_60(_xaie);
-#endif
 
   printf("before core start\n");
 
-  mlir_aie_release_lock(_xaie, 6, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 2, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 3, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
+  mlir_aie_release_LHS_tile0_lock(_xaie, 1, 0);
+  mlir_aie_release_LHS_tile1_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile0_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile1_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile2_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile3_lock(_xaie, 1, 0);
 
   mlir_aie_start_cores(_xaie);
 
   usleep(sleep_u);
   // Check if the local buffer contain the correct data
-  for (int bd = 0; bd < DMA_COUNT; bd++) {
-    mlir_aie_check("Before release lock:",
+  for (int bd = 0; bd < 4; bd++) {
+    mlir_aie_check("Before release lock LHS:",
                    mlir_aie_read_buffer_buf63_0(_xaie, bd), 1, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("Before release lock RHS:",
                    mlir_aie_read_buffer_buf63_1(_xaie, bd), 3, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("Before release lock ACC:",
                    mlir_aie_read_buffer_buf63_3(_xaie, bd), 96, // Sub_sum0
                    errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("Before release lock LHS:",
                    mlir_aie_read_buffer_buf64_0(_xaie, bd), 2, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("Before release lock RHS:",
                    mlir_aie_read_buffer_buf64_1(_xaie, bd), 4, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("Before release lock Out:",
                    mlir_aie_read_buffer_buf64_2(_xaie, bd), 352, // Out_tile0
                    errors);
     mlir_aie_check("Before release lock:",
@@ -163,6 +153,9 @@ int main(int argc, char *argv[])
   // Check if the external buffer receives the correct result
   int Header0 = mem_ptr6[0] & 31;
   int Header1 = mem_ptr7[0] & 31;
+
+  printf("Header 0 = %d\n", Header0);
+  printf("Header 1 = %d\n", Header1);
 
   // Compare the result according to the header since the order of the result is
   // not known

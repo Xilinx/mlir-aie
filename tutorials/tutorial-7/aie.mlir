@@ -30,9 +30,9 @@ module @tutorial_7 {
 
     // Declare local locks for tile(1,4) and tile(3,4) giving new
     // unique lock ID values 6 and 7
-    %lock14_6 = AIE.lock(%tile14, 6)
-    %lock34_7 = AIE.lock(%tile34, 7)
-    %lock35_7 = AIE.lock(%tile35, 7)
+    %lock14_6 = AIE.lock(%tile14, 6) { sym_name = "lock_a14_6" }
+    %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
+    %lock35_7 = AIE.lock(%tile35, 7) { sym_name = "lock_a35_7" }
 
     // Broadcast DMA channel 0 on tile(1,4) to both DMA channel 1 in 
     // tile(3,4) and tile(3,5) with automatic shortest distance routing for

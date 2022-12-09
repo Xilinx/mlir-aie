@@ -86,14 +86,14 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
 
 #ifdef LIBXAIENGINEV2
-  mlir_aie_external_set_addr_myBuffer_60_0((u64)mem_ptr0);
-  mlir_aie_external_set_addr_myBuffer_60_1((u64)mem_ptr1);
-  mlir_aie_external_set_addr_myBuffer_60_2((u64)mem_ptr6);
-  mlir_aie_external_set_addr_myBuffer_60_3((u64)mem_ptr7);
-  mlir_aie_external_set_addr_myBuffer_70_0((u64)mem_ptr2);
-  mlir_aie_external_set_addr_myBuffer_70_1((u64)mem_ptr3);
-  mlir_aie_external_set_addr_myBuffer_100_0((u64)mem_ptr4);
-  mlir_aie_external_set_addr_myBuffer_100_1((u64)mem_ptr5);
+  mlir_aie_external_set_addr_LHS_tile0((u64)mem_ptr0);
+  mlir_aie_external_set_addr_LHS_tile1((u64)mem_ptr1);
+  mlir_aie_external_set_addr_RHS_tile0((u64)mem_ptr2);
+  mlir_aie_external_set_addr_RHS_tile1((u64)mem_ptr3);
+  mlir_aie_external_set_addr_RHS_tile2((u64)mem_ptr4);
+  mlir_aie_external_set_addr_RHS_tile3((u64)mem_ptr5);
+  mlir_aie_external_set_addr_Out_tile0((u64)mem_ptr6);
+  mlir_aie_external_set_addr_Out_tile1((u64)mem_ptr7);
   mlir_aie_configure_shimdma_60(_xaie);
   mlir_aie_configure_shimdma_70(_xaie);
   mlir_aie_configure_shimdma_100(_xaie);
@@ -101,14 +101,14 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
 
-  mlir_aie_release_lock(_xaie, 6, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 2, 1, 0);
-  mlir_aie_release_lock(_xaie, 6, 0, 3, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0);
-  mlir_aie_release_lock(_xaie, 10, 0, 0, 1, 0);
-  mlir_aie_release_lock(_xaie, 10, 0, 1, 1, 0);
+  mlir_aie_release_LHS_tile0_lock(_xaie, 1, 0);
+  mlir_aie_release_LHS_tile1_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile0_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile1_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile2_lock(_xaie, 1, 0);
+  mlir_aie_release_RHS_tile3_lock(_xaie, 1, 0);
+  mlir_aie_release_Out_tile0_lock(_xaie, 1, 0);
+  mlir_aie_release_Out_tile1_lock(_xaie, 1, 0);
 
   mlir_aie_start_cores(_xaie);
 
@@ -145,8 +145,8 @@ int main(int argc, char *argv[]) {
                    errors);
   }
 
-  mlir_aie_acquire_lock(_xaie, 6, 0, 2, 0, 0);
-  mlir_aie_acquire_lock(_xaie, 6, 0, 3, 0, 0);
+  mlir_aie_acquire_Out_tile0_lock(_xaie, 0, 0);
+  mlir_aie_acquire_Out_tile1_lock(_xaie, 0, 0);
   mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 
