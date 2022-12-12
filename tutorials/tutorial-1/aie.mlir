@@ -26,19 +26,13 @@ module @tutorial_1 {
     // all subsequent buffers are allocated one after another in memory.
     %buf = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
 
-    // Declare function signature of a function object (func.func) and
-    // define the kernel function name "extern_kernel" with one positional 
-    // function argument, memref that is 32b wide x 256 deep
-    func.func private @extern_kernel(%b: memref<256xi32>) -> ()
-
-    // Define the algorithm for the core of tile(1, 4) which is mapped
-    // to an externally defined kernel function.
-    // kernel function: buf[3] = 14
+    // Define the algorithm for the core of tile(1, 4)
+    // buf[3] = 14
     %core14 = AIE.core(%tile14) {
-        // Call kernel function and map buffer %buf to the function argument
-        func.call @extern_kernel(%buf) : (memref<256xi32>) -> ()
+		%val = arith.constant 14 : i32 // declare a constant (int32)
+		%idx = arith.constant 3 : index // declare a constant (index)
+		memref.store %val, %buf[%idx] : memref<256xi32> // store val in buf[3]
         AIE.end
-    } { link_with="kernel.o" } 
-    // Link externally compiled object file used in this core
+    }
 
 }
