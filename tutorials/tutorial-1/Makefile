@@ -6,15 +6,11 @@ SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
 
 all: tutorial-1.exe
 
-# Command line AIE kernel compile. See tutorial-2 for more info.
-%.o: %.cc
-	xchesscc -p me -P ${AIETOOLS_ROOT}/data/cervino/lib -c $<
-
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
-tutorial-1.exe: aie.mlir test.cpp kernel.o
-	aiecc.py --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I../../runtime_lib ../../runtime_lib/test_library.cpp ./test.cpp -o tutorial-1.exe
+tutorial-1.exe: aie.mlir test.cpp
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I../../runtime_lib ../../runtime_lib/test_library.cpp ./test.cpp -o tutorial-1.exe
 
 clean:
-	rm -rf acdc_project *elf *exe kernel.o
+	rm -rf acdc_project *elf *exe core*

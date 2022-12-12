@@ -40,21 +40,20 @@ module @tutorial_6 {
         AIE.packet_dest<%tile34, DMA : 1>
     }
 
-    // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
-    // with one positional function argument, in this case mapped to a memref
-    func.func private @extern_kernel1(%b: memref<256xi32>) -> ()
-    func.func private @extern_kernel2(%b: memref<256xi32>) -> ()
-
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
     %core14 = AIE.core(%tile14) {
         // Locks init value is Release 0, so this will always succeed first
         AIE.useLock(%lock14_6, "Acquire", 0)
-        func.call @extern_kernel1(%buf14) : (memref<256xi32>) -> ()
+
+		%val = arith.constant 14 : i32 
+		%idx = arith.constant 3 : index 
+		memref.store %val, %buf14[%idx] : memref<256xi32> 
+
         // Release lock to 1 so tile(2,4) can acquire and begin processing
         AIE.useLock(%lock14_6, "Release", 1)
         AIE.end
-    } { link_with="kernel1.o" }
+    }
 
     %mem14 = AIE.mem(%tile14) {
         AIE.dmaStart("MM2S", 0, ^bd0, ^end)
@@ -77,10 +76,17 @@ module @tutorial_6 {
     %core34 = AIE.core(%tile34) {
         // This acquire will stall since locks are initialized to Release, 0
         AIE.useLock(%lock34_7, "Acquire", 1)
-        func.call @extern_kernel2(%buf34) : (memref<256xi32>) -> ()
+
+        %idx1 = arith.constant 3 : index
+        %d1   = memref.load %buf34[%idx1] : memref<256xi32>
+        %c1   = arith.constant 100 : i32 
+        %d2   = arith.addi %d1, %c1 : i32
+		%idx2 = arith.constant 5 : index
+		memref.store %d2, %buf34[%idx2] : memref<256xi32> 
+
         AIE.useLock(%lock34_7, "Release", 0)
         AIE.end
-    } { link_with="kernel2.o" }
+    }
 
     // Define local tile memory behavior (i.e. tileDMA)
     %mem34 = AIE.mem(%tile34) {

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,56 +15,40 @@
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
-module @tutorial_4 {
+module @tutorial_8 {
 
     // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left
-    %tile14 = AIE.tile(1, 4) 
-    %tile24 = AIE.tile(2, 4) // TODO Declare dummy tile for manual routing
     %tile34 = AIE.tile(3, 4)
 
+    %tile70 = AIE.tile(7, 0)
+
     // Declare local memory of tile(1,4) and tile (3,4) which are not shared
-    %buf14 = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
     %buf34 = AIE.buffer(%tile34) { sym_name = "a34" } : memref<256xi32>
+
+    %ext_buf70 = AIE.external_buffer {sym_name = "ddr_test_buffer"}: memref<256xi32> 
 
     // Declare local locks for tile(1,4) and tile(3,4) giving new
     // unique lock ID values 6 and 7
-    %lock14_6 = AIE.lock(%tile14, 6) { sym_name = "lock_a14_6" }
-    %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
+    %lock34_7 = AIE.lock(%tile34, 7)
+    %lock70_8 = AIE.lock(%tile70, 8) { sym_name = "ddr_test_buffer_lock" }
 
-    // Connect DMA channel 0 on tile(1,4) to DMA channel 1 in tile(3,4)
+    // Connect DMA channel 0 on tile(7,0) to DMA channel 1 in tile(3,4)
     // with automatic shortest distance routing
-    // AIE.flow(%tile14, DMA: 0, %tile34, DMA:1)
-    AIE.switchbox(%tile14) { AIE.connect<"DMA": 0, "East": 1> }
-    AIE.switchbox(%tile24) { AIE.connect<"West": 1, "East": 3> }
-    AIE.switchbox(%tile34) { AIE.connect<"West": 3, "DMA": 1> }
+    AIE.flow(%tile70, DMA: 0, %tile34, DMA: 1)
 
-    // Define core algorithm for tile(1,4)
-    // buf[3] = 14
-    %core14 = AIE.core(%tile14) {
-        // Locks init value is Release 0, so this will always succeed first
-        AIE.useLock(%lock14_6, "Acquire", 0)
-
-		%val = arith.constant 14 : i32 
-		%idx = arith.constant 3 : index 
-		memref.store %val, %buf14[%idx] : memref<256xi32> 
-
-        // Release lock to 1 so tile(2,4) can acquire and begin processing
-        AIE.useLock(%lock14_6, "Release", 1)
-        AIE.end
-    }
-
-    %mem14 = AIE.mem(%tile14) {
-        AIE.dmaStart("MM2S", 0, ^bd0, ^end)
-        ^bd0:
-            AIE.useLock(%lock14_6, Acquire, 1)
-            AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock14_6, Release, 0)
+    // shim DMA programming is nearly identical to tile DMA programming
+    %shimdma70 = AIE.shimDMA(%tile70) {
+        AIE.dmaStart("MM2S", 0, ^bd1, ^end)
+        ^bd1:
+            // Lock used to allow host to start transfer
+            AIE.useLock(%lock70_8, "Acquire", 1)
+            AIE.dmaBd(<%ext_buf70 : memref<256xi32>, 0, 256>, 0)
+            AIE.useLock(%lock70_8, "Release", 0)
             cf.br ^end
         ^end:
             AIE.end
-    }    
-
+    }
  
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
@@ -83,6 +67,7 @@ module @tutorial_4 {
         AIE.useLock(%lock34_7, "Release", 0)
         AIE.end
     }
+
 
     // Define local tile memory behavior (i.e. tileDMA)
     %mem34 = AIE.mem(%tile34) {

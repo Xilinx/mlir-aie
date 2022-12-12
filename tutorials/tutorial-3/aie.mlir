@@ -28,31 +28,36 @@ module @tutorial_3 {
     // Declare shared lock (belonging to tile(2,4), lock ID=1)
     %lock24_1 = AIE.lock(%tile24, 1) { sym_name = "lock_a24_1" }
 
-    // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
-    // with one positional function argument, in this case mapped to a memref
-    func.func private @extern_kernel1(%b: memref<256xi32>) -> ()
-    func.func private @extern_kernel2(%b: memref<256xi32>) -> ()
-
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
     %core14 = AIE.core(%tile14) {
         // Locks init value is Release 0, so this will always succeed first
         AIE.useLock(%lock24_1, "Acquire", 0)
-        func.call @extern_kernel1(%buf) : (memref<256xi32>) -> ()
-        // Release lock to 1 so tile(2,4) can acquire and begin processing
+
+		%val = arith.constant 14 : i32 
+		%idx = arith.constant 3 : index 
+		memref.store %val, %buf[%idx] : memref<256xi32> 
+
         AIE.useLock(%lock24_1, "Release", 1)
         AIE.end
-    } { link_with="kernel1.o" }
+    } 
 
     // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core24 = AIE.core(%tile24) {
         // This acquire will stall since locks are initialized to Release, 0
         AIE.useLock(%lock24_1, "Acquire", 1)
-        func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
+
+        %idx1 = arith.constant 3 : index
+        %d1   = memref.load %buf[%idx1] : memref<256xi32>
+        %c1   = arith.constant 100 : i32 
+        %d2   = arith.addi %d1, %c1 : i32
+		%idx2 = arith.constant 5 : index
+		memref.store %d2, %buf[%idx2] : memref<256xi32> 
+
         // This release doesn't do much in our example but mimics ping-pong
         AIE.useLock(%lock24_1, "Release", 0)
         AIE.end
-    } { link_with="kernel2.o" }
+    }
 
 }
