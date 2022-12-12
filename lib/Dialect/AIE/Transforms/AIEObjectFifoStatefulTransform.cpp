@@ -1055,14 +1055,11 @@ struct AIEObjectFifoStatefulTransformPass
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         ObjectFifoAcquireOp acqOp =
             accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        auto users = accessOp.getOutput().getUsers();
         assert((size_t)accessOp.getIndex() < subviews[acqOp].size() &&
                "Index out of bounds for subview: accessed farther than number "
                "of acquired elements.");
-        for (auto user : users) {
-          user->replaceUsesOfWith(accessOp.getOutput(),
-                                  *subviews[acqOp][accessOp.getIndex()]);
-        }
+        accessOp.getOutput().replaceAllUsesWith(
+            subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
     }
 
