@@ -1058,7 +1058,8 @@ struct AIEObjectFifoStatefulTransformPass
         assert((size_t)accessOp.getIndex() < subviews[acqOp].size() &&
                "Index out of bounds for subview: accessed farther than number "
                "of acquired elements.");
-        accessOp.getOutput().replaceAllUsesWith(subviews[acqOp][accessOp.getIndex()]->getBuffer());
+        accessOp.getOutput().replaceAllUsesWith(
+            subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
     }
 
