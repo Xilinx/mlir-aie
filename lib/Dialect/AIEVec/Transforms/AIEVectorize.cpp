@@ -1954,17 +1954,17 @@ static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
     op->erase();
 }
 
-// We go through each fma operation and try to find the patten like this-
+// We go through each fma operation and try to find the pattern like this-
 // the acc of fma is a mul/fma operation which uses the same operands as fma.
 // the def of two operands are upd operations.
 // Transform -
-// %5 = aievec.mul %4, %0 {xoffsets = "0x03020100", xoffsets_hi = "0x07060504",
-// xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart =
-// "0", zstep = "1"}
+// %5 = aievec.mul %4, %0 {xoffsets = "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]",
+// xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]", zoffsets_hi =
+// "[[Zh:.*]]", zstart = "0", zstep = "[[Zs:.*]]"}
 //
-// %6 = aievec.mac %4, %0, %5 {xoffsets = "0x03020100",
-// xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2", zoffsets = "0",
-// zoffsets_hi = "0", zstart = "2", zstep = "1"}
+// %6 = aievec.mac %4, %0, %5 {xoffsets = "[[Xo:.*]]",
+// xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2", zoffsets =
+// "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "2", zstep = "[[Zs:.*]]"}
 //
 // to-
 //
@@ -1972,13 +1972,15 @@ static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
 //
 // or transform the pattern like this-
 //
-// %9 = aievec.mac %8, %0, %6 {xoffsets = "0x03020100", xoffsets_hi =
-// "0x07060504", xsquare = "0x2110", xstart = "0", zoffsets = "0", zoffsets_hi =
-// "0", zstart = "4", zstep = "1"}
+// %9 = aievec.mac %8, %0, %6 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
+// "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]",
+// zoffsets_hi =
+// "[[Zh:.*]]", zstart = "4", zstep = "[[Zs:.*]]"}
 //
 // %10 = aievec.mac %8, %0, %9 {xoffsets =
-// "0x03020100", xoffsets_hi = "0x07060504", xsquare = "0x2110", xstart = "2",
-// zoffsets = "0", zoffsets_hi = "0", zstart = "6", zstep = "1"}
+// "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2",
+// zoffsets = "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "6", zstep =
+// "[[Zs:.*]]"}
 //
 // to-
 //
@@ -2065,9 +2067,11 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
     if (curOp.getOffset(0) != defOp.getOffset(0) ||
         curOp.getOffsetHi(0) != defOp.getOffsetHi(0) ||
         curOp.getSquare(0) != defOp.getSquare(0) ||
+        curOp.getStep(0) != defOp.getStep(0) ||
         curOp.getOffset(1) != defOp.getOffset(1) ||
         curOp.getOffsetHi(1) != defOp.getOffsetHi(1) ||
         curOp.getSquare(1) != defOp.getSquare(1) ||
+        curOp.getStep(1) != defOp.getStep(1) ||
         stoi((std::string)curOp.getStart(0)) -
                 stoi((std::string)defOp.getStart(0)) !=
             2 ||
@@ -2080,9 +2084,11 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
     if (curOp.getOffset(0) != defOp.getOffset(0) ||
         curOp.getOffsetHi(0) != defOp.getOffsetHi(0) ||
         curOp.getSquare(0) != defOp.getSquare(0) ||
+        curOp.getStep(0) != defOp.getStep(0) ||
         curOp.getOffset(1) != defOp.getOffset(1) ||
         curOp.getOffsetHi(1) != defOp.getOffsetHi(1) ||
         curOp.getSquare(1) != defOp.getSquare(1) ||
+        curOp.getStep(1) != defOp.getStep(1) ||
         stoi((std::string)curOp.getStart(0)) -
                 stoi((std::string)defOp.getStart(0)) !=
             2 ||
