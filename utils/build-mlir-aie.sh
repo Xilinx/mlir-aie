@@ -50,6 +50,7 @@ cmake -GNinja \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
+    -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     .. |& tee cmake.log
 
 #    -DVitisSysroot=${SYSROOT_DIR} \

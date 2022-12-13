@@ -38,6 +38,16 @@ PYBIND11_MODULE(_aieMlir, m) {
       },
       py::arg("context"), py::arg("load") = true);
 
+  // AIE types bindings
+  mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)
+      .def_classmethod(
+          "get",
+          [](py::object cls, MlirType type) {
+            return cls(aieObjectFifoTypeGet(type));
+          },
+          "Get an instance of ObjectFifoType with given element type.",
+          py::arg("self"), py::arg("type") = py::none());
+
   // m.def("_register_all_passes", ::aieRegisterAllPasses);
 
   m.attr("__version__") = "dev";

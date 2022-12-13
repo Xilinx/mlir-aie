@@ -16,6 +16,13 @@ extern "C" {
 
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIE, aie);
 
+//===---------------------------------------------------------------------===//
+// ObjectFifoType
+//===---------------------------------------------------------------------===//
+
+MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoType(MlirType type);
+MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type);
+
 #ifdef __cplusplus
 }
 #endif
