@@ -9,13 +9,13 @@ module {
     return
   }
 }
-// CHECK:      %4 = llvm.extractvalue %0[1] : !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
-// CHECK-NEXT: %5 = llvm.mlir.constant(2048 : index) : i64
-// CHECK-NEXT: %6 = llvm.mul %1, %5 : i64
-// CHECK-NEXT: %7 = llvm.mlir.constant(64 : index) : i64
-// CHECK-NEXT: %8 = llvm.mul %2, %7 : i64
-// CHECK-NEXT: %9 = llvm.add %6, %8 : i64
-// CHECK-NEXT: %10 = llvm.add %9, %3 : i64
-// CHECK-NEXT: %11 = llvm.getelementptr %4[%10] : (!llvm.ptr<i16>, i64) -> !llvm.ptr<i16>
-// CHECK-NEXT: %12 = llvm.bitcast %11 : !llvm.ptr<i16> to !llvm.ptr<vector<16xi16>>
-// CHECK-NEXT: %13 = llvm.load %12 {alignment = 1 : i64} : !llvm.ptr<vector<16xi16>>
+// CHECK: %4 = llvm.extractvalue %0[1] : !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
+// CHECK: %5 = llvm.mlir.constant(2048 : index) : i64
+// CHECK: %6 = llvm.mul %1, %5 : i64
+// CHECK: %7 = llvm.mlir.constant(64 : index) : i64
+// CHECK: %8 = llvm.mul %2, %7 : i64
+// CHECK: %9 = llvm.add %6, %8 : i64
+// CHECK: %10 = llvm.add %9, %3 : i64
+// CHECK: %11 = llvm.getelementptr %4[%10] : (!llvm.ptr<i16>, i64) -> !llvm.ptr<i16>
+// CHECK: %12 = llvm.bitcast %11 : !llvm.ptr<i16> to !llvm.ptr<vector<16xi16>>
+// CHECK: %13 = llvm.load %12 {alignment = 1 : i64} : !llvm.ptr<vector<16xi16>>
