@@ -52,10 +52,10 @@ int main(int argc, char *argv[]) {
   mlir_aie_init_mems(_xaie, 2);
 
   // Allocate buffer and return virtual pointer to memory
-  int *mem_ptr_in  = mlir_aie_mem_alloc(_xaie, 0, 256);
+  int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, 0, 256);
   int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 256);
 
-  // Set virtual pointer used to configure 
+  // Set virtual pointer used to configure
   mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
   mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie);
