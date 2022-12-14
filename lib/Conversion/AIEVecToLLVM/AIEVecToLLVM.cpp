@@ -156,7 +156,6 @@ public:
                offsetsType,                      /* xoffsets */
                offsetsType,                      /* zoffsets */
                confType}));
-      rewriter.setInsertionPoint(op);
     }
 
     // Parse the string attribute values
@@ -235,7 +234,6 @@ public:
                                        offsetsType, /* xoffsets */
                                        offsetsType, /* zoffsets */
                                        confType}));
-      rewriter.setInsertionPoint(op);
     }
 
     // Parse the string attribute values
@@ -341,7 +339,6 @@ public:
           rewriter.getUnknownLoc(), intrinsicName,
           LLVM::LLVMFunctionType::get(op.getResult().getType(),
                                       {op.getSource().getType(), shiftType}));
-      rewriter.setInsertionPoint(op);
     }
 
     // Create a constant for the shift value
@@ -435,7 +432,6 @@ public:
         func = rewriter.create<LLVM::LLVMFuncOp>(
             rewriter.getUnknownLoc(), intrinsicName,
             LLVM::LLVMFunctionType::get(resultType, {resultType, loadType}));
-        rewriter.setInsertionPoint(op);
       }
 
       // Determine what the destination is
@@ -464,7 +460,6 @@ public:
           func = rewriter.create<LLVM::LLVMFuncOp>(
               rewriter.getUnknownLoc(), intrinsicName,
               LLVM::LLVMFunctionType::get(resultType, {}));
-          rewriter.setInsertionPoint(op);
         }
         destValue =
             rewriter.create<LLVM::CallOp>(op->getLoc(), func, ValueRange{})
@@ -514,7 +509,6 @@ public:
           LLVM::LLVMFunctionType::get(
               op.getResult().getType(),
               {op.getSources()[0].getType(), op.getSources()[1].getType()}));
-      rewriter.setInsertionPoint(op);
     }
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
@@ -559,7 +553,6 @@ public:
           rewriter.getUnknownLoc(), intrinsicName,
           LLVM::LLVMFunctionType::get(op.getResult().getType(),
                                       {op.getSource().getType()}));
-      rewriter.setInsertionPoint(op);
     }
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func,
@@ -609,7 +602,6 @@ public:
                                        offsetsType, /* xoffsets */
                                        offsetsType, /* yoffsets */
                                        confType}));
-      rewriter.setInsertionPoint(op);
     }
 
     // Parse the string attribute values
@@ -687,7 +679,6 @@ public:
           rewriter.getUnknownLoc(), intrinsicName,
           LLVM::LLVMFunctionType::get(op.getResult().getType(),
                                       {op.getSource().getType()}));
-      rewriter.setInsertionPoint(op);
     }
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func,
