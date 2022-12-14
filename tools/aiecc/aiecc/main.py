@@ -101,6 +101,18 @@ class flow_runner:
       await self.do_call(task, ['sed', '-i', '-E', 's/mustprogress//g', llvmir_chesslinked])
       await self.do_call(task, ['sed', '-i', '-E', 's/poison/undef/g', llvmir_chesslinked])
       await self.do_call(task, ['sed', '-i', '-E', 's/nocallback//g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(none\)/readnone/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(read\)/readonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(write\)/writeonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: readwrite\)/argmemonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: read\)/argmemonly readonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: write\)/argmemonly writeonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(inaccessiblemem: readwrite\)/inaccessiblememonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(inaccessiblemem: read\)/inaccessiblememonly readonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(inaccessiblemem: write\)/inaccessiblememonly writeonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: readwrite, inaccessiblemem: readwrite\)/inaccessiblemem_or_argmemonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: read, inaccessiblemem: read\)/inaccessiblemem_or_argmemonly readonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: write, inaccessiblemem: write\)/inaccessiblemem_or_argmemonly writeonly/g', llvmir_chesslinked])
       return llvmir_chesslinked
 
   async def prepare_for_chesshack(self, task):
