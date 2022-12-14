@@ -178,10 +178,10 @@ struct AIEObjectFifoStatefulTransformPass
         b.colIndex(), b.rowIndex(),
         a.colIndex(), a.rowIndex());
 
-    if (rightShared)
-      *share_direction = 1;
-    else if (leftShared)
+    if (leftShared)
       *share_direction = -1;
+    else if (rightShared)
+      *share_direction = 1;
     else
       *share_direction = 0;
 
