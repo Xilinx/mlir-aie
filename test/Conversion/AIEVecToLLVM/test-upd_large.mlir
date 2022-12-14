@@ -10,26 +10,33 @@ module {
     return
   }
 }
-// CHECK: %4 = llvm.extractvalue %0[1] : !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
-// CHECK: %5 = llvm.mlir.constant(2048 : index) : i64
-// CHECK: %6 = llvm.mul %1, %5 : i64
-// CHECK: %7 = llvm.mlir.constant(64 : index) : i64
-// CHECK: %8 = llvm.mul %2, %7 : i64
-// CHECK: %9 = llvm.add %6, %8 : i64
-// CHECK: %10 = llvm.add %9, %3 : i64
-// CHECK: %11 = llvm.getelementptr %4[%10] : (!llvm.ptr<i16>, i64) -> !llvm.ptr<i16>
-// CHECK: %12 = llvm.bitcast %11 : !llvm.ptr<i16> to !llvm.ptr<vector<16xi16>>
-// CHECK: %13 = llvm.load %12 {alignment = 1 : i64} : !llvm.ptr<vector<16xi16>>
-// CHECK: %14 = llvm.call @llvm.aie.v32int16.undef() : () -> vector<32xi16>
-// CHECK: %15 = llvm.call @llvm.aie.upd.w.v32int16.lo(%14, %13) : (vector<32xi16>, vector<16xi16>) -> vector<32xi16>
-// CHECK: %16 = llvm.extractvalue %0[1] : !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
-// CHECK: %17 = llvm.mlir.constant(2048 : index) : i64
-// CHECK: %18 = llvm.mul %1, %17 : i64
-// CHECK: %19 = llvm.mlir.constant(64 : index) : i64
-// CHECK: %20 = llvm.mul %2, %19 : i64
-// CHECK: %21 = llvm.add %18, %20 : i64
-// CHECK: %22 = llvm.add %21, %3 : i64
-// CHECK: %23 = llvm.getelementptr %16[%22] : (!llvm.ptr<i16>, i64) -> !llvm.ptr<i16>
-// CHECK: %24 = llvm.bitcast %23 : !llvm.ptr<i16> to !llvm.ptr<vector<16xi16>>
-// CHECK: %25 = llvm.load %24 {alignment = 1 : i64} : !llvm.ptr<vector<16xi16>>
-// CHECK: %26 = llvm.call @llvm.aie.upd.w.v32int16.hi(%15, %25) : (vector<32xi16>, vector<16xi16>) -> vector<32xi16>
+// CHECK: [[STRUCT:%.+]] = builtin.unrealized_conversion_cast %arg0 : memref<4x32x64xi16> to !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
+// CHECK: [[ARITH_I:%.+]] = arith.constant 1 : index
+// CHECK: [[I:%.+]] = builtin.unrealized_conversion_cast %c1 : index to i64
+// CHECK: [[ARITH_J:%.+]] = arith.constant 2 : index
+// CHECK: [[J:%.+]] = builtin.unrealized_conversion_cast %c2 : index to i64
+// CHECK: [[ARITH_K:%.+]] = arith.constant 3 : index
+// CHECK: [[K:%.+]] = builtin.unrealized_conversion_cast %c3 : index to i64
+// CHECK: [[PTR:%.+]] = llvm.extractvalue [[STRUCT]][1] : !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
+// CHECK: [[I_STRIDE:%.+]] = llvm.mlir.constant(2048 : index) : i64
+// CHECK: [[I_OFF:%.+]] = llvm.mul [[I]], [[I_STRIDE]] : i64
+// CHECK: [[J_STRIDE:%.+]] = llvm.mlir.constant(64 : index) : i64
+// CHECK: [[J_OFF:%.+]] = llvm.mul [[J]], [[J_STRIDE]] : i64
+// CHECK: [[IJ_OFF:%.+]] = llvm.add [[I_OFF]], [[J_OFF]] : i64
+// CHECK: [[OFF:%.+]] = llvm.add [[IJ_OFF]], [[K]] : i64
+// CHECK: [[EPTR:%.+]] = llvm.getelementptr [[PTR]][[[OFF]]] : (!llvm.ptr<i16>, i64) -> !llvm.ptr<i16>
+// CHECK: [[VPTR:%.+]] = llvm.bitcast [[EPTR]] : !llvm.ptr<i16> to !llvm.ptr<vector<16xi16>>
+// CHECK: [[LOAD:%.+]] = llvm.load [[VPTR]] {alignment = 1 : i64} : !llvm.ptr<vector<16xi16>>
+// CHECK: [[UNDEF_DST:%.+]] = llvm.call @llvm.aie.v32int16.undef() : () -> vector<32xi16>
+// CHECK: [[UPD_VEC:%.+]] = llvm.call @llvm.aie.upd.w.v32int16.lo([[UNDEF_DST]], [[LOAD]]) : (vector<32xi16>, vector<16xi16>) -> vector<32xi16>
+// CHECK: [[PTR:%.+]] = llvm.extractvalue [[STRUCT]][1] : !llvm.struct<(ptr<i16>, ptr<i16>, i64, array<3 x i64>, array<3 x i64>)>
+// CHECK: [[I_STRIDE:%.+]] = llvm.mlir.constant(2048 : index) : i64
+// CHECK: [[I_OFF:%.+]] = llvm.mul [[I]], [[I_STRIDE]] : i64
+// CHECK: [[J_STRIDE:%.+]] = llvm.mlir.constant(64 : index) : i64
+// CHECK: [[J_OFF:%.+]] = llvm.mul [[J]], [[J_STRIDE]] : i64
+// CHECK: [[IJ_OFF:%.+]] = llvm.add [[I_OFF]], [[J_OFF]] : i64
+// CHECK: [[OFF:%.+]] = llvm.add [[IJ_OFF]], [[K]] : i64
+// CHECK: [[EPTR:%.+]] = llvm.getelementptr [[PTR]][[[OFF]]] : (!llvm.ptr<i16>, i64) -> !llvm.ptr<i16>
+// CHECK: [[VPTR:%.+]] = llvm.bitcast [[EPTR]] : !llvm.ptr<i16> to !llvm.ptr<vector<16xi16>>
+// CHECK: [[LOAD:%.+]] = llvm.load [[VPTR]] {alignment = 1 : i64} : !llvm.ptr<vector<16xi16>>
+// CHECK: {{.*}} = llvm.call @llvm.aie.upd.w.v32int16.hi([[UPD_VEC]], [[LOAD]]) : (vector<32xi16>, vector<16xi16>) -> vector<32xi16>
