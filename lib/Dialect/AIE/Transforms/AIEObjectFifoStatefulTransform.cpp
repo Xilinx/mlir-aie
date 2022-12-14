@@ -165,18 +165,16 @@ struct AIEObjectFifoStatefulTransformPass
   int of_index = 0;   // used to give objectFifo elements a symbolic name
 
   /// Function that returns true if two tiles in the AIE array share a memory
-  /// module. share_direction is equal to: 
-  ///   * -1 if the shared memory module is that of the first input tile, 
+  /// module. share_direction is equal to:
+  ///   * -1 if the shared memory module is that of the first input tile,
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    bool rightShared = isLegalMemAffinity(
-        a.colIndex(), a.rowIndex(),
-        b.colIndex(), b.rowIndex());
+    bool rightShared = isLegalMemAffinity(a.colIndex(), a.rowIndex(),
+                                          b.colIndex(), b.rowIndex());
 
-    bool leftShared = isLegalMemAffinity(
-        b.colIndex(), b.rowIndex(),
-        a.colIndex(), a.rowIndex());
+    bool leftShared = isLegalMemAffinity(b.colIndex(), b.rowIndex(),
+                                         a.colIndex(), a.rowIndex());
 
     if (leftShared)
       *share_direction = -1;
@@ -211,7 +209,8 @@ struct AIEObjectFifoStatefulTransformPass
     if (share_direction == 0 || share_direction == -1)
       creation_tile = op.getProducerTileOp();
     else {
-      TileOp consumerTileOp = dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+      TileOp consumerTileOp =
+          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
       creation_tile = consumerTileOp;
     }
 
@@ -220,8 +219,8 @@ struct AIEObjectFifoStatefulTransformPass
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
-        BufferOp buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, creation_tile);
+        BufferOp buff = builder.create<BufferOp>(builder.getUnknownLoc(),
+                                                 elemType, creation_tile);
         buff.getOperation()->setAttr(
             "sym_name",
             builder.getStringAttr("of_" + std::to_string(of_index) + "_buff_" +
@@ -842,8 +841,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         // if there is no broadcast, we can optimize in shared memory case
         if (createOp.getConsumerTiles().size() == 1) {
-          bool memoryAdjacent = isSharedMemory(createOp.getProducerTileOp(), 
-              consumerTileOp, &share_direction);
+          bool memoryAdjacent = isSharedMemory(
+              createOp.getProducerTileOp(), consumerTileOp, &share_direction);
           if (memoryAdjacent) {
             shared = true;
             break;
@@ -873,13 +872,15 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-        createObjectFifoElements(builder, lockAnalysis, createOp, share_direction);
+        createObjectFifoElements(builder, lockAnalysis, createOp,
+                                 share_direction);
       } else {
         int prodMaxAcquire =
             findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
         createOp->setAttr("elemNumber",
                           builder.getI32IntegerAttr(prodMaxAcquire));
-        createObjectFifoElements(builder, lockAnalysis, createOp, share_direction);
+        createObjectFifoElements(builder, lockAnalysis, createOp,
+                                 share_direction);
         // register split consumer objectFifos
         splitFifos[createOp] = splitConsumerFifos;
       }
