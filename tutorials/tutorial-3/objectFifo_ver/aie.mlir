@@ -22,18 +22,32 @@ module @tutorial_3 {
     %tile14 = AIE.tile(1, 4) 
     %tile24 = AIE.tile(2, 4)
 
+    // Declare an object FIFO between the producer tile (1,4) and consumer tile (2,4).
+    // The size of the object FIFO, i.e. its number of elements, is 1.
+    // Objects, i.e. allocated memory elements, have type memref<256xi32>
+    // These tiles share memory between them.
     %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile24}, 1) : !AIE.objectFifo<memref<256xi32>>
  
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
     %core14 = AIE.core(%tile14) {
+        // Acquire a subview with one object from the object FIFO.
+        // This is equivalent to acquiring an AIE lock before accessing an AIE buffer.
+        // This core acquires objects as a Producer: this impacts the acquire value of the lock 
+        // that is generated through the object FIFO lowering.
         %inputSubview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+        
+        // Access the first, and only, element of the subview.
         %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
         %val = arith.constant 14 : i32 
 		%idx = arith.constant 3 : index 
 		memref.store %val, %input[%idx] : memref<256xi32>
         
+        // Release the previously acquired object.
+        // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
+        // This core releases objects as a Producer: this impacts the release value of the lock 
+        // that is generated through the object FIFO lowering.
         AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
         AIE.end
     }
