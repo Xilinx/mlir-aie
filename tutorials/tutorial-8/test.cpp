@@ -61,6 +61,7 @@ main(int argc, char *argv[])
     mem_ptr0[3] = 14;
 
     mlir_aie_sync_mem_dev(_xaie, 0);
+    mlir_aie_configure_shimdma_70(_xaie);
 
     int errors = 0;
 
@@ -70,8 +71,8 @@ main(int argc, char *argv[])
     // Check the buffer value at index 3 to ensure it is zeroed out
     // prior to running our simple kernel.
     // ------------------------------------------------------------------------
-    // mlir_aie_read_buffer_a14 - helper function to read tile local
-    // memory at an offset (offset=3 in this case). _a14 maps to the 
+    // mlir_aie_read_buffer_a34 - helper function to read tile local
+    // memory at an offset (offset=3 in this case). _a34 maps to the 
     // symbolic buffer name defined in aie.mlir.
     //
     // mlir_aie_check - helper function to compare values to expected
@@ -91,13 +92,13 @@ main(int argc, char *argv[])
 
     mlir_aie_sync_mem_cpu(_xaie, 0);
 
-    // Check buffer at index 3 again for expected value of 14 for tile(1,4)    
+    // Check buffer at index 3 again for expected value of 14 for tile(3,4)    
     mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 3), 14,
                    errors);
     // Check buffer at index 5 again for expected value of 114 for tile(3,4)    
     mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 114,
                    errors);
-    mlir_aie_check("After start cores:", mem_ptr0[5], 114, errors);
+    //mlir_aie_check("After start cores:", mem_ptr0[5], 114, errors);
     
 
     // Print Pass/Fail result of our test

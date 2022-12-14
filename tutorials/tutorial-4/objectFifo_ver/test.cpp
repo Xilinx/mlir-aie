@@ -57,16 +57,16 @@ main(int argc, char *argv[])
     // Check the buffer value at index 3 to ensure it is zeroed out
     // prior to running our simple kernel.
     // ------------------------------------------------------------------------
-    // mlir_aie_read_buffer_a14 - helper function to read tile local
-    // memory at an offset (offset=3 in this case). _a14 maps to the 
+    // mlir_aie_read_buffer_of_0_buff_0 - helper function to read tile local
+    // memory at an offset (offset=3 in this case). of_0_buff_0 maps to the 
     // symbolic buffer name defined in aie.mlir.
     //
     // mlir_aie_check - helper function to compare values to expected
     // golden value and print error message to stdout and increment 
     // "errors" variable if mismatch occurs.
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 0,
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_of_0_buff_0(_xaie, 3), 0,
                    errors);
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 0,
                    errors);
 
     // Helper function to enable all AIE cores
@@ -77,10 +77,10 @@ main(int argc, char *argv[])
     usleep(100);
 
     // Check buffer at index 3 again for expected value of 14 for tile(1,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 14,
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_of_0_buff_0(_xaie, 3), 14,
                    errors);
     // Check buffer at index 5 again for expected value of 114 for tile(3,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 114,
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 114,
                    errors);
 
     // Print Pass/Fail result of our test

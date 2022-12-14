@@ -61,6 +61,7 @@ main(int argc, char *argv[])
     mem_ptr0[3] = 14;
 
     mlir_aie_sync_mem_dev(_xaie, 0);
+    mlir_aie_configure_shimdma_70(_xaie);
 
     int errors = 0;
 
@@ -70,34 +71,34 @@ main(int argc, char *argv[])
     // Check the buffer value at index 3 to ensure it is zeroed out
     // prior to running our simple kernel.
     // ------------------------------------------------------------------------
-    // mlir_aie_read_buffer_a14 - helper function to read tile local
-    // memory at an offset (offset=3 in this case). _a14 maps to the 
+    // mlir_aie_read_buffer_of_1_buff_0 - helper function to read tile local
+    // memory at an offset (offset=3 in this case). of_1_buff_0 maps to the 
     // symbolic buffer name defined in aie.mlir.
     //
     // mlir_aie_check - helper function to compare values to expected
     // golden value and print error message to stdout and increment 
     // "errors" variable if mismatch occurs.
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 0,
                    errors);
 
     // Helper function to enable all AIE cores
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
 
-    mlir_aie_release_ddr_test_buffer_lock(_xaie, 1, 0);
+    mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
 
     // Wait time for cores to run. Number used here is much larger than needed.
     usleep(100);
 
     mlir_aie_sync_mem_cpu(_xaie, 0);
 
-    // Check buffer at index 3 again for expected value of 14 for tile(1,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 3), 14,
+    // Check buffer at index 3 again for expected value of 14 for tile(3,4)    
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_of_1_buff_0(_xaie, 3), 14,
                    errors);
     // Check buffer at index 5 again for expected value of 114 for tile(3,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 114,
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 114,
                    errors);
-    mlir_aie_check("After start cores:", mem_ptr0[5], 114, errors);
+    //mlir_aie_check("After start cores:", mem_ptr0[5], 114, errors);
     
 
     // Print Pass/Fail result of our test
