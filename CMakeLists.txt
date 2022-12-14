@@ -38,6 +38,7 @@ option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS "Build the LLVM tools. If OFF, just generate build targets." ON)
 option(AIE_INCLUDE_INTEGRATION_TESTS
        "Generate build targets for the mlir-aie integration tests." OFF)
+option(AIE_ENABLE_BINDINGS_PYTHON "Enable MLIR python bindings." OFF)
 
 find_package(MLIR REQUIRED CONFIG)
 find_package(Boost REQUIRED)
@@ -88,11 +89,35 @@ add_dependencies(aie-headers mlir-headers)
 add_custom_target(docs ALL)
 add_dependencies(docs mlir-doc)
 
+# python install directory
+if (AIE_ENABLE_BINDINGS_PYTHON)
+
+  if(NOT AIE_PYTHON_PACKAGES_DIR)
+    set(AIE_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python")
+  endif()
+
+  # python install directory
+  if(NOT AIE_PYTHON_INSTALL_DIR)
+    set(AIE_PYTHON_INSTALL_DIR "python")
+  endif()
+
+  # setup python
+  find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+  include(MLIRDetectPythonEnv)
+  mlir_detect_pybind11_install()
+  find_package(pybind11 2.6 REQUIRED)
+
+endif()
+
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(test)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
+
+if (AIE_ENABLE_BINDINGS_PYTHON)
+  add_subdirectory(python)
+endif()
 
 if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   install(DIRECTORY include/aie

@@ -53,6 +53,7 @@ cmake -GNinja \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
     -DVitisSysroot=${SYSROOT_DIR} \
     -DCMAKE_BUILD_TYPE=Debug \
+    -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     .. |& tee cmake.log
 
 ninja |& tee ninja.log
