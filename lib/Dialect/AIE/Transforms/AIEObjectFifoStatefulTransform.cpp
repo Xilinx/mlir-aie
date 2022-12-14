@@ -164,6 +164,28 @@ struct AIEObjectFifoStatefulTransformPass
                       // corresponding consumer objectFifos
   int of_index = 0;   // used to give objectFifo elements a symbolic name
 
+  /// Function that returns true if two tiles in the AIE array share a memory
+  /// module. share_direction is equal to:
+  ///   * -1 if the shared memory module is that of the first input tile,
+  ///   * 1 if it is that of the second input tile,
+  ///   * 0 is no memory module is shared.
+  bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
+    bool rightShared = isLegalMemAffinity(a.colIndex(), a.rowIndex(),
+                                          b.colIndex(), b.rowIndex());
+
+    bool leftShared = isLegalMemAffinity(b.colIndex(), b.rowIndex(),
+                                         a.colIndex(), a.rowIndex());
+
+    if (leftShared)
+      *share_direction = -1;
+    else if (rightShared)
+      *share_direction = 1;
+    else
+      *share_direction = 0;
+
+    return leftShared || rightShared;
+  }
+
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
                                       Value prodTile, Value consTile,
@@ -176,20 +198,29 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
   void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                                ObjectFifoCreateOp op) {
+                                ObjectFifoCreateOp op, int share_direction) {
     std::vector<BufferOp> buffers;
     std::vector<LockOp> locks;
     AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
+    TileOp creation_tile;
+    if (share_direction == 0 || share_direction == -1)
+      creation_tile = op.getProducerTileOp();
+    else {
+      TileOp consumerTileOp =
+          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+      creation_tile = consumerTileOp;
+    }
+
     builder.setInsertionPointAfter(op);
     for (int i = 0; i < op.size(); i++) {
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
-      if (!op.getProducerTileOp().isShimTile()) {
-        BufferOp buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, op.getProducerTileOp());
+      if (!creation_tile.isShimTile()) {
+        BufferOp buff = builder.create<BufferOp>(builder.getUnknownLoc(),
+                                                 elemType, creation_tile);
         buff.getOperation()->setAttr(
             "sym_name",
             builder.getStringAttr("of_" + std::to_string(of_index) + "_buff_" +
@@ -198,10 +229,10 @@ struct AIEObjectFifoStatefulTransformPass
       }
 
       // create corresponding aie lock
-      int lockID = lockAnalysis.getLockID(op.getProducerTileOp());
+      int lockID = lockAnalysis.getLockID(creation_tile);
       assert(lockID >= 0 && "No more locks to allocate!");
       LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           op.getProducerTileOp(), lockID);
+                                           creation_tile, lockID);
       lock.getOperation()->setAttr(
           "sym_name",
           builder.getStringAttr("of_" + std::to_string(of_index) + "_lock_" +
@@ -802,6 +833,7 @@ struct AIEObjectFifoStatefulTransformPass
       objectFifoTiles.insert(createOp.getProducerTileOp());
       bool shared = false;
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
+      int share_direction = 0;
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
@@ -809,10 +841,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         // if there is no broadcast, we can optimize in shared memory case
         if (createOp.getConsumerTiles().size() == 1) {
-          bool memoryAdjacent = isLegalMemAffinity(
-              createOp.getProducerTileOp().colIndex(),
-              createOp.getProducerTileOp().rowIndex(),
-              consumerTileOp.colIndex(), consumerTileOp.rowIndex());
+          bool memoryAdjacent = isSharedMemory(
+              createOp.getProducerTileOp(), consumerTileOp, &share_direction);
           if (memoryAdjacent) {
             shared = true;
             break;
@@ -842,13 +872,15 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-        createObjectFifoElements(builder, lockAnalysis, createOp);
+        createObjectFifoElements(builder, lockAnalysis, createOp,
+                                 share_direction);
       } else {
         int prodMaxAcquire =
             findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
         createOp->setAttr("elemNumber",
                           builder.getI32IntegerAttr(prodMaxAcquire));
-        createObjectFifoElements(builder, lockAnalysis, createOp);
+        createObjectFifoElements(builder, lockAnalysis, createOp,
+                                 share_direction);
         // register split consumer objectFifos
         splitFifos[createOp] = splitConsumerFifos;
       }
