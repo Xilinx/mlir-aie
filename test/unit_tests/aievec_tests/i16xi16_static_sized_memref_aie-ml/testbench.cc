@@ -5,8 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_IMAGE_SIZE                                                         \
-  32768 // Test image are small (enough for 128x128 or 256x16)
+#define MAX_IMAGE_SIZE 32768 // Test image are small (enough for 128x128 or 256x16)
 #define MAX_KERNEL_SIZE 400 // Assume max kernel size is somethign like 20*20
 #define VEC 16              // Vectorization int16
 

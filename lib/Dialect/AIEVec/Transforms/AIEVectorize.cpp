@@ -1954,6 +1954,24 @@ static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
     op->erase();
 }
 
+template <typename T1, typename T2>
+static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
+  return curOp.getOffset(0) == defOp.getOffset(0) &&
+         curOp.getOffsetHi(0) == defOp.getOffsetHi(0) &&
+         curOp.getSquare(0) == defOp.getSquare(0) &&
+         curOp.getStep(0) == defOp.getStep(0) &&
+         curOp.getOffset(1) == defOp.getOffset(1) &&
+         curOp.getOffsetHi(1) == defOp.getOffsetHi(1) &&
+         curOp.getSquare(1) == defOp.getSquare(1) &&
+         curOp.getStep(1) == defOp.getStep(1) &&
+         stoi((std::string)curOp.getStart(0)) -
+                 stoi((std::string)defOp.getStart(0)) ==
+             2 &&
+         stoi((std::string)curOp.getStart(1)) -
+                 stoi((std::string)defOp.getStart(1)) ==
+             2;
+}
+
 // We go through each fma operation and try to find the pattern like this-
 // the acc of fma is a mul/fma operation which uses the same operands as fma.
 // the def of two operands are upd operations.
@@ -2061,44 +2079,10 @@ static bool canFuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
 
   // Check 8. xstart and zstart distance between two operations should be
   // 2. offsets, offsets_hi, square and step of two operations should be same.
-  if (isMulOp) {
-    aievec::MulOp defOp = cast<aievec::MulOp>(mulOrFMAOp);
-
-    if (curOp.getOffset(0) != defOp.getOffset(0) ||
-        curOp.getOffsetHi(0) != defOp.getOffsetHi(0) ||
-        curOp.getSquare(0) != defOp.getSquare(0) ||
-        curOp.getStep(0) != defOp.getStep(0) ||
-        curOp.getOffset(1) != defOp.getOffset(1) ||
-        curOp.getOffsetHi(1) != defOp.getOffsetHi(1) ||
-        curOp.getSquare(1) != defOp.getSquare(1) ||
-        curOp.getStep(1) != defOp.getStep(1) ||
-        stoi((std::string)curOp.getStart(0)) -
-                stoi((std::string)defOp.getStart(0)) !=
-            2 ||
-        stoi((std::string)curOp.getStart(1)) -
-                stoi((std::string)defOp.getStart(1)) !=
-            2)
-      return false;
-  } else {
-    aievec::FMAOp defOp = cast<aievec::FMAOp>(mulOrFMAOp);
-    if (curOp.getOffset(0) != defOp.getOffset(0) ||
-        curOp.getOffsetHi(0) != defOp.getOffsetHi(0) ||
-        curOp.getSquare(0) != defOp.getSquare(0) ||
-        curOp.getStep(0) != defOp.getStep(0) ||
-        curOp.getOffset(1) != defOp.getOffset(1) ||
-        curOp.getOffsetHi(1) != defOp.getOffsetHi(1) ||
-        curOp.getSquare(1) != defOp.getSquare(1) ||
-        curOp.getStep(1) != defOp.getStep(1) ||
-        stoi((std::string)curOp.getStart(0)) -
-                stoi((std::string)defOp.getStart(0)) !=
-            2 ||
-        stoi((std::string)curOp.getStart(1)) -
-                stoi((std::string)defOp.getStart(1)) !=
-            2)
-      return false;
-  }
-
-  return true;
+  return (isMulOp && matchAttributesAndDistanceForFusion(
+                         curOp, cast<aievec::MulOp>(mulOrFMAOp))) ||
+         matchAttributesAndDistanceForFusion(curOp,
+                                             cast<aievec::FMAOp>(mulOrFMAOp));
 }
 
 // Rewrite a mul/fma and fma op as a aievec MUL_conv or FMA_Conv op
