@@ -32,6 +32,8 @@ main(int argc, char *argv[])
 {
     printf("Tutorial-1 test start.\n");
 
+    int errors = 0;
+
     // Standard helper function for initializing and configuring AIE array.
     // The host is used to initialize/ configure/ program the AIE array.
     // ------------------------------------------------------------------------
@@ -47,8 +49,6 @@ main(int argc, char *argv[])
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_configure_dmas(_xaie);
     mlir_aie_initialize_locks(_xaie);
-
-    int errors = 0;
 
     // Helper function to clear tile data memory
     mlir_aie_clear_tile_memory(_xaie, 1, 4);

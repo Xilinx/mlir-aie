@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2020 Xilinx Inc.
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,7 +30,11 @@
 int
 main(int argc, char *argv[])
 {
-    printf("Tutorial-8 test start.\n");
+    printf("Tutorial-1 test start.\n");
+
+    int errors   = 0;
+    int num_iter = 1;
+    u32 pc0_times[num_iter]; // track timer values
 
     // Standard helper function for initializing and configuring AIE array.
     // The host is used to initialize/ configure/ program the AIE array.
@@ -48,27 +52,8 @@ main(int argc, char *argv[])
     mlir_aie_configure_dmas(_xaie);
     mlir_aie_initialize_locks(_xaie);
 
-    // mlir_aie_release_ddr_test_buffer_lock(_xaie, 0, 0);
-
-    // Configure the number of DDR memory regions we plan to sync with design
-    mlir_aie_init_mems(_xaie, 2);
-
-    // Allocate buffer and return virtual pointer to memory
-    int *mem_ptr_in  = mlir_aie_mem_alloc(_xaie, 0, 256);
-    int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 256);
-
-    // Set virtual pointer used to configure 
-    mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
-    mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
-    mlir_aie_configure_shimdma_70(_xaie);
-    mem_ptr_in[3] = 14;
-
-    mlir_aie_sync_mem_dev(_xaie, 0);
-
-    int errors = 0;
-
     // Helper function to clear tile data memory
-    mlir_aie_clear_tile_memory(_xaie, 3, 4);
+    mlir_aie_clear_tile_memory(_xaie, 1, 4);
 
     // Check the buffer value at index 3 to ensure it is zeroed out
     // prior to running our simple kernel.
@@ -80,29 +65,32 @@ main(int argc, char *argv[])
     // mlir_aie_check - helper function to compare values to expected
     // golden value and print error message to stdout and increment 
     // "errors" variable if mismatch occurs.
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 0,
                    errors);
+
+	// Performance counters
+	// Trigger off start (0x00) of an AIE program
+	XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,4), 0, 0x00);
+	// Trigger off done (0x088) of an AIE program
+	XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,4), 1, 0x088);
+
+	// Define custom EventMonitor class to track event triggers for program counter
+	EventMonitor pc0(_xaie, 1, 4, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
+					 XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+	pc0.set();
 
     // Helper function to enable all AIE cores
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
 
-    mlir_aie_release_ddr_test_buffer_in_lock(_xaie, 1, 0);
-    mlir_aie_release_ddr_test_buffer_out_lock(_xaie, 1, 0);
-
     // Wait time for cores to run. Number used here is much larger than needed.
     usleep(100);
 
-    mlir_aie_sync_mem_cpu(_xaie, 1); // Sync output buffer back to DDR/cache
+    pc0_times[0] = pc0.diff(); // store program counter value (0th iteration)
 
-    // Check buffer at index 3 again for expected value of 14 for tile(1,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 3), 14,
+    // Check buffer at index 3 again for expected value of 14
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 14,
                    errors);
-    // Check buffer at index 5 again for expected value of 114 for tile(3,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 114,
-                   errors);
-    mlir_aie_check("After start cores:", mem_ptr_out[5], 114, errors);
-    
 
     // Print Pass/Fail result of our test
     int res = 0;
@@ -114,9 +102,13 @@ main(int argc, char *argv[])
       res = -1;
     }
 
+    printf("\nProgram cycle counts:\n")
+    // Output the timer values (average, standard deviation) for 1 iteration
+    computeStats(pc0_times, 1);
+
     // Teardown and cleanup of AIE array
     mlir_aie_deinit_libxaie(_xaie);
 
-    printf("Tutorial-8 test done.\n");
+    printf("Tutorial-1 test done.\n");
     return res;
 }
