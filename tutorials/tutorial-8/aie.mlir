@@ -26,6 +26,7 @@ module @tutorial_8 {
     // Declare local memory of tile(1,4) and tile (3,4) which are not shared
     %buf34 = AIE.buffer(%tile34) { sym_name = "a34" } : memref<256xi32>
 
+    // Declare external buffers, which represent pointers to external memory locations.
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32> 
 

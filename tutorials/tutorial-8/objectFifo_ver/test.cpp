@@ -49,14 +49,17 @@ int main(int argc, char *argv[]) {
   // mlir_aie_release_ddr_test_buffer_lock(_xaie, 0, 0);
 
   // Configure the number of DDR memory regions we plan to sync with design
-  mlir_aie_init_mems(_xaie, 1);
+  mlir_aie_init_mems(_xaie, 2);
 
   // Allocate buffer and return virtual pointer to memory
-  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, 256);
+  int *mem_ptr_in  = mlir_aie_mem_alloc(_xaie, 0, 256);
+  int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 256);
 
-  // Set virtual pointer used to configure
-  mlir_aie_external_set_addr_ddr_test_buffer((u64)mem_ptr0);
-  mem_ptr0[3] = 14;
+  // Set virtual pointer used to configure 
+  mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
+  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
+  mlir_aie_configure_shimdma_70(_xaie);
+  mem_ptr_in[3] = 14;
 
   mlir_aie_sync_mem_dev(_xaie, 0);
   mlir_aie_configure_shimdma_70(_xaie);
@@ -84,11 +87,13 @@ int main(int argc, char *argv[]) {
   mlir_aie_start_cores(_xaie);
 
   mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
 
   // Wait time for cores to run. Number used here is much larger than needed.
   usleep(100);
 
-  mlir_aie_sync_mem_cpu(_xaie, 0);
+  mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
+  mlir_aie_sync_mem_cpu(_xaie, 1);
 
   // Check buffer at index 3 again for expected value of 14 for tile(3,4)
   mlir_aie_check("After start cores:",
@@ -96,7 +101,7 @@ int main(int argc, char *argv[]) {
   // Check buffer at index 5 again for expected value of 114 for tile(3,4)
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 114, errors);
-  // mlir_aie_check("After start cores:", mem_ptr0[5], 114, errors);
+  mlir_aie_check("After start cores:", mem_ptr_out[5], 114, errors);
 
   // Print Pass/Fail result of our test
   int res = 0;
