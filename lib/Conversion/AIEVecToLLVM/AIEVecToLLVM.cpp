@@ -382,6 +382,8 @@ public:
         op->getLoc(), op.getSource().getType().cast<MemRefType>(),
         adaptor.getSource(), adaptor.getIndices(), rewriter);
 
+    // TODO: handle the offset field
+
     if (vecSizeInBits <= 256) {
       // Total <=256-bit updates are much simpler:
       // we can do a direct load into the vector register
