@@ -1641,6 +1641,22 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   }];
 
   let extraClassDeclaration = [{
+    bool hasName() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+    StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return attr;
+      } else {
+        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
+          "' attribute specified";
+      }
+      llvm_unreachable("unreachable");
+    }
     int size() { return getElemNumber(); }
     TileOp getProducerTileOp();
   }];

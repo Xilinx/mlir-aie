@@ -93,6 +93,17 @@ static std::string packetStr(int id, int type) {
   return packetStr(std::to_string(id), std::to_string(type));
 }
 
+static int getNextObjectFifoID(std::string objFifo) {
+  int id = -1;
+  if (objectFifo_next_lockID.find(objFifo) == masterChannelsPerTile.end()) {
+    objectFifo_next_lockID[objFifo] = 0;
+  } else {
+    objectFifo_next_lockID[objFifo]++;
+  }
+  return objectFifo_next_lockID[objFifo];
+}
+
+
 mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
@@ -108,6 +119,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   DenseMap<std::pair<Operation *, int>, LockOp> locks;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
   DenseMap<Operation *, SwitchboxOp> switchboxes;
+  DenseMap<std::string, int> objectFifo_next_lockID;
 
   NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
   NL.collectTiles(tiles);
@@ -823,6 +835,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       bufferAccessor(coord, buf);
   }
 
+  //---------------------------------------------------------------------------
+  // Output Lock Accessors
+  //---------------------------------------------------------------------------
   auto lockAccessor = [&](LockOp lock) {
     int col = lock.colIndex();
     int row = lock.rowIndex();
@@ -847,6 +862,42 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
   for (auto lock : module.getOps<LockOp>())
     lockAccessor(lock);
+
+  //---------------------------------------------------------------------------
+  // Output ObjectFifo Accessors
+  //---------------------------------------------------------------------------
+  auto objFifoAccessor = [&](ObjectFifoCreateOp objFifo) {
+    if (!objFifo.hasName())
+      return;
+    std::string objFifoName(objFifo.name().getValue());
+    int lockValue = 0;
+    int timeout = 10000;
+    // find lock to acquire/release
+    std::string lockName = objFifoName + "_lock_" + objectFifo_next_lockID(objFifoName);
+    output << "int mlir_aie_acquire_" << objFifoName << "(" << ctx_p
+           << ", std::string objFifo_port, int num_acquire) {\n";
+    output << "return mlir_aie_acquire_" << lockName << "(" << ctx_p
+           << ", " << lockValue << ", " << timeout <<");\n";
+    output << "}\n";
+           
+    // output << "int mlir_aie_acquire_" << objFifoName << "(" << ctx_p
+    //        << ", std::string objFifo_port, int num_acquire) {\n";
+    // output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    // output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
+    //        << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
+    //        << ", timeout);\n";
+    // output << "}\n";
+    // output << "int mlir_aie_release_" << objFifoName << "(" << ctx_p
+    //        << ", std::string objFifo_port, int num_acquire) {\n";
+    // output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    // output << "  return XAie_LockRelease(" << deviceInstRef << ", "
+    //        << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
+    //        << ", timeout);\n";
+    // output << "}\n";
+  };
+
+  for (auto objFifo : module.getOps<ObjectFifoCreateOp>())
+    objFifoAccessor(objFifo);
 
   return success();
 }

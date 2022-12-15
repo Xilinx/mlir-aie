@@ -35,9 +35,9 @@ module @elementGeneration {
     %tile33 = AIE.tile(3, 3)
 
     // In the shared memory case, the number of elements does not change.
-    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) {sym_name = "of_12_13"} : !AIE.objectFifo<memref<16xi32>>
 
     // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
     // the processes running on each core (here nothing is specified so it cannot be derived).
-    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "of_12_33"} : !AIE.objectFifo<memref<16xi32>>
 }
