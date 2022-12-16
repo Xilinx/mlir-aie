@@ -218,8 +218,9 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op) {
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
-  int32_t width =
-      (lsize == 8 && rsize == 8) ? 128 : (lsize == 16 && rsize == 8) ? 64 : 32;
+  int32_t width = (lsize == 8 && rsize == 8)
+                      ? (AIEML ? 256 : 128)
+                      : (lsize == 16 && rsize == 8) ? 64 : 32;
 
   if (AIEML && getVectorSizeInBits(rtype) == 512) {
     width *= 2;
@@ -929,6 +930,7 @@ generateUPDOp(TransferReadOp readOp,
   IntervalReuse *iv = state->getIntervalForOperation(readOp);
   auto extent = iv->getAccessExtent(readOp);
   auto interval = iv->getInterval(readOp);
+
   int32_t intervalWidth = interval.second - interval.first;
   assert(intervalWidth >= 128 && "Interval computation incorrect");
 
