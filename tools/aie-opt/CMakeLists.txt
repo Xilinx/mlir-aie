@@ -34,5 +34,6 @@ set(LIBS
   AIEUtils
   MLIRAIEVec
   MLIRAIEVecTransforms
+  MLIRAIEVecToLLVM
   )
 target_link_libraries(aie-opt PRIVATE ${LIBS})

@@ -882,9 +882,11 @@ struct UsesOneLockInDMABlock {
     int lockID = -1;
     for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
       auto lock = dyn_cast<xilinx::AIE::LockOp>(op.getLock().getDefiningOp());
-      if (lockID != -1 && lockID != lock.getLockIDValue())
-        return failure();
-      lockID = lock.getLockIDValue();
+      if (lock.getLockID().has_value()) {
+        if (lockID != -1 && lockID != lock.getLockIDValue())
+          return failure();
+        lockID = lock.getLockIDValue();
+      }
     }
     return success();
   }
