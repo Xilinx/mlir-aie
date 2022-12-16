@@ -14,6 +14,7 @@
 #define AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES_H
 
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassOptions.h"
 #include <limits>
 
 namespace mlir {
@@ -46,13 +47,23 @@ class VectorDialect;
 // Registration
 //===----------------------------------------------------------------------===//
 
+namespace mlir {
+namespace func {
+class FuncOp;
+} // namespace func
+} // namespace mlir
+
 namespace xilinx {
 namespace aievec {
 
+#define GEN_PASS_DECL
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 
 std::unique_ptr<Pass> createAIEVectorizePass();
+
+std::unique_ptr<Pass>
+createConvertVectorToAIEVecPass(const ConvertVectorToAIEVecOptions &options);
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
