@@ -5,9 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_IMAGE_SIZE 32768 // Test image are small (enough for 128x128 or 256x16)
-#define MAX_KERNEL_SIZE 400 // Assume max kernel size is somethign like 20*20
-#define VEC 16              // Vectorization int16
+#define MAX_IMAGE_SIZE 32768 // Test image are small (like 128x128 or 256x16)
+#define MAX_KERNEL_SIZE 400  // Assume max kernel size is something like 20*20
+#define VEC 16               // Vectorization int16
 
 alignas(32) int16_t in_data[MAX_IMAGE_SIZE];
 alignas(32) int16_t out_data[MAX_IMAGE_SIZE];
