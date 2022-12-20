@@ -104,6 +104,11 @@ def parse_args():
             default=2,
             action='store_const', const=1,
             help='Generate libxaie v1 drivers (default is v2)')
+    parser.add_argument('--aie-generate-airbin',
+            dest="airbin",
+            default=False,
+            action='store_const', const=True,
+            help='Generate airbin configuration (default is off)')
     parser.add_argument("arm_args",
             action='store',
             help='arguments for ARM compiler',

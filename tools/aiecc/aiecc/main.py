@@ -225,11 +225,15 @@ class flow_runner:
       # Generate the included host interface
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
       await self.do_call(task, ['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', self.file_with_addresses, '-o', file_physical]);
-      file_inc_cpp = os.path.join(self.tmpdirname, 'aie_inc.cpp')
-      if(opts.xaie == 1):
-          await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
+      if(opts.airbin):
+        file_airbin = os.path.join(self.tmpdirname, 'air.bin')
+        await self.do_call(task, ['aie-translate', '--aie-generate-airbin', file_physical, '-o', file_airbin])
       else:
-          await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
+        file_inc_cpp = os.path.join(self.tmpdirname, 'aie_inc.cpp')
+        if(opts.xaie == 1):
+            await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
+        else:
+            await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
 
       cmd = ['clang','-std=c++11']
       if(opts.host_target):
@@ -327,10 +331,12 @@ class flow_runner:
         progress.update(progress.task,advance=0,visible=False)
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
-        processes = [self.process_arm_cgen()]
+        self.progress_bar = progress
+        processes = []
         for core in cores:
           processes.append(self.process_core(core))
         await asyncio.gather(*processes)
+        await self.process_arm_cgen()
 
   def dumpprofile(self):
       sortedruntimes = sorted(self.runtimes.items(), key=lambda item: item[1], reverse=True)
