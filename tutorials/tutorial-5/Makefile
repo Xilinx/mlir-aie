@@ -18,3 +18,9 @@ tutorial-5.exe: aie.mlir test.cpp kernel1.o kernel2.o
 
 clean:
 	rm -rf acdc_project *elf *exe core* kernel*.o
+
+#------------------------------------------------------------------------------
+# Additional make targets for tutorial exercises
+#------------------------------------------------------------------------------
+tutorial-5_q3.exe: test.cpp ./answers/aie.mlir
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@

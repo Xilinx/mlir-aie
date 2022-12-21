@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-1.elf
-// RUN: %run_on_board ./tutorial-1.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.elf
+// RUN: %run_on_board ./tutorial-8.elf
 
 
 // Declare this MLIR module. A wrapper that can contain all 

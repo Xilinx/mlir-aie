@@ -64,7 +64,9 @@ When delcaring a buffer, we pass in associated AIE tile and declare the buffer p
 
 ### <ins>Core</ins>
 
-The AIE core functionality is defined within the core body. More details on this is in tutorial 2.
+The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other general dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalara operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple opertions may seem cumbersome at first glance but is designed to capture a robust set of operations.
+
+In addition to the integrated core functionality defintions, `mlir-aie` also supports linking with externally compiled kernel code which we will go into more detials in tutorial 2. This process allows custom kernels to be included directly in `mlir-aie` defined designs.
 
 We will be introducing more components and the ways these components are customized in subsequent tutorials. Additional syntax for these MLIR-based AI Engine components can be found in the github<area>.io docs [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
 
