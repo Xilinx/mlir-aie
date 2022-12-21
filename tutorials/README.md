@@ -14,17 +14,17 @@ While it has been stated that the MLIR-based AI Engine toolchain is not intended
 
 The structure of this series of tutorials are as follows:
 * Basic AI Engine architecture
-* [Tutorial 1 - modules, tile, buffer, core](./tutorial-1/README.md)
-* [Tutorial 2 - single kernel compilation and simulation](./tutorial-2/README.md)
-* [Tutorial 3 - communication (local memory), locks](./tutorial-3/README.md) 
-* [Tutorial 4 - communication (tile DMA, logical routing, switchbox)](./tutorial-4/README.md)
-* [Tutorial 5 - communication (cascade)](./tutorial-5/README.md)
-* [Tutorial 6 - communication (packet routing)](./tutorial-6/README.md)
-* [Tutorial 7 - communication (broadcast)](./tutorial-7/README.md)
-* [Tutorial 8 - communication (shim DMA, external memory aka DDR)](./tutorial-8/README.md)
-* [Tutorial 9 - mlir-aie commands and utilities](./tutorial-9/README.md)
-* [Example Design #1 - 2x2 Matrix Multiplication (Object FIFO)](./example-design-1/README.md)
-* [Example Design #2 - iDCT](./example-design-2/README.md)
+* [Tutorial 1 - modules, tile, buffer, core](./tutorial-1)
+* [Tutorial 2 - single kernel compilation and simulation](./tutorial-2)
+* [Tutorial 3 - communication (local memory), locks](./tutorial-3) 
+* [Tutorial 4 - communication (tile DMA, logical routing)](./tutorial-4)
+* [Tutorial 5 - communication (cascade)](./tutorial-5)
+* [Tutorial 6 - communication (packet routing)](./tutorial-6)
+* [Tutorial 7 - communication (broadcast)](./tutorial-7)
+* [Tutorial 8 - communication (shim DMA, external memory aka DDR)](./tutorial-8)
+* [Tutorial 9 - mlir-aie commands and utilities](./tutorial-9)
+* [Example Design #1 - 2x2 Matrix Multiplication (Object FIFO)](./example-design-1)
+* [Example Design #2 - iDCT](./example-design-2)
 
 ## <ins>Basic AI Engine architecture</ins>
 AI Engines are architected as 2D arrays consisting of multiple AI Engine tiles and allow for a very scalable solution across the Versal portfolio, ranging from 10s to 100s of AI Engines in a single device, servicing the compute needs of a breadth of applications.
