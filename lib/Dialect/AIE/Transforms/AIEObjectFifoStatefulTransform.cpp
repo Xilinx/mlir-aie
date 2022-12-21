@@ -223,7 +223,7 @@ struct AIEObjectFifoStatefulTransformPass
                                                  elemType, creation_tile);
         buff.getOperation()->setAttr(
             "sym_name",
-            builder.getStringAttr("of_" + std::to_string(of_index) + "_buff_" +
+            builder.getStringAttr(op.name().getValue() + "_buff_" +
                                   std::to_string(of_elem_index)));
         buffers.push_back(buff);
       }
@@ -235,7 +235,7 @@ struct AIEObjectFifoStatefulTransformPass
                                            creation_tile, lockID);
       lock.getOperation()->setAttr(
           "sym_name",
-          builder.getStringAttr("of_" + std::to_string(of_index) + "_lock_" +
+          builder.getStringAttr(op.name().getValue() + "_lock_" +
                                 std::to_string(of_elem_index)));
       locks.push_back(lock);
 
@@ -858,6 +858,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerTile, consumerTile, consMaxAcquire);
+        consumerFifo.getOperation()->setAttr("sym_name", builder.getStringAttr(createOp.name().getValue() + "_cons"));
 
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
           detectExternalBuffers(m, createOp, consumerFifo, consumerTile);
@@ -879,6 +880,7 @@ struct AIEObjectFifoStatefulTransformPass
             findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
         createOp->setAttr("elemNumber",
                           builder.getI32IntegerAttr(prodMaxAcquire));
+        createOp.getOperation()->setAttr("sym_name", builder.getStringAttr(createOp.name().getValue() + "_prod"));
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
         // register split consumer objectFifos

@@ -95,7 +95,7 @@ module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "of_0"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
