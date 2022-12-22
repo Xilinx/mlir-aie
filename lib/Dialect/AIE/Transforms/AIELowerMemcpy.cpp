@@ -63,7 +63,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
                              0); // A type for now
     rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
                                 releaseTknVal, LockAction::Release);
-    rewriter.create<cf::BranchOp>(rewriter.getUnknownLoc(), &endBlock);
+    rewriter.create<NextBDOp>(rewriter.getUnknownLoc(), &endBlock);
   }
 
   LogicalResult
@@ -130,8 +130,7 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
-    target.addLegalOp<cf::BranchOp>();
-    target.addLegalOp<cf::CondBranchOp>();
+    target.addLegalOp<NextBDOp>();
 
     patterns.insert<LowerAIEMemcpy>(m.getContext(), m);
 

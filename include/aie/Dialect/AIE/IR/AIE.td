@@ -302,7 +302,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
           AIE.useLock(%lock1, Acquire, 1)
           AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
           AIE.useLock(%lock1, Release, 0)
-          cf.br ^bd0
+          AIE.nextBd ^bd0
         ^end:
           AIE.end
       }
@@ -316,6 +316,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    static StringRef getDefaultDialect() { return "AIE"; }
   }];
 }
 
@@ -1080,7 +1081,7 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
           AIE.useLock(%lock, "Acquire", 0)
           AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
           AIE.useLock(%lock, "Release", 1)
-          cf.br ^bd0
+          AIE.nextBd ^bd0
         ^end:
           AIE.end
       }
@@ -1101,12 +1102,42 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
     // CallableOpInterface
     Region *getCallableRegion();
     ArrayRef<Type> getCallableResults();
+    static StringRef getDefaultDialect() { return "AIE"; }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
+}
+
+def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "func::FuncOp", "ShimDMAOp"]>]> {
+  let summary = "The next buffer descriptor";
+  let description = [{
+    This operation terminates the basic block describing a buffer descriptor inside
+    a tile or shim DMA operation.  It references a single following buffer descriptor.
+    Note that unlike other terminators (like cf.br), canonicalization should not remove
+    the 'nextBd' terminator, since it would result in invalid buffer descriptors.
+
+    Example:
+    ```
+      m73 = AIE.mem(%t73) {
+          %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+        ^bd0:
+          AIE.useLock(%lock, "Acquire", 0)
+          AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.useLock(%lock, "Release", 1)
+          AIE.nextBd ^bd0
+        ^end:
+          AIE.end
+      }
+    ```
+  }];
+  let successors = (successor AnySuccessor:$dest);
+
+  let assemblyFormat = [{
+    $dest attr-dict
+  }];
 }
 
 def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {

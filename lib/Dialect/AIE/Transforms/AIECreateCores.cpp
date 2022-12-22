@@ -11,7 +11,6 @@
 #include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -240,8 +239,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();
-    target.addLegalOp<cf::BranchOp>();
-    target.addLegalOp<cf::CondBranchOp>();
+    target.addLegalOp<NextBDOp>();
 
     // Remove standard CallOps and FuncOps that are bound to AIE CoreOps
     patterns.insert<RemoveAIECalls>(m.getContext(), m);
