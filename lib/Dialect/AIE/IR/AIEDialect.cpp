@@ -426,6 +426,26 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
 } // namespace AIE
 } // namespace xilinx
 
+// Check that the operation only contains terminators in
+// TerminatorOpTypes.
+template <typename... TerminatorOpTypes> struct HasSomeTerminator {
+  static LogicalResult verifyTrait(Operation *op) {
+    for (auto &region : op->getRegions()) {
+      for (auto &block : region) {
+        if (!block.empty()) {
+          Operation *operation = &block.back();
+          if (!llvm::isa_and_nonnull<TerminatorOpTypes...>(operation)) {
+            operation->emitOpError()
+                << "Is an illegal terminator inside " << *op;
+            return failure();
+          }
+        }
+      }
+    }
+    return success();
+  }
+};
+
 // ObjectFifoCreateOp
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
   return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
@@ -689,6 +709,13 @@ LogicalResult xilinx::AIE::ShimDMAOp::verify() {
   if (!tileOp.isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
 
+  auto result =
+      HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
+                        xilinx::AIE::EndOp>::verifyTrait(*this);
+  if (result.failed()) {
+    return result;
+  }
+
   return success();
 }
 xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
@@ -782,6 +809,13 @@ LogicalResult xilinx::AIE::MemOp::verify() {
 
   assert(getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
   assert(!getBody().empty() && "MemOp should have non-empty body");
+
+  auto result =
+      HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
+                        xilinx::AIE::EndOp>::verifyTrait(*this);
+  if (result.failed()) {
+    return result;
+  }
 
   for (auto &bodyOp : getBody().getOps()) {
     // check for duplicate DMA channels within the same MemOp
