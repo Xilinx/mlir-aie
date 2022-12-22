@@ -172,12 +172,12 @@
 // CHECK:     AIE.useLock(%6, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%5 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%6, Release, 0)
-// CHECK:     cf.br ^bb2
+// CHECK:     AIE.nextBd ^bb2
 // CHECK:   ^bb2:  // pred: ^bb1
 // CHECK:     AIE.useLock(%8, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%8, Release, 0)
-// CHECK:     cf.br ^bb1
+// CHECK:     AIE.nextBd ^bb1
 // CHECK:   ^bb3:  // pred: ^bb0
 // CHECK:     AIE.end
 // CHECK:   }
@@ -187,12 +187,12 @@
 // CHECK:     AIE.useLock(%30, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%29 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%30, Release, 1)
-// CHECK:     cf.br ^bb2
+// CHECK:     AIE.nextBd ^bb2
 // CHECK:   ^bb2:  // pred: ^bb1
 // CHECK:     AIE.useLock(%32, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%31 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%32, Release, 1)
-// CHECK:     cf.br ^bb1
+// CHECK:     AIE.nextBd ^bb1
 // CHECK:   ^bb3:  // pred: ^bb0
 // CHECK:     AIE.end
 // CHECK:   }
@@ -202,17 +202,17 @@
 // CHECK:     AIE.useLock(%24, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%23 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%24, Release, 1)
-// CHECK:     cf.br ^bb2
+// CHECK:     AIE.nextBd ^bb2
 // CHECK:   ^bb2:  // pred: ^bb1
 // CHECK:     AIE.useLock(%26, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%25 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%26, Release, 1)
-// CHECK:     cf.br ^bb3
+// CHECK:     AIE.nextBd ^bb3
 // CHECK:   ^bb3:  // pred: ^bb2
 // CHECK:     AIE.useLock(%28, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%27 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%28, Release, 1)
-// CHECK:     cf.br ^bb1
+// CHECK:     AIE.nextBd ^bb1
 // CHECK:   ^bb4:  // pred: ^bb0
 // CHECK:     AIE.end
 // CHECK:   }
@@ -222,22 +222,22 @@
 // CHECK:     AIE.useLock(%16, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%15 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%16, Release, 1)
-// CHECK:     cf.br ^bb2
+// CHECK:     AIE.nextBd ^bb2
 // CHECK:   ^bb2:  // pred: ^bb1
 // CHECK:     AIE.useLock(%18, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%17 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%18, Release, 1)
-// CHECK:     cf.br ^bb3
+// CHECK:     AIE.nextBd ^bb3
 // CHECK:   ^bb3:  // pred: ^bb2
 // CHECK:     AIE.useLock(%20, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%19 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%20, Release, 1)
-// CHECK:     cf.br ^bb4
+// CHECK:     AIE.nextBd ^bb4
 // CHECK:   ^bb4:  // pred: ^bb3
 // CHECK:     AIE.useLock(%22, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%21 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%22, Release, 1)
-// CHECK:     cf.br ^bb1
+// CHECK:     AIE.nextBd ^bb1
 // CHECK:   ^bb5:  // pred: ^bb0
 // CHECK:     AIE.end
 // CHECK:   }
@@ -247,17 +247,17 @@
 // CHECK:     AIE.useLock(%10, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%9 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%10, Release, 1)
-// CHECK:     cf.br ^bb2
+// CHECK:     AIE.nextBd ^bb2
 // CHECK:   ^bb2:  // pred: ^bb1
 // CHECK:     AIE.useLock(%12, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%11 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%12, Release, 1)
-// CHECK:     cf.br ^bb3
+// CHECK:     AIE.nextBd ^bb3
 // CHECK:   ^bb3:  // pred: ^bb2
 // CHECK:     AIE.useLock(%14, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%13 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%14, Release, 1)
-// CHECK:     cf.br ^bb1
+// CHECK:     AIE.nextBd ^bb1
 // CHECK:   ^bb4:  // pred: ^bb0
 // CHECK:     AIE.end
 // CHECK:   }

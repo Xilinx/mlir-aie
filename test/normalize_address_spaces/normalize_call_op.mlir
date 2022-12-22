@@ -19,9 +19,9 @@ module @aie attributes {llvm.target_triple = "aie"} {
   func.func @coreXY() {
     %0 = memref.get_global @buffer : memref<1024xi32, 2>
     memref.assume_alignment %0, 32 : memref<1024xi32, 2>
-    cf.br ^bb1
+    AIE.nextBd ^bb1
   ^bb1:  // pred: ^bb0
-    cf.br ^bb2
+    AIE.nextBd ^bb2
   ^bb2:  // pred: ^bb1
     call @external_function(%0) : (memref<1024xi32, 2>) -> ()
     return

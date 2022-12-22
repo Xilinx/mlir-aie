@@ -20,7 +20,7 @@ module @test {
     ^bd0:
       AIE.useLock(%lock, "Acquire", 1)
       AIE.useLock(%lock, "Release", 0)
-      cf.br ^end // point to the next BD, or termination
+      AIE.nextBd ^end // point to the next BD, or termination
     ^end:
       AIE.end
   }

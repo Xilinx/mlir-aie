@@ -28,7 +28,7 @@
 // CHECK-NEXT:    AIE.useLock(%6, Acquire, 1)
 // CHECK-NEXT:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%6, Release, 0)
-// CHECK-NEXT:    cf.br ^bb2
+// CHECK-NEXT:    AIE.nextBd ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
@@ -40,12 +40,12 @@
 // CHECK-NEXT:    AIE.useLock(%4, Acquire, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%4, Release, 1)
-// CHECK-NEXT:    cf.br ^bb4
+// CHECK-NEXT:    AIE.nextBd ^bb4
 // CHECK-NEXT:  ^bb3:
 // CHECK-NEXT:    AIE.useLock(%3, Acquire, 1)
 // CHECK-NEXT:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%3, Release, 0)
-// CHECK-NEXT:    cf.br ^bb4
+// CHECK-NEXT:    AIE.nextBd ^bb4
 // CHECK-NEXT:  ^bb4:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
@@ -55,7 +55,7 @@
 // CHECK-NEXT:    AIE.useLock(%1, Acquire, 0)
 // CHECK-NEXT:    AIE.dmaBd(<%9 : memref<256xi32>, 0, 256>, 0)
 // CHECK-NEXT:    AIE.useLock(%1, Release, 1)
-// CHECK-NEXT:    cf.br ^bb2
+// CHECK-NEXT:    AIE.nextBd ^bb2
 // CHECK-NEXT:  ^bb2:
 // CHECK-NEXT:    AIE.end
 // CHECK-NEXT:  }
@@ -99,7 +99,7 @@ module @test_lock4 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -112,12 +112,12 @@ module @test_lock4 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      cf.br ^end
+      AIE.nextBd ^end
     ^bd1:
       AIE.useToken @token0(Acquire, 3)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 4)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -128,7 +128,7 @@ module @test_lock4 {
       AIE.useToken @token0(Acquire, 3)
       AIE.dmaBd(<%buf55 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 4)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }

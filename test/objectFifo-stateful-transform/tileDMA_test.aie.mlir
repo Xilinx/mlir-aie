@@ -53,31 +53,31 @@
 // CHECK:     AIE.useLock(%3, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%3, Release, 0)
-// CHECK:     cf.br ^bb2
+// CHECK:     AIE.nextBd ^bb2
 // CHECK:   ^bb2:  // pred: ^bb1
 // CHECK:     AIE.useLock(%5, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%4 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%5, Release, 0)
-// CHECK:     cf.br ^bb1
+// CHECK:     AIE.nextBd ^bb1
 // CHECK:   ^bb3:  // pred: ^bb0
 // CHECK:     %15 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
 // CHECK:   ^bb4:  // 2 preds: ^bb3, ^bb4
 // CHECK:     AIE.useLock(%7, Acquire, 0)
 // CHECK:     AIE.dmaBd(<%6 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%7, Release, 1)
-// CHECK:     cf.br ^bb4
+// CHECK:     AIE.nextBd ^bb4
 // CHECK:   ^bb5:  // pred: ^bb3
 // CHECK:     %16 = AIE.dmaStart(MM2S, 1, ^bb6, ^bb8)
 // CHECK:   ^bb6:  // 2 preds: ^bb5, ^bb7
 // CHECK:     AIE.useLock(%9, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%8 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%9, Release, 0)
-// CHECK:     cf.br ^bb7
+// CHECK:     AIE.nextBd ^bb7
 // CHECK:   ^bb7:  // pred: ^bb6
 // CHECK:     AIE.useLock(%11, Acquire, 1)
 // CHECK:     AIE.dmaBd(<%10 : memref<16xi32>, 0, 16>, 0)
 // CHECK:     AIE.useLock(%11, Release, 0)
-// CHECK:     cf.br ^bb6
+// CHECK:     AIE.nextBd ^bb6
 // CHECK:   ^bb8:  // pred: ^bb5
 // CHECK:     AIE.end
 // CHECK:   }
@@ -121,19 +121,19 @@ module @tileDMA_channels {
         AIE.useLock(%lock0, Acquire, 1)
         AIE.dmaBd(<%buff0 : memref<16xi32>, 0, 16>, 0)
         AIE.useLock(%lock0, Release, 0)
-        cf.br ^bb2
+        AIE.nextBd ^bb2
     ^bb2:
         AIE.useLock(%lock1, Acquire, 1)
         AIE.dmaBd(<%buff1 : memref<16xi32>, 0, 16>, 0)
         AIE.useLock(%lock1, Release, 0)
-        cf.br ^bb1
+        AIE.nextBd ^bb1
     ^bb3:
         %dma2 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
     ^bb4:
         AIE.useLock(%lock2, Acquire, 0)
         AIE.dmaBd(<%buff2 : memref<16xi32>, 0, 16>, 0)
         AIE.useLock(%lock2, Release, 1)
-        cf.br ^bb4
+        AIE.nextBd ^bb4
     ^bb5:
         AIE.end
     }

@@ -32,7 +32,7 @@ module @aie_module  {
     AIE.useLock(%10, Acquire, 0)
     AIE.dmaBd(<%11 : memref<32xi32, 2>, 0, 32>, 0)
     AIE.useLock(%10, Release, 1)
-    cf.br ^bb2
+    AIE.nextBd ^bb2
   ^end:
     AIE.end
   }
@@ -45,7 +45,7 @@ module @aie_module  {
       AIE.dmaBdPacket(0x6, 10)
       AIE.dmaBd(<%buffer : memref<32xi32>, 0, 32>, 0)
       AIE.useLock(%lock1, Release, 0)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }

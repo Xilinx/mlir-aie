@@ -72,12 +72,12 @@ module {
       AIE.useLock(%lock0, Acquire, 0)
       AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 16>, 0)
       AIE.useLock(%lock0, Release, 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^bd1:
       // AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer : memref<16 x f32>, 0, 4>, 0)
       // AIE.useLock(%lock1, Release, 0)
-      cf.br ^bd1
+      AIE.nextBd ^bd1
     ^end:
       AIE.end
   }

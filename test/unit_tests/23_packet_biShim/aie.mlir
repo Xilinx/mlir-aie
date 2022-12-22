@@ -20,12 +20,12 @@ module @aie_module  {
     AIE.useLock(%10, Acquire, 0)
     AIE.dmaBd(<%11 : memref<256xi32>, 0, 256>, 0)
     AIE.useLock(%10, Release, 1)
-    cf.br ^bb2
+    AIE.nextBd ^bb2
   ^bb3:
     AIE.useLock(%10, Acquire, 1)
     AIE.dmaBdPacket(0x6, 10)
     AIE.dmaBd(<%11 : memref<256xi32>, 0, 256>, 0)
-    cf.br ^bb3
+    AIE.nextBd ^bb3
   ^end:
     AIE.end
   }
@@ -39,12 +39,12 @@ module @aie_module  {
     AIE.dmaBdPacket(0x2, 3)
     AIE.dmaBd(<%buf_i : memref<256xi32>, 0, 256>, 0)
     AIE.useLock(%lock1, Release, 0)
-    cf.br ^bb0
+    AIE.nextBd ^bb0
   ^bb1:
     AIE.useLock(%lock2, Acquire, 0)
     AIE.dmaBd(<%buf_o : memref<257xi32>, 0, 257>, 0)
     AIE.useLock(%lock2, Release, 1)
-    cf.br ^bb1
+    AIE.nextBd ^bb1
   ^end:
     AIE.end
   }
