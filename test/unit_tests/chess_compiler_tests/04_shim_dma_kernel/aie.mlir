@@ -40,22 +40,22 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       AIE.useLock(%lock_a_ping, "Acquire", 0)
       AIE.dmaBd(<%buf_a_ping : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%lock_a_ping, "Release", 1)
-      cf.br ^bd1
+      AIE.nextBd ^bd1
     ^bd1:
       AIE.useLock(%lock_a_pong, "Acquire", 0)
       AIE.dmaBd(<%buf_a_pong : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%lock_a_pong, "Release", 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^bd2:
       AIE.useLock(%lock_b_ping, "Acquire", 1)
       AIE.dmaBd(<%buf_b_ping : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%lock_b_ping, "Release", 0)
-      cf.br ^bd3
+      AIE.nextBd ^bd3
     ^bd3:
       AIE.useLock(%lock_b_pong, "Acquire", 1)
       AIE.dmaBd(<%buf_b_pong : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%lock_b_pong, "Release", 0)
-      cf.br ^bd2
+      AIE.nextBd ^bd2
     ^end:
       AIE.end
   }
@@ -87,12 +87,12 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^bd1:
       AIE.useLock(%lock2, Acquire, 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock2, Release, 0)
-      cf.br ^bd1
+      AIE.nextBd ^bd1
     ^end:
       AIE.end
   }
