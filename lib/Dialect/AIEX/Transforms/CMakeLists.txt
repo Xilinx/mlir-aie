@@ -5,27 +5,25 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-add_subdirectory(AIEVecToCpp)
-
-add_mlir_library(AIETargets
-  AIETargets.cpp
-  AIETargetXAIEV1.cpp
-  AIETargetXAIEV2.cpp
-  ADFGenerateCppGraph.cpp
-  AIEFlowsToJSON.cpp
+add_mlir_dialect_library(AIEXTransforms
+  AIECreateCores.cpp
+  AIECreateLocks.cpp
+  AIEHerdRouting.cpp
+  AIECreateBroadcastPacket.cpp
+  AIELowerMulticast.cpp
+  AIELowerMemcpy.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
-  LINK_COMPONENTS
-  Core
-  IRReader
-  Support
-  TransformUtils
+  DEPENDS
+  MLIRAIEXIncGen
+  MLIRAIEXEnumsIncGen
+  MLIRAIEXPassIncGen
 
   LINK_LIBS PUBLIC
   AIE
-  AIEX
-  AIEUtils
-  AIEXUtils
-  ADF
-)
+  MLIRIR
+  MLIRPass
+  MLIRSupport
+  MLIRTransformUtils
+  )

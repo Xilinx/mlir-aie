@@ -658,15 +658,6 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIE::UseTokenOp::verify() {
-  auto parentOp = (*this)->getParentOp();
-  if (isa<func::FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
-      isa<xilinx::AIE::MemOp>(parentOp) ||
-      isa<xilinx::AIE::ShimDMAOp>(parentOp))
-    return success();
-  return failure();
-}
-
 int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   switch (bundle) {
   case WireBundle::DMA:
@@ -723,36 +714,6 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
 }
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
-
-LogicalResult xilinx::AIE::MulticastOp::verify() {
-  Region &body = getPorts();
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
-  for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIE::MultiDestOp>(ops)) {
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-    } else {
-      return ops.emitOpError("cannot be contained in a Multicast op");
-    }
-  }
-
-  return success();
-}
-
-LogicalResult xilinx::AIE::BroadcastPacketOp::verify() {
-  Region &body = getPorts();
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
-  for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIE::BPIDOp>(ops)) {
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-    } else {
-      return ops.emitOpError("cannot be contained in a BroadcastPacket op");
-    }
-  }
-
-  return success();
-}
 
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = getPorts();

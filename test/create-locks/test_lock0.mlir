@@ -30,7 +30,7 @@ module @test_lock0 {
   %t33 = AIE.tile(3, 3)
   %t23 = AIE.tile(2, 3)
 
-  AIE.token(0) {sym_name = "token0"}
+  AIEX.token(0) {sym_name = "token0"}
 
   %m33 = AIE.mem(%t33) {
       AIE.end
@@ -41,14 +41,14 @@ module @test_lock0 {
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token0(Acquire, 0)
-    AIE.useToken @token0(Release, 1)
+    AIEX.useToken @token0(Acquire, 0)
+    AIEX.useToken @token0(Release, 1)
     AIE.end
   }
 
   %c23 = AIE.core(%t23) {
-    AIE.useToken @token0(Acquire, 1)
-    AIE.useToken @token0(Release, 2)
+    AIEX.useToken @token0(Acquire, 1)
+    AIEX.useToken @token0(Release, 2)
     AIE.end
   }
 }

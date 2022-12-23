@@ -63,63 +63,6 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
     "xilinx::AIE::AIEDialect",
   ];
 }
-def AIECreateCores : Pass<"aie-create-cores", "ModuleOp"> {
-  let summary = "Create CoreOp, MemOp, and FlowOp of AIE dialect";
-  let description = [{
-    Lower toplevel 'call' operations with implicit data movement into
-    aie.core, aie.mem, and aie.flow operations with explicit data
-    movement.  The tile tile associated with the operations is inferred
-    based on the aie.x and aie.y attributes of the call operation. e.g.:
-    ```
-    func.func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
-      ...
-      return
-    }
-    %a = constant 0 : i32
-    func.call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
-
-    ```
-    will result in:
-    ```
-    %0 = AIE.tile(1, 1)
-    %1 = AIE.buffer(%0) : memref<256xi32>
-    %2 = AIE.buffer(%0) : memref<1xi32>
-    %c0_i32 = constant 0 : i32
-    %5 = AIE.core(%0) {
-      ...
-    }
-    ```
-    In this case, each argument to aie_task results in an explicit buffer accessed by the core.
-
-  }];
-
-  let constructor = "xilinx::AIE::createAIECreateCoresPass()";
-  let dependentDialects = [
-    "func::FuncDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
-def AIECreateLocks : Pass<"aie-create-locks", "ModuleOp"> {
-  let summary = "Generate physical lock ops from logical lock (token) ops";
-  let description = [{
-    Tokens represent high-level buffer synchronization through a sequence of
-    pipeline stages.  This pass lowers token operations into physical aie.lock
-    operations.
-  }];
-
-  let constructor = "xilinx::AIE::createAIECreateLocksPass()";
-}
-
-def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
-  let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
-  let description = [{
-    An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
-    into an explicit representation (e.g. aie.core, aie.mem, etc.).
-  }];
-
-  let constructor = "xilinx::AIE::createAIEHerdRoutingPass()";
-}
 def AIELocalizeLocks : Pass<"aie-localize-locks", "ModuleOp"> {
   let summary = "Convert global locks to a core-relative index";
   let description = [{
@@ -174,32 +117,6 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   ];
 }
 
-def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "ModuleOp"> {
-  let summary = "Replace combination of broadcast and packet-switch by packet-flow";
-  let description = [{
-    Replace combination of broadcast and packet-switch by packet-flow  
-  }];
-
-  let constructor = "xilinx::AIE::createAIEBroadcastPacketPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
-def AIEMulticast : Pass<"aie-lower-multicast", "ModuleOp"> {
-  let summary = "Lower AIE.multicast operation to AIE.flow operations";
-  let description = [{
-    This pass replaces AIE.multicast operation with the equivalent number of AIE.flow 
-    operations. The lowered AIE.flow operations have the same source port but different
-    destinations.
-  }];
-
-  let constructor = "xilinx::AIE::createAIELowerMulticastPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
 def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "ModuleOp"> {
   let summary = "Route aie.packetflow operations through switchboxes";
   let description = [{
@@ -226,21 +143,6 @@ def AIEFindFlows : Pass<"aie-find-flows", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIEFindFlowsPass()";
   let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-  ];
-}
-
-def AIELowerMemcpy : Pass<"aie-lower-memcpy", "ModuleOp"> {
-  let summary = "Lower aie.memcpy operations to Flows and DMA programs";
-  let description = [{
-    aie.memcpy operations are an experimental high-level abstraction which
-    move data from one buffer to another.
-    This pass lowers them into appropriate aie.flow and aie.mem operations.
-  }];
-
-  let constructor = "xilinx::AIE::createAIELowerMemcpyPass()";
-  let dependentDialects = [
-    "func::FuncDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }

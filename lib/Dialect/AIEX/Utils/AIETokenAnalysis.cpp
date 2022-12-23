@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIETokenAnalysis.h"
+#include "aie/Dialect/AIEX/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -20,8 +21,9 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
-void xilinx::AIE::TokenAnalysis::runAnalysis() {
+void xilinx::AIEX::TokenAnalysis::runAnalysis() {
 
   // Collecting token symbols
   for (auto op : module.getOps<TokenOp>()) {
@@ -126,7 +128,7 @@ void xilinx::AIE::TokenAnalysis::runAnalysis() {
   }
 }
 
-Operation *xilinx::AIE::TokenAnalysis::getTokenUserOp(Operation *Op) {
+Operation *xilinx::AIEX::TokenAnalysis::getTokenUserOp(Operation *Op) {
 
   if (UseTokenOp op = dyn_cast<UseTokenOp>(Op)) {
     while (Operation *parentOp = op->getParentOp()) {
@@ -139,7 +141,7 @@ Operation *xilinx::AIE::TokenAnalysis::getTokenUserOp(Operation *Op) {
   return nullptr;
 }
 
-std::pair<int, int> xilinx::AIE::TokenAnalysis::getCoord(Operation *Op) {
+std::pair<int, int> xilinx::AIEX::TokenAnalysis::getCoord(Operation *Op) {
   int colIndex = 0;
   int rowIndex = 0;
 
@@ -157,8 +159,8 @@ std::pair<int, int> xilinx::AIE::TokenAnalysis::getCoord(Operation *Op) {
   return std::make_pair(colIndex, rowIndex);
 }
 
-Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1,
-                                                          Operation *Op2) {
+Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
+                                                           Operation *Op2) {
   bool IsOp1Mem = isa<MemOp>(Op1) || isa<ShimDMAOp>(Op1);
   bool IsOp2Mem = isa<MemOp>(Op2) || isa<ShimDMAOp>(Op2);
 
@@ -201,7 +203,7 @@ Operation *xilinx::AIE::TokenAnalysis::getShareableTileOp(Operation *Op1,
   return nullptr;
 }
 
-void xilinx::AIE::TokenAnalysis::print(raw_ostream &os) {
+void xilinx::AIEX::TokenAnalysis::print(raw_ostream &os) {
   os << "\n=====tokenPairs: \n";
   for (auto pair : tokenPairs) {
     Operation *acquire = pair.first;

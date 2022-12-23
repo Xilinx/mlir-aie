@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -20,6 +21,7 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
@@ -234,10 +236,10 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
     for (auto routeOp : m.getOps<RouteOp>()) {
       routeOps.push_back(routeOp);
 
-      AIE::SelectOp sourceHerds =
-          dyn_cast<AIE::SelectOp>(routeOp.getSourceHerds().getDefiningOp());
-      AIE::SelectOp destHerds =
-          dyn_cast<AIE::SelectOp>(routeOp.getDestHerds().getDefiningOp());
+      AIEX::SelectOp sourceHerds =
+          dyn_cast<AIEX::SelectOp>(routeOp.getSourceHerds().getDefiningOp());
+      AIEX::SelectOp destHerds =
+          dyn_cast<AIEX::SelectOp>(routeOp.getDestHerds().getDefiningOp());
       WireBundle sourceBundle = routeOp.getSourceBundle();
       WireBundle destBundle = routeOp.getDestBundle();
       int sourceChannel = routeOp.getSourceChannelValue();
@@ -326,8 +328,8 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
           builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
       IterOp itery =
           builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
-      AIE::SelectOp sel = builder.create<AIE::SelectOp>(builder.getUnknownLoc(),
-                                                        herd, iterx, itery);
+      AIEX::SelectOp sel = builder.create<AIEX::SelectOp>(
+          builder.getUnknownLoc(), herd, iterx, itery);
       SwitchboxOp swbox =
           builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
       swbox.ensureTerminator(swbox.getConnections(), builder,
@@ -360,6 +362,6 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIEHerdRoutingPass() {
+xilinx::AIEX::createAIEHerdRoutingPass() {
   return std::make_unique<AIEHerdRoutingPass>();
 }

@@ -56,44 +56,44 @@ module @MM_2x2 {
   %buf74_1 = AIE.buffer(%t74) {sym_name = "buf74_1"} : memref<1024xi32>  //RHS_tile3
   %buf74_2 = AIE.buffer(%t74) {sym_name = "buf74_2"} : memref<1024xi32>  //Out_tile1
 
-  AIE.broadcast_packet(%t60, DMA : 0) {
-    AIE.bp_id(0) {
-      AIE.bp_dest<%t63, DMA : 0>
-      AIE.bp_dest<%t73, DMA : 0>
+  AIEX.broadcast_packet(%t60, DMA : 0) {
+    AIEX.bp_id(0) {
+      AIEX.bp_dest<%t63, DMA : 0>
+      AIEX.bp_dest<%t73, DMA : 0>
     }
-    AIE.bp_id(1) {
-      AIE.bp_dest<%t64, DMA : 0>
-      AIE.bp_dest<%t74, DMA : 0>
-    }
-  }
-
-  AIE.broadcast_packet(%t60, DMA : 1) {
-    AIE.bp_id(2) {
-      AIE.bp_dest<%t63, DMA : 1>
-    }
-    AIE.bp_id(3) {
-      AIE.bp_dest<%t64, DMA : 1>
+    AIEX.bp_id(1) {
+      AIEX.bp_dest<%t64, DMA : 0>
+      AIEX.bp_dest<%t74, DMA : 0>
     }
   }
 
-  AIE.broadcast_packet(%t70, DMA : 0) {
-    AIE.bp_id(4) {
-      AIE.bp_dest<%t73, DMA : 1>
+  AIEX.broadcast_packet(%t60, DMA : 1) {
+    AIEX.bp_id(2) {
+      AIEX.bp_dest<%t63, DMA : 1>
     }
-    AIE.bp_id(5) {
-      AIE.bp_dest<%t74, DMA : 1>
-    }
-  }
-
-  AIE.broadcast_packet(%t64, DMA : 0) {
-    AIE.bp_id(6) {
-      AIE.bp_dest<%t70, DMA : 0>
+    AIEX.bp_id(3) {
+      AIEX.bp_dest<%t64, DMA : 1>
     }
   }
 
-  AIE.broadcast_packet(%t74, DMA : 0) {
-    AIE.bp_id(7) {
-      AIE.bp_dest<%t70, DMA : 0>
+  AIEX.broadcast_packet(%t70, DMA : 0) {
+    AIEX.bp_id(4) {
+      AIEX.bp_dest<%t73, DMA : 1>
+    }
+    AIEX.bp_id(5) {
+      AIEX.bp_dest<%t74, DMA : 1>
+    }
+  }
+
+  AIEX.broadcast_packet(%t64, DMA : 0) {
+    AIEX.bp_id(6) {
+      AIEX.bp_dest<%t70, DMA : 0>
+    }
+  }
+
+  AIEX.broadcast_packet(%t74, DMA : 0) {
+    AIEX.bp_id(7) {
+      AIEX.bp_dest<%t70, DMA : 0>
     }
   }
 

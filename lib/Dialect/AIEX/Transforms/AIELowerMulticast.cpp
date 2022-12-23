@@ -1,5 +1,16 @@
+//===- AIELowerMulticast.cpp ------------------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2020 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
+
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -13,6 +24,7 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
@@ -67,6 +79,6 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIELowerMulticastPass() {
+xilinx::AIEX::createAIELowerMulticastPass() {
   return std::make_unique<AIELowerMulticastPass>();
 }

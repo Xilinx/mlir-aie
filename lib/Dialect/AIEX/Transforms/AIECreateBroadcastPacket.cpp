@@ -1,5 +1,6 @@
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -13,6 +14,7 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
@@ -87,6 +89,6 @@ struct AIEBroadcastPacketPass
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIEBroadcastPacketPass() {
+xilinx::AIEX::createAIEBroadcastPacketPass() {
   return std::make_unique<AIEBroadcastPacketPass>();
 }

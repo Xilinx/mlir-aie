@@ -18,10 +18,10 @@ module @test_multicast {
   %74 = AIE.tile(7, 4)
   %63 = AIE.tile(6, 3)
   %64 = AIE.tile(6, 4)
-  AIE.multicast(%70, "DMA" : 0){
-    AIE.multi_dest<%73, "DMA" : 0>
-    AIE.multi_dest<%74, "DMA" : 0>
-    AIE.multi_dest<%63, "DMA" : 0>
-    AIE.multi_dest<%64, "DMA" : 0>
+  AIEX.multicast(%70, "DMA" : 0){
+    AIEX.multi_dest<%73, "DMA" : 0>
+    AIEX.multi_dest<%74, "DMA" : 0>
+    AIEX.multi_dest<%63, "DMA" : 0>
+    AIEX.multi_dest<%64, "DMA" : 0>
   }
 }

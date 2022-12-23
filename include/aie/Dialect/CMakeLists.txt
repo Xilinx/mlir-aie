@@ -7,4 +7,5 @@
 
 add_subdirectory(ADF)
 add_subdirectory(AIE)
+add_subdirectory(AIEX)
 add_subdirectory(AIEVec)

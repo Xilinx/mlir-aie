@@ -16,9 +16,9 @@
 // CHECK:         %[[VAL_2:.*]] = AIE.mem(%[[VAL_0]]) {
 // CHECK:           %[[VAL_3:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
-// CHECK:           AIE.useToken @token0(Acquire, 1)
+// CHECK:           AIEX.useToken @token0(Acquire, 1)
 // CHECK:           AIE.dmaBd(<%[[VAL_1]] : memref<256xi32>, 0, 256>, 0)
-// CHECK:           AIE.useToken @token0(Release, 2)
+// CHECK:           AIEX.useToken @token0(Release, 2)
 // CHECK:           AIE.nextBd ^bb2
 // CHECK:         ^bb2:
 // CHECK:           AIE.end
@@ -28,25 +28,25 @@
 // CHECK:         %[[VAL_6:.*]] = AIE.mem(%[[VAL_4]]) {
 // CHECK:           %[[VAL_7:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:         ^bb1:
-// CHECK:           AIE.useToken @token0(Acquire, 1)
+// CHECK:           AIEX.useToken @token0(Acquire, 1)
 // CHECK:           AIE.dmaBd(<%[[VAL_5]] : memref<256xi32>, 0, 256>, 0)
-// CHECK:           AIE.useToken @token0(Release, 2)
+// CHECK:           AIEX.useToken @token0(Release, 2)
 // CHECK:           AIE.nextBd ^bb2
 // CHECK:         ^bb2:
 // CHECK:           AIE.end
 // CHECK:         }
 // CHECK:         %[[VAL_8:.*]] = memref.alloc() : memref<256xi32>
 // CHECK:         %[[VAL_9:.*]] = memref.alloc() : memref<256xi32>
-// CHECK:         AIE.token(0) {sym_name = "token0"}
+// CHECK:         AIEX.token(0) {sym_name = "token0"}
 // CHECK:         %[[VAL_10:.*]] = AIE.core(%[[VAL_0]]) {
-// CHECK:           AIE.useToken @token0(Acquire, 0)
-// CHECK:           AIE.useToken @token0(Release, 1)
+// CHECK:           AIEX.useToken @token0(Acquire, 0)
+// CHECK:           AIEX.useToken @token0(Release, 1)
 // CHECK:           AIE.end
 // CHECK:         }
 // CHECK:         AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_4]], DMA : 0)
 // CHECK:         %[[VAL_11:.*]] = AIE.core(%[[VAL_4]]) {
-// CHECK:           AIE.useToken @token0(Acquire, 2)
-// CHECK:           AIE.useToken @token0(Release, 3)
+// CHECK:           AIEX.useToken @token0(Acquire, 2)
+// CHECK:           AIEX.useToken @token0(Release, 3)
 // CHECK:           AIE.end
 // CHECK:         }
 // CHECK:       }
@@ -73,23 +73,23 @@ module @test_dma0 {
   %buf0 = memref.alloc() : memref<256xi32>
   %buf1 = memref.alloc() : memref<256xi32>
 
-  AIE.token(0) { sym_name="token0" }
+  AIEX.token(0) { sym_name="token0" }
 
   func.func @task0(%arg0: memref<256xi32>) -> () {
-    AIE.useToken @token0(Acquire, 0)
+    AIEX.useToken @token0(Acquire, 0)
     // code
-    AIE.useToken @token0(Release, 1)
+    AIEX.useToken @token0(Release, 1)
     return
   }
 
   func.func @task1(%arg0: memref<256xi32>) -> () {
-    AIE.useToken @token0(Acquire, 2)
+    AIEX.useToken @token0(Acquire, 2)
     // code
-    AIE.useToken @token0(Release, 3)
+    AIEX.useToken @token0(Release, 3)
     return
   }
 
   func.call @task0(%buf0) { aie.x = 1, aie.y = 1 } : (memref<256xi32>) -> ()
-  AIE.memcpy @token0(1, 2) (%t11 : <%buf0, 0, 256>, %t22 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
+  AIEX.memcpy @token0(1, 2) (%t11 : <%buf0, 0, 256>, %t22 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
   func.call @task1(%buf1) { aie.x = 2, aie.y = 2 } : (memref<256xi32>) -> ()
 }
