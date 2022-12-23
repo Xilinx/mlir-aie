@@ -27,6 +27,8 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -36,6 +38,7 @@ int main(int argc, char **argv) {
   registerAllPasses();
   xilinx::registerConversionPasses();
   aie::registerAIEPasses();
+  xilinx::AIEX::registerAIEXPasses();
   xilinx::aievec::registerAIEVecPasses();
 
   DialectRegistry registry;
@@ -43,6 +46,7 @@ int main(int argc, char **argv) {
   registry.insert<scf::SCFDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<xilinx::AIE::AIEDialect>();
+  registry.insert<xilinx::AIEX::AIEXDialect>();
   registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<xilinx::ADF::ADFDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();

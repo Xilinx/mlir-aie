@@ -25,12 +25,14 @@
 
 #include "aie/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "AIETargets.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 namespace xilinx {
 namespace AIE {
@@ -593,7 +595,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         output << "x = " << col << ";\n";
         output << "y = " << row << ";\n";
       }
-    } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
+    } else if (AIEX::SelectOp sel = dyn_cast<AIEX::SelectOp>(
                    switchboxOp.getTile().getDefiningOp())) {
       // parameterize streamswitch's configuration
       isParam = true;

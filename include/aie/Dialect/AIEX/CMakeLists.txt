@@ -5,7 +5,6 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-add_subdirectory(ADF)
-add_subdirectory(AIE)
-add_subdirectory(AIEX)
-add_subdirectory(AIEVec)
+
+add_subdirectory(IR)
+add_subdirectory(Transforms)

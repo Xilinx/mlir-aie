@@ -5,18 +5,9 @@
 #
 # (c) Copyright 2022 Xilinx Inc.
 
-add_mlir_dialect_library(AIEUtils
-  AIENetlistAnalysis.cpp
 
-  ADDITIONAL_HEADER_DIRS
-  ${AIE_BINARY_DIR}/include
+set(LLVM_TARGET_DEFINITIONS AIEXPasses.td)
+mlir_tablegen(AIEXPasses.h.inc -gen-pass-decls -name AIEX)
+add_public_tablegen_target(MLIRAIEXPassIncGen)
 
-  DEPENDS
-  MLIRAIEIncGen
-  MLIRAIEEnumsIncGen
-  MLIRAIEInterfacesIncGen
-  
-  LINK_LIBS PUBLIC
-  MLIRIR
-  MLIRSupport
-  )
+add_mlir_doc(AIEXPasses AIEXPasses ./ -gen-pass-doc)

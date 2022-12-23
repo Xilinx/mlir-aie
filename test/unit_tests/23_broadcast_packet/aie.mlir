@@ -19,14 +19,14 @@ module @test23_broadcast_packet {
   %buf73_0 = AIE.buffer(%t73) {sym_name = "buf73_0"} : memref<1024xi32>
   %buf74_0 = AIE.buffer(%t74) {sym_name = "buf74_0"} : memref<1024xi32>
 
-  AIE.broadcast_packet(%t72, "DMA" : 0){
-    AIE.bp_id(0x0){
-      AIE.bp_dest<%t73, "DMA" : 0>
-      AIE.bp_dest<%t63, "DMA" : 0>
+  AIEX.broadcast_packet(%t72, "DMA" : 0){
+    AIEX.bp_id(0x0){
+      AIEX.bp_dest<%t73, "DMA" : 0>
+      AIEX.bp_dest<%t63, "DMA" : 0>
     }
-    AIE.bp_id(0x1){
-      AIE.bp_dest<%t74, "DMA" : 0>
-      AIE.bp_dest<%t64, "DMA" : 0>
+    AIEX.bp_id(0x1){
+      AIEX.bp_dest<%t74, "DMA" : 0>
+      AIEX.bp_dest<%t64, "DMA" : 0>
     }
   }
 

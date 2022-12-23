@@ -73,22 +73,22 @@ module @test_lock5 {
   %buf44 = AIE.buffer(%t44) : memref<256xi32>
   %buf55 = AIE.buffer(%t55) : memref<256xi32>
 
-  AIE.token(0) {sym_name = "token0"}
-  AIE.token(0) {sym_name = "token1"}
+  AIEX.token(0) {sym_name = "token0"}
+  AIEX.token(0) {sym_name = "token1"}
 
   %m33 = AIE.mem(%t33) {
       %dmaSt0 = AIE.dmaStart(MM2S, 0, ^bd0, ^dma0)
     ^dma0:
       %dmaSt1 = AIE.dmaStart("MM2S", 1, ^bd1, ^end)
     ^bd0:
-      AIE.useToken @token0(Acquire, 1)
+      AIEX.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
-      AIE.useToken @token0(Release, 2)
+      AIEX.useToken @token0(Release, 2)
       AIE.nextBd ^end
     ^bd1:
-      AIE.useToken @token1(Acquire, 1)
+      AIEX.useToken @token1(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
-      AIE.useToken @token1(Release, 2)
+      AIEX.useToken @token1(Release, 2)
       AIE.nextBd ^end
     ^end:
       AIE.end
@@ -97,9 +97,9 @@ module @test_lock5 {
   %m44 = AIE.mem(%t44) {
       %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useToken @token0(Acquire, 1)
+      AIEX.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
-      AIE.useToken @token0(Release, 2)
+      AIEX.useToken @token0(Release, 2)
       AIE.nextBd ^end
     ^end:
       AIE.end
@@ -108,31 +108,31 @@ module @test_lock5 {
   %m55 = AIE.mem(%t55) {
       %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useToken @token1(Acquire, 1)
+      AIEX.useToken @token1(Acquire, 1)
       AIE.dmaBd(<%buf55 : memref<256xi32>, 0, 256>, 0)
-      AIE.useToken @token1(Release, 2)
+      AIEX.useToken @token1(Release, 2)
       AIE.nextBd ^end
     ^end:
       AIE.end
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token1(Acquire, 0)
-    AIE.useToken @token0(Acquire, 0)
-    AIE.useToken @token0(Release, 1)
-    AIE.useToken @token1(Release, 1)
+    AIEX.useToken @token1(Acquire, 0)
+    AIEX.useToken @token0(Acquire, 0)
+    AIEX.useToken @token0(Release, 1)
+    AIEX.useToken @token1(Release, 1)
     AIE.end
   }
 
   %c44 = AIE.core(%t44) {
-    AIE.useToken @token0(Acquire, 2)
-    AIE.useToken @token0(Release, 3)
+    AIEX.useToken @token0(Acquire, 2)
+    AIEX.useToken @token0(Release, 3)
     AIE.end
   }
 
   %c55 = AIE.core(%t55) {
-    AIE.useToken @token1(Acquire, 2)
-    AIE.useToken @token1(Release, 3)
+    AIEX.useToken @token1(Acquire, 2)
+    AIEX.useToken @token1(Release, 3)
     AIE.end
   }
 
