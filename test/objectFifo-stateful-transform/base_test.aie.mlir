@@ -24,9 +24,7 @@
 // CHECK:   %8 = AIE.lock(%0, 2) {sym_name = "of_0_lock_2"}
 // CHECK:   %9 = AIE.buffer(%0) {sym_name = "of_0_buff_3"} : memref<16xi32>
 // CHECK:   %10 = AIE.lock(%0, 3) {sym_name = "of_0_lock_3"}
-// CHECK:   AIE.multicast(%0, DMA : 0) {
-// CHECK:     AIE.multi_dest<%2, DMA : 0>
-// CHECK:   }
+// CHECK:   AIE.flow(%0, DMA : 0, %2, DMA : 0)
 // CHECK: }
 
 module @elementGeneration {

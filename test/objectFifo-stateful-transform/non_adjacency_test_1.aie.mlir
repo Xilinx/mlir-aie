@@ -15,9 +15,7 @@
 // CHECK: module @non_adjacency {
 // CHECK:   %0 = AIE.tile(1, 2)
 // CHECK:   %1 = AIE.tile(3, 3)
-// CHECK:   AIE.multicast(%0, DMA : 0) {
-// CHECK:     AIE.multi_dest<%1, DMA : 0>
-// CHECK:   }
+// CHECK:   AIE.flow(%0, DMA : 0, %1, DMA : 0)
 // CHECK:   %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
 // CHECK:   %3 = AIE.lock(%0, 0) {sym_name = "of_0_lock_0"}
 // CHECK:   %4 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
