@@ -18,5 +18,4 @@ void pass(int *a, int *b);
 
 // void dequant_8x8(int16_t  *restrict input,
 //              int16_t *restrict output);
-
 }

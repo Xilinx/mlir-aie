@@ -79,6 +79,8 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           ninja
           ninja check-aie
+          ninja check-tutorials
+          ninja check-reference-designs
 
       # Build the repo test target in release mode to build and test.
       - name: Build and test (Release)
@@ -100,6 +102,8 @@ jobs:
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make -j$(nproc)
           make check-aie
+          make check-tutorials
+          make check-reference-designs
 
   lint-repo:
     name: Check code format

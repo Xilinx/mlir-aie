@@ -1,4 +1,4 @@
-//===- kernel.cc -------------------------------------------------*- C++
+//===- kernel3.cc ------------------------------------------------*- C++
 //-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -11,17 +11,19 @@
 
 #include "kernel.h"
 
-void func1(int *a, int *b)
-{
-    // int new_size = 64;
-    // for (int i = 0; i < 64; i ++){
-    //     b[i] = a[i] + 1;
-    // }
+void func3(int *a, int *b) {
+  // int new_size = 64;
+  // for (int i = 0; i < 64; i ++){
+  //     b[i] = a[i] + 1;
+  // }
 
-    int val=a[3];
-    int val2=val+val;
-    val2 += val;
-    val2 += val;
-    val2 += val;
-    b[5] = val2;
+  // int val=a[3];
+  // int val2=val+val;
+  // val2 += val;
+  // val2 += val;
+  // val2 += val;
+  // b[5] = val2;
+  b[5] = a[5];
+  b[6] = a[6];
+  b[7] = a[6] * 3;
 }
