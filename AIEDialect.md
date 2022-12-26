@@ -834,7 +834,7 @@ Example:
       AIE.useLock(%lock, "Acquire", 0)
       AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
       AIE.useLock(%lock, "Release", 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
@@ -971,6 +971,44 @@ Traits: SingleBlockImplicitTerminator<EndOp>
 | Operand | Description |
 | :-----: | ----------- |
 | `tile` | index
+
+### `AIE.nextBd` (::xilinx::AIE::NextBDOp)
+
+The next buffer descriptor
+
+
+Syntax:
+
+```
+operation ::= `AIE.nextBd` $dest attr-dict
+```
+
+This operation terminates the basic block describing a buffer descriptor inside
+a tile or shim DMA operation.  It references a single following buffer descriptor.
+Note that unlike other terminators (like cf.br), canonicalization should not remove
+the 'nextBd' terminator, since it would result in invalid buffer descriptors.
+
+Example:
+```
+  m73 = AIE.mem(%t73) {
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      AIE.useLock(%lock, "Acquire", 0)
+      AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+      AIE.useLock(%lock, "Release", 1)
+      AIE.nextBd ^bd0
+    ^end:
+      AIE.end
+  }
+```
+
+Traits: HasParent<MemOp, func::FuncOp, ShimDMAOp>, Terminator
+
+#### Successors:
+
+| Successor | Description |
+| :-------: | ----------- |
+| `dest` | any successor
 
 ### `AIE.objectFifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
 
@@ -1590,7 +1628,7 @@ Example:
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buf : memref<512 x i16>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
