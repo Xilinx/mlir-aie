@@ -41,13 +41,13 @@ module @aie_module  {
     AIE.dmaBdPacket(0x2, 3)
     AIE.dmaBd(<%11 : memref<16xi32, 2>, 0, 16>, 0)
     AIE.useLock(%10, Release, 1)
-    cf.br ^bb2
+    AIE.nextBd ^bb2
   ^bb3:
     AIE.useLock(%10, Acquire, 1)
     AIE.dmaBdPacket(0x6, 10)
     AIE.dmaBd(<%11 : memref<16xi32, 2>, 0, 16>, 0)
     AIE.useLock(%10, Release, 0)
-    cf.br ^bb3
+    AIE.nextBd ^bb3
   ^end:
     AIE.end
   }

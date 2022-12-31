@@ -14,7 +14,6 @@
 #include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -278,7 +277,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0);
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, relMode,
                               LockAction::Release);
-    builder.create<cf::BranchOp>(builder.getUnknownLoc(), succ);
+    builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
   /// Function used to create a Bd block with an ExternalBufferOp.
@@ -300,7 +299,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0);
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, relMode,
                               LockAction::Release);
-    builder.create<cf::BranchOp>(builder.getUnknownLoc(), succ);
+    builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
   /// Function that either calls createTileDMA() or createShimDMA() based on

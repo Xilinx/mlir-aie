@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc
+// RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/../kernel.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
@@ -107,25 +107,25 @@ module @MM_2x2 {
       AIE.dmaBdPacket(0x0, 0x0)
       AIE.dmaBd(<%buffer0 : memref<1024xi32>, 0, 1024>, 0)    //send LHS_tile0 with Pack_ID=0
       AIE.useLock(%lock60_0, "Release", 0)
-      cf.br ^bd5
+      AIE.nextBd ^bd5
     ^bd5:
       AIE.useLock(%lock60_1, "Acquire", 1)
       AIE.dmaBdPacket(0x1, 0x1)
       AIE.dmaBd(<%buffer1 : memref<1024xi32>, 0, 1024>, 0)    //send LHS_tile1 with Pack_ID=1
       AIE.useLock(%lock60_1, "Release", 0)
-      cf.br ^bd4
+      AIE.nextBd ^bd4
     ^bd6:
       AIE.useLock(%lock60_2, "Acquire", 1)
       AIE.dmaBdPacket(0x2, 0x2)
       AIE.dmaBd(<%buffer2 : memref<1024xi32>, 0, 1024>, 0)    //send RHS_tile0 with Pack_ID=2
       AIE.useLock(%lock60_2, "Release", 0)
-      cf.br ^bd7
+      AIE.nextBd ^bd7
     ^bd7:
       AIE.useLock(%lock60_3, "Acquire", 1)
       AIE.dmaBdPacket(0x3, 0x3)
       AIE.dmaBd(<%buffer3 : memref<1024xi32>, 0, 1024>, 0)    //send RHS_tile1 with Pack_ID=3
       AIE.useLock(%lock60_3, "Release", 0)
-      cf.br ^bd6
+      AIE.nextBd ^bd6
     ^end:
       AIE.end
   }
@@ -139,19 +139,19 @@ module @MM_2x2 {
       AIE.dmaBdPacket(0x4, 0x4)
       AIE.dmaBd(<%buffer4 : memref<1024xi32>, 0, 1024>, 0)    //send RHS_tile2 with Pack_ID=4
       AIE.useLock(%lock70_0, "Release", 0)
-      cf.br ^bd5
+      AIE.nextBd ^bd5
     ^bd5:
       AIE.useLock(%lock70_1, "Acquire", 1)
       AIE.dmaBdPacket(0x5, 0x5)
       AIE.dmaBd(<%buffer5 : memref<1024xi32>, 0, 1024>, 0)    //send RHS_tile3 with Pack_ID=5
       AIE.useLock(%lock70_1, "Release", 0)
-      cf.br ^bd4
+      AIE.nextBd ^bd4
     ^bd6:
       AIE.dmaBd(<%buffer6 : memref<1025xi32>, 0, 1025>, 0)    //send Out_tile0 with Pack_ID=6
-      cf.br ^bd7
+      AIE.nextBd ^bd7
     ^bd7:
       AIE.dmaBd(<%buffer7 : memref<1025xi32>, 0, 1025>, 0)    //send Out_tile1 with Pack_ID=7
-      cf.br ^bd6
+      AIE.nextBd ^bd6
     ^end:
       AIE.end
   }
@@ -167,12 +167,12 @@ module @MM_2x2 {
     AIE.useLock(%lock63_0, Acquire, 0)
     AIE.dmaBd(<%buf63_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock63_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^bd1: 
     AIE.useLock(%lock63_1, Acquire, 0)
     AIE.dmaBd(<%buf63_1 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock63_1, Release, 1)
-    cf.br ^bd1
+    AIE.nextBd ^bd1
   ^end: 
     AIE.end
   }
@@ -189,12 +189,12 @@ module @MM_2x2 {
     AIE.useLock(%lock64_0, Acquire, 0)
     AIE.dmaBd(<%buf64_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock64_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^bd1: 
     AIE.useLock(%lock64_1, Acquire, 0)
     AIE.dmaBd(<%buf64_1 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock64_1, Release, 1)
-    cf.br ^bd1
+    AIE.nextBd ^bd1
   ^dma1:
     AIE.dmaStart("MM2S", 0, ^bd2, ^end)
   ^bd2:
@@ -202,7 +202,7 @@ module @MM_2x2 {
     AIE.dmaBdPacket(0x0, 0x6)
     AIE.dmaBd(<%buf64_2 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock64_2, Release, 0)
-    cf.br ^bd2
+    AIE.nextBd ^bd2
   ^end: 
     AIE.end
   }
@@ -249,12 +249,12 @@ module @MM_2x2 {
     AIE.useLock(%lock73_0, Acquire, 0)
     AIE.dmaBd(<%buf73_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock73_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^bd1: 
     AIE.useLock(%lock73_1, Acquire, 0)
     AIE.dmaBd(<%buf73_1 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock73_1, Release, 1)
-    cf.br ^bd1
+    AIE.nextBd ^bd1
   ^end: 
     AIE.end
   }
@@ -271,12 +271,12 @@ module @MM_2x2 {
     AIE.useLock(%lock74_0, Acquire, 0)
     AIE.dmaBd(<%buf74_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock74_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^bd1: 
     AIE.useLock(%lock74_1, Acquire, 0)
     AIE.dmaBd(<%buf74_1 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock74_1, Release, 1)
-    cf.br ^bd1
+    AIE.nextBd ^bd1
   ^dma1:
     AIE.dmaStart("MM2S", 0, ^bd2, ^end)
   ^bd2:
@@ -284,7 +284,7 @@ module @MM_2x2 {
     AIE.dmaBdPacket(0x0, 0x7)
     AIE.dmaBd(<%buf74_2 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock74_2, Release, 0)
-    cf.br ^bd2
+    AIE.nextBd ^bd2
   ^end: 
     AIE.end
   }

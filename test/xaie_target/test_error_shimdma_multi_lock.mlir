@@ -23,7 +23,7 @@ module @test_error_shimdma_multi_lock {
     AIE.useLock(%l30_1, Acquire, 1)
     AIE.useLock(%l30_0, Release, 0)
     AIE.useLock(%l30_1, Release, 0)
-    cf.br ^end
+    AIE.nextBd ^end
   ^end:
     AIE.end
   }
