@@ -34,8 +34,16 @@ AIE.flow(%tile73, "DMA"   : 1, %tile71, "South" : 2)
 Notice that the route from tile(7,1) to tile(7,3) will most likley involve tile(7,2) who's inclusion in the route is not explicitly stated. Instead, we just declare the end points and allow the logical routing algorihtm (aka pathfinder) to determine the optimized path for data to flow and configures the switchboxes to enable that flow.
 > You can explore the lowering of logical `flows` to physical switchbox configrations in [here](./switchbox)
 
-In the above flow syntax, valid source and destination bundle names or ports can be: DMA, North, South, East, West, Core, PLIO.
-Valid source and destination channel values depeneds on the associated bundle/ port name (e.g. DMA -> 2, Core -> 2, North, South, East, West -> 4, except when North is the destination or South is the source, then it is 6)
+In the above flow syntax, valid bundle names and channels are listed below: 
+| Bundle | Channels (In) | Channels (Out) |
+|-------|---|---|
+| DMA   | 2 | 2 |
+| Core  | 2 | 2 |
+| West  | 4 | 4 |
+| East  | 4 | 4 |
+| North | 4 | 6 |
+| South | 6 | 4 |
+| PLIO  | 2?| 2?|
 >All channels function identically in behavior but the key is that the chosen dma channel needs to match the declared dma channel in the tile DMA definition that will be explained next
 
 ## <ins>Tile DMAs</ins>
