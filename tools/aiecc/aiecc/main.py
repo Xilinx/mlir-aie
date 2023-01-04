@@ -331,12 +331,16 @@ class flow_runner:
         progress.update(progress.task,advance=0,visible=False)
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
-        self.progress_bar = progress
-        processes = []
+        if(opts.airbin):
+          self.progress_bar = progress
+          processes = []
+        else:
+          processes = [self.process_arm_cgen()]
         for core in cores:
           processes.append(self.process_core(core))
         await asyncio.gather(*processes)
-        await self.process_arm_cgen()
+        if(opts.airbin):
+          await self.process_arm_cgen()
 
   def dumpprofile(self):
       sortedruntimes = sorted(self.runtimes.items(), key=lambda item: item[1], reverse=True)

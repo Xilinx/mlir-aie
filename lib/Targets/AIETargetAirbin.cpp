@@ -232,6 +232,9 @@ static constexpr auto SHIM_BD_END = 0x1D15Cu;
 // SHIM resets are handled by the runtime.
 static void generateShimConfig(TileOp &tileOp) {
 
+  assert(tileOp.isShimTile() &&
+         "The tile must be a Shim to generate Shim Config");
+
   TileAddress tileAddress{tileOp};
 
   if (tileOp.isShimNOCTile()) {
