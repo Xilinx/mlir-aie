@@ -2667,13 +2667,13 @@ static void removeSext(MulIOp op, llvm::SmallSet<Operation *, 32> &truncOpSet) {
 
 // Go through muli operations. If both operands are defined from extsi
 // operations, remove extsi operations. If muli operation is used by a trunci
-// operation, remove the trunc operation at the end.
+// operation, remove the trunci operation at the end.
 static void removeSextAndTruncForMulOp(func::FuncOp func) {
-  // A set of trunc ops that need to be removed
+  // A set of trunci ops that need to be removed
   llvm::SmallSet<Operation *, 32> truncOpSet;
   func.walk([&](MulIOp op) { removeSext(op, truncOpSet); });
 
-  // Remove all the trunc ops
+  // Remove all the trunci ops
   for (auto op : truncOpSet)
     op->erase();
 }
