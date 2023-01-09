@@ -12,4 +12,4 @@
 
 Placeholder for objectfifo write-up
 
-[Link to lower level flow write-up](./flow/README.md)
+[Link to lower level flow write-up](./flow)

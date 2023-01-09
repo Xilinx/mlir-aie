@@ -30,7 +30,7 @@
 int
 main(int argc, char *argv[])
 {
-    printf("Tutorial-8 test start.\n");
+    printf("Tutorial-5 test start.\n");
 
     // Standard helper function for initializing and configuring AIE array.
     // The host is used to initialize/ configure/ program the AIE array.
@@ -119,6 +119,6 @@ main(int argc, char *argv[])
     // Teardown and cleanup of AIE array
     mlir_aie_deinit_libxaie(_xaie);
 
-    printf("Tutorial-8 test done.\n");
+    printf("Tutorial-5 test done.\n");
     return res;
 }

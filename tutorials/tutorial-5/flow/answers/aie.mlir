@@ -9,13 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.exe
-// RUN: %run_on_board ./tutorial-8.exe
+// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-5.exe
+// RUN: %run_on_board ./tutorial-5.exe
 
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
-module @tutorial_8 {
+module @tutorial_5 {
 
     // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left

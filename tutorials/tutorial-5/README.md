@@ -8,5 +8,8 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 8 - communication (shim DMA, external memory aka DDR)</ins>
+# <ins>Tutorial 5 - communication (shim DMA, external memory aka DDR)</ins>
 
+Placeholder for objectfifo write-up
+
+[Link to lower level flow write-up](./flow)
