@@ -9,17 +9,18 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-6.elf
-// RUN: %run_on_board ./tutorial-6.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-4.elf
+// RUN: %run_on_board ./tutorial-4.elf
 
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
-module @tutorial_6 {
+module @tutorial_4 {
 
-    // 2 tiles in row 4 (col 1 and col 2)
+    // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left
     %tile14 = AIE.tile(1, 4) 
+    %tile24 = AIE.tile(2, 4) // TODO Declare dummy tile for manual routing
     %tile34 = AIE.tile(3, 4)
 
     // Declare local memory of tile(1,4) and tile (3,4) which are not shared
@@ -32,13 +33,8 @@ module @tutorial_6 {
     %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
 
     // Connect DMA channel 0 on tile(1,4) to DMA channel 1 in tile(3,4)
-    // with automatic shortest distance routing for packets (ID=0xD).
-    // Packet IDs are a 4-bit value.
-    // NOTE: By default, packet header are dropped at destination
-    AIE.packet_flow(0xD) {
-        AIE.packet_source<%tile14, DMA: 0>
-        AIE.packet_dest<%tile34, DMA : 1>
-    }
+    // with automatic shortest distance routing
+    AIE.flow(%tile14, DMA: 0, %tile34, DMA:1)
 
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
@@ -59,10 +55,6 @@ module @tutorial_6 {
         AIE.dmaStart("MM2S", 0, ^bd0, ^end)
         ^bd0:
             AIE.useLock(%lock14_6, Acquire, 1)
-            // Insert header for packet routing
-            // 0x4 - packet type, arbitary value
-            // 0xD - packet ID, arbitary value but used for routing
-            AIE.dmaBdPacket(0x4, 0xD) 
             AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock14_6, Release, 0)
             cf.br ^end
@@ -84,16 +76,26 @@ module @tutorial_6 {
 		%idx2 = arith.constant 5 : index
 		memref.store %d2, %buf34[%idx2] : memref<256xi32> 
 
+        // This release doesn't do much in our example but mimics ping-pong
         AIE.useLock(%lock34_7, "Release", 0)
         AIE.end
     }
 
     // Define local tile memory behavior (i.e. tileDMA)
     %mem34 = AIE.mem(%tile34) {
+        // sequence of DMAs declaration and buffer descriptors (bd)
+        // ^bd0 - first label/ bd definition to set
+        // ^end - next label/ bd definition to set 
+        // (here, that is AIE.end to indicate no more)
         AIE.dmaStart("S2MM", 1, ^bd0, ^end) 
         ^bd0:
+            // Add locks behvaior around bd definition
             AIE.useLock(%lock34_7, Acquire, 0)
-            // Packets headers are dropped so no need to define packet behavior here
+            // bd definition
+            // %buf34 - local buffer
+            // 0   - offset of transfer
+            // 256 - length of transfer
+            // 0   - A/B mode enable (default is disabled)
             AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock34_7, Release, 1)
             cf.br ^end

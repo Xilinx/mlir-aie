@@ -69,3 +69,7 @@ The acquire value must match the current lock state in order for the acqure to s
 6. Change the design so that tile(2,4) runs first. What do you expect the value of buf[5] will be with this change? <img src="../images/answer1.jpg" title="100" height=25>
 
 7. Change [test.cpp](test.cpp) so the design passes again. 
+
+## <ins>Object FIFO Abstraction </ins>
+
+In this tutorial the `objectFifo` abstraction is also introduced, see in `./objectFifo_ver`. This is a higher-level abstraction which is used to establish communication accross the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.

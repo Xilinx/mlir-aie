@@ -9,67 +9,82 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.elf
-// RUN: %run_on_board ./tutorial-8.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-7.elf
+// RUN: %run_on_board ./tutorial-7.elf
 
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
-module @tutorial_8 {
+module @tutorial_7 {
 
-    // 2 tiles in row 4 (col 1 and col 3)
+    // 2 tiles in row 4 (col 1 and col 2)
     // even rows have local memory to its left
+    %tile14 = AIE.tile(1, 4) 
     %tile34 = AIE.tile(3, 4)
-
-    %tile70 = AIE.tile(7, 0)
+    %tile35 = AIE.tile(3, 5)
 
     // Declare local memory of tile(1,4) and tile (3,4) which are not shared
+    %buf14 = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
     %buf34 = AIE.buffer(%tile34) { sym_name = "a34" } : memref<256xi32>
+    %buf35 = AIE.buffer(%tile35) { sym_name = "a35" } : memref<256xi32>
 
-    // Declare external buffers, which represent pointers to external memory locations.
-    %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
-    %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32> 
+    // Declare local locks for tile(1,4) and tile(3,4) giving new
+    // unique lock ID values 6 and 7
+    %lock14_6 = AIE.lock(%tile14, 6) { sym_name = "lock_a14_6" }
+    %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
+    %lock35_7 = AIE.lock(%tile35, 7) { sym_name = "lock_a35_7" }
 
-    // Declare local locks for tile(3,4) and shim tile (7,0) giving new
-    // unique lock ID values 7 and 8
-    %lock34_in  = AIE.lock(%tile34, 7) { sym_name = "tile34_in_lock" }
-    %lock34_out = AIE.lock(%tile34, 8) { sym_name = "tile34_out_lock" }
-    %lock70_in  = AIE.lock(%tile70, 3) { sym_name = "ddr_test_buffer_in_lock" }
-    %lock70_out = AIE.lock(%tile70, 4) { sym_name = "ddr_test_buffer_out_lock" }
+    // Broadcast DMA channel 0 on tile(1,4) to both DMA channel 1 in 
+    // tile(3,4) and tile(3,5) with automatic shortest distance routing for
+    // packets (ID=0xD). Additional routes can be defined for each 
+    // unique AIE.bp_id ID value by sepcifying their definitions in a new
+    // AIE.bp_id(newID) { AIE.bp_dest routes ... } within the 
+    // AIE.broadcast_packet block.
+    // NOTE: By default, packet header are dropped at destination
+    AIE.broadcast_packet(%tile14, DMA: 0) {
+      AIE.bp_id(0xD) {
+        AIE.bp_dest<%tile34, DMA: 1>
+        AIE.bp_dest<%tile35, DMA: 1>
+      }
+    }
 
-    // Connect DMA channel 0 on tile(7,0) to DMA channel 1 in tile(3,4)
-    // with automatic shortest distance routing
-    AIE.flow(%tile70, DMA: 0, %tile34, DMA: 1)
-    AIE.flow(%tile34, DMA: 0, %tile70, DMA: 0)
+    // Define core algorithm for tile(1,4)
+    // buf[3] = 14
+    %core14 = AIE.core(%tile14) {
+        // Locks init value is Release 0, so this will always succeed first
+        AIE.useLock(%lock14_6, "Acquire", 0)
 
-    // shim DMA programming is nearly identical to tile DMA programming
-    // shimDMA are blocking on release 1 (user intervention)
-    %shimdma70 = AIE.shimDMA(%tile70) {
-        AIE.dmaStart("MM2S", 0, ^bd1, ^ch2)
-        ^ch2:
-            AIE.dmaStart("S2MM", 0, ^bd2, ^end)
-        ^bd1:
-            // Lock used to allow host to start transfer
-            AIE.useLock(%lock70_in, "Acquire", 1)
-            AIE.dmaBd(<%ext_buf70_in : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock70_in, "Release", 0)
-            cf.br ^end
-        ^bd2:
-            AIE.useLock(%lock70_out, "Acquire", 1)
-            AIE.dmaBd(<%ext_buf70_out : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock70_out, "Release", 0)
+		%val = arith.constant 14 : i32 
+		%idx = arith.constant 3 : index 
+		memref.store %val, %buf14[%idx] : memref<256xi32> 
+
+        // Release lock to 1 so tile(2,4) can acquire and begin processing
+        AIE.useLock(%lock14_6, "Release", 1)
+        AIE.end
+    }
+
+    %mem14 = AIE.mem(%tile14) {
+        AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+        ^bd0:
+            AIE.useLock(%lock14_6, Acquire, 1)
+            // Insert header for packet routing
+            // 0x4 - packet type, arbitary value
+            // 0xD - packet ID, arbitary value but used for routing
+            AIE.dmaBdPacket(0x4, 0xD) 
+            AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
+            AIE.useLock(%lock14_6, Release, 0)
             cf.br ^end
         ^end:
             AIE.end
-    }
+    }    
+
  
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
         // This acquire will stall since locks are initialized to Release, 0
-        AIE.useLock(%lock34_out, "Acquire", 0) // Acquire out lock 
-        AIE.useLock(%lock34_in, "Acquire", 1)  // Acquire in lock 
-            // This will block while tileDMA moves data so we want to acquire this 2nd
+        AIE.useLock(%lock34_7, "Acquire", 1)
+
         %idx1 = arith.constant 3 : index
         %d1   = memref.load %buf34[%idx1] : memref<256xi32>
         %c1   = arith.constant 100 : i32 
@@ -77,37 +92,49 @@ module @tutorial_8 {
 		%idx2 = arith.constant 5 : index
 		memref.store %d2, %buf34[%idx2] : memref<256xi32> 
 
-        // This release doesn't do much in our example but mimics ping-pong
-        AIE.useLock(%lock34_in, "Release", 0) // Release in lock
-        AIE.useLock(%lock34_out, "Release", 1) // Release out lock
+        AIE.useLock(%lock34_7, "Release", 0)
         AIE.end
     }
 
-
     // Define local tile memory behavior (i.e. tileDMA)
     %mem34 = AIE.mem(%tile34) {
-        // sequence of DMAs declaration and buffer descriptors (bd)
-        // ^bd0 - first label/ bd definition to set
-        // ^end - next label/ bd definition to set 
-        // (here, that is AIE.end to indicate no more)
-        AIE.dmaStart("S2MM", 1, ^bd0, ^ch2)
-        ^ch2:
-             AIE.dmaStart("MM2S", 0, ^bd1, ^end)
+        AIE.dmaStart("S2MM", 1, ^bd0, ^end) 
         ^bd0:
-            // Add locks behvaior around bd definition
-            AIE.useLock(%lock34_in, "Acquire", 0)
-            // bd definition
-            // %buf34 - local buffer
-            // 0   - offset of transfer
-            // 256 - length of transfer
-            // 0   - A/B mode enable (default is disabled)
+            AIE.useLock(%lock34_7, Acquire, 0)
+            // Packets headers are dropped so no need to define packet behavior here
             AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock34_in, "Release", 1)
+            AIE.useLock(%lock34_7, Release, 1)
             cf.br ^end
-        ^bd1:
-            AIE.useLock(%lock34_out, "Acquire", 1)
-            AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock34_out, "Release", 0)
+        ^end:
+            AIE.end
+    }    
+
+
+    // Define core algorithm for tile(3,5) which reads value set by tile(1,4)
+    // buf[5] = buf[3] + 100
+    %core35 = AIE.core(%tile35) {
+        // This acquire will stall since locks are initialized to Release, 0
+        AIE.useLock(%lock35_7, "Acquire", 1)
+
+        %idx1 = arith.constant 3 : index
+        %d1   = memref.load %buf35[%idx1] : memref<256xi32>
+        %c1   = arith.constant 100 : i32 
+        %d2   = arith.addi %d1, %c1 : i32
+		%idx2 = arith.constant 5 : index
+		memref.store %d2, %buf35[%idx2] : memref<256xi32> 
+
+        AIE.useLock(%lock35_7, "Release", 0)
+        AIE.end
+    }
+
+    // Define local tile memory behavior (i.e. tileDMA)
+    %mem35 = AIE.mem(%tile35) {
+        AIE.dmaStart("S2MM", 1, ^bd0, ^end) 
+        ^bd0:
+            AIE.useLock(%lock35_7, Acquire, 0)
+            // Packets headers are dropped so no need to define packet behavior here
+            AIE.dmaBd(<%buf35 : memref<256xi32>, 0, 256>, 0)
+            AIE.useLock(%lock35_7, Release, 1)
             cf.br ^end
         ^end:
             AIE.end

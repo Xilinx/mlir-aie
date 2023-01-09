@@ -8,41 +8,77 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 7 - communication (broadcast)</ins>
+# <ins>Tutorial 6 - communication (packet routing)</ins>
 
-Now that we've seen how point to point communciation is handled, we need to introduce the concept of broadcast. This is necessary to allow data from a single source to be sent to multiple destinations. This is also important because with a fixed set of routing resources (e.g. channels), we need to be efficient in how we move data to avoid congestion. Broadcast then is our one-to-many communication tool. Many-to-one is also possible but only in the packet routing case. For circuit switch routing, we would need some kind of aggregator the decides when connections can be switched which packet routing already supports.
+We already looked at how we can use stream switches and tile DMAs to communicate data between tiles that are non-adjacent/ far apart in [tutorial-4](../tutorial-4). There we discussed how routes in a switchbox can be configured in circuit switch mode or packet switch mode and showed examples of circuit switch mode routing. Packet switch mode is another communication format and will will examine it more closely in this tutorial.
 
-## <ins>Circuit switch broadcast</ins>
-For circuit swtich connections, broadcast is supported by simply making logical connections between the same ports. For exmaple, if we have a single source routing to 3 destinations, it may look like:
+## <ins>Packets</ins>
+Packets are central to packet-switched routing and provide the ultimate flexiblity for runtime data steering. A DMA transfer is converted into a data packet with a prepended packet header and a signal marker for the end of packet. It is then forwarded from switchbox to switchbox along routes much like a circuit switched flow. The difference is that each switchbox along the flow can be configured to know where packets with a predefined packet ID is supposed to go and can forward packets, drop packets or strip the header from packets (such as when the packet reaches its final destination). 
+
+## <ins>Packet Flow</ins>
+To convert a circuit switched flow into a packet switched one, we need to do two things:
+
+(1) Use the packet switched logical flow operator `AIE.packet_flow` instead of the circuit switched flow operator `AIE.flow`
+
+(2) Configure the source tile DMA to enacapsulate the buffer data into packets using the `AIE.dmaBdPacket` operation
+
+The packet switched flow operator is declared much like the circuit switched flow operator with the following syntax:
 ```
-AIE.flow(%tile14, DMA: 0, %tile34, DMA:0)
-AIE.flow(%tile14, DMA: 0, %tile35, DMA:1)
-AIE.flow(%tile14, DMA: 0, %tile36, DMA:0)
+AIE.packet_flow($packet_id) {
+    AIE.packet_source<$tile, $bundle : $channel>
+    AIE.packet_dest<$tile, $bundle : $channel>
+}
 ```
-Here, the same tile DMA and channel combination is used as the source. The router will then recognize a broadcast scenario and make the appropriate shared connections.
-> Note that circuit switch broadcast functions where the source is pushing data simulatenously to all destinations. If any destination cannot receive the data and exerts backpressure, the source stops sending, even if another destination can still receive data. This type of backpressure is automatic but is important when designing communication scenarios.
-
-## <ins>Packet switch broadcast</ins>
-
-The packet swtich case is much more robust as we can not do both one-to-many connections as well as many-to-one. This is because packets have natural boundaries where the data begins and ends and the stream swtich is configured to do a round-robin arbitration between ports sharing a single stream. Because packets are labeled with packet type and packet IDs, the broadcast definition will likewise use these desginations to help guide the stream switch configurations. A simple example configuration where we route all packets from a source with a certain packet ID to a set of destination (one-to-many) is shown below: 
+An example of this is:
 ```
- AIE.broadcast_packet(%tile14, DMA: 0) {
-      AIE.bp_id(0xD) {
-        AIE.bp_dest<%tile34, DMA: 1>
-        AIE.bp_dest<%tile35, DMA: 1>
-      }
-      ...
-    }
+AIE.packet_flow(0xD) {
+    AIE.packet_source<%tiler14, DMA : 0>
+    AIE.packet_dest<%tile34, DMA : 1>
+}
 ```
-Here, we use `AIE.broadcast_packet` opeator to denote the definition packet flows from a given tile and DMA + channel (in this case, tile(1,4) and tileDMA MM2S channel 0). We then define the flows for every defined packet ID since packet IDs refer to a particular flow. For example, packet ID 3 might go one particular route, while packet ID 4 might go another route (or the same route). In this example, we define the flow for packet ID 0xD and indicate that it goes to both tile(3,4) and tile (3,5) to the associated tile DMA (S2MM, both channel 1). This list of destination can be just one or as many as desired. The ... in this code snippet indicates that we can continue to define more flows for different packet IDs.
+`$packet_id`: 5-bit unsigned packet ID. This flow is configured to pass packets with that packet id
 
-The configurabiliy of the stream switch is more nuanced that is indicated with these MLIR operations and that nuance is exposed with lower level operators which can be further explored in [tuorial 7a](./tutorial-7a).
+Much like iin `AIE.flow`, the %tile, %bundle and %channel represent valid endpoints specific to the architecture. 
 
-## <ins>Tutorial 7 Lab </ins>
+Valid bundle names and channels are listed below: 
+| Bundle | Channels (In) | Channels (Out) |
+|-------|---|---|
+| DMA   | 2 | 2 |
+| Core  | 2 | 2 |
+| West  | 4 | 4 |
+| East  | 4 | 4 |
+| North | 4 | 6 |
+| South | 6 | 4 |
+| PLIO  | 2?| 2?|
+
+> Note that be default, packet flows with a DMA destination will configure the destination tile switchbox to strip off the packet header.
+
+## <ins>Tile DMA packet config</ins>
+
+Tile DMA can be configured so that buffer data is packetized through the use of the `AIE.dmaBdPacket` operation as shown below:
+```
+AIE.dmaBdPacket($packet_type, $packet_id)
+```
+An example of this inside a bd definition would be:
+```
+    ^bd0:
+        AIE.useLock(%lock14_6, Acquire, 1)
+        AIE.dmaBdPacket(0x4, 0xD) 
+        AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
+        AIE.useLock(%lock14_6, Release, 0)
+        cf.br ^end
+```
+`$packet_type`: arbitary 3-bit value that is used to identify source packet types
+
+`$packet_id`: arbitary 5-bit value used to identify packet routes. Switchboxes match the packet id to determine if packets should follow the switchbox route rules or if the packet should ibe dropped
+
+The configuration parameters that needs to match in order for packets to be successfully routed along a flow is the packet ID, which is specified in (1) the tile DMA bd config and (2) the packet switched flow. As as these match, the packetized data will be communicated along the flow path the same as in the circuit switch case. 
+
+The next logical question then is what benefit does packet switch mode offer then if it functions the same as circuit switch mode. And the answer is that we can acutally share the same physical flow resources (switchbox streamsa) with multiple packet flows such that data is shared over time on the same physical stream. We will explore that in more detail in [tutorial-7](../tutorial-7).
+
+
+## <ins>Tutorial 6 Lab </ins>
 
 1. Read through the [aie.mlir](aie.mlir) design. What is the packet ID used in this example? <img src="../images/answer1.jpg" title="0xD" height=25>
 
-2. Add a third block at tile(3,6) and broadcast to this new block as well.
-
-3. Change the tileDMA behavior by adding a new bd which pushes data with packet ID 0xE. If we want to broadcast this new packet ID to tile(3,6) but leave the original packet ID routed to tile(3,4) and tile(3,5), how would we do that?
-
+2. Measure the latency of the data transfer in packet mode and comapre it to the circuit switch mode result from [tutorial-4](../tutorial-4). How does it compare? <img src="../images/answer1.jpg" title="???" height=25>

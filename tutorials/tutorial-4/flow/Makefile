@@ -10,12 +10,12 @@ all: tutorial-4.exe
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
 tutorial-4.exe: test.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
 
 view: routes.json
 	../scripts/visualize.py $<
 routes.json: aie.mlir
-	aie-opt --aie-objectFifo-stateful-transform --aie-create-pathfinder-flows --aie-find-flows $< | aie-translate --aie-flows-to-json > $@
+	aie-opt --aie-create-pathfinder-flows --aie-find-flows $< | aie-translate --aie-flows-to-json > $@
 
 
 clean:
@@ -25,5 +25,5 @@ clean:
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
 tutorial-4_q5.exe: answers/test_q5.cpp answers/aie_q5.mlir 
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
 

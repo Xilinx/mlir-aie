@@ -30,7 +30,7 @@
 int
 main(int argc, char *argv[])
 {
-    printf("Tutorial-7 test start.\n");
+    printf("Tutorial-6 test start.\n");
 
     // Standard helper function for initializing and configuring AIE array.
     // The host is used to initialize/ configure/ program the AIE array.
@@ -68,8 +68,6 @@ main(int argc, char *argv[])
                    errors);
     mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
                    errors);
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a35(_xaie, 5), 0,
-                   errors);
 
     // Helper function to enable all AIE cores
     printf("Start cores\n");
@@ -83,9 +81,6 @@ main(int argc, char *argv[])
                    errors);
     // Check buffer at index 5 again for expected value of 114 for tile(3,4)    
     mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 114,
-                   errors);
-    // Check buffer at index 5 again for expected value of 114 for tile(3,5)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a35(_xaie, 5), 114,
                    errors);
 
     // Print Pass/Fail result of our test
@@ -101,6 +96,6 @@ main(int argc, char *argv[])
     // Teardown and cleanup of AIE array
     mlir_aie_deinit_libxaie(_xaie);
 
-    printf("Tutorial-7 test done.\n");
+    printf("Tutorial-6 test done.\n");
     return res;
 }
