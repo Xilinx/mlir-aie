@@ -4,24 +4,25 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-4.exe
-// RUN: %run_on_board ./tutorial-4.exe
+// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-5.exe
+// RUN: %run_on_board ./tutorial-5.exe
 
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
-module @tutorial_4 {
+module @tutorial_5 {
 
     // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left
     %tile14 = AIE.tile(1, 4) 
-    %tile24 = AIE.tile(2, 4) // TODO Declare dummy tile for manual routing
     %tile34 = AIE.tile(3, 4)
+
+    %tile70 = AIE.tile(7, 0)
 
     // Declare local memory of tile(1,4) and tile (3,4) which are not shared
     %buf14 = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
@@ -29,15 +30,12 @@ module @tutorial_4 {
 
     // Declare local locks for tile(1,4) and tile(3,4) giving new
     // unique lock ID values 6 and 7
-    %lock14_6 = AIE.lock(%tile14, 6) { sym_name = "lock_a14_6" }
-    %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
+    %lock14_6 = AIE.lock(%tile14, 6)
+    %lock34_7 = AIE.lock(%tile34, 7)
 
     // Connect DMA channel 0 on tile(1,4) to DMA channel 1 in tile(3,4)
     // with automatic shortest distance routing
-    // AIE.flow(%tile14, DMA: 0, %tile34, DMA:1)
-    AIE.switchbox(%tile14) { AIE.connect<"DMA": 0, "East": 1> }
-    AIE.switchbox(%tile24) { AIE.connect<"West": 1, "East": 3> }
-    AIE.switchbox(%tile34) { AIE.connect<"West": 3, "DMA": 1> }
+    AIE.flow(%tile14, DMA: 0, %tile34, DMA:1)
 
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
@@ -105,5 +103,11 @@ module @tutorial_4 {
         ^end:
             AIE.end
     }    
+
+    %shimdma70 = AIE.shimDMA(%tile70) {
+        AIE.dmaStart("MM2S", )
+    }
+
+
 
 }

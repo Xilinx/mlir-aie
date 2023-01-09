@@ -10,7 +10,9 @@
 
 # <ins>MLIR-based AI Engine Design Tutorial</ins>
 
-While it has been stated that the MLIR-based AI Engine toolchain is not intended to represent end-to-end compilation flows or be particularly easy to use for system design, the benefit of building systems using this representation is still very valuable and to that end, this design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and its architecture. 
+The AI Engine array of the AMD Versal ACAP device is a set of VLIW vector processors with adaptable interconnect. This tutorial is targeted at tool developers and system designers who are looking for fast and completely open source design tools to support their research. We will first get insight into the Versal ACAP architecture, more specifically the AI Engine compute and data movement capabilities. Through small design examples expressed in the MLIR-AIE dialect and executed on an ACAP device, we will leverage AI Engine features for optimizing performance of increasingly complex designs. This will enable you to recognize how this physical-level dialect can be connected to higher level abstraction in the MLIR framework and understand how logical concepts can be expressed to increase productivity and reduce complexity. 
+
+This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and its architecture. 
 
 The structure of this series of tutorials are as follows:
 * Basic AI Engine architecture
@@ -18,13 +20,14 @@ The structure of this series of tutorials are as follows:
 * [Tutorial 2 - single kernel compilation and simulation](./tutorial-2)
 * [Tutorial 3 - communication (local memory), locks](./tutorial-3) 
 * [Tutorial 4 - communication (tile DMA, logical routing)](./tutorial-4)
-* [Tutorial 5 - communication (cascade)](./tutorial-5)
+* [Tutorial 5 - communication (shim DMA, external memory aka DDR)](./tutorial-5)
 * [Tutorial 6 - communication (packet routing)](./tutorial-6)
 * [Tutorial 7 - communication (broadcast)](./tutorial-7)
-* [Tutorial 8 - communication (shim DMA, external memory aka DDR)](./tutorial-8)
-* [Tutorial 9 - mlir-aie commands and utilities](./tutorial-9)
-* [Example Design #1 - 2x2 Matrix Multiplication (Object FIFO)](./example-design-1)
-* [Example Design #2 - iDCT](./example-design-2)
+* [Tutorial 8 - communication (cascade)](./tutorial-8)
+* [Tutorial 9 - scaling up to large multi-core designs](./tutorial-9)
+* [Tutorial 10 - mlir-aie commands and utilities](./tutorial-10)
+* [Example Design #1 - 2x2 Matrix Multiplication (Object FIFO)](../reference_designs/MM_2x2)
+* [Example Design #2 - iDCT](../reference_designs/idct/)
 
 ## <ins>Basic AI Engine architecture</ins>
 AI Engines are architected as 2D arrays consisting of multiple AI Engine tiles and allow for a very scalable solution across the Versal portfolio, ranging from 10s to 100s of AI Engines in a single device, servicing the compute needs of a breadth of applications.

@@ -9,108 +9,66 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.elf
-// RUN: %run_on_board ./tutorial-8.elf
+// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.exe
+// RUN: %run_on_board ./tutorial-8.exe
 
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
 module @tutorial_8 {
 
-    // 2 tiles in row 4 (col 1 and col 3)
+    // 2 tiles in row 4 (col 1 and col 2)
     // even rows have local memory to its left
-    %tile34 = AIE.tile(3, 4)
+    %tile13 = AIE.tile(1, 3) 
+    %tile23 = AIE.tile(2, 3)
 
-    %tile70 = AIE.tile(7, 0)
+    // Declare local memory of tile(2,4) which is shared with tile(1,4)
+    %buf = AIE.buffer(%tile23) { sym_name = "a23" } : memref<256xi32>
 
-    // Declare local memory of tile(1,4) and tile (3,4) which are not shared
-    %buf34 = AIE.buffer(%tile34) { sym_name = "a34" } : memref<256xi32>
+    // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
+    // with one positional function argument, in this case mapped to a memref
+    func.func private @extern_kernel1() -> ()
+    func.func private @extern_kernel2(%b: memref<256xi32>) -> ()
 
-    // Declare external buffers, which represent pointers to external memory locations.
-    %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
-    %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32> 
+    // Declare shared lock (belonging to tile(2,4), lock ID=1)
+    // %lock23_1 = AIE.lock(%tile23, 1)
 
-    // Declare local locks for tile(3,4) and shim tile (7,0) giving new
-    // unique lock ID values 7 and 8
-    %lock34_in  = AIE.lock(%tile34, 7) { sym_name = "tile34_in_lock" }
-    %lock34_out = AIE.lock(%tile34, 8) { sym_name = "tile34_out_lock" }
-    %lock70_in  = AIE.lock(%tile70, 3) { sym_name = "ddr_test_buffer_in_lock" }
-    %lock70_out = AIE.lock(%tile70, 4) { sym_name = "ddr_test_buffer_out_lock" }
+    // Define core algorithm for tile(1,4)
+    // buf[3] = 13
+    %core13 = AIE.core(%tile13) {
+        // Locks init value is Release 0, so this will always succeed first
+        // AIE.useLock(%lock23_1, "Acquire", 0)
 
-    // Connect DMA channel 0 on tile(7,0) to DMA channel 1 in tile(3,4)
-    // with automatic shortest distance routing
-    AIE.flow(%tile70, DMA: 0, %tile34, DMA: 1)
-    AIE.flow(%tile34, DMA: 0, %tile70, DMA: 0)
+		// %val = arith.constant 13 : i384 
+		// //%idx = arith.constant 3 : index 
+		// //memref.store %val, %buf[%idx] : memref<256xi32> 
+        // AIE.putCascade(%val : i384)
 
-    // shim DMA programming is nearly identical to tile DMA programming
-    // shimDMA are blocking on release 1 (user intervention)
-    %shimdma70 = AIE.shimDMA(%tile70) {
-        AIE.dmaStart("MM2S", 0, ^bd1, ^ch2)
-        ^ch2:
-            AIE.dmaStart("S2MM", 0, ^bd2, ^end)
-        ^bd1:
-            // Lock used to allow host to start transfer
-            AIE.useLock(%lock70_in, "Acquire", 1)
-            AIE.dmaBd(<%ext_buf70_in : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock70_in, "Release", 0)
-            cf.br ^end
-        ^bd2:
-            AIE.useLock(%lock70_out, "Acquire", 1)
-            AIE.dmaBd(<%ext_buf70_out : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock70_out, "Release", 0)
-            cf.br ^end
-        ^end:
-            AIE.end
-    }
- 
-    // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
-    // buf[5] = buf[3] + 100
-    %core34 = AIE.core(%tile34) {
-        // This acquire will stall since locks are initialized to Release, 0
-        AIE.useLock(%lock34_out, "Acquire", 0) // Acquire out lock 
-        AIE.useLock(%lock34_in, "Acquire", 1)  // Acquire in lock 
-            // This will block while tileDMA moves data so we want to acquire this 2nd
-        %idx1 = arith.constant 3 : index
-        %d1   = memref.load %buf34[%idx1] : memref<256xi32>
-        %c1   = arith.constant 100 : i32 
-        %d2   = arith.addi %d1, %c1 : i32
-		%idx2 = arith.constant 5 : index
-		memref.store %d2, %buf34[%idx2] : memref<256xi32> 
+        func.call @extern_kernel1() : () -> ()
 
-        // This release doesn't do much in our example but mimics ping-pong
-        AIE.useLock(%lock34_in, "Release", 0) // Release in lock
-        AIE.useLock(%lock34_out, "Release", 1) // Release out lock
+        // AIE.useLock(%lock23_1, "Release", 1)
         AIE.end
-    }
+    } { link_with="kernel1.o" }
 
+    // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
+    // buf[5] = buf[3] + 100
+    %core23 = AIE.core(%tile23) {
+        // This acquire will stall since locks are initialized to Release, 0
+        // AIE.useLock(%lock23_1, "Acquire", 1)
 
-    // Define local tile memory behavior (i.e. tileDMA)
-    %mem34 = AIE.mem(%tile34) {
-        // sequence of DMAs declaration and buffer descriptors (bd)
-        // ^bd0 - first label/ bd definition to set
-        // ^end - next label/ bd definition to set 
-        // (here, that is AIE.end to indicate no more)
-        AIE.dmaStart("S2MM", 1, ^bd0, ^ch2)
-        ^ch2:
-             AIE.dmaStart("MM2S", 0, ^bd1, ^end)
-        ^bd0:
-            // Add locks behvaior around bd definition
-            AIE.useLock(%lock34_in, "Acquire", 0)
-            // bd definition
-            // %buf34 - local buffer
-            // 0   - offset of transfer
-            // 256 - length of transfer
-            // 0   - A/B mode enable (default is disabled)
-            AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock34_in, "Release", 1)
-            cf.br ^end
-        ^bd1:
-            AIE.useLock(%lock34_out, "Acquire", 1)
-            AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
-            AIE.useLock(%lock34_out, "Release", 0)
-            cf.br ^end
-        ^end:
-            AIE.end
-    }    
+        //%idx1 = arith.constant 3 : index
+        //%d1   = memref.load %buf[%idx1] : memref<256xi32>
+        // %cas1 = AIE.getCascade() : i384
+        // %d1   = arith.trunci %cas1 : i384 to i32
+        // %c1   = arith.constant 100 : i32 
+        // %d2   = arith.addi %d1, %c1 : i32
+		// %idx2 = arith.constant 5 : index
+		// memref.store %d2, %buf[%idx2] : memref<256xi32> 
+
+        func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
+
+        // AIE.useLock(%lock24_1, "Release", 0)
+        AIE.end
+    } { link_with="kernel2.o" }
 
 }

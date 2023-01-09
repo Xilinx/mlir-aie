@@ -83,7 +83,7 @@ Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities
 
     What about the variable name and size of the buffer that is associated with the local memory of tile(1,4)? <img src="../images/answer1.jpg" title="%buf, 256 x int32" height=25>
 
-In first generation AI Engines, each tile has 32 kB of local memory assigned to it. In addition, it can access the local memory in the other 3 cardinal directions giving a total accessible memory of 128 kB.
+In first generation AI Engines, each tile has 32 kB of local data memory assigned to it. In addition, it can access the local memory in the other 3 cardinal directions giving a total accessible memory of 128 kB.
 
 4. What percentage of the local memory (32 kB) does this design currently use?
 <img src="../images/answer1.jpg" title="3%, 256 / 8192 int32" height=25>
@@ -104,6 +104,41 @@ To create complete AI Engine designs that can run on a Versal device, we also ne
     ```
     sudo ./tutorial-1.exe
     ```
+### <ins>Performance Measurement in HW</ins>
+Now that we've compiled, simulated and run our design. We can take a step back to leverage some of the AI Engine's built in performance measurement hardware (timers and event traces) to capture actual on-board performance. 
 
-## 
+We can first declare some host code variable to hold timer values.
+```
+u32 pc0_times[num_iter]; // track timer values
+```
+From the testbench host code, we configure the hardware program counters (2 counters available per AIE tile), and set start and end event triggers for our counters to count the number of cycles between the two triggers. In this example, we call `XAie_EvenPCEnable` to define an event based off two PC counter values: 0x00 (program start) and 0x088 (program end). These two program counter values are true for every AIE program. These events are assigned to event 0 and event 1 for PC events.
+
+```
+// Performance counters
+// Trigger off start (0x00) of an AIE program
+XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,4), 0, 0x00);
+// Trigger off done (0x088) of an AIE program
+XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,4), 1, 0x088);
+```
+Now, we configure the program counter with the previously defined two events, being sure that we set this prior to the core being run.
+```
+// Define custom EventMonitor class to track event triggers for program counter
+EventMonitor pc0(_xaie, 1, 4, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
+                    XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+pc0.set();
+```
+This `EventMonitor` class is a wrapper to simplify the commands needed to set up the program counter. We pass in config object, tile column, tile row, ???, start event trigger, end event trigger, and ???). Now we enable our tile so it can run and then compute the program counter difference with:
+```
+pc0_times[0] = pc0.diff(); // store program counter value (0th iteration)
+```
+The `set` and `diff` class functions can be used multiple times to accumulate results form mutliple runs to see if the values drfit. We end by reporting the number of cycle sin our program counter by calling:
+```
+computeStats(pc0_times, 1);
+```
+This can report a single timer value or a the average of a set of values.
+
+10. Run make of the performance example to compile a design that will run on the board and report kernel cycles count performance to the terminal.
+    ```
+    make tutorial-1_perf.exe
+    ```
 

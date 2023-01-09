@@ -9,66 +9,66 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-5.elf
-// RUN: %run_on_board ./tutorial-5.elf
+// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-5.exe
+// RUN: %run_on_board ./tutorial-5.exe
 
 
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
 module @tutorial_5 {
 
-    // 2 tiles in row 4 (col 1 and col 2)
+    // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left
-    %tile13 = AIE.tile(1, 3) 
-    %tile23 = AIE.tile(2, 3)
+    %tile34 = AIE.tile(3, 4)
+    %tile70 = AIE.tile(7, 0)
 
-    // Declare local memory of tile(2,4) which is shared with tile(1,4)
-    %buf = AIE.buffer(%tile23) { sym_name = "a23" } : memref<256xi32>
+    // Declare external buffers, which represent pointers to external memory locations.
+    %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
+    %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32> 
 
-    // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
-    // with one positional function argument, in this case mapped to a memref
-    func.func private @extern_kernel1() -> ()
-    func.func private @extern_kernel2(%b: memref<256xi32>) -> ()
+    // Declare an object FIFO between the producer shim tile (7,0) and consumer tile (3,4).
+    // The size of the object FIFO, i.e. its number of elements, is 1.
+    // Objects, i.e. allocated memory elements, have type memref<256xi32>.
+    // These tiles do not share memory between them.
+    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<256xi32>>
 
-    // Declare shared lock (belonging to tile(2,4), lock ID=1)
-    // %lock23_1 = AIE.lock(%tile23, 1)
+    // Declare an object FIFO between the producer tile (3,4) and consumer shim tile (7,0).
+    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<256xi32>>
 
-    // Define core algorithm for tile(1,4)
-    // buf[3] = 13
-    %core13 = AIE.core(%tile13) {
-        // Locks init value is Release 0, so this will always succeed first
-        // AIE.useLock(%lock23_1, "Acquire", 0)
-
-		// %val = arith.constant 13 : i384 
-		// //%idx = arith.constant 3 : index 
-		// //memref.store %val, %buf[%idx] : memref<256xi32> 
-        // AIE.putCascade(%val : i384)
-
-        func.call @extern_kernel1() : () -> ()
-
-        // AIE.useLock(%lock23_1, "Release", 1)
-        AIE.end
-    } { link_with="kernel1.o" }
-
-    // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
+    // Register the external memory pointers to the object FIFOs.
+    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
+    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_out}) : (memref<256xi32>)
+ 
+    // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
-    %core23 = AIE.core(%tile23) {
-        // This acquire will stall since locks are initialized to Release, 0
-        // AIE.useLock(%lock23_1, "Acquire", 1)
+    %core34 = AIE.core(%tile34) {
+        // Acquire a subview with one object from each object FIFO.
+        // This is equivalent to acquiring an AIE lock before accessing an AIE buffer.
+        // This core acquires objects both as a Consumer of one object FIFO and as a Producer of another: 
+        // this impacts the acquire values of the locks that are generated through the object FIFO lowering
+        %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+        %outputSubview = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+        
+        // Access the first, and only, element of each subview.
+        %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+        %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
-        //%idx1 = arith.constant 3 : index
-        //%d1   = memref.load %buf[%idx1] : memref<256xi32>
-        // %cas1 = AIE.getCascade() : i384
-        // %d1   = arith.trunci %cas1 : i384 to i32
-        // %c1   = arith.constant 100 : i32 
-        // %d2   = arith.addi %d1, %c1 : i32
-		// %idx2 = arith.constant 5 : index
-		// memref.store %d2, %buf[%idx2] : memref<256xi32> 
+        %idx1 = arith.constant 3 : index
+        %d1   = memref.load %input[%idx1] : memref<256xi32>
+        %c1   = arith.constant 100 : i32 
+        %d2   = arith.addi %d1, %c1 : i32
+		%idx2 = arith.constant 5 : index
+		memref.store %d2, %input[%idx2] : memref<256xi32>
 
-        func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
-
-        // AIE.useLock(%lock24_1, "Release", 0)
+		memref.store %d1, %output[%idx1] : memref<256xi32> 
+		memref.store %d2, %output[%idx2] : memref<256xi32>  
+        
+        // Release the previously acquired objects.
+        // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
+        // This core releases objects both as a Consumer of one object FIFO and as a Producer of another: 
+        // this impacts the release values of the locks that are generated through the object FIFO lowering.
+        AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1)
+        AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1)
         AIE.end
-    } { link_with="kernel2.o" }
-
+    } 
 }

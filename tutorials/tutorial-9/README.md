@@ -7,9 +7,5 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
+# <ins>Tutorial 9 - scaling up to large multi-core designs</ins>
 
-# <ins>Tutorial 4 - communication (tile DMA, logical routing)</ins>
-
-Placeholder for objectfifo write-up
-
-[Link to lower level flow write-up](./flow)
