@@ -1,15 +1,27 @@
 
-.PHONY: all gui sim
+.PHONY: all clean
 
-MY_VITIS_BIN_DIR := `dirname \`which vitis\``
+# TODO - Change this to env variable?
+SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
 
-all:
-	#xchessmk -P ${XILINX_VITIS}/aietools/data/aie_ml/lib/ test.prx
-	#xchessmk -P ${XILINX_LOC}/aietools/data/cervino/lib/ test.prx
-	xchessmk -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib/ test.prx
+all: tutorial-2.exe
 
-gui:
-	xchessde -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib/ test.prx &
+#external_kernel/work/Release_LLVM/test.prx/kernel.o: external_kernel/kernel.cc
+#	$(MAKE) -C external_kernel build
 
-sim:
-	xca_udm_dbg -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib -t sim.tcl
+external_kernel/kernel.o: external_kernel/kernel.cc
+	$(MAKE) -C external_kernel mlir
+
+
+kernel.o: external_kernel/kernel.o
+	cp external_kernel/kernel.o .
+
+# Command line mlir-aie compile script "aiecc.py"
+# Sysroot and host target used to cross compile  host executable
+# Local runtime_lib needed for testbench functions
+tutorial-2.exe: test.cpp aie.mlir kernel.o
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+
+clean:
+	$(MAKE) -C external_kernel clean
+	rm -rf acdc_project *elf *exe core* kernel.o

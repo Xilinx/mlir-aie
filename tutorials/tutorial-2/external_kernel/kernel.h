@@ -1,4 +1,4 @@
-//===- aie.mlir ------------------------------------------------*- MLIR -*-===//
+//===- kernel.h -------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license
-// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-7.exe
-// RUN: %run_on_board ./tutorial-7.exe
+#ifndef _MY_KERNEL_H
+#define _MY_KERNEL_H
+
+extern "C" {
+
+void extern_kernel(int32_t *restrict buf);
+
+} // extern "C"
+
+#endif
 

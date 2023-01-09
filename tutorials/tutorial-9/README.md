@@ -7,6 +7,5 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
-
-# <ins>Tutorial 8 - communication (shim DMA, external memory aka DDR)</ins>
+# <ins>Tutorial 9 - scaling up to large multi-core designs</ins>
 
