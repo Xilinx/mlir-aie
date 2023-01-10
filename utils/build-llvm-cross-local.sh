@@ -40,6 +40,8 @@ INSTALL_DIR=${6:-"install"}
 mkdir -p $LLVM_DIR/$BUILD_DIR
 mkdir -p $LLVM_DIR/$INSTALL_DIR
 cd $LLVM_DIR/$BUILD_DIR
+set -o pipefail
+set -e
 cmake ../llvm \
   -GNinja \
   -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR} \

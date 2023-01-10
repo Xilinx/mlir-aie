@@ -18,6 +18,8 @@ INSTALL_DIR=${2:-"install"}
 mkdir -p llvm/$BUILD_DIR
 mkdir -p llvm/$INSTALL_DIR
 cd llvm/$BUILD_DIR
+set -o pipefail
+set -e
 cmake ../llvm \
   -GNinja \
   -DLLVM_BUILD_EXAMPLES=OFF \
