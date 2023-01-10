@@ -42,6 +42,8 @@ INSTALL_DIR=${7:-"install"}
 mkdir -p $MLIR_AIE_DIR/$BUILD_DIR
 mkdir -p $MLIR_AIE_DIR/$INSTALL_DIR
 cd $MLIR_AIE_DIR/$BUILD_DIR
+set -o pipefail
+set -e
 cmake -GNinja \
     -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm_petalinux.cmake \
     -DSysroot=${SYSROOT_DIR} \
