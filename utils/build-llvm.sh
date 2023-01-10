@@ -36,3 +36,4 @@ cmake ../llvm \
   -DLLVM_ENABLE_ASSERTIONS=ON
 
 cmake --build . --target install -- -j$(nproc)
+cd ../..

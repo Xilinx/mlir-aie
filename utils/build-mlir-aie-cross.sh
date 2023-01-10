@@ -12,14 +12,13 @@
 # look like:
 #
 # build-mlir-aie.sh <sysroot dir> <gcc version> <llvm dir> <cmakeModules dir> 
-#     <mlir-aie dir> <build dir> <install dir>
+#     <build dir> <install dir>
 #
 # e.g. build-mlir-aie.sh /scratch/vck190_bare_prod_sysroot 10.2.0 /scratch/llvm 
 #          /scratch/cmakeModules/cmakeModulesXilinx
 #
 # <sysroot dir>  - sysroot, absolute directory 
 # <gcc version>  - gcc version in sysroot (needed in many petalinux sysroots to find imporant libs)
-# <mlir-aie dir> - optional, mlir-aie repo name, default is 'mlir-aie'
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
 #
@@ -35,13 +34,12 @@ GCC_VER=$2
 LLVM_DIR=$3
 CMAKEMODULES_DIR=$4
 
-MLIR_AIE_DIR=${5:-"mlir-aie"}
-BUILD_DIR=${6:-"build"}
-INSTALL_DIR=${7:-"install"}
+BUILD_DIR=${5:-"build"}
+INSTALL_DIR=${6:-"install"}
 
-mkdir -p $MLIR_AIE_DIR/$BUILD_DIR
-mkdir -p $MLIR_AIE_DIR/$INSTALL_DIR
-cd $MLIR_AIE_DIR/$BUILD_DIR
+mkdir -p $BUILD_DIR
+mkdir -p $INSTALL_DIR
+cd $BUILD_DIR
 cmake -GNinja \
     -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm_petalinux.cmake \
     -DSysroot=${SYSROOT_DIR} \
@@ -59,3 +57,4 @@ cmake -GNinja \
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
 #ninja check-aie |& tee ninja-check-aie.log
+cd ..

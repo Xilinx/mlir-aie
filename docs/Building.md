@@ -6,7 +6,7 @@
 cmake 3.17.5
 ninja 1.8.2
 Xilinx Vitis 2021.2
-sudo pip3 install joblib psutil
+sudo pip3 install joblib psutil rich
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
@@ -24,34 +24,46 @@ the tools are largely board and device independent and can be adapted to other e
 
 ## Building on X86
 
-This mlir-aie repo should already cloned locally (<mlir-aie> : absolute directory to mlir-aie).
+1. Clone the mlir-aie repo.
+```
+git clone https://github.com/Xilinx/mlir-aie.git
+cd mlir-aie
+```
 
-First clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
-enabled: In addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
+2. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
+enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
 than 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
-so.  You may find that other options are also useful.  Note that due to changing MLIR APIs, only a
+so. You may find that other options are also useful. Note that due to changing MLIR APIs, only a
 particular revision is expected to work.  
 
-To clone llvm and cmakeModules, see utils/clone-llvm.sh for the correct commithash.
+To clone llvm and cmakeModules, run utils/clone-llvm.sh (see utils/clone-llvm.sh for the correct llvm commithash).
 ```
-clone-llvm.sh
+source utils/clone-llvm.sh
 ```
 To build (compile and install) llvm, run utils/build-llvm-local.sh in the directory that llvm and 
 cmakeModules are cloned in. See build-llvm-local.sh for additional shell script arguments. 
 Note that build-llvm.sh is a variation of the llvm build script used for CI on github.
 ```
-build-llvm-local.sh 
+source utils/build-llvm-local.sh 
 ```
-This will build llvm in llvm/build and install the llvm binaries under llvm/install
+This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-Finally, build the mlir-aie tools by calling utils/build-mlir-aie.sh with absolute paths to the 
-sysroot, llvm and cmakeMdoules repos (note that clone-llvm.sh puts the cmakeModules repo under cmakeModules/cmakeModulesXilinx). 
+3. Build the mlir-aie tools by calling utils/build-mlir-aie.sh with __absolute paths__ to the 
+llvm and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
+cmakeModules/cmakeModulesXilinx). 
 ```
-build-mlir-aie.sh <sysroot dir> <llvm dir> <cmakeModules dir>/cmakeModulesXilinx
+source utils/build-mlir-aie.sh <llvm dir> <cmakeModules dir>/cmakeModulesXilinx
 ```
-This will create a build and install folder under <mlir-aie>. 
+This will create a build and install folder under /mlir-aie. 
 
 The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
+
+4. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
+done by calling the utils/env_setup.sh script with the __absolute paths__ to the install folders for mlir-aie
+and llvm.
+```
+source <mlir-aie>/utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
+```
 
 ### Sysroot
 Since the AIE tools are cross-compiling, in order to actually compile code, we need a 'sysroot' directory,
@@ -64,14 +76,6 @@ cd /
 sudo symlinks -rc .
 ```
 Following the [platform build steps](Platform.md) will also create a sysroot.
-
-## Environment setup
-In order to run all the tools, it may be necessary to add some paths into your environment. This can be 
-done by calling the utils/env_setup.sh script with the absolute path to the install folder for mlir-aie
-and llvm.
-```
-source <mlir-aie>/utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
-```
 
 -----
 
