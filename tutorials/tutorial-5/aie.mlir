@@ -17,9 +17,12 @@
 // AIE tiles, buffers, and data movement
 module @tutorial_5 {
 
-    // 2 tiles in row 4 (col 1 and col 3)
+    // 1 tile in row 4 (col 3)
     // even rows have local memory to its left
     %tile34 = AIE.tile(3, 4)
+
+    // 1 tile in row 0 (col 7)
+    // col 7, row 0 has access to a shimDMA
     %tile70 = AIE.tile(7, 0)
 
     // Declare external buffers, which represent pointers to external memory locations.

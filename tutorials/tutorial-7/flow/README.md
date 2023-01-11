@@ -45,4 +45,3 @@ The configurabiliy of the stream switch is more nuanced that is indicated with t
 2. Add a third block at tile(3,6) and broadcast to this new block as well.
 
 3. Change the tileDMA behavior by adding a new bd which pushes data with packet ID 0xE. If we want to broadcast this new packet ID to tile(3,6) but leave the original packet ID routed to tile(3,4) and tile(3,5), how would we do that?
-

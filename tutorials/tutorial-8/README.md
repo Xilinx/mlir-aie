@@ -25,7 +25,7 @@ AIE.putCascade($cascadeValue : type($cascadeValue))
 This allows us to push and pull data off the cascade ports.
 > This feature is currently not working so we rely instead on external compiled kernel functions to push and pull cascade data in our example desgn
 
-## <ins>Tutorial 5 Lab </ins>
+## <ins>Tutorial 8 Lab </ins>
 
 1. Read through the [aie.mlir](aie.mlir) design. Based on the tile locations, which tile is pushing cascade data and which tile is pulling it? <img src="../images/answer1.jpg" title="tile(1,3) is sending cascade data to tile(2,3)" height=25>
 

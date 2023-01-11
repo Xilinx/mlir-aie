@@ -15,7 +15,7 @@ tutorial-5.exe: aie.mlir test.cpp
 view: routes.json
 
 routes.json: aie.mlir
-	aie-opt --aie-create-pathfinder-flows --aie-find-flows $< | aie-translate --aie-flows-to-json > $@
+	aie-opt --aie-objectFifo-stateful-transform --aie-create-pathfinder-flows --aie-find-flows $< | aie-translate --aie-flows-to-json > $@
 
 clean:
 	rm -rf acdc_project *elf *exe core*

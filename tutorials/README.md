@@ -26,7 +26,7 @@ The structure of this series of tutorials are as follows:
 * [Tutorial 8 - communication (cascade)](./tutorial-8)
 * [Tutorial 9 - scaling up to large multi-core designs](./tutorial-9)
 * [Tutorial 10 - mlir-aie commands and utilities](./tutorial-10)
-* [Example Design #1 - 2x2 Matrix Multiplication (Object FIFO)](../reference_designs/MM_2x2)
+* [Example Design #1 - 2x2 Matrix Multiplication](../reference_designs/MM_2x2)
 * [Example Design #2 - iDCT](../reference_designs/idct/)
 
 ## <ins>Basic AI Engine architecture</ins>

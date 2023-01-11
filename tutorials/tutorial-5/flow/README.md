@@ -10,14 +10,14 @@
 
 # <ins>Tutorial 5 - communication (shim DMA, external memory aka DDR)</ins>
 
-In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up till now, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additiona blocks in the AI engine array and Versal device.
+In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up till now, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additional blocks in the AI engine array and Versal device.
 
 * Shim DMA and External Buffers
 * NOC configuration
 * Host code for buffer allocation and virtual address mapping
 
 A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
-<p><img src="../images/diagram9.jpg?raw=true" width="800"><p>
+<p><img src="../../images/diagram9.jpg?raw=true" width="800"><p>
 
 Here, we see the different components of the L1-L3 communciation defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
 
@@ -44,7 +44,7 @@ Here, we see that the rules for bd and channel definitions are the same as in th
 Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../tutorial-4) for more details.
 
 ### <ins>external_buffer</ins>
-The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` oeprator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
+The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` operator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
 ```
 %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
 ```
@@ -74,7 +74,7 @@ mlir_aie_release_<symn_name_lock(_xaie, 0, 100);
 ```
 The `<sym_name>` used here is the same sym_name of the external buffer. The first argument is the lock value (0,1) and the second argument is the timeout duration in microseconds.
 
-## <ins>Tutorial 8 Lab </ins>
+## <ins>Tutorial 5 Lab </ins>
 
 1. Read through the [aie.mlir](aie.mlir) design. How many external buffers are defined and which direction are they? <img src="../images/answer1.jpg" title="2 buffers. ext_buf70_in is for reading (DDR->L1). ext_buf70_out is for writing (L1->DDR)" height=25>
 
@@ -83,7 +83,7 @@ External buffers on their own cannot give any indication as to what they are use
 
 2. Add a second read and write channel to the single shimDMA (tile(7,0)) that moves data to and from another tile. That tile can have the same function as the existing tile.
 
-3. Can we add a third read or write channel to our shimDMA? <img src="../images/answer1.jpg" title="No" height=25>
+3. Can we add a third read or write channel to our shimDMA? <img src="../../images/answer1.jpg" title="No" height=25>
 
 4. Change the design so that the external buffer acts like a ping-pong buffer.
 
