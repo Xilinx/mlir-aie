@@ -21,9 +21,3 @@ routes.json: aie.mlir
 clean:
 	rm -rf acdc_project *elf *exe core*
 
-#------------------------------------------------------------------------------
-# Additional make targets for tutorial exercises
-#------------------------------------------------------------------------------
-tutorial-4_q5.exe: answers/test_q5.cpp answers/aie_q5.mlir 
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
-

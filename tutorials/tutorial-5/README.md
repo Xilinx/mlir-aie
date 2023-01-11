@@ -8,9 +8,9 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 8 - communication (shim DMA, external memory aka DDR)</ins>
+# <ins>Tutorial 5 - communication via objectFifo (shim DMA, external memory aka DDR)</ins>
 
-In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up till now, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additiona blocks in the AI engine array and Versal device.
+In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up till now, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additional blocks in the AI engine array and Versal device.
 
 * Shim DMA and External Buffers
 * NOC configuration
@@ -19,71 +19,27 @@ In thinking about data communication, it's often helpful to use the memory hiera
 A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
 <p><img src="../images/diagram9.jpg?raw=true" width="800"><p>
 
-Here, we see the different components of the L1-L3 communciation defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
+Here, we see the different components of the L1-L3 communciation defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp). 
+> Note that shimDMA are defined for the shim tiles (row 0). Also note that not every column in row 0 is shimDMA capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
 
-## <ins>Shim DMA and External Buffers</ins>
-### <ins>shimDMA</ins>
-We first need a component to move the data out of the AIE array and that component can be the shim DMA which is connected to the NoC block, or the PL interfaces. For this tutorial, we will focus on the shim DMA as that does not require custom PL blocks to move data to the DDR controller.
+Further in-depth descriptions of the components presented above can be found in the `./flow` subdirectory. 
 
-The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rather than define the BD behavior inside an `AIE.mem` oeprator, we define the same set of BD behaviors inside the `AIE.shimDMA` operator as shown below:
-```
-%shimdma70 = AIE.shimDMA(%tile70) {
-    AIE.dmaStart("MM2S", 0, ^bd1, ^end)
-    ^bd1:
-        AIE.useLock(%lock70_in, "Acquire", 1)
-        AIE.dmaBd(%external_buf : memref<256xi32>, 0, 256>, 0)
-        AIE.useLock(%lock70_in, "Release", 0)
-        cf.br ^end
-    ^end:
-        AIE.end
-}
-```
-Here, we see that the rules for bd and channel definitions are the same as in the tileDMA case.
-> Note that shimDMA are defined for the shim tiles (row 0). In this example, tile(7,0). Also note that not every column in row 0 is shimDMA capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
+[Link to lower level flow write-up](./flow)
 
-Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../tutorial-4) for more details.
+### <ins> Register external_buffers to objectFifo</ins>
 
-### <ins>external_buffer</ins>
-The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` oeprator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
-```
-%ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
-```
-This looks very much like a local buffer defintion except that it's not attached to any tile. Where this memory is physically located and how the shimDMA is able to connect to it is defined in the next two blocks.
+As was the case in the previous tutorial, we will first look at the design written with the `objectFifo` abstraction. The `AIE.objectFifo.createObjectFifo` is used to create an objectFifo between an AIE tile and a shim tile (in this example, tile(7,0)), which has access to a shimDMA and which will enable data movement to/from external memory. While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shimDMA, please refer to the `./flow` subdirectory. 
 
-## <ins>NOC configuration</ins>
+As for now, the `objectFifo` lowering only instantiates memory elements in L1, i.e., in local memory. In order to make the objectFifo aware of external memory regions that are part of its data movement, the `external buffers` are registered to the objectFifo with the `AIE.objectFifo.registerExternalBuffers(shimTile, objectFifo, {list of external buffers to register})` operation. 
 
-The next block to configure is the NOC interface that is connected to all shimDMAs to route to a valid external buffer. In the S80 device, for example, this can be to the DDR memory controller or other memory component connected to the NOC (e.g. BRAM controller). In our example platform, we have created a design where all NOC ports are able to route to the DDR memory controller but in practice, this step is done as part of the platform design. Future efforts to streamline the NOC configuration at run time is ongoing.
+## <ins>Tutorial 5 Lab </ins>
 
-## <ins>Host code for buffer allocation and virtual address mapping</ins>
+1. Read through the [aie.mlir](aie.mlir) design. Based on the tiles between which each objectFifo is created, what can we say about the direction of the data movement for each one? <img src="../images/answer1.jpg" title="objFifo_in is for reading (DDR->L1). objFifo_out is for writing (L1->DDR)." height=25>
 
-The last block to configure is the external buffer itself. Because our shim DMA is connected to a DDR memory controller, it can access any valid memory location therein. We then need to allocate a valid region of memory and pass that virtual address to the host code configuration functions so the shim DMA is configured correctly. For all tileDMAs, they are configured at runtime through the `mlir_aie_configure_dmas()` function. But this does not include the configuration of the shim DMAs. This is done as follows:
-```
-int *mem_ptr_in  = mlir_aie_mem_alloc(_xaie, 0, 256);
-mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
-mlir_aie_configure_shimdma_70(_xaie);
-```
-In this example, we first call `mlir_aie_mem_alloc` to allocate a region of DDR memory with a given offset and size and return a virtual address pointer. Then, in the `mlir_aie_external_set_addr_<bufname>(virtual_addr)`, we pass in the virtual address to MLIR defined external buffer. 
-> Note that the `<bufname>` used here is the `sym_name` defined in the MLIR code. 
+2. How many external buffers are defined and to which objectFifo are they registered? <img src="../images/answer1.jpg" title="2 buffers. ext_buf70_in is registered to objFifo_in. ext_buf70_out is registered to objFifo_out." height=25>
 
-Finally, the `mlir_aie_configure_shimdma_<location>()` is called to configure the shimDMA given the shim DMA operators in MLIR and the virtual address defined at runtime in the host code. The `<location>` refers to the shim DMA defined in MLIR and is the concatentation of the column-row number, in this case column 7, row 0 or 70. 
+3. How can the design be changed to use a double buffer in the shimDMA of shim tile (7,0) for objFifo_out instead? <img src="../images/answer1.jpg" title="An additional AIE.external_buffer should be created and registered to objFifo_out." height=25>
 
-Once these three functions are called, the shim DMA is configured properly with the runtime allocated memory region in DDR. Since the common use of shimDMA requires timing synchronization to start a transaction, we often use locks to do this just as we did in the tile DMA example. Here, we can acquire and release locks in the shimDMA using the following access functions:
-```
-mlir_aie_acquire_<sym_name>_lock(_xaie, 1, 100);
-mlir_aie_release_<symn_name_lock(_xaie, 0, 100);
-```
-The `<sym_name>` used here is the same sym_name of the external buffer. The first argument is the lock value (0,1) and the second argument is the timeout duration in microseconds.
+4. Make the change in the [aie.mlir](aie.mlir) design then apply the objectFifo lowering ((see [../tutorial-3/objectFifo_ver/README.md](tutorial-3) for the command)). Does the change above influence the number of L1 buffers created in tile (3,4) by objFifo_out? <img src="../images/answer1.jpg" title="No. The number of L1 buffers created in tile (3,4) is based on the size given to objFifo_out at creation, and based on the number of elements acquired by the core on tile (3,4)." height=25>
 
-## <ins>Tutorial 8 Lab </ins>
-
-1. Read through the [aie.mlir](aie.mlir) design. How many external buffers are defined and which direction are they? <img src="../images/answer1.jpg" title="2 buffers. ext_buf70_in is for reading (DDR->L1). ext_buf70_out is for writing (L1->DDR)" height=25>
-
-External buffers on their own cannot give any indication as to what they are used for but we can figure this out based on the bd description that the buffer is used in. For example, `ext_buf70_in` is definedin `bd1` which is itself defined for `dmaStart("S2MM")` which tells us this is a S2MM connection. 
-> Note that S2MM means stream to memory map. In this case, the stream is the AIE array side and the MM is the external buffer side (e.g. DDR) so we are moving data out of the AIE array or writing data to the external buffer. This is kind of the opposite to the tile DMA case where S2MM would be moving data from the stream to the local memory which would be reading from the perspective of the AIE core.
-
-2. Add a second read and write channel to the single shimDMA (tile(7,0)) that moves data to and from another tile. That tile can have the same function as the existing tile.
-
-3. Can we add a third read or write channel to our shimDMA? <img src="../images/answer1.jpg" title="No" height=25>
-
-4. Change the design so that the external buffer acts like a ping-pong buffer.
-
+5. Remove the previous change. Increase the number of L1 buffers created by objFifo_out to 2. Apply the lowering again. Does this change also create more external_buffers? <img src="../images/answer1.jpg" title="No. External buffers must be explicitly created and registered to objFifo_out. The virtual address pointer of each external buffer must also be explicitly allocated by the host processor (see test.cpp)." height=25>

@@ -30,7 +30,7 @@
 int
 main(int argc, char *argv[])
 {
-    printf("Tutorial-7 test start.\n");
+    printf("Tutorial-8 test start.\n");
 
     // Standard helper function for initializing and configuring AIE array.
     // The host is used to initialize/ configure/ program the AIE array.
@@ -51,8 +51,7 @@ main(int argc, char *argv[])
     int errors = 0;
 
     // Helper function to clear tile data memory
-    mlir_aie_clear_tile_memory(_xaie, 1, 4);
-    mlir_aie_clear_tile_memory(_xaie, 3, 4);
+    mlir_aie_clear_tile_memory(_xaie, 2, 3);
 
     // Check the buffer value at index 3 to ensure it is zeroed out
     // prior to running our simple kernel.
@@ -64,11 +63,7 @@ main(int argc, char *argv[])
     // mlir_aie_check - helper function to compare values to expected
     // golden value and print error message to stdout and increment 
     // "errors" variable if mismatch occurs.
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 0,
-                   errors);
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
-                   errors);
-    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a35(_xaie, 5), 0,
+    mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a23(_xaie, 5), 0,
                    errors);
 
     // Helper function to enable all AIE cores
@@ -78,14 +73,8 @@ main(int argc, char *argv[])
     // Wait time for cores to run. Number used here is much larger than needed.
     usleep(100);
 
-    // Check buffer at index 3 again for expected value of 14 for tile(1,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 14,
-                   errors);
     // Check buffer at index 5 again for expected value of 114 for tile(3,4)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 114,
-                   errors);
-    // Check buffer at index 5 again for expected value of 114 for tile(3,5)    
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a35(_xaie, 5), 114,
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_a23(_xaie, 5), 114,
                    errors);
 
     // Print Pass/Fail result of our test
@@ -101,6 +90,6 @@ main(int argc, char *argv[])
     // Teardown and cleanup of AIE array
     mlir_aie_deinit_libxaie(_xaie);
 
-    printf("Tutorial-7 test done.\n");
+    printf("Tutorial-8 test done.\n");
     return res;
 }

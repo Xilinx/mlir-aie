@@ -10,7 +10,7 @@
 
 # <ins>Tutorial 4 - communication (tile DMA, logical routing)</ins>
 
-Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjcent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has buit-in automatic routing capabilities and visulization tools for viewing the routing choices made. This is a great area for further research where additional transformation can be added to provide other optimized routing functionality.
+Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjcent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has buit-in automatic routing capabilities and visulization tools for viewing the routing choices made. This is an great area for further research where additional transformation can be added to provide other optimized routing functionality.
 
 ## <ins>Streams</ins>
 Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically in both into and out of the switchbox (except in the vertical direction going north where there are 6 streams in and out). The AIE core does have 2 input and 2 output stream ports that connect to its local swtichbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the swtichbox.
@@ -20,7 +20,7 @@ The AIE switchboxes are very powerful configurable blocks for steering data betw
 * circuit swtich mode
 * packet swtich mode
 
-We will discuss the circuit swtich mode first and take a look at the packet switch mode in [tutorial-6](../tutorial-6). Circuit switch mode is where a given route between ports of the switchbox are fixed, allowing data to be passed from one input port to one or more output ports. The path is fixed after configuration and the data movers (DMAs) can push data as frequently as it wishes along that fixed route.
+We will discuss the circuit swtich mode first and take a look at the packet switch mode in [tutorial-6](../../tutorial-6). Circuit switch mode is where a given route between ports of the switchbox are fixed, allowing data to be passed from one input port to one or more output ports. The path is fixed after configuration and the data movers (DMAs) can push data as frequently as it wishes along that fixed route.
 
 A set of circuit switched routes from a source port in one switchbox to a destination port in another switchbox (potentially far way) is called a `flow ` and can be automatically determined and configured using the `AIE.flow` operation. 
 ```
@@ -91,7 +91,7 @@ Each bd operation can also optionally be gated by locks meaning a lock must be a
 > The lock operations are optional and the lock ID used in acquire and release do not have to match each other though they usually do.
 
 Below is a diagram that maps the components introduced with the physical block on the AI Engine tile.
-<p><img src="../images/diagram6.jpg?raw=true" width="800"><p>
+<p><img src="../../images/diagram6.jpg?raw=true" width="800"><p>
 
 ## <ins>Tutorial 4 Lab </ins>
 
