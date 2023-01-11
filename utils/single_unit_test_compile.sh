@@ -19,15 +19,12 @@
 ##===----------------------------------------------------------------------===##
 
 if [ "$#" -ne 2 ]; then
-    echo "ERROR: Needs 2 arguments for <sysroot dir> and <runtime lib dir>"
+    echo "ERROR: Needs 2 arguments for <sysroot dir> and <runtime lib dir>."
     exit 1
 fi
 
 export SYSROOT_DIR=$1
 export RUNTIME_LIB_DIR=$2
-
-#aiecc.py --sysroot=$SYSROOT_DIR aie.mlir -I${RUNTIME_LIB_DIR} \
-# ${RUNTIME_LIB_DIR}/test_library.cpp ./test.cpp -o test.elf
 
 aiecc.py --sysroot=$SYSROOT_DIR --aie-generate-xaiev2 \
     --host-target=aarch64-linux-gnu ./aie.mlir \

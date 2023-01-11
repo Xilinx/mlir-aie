@@ -47,3 +47,4 @@ cmake ../llvm \
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
+cd ../..
