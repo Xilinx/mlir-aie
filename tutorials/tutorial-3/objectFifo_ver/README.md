@@ -50,6 +50,6 @@ aie-opt --aie-objectFifo-stateful-transform <mlir source file>
 
 ## <ins>Tutorial 3 Lab </ins>
 
-1. Read through the [/objectFifo_ver/aie.mlir](aie.mlir) design. In which tile and its local memory will the objectFifo lowering generate the buffer and its lock? <img src="../images/answer1.jpg" title="On even rows tiles have local memories to their left, so the shared memory is that of tile (2,4). That is where the lowering will generate the shared buffer and lock." height=25>
+1. Read through the [/objectFifo_ver/aie.mlir](aie.mlir) design. In which tile and its local memory will the objectFifo lowering generate the buffer and its lock? <img src="../../images/answer1.jpg" title="On even rows tiles have local memories to their left, so the shared memory is that of tile (2,4). That is where the lowering will generate the shared buffer and lock." height=25>
 
-2. Increase the objectFifo size to 2. Navigate to the location of the [/objectFifo_ver/aie.mlir](aie.mlir) design and apply the objectFifo lowering on it. How many buffer/lock pairs are created and in which memory module? <img src="../images/answer1.jpg" title="2 buffer/lock pairs are created in the shared memory of tile (2,4)." height=25>
+2. Increase the objectFifo size to 2. Navigate to the location of the [/objectFifo_ver/aie.mlir](aie.mlir) design and apply the objectFifo lowering on it. How many buffer/lock pairs are created and in which memory module? <img src="../../images/answer1.jpg" title="2 buffer/lock pairs are created in the shared memory of tile (2,4)." height=25>
