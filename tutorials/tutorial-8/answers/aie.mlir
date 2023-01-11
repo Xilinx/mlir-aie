@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,11 +19,11 @@ module @tutorial_8 {
 
     // 2 tiles in row 4 (col 1 and col 2)
     // even rows have local memory to its left
-    %tile13 = AIE.tile(1, 3) 
-    %tile23 = AIE.tile(2, 3)
+    %tile14 = AIE.tile(1, 4) 
+    %tile24 = AIE.tile(2, 4)
 
     // Declare local memory of tile(2,4) which is shared with tile(1,4)
-    %buf = AIE.buffer(%tile23) { sym_name = "a23" } : memref<256xi32>
+    %buf = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
 
     // declare 2 kernel functions name "extern_kernel1" and "extern_kernel2"
     // with one positional function argument, in this case mapped to a memref
@@ -35,7 +35,7 @@ module @tutorial_8 {
 
     // Define core algorithm for tile(1,4)
     // buf[3] = 13
-    %core13 = AIE.core(%tile13) {
+    %core14 = AIE.core(%tile14) {
         // Locks init value is Release 0, so this will always succeed first
         // AIE.useLock(%lock23_1, "Acquire", 0)
 
@@ -44,15 +44,15 @@ module @tutorial_8 {
 		// //memref.store %val, %buf[%idx] : memref<256xi32> 
         // AIE.putCascade(%val : i384)
 
-        func.call @extern_kernel1() : () -> ()
+        func.call @extern_kernel2() : () -> ()
 
         // AIE.useLock(%lock23_1, "Release", 1)
         AIE.end
-    } { link_with="kernel1.o" }
+    } { link_with="kernel2.o" }
 
     // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
-    %core23 = AIE.core(%tile23) {
+    %core24 = AIE.core(%tile24) {
         // This acquire will stall since locks are initialized to Release, 0
         // AIE.useLock(%lock23_1, "Acquire", 1)
 
@@ -65,10 +65,10 @@ module @tutorial_8 {
 		// %idx2 = arith.constant 5 : index
 		// memref.store %d2, %buf[%idx2] : memref<256xi32> 
 
-        func.call @extern_kernel2(%buf) : (memref<256xi32>) -> ()
+        func.call @extern_kernel1(%buf) : (memref<256xi32>) -> ()
 
         // AIE.useLock(%lock24_1, "Release", 0)
         AIE.end
-    } { link_with="kernel2.o" }
+    } { link_with="kernel1.o" }
 
 }
