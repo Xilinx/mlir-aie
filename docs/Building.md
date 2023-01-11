@@ -6,7 +6,7 @@
 cmake 3.17.5
 ninja 1.8.2
 Xilinx Vitis 2021.2
-sudo pip3 install joblib psutil rich
+sudo pip3 install joblib psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
@@ -29,6 +29,8 @@ the tools are largely board and device independent and can be adapted to other e
 git clone https://github.com/Xilinx/mlir-aie.git
 cd mlir-aie
 ```
+
+__All subsequent steps should be run from inside the mlir-aie repo cloned above.__
 
 2. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
 enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 

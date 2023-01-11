@@ -40,6 +40,8 @@ INSTALL_DIR=${6:-"install"}
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
+set -o pipefail
+set -e
 cmake -GNinja \
     -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm_petalinux.cmake \
     -DSysroot=${SYSROOT_DIR} \
