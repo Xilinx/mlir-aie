@@ -12,6 +12,6 @@ const int kernel_width = 3;
 const int kernel_height = 1;
 
 void conv2d(int8_t *restrict img_in, size_t m1, int8_t *restrict kernel_coeff,
-            size_t m2, int8_t *restrict img_out, size_t m3);
+            size_t m2, int32_t *restrict img_out, size_t m3);
 
 #endif

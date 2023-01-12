@@ -11,12 +11,26 @@
 #define VEC PARALLEL_FACTOR_8b // Vectorization factor
 #define DUP_FACTOR 2           // Duplication factor in kernel/filter
 
-int8_t in_data[MAX_IMAGE_SIZE];
-int8_t out_data[MAX_IMAGE_SIZE];
-int8_t kernelCoeff[MAX_KERNEL_SIZE];
+alignas(32) int8_t in_data[MAX_IMAGE_SIZE];
+alignas(32) int32_t out_data[MAX_IMAGE_SIZE];
+alignas(32) int8_t kernelCoeff[MAX_KERNEL_SIZE];
 
 #define INPUT_FILE "data/kernelAndInImage_256x16_k3_gaussblur.txt"
 #define REF_FILE "data/refImage_256x16_k3_gaussblur.txt"
+
+void reference(int8_t A[5184], int8_t B[48], int C[4096]) {
+  int i, j;
+  int t0;
+  for (int i = 0; i < 16; i++) {
+    for (int j = 0; j < 256; j++) {
+      t0 = A[i * 288 + j] * B[0];
+      t0 += A[i * 288 + j + 1] * B[2];
+      t0 += A[i * 288 + j + 2] * B[4];
+      C[i * 256 + j] = t0;
+    }
+  }
+  return;
+}
 
 int main() {
   int i = 0, j = 0, k = 0;
@@ -96,6 +110,7 @@ int main() {
 
   // Compute convolution
   auto cyclesBegin = chess_cycle_count();
+  // reference(in_data, kernelCoeff, out_data);
   conv2d(in_data, imageHeight + kernel_height - 1, kernelCoeff, 16, out_data,
          imageHeight);
   auto cyclesEnd = chess_cycle_count();
@@ -115,7 +130,7 @@ int main() {
   for (int i = 0; i < imageSize; i++) {
     int32_t ref_output;
     fscanf(fpref, "%d", &ref_output);
-    if (out_data[i] != (int8_t)ref_output) {
+    if (out_data[i] != ref_output) {
       absErrorDiff = abs(out_data[i] - ref_output);
       if (absErrorDiff > 1)
         printf("Delta found: Index %d is %d and should be %d\n", i, out_data[i],

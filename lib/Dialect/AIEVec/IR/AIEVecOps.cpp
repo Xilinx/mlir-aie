@@ -131,6 +131,69 @@ ParseResult UPDOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+// Print out Cast op.
+void CastOp::print(OpAsmPrinter &p) {
+  // Print the source accumulator
+  p << " " << getSource();
+
+  // And now print the types
+  p << " : " << getSource().getType() << ", " << getResult().getType();
+}
+
+// Verify Cast op.
+LogicalResult CastOp::verify() {
+  // Verify the types
+  VectorType sourceType = getSource().getType().dyn_cast<VectorType>();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+  if (!sourceType)
+    return emitError("requires source vector type");
+  if (!resultType)
+    return emitError("requires result vector type");
+
+  return success();
+}
+
+// Parse Cast op.
+ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source;
+
+  // Parse the source vector
+  if (parser.parseOperand(source))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 0)
+    return parser.emitError(typesLoc, "requires zero attribute");
+
+  // Assert that there are two types (source and result)
+  if (types.size() != 2)
+    return parser.emitError(typesLoc, "requires two types");
+
+  // Some verification of types
+  VectorType sourceType = types[0].dyn_cast<VectorType>();
+  if (!sourceType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType vectorType = types[1].dyn_cast<VectorType>();
+  if (!vectorType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the source in result
+  if (parser.resolveOperand(source, sourceType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(vectorType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
 // SRSOp
 //===----------------------------------------------------------------------===//
 

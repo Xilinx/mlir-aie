@@ -332,6 +332,20 @@ def AIEVec_UPSOp:
   ];
 }
 
+def AIEVec_CastOp:
+  AIEVec_Op<"cast", [
+    Pure
+  ]>, 
+  Arguments<(ins AnyVector:$source)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE cast";
+  let description = [{
+    AIE-ML cast intrinsic. cast values from source data type to result data types.
+    `$result = cast($source)`
+  }];
+}
+
+
 def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure

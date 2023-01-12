@@ -93,7 +93,7 @@ struct CppEmitter {
   /// Emits type 'type' or returns failure. stdintType is true when the
   // type is from stdint.h
   LogicalResult emitType(Location loc, Type type, bool stdintType = true,
-                         bool isAcc = false);
+                         bool isAcc = false, bool isCast = false);
 
   /// Emits array of types as a std::tuple of the emitted types.
   /// - emits void for an empty array;
@@ -110,7 +110,8 @@ struct CppEmitter {
 
   /// Emits a variable declaration for a result of an operation.
   LogicalResult emitVariableDeclaration(OpResult result, bool trailingSemicolon,
-                                        bool isAcc = false);
+                                        bool isAcc = false,
+                                        bool isCast = false);
 
   /// Emits the variable declaration and assignment prefix for 'op'.
   /// - emits separate variable followed by std::tie for multi-valued operation;
@@ -118,7 +119,8 @@ struct CppEmitter {
   /// - emits nothing if no value produced by op;
   /// Emits final '=' operator where a type is produced. Returns failure if
   /// any result type could not be converted.
-  LogicalResult emitAssignPrefix(Operation &op, bool isAcc = false);
+  LogicalResult emitAssignPrefix(Operation &op, bool isAcc = false,
+                                 bool isCast = false);
 
   /// Emits a label for the block.
   LogicalResult emitLabel(Block &block);
@@ -618,6 +620,44 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   }
   os << ")";
 
+  return success();
+}
+
+// Generate the cast intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::CastOp castOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // Generate the initialization for the vector
+  if (failed(
+          emitter.emitAssignPrefix(*castOp, /*isAcc=*/false, /*isCast=*/true)))
+    return failure();
+
+  // The source should have already been emitted
+  Value source = castOp.getSource();
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  // Get the datatype of the source and result vector
+  VectorType resType = castOp->getResult(0).getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
+  unsigned lanes = getVectorLaneSize(resType);
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  unsigned width = 0;
+  if (eltType.isa<FloatType>()) {
+    width = eltType.cast<FloatType>().getWidth();
+    os << "v" << lanes << "float" << width;
+  } else {
+    width = getElementSizeInBits(resType);
+    os << "v" << lanes << "int" << width;
+  }
+  os << "(";
+  os << emitter.getOrCreateName(source);
+  os << ")";
   return success();
 }
 
@@ -1127,7 +1167,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the accumulator
-  if (failed(emitter.emitAssignPrefix(*mul_elemOp)))
+  if (failed(emitter.emitAssignPrefix(*mul_elemOp, true /*isAcc*/)))
     return failure();
 
   os << opname;
@@ -1175,7 +1215,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the accumulator
-  if (failed(emitter.emitAssignPrefix(*mul_convOp)))
+  if (failed(emitter.emitAssignPrefix(*mul_convOp, true /*isAcc*/)))
     return failure();
 
   os << opname;
@@ -2226,13 +2266,13 @@ LogicalResult CppEmitter::emitVariableAssignment(OpResult result) {
 
 LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
                                                   bool trailingSemicolon,
-                                                  bool isAcc) {
+                                                  bool isAcc, bool isCast) {
   if (hasValueInScope(result)) {
     return result.getDefiningOp()->emitError(
         "result variable for the operation already declared");
   }
-  if (failed(
-          emitType(result.getOwner()->getLoc(), result.getType(), true, isAcc)))
+  if (failed(emitType(result.getOwner()->getLoc(), result.getType(), true,
+                      isAcc, isCast)))
     return failure();
   os << " " << getOrCreateName(result);
   if (trailingSemicolon)
@@ -2240,7 +2280,8 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
   return success();
 }
 
-LogicalResult CppEmitter::emitAssignPrefix(Operation &op, bool isAcc) {
+LogicalResult CppEmitter::emitAssignPrefix(Operation &op, bool isAcc,
+                                           bool isCast) {
   switch (op.getNumResults()) {
   case 0:
     break;
@@ -2251,7 +2292,7 @@ LogicalResult CppEmitter::emitAssignPrefix(Operation &op, bool isAcc) {
         return failure();
     } else {
       if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/false,
-                                         isAcc)))
+                                         isAcc, isCast)))
         return failure();
       os << " = ";
     }
@@ -2314,7 +2355,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::MulOp, aievec::PackOp, aievec::SelectOp, aievec::SRSOp,
                 aievec::SubOp, aievec::UPDOp, aievec::UPSOp, aievec::FMAElemOp,
                 aievec::MulElemOp, aievec::BroadcastOp, aievec::MulConvOp,
-                aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp>(
+                aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp,
+                aievec::CastOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -2327,7 +2369,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
 }
 
 LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
-                                   bool isAcc) {
+                                   bool isAcc, bool isCast) {
   if (auto iType = type.dyn_cast<IntegerType>()) {
     switch (iType.getWidth()) {
     case 1:
@@ -2406,7 +2448,11 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
       auto iType = eltType.cast<IntegerType>();
       unsigned width = iType.getWidth();
       if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32)) {
-        return (os << "acc" << width), success();
+        if (isCast || !isAcc) {
+          return (os << "int" << width), success();
+        } else {
+          return (os << "acc" << width), success();
+        }
       }
     } else if (eltType.isa<FloatType>()) {
       if (AIEML) {
