@@ -345,7 +345,6 @@ def AIEVec_CastOp:
   }];
 }
 
-
 def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure

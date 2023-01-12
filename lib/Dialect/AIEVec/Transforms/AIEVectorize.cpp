@@ -184,14 +184,17 @@ static inline AIEVecAttributes getResultVecStats(Operation *op,
   return getVectorStats(vtype);
 }
 
+static Operation *getOperandDefOp(VectState *state, Operation *op, unsigned idx){
+  return state->sextDefMap.count(op->getOperand(idx).getDefiningOp())
+          ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
+          : op->getOperand(idx).getDefiningOp();
+}
+
 // Get the vector stats for an operation's operand.
 static inline AIEVecAttributes
 getOperandVecStats(Operation *op, VectState *state, unsigned idx = 0) {
   assert(op->getNumOperands() > idx);
-  Operation *defOp =
-      state->sextDefMap.count(op->getOperand(idx).getDefiningOp())
-          ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
-          : op->getOperand(idx).getDefiningOp();
+  Operation *defOp = getOperandDefOp(state, op, idx);
   VectorType vtype = defOp->getResult(0).getType().cast<VectorType>();
   auto ret = getVectorStats(vtype);
   // if the defining op is a transfer read, get the extent read from source
@@ -211,12 +214,8 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
                                                             VectState *state) {
   assert(op->getNumOperands() >= 2 && op->getNumResults() == 1);
 
-  Operation *left = state->sextDefMap.count(op->getOperand(0).getDefiningOp())
-                        ? state->sextDefMap[op->getOperand(0).getDefiningOp()]
-                        : op->getOperand(0).getDefiningOp();
-  Operation *right = state->sextDefMap.count(op->getOperand(1).getDefiningOp())
-                         ? state->sextDefMap[op->getOperand(1).getDefiningOp()]
-                         : op->getOperand(1).getDefiningOp();
+  Operation *left = getOperandDefOp(state, op, 0);
+  Operation *right = getOperandDefOp(state, op, 1);
 
   // Get the number of lanes
   VectorType vtype = op->getResult(0).getType().cast<VectorType>();
@@ -262,14 +261,9 @@ static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
 
   // Iterate over the even and odd operands for both the operations
   for (int idx = 0; idx < 2; ++idx) {
-    Operation *op1 =
-        state->sextDefMap.count(Op1->getOperand(idx).getDefiningOp())
-            ? state->sextDefMap[Op1->getOperand(idx).getDefiningOp()]
-            : Op1->getOperand(idx).getDefiningOp();
-    Operation *op2 =
-        state->sextDefMap.count(Op2->getOperand(idx).getDefiningOp())
-            ? state->sextDefMap[Op2->getOperand(idx).getDefiningOp()]
-            : Op2->getOperand(idx).getDefiningOp();
+    Operation *op1 = getOperandDefOp(state, Op1, idx);
+    Operation *op2 = getOperandDefOp(state, Op2, idx);
+
     // If both op1 and op2 are transfer read ops, then we need to create an
     // interval that subsumes the extent read by both op1 an op2.
     if (isa<TransferReadOp>(op1) && isa<TransferReadOp>(op2)) {
@@ -1703,12 +1697,9 @@ static void fuseFMAOps(Operation *refOp,
 
   // Get the start offsets for left and right operands of the reference
   // operator, i.e., start of the fusion chain.
-  Operation *lOp = state->sextDefMap.count(refOp->getOperand(0).getDefiningOp())
-                       ? state->sextDefMap[refOp->getOperand(0).getDefiningOp()]
-                       : refOp->getOperand(0).getDefiningOp();
-  Operation *rOp = state->sextDefMap.count(refOp->getOperand(1).getDefiningOp())
-                       ? state->sextDefMap[refOp->getOperand(1).getDefiningOp()]
-                       : refOp->getOperand(1).getDefiningOp();
+  Operation *lOp = getOperandDefOp(state, refOp, 0);
+  Operation *rOp = getOperandDefOp(state, refOp, 1);
+
   int32_t lstart = computeStartInAIEVec(lOp, state);
   int32_t rstart = computeStartInAIEVec(rOp, state);
 
@@ -1757,14 +1748,9 @@ static void fuseFMAOps(Operation *refOp,
           cstat.isSplat != ustat.isSplat)
         break;
       // Check 2. The accesses must come from the same vector/upd op
-      Operation *cdefOp =
-          state->sextDefMap.count(curOp->getOperand(idx).getDefiningOp())
-              ? state->sextDefMap[curOp->getOperand(idx).getDefiningOp()]
-              : curOp->getOperand(idx).getDefiningOp();
-      Operation *udefOp =
-          state->sextDefMap.count(usrOp->getOperand(idx).getDefiningOp())
-              ? state->sextDefMap[usrOp->getOperand(idx).getDefiningOp()]
-              : usrOp->getOperand(idx).getDefiningOp();
+      Operation *cdefOp = getOperandDefOp(state, curOp, idx);
+      Operation *udefOp = getOperandDefOp(state, usrOp, idx);
+
       bool related = cdefOp == udefOp;
       if (!related && cstat.loadFromMemory && ustat.loadFromMemory) {
         IntervalReuse *civ = state->getIntervalForOperation(cdefOp);
@@ -1961,9 +1947,8 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
   // operand, and store them in opAttr.
   for (size_t idx = 0; idx < 2; ++idx) {
     AIEVecAttributes stat = getOperandVecStats(Op, state, idx);
-    Operation *op = state->sextDefMap.count(Op->getOperand(idx).getDefiningOp())
-                        ? state->sextDefMap[Op->getOperand(idx).getDefiningOp()]
-                        : Op->getOperand(idx).getDefiningOp();
+    Operation *op = getOperandDefOp(state, Op, idx);
+
     int32_t start = 0, accIncr = 1;
     // If the operand comes from transfer_read, compute the step and start
     // values.

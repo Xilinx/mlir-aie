@@ -9,22 +9,20 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
         %2 = affine.load %arg1[0] : memref<?xi16>
         %3 = arith.extsi %2 : i16 to i32
         %4 = arith.muli %1, %3 : i32
-        %5 = arith.trunci %4 : i32 to i16
-        %6 = affine.load %arg0[%arg3, %arg4 + 1] : memref<?x288xi16>
-        %7 = arith.extsi %6 : i16 to i32
-        %8 = affine.load %arg1[1] : memref<?xi16>
-        %9 = arith.extsi %8 : i16 to i32
-        %10 = arith.muli %7, %9 : i32
-        %11 = arith.trunci %10 : i32 to i16
-        %12 = arith.addi %5, %11 : i16
-        %13 = affine.load %arg0[%arg3, %arg4 + 2] : memref<?x288xi16>
+        %5 = affine.load %arg0[%arg3, %arg4 + 1] : memref<?x288xi16>
+        %6 = arith.extsi %5 : i16 to i32
+        %7 = affine.load %arg1[1] : memref<?xi16>
+        %8 = arith.extsi %7 : i16 to i32
+        %9 = arith.muli %6, %8 : i32
+        %10 = arith.addi %4, %9 : i32
+        %11 = affine.load %arg0[%arg3, %arg4 + 2] : memref<?x288xi16>
+        %12 = arith.extsi %11 : i16 to i32
+        %13 = affine.load %arg1[2] : memref<?xi16>
         %14 = arith.extsi %13 : i16 to i32
-        %15 = affine.load %arg1[2] : memref<?xi16>
-        %16 = arith.extsi %15 : i16 to i32
-        %17 = arith.muli %14, %16 : i32
-        %18 = arith.trunci %17 : i32 to i16
-        %19 = arith.addi %12, %18 : i16
-        affine.store %19, %arg2[%arg3, %arg4] : memref<?x256xi16>
+        %15 = arith.muli %12, %14 : i32
+        %16 = arith.addi %10, %15 : i32
+        %17 = arith.trunci %16 : i32 to i16
+        affine.store %17, %arg2[%arg3, %arg4] : memref<?x256xi16>
       }
     }
     return
