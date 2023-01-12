@@ -28,9 +28,12 @@ Further in-depth descriptions of the components presented above can be found in 
 
 ### <ins> Register external_buffers to objectFifo</ins>
 
-As was the case in the previous tutorial, we will first look at the design written with the `objectFifo` abstraction. The `AIE.objectFifo.createObjectFifo` is used to create an objectFifo between an AIE tile and a shim tile (in this example, tile(7,0)), which has access to a shimDMA and which will enable data movement to/from external memory. While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shimDMA, please refer to the `./flow` subdirectory. 
+As was the case in the previous tutorial, we will first look at the design written with the `objectFifo` abstraction. The `AIE.objectFifo.createObjectFifo` operation is used to create an objectFifo between an AIE tile and a shim tile (in this example, tile(7,0)), which has access to a shimDMA and which will enable data movement to/from external memory. While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shimDMA, please refer to the `./flow` subdirectory. 
 
-As for now, the `objectFifo` lowering only instantiates memory elements in L1, i.e., in local memory. In order to make the objectFifo aware of external memory regions that are part of its data movement, the `external buffers` are registered to the objectFifo with the `AIE.objectFifo.registerExternalBuffers(shimTile, objectFifo, {list of external buffers to register})` operation. 
+As for now, the `objectFifo` lowering only instantiates memory elements in L1, i.e., in local memory. In order to make the objectFifo aware of external memory regions that are part of its data movement, the external buffers are registered to the objectFifo with the operation:
+```
+AIE.objectFifo.registerExternalBuffers(shimTile, objectFifo, {list of external buffers to register}) : (list of external buffer datatypes)
+``` 
 
 ## <ins>Tutorial 5 Lab </ins>
 
