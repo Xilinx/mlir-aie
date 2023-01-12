@@ -185,7 +185,7 @@ static inline AIEVecAttributes getResultVecStats(Operation *op,
 }
 
 static Operation *getOperandDefOp(VectState *state, Operation *op,
-                                  unsigned idx){
+                                  unsigned idx) {
   return state->sextDefMap.count(op->getOperand(idx).getDefiningOp())
              ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
              : op->getOperand(idx).getDefiningOp();
