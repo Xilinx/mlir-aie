@@ -17,18 +17,19 @@
 // AIE tiles, buffers, and data movement
 module @tutorial_7 {
 
-    // 2 tiles in row 4 (col 1 and col 2)
+    // 2 tiles in row 4 (col 1 and col 3) and 1 in row 5 (col 3)
     // even rows have local memory to its left
+    // odd rows have local memory to its right
     %tile14 = AIE.tile(1, 4) 
     %tile34 = AIE.tile(3, 4)
     %tile35 = AIE.tile(3, 5)
 
-    // Declare local memory of tile(1,4) and tile (3,4) which are not shared
+    // Declare local memory of tile(1,4), tile(3,4) and tile(3,5) which are not shared
     %buf14 = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
     %buf34 = AIE.buffer(%tile34) { sym_name = "a34" } : memref<256xi32>
     %buf35 = AIE.buffer(%tile35) { sym_name = "a35" } : memref<256xi32>
 
-    // Declare local locks for tile(1,4) and tile(3,4) giving new
+    // Declare local locks for tile(1,4), tile(3,4) and tile(3,5) giving new
     // unique lock ID values 6 and 7
     %lock14_6 = AIE.lock(%tile14, 6) { sym_name = "lock_a14_6" }
     %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }

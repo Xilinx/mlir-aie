@@ -10,7 +10,7 @@
 
 # <ins>Tutorial 7 - communication (broadcast)</ins>
 
-Now that we've seen how point to point communciation is handled, we need to introduce the concept of broadcast. This is necessary to allow data from a single source to be sent to multiple destinations. This is also important because with a fixed set of routing resources (e.g. channels), we need to be efficient in how we move data to avoid congestion. Broadcast then is our one-to-many communication tool. Many-to-one is also possible but only in the packet routing case. For circuit switch routing, we would need some kind of aggregator the decides when connections can be switched which packet routing already supports.
+Now that we've seen how point to point communciation is handled, we need to introduce the concept of broadcast. This is necessary to allow data from a single source to be sent to multiple destinations. This is also important because with a fixed set of routing resources (e.g. channels), we need to be efficient in how we move data to avoid congestion. Broadcast then is our one-to-many communication tool. Many-to-one is also possible but only in the packet routing case. For circuit switch routing, we would need some kind of aggregator that decides when connections can be switched, which packet routing already supports.
 
 ## <ins>Circuit switch broadcast</ins>
 For circuit swtich connections, broadcast is supported by simply making logical connections between the same ports. For exmaple, if we have a single source routing to 3 destinations, it may look like:
@@ -40,7 +40,7 @@ The configurabiliy of the stream switch is more nuanced that is indicated with t
 
 ## <ins>Tutorial 7 Lab </ins>
 
-1. Read through the [aie.mlir](aie.mlir) design. What is the packet ID used in this example? <img src="../../images/answer1.jpg" title="0xD" height=25>
+1. Read through the [/flow/aie.mlir](aie.mlir) design. What is the packet ID used in this example? <img src="../../images/answer1.jpg" title="0xD" height=25>
 
 2. Add a third block at tile(3,6) and broadcast to this new block as well.
 

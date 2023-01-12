@@ -95,7 +95,7 @@ Below is a diagram that maps the components introduced with the physical block o
 
 ## <ins>Tutorial 4 Lab </ins>
 
-1. Read through the [aie.mlir](aie.mlir) design. Which DMA direction and channel is used on tile(1,4) to send data to tile(3,4)? <img src="../../images/answer1.jpg" title="MM2S, channel 0" height=25>
+1. Read through the [/flow/aie.mlir](aie.mlir) design. Which DMA direction and channel is used on tile(1,4) to send data to tile(3,4)? <img src="../../images/answer1.jpg" title="MM2S, channel 0" height=25>
 
 2. What is the shared lock ID used in tile(1,4) to arbitrate access to its local memory? <img src="../../images/answer1.jpg" title="6" height=25>
 
