@@ -184,10 +184,11 @@ static inline AIEVecAttributes getResultVecStats(Operation *op,
   return getVectorStats(vtype);
 }
 
-static Operation *getOperandDefOp(VectState *state, Operation *op, unsigned idx){
+static Operation *getOperandDefOp(VectState *state, Operation *op,
+                                  unsigned idx){
   return state->sextDefMap.count(op->getOperand(idx).getDefiningOp())
-          ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
-          : op->getOperand(idx).getDefiningOp();
+             ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
+             : op->getOperand(idx).getDefiningOp();
 }
 
 // Get the vector stats for an operation's operand.
