@@ -41,7 +41,7 @@ The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rath
 Here, we see that the rules for bd and channel definitions are the same as in the tileDMA case.
 > Note that shimDMA are defined for the shim tiles (row 0). In this example, tile(7,0). Also note that not every column in row 0 is shimDMA capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
 
-Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../tutorial-4) for more details.
+Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../../tutorial-4) for more details.
 
 ### <ins>external_buffer</ins>
 The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` operator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
@@ -76,9 +76,9 @@ The `<sym_name>` used here is the same sym_name of the external buffer. The firs
 
 ## <ins>Tutorial 5 Lab </ins>
 
-1. Read through the [/flow/aie.mlir](aie.mlir) design. How many external buffers are defined and which direction are they? <img src="../../images/answer1.jpg" title="2 buffers. ext_buf70_in is for reading (DDR->L1). ext_buf70_out is for writing (L1->DDR)" height=25>
+1. Read through the [aie.mlir](aie.mlir) design. How many external buffers are defined and which direction are they? <img src="../../images/answer1.jpg" title="2 buffers. ext_buf70_in is for reading (DDR->L1). ext_buf70_out is for writing (L1->DDR)" height=25>
 
-External buffers on their own cannot give any indication as to what they are used for but we can figure this out based on the bd description that the buffer is used in. For example, `ext_buf70_in` is definedin `bd1` which is itself defined for `dmaStart("S2MM")` which tells us this is a S2MM connection. 
+External buffers on their own cannot give any indication as to what they are used for but we can figure this out based on the bd description that the buffer is used in. For example, `ext_buf70_in` is defined in `bd1` which is itself defined for `dmaStart("S2MM")` which tells us this is a S2MM connection. 
 > Note that S2MM means stream to memory map. In this case, the stream is the AIE array side and the MM is the external buffer side (e.g. DDR) so we are moving data out of the AIE array or writing data to the external buffer. This is kind of the opposite to the tile DMA case where S2MM would be moving data from the stream to the local memory which would be reading from the perspective of the AIE core.
 
 2. Add a second read and write channel to the single shimDMA (tile(7,0)) that moves data to and from another tile. That tile can have the same function as the existing tile.

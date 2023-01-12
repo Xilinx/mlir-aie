@@ -64,11 +64,13 @@ The acquire value must match the current lock state in order for the acqure to s
 
 4. Change the lock from belonging to tile(2,4) to tile(1,4). Does this change the behavior of our design? What does that say about the total number of locks available between two adjacent tiles? <img src="../images/answer1.jpg" title="No. Two adjacent tiles have up to 32 locks available to them." height=25>
 
-5. Based on what you know about locks, which tile runs first in this design? <img src="../images/answer1.jpg" title="tile(1,4)" height=25>
+5. Based on what you know about locks, which tile will execute its kernel code inside the lock calls first in this design? <img src="../images/answer1.jpg" title="tile(1,4)" height=25>
 
-6. Change the design so that tile(2,4) runs first. What do you expect the value of buf[5] will be with this change? <img src="../images/answer1.jpg" title="100" height=25>
+6. **Add simulation instructions here**
 
-7. Change [test.cpp](test.cpp) so the design passes again. 
+7. Change the design so that tile(2,4) runs first. What do you expect the value of buf[5] will be with this change? <img src="../images/answer1.jpg" title="100" height=25>
+
+8. Change [test.cpp](test.cpp) so the testbench expects the correct result and passes again in simulation/ hardware. 
 
 ## <ins>Object FIFO Abstraction </ins>
 

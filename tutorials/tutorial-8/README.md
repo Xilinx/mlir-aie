@@ -29,6 +29,8 @@ This allows us to push and pull data off the cascade ports.
 
 1. Read through the [aie.mlir](aie.mlir) design. Based on the tile locations, which tile is pushing cascade data and which tile is pulling it? <img src="../images/answer1.jpg" title="tile(1,3) is sending cascade data to tile(2,3)" height=25>
 
-2. Make the design and simulate ...
+2. ***TODO: Run make and simulate***
 
-3. Move the design to an even row and make the approrpiate code changes. Verify your design works in simulation/ on the board.
+3. Move the design to an even row and make the necessary code changes. Verify your design works in simulation/ on the board.
+
+***TODO: Add note about wrap around at the end of even/ odd rows***

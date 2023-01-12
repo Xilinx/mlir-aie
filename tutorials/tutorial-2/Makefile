@@ -14,7 +14,10 @@ external_kernel/kernel.o: external_kernel/kernel.cc
 
 
 kernel.o: external_kernel/kernel.o
-	cp external_kernel/kernel.o .
+	cp external_kernel/kernel.o ./kernel.o
+
+kernel_matmul.o: matmul_kernel/kernel.o
+	cp matmul_kernel/kernel.o ./kernel_matmul.o
 
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable
@@ -25,3 +28,12 @@ tutorial-2.exe: test.cpp aie.mlir kernel.o
 clean:
 	$(MAKE) -C external_kernel clean
 	rm -rf acdc_project *elf *exe core* kernel.o
+
+#------------------------------------------------------------------------------
+# Additional make targets for tutorial exercises
+#------------------------------------------------------------------------------
+tutorial-2_perf.exe: ./answers/test_perf.cpp ./aie.mlir kernel.o
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+
+tutorial-2_matmul_perf.exe: ./answers/test_perf.cpp ./answers/aie_matmul.mlir kernel_matmul.o
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@

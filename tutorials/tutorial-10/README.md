@@ -17,3 +17,5 @@ aiecc.py -j4 --sysroot=<platform sysroot> -host-target=aarch64-linux-gnu aie.mli
 ```
 This command compiles the our source text file aie.mlir and the testbench/host code test.cpp to compile and generate the output host executable test.exe. The AIE tile elfs are generated automatically for each AIE tile that needs to be configured. Additionally, we pass references to -I<runtime lib> and compile the <runtime lib>/test_library.cpp as the common test functions are often used in the host code to iniitliaze the AIE system design and read and write to componnents in the AIE array.
 
+***TODO: more write-up to define use of aie-translate and aie-opt***
+    

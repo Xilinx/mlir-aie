@@ -12,10 +12,19 @@
 
 The AI Engine array of the AMD Versal ACAP device is a set of VLIW vector processors with adaptable interconnect. This tutorial is targeted at tool developers and system designers who are looking for fast and completely open source design tools to support their research. We will first get insight into the Versal ACAP architecture, more specifically the AI Engine compute and data movement capabilities. Through small design examples expressed in the MLIR-AIE dialect and executed on an ACAP device, we will leverage AI Engine features for optimizing performance of increasingly complex designs. This will enable you to recognize how this physical-level dialect can be connected to higher level abstraction in the MLIR framework and understand how logical concepts can be expressed to increase productivity and reduce complexity. 
 
+The context that the `mlir-aie` dialect sits with respect to other MLIR dialects, high level design entry points and AMD hardware devices and platforms can be seen in the following diagram.
+
+<p align="left"><img src="images/diagram11.jpg" width="700"></p>
+
+
+Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialects that allows customizable tool development targeting AMD devices. 
+
 This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and its architecture. 
 
-The structure of this series of tutorials are as follows:
-* Basic AI Engine architecture
+Following that brief introduction, the tutorials are ordered by the region of the AI Engine architecture that they cover as illustrated in the following diagram.
+
+<p align="left"><img src="images/diagram10.jpg" width="700"></p>
+
 * [Tutorial 1 - modules, tile, buffer, core](./tutorial-1)
 * [Tutorial 2 - single kernel compilation and simulation](./tutorial-2)
 * [Tutorial 3 - communication (local memory), locks](./tutorial-3) 
