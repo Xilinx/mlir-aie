@@ -1080,7 +1080,7 @@ not adjacent.
 
 Example:
 ```
-  %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
+  %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
 ```
 This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
 
@@ -1125,7 +1125,7 @@ Example:
   %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
   %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
   %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+  AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
 ```
 This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
 
