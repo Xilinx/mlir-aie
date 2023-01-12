@@ -43,13 +43,16 @@ int main(int argc, char *argv[]) {
 
     aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
 
-    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+//    mlir_aie_clear_tile_memory(_xaie, 1, 3);
 
     mlir_aie_init_device(_xaie);
     mlir_aie_configure_cores(_xaie);
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
     mlir_aie_configure_dmas(_xaie);
+
+	XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,3), 0, 0);
+	XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,3), 1, 240);
 
 
     EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
@@ -58,13 +61,19 @@ int main(int argc, char *argv[]) {
 
     pc0.set();
 
+    EventMonitor pc1(_xaie, 1, 3, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
+					 XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+	pc1.set();
+
     mlir_aie_start_cores(_xaie);
     usleep(100);
     pc0_times[iters] = pc0.diff();
+    pc1_times[iters] = pc1.diff();
 
     int errors = 0;
 
     mlir_aie_deinit_libxaie(_xaie);
   }
   computeStats(pc0_times, n);
+  computeStats(pc1_times, n);
 }

@@ -14,3 +14,9 @@ tutorial-3.exe: aie.mlir test.cpp
 
 clean:
 	rm -rf acdc_project *elf *exe core*
+
+#------------------------------------------------------------------------------
+# Additional make targets for tutorial exercises
+#------------------------------------------------------------------------------
+tutorial-3_perf.exe: ./answers/test_perf.cpp ./aie.mlir
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@

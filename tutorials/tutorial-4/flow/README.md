@@ -32,7 +32,7 @@ AIE.flow(%tile71, "South" : 3, %tile73, "DMA"   : 0)
 AIE.flow(%tile73, "DMA"   : 1, %tile71, "South" : 2)
 ```
 Notice that the route from tile(7,1) to tile(7,3) will most likley involve tile(7,2) who's inclusion in the route is not explicitly stated. Instead, we just declare the end points and allow the logical routing algorihtm (aka pathfinder) to determine the optimized path for data to flow and configures the switchboxes to enable that flow.
-> You can explore the lowering of logical `flows` to physical switchbox configrations in [here](./switchbox)
+> You can explore the lowering of logical `flows` to physical switchbox configrations in [here](../switchbox)
 
 In the above flow syntax, valid bundle names and channels are listed below: 
 | Bundle | Channels (In) | Channels (Out) |
@@ -95,22 +95,21 @@ Below is a diagram that maps the components introduced with the physical block o
 
 ## <ins>Tutorial 4 Lab </ins>
 
-1. Read through the [/flow/aie.mlir](aie.mlir) design. Which DMA direction and channel is used on tile(1,4) to send data to tile(3,4)? <img src="../../images/answer1.jpg" title="MM2S, channel 0" height=25>
+1. Read through the [aie.mlir](aie.mlir) design. Which DMA direction and channel is used on tile(1,4) to send data to tile(3,4)? <img src="../../images/answer1.jpg" title="MM2S, channel 0" height=25>
 
 2. What is the shared lock ID used in tile(1,4) to arbitrate access to its local memory? <img src="../../images/answer1.jpg" title="6" height=25>
 
 3. What is the DMA direction/ channel and lock ID for the tile DMA used in tile(3,4) to receive data? <img src="../../images/answer1.jpg" title="S2MM, channel 1, lock ID=7" height=25>
 
-4. Based on the lock status, who will successfully acquire a lock when the core are first enabled?
-<img src="../../images/answer1.jpg" title="tile(1,4)'s core, tile(3,4)'s tile DMA (S2MM, ch#1)" height=25>
+4. Based on the lock status, who will successfully acquire a lock when the core are first enabled? <img src="../../images/answer1.jpg" title="tile(1,4)'s core, tile(3,4)'s tile DMA (S2MM, ch#1)" height=25>
 
-5. To explore and understand bd behavior further, make changes to [aie.mlir](aie.mlir) so the bd forever. Then change the testbench [test.cpp](test.cpp) so we force the two tileDMAs to run again. 
+5. To explore and understand bd behavior further, make changes to [aie.mlir](aie.mlir) so the bd will keep executing over and over again indefinitely. Then change the testbench [test.cpp](test.cpp) so we force the two tileDMAs to run again. 
     >HINT: Acquire and release the locks for the tileDMAs in the right states. 
 
     What do you expect to happen to the output? <img src="../../images/answer1.jpg" title="Test will fail since the we overwrite the buf34 again." height=25>
 
-6. *** Add timers to measure tiledma transfer time ***
+6. ***TODO: Add timers to measure tiledma transfer time***
 
-7. *** Example that cannot route ***
+7. ***TODO: Add example that cannot route?***
 
-8. *** View route results *** 
+8. ***TODO: View route results*** 

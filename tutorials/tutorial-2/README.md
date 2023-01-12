@@ -82,14 +82,15 @@ Now we have all the pieces we need to compile and simulate single kernels from t
 3. Take a look at the simulation script [sim.tcl](external_kernel/sim.tcl). The command `iss profile save test.prf` invokes the profiler and saves profile information into the `test.prf` file. Open `test.prf`. What is the `Total cycle count` of our design? <img src="../images/answer1.jpg" title="Also 214 cycles" height=25>
 
 4. The profile information also breaks down the cycle count of the design and more importantly, the function we implemented. What is the cycle count of the function `extern_kernel`? <img src="../images/answer1.jpg" title="6 cycles" height=25>
-There is also the micocode of the function under `Function detail: extern_kernel`. Understanding the microcode can be helpful in maximally optimizing your AI Engine kernel but that is beyond the scope of this tutorial.
+There is also the microcode of the function under `Function detail: extern_kernel`. Understanding the microcode can be helpful in maximally optimizing your AI Engine kernel but that is beyond the scope of this tutorial.
 
-5. There is another design under the `matmul_kernel` directory. Build and simulate this design. Based on the profile results, what is the cycle count the testbnech and that of the matmul function also called `extern_kernel`? <img src="../images/answer1.jpg" title="testbench cycle coutn = 5128 cyles. extern_kernel = 4978 cycles" height=25>
+5. There is another design under the `matmul_kernel` directory. Build and simulate this design. Based on the profile results, what is the cycle count of main() and that of the matmul function (also called `extern_kernel`)? <img src="../images/answer1.jpg" title="testbench cycle coutn = 5128 cyles. extern_kernel = 4978 cycles" height=25>
 
-6. Take a look at [aie.mlir](aie.mlir) to see how we used the func dialec to mapped externally compiled AIE kernel objects. Run `make` to build our MLIR design.
+6. Take a look at [aie.mlir](aie.mlir) to see how we used the [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect to map externally compiled AIE kernel objects. Run `make` to build our MLIR design.
 
-7. **Add simulation step here**
+7. **Add simulation instructions here**
 
-8. Copy the design files (tutorial-2.exe, core_1_4.elf) to the board and run the design to check that the design passes on hardware.
+8. Copy the design files (tutorial-2.exe, core_1_4.elf) to the board and run the design to check that the design runs successfully on hardware.
 
-9. (Challenge Goal) Change the design to use the kernel.o created by matmul_kernel. Note that the arguments are very different so you will need to use `mlir_aie_write32` to initialize the local data memory and then `mlir_aie_read32` to check the kernel results to verify correct functionality that we check in the [mlir_kernel/test.cc](mlir_kernel/test.cc).
+### <ins>Challenge Exercise</ins>
+9. Change the design to use the kernel.o created by matmul_kernel. Note that the arguments are very different so you will need to use `mlir_aie_write32` to initialize the local data memory and then `mlir_aie_read32` to check the kernel results to verify correct functionality that we check in the [mlir_kernel/test.cc](mlir_kernel/test.cc).
