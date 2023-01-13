@@ -61,7 +61,7 @@ private:
       }
     }
     LLVM_DEBUG(llvm::dbgs() << "*** Missing Wire!\n");
-    return None;
+    return std::nullopt;
   }
 
   std::vector<PortMaskValue>
@@ -132,10 +132,10 @@ private:
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.
-      if (!nextConnection.has_value())
+      if (!nextConnection)
         continue;
 
-      worklist.push_back(std::make_pair(nextConnection.value(), newMaskValue));
+      worklist.push_back(std::make_pair(*nextConnection, newMaskValue));
     }
     return worklist;
   }
@@ -162,9 +162,9 @@ public:
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
 
     // If there is no wire to traverse, then just return no connection
-    if (!t.has_value())
+    if (!t)
       return connectedTiles;
-    worklist.push_back(std::make_pair(t.value(), std::make_pair(0, 0)));
+    worklist.push_back(std::make_pair(*t, std::make_pair(0, 0)));
 
     while (!worklist.empty()) {
       PacketConnection t = worklist.back();

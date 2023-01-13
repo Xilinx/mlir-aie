@@ -33,6 +33,7 @@ fi
 SYSROOT_DIR=$1
 GCC_VER=$2
 CMAKEMODULES_DIR=$3
+
 LLVM_DIR=${4:-"llvm"}
 BUILD_DIR=${5:-"build"}
 INSTALL_DIR=${6:-"install"}
@@ -40,6 +41,8 @@ INSTALL_DIR=${6:-"install"}
 mkdir -p $LLVM_DIR/$BUILD_DIR
 mkdir -p $LLVM_DIR/$INSTALL_DIR
 cd $LLVM_DIR/$BUILD_DIR
+set -o pipefail
+set -e
 cmake ../llvm \
   -GNinja \
   -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR} \
@@ -85,3 +88,4 @@ cmake ../llvm \
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
+cd ../..

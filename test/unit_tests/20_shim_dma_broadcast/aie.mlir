@@ -26,7 +26,7 @@ module @test20_shim_dma_broadcast {
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer : memref<512 x i32>, 0, 512>, 0)
       AIE.useLock(%lock1, Release, 0)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
@@ -45,12 +45,12 @@ module @test20_shim_dma_broadcast {
       AIE.useLock(%l72_0, "Acquire", 0)
       AIE.dmaBd(<%buf72_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l72_0, "Release", 1)
-      cf.br ^bd1
+      AIE.nextBd ^bd1
     ^bd1:
       AIE.useLock(%l72_1, "Acquire", 0)
       AIE.dmaBd(<%buf72_1 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l72_1, "Release", 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
@@ -69,12 +69,12 @@ module @test20_shim_dma_broadcast {
       AIE.useLock(%l73_0, "Acquire", 0)
       AIE.dmaBd(<%buf73_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l73_0, "Release", 1)
-      cf.br ^bd1
+      AIE.nextBd ^bd1
     ^bd1:
       AIE.useLock(%l73_1, "Acquire", 0)
       AIE.dmaBd(<%buf73_1 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l73_1, "Release", 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }

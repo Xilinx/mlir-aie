@@ -79,7 +79,7 @@ module @test_buffer_merge0 {
       AIE.useLock(%l34_0, Acquire, 1)
       AIE.dmaBd(<%buf34_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l34_0, Release, 0)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -90,7 +90,7 @@ module @test_buffer_merge0 {
       AIE.useLock(%l32_0, Acquire, 0)
       AIE.dmaBd(<%buf32_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l32_0, Release, 1)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }

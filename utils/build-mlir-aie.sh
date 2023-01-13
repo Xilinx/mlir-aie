@@ -7,40 +7,33 @@
 # 
 ##===----------------------------------------------------------------------===##
 #
-# This script build mlir-aie given the <sysroot dir>, <llvm dir> and 
-# <cmakeModules dir>. Assuming they are all in the same subfolder, it would
-# look like:
+# This script builds mlir-aie given the <llvm dir> and <cmakeModules dir>.
+# Assuming they are all in the same subfolder, it would look like:
 #
-# build-mlir-aie.sh <sysroot dir> <llvm dir> <cmakeModules dir> 
-#     <mlir-aie dir> <build dir> <install dir>
+# build-mlir-aie.sh <llvm dir> <cmakeModules dir> <build dir> <install dir>
 #
-# e.g. build-mlir-aie.sh /scratch/vck190_bare_prod_sysroot /scratch/llvm 
-#          /scratch/cmakeModules/cmakeModulesXilinx
+# e.g. build-mlir-aie.sh /scratch/llvm /scratch/cmakeModules/cmakeModulesXilinx
 #
-# <mlir-aie dir> - optional, mlir-aie repo name, default is 'mlri-aie'
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 3 ]; then
-    echo "ERROR: Needs at least 3 arguments for <sysroot dir>, <llvm dir> and <cmakeModules dir>."
+if [ "$#" -lt 2 ]; then
+    echo "ERROR: Needs at least 2 arguments for <llvm dir> and <cmakeModules dir>."
     exit 1
 fi
-SYSROOT_DIR=$1
-LLVM_DIR=$2
-CMAKEMODULES_DIR=$3
+LLVM_DIR=$1
+CMAKEMODULES_DIR=$2
 
-#LLVM_DIR=${2:-"./llvm"}
-#CMAKEMODULES_DIR=${3:-"./cmakeModules/cmakeModulesXilinx"}
+BUILD_DIR=${3:-"build"}
+INSTALL_DIR=${4:-"install"}
 
-MLIR_AIE_DIR=${4:-"mlir-aie"}
-BUILD_DIR=${5:-"build"}
-INSTALL_DIR=${6:-"install"}
-
-mkdir -p $MLIR_AIE_DIR/$BUILD_DIR
-mkdir -p $MLIR_AIE_DIR/$INSTALL_DIR
-cd $MLIR_AIE_DIR/$BUILD_DIR
+mkdir -p $BUILD_DIR
+mkdir -p $INSTALL_DIR
+cd $BUILD_DIR
+set -o pipefail
+set -e
 cmake -GNinja \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++ \
@@ -53,8 +46,7 @@ cmake -GNinja \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     .. |& tee cmake.log
 
-#    -DVitisSysroot=${SYSROOT_DIR} \
-
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
 #ninja check-aie |& tee ninja-check-aie.log
+cd ..

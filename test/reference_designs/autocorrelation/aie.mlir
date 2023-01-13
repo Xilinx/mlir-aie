@@ -59,12 +59,12 @@ module @autocorrelation {
       AIE.useLock(%input_lock, "Acquire", 1)
       AIE.dmaBd(<%input : memref<1024xi32>, 0, 1024>, 0)
       AIE.useLock(%input_lock, "Release", 0)
-      cf.br ^end
+      AIE.nextBd ^end
     ^bdout:
       AIE.useLock(%output_lock, "Acquire", 0)
       AIE.dmaBd(<%output : memref<1024xi32>, 0, 1024>, 0)
       AIE.useLock(%output_lock, "Release", 1)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -87,12 +87,12 @@ module @autocorrelation {
     AIE.useLock(%buf1_in_lock, Acquire, 0)
     AIE.dmaBd(<%buf1_in : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%buf1_in_lock, Release, 1)
-    cf.br ^end
+    AIE.nextBd ^end
   ^bd1: 
     AIE.useLock(%buf1_out_lock, Acquire, 1)
     AIE.dmaBd(<%buf1_out : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%buf1_out_lock, Release, 0)
-    cf.br ^end
+    AIE.nextBd ^end
   ^end: 
     AIE.end
   }
@@ -103,7 +103,7 @@ module @autocorrelation {
     AIE.useLock(%buf2_in_lock, Acquire, 0)
     AIE.dmaBd(<%buf2_in : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%buf2_in_lock, Release, 1)
-    cf.br ^end
+    AIE.nextBd ^end
   ^end: 
     AIE.end
   }
@@ -114,7 +114,7 @@ module @autocorrelation {
     AIE.useLock(%buf3_in_lock, Acquire, 0)
     AIE.dmaBd(<%buf3_in : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%buf3_in_lock, Release, 1)
-    cf.br ^end
+    AIE.nextBd ^end
   ^end: 
     AIE.end
   }
@@ -125,7 +125,7 @@ module @autocorrelation {
     AIE.useLock(%buf4_in_lock, Acquire, 0)
     AIE.dmaBd(<%buf4_in : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%buf4_in_lock, Release, 1)
-    cf.br ^end
+    AIE.nextBd ^end
   ^end: 
     AIE.end
   }

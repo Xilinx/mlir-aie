@@ -78,7 +78,6 @@ prepend_path(config.aie_tools_dir)
 if(config.vitis_root):
   config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
   prepend_path(config.vitis_aietools_bin)
-  llvm_config.with_environment('CARDANO', config.vitis_aietools_dir)
   llvm_config.with_environment('VITIS', config.vitis_root)
 
 # Test to see if we have the peano backend.

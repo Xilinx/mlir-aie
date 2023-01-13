@@ -1,2 +1,4 @@
 psutil
 rich
+pybind11
+numpy
