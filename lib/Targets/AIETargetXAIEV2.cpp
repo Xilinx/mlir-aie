@@ -871,72 +871,76 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     // - acquire lock + return memory element (lock value depends on if producer / consumer)
     // - release lock (lock value depends on if producer / consumer)
 
-    // TODO: for now, assume there is only one element in the objFifo
     int col = lock.colIndex();
     int row = lock.rowIndex();
     if (!lock.hasName())
       return;
     std::string lockName(lock.name().getValue());
 
-    // there is more locks than there were object fifos but these functions should 
-    // be unique -> only the lock 0 should produce the functions
-    auto pos = lockName.find("_lock_0");
+    // naming scheme is /*objFifo_name*/_/*prod or cons*/_lock_number
+    // -> prod locks generate producer accessors and cons locks generate consumer ones
+    int timeout = 10000;
+    std::string objFifoName;
+    std::string accessor_type;
+    std::string objIndex;
+    int acquireLockValue = -1;
+    int releaseLockValue = -1;
+
+    std::string prodLock = "_prod_lock_";
+    std::string consLock = "_cons_lock_";
+
+    auto pos = lockName.find(prodLock);
     if (pos != std::string::npos) {
-      // naming scheme is /*objFifo_name*/_/*prod or cons*/_lock_number
-      // -> prod locks generate producer accessors and cons locks generate consumer ones
-      int timeout = 10000;
-      std::string objFifoName;
-      std::string accessor_type;
-      int acquireLockValue = -1;
-      int releaseLockValue = -1;
+      // Producer
+      objFifoName = lockName.substr(0, pos);
+      objIndex = lockName.substr(pos + prodLock.length());
+      accessor_type = "producer";
+      acquireLockValue = 0;
+      releaseLockValue = 1;
 
-      pos = lockName.find("_prod_lock");
+    } else {
+      // Consumer
+      pos = lockName.find(consLock);
       if (pos != std::string::npos) {
-        // Producer
         objFifoName = lockName.substr(0, pos);
-        accessor_type = "producer";
-        acquireLockValue = 0;
-        releaseLockValue = 1;
-
-      } else {
-        // Consumer
-        pos = lockName.find("_cons_lock");
-        objFifoName = lockName.substr(0, pos);
+        objIndex = lockName.substr(pos + consLock.length());
         accessor_type = "consumer";
         acquireLockValue = 1;
         releaseLockValue = 0;
+      } else {
+        return;
       }
+    } 
 
-      output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
-             << "(" << ctx_p << ") {\n";
-      output << "  const int id = " << lock.getLockIDValue() << ";\n";
-      output << "  const int value = " << acquireLockValue << ";\n";
-      output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
-             << ", " << timeout << ");\n";
-      output << "}\n";
+    output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
+           << "_" << objIndex << "(" << ctx_p << ") {\n";
+    output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    output << "  const int value = " << acquireLockValue << ";\n";
+    output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
+           << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
+           << ", " << timeout << ");\n";
+    output << "}\n";
 
-      output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
-             << "(" << ctx_p << ") {\n";
-      output << "  const int id = " << lock.getLockIDValue() << ";\n";
-      output << "  const int value = " << releaseLockValue << ";\n";
-      output << "  return XAie_LockRelease(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
-             << ", " << timeout << ");\n";
-      output << "}\n";
+    output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
+           << "_" << objIndex << "(" << ctx_p << ") {\n";
+    output << "  const int id = " << lock.getLockIDValue() << ";\n";
+    output << "  const int value = " << releaseLockValue << ";\n";
+    output << "  return XAie_LockRelease(" << deviceInstRef << ", "
+           << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
+           << ", " << timeout << ");\n";
+    output << "}\n";
 
-      // output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
-      //        << "(" << ctx_p << ") {\n";
-      // output << "return mlir_aie_acquire_" << lockName << "(" << "_xaie"
-      //        << ", " << acquireLockValue << ", " << timeout <<");\n";
-      // output << "}\n";
+    // output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
+    //        << "(" << ctx_p << ") {\n";
+    // output << "return mlir_aie_acquire_" << lockName << "(" << "_xaie"
+    //        << ", " << acquireLockValue << ", " << timeout <<");\n";
+    // output << "}\n";
 
-      // output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
-      //        << "(" << ctx_p << ") {\n";
-      // output << "return mlir_aie_release_" << lockName << "(" << "_xaie"
-      //        << ", " << releaseLockValue << ", " << timeout <<");\n";
-      // output << "}\n";
-    }
+    // output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
+    //        << "(" << ctx_p << ") {\n";
+    // output << "return mlir_aie_release_" << lockName << "(" << "_xaie"
+    //        << ", " << releaseLockValue << ", " << timeout <<");\n";
+    // output << "}\n";
   };
 
   for (auto lock : module.getOps<LockOp>())
