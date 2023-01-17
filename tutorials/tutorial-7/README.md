@@ -16,7 +16,9 @@ This tutorial first introduces broadcast through the `objectFifo` abstraction, w
 
 [Link to lower level flow write-up](./flow/README.md)
 
-To express a one-to-many broadcast in the `objectFifo` abstraction, we create an objectFifo with one producer tile and many consumer tiles. It does not make a difference whether these consumer tiles share memory or not with the producer tile as they are all treated as if they did not. This is because the `objectFifo` lowering leverages the tile DMAs and stream switch to account for back pressure from the producer for each individual consumer such that no data is lost.
+To express a one-to-many broadcast in the `objectFifo` abstraction, we create an objectFifo with one producer tile and many consumer tiles. It does not make a difference whether these consumer tiles share memory or not with the producer tile as they are all treated as if they did not. This is because the `objectFifo` lowering leverages the tile DMAs and stream switch to account for back pressure from the producer for each individual consumer such that no data is lost. An example of one-to-many broadcast is shown in the diagram below where an objectFifo is created between producer tile(1,4) and consumer tiles (3,4) and (3,5).
+
+<img src="../images/OF_broadcast.png" width="1000">
 
 It is also possible to combine broadcast in this abstraction with shim tiles such that data coming from external memory can be broadcasted to many different consumer tiles in the AIE array.
 
