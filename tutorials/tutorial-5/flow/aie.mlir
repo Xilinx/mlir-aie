@@ -55,12 +55,12 @@ module @tutorial_5 {
             AIE.useLock(%lock70_in, "Acquire", 1)
             AIE.dmaBd(<%ext_buf70_in : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock70_in, "Release", 0)
-            cf.br ^end
+            AIE.nextBd ^end
         ^bd2:
             AIE.useLock(%lock70_out, "Acquire", 1)
             AIE.dmaBd(<%ext_buf70_out : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock70_out, "Release", 0)
-            cf.br ^end
+            AIE.nextBd ^end
         ^end:
             AIE.end
     }
@@ -105,12 +105,12 @@ module @tutorial_5 {
             // 0   - A/B mode enable (default is disabled)
             AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock34_in, "Release", 1)
-            cf.br ^end
+            AIE.nextBd ^end
         ^bd1:
             AIE.useLock(%lock34_out, "Acquire", 1)
             AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock34_out, "Release", 0)
-            cf.br ^end
+            AIE.nextBd ^end
         ^end:
             AIE.end
     }    
