@@ -16,11 +16,7 @@ There are many components in the `mlir-aie` dialect that must be configured in o
 
 Under the hood, the abstraction leverages tile DMAs and stream switches in order to achieve communication between non-adjacent tiles. This can be seen in the diagram below where an objectFifo is created between two AIE tiles which do not share memory and the lowering instantiates the tileDMAs of each memory module as well as the stream switch network in order to achieve communication between the buffer/lock pairs in each memory module.
 
-<p align="center">
-  <img
-    src="../images/OF_non_shared.png"
-    width="750">
-</p>
+<img src="../images/OF_non_shared.png" width="900">
 
 The components mentioned above are described in detail in the `./flow` and `./switchbox` subdirectories. 
 
