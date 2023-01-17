@@ -20,7 +20,7 @@ AIE.objectFifo.createObjectFifo(producerTile, {list of consumerTiles}, depth) : 
 ```
 The objectFifo describes both the data allocation and its movement. An objectFifo has a depth, or size, which represents a number of pre-allocated objects of the specified datatype that can be synchronously accessed by actors, which we separate into consumers and producers. In this tutorial, tile (1,4) is the producer tile and tile (2,4) is the consumer tile and the objectFifo established between them has one object of type `memref<256xi32>`. This is shown in the diagram below.
 
-<img src="../../images/OF_shared.png" width="900">
+<img src="../../images/OF_shared.png" width="1000">
 
 To achieve deadlock-free communication, actors must acquire and release objects from the objectFifo. In this example, there is only one object to acquire. The operation, 
 ```
