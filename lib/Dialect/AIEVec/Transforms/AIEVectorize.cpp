@@ -522,10 +522,11 @@ static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
 //===----------------------------------------------------------------------===//
 // Generate and return a Cast op.
 static aievec::CastOp generateCastOp(Value source, VectorType resType,
-                                     VectState *state, Location loc) {
+                                     bool isResAcc, VectState *state,
+                                     Location loc) {
   // Create the Cast op
   aievec::CastOp castOp =
-      state->builder.create<aievec::CastOp>(loc, resType, source);
+      state->builder.create<aievec::CastOp>(loc, resType, source, isResAcc);
 
   assert(castOp && "could not create srs op");
   return castOp;
@@ -2487,8 +2488,8 @@ static void insertSRSOp(Operation *Op, VectState *state) {
           unsigned lanes =
               getVectorLaneSize(Op->getResult(0).getType().cast<VectorType>());
           VectorType castType = createVectorType(lanes, scalarType);
-          aievec::CastOp castOp =
-              generateCastOp(Op->getResult(0), castType, state, Op->getLoc());
+          aievec::CastOp castOp = generateCastOp(Op->getResult(0), castType,
+                                                 false, state, Op->getLoc());
           assert(castOp && "Failed to create Cast intrinsic");
           user->replaceUsesOfWith(operand, castOp);
           break;

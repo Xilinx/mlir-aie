@@ -139,6 +139,9 @@ void CastOp::print(OpAsmPrinter &p) {
   // Print the source accumulator
   p << " " << getSource();
 
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
   // And now print the types
   p << " : " << getSource().getType() << ", " << getResult().getType();
 }
@@ -152,6 +155,11 @@ LogicalResult CastOp::verify() {
     return emitError("requires source vector type");
   if (!resultType)
     return emitError("requires result vector type");
+
+  if (sourceType.getElementType().getIntOrFloatBitWidth() !=
+      resultType.getElementType().getIntOrFloatBitWidth()) {
+    return emitError("the bitwidth of resource and result should be equal");
+  }
 
   return success();
 }
@@ -171,8 +179,8 @@ ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  if (result.attributes.getAttrs().size() != 0)
-    return parser.emitError(typesLoc, "requires zero attribute");
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "requires one attribute");
 
   // Assert that there are two types (source and result)
   if (types.size() != 2)
