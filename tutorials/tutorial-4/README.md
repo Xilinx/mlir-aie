@@ -14,13 +14,17 @@ Even though shared local memory is ideal for communicating between adjacent tile
 
 There are many components in the `mlir-aie` dialect that must be configured in order to achieve communication between two cores that are placed on tiles which do not share local memory. However, with the `objectFifo` abstraction introduced in the previous tutorial, there is no visible difference between an objectFifo created with adjacent tiles and one with non-adjacent tiles. 
 
-Under the hood, the abstraction leverages tile DMAs and stream switches in order to achieve communication between non-adjacent tiles. These components are described in detail in the `./flow` and `./switchbox` subdirectories. 
+Under the hood, the abstraction leverages tile DMAs and stream switches in order to achieve communication between non-adjacent tiles. This can be seen in the diagram below where an objectFifo is created between two AIE tiles which do not share memory and the lowering instantiates the tileDMAs of each memory module as well as the stream switch network in order to achieve communication between the buffer/lock pairs in each memory module.
+
+<img src="../images/OF_non_shared.png" width="1000">
+
+The components mentioned above are described in detail in the `./flow` and `./switchbox` subdirectories. 
 
 [Link to lower level flow write-up](./flow)
 
 [Link to lower level switchbox write-up](./switchbox)
 
-This is where the advantage of implementing designs at the `objectFifo` abstraction level becomes more apparent: the communication between cores boils down to creating an objectFifo between the tiles which they are placed on, while the data movement is left to the lowering. 
+This is where the advantage of implementing designs at the `objectFifo` abstraction level becomes more apparent: the communication between cores boils down to creating an objectFifo between the tiles which they are placed on, while the data allocation and movement is left to the lowering. 
 
 ## <ins>Tutorial 4 Lab </ins>
 
