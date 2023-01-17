@@ -74,7 +74,7 @@ module @tutorial_7 {
             AIE.dmaBdPacket(0x4, 0xD) 
             AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock14_6, Release, 0)
-            cf.br ^end
+            AIE.nextBd ^end
         ^end:
             AIE.end
     }    
@@ -105,7 +105,7 @@ module @tutorial_7 {
             // Packets headers are dropped so no need to define packet behavior here
             AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock34_7, Release, 1)
-            cf.br ^end
+            AIE.nextBd ^end
         ^end:
             AIE.end
     }    
@@ -136,7 +136,7 @@ module @tutorial_7 {
             // Packets headers are dropped so no need to define packet behavior here
             AIE.dmaBd(<%buf35 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock35_7, Release, 1)
-            cf.br ^end
+            AIE.nextBd ^end
         ^end:
             AIE.end
     }    

@@ -10,7 +10,7 @@ all: tutorial-5.exe
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
 tutorial-5.exe: aie.mlir test.cpp 
-	aiecc.py --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I../../runtime_lib ../../runtime_lib/test_library.cpp ./test.cpp -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I../../runtime_lib ../../runtime_lib/test_library.cpp ./test.cpp -o $@
 
 view: routes.json
 
