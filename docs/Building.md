@@ -6,7 +6,7 @@
 cmake 3.20.6
 ninja 1.8.2
 Xilinx Vitis 2022.2
-sudo pip3 install joblib psutil rich pybind11 numpy
+sudo pip3 install psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```

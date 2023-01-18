@@ -1,4 +1,3 @@
-joblib
 psutil
 rich
 pybind11
