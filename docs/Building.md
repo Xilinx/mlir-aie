@@ -57,18 +57,18 @@ particular revision is expected to work.
     ```
     This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-4. Build the mlir-aie tools by calling utils/build-mlir-aie.sh with __absolute paths__ to the 
-llvm and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
+4. Build the mlir-aie tools by calling utils/build-mlir-aie.sh with paths to the 
+llvm/build and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
 cmakeModules/cmakeModulesXilinx). 
     ```
-    source utils/build-mlir-aie.sh <llvm dir> <cmakeModules dir>/cmakeModulesXilinx
+    source utils/build-mlir-aie.sh <llvm dir>/<build dir> <cmakeModules dir>/cmakeModulesXilinx
     ```
     This will create a build and install folder under /mlir-aie. 
 
     The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
-done by calling the utils/env_setup.sh script with the __absolute paths__ to the install folders for mlir-aie
+done by calling the utils/env_setup.sh script with the paths to the install folders for mlir-aie
 and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
