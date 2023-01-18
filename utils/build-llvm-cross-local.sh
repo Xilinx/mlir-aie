@@ -24,38 +24,40 @@
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 3 ]; then
-    echo "ERROR: Needs at least 2 arguments for <sysroot dir>, <gcc version>,"
-    echo "<cmakeModules dir>."
+if [ "$#" -lt 2 ]; then
+    echo "ERROR: Needs at least 2 arguments for <sysroot dir>, <cmakeModules dir>"
     exit 1
 fi
 
 SYSROOT_DIR=$1
-GCC_VER=$2
-CMAKEMODULES_DIR=$3
+CMAKEMODULES_DIR=`realpath $2`
 
-LLVM_DIR=${4:-"llvm"}
-BUILD_DIR=${5:-"build"}
-INSTALL_DIR=${6:-"install"}
+LLVM_DIR=${3:-"llvm"}
+BUILD_DIR=${5:-"${LLVM_DIR}/build-aarch64"}
+INSTALL_DIR=${5:-"${LLVM_DIR}/install-aarch64"}
 
-mkdir -p $LLVM_DIR/$BUILD_DIR
-mkdir -p $LLVM_DIR/$INSTALL_DIR
-cd $LLVM_DIR/$BUILD_DIR
+BUILD_DIR=`realpath ${BUILD_DIR}`
+INSTALL_DIR=`realpath ${INSTALL_DIR}`
+LLVM_DIR=`realpath ${LLVM_DIR}`
+
+mkdir -p $BUILD_DIR
+mkdir -p $INSTALL_DIR
+cd $BUILD_DIR
 set -o pipefail
 set -e
 cmake ../llvm \
   -GNinja \
   -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR} \
-  -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm_petalinux.cmake \
+  -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm.cmake \
   -DArch=arm64 \
-  -DgccVer=${GCC_VER} \
   -DSysroot=${SYSROOT_DIR} \
   -DPython3_FIND_VIRTUALENV=ONLY \
   -DLLVM_BUILD_EXAMPLES=OFF \
   -DLLVM_BUILD_UTILS=ON \
   -DLLVM_INSTALL_UTILS=ON \
   -DLLVM_USE_LINKER=lld \
-  -DCMAKE_INSTALL_PREFIX=../$INSTALL_DIR \
+  -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
+  -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR \
   -DLLVM_ENABLE_PROJECTS="clang;lld;mlir" \
   -DLLVM_TARGETS_TO_BUILD:STRING="ARM;AArch64" \
   -DLLVM_ENABLE_ASSERTIONS=ON \
