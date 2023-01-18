@@ -25,6 +25,8 @@ INSTALL_DIR=${3:-"install"}
 mkdir -p $LLVM_DIR/$BUILD_DIR
 mkdir -p $LLVM_DIR/$INSTALL_DIR
 cd $LLVM_DIR/$BUILD_DIR
+set -o pipefail
+set -e
 cmake ../llvm \
   -GNinja \
   -DCMAKE_C_COMPILER=clang \
@@ -36,6 +38,7 @@ cmake ../llvm \
   -DLLVM_BUILD_UTILS=ON \
   -DLLVM_INSTALL_UTILS=ON \
   -DLLVM_USE_LINKER=lld \
+  -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
   -DCMAKE_INSTALL_PREFIX=../$INSTALL_DIR \
   -DLLVM_ENABLE_PROJECTS="clang;lld;mlir" \
   -DLLVM_TARGETS_TO_BUILD:STRING="X86;ARM;AArch64;" \
@@ -44,3 +47,4 @@ cmake ../llvm \
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
+cd ../..
