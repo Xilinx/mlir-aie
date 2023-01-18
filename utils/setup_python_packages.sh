@@ -16,4 +16,4 @@
 python3 -m virtualenv sandbox
 source sandbox/bin/activate
 python3 -m pip install --upgrade pip
-python3 -m pip install -r utils/python_requirements.txt
+python3 -m pip install -r utils/requirements.txt

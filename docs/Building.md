@@ -34,7 +34,7 @@ the tools are largely board and device independent and can be adapted to other e
 
     __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
 
-2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/python_requirements.txt in a virtual python environment called 'sandbox'.
+2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
 ```
 source utils/setup_python_packages.sh
 ```
