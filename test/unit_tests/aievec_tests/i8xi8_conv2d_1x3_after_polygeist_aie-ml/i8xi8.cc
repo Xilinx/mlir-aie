@@ -19,7 +19,6 @@ alignas(32) int8_t kernelCoeff[MAX_KERNEL_SIZE];
 #define REF_FILE "data/refImage_256x16_k3_gaussblur.txt"
 
 void reference(int8_t A[5184], int8_t B[48], int C[4096]) {
-  int i, j;
   int t0;
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 256; j++) {
