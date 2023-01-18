@@ -332,6 +332,23 @@ def AIEVec_UPSOp:
   ];
 }
 
+def AIEVec_CastOp:
+  AIEVec_Op<"cast", [
+    Pure
+  ]>, 
+  Arguments<(ins AnyVector:$source, DefaultValuedAttr<BoolAttr, "false">:$isResAcc)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE cast";
+  let description = [{
+    AIE-ML cast intrinsic. Cast values from source data type to result data types.
+    `$result = cast($source, isResAcc)`
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$source, "bool":$isResAcc),
+    [{build($_builder, $_state, source.getType(), source, isResAcc);}]>
+  ];
+}
+
 def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure
