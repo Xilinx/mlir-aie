@@ -109,7 +109,6 @@ private:
                            std::vector<PortMaskValue> nextPortMaskValues,
                            MaskValue maskValue) const {
     std::vector<PacketConnection> worklist;
-    bool matched = false;
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.first;
       MaskValue nextMaskValue = nextPortMaskValue.second;
@@ -125,7 +124,6 @@ private:
         // Incoming packets cannot match this rule. Skip it.
         continue;
       }
-      matched = true;
       MaskValue newMaskValue = std::make_pair(
           maskValue.first | nextMaskValue.first,
           maskValue.second | (nextMaskValue.first & nextMaskValue.second));
