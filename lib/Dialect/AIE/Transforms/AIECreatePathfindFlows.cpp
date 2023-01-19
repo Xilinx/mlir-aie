@@ -36,7 +36,6 @@ static llvm::cl::opt<bool>
 void boost::throw_exception(std::exception const &e) {
   // boost expects this exception to be defined.
   // do nothing
-  return;
 }
 
 std::string stringifyDirs(std::set<Port> dirs) {
