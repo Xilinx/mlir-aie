@@ -74,4 +74,6 @@ The acquire value must match the current lock state in order for the acqure to s
 
 ## <ins>Object FIFO Abstraction </ins>
 
-In this tutorial the `objectFifo` abstraction is also introduced, see in `./objectFifo_ver`. This is a higher-level abstraction which is used to establish communication accross the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
+In this tutorial the `objectFifo` abstraction is also introduced, see below. This is a higher-level abstraction which is used to establish communication accross the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
+
+[Link to higher level objectFifo write-up](./objectFifo_ver)
