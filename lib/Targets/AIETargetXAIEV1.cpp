@@ -417,11 +417,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       int packetID = 0;
       bool foundBd = false;
 
-      for (auto op : block.getOps<DMABDOp>()) {
+      if (!block.getOps<DMABDOp>().empty())
         foundBd = true;
-        ShapedType bufferType =
-            op.getBuffer().getType().cast<::mlir::MemRefType>();
-      }
 
       int acqValue = 0, relValue = 0;
       bool hasLock = false;
