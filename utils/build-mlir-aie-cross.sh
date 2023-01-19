@@ -57,6 +57,7 @@ cmake -GNinja \
     -DVitisSysroot=${SYSROOT_DIR} \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     -DCMAKE_BUILD_TYPE=Debug \
+    -Wno-dev \
     .. |& tee cmake.log
 
 ninja |& tee ninja.log

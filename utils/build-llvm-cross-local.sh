@@ -80,6 +80,7 @@ cmake ../llvm \
   -DLLVM_TARGET_ARCH="AArch64" \
   -DCMAKE_CXX_STANDARD=17 \
   -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+  -Wno-dev \
   |& tee cmake.log
 
 #  -DCMAKE_BUILD_TYPE=MinSizeRel \
