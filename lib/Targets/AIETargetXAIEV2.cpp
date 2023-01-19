@@ -246,9 +246,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       int bytesA = 0;
       int bytesB = 0;
       int offsetA = 0;
-      int offsetB = 0;
       int BaseAddrA = 0;
-      int BaseAddrB = 0;
       bool hasA = false;
       bool hasB = false;
       StringRef bufA = "0";
@@ -437,7 +435,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       bool foundBd = false;
       int len = 0;
       uint64_t bytes = 0;
-      uint64_t offset = 0;
 
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
