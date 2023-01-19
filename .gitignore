@@ -1,5 +1,8 @@
 /build*
 /install*
+/sandbox*
+/llvm*
+/cmakeModules*
 .vscode
 __pycache__
 

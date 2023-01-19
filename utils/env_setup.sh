@@ -20,8 +20,8 @@ if [ "$#" -ne 2 ]; then
     exit 1
 fi
 
-export MLIR_AIE_INSTALL_DIR=$1
-export LLVM_INSTALL_DIR=$2
+export MLIR_AIE_INSTALL_DIR=`realpath $1`
+export LLVM_INSTALL_DIR=`realpath $2`
 
 export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${LLVM_INSTALL_DIR}/bin:${PATH} 
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH} 

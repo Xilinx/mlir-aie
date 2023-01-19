@@ -3,15 +3,17 @@
 ## Prerequisites
 
 ```
-cmake 3.17.5
+cmake 3.20.6
 ninja 1.8.2
-Xilinx Vitis 2021.2
-sudo pip3 install joblib psutil rich pybind11 numpy
+Xilinx Vitis 2022.2
+sudo pip3 install psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
-In addition, the following optional packages may be useful
+The python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions.
+
+In addition, the following optional packages may be useful:
 ```
 LibXAIE is a backend target used to execute designs in hardware: https://github.com/Xilinx/embeddedsw/tree/master/XilinxProcessorIPLib/drivers/aiengine
 ```
@@ -30,9 +32,14 @@ the tools are largely board and device independent and can be adapted to other e
     cd mlir-aie
     ```
 
-    __All subsequent steps should be run from inside the mlir-aie repo cloned above.__
+    __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
 
-2. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
+2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
+```
+source utils/setup_python_packages.sh
+```
+
+3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
 enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
 than 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
 so. You may find that other options are also useful. Note that due to changing MLIR APIs, only a
@@ -50,18 +57,18 @@ particular revision is expected to work.
     ```
     This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-3. Build the mlir-aie tools by calling utils/build-mlir-aie.sh with __absolute paths__ to the 
-llvm and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
+4. Build the mlir-aie tools by calling utils/build-mlir-aie.sh with paths to the 
+llvm/build and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
 cmakeModules/cmakeModulesXilinx). 
     ```
-    source utils/build-mlir-aie.sh <llvm dir> <cmakeModules dir>/cmakeModulesXilinx
+    source utils/build-mlir-aie.sh <llvm dir>/<build dir> <cmakeModules dir>/cmakeModulesXilinx
     ```
     This will create a build and install folder under /mlir-aie. 
 
     The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
 
-4. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
-done by calling the utils/env_setup.sh script with the __absolute paths__ to the install folders for mlir-aie
+5. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
+done by calling the utils/env_setup.sh script with the paths to the install folders for mlir-aie
 and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
