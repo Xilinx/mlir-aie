@@ -419,11 +419,8 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
 
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
-        len = op.getLenValue();
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
-        bytes = bufferType.getElementTypeBitWidth() / 8;
-        offset = op.getOffsetValue();
       }
 
       int acqValue = 0, relValue = 0;
