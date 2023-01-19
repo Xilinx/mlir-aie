@@ -266,10 +266,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           hasA = true;
         }
         if (op.isB()) {
-          BaseAddrB = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
           lenB = op.getLenValue();
           bytesB = bufferType.getElementTypeBitWidth() / 8;
-          offsetB = op.getOffsetValue();
           bufB = "XAIEDMA_TILE_BD_ADDRB";
           hasB = true;
         }
@@ -442,7 +440,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
         bytes = bufferType.getElementTypeBitWidth() / 8;
-        offset = op.getOffsetValue();
       }
 
       int acqValue = 0, relValue = 0;
