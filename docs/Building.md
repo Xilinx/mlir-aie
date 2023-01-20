@@ -14,9 +14,15 @@ clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
-Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
+Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site. 
+NOTE: using the Vitis recommended settings64.sh script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
+ 
+```
+export PATH=$PATH:<Vitis_install_path>/Vitis/2022.2/aietools/bin:<Vitis_install_path>/Vitis/2022.2/bin
+```
 
-The cmake and python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions. This script requires `virtualenv`.
+The cmake and python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions. 
+This script requires `virtualenv`.
 
 clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
 
@@ -43,7 +49,7 @@ the tools are largely board and device independent and can be adapted to other e
 
 2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
 ```
-./utils/setup_python_packages.sh
+source utils/setup_python_packages.sh
 ```
 
 3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
