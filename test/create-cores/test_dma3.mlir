@@ -20,7 +20,7 @@
 // CHECK:           AIE.useToken @token0(Acquire, 1)
 // CHECK:           AIE.dmaBd(<%[[VAL_1]] : memref<256xi32>, 0, 256>, 0)
 // CHECK:           AIE.useToken @token0(Release, 2)
-// CHECK:           cf.br ^bb2
+// CHECK:           AIE.nextBd ^bb2
 // CHECK:         ^bb2:
 // CHECK:           AIE.end
 // CHECK:         }
@@ -32,14 +32,14 @@
 // CHECK:           AIE.useToken @token0(Acquire, 1)
 // CHECK:           AIE.dmaBd(<%[[VAL_5]] : memref<256xi32>, 0, 256>, 0)
 // CHECK:           AIE.useToken @token0(Release, 2)
-// CHECK:           cf.br ^bb4
+// CHECK:           AIE.nextBd ^bb4
 // CHECK:         ^bb2:
 // CHECK:           %[[VAL_8:.*]] = AIE.dmaStart(MM2S, 0, ^bb3, ^bb4)
 // CHECK:         ^bb3:
 // CHECK:           AIE.useToken @token0(Acquire, 3)
 // CHECK:           AIE.dmaBd(<%[[VAL_5]] : memref<256xi32>, 0, 256>, 0)
 // CHECK:           AIE.useToken @token0(Release, 4)
-// CHECK:           cf.br ^bb4
+// CHECK:           AIE.nextBd ^bb4
 // CHECK:         ^bb4:
 // CHECK:           AIE.end
 // CHECK:         }
@@ -51,7 +51,7 @@
 // CHECK:           AIE.useToken @token0(Acquire, 3)
 // CHECK:           AIE.dmaBd(<%[[VAL_10]] : memref<256xi32>, 0, 256>, 0)
 // CHECK:           AIE.useToken @token0(Release, 4)
-// CHECK:           cf.br ^bb2
+// CHECK:           AIE.nextBd ^bb2
 // CHECK:         ^bb2:
 // CHECK:           AIE.end
 // CHECK:         }

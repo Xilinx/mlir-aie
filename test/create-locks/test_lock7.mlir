@@ -93,12 +93,12 @@ module @test_lock5 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      cf.br ^end
+      AIE.nextBd ^end
     ^bd1:
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -109,7 +109,7 @@ module @test_lock5 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -120,7 +120,7 @@ module @test_lock5 {
       AIE.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf55 : memref<256xi32>, 0, 256>, 0)
       AIE.useToken @token0(Release, 2)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }

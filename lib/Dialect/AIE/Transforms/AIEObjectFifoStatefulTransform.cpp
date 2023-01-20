@@ -14,7 +14,6 @@
 #include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -160,9 +159,9 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
   DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>
-      splitFifos;   // maps each objFifo between non-adjacent tiles to its
-                    // corresponding consumer objectFifos
-  int of_index = 0; // used to give objectFifo elements a symbolic name
+      splitFifos;     // maps each objFifo between non-adjacent tiles to its
+                      // corresponding consumer objectFifos
+  int of_index = 0;   // used to give objectFifo elements a symbolic name
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -278,7 +277,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0);
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, relMode,
                               LockAction::Release);
-    builder.create<cf::BranchOp>(builder.getUnknownLoc(), succ);
+    builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
   /// Function used to create a Bd block with an ExternalBufferOp.
@@ -300,7 +299,7 @@ struct AIEObjectFifoStatefulTransformPass
     builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0);
     builder.create<UseLockOp>(builder.getUnknownLoc(), lock, relMode,
                               LockAction::Release);
-    builder.create<cf::BranchOp>(builder.getUnknownLoc(), succ);
+    builder.create<NextBDOp>(builder.getUnknownLoc(), succ);
   }
 
   /// Function that either calls createTileDMA() or createShimDMA() based on
@@ -1103,8 +1102,8 @@ struct AIEObjectFifoStatefulTransformPass
     patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(
         m.getContext(), m);
-    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();

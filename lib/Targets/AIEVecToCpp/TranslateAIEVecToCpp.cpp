@@ -621,6 +621,54 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPSOp upsOp) {
   return success();
 }
 
+// Generate the cast intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::CastOp castOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The source should have already been emitted
+  Value source = castOp.getSource();
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  bool isResAcc = castOp.getIsResAcc();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*castOp, /*isAcc=*/isResAcc)))
+    return failure();
+
+  // Get the datatype of the source and result vector
+  VectorType resType = castOp->getResult(0).getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
+  unsigned lanes = getVectorLaneSize(resType);
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  unsigned width = 0;
+  if (isResAcc) {
+    if (eltType.isa<FloatType>()) {
+      os << "v" << lanes << "accfloat";
+    } else {
+      width = getElementSizeInBits(resType);
+      os << "v" << lanes << "acc" << width;
+    }
+  } else {
+    if (eltType.isa<FloatType>()) {
+      width = eltType.cast<FloatType>().getWidth();
+      os << "v" << lanes << "float";
+    } else {
+      width = getElementSizeInBits(resType);
+      os << "v" << lanes << "int" << width;
+    }
+  }
+  os << "(";
+  os << emitter.getOrCreateName(source);
+  os << ")";
+  return success();
+}
+
 // Generate the srs intrinsic
 static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   Value source = srsOp.getSource();
@@ -1127,7 +1175,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the accumulator
-  if (failed(emitter.emitAssignPrefix(*mul_elemOp)))
+  if (failed(emitter.emitAssignPrefix(*mul_elemOp, true /*isAcc*/)))
     return failure();
 
   os << opname;
@@ -1175,7 +1223,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the accumulator
-  if (failed(emitter.emitAssignPrefix(*mul_convOp)))
+  if (failed(emitter.emitAssignPrefix(*mul_convOp, true /*isAcc*/)))
     return failure();
 
   os << opname;
@@ -2314,7 +2362,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::MulOp, aievec::PackOp, aievec::SelectOp, aievec::SRSOp,
                 aievec::SubOp, aievec::UPDOp, aievec::UPSOp, aievec::FMAElemOp,
                 aievec::MulElemOp, aievec::BroadcastOp, aievec::MulConvOp,
-                aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp>(
+                aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp,
+                aievec::CastOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -2406,7 +2455,11 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
       auto iType = eltType.cast<IntegerType>();
       unsigned width = iType.getWidth();
       if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32)) {
-        return (os << "acc" << width), success();
+        if (isAcc) {
+          return (os << "acc" << width), success();
+        } else {
+          return (os << "int" << width), success();
+        }
       }
     } else if (eltType.isa<FloatType>()) {
       if (AIEML) {

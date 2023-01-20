@@ -12,50 +12,55 @@
 # look like:
 #
 # build-mlir-aie.sh <sysroot dir> <gcc version> <llvm dir> <cmakeModules dir> 
-#     <mlir-aie dir> <build dir> <install dir>
+#     <build dir> <install dir>
 #
 # e.g. build-mlir-aie.sh /scratch/vck190_bare_prod_sysroot 10.2.0 /scratch/llvm 
 #          /scratch/cmakeModules/cmakeModulesXilinx
 #
 # <sysroot dir>  - sysroot, absolute directory 
 # <gcc version>  - gcc version in sysroot (needed in many petalinux sysroots to find imporant libs)
-# <mlir-aie dir> - optional, mlir-aie repo name, default is 'mlir-aie'
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 4 ]; then
-    echo "ERROR: Needs at least 4 arguments for <sysroot dir>, <gcc version>, "
-    echo "<llvm dir> and <cmakeModules dir>."
+if [ "$#" -lt 3 ]; then
+    echo "ERROR: Needs at least 4 arguments for <sysroot dir>, <llvm build dir> and <cmakeModules dir>."
     exit 1
 fi
+
 SYSROOT_DIR=$1
-GCC_VER=$2
-LLVM_DIR=$3
-CMAKEMODULES_DIR=$4
 
-MLIR_AIE_DIR=${5:-"mlir-aie"}
-BUILD_DIR=${6:-"build"}
-INSTALL_DIR=${7:-"install"}
+LLVM_BUILD_DIR=`realpath $2`
+CMAKEMODULES_DIR=`realpath $3`
 
-mkdir -p $MLIR_AIE_DIR/$BUILD_DIR
-mkdir -p $MLIR_AIE_DIR/$INSTALL_DIR
-cd $MLIR_AIE_DIR/$BUILD_DIR
+BUILD_DIR=${4:-"build-aarch64"}
+INSTALL_DIR=${5:-"install-aarch64"}
+
+BUILD_DIR=`realpath ${BUILD_DIR}`
+INSTALL_DIR=`realpath ${INSTALL_DIR}`
+
+mkdir -p $BUILD_DIR
+mkdir -p $INSTALL_DIR
+cd $BUILD_DIR
+set -o pipefail
+set -e
 cmake -GNinja \
-    -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm_petalinux.cmake \
+    -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm.cmake \
     -DSysroot=${SYSROOT_DIR} \
     -DArch=arm64 \
-    -DgccVer=${GCC_VER} \
-    -DLLVM_DIR=${LLVM_DIR}/build/lib/cmake/llvm \
-    -DMLIR_DIR=${LLVM_DIR}/build/lib/cmake/mlir \
+    -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
+    -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
+    -DLLVM_USE_LINKER=lld \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/ \
-    -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
+    -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DVitisSysroot=${SYSROOT_DIR} \
-    -DCMAKE_BUILD_TYPE=Debug \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -Wno-dev \
     .. |& tee cmake.log
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
 #ninja check-aie |& tee ninja-check-aie.log
+cd ..

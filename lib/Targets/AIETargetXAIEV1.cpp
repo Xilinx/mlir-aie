@@ -416,18 +416,9 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       int packetType = 0;
       int packetID = 0;
       bool foundBd = false;
-      int len = 0;
-      uint64_t bytes = 0;
-      uint64_t offset = 0;
 
-      for (auto op : block.getOps<DMABDOp>()) {
+      if (!block.getOps<DMABDOp>().empty())
         foundBd = true;
-        len = op.getLenValue();
-        ShapedType bufferType =
-            op.getBuffer().getType().cast<::mlir::MemRefType>();
-        bytes = bufferType.getElementTypeBitWidth() / 8;
-        offset = op.getOffsetValue();
-      }
 
       int acqValue = 0, relValue = 0;
       bool hasLock = false;

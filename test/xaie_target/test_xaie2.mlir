@@ -41,12 +41,12 @@ module @test_xaie2 {
       AIE.useLock(%l33_0, Acquire, 0)
       AIE.dmaBd(<%buf33_0 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l33_0, Release, 1)
-      cf.br ^bd1
+      AIE.nextBd ^bd1
     ^bd1:
       AIE.useLock(%l33_0, Acquire, 0)
       AIE.dmaBd(<%buf33_1 : memref<16xi32>, 0, 4>, 0)
       AIE.useLock(%l33_0, Release, 1)
-      cf.br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }

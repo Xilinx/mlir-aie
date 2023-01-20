@@ -21,6 +21,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 
+#include "aie/Conversion/Passes.h"
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
@@ -33,6 +34,7 @@ using namespace mlir;
 int main(int argc, char **argv) {
 
   registerAllPasses();
+  xilinx::registerConversionPasses();
   aie::registerAIEPasses();
   xilinx::aievec::registerAIEVecPasses();
 

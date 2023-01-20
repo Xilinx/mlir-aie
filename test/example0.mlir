@@ -51,12 +51,12 @@ module @example0 {
       AIE.useLock(%l33_0, Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l33_0, Release, 0)
-      cf.br ^end
+      AIE.nextBd ^end
     ^bd1:
       AIE.useLock(%l33_1, Acquire, 0)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l33_1, Release, 1)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -67,7 +67,7 @@ module @example0 {
       AIE.useLock(%l42_0, Acquire, 0)
       AIE.dmaBd(<%buf42 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l42_0, Release, 1)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -78,7 +78,7 @@ module @example0 {
       AIE.useLock(%l44_0, Acquire, 1)
       AIE.dmaBd(<%buf44 : memref<256xi32>, 0, 256>, 0)
       AIE.useLock(%l44_0, Release, 0)
-      cf.br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }

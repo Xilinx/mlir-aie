@@ -46,18 +46,9 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
     Operation *Op = op.getOperation();
     Operation *parentOp = op->getParentOp();
 
-    int srcCol, srcRow;
-    bool IsParentMemOp = false;
     if (CoreOp core = dyn_cast<CoreOp>(parentOp)) {
-      srcCol = core.colIndex();
-      srcRow = core.rowIndex();
     } else if (MemOp mem = dyn_cast<MemOp>(parentOp)) {
-      srcCol = mem.colIndex();
-      srcRow = mem.rowIndex();
-      IsParentMemOp = true;
     } else if (auto shimDma = dyn_cast<ShimDMAOp>(parentOp)) {
-      srcCol = shimDma.colIndex();
-      srcRow = shimDma.rowIndex();
     } else {
       llvm_unreachable("A parent operation of UseTokenOp must be either CoreOp "
                        "or MemOp or ShimDMAOp");

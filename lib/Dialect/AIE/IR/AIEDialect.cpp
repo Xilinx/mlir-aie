@@ -79,7 +79,7 @@ Optional<TileID> getMemWest(TileID src) {
     ret = src;
   else
     ret = std::make_pair(src.first - 1, src.second);
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
@@ -91,21 +91,21 @@ Optional<TileID> getMemEast(TileID src) {
     ret = std::make_pair(src.first + 1, src.second);
   else
     ret = src;
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemNorth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 Optional<TileID> getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
-  if (!isValidTile(ret.value()) || ret->second == 0)
+  if (!isValidTile(*ret) || ret->second == 0)
     ret.reset();
   return ret;
 }
@@ -426,6 +426,26 @@ AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
 } // namespace AIE
 } // namespace xilinx
 
+// Check that the operation only contains terminators in
+// TerminatorOpTypes.
+template <typename... TerminatorOpTypes> struct HasSomeTerminator {
+  static LogicalResult verifyTrait(Operation *op) {
+    for (auto &region : op->getRegions()) {
+      for (auto &block : region) {
+        if (!block.empty()) {
+          Operation *operation = &block.back();
+          if (!llvm::isa_and_nonnull<TerminatorOpTypes...>(operation)) {
+            operation->emitOpError()
+                << "Is an illegal terminator inside " << *op;
+            return failure();
+          }
+        }
+      }
+    }
+    return success();
+  }
+};
+
 // ObjectFifoCreateOp
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
   return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
@@ -689,6 +709,13 @@ LogicalResult xilinx::AIE::ShimDMAOp::verify() {
   if (!tileOp.isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
 
+  auto result =
+      HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
+                        xilinx::AIE::EndOp>::verifyTrait(*this);
+  if (result.failed()) {
+    return result;
+  }
+
   return success();
 }
 xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
@@ -782,6 +809,13 @@ LogicalResult xilinx::AIE::MemOp::verify() {
 
   assert(getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
   assert(!getBody().empty() && "MemOp should have non-empty body");
+
+  auto result =
+      HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
+                        xilinx::AIE::EndOp>::verifyTrait(*this);
+  if (result.failed()) {
+    return result;
+  }
 
   for (auto &bodyOp : getBody().getOps()) {
     // check for duplicate DMA channels within the same MemOp
@@ -882,9 +916,11 @@ struct UsesOneLockInDMABlock {
     int lockID = -1;
     for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
       auto lock = dyn_cast<xilinx::AIE::LockOp>(op.getLock().getDefiningOp());
-      if (lockID != -1 && lockID != lock.getLockIDValue())
-        return failure();
-      lockID = lock.getLockIDValue();
+      if (lock.getLockID().has_value()) {
+        if (lockID != -1 && lockID != lock.getLockIDValue())
+          return failure();
+        lockID = lock.getLockIDValue();
+      }
     }
     return success();
   }

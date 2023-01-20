@@ -80,6 +80,8 @@ struct VectState {
   // fused op(s). This access distance will be used to compute the xstep/zstep
   // attribute.
   DenseMap<Operation *, std::pair<int32_t, int32_t>> opToColOffsets;
+  // Map from the sext op to the def op of the sext operand.
+  DenseMap<Operation *, Operation *> sextDefMap;
   // A set of operations that are msc (fmsub) ops. We do not differentiate
   // between mac and msc ops at vector dialect level. The only op in vector
   // dialect is just FMA op.
@@ -182,11 +184,18 @@ static inline AIEVecAttributes getResultVecStats(Operation *op,
   return getVectorStats(vtype);
 }
 
+static Operation *getOperandDefOp(VectState *state, Operation *op,
+                                  unsigned idx) {
+  return state->sextDefMap.count(op->getOperand(idx).getDefiningOp())
+             ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
+             : op->getOperand(idx).getDefiningOp();
+}
+
 // Get the vector stats for an operation's operand.
 static inline AIEVecAttributes
 getOperandVecStats(Operation *op, VectState *state, unsigned idx = 0) {
   assert(op->getNumOperands() > idx);
-  Operation *defOp = op->getOperand(idx).getDefiningOp();
+  Operation *defOp = getOperandDefOp(state, op, idx);
   VectorType vtype = defOp->getResult(0).getType().cast<VectorType>();
   auto ret = getVectorStats(vtype);
   // if the defining op is a transfer read, get the extent read from source
@@ -202,11 +211,12 @@ getOperandVecStats(Operation *op, VectState *state, unsigned idx = 0) {
 }
 
 // Get the number of rows and columns in the vector scheme.
-static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op) {
+static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
+                                                            VectState *state) {
   assert(op->getNumOperands() >= 2 && op->getNumResults() == 1);
 
-  Operation *left = op->getOperand(0).getDefiningOp();
-  Operation *right = op->getOperand(1).getDefiningOp();
+  Operation *left = getOperandDefOp(state, op, 0);
+  Operation *right = getOperandDefOp(state, op, 1);
 
   // Get the number of lanes
   VectorType vtype = op->getResult(0).getType().cast<VectorType>();
@@ -218,11 +228,11 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op) {
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
-  int32_t width = (lsize == 8 && rsize == 8)    ? 128
+  int32_t width = (lsize == 8 && rsize == 8)    ? (AIEML ? 256 : 128)
                   : (lsize == 16 && rsize == 8) ? 64
                                                 : 32;
 
-  if (AIEML) {
+  if (AIEML && getVectorSizeInBits(rtype) == 512) {
     width *= 2;
   }
 
@@ -252,8 +262,9 @@ static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
 
   // Iterate over the even and odd operands for both the operations
   for (int idx = 0; idx < 2; ++idx) {
-    Operation *op1 = Op1->getOperand(idx).getDefiningOp();
-    Operation *op2 = Op2->getOperand(idx).getDefiningOp();
+    Operation *op1 = getOperandDefOp(state, Op1, idx);
+    Operation *op2 = getOperandDefOp(state, Op2, idx);
+
     // If both op1 and op2 are transfer read ops, then we need to create an
     // interval that subsumes the extent read by both op1 an op2.
     if (isa<TransferReadOp>(op1) && isa<TransferReadOp>(op2)) {
@@ -509,6 +520,17 @@ static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
 //===----------------------------------------------------------------------===//
 // AIE vector op generation routines
 //===----------------------------------------------------------------------===//
+// Generate and return a Cast op.
+static aievec::CastOp generateCastOp(Value source, VectorType resType,
+                                     bool isResAcc, VectState *state,
+                                     Location loc) {
+  // Create the Cast op
+  aievec::CastOp castOp =
+      state->builder.create<aievec::CastOp>(loc, resType, source, isResAcc);
+
+  assert(castOp && "could not create srs op");
+  return castOp;
+}
 
 // Generate and return an SRS op. Incoming `source` is an accumulator. The
 // output should be a vector of element type `scalarType`.
@@ -736,7 +758,13 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2 && state->dupFactor == 2);
 
-  VectorType vType = Op->getOperand(1).getType().cast<VectorType>();
+  Value lhs = state->sextDefMap.count(Op->getOperand(1).getDefiningOp())
+                  ? Op->getOperand(1).getDefiningOp()->getOperand(0)
+                  : Op->getOperand(1);
+  Value rhs = state->sextDefMap.count(Op->getOperand(0).getDefiningOp())
+                  ? Op->getOperand(0).getDefiningOp()->getOperand(0)
+                  : Op->getOperand(0);
+  VectorType vType = lhs.getType().cast<VectorType>();
   Type stype = vType.getElementType();
   IntegerType itype = stype.cast<IntegerType>();
   unsigned width = itype.getWidth() <= 8 ? 32 : 64;
@@ -745,9 +773,7 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
 
   Type ctype = mlir::IntegerType::get(itype.getContext(), width);
   Type opType = VectorType::get(vType.getShape(), ctype);
-  Value lhs = Op->getOperand(1);
-  Value rhs = Op->getOperand(0);
-  auto defOp = Op->getOperand(0).getDefiningOp();
+  auto defOp = rhs.getDefiningOp();
   state->builder.setInsertionPointAfter(defOp);
   Location loc = defOp->getLoc();
 
@@ -800,9 +826,15 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  Value lhs = fmaOp.getLhs();
-  Value rhs = fmaOp.getRhs();
-  Value acc = fmaOp.getAcc();
+  Value lhs = state->sextDefMap.count(fmaOp.getLhs().getDefiningOp())
+                  ? fmaOp.getLhs().getDefiningOp()->getOperand(0)
+                  : fmaOp.getLhs();
+  Value rhs = state->sextDefMap.count(fmaOp.getRhs().getDefiningOp())
+                  ? fmaOp.getRhs().getDefiningOp()->getOperand(0)
+                  : fmaOp.getRhs();
+  Value acc = state->sextDefMap.count(fmaOp.getAcc().getDefiningOp())
+                  ? fmaOp.getAcc().getDefiningOp()->getOperand(0)
+                  : fmaOp.getAcc();
 
   // Check if this is an fmsub op, and if so, then we need to generate msc op
   bool isSub = state->mscOps.count(fmaOp);
@@ -816,7 +848,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
                    .getElementType()
                    .isa<IntegerType>();
 
-  if (AIEML) {
+  if (AIEML && getVectorSizeInBits(rhs.getType().cast<VectorType>()) == 512) {
     if (!writesToAccumulator(acc.getDefiningOp())) {
       acc = generateUPSOp(acc, state, fmaOp->getLoc());
       LLVM_DEBUG(llvm::dbgs()
@@ -841,7 +873,7 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
     // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
     // op for i8xi8 scheme. Find the paired accumulator.
     if (i8xi8_pairedOp) {
-      Operation *defOp = fmaOp.getAcc().getDefiningOp();
+      Operation *defOp = acc.getDefiningOp();
       if (state->pairedOp.count(defOp))
         acc = state->pairedOp[defOp]->getResult(0);
     }
@@ -868,10 +900,10 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
     }
     // Create AIE dialect fma/msc op
     xfmaOp = state->builder.create<aievec::FMAOp>(
-        fmaOp->getLoc(), lhs, fmaOp.getRhs(), acc, opAttr.start[0],
-        opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
-        opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
-        opAttr.square[1], isSub);
+        fmaOp->getLoc(), lhs, rhs, acc, opAttr.start[0], opAttr.offset[0],
+        opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
+        opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1],
+        isSub);
   }
 
   assert(xfmaOp && "could not create fma op");
@@ -893,7 +925,12 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
-  Value lhs = mulOp.getLhs();
+  Value lhs = state->sextDefMap.count(mulOp.getLhs().getDefiningOp())
+                  ? mulOp.getLhs().getDefiningOp()->getOperand(0)
+                  : mulOp.getLhs();
+  Value rhs = state->sextDefMap.count(mulOp.getRhs().getDefiningOp())
+                  ? mulOp.getRhs().getDefiningOp()->getOperand(0)
+                  : mulOp.getRhs();
   if (!isSimpleVectIntrinsic(mulOp, state)) {
     AIEVecAttributes lstat = getOperandVecStats(mulOp, state, 0);
     assert(lstat.vecSizeInBits % 256 == 0);
@@ -907,10 +944,9 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
 
   // Create AIE dialect mul op
   Operation *xmulOp = state->builder.create<aievec::MulOp>(
-      mulOp->getLoc(), lhs, mulOp.getRhs(), opType, opAttr.start[0],
-      opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
-      opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
-      opAttr.square[1]);
+      mulOp->getLoc(), lhs, rhs, opType, opAttr.start[0], opAttr.offset[0],
+      opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
+      opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1]);
 
   assert(xmulOp && "could not create mul op");
   return xmulOp;
@@ -930,6 +966,7 @@ generateUPDOp(TransferReadOp readOp,
   IntervalReuse *iv = state->getIntervalForOperation(readOp);
   auto extent = iv->getAccessExtent(readOp);
   auto interval = iv->getInterval(readOp);
+
   int32_t intervalWidth = interval.second - interval.first;
   assert(intervalWidth >= 128 && "Interval computation incorrect");
 
@@ -1002,7 +1039,7 @@ generateUPDOp(TransferReadOp readOp,
   // width >= 256 bits. For AIEML, the size should be doubled.
   int width = AIEML ? elementSizeInBits == 8
                           ? 512
-                          : std::max(width, getVectorSizeInBits(vecType))
+                          : std::max(256, getVectorSizeInBits(vecType))
                     : 256;
   int32_t incr = std::max(width, intervalWidth / 2);
   int8_t idx = 1;
@@ -1662,8 +1699,9 @@ static void fuseFMAOps(Operation *refOp,
 
   // Get the start offsets for left and right operands of the reference
   // operator, i.e., start of the fusion chain.
-  Operation *lOp = refOp->getOperand(0).getDefiningOp();
-  Operation *rOp = refOp->getOperand(1).getDefiningOp();
+  Operation *lOp = getOperandDefOp(state, refOp, 0);
+  Operation *rOp = getOperandDefOp(state, refOp, 1);
+
   int32_t lstart = computeStartInAIEVec(lOp, state);
   int32_t rstart = computeStartInAIEVec(rOp, state);
 
@@ -1712,8 +1750,9 @@ static void fuseFMAOps(Operation *refOp,
           cstat.isSplat != ustat.isSplat)
         break;
       // Check 2. The accesses must come from the same vector/upd op
-      Operation *cdefOp = curOp->getOperand(idx).getDefiningOp();
-      Operation *udefOp = usrOp->getOperand(idx).getDefiningOp();
+      Operation *cdefOp = getOperandDefOp(state, curOp, idx);
+      Operation *udefOp = getOperandDefOp(state, usrOp, idx);
+
       bool related = cdefOp == udefOp;
       if (!related && cstat.loadFromMemory && ustat.loadFromMemory) {
         IntervalReuse *civ = state->getIntervalForOperation(cdefOp);
@@ -1861,12 +1900,16 @@ static void computeZbuffAttributes(
 // different vector schemes.
 static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
   int32_t lanes, cols;
-  std::tie(lanes, cols) = getNumRowsAndCols(Op);
+  std::tie(lanes, cols) = getNumRowsAndCols(Op, state);
   // Get the data sizes for left and right operands of mul/fma
-  int32_t xbits =
-      getElementSizeInBits(Op->getOperand(0).getType().cast<VectorType>());
-  int32_t zbits =
-      getElementSizeInBits(Op->getOperand(1).getType().cast<VectorType>());
+  Value lhs = state->sextDefMap.count(Op->getOperand(0).getDefiningOp())
+                  ? Op->getOperand(0).getDefiningOp()->getOperand(0)
+                  : Op->getOperand(0);
+  Value rhs = state->sextDefMap.count(Op->getOperand(1).getDefiningOp())
+                  ? Op->getOperand(1).getDefiningOp()->getOperand(0)
+                  : Op->getOperand(1);
+  int32_t xbits = getElementSizeInBits(lhs.getType().cast<VectorType>());
+  int32_t zbits = getElementSizeInBits(rhs.getType().cast<VectorType>());
   Scheme scheme(lanes, cols, xbits, zbits);
 
   // First check if this operation requires simple vector operation, and not an
@@ -1906,7 +1949,8 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
   // operand, and store them in opAttr.
   for (size_t idx = 0; idx < 2; ++idx) {
     AIEVecAttributes stat = getOperandVecStats(Op, state, idx);
-    Operation *op = Op->getOperand(idx).getDefiningOp();
+    Operation *op = getOperandDefOp(state, Op, idx);
+
     int32_t start = 0, accIncr = 1;
     // If the operand comes from transfer_read, compute the step and start
     // values.
@@ -1943,7 +1987,7 @@ static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
       if (!fusedOpSet.count(op)) {
         // Get the rows and columns for this topology
         int32_t lanes, cols;
-        std::tie(lanes, cols) = getNumRowsAndCols(op);
+        std::tie(lanes, cols) = getNumRowsAndCols(op, state);
         // Try fusing a linear chain of FMA ops (max length = cols) starting at
         // op.
         fuseFMAOps(op, fusedOpSet, cols, state);
@@ -1954,6 +1998,238 @@ static void fuseFMAOpsForColumnTopology(func::FuncOp func, VectState *state) {
   // Remove all the ops that were fused with other FMAs
   for (auto op : fusedOpSet)
     op->erase();
+}
+
+template <typename T1, typename T2>
+static bool matchAttributesAndDistanceForFusion(T1 curOp, T2 defOp) {
+  return curOp.getOffset(0) == defOp.getOffset(0) &&
+         curOp.getOffsetHi(0) == defOp.getOffsetHi(0) &&
+         curOp.getSquare(0) == defOp.getSquare(0) &&
+         curOp.getStep(0) == defOp.getStep(0) &&
+         curOp.getOffset(1) == defOp.getOffset(1) &&
+         curOp.getOffsetHi(1) == defOp.getOffsetHi(1) &&
+         curOp.getSquare(1) == defOp.getSquare(1) &&
+         curOp.getStep(1) == defOp.getStep(1) &&
+         stoi((std::string)curOp.getStart(0)) -
+                 stoi((std::string)defOp.getStart(0)) ==
+             2 &&
+         stoi((std::string)curOp.getStart(1)) -
+                 stoi((std::string)defOp.getStart(1)) ==
+             2;
+}
+
+// We go through each fma operation and try to find the pattern like this-
+// the acc of fma is a mul/fma operation which uses the same operands as fma.
+// the def of two operands are upd operations.
+// Transform -
+// %5 = aievec.mul %4, %0 {xoffsets = "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]",
+// xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]", zoffsets_hi =
+// "[[Zh:.*]]", zstart = "0", zstep = "[[Zs:.*]]"}
+//
+// %6 = aievec.mac %4, %0, %5 {xoffsets = "[[Xo:.*]]",
+// xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2", zoffsets =
+// "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "2", zstep = "[[Zs:.*]]"}
+//
+// to-
+//
+// %7 = aievec.mul_conv %6, %1 {M = 16 : si32, N = 4 : si32}
+//
+// or transform the pattern like this-
+//
+// %9 = aievec.mac %8, %0, %6 {xoffsets = "[[Xo:.*]]", xoffsets_hi =
+// "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "0", zoffsets = "[[Zo:.*]]",
+// zoffsets_hi =
+// "[[Zh:.*]]", zstart = "4", zstep = "[[Zs:.*]]"}
+//
+// %10 = aievec.mac %8, %0, %9 {xoffsets =
+// "[[Xo:.*]]", xoffsets_hi = "[[Xh:.*]]", xsquare = "[[Sq:.*]]", xstart = "2",
+// zoffsets = "[[Zo:.*]]", zoffsets_hi = "[[Zh:.*]]", zstart = "6", zstep =
+// "[[Zs:.*]]"}
+//
+// to-
+//
+// %9 =
+// aievec.fma_conv %8, %2, %7 {M = 16 : si32, N = 4 : si32}
+// Currently, we only support mul_conv_16x4 and mac_conv_16x4 intrinsics for
+// int16 type of AIE-ML architecture.
+static bool canFuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
+  // Check 1. This should be an aievec fma operation
+  assert(isa<aievec::FMAOp>(Op) && "operation must be an aievec fma op");
+  aievec::FMAOp curOp = cast<aievec::FMAOp>(Op);
+
+  // Check 2. Element type should be int16
+  VectorType vType = Op->getOperand(1).getType().cast<VectorType>();
+  Type stype = vType.getElementType();
+  IntegerType itype = stype.dyn_cast<IntegerType>();
+
+  if (!itype)
+    return false;
+
+  unsigned width = itype.getWidth();
+
+  if (width != 16)
+    return false;
+
+  // Check 3. acc operand of the Op should be a mul op or fma op
+  Operation *mulOrFMAOp = Op->getOperand(2).getDefiningOp();
+
+  if (!isa<aievec::MulOp, aievec::FMAOp>(mulOrFMAOp))
+    return false;
+
+  // Check 4. mulOrFMAOp must have one use
+  if (!mulOrFMAOp->hasOneUse())
+    return false;
+
+  // Check 5. mulOrFMAOp and Op must have the same lhs and rhs
+  if (mulOrFMAOp->getOperand(0) != Op->getOperand(0) ||
+      mulOrFMAOp->getOperand(1) != Op->getOperand(1))
+    return false;
+
+  Value lhs = nullptr;
+  Value rhs = nullptr;
+  Value acc = nullptr;
+  bool isMulOp = false;
+
+  // If the acc operand is a mul op, we will try to generate mul_conv operation
+  // If the acc operand is a fma op, we will try to generate fma_conv operation
+  if (auto mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp)) {
+    isMulOp = true;
+
+    // Determine the lhs and rhs values for the mul_conv
+    lhs = mulOp->getOperand(0);
+    rhs = mulOp->getOperand(1);
+  } else {
+    auto fmaOp = cast<aievec::FMAOp>(mulOrFMAOp);
+
+    // Determine the lhs, rhs and acc values for the fma_conv
+    lhs = fmaOp->getOperand(0);
+    rhs = fmaOp->getOperand(1);
+    acc = fmaOp->getOperand(2);
+  }
+
+  // Check 6. The def of two operands are upd operations
+  auto lUpdOp = dyn_cast<aievec::UPDOp>(lhs.getDefiningOp());
+  auto rUpdOp = dyn_cast<aievec::UPDOp>(rhs.getDefiningOp());
+
+  if (!lUpdOp || !rUpdOp) {
+    return false;
+  }
+
+  // Check 7. All the ops should belong to the same block, otherwise we might
+  // not be able to fuse them safely
+  if (lhs.getParentBlock() != rhs.getParentBlock())
+    return false;
+
+  if (acc && rhs.getParentBlock() != acc.getParentBlock())
+    return false;
+
+  // Check 8. xstart and zstart distance between two operations should be
+  // 2. offsets, offsets_hi, square and step of two operations should be same.
+  return (isMulOp && matchAttributesAndDistanceForFusion(
+                         curOp, cast<aievec::MulOp>(mulOrFMAOp))) ||
+         matchAttributesAndDistanceForFusion(curOp,
+                                             cast<aievec::FMAOp>(mulOrFMAOp));
+}
+
+// Rewrite a mul/fma and fma op as a aievec MUL_conv or FMA_Conv op
+static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
+  aievec::FMAOp curOp = cast<aievec::FMAOp>(Op);
+
+  Value lhs = curOp->getOperand(0);
+
+  // 1. Deal with the lhs:
+  // lhs of current FMAOp should be an upd operation with 512-bit vector width.
+  // For AIE-ML, we can directly load 512 bits vectors. Thus, we can delete the
+  // upd operation with index 1.
+  auto lUpdOp = dyn_cast<aievec::UPDOp>(lhs.getDefiningOp());
+  if (lUpdOp.getIndex() == 1) {
+    auto lUpdOp0 = dyn_cast<aievec::UPDOp>(lUpdOp.getVector().getDefiningOp());
+    lUpdOp->replaceAllUsesWith(lUpdOp0);
+    lUpdOp->erase();
+  }
+
+  // 2. Deal with the rhs:
+  // Since vector size of current FMAOp rhs is 256 bits, we need to generate a
+  // concat op to make the vector size to 512 bits.
+  auto rUpdOp = dyn_cast<aievec::UPDOp>(curOp->getOperand(1).getDefiningOp());
+  state->builder.setInsertionPointAfter(rUpdOp);
+  AIEVecAttributes rstat = getOperandVecStats(curOp, state, 1);
+  assert(rstat.vecSizeInBits % 256 == 0);
+  Value concatRhs = nullptr;
+
+  if (rstat.vecSizeInBits == 256) {
+    VectorType concatType =
+        createVectorType(512 / rstat.elementSizeInBits, rstat.elementType);
+    SmallVector<Value> sources = {rUpdOp->getResult(0), rUpdOp->getResult(0)};
+    concatRhs = generateConcatOp(sources, state, rUpdOp->getLoc(), concatType);
+  }
+
+  // Get the def op of acc. It is either a mul op or a fma op.
+  Operation *convOp = nullptr;
+  Operation *mulOrFMAOp = Op->getOperand(2).getDefiningOp();
+  aievec::MulOp mulOp = dyn_cast<aievec::MulOp>(mulOrFMAOp);
+  aievec::FMAOp fmaOp = dyn_cast<aievec::FMAOp>(mulOrFMAOp);
+  int32_t zStart = 0;
+
+  if (mulOp) {
+    aievec::MulOp defOp = mulOp;
+    zStart = stoi((std::string)defOp.getStart(1));
+  } else {
+    aievec::FMAOp defOp = fmaOp;
+    zStart = stoi((std::string)defOp.getStart(1));
+  }
+
+  VectorType vType = Op->getOperand(1).getType().cast<VectorType>();
+  int32_t shiftBytes = zStart * getElementSizeInBits(vType) / 8;
+
+  auto defOp = mulOp ? mulOp : fmaOp;
+  state->builder.setInsertionPoint(defOp);
+  Location loc = defOp->getLoc();
+
+  // Generate a shift_bytes operation for concatRhs if needed.
+  if (shiftBytes) {
+    SmallVector<Value> sources = {concatRhs};
+    concatRhs = generateShiftOp(sources, state, loc, shiftBytes);
+  }
+
+  Type stype = vType.getElementType();
+  unsigned width = 0;
+  IntegerType itype = stype.cast<IntegerType>();
+
+  width = itype.getWidth() <= 8 ? 32 : 64;
+
+  Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+  Type opType = VectorType::get(vType.getShape(), ctype);
+  Value acc = nullptr;
+  // Curently, we only support 16x4 convolution intrinsics for int16 type
+  // AIE-ML.
+  int32_t M = itype.getWidth();
+  int32_t N = 4;
+  // Update lhs value, since it has been changed after we deleted the upd
+  // operation with index 1
+  lhs = curOp->getOperand(0);
+
+  if (mulOp) {
+    convOp = state->builder.create<aievec::MulConvOp>(loc, opType, lhs,
+                                                      concatRhs, M, N);
+  } else {
+    acc = defOp->getOperand(2);
+    bool isSub = state->mscOps.count(defOp);
+    convOp = state->builder.create<aievec::FMAConvOp>(
+        loc, opType, lhs, concatRhs, acc, M, N, isSub);
+  }
+
+  Op->replaceAllUsesWith(convOp);
+  Op->erase();
+  defOp->erase();
+}
+
+static void fuseMulFMAOpsByMulFMAConv(func::FuncOp func, VectState *state) {
+  func.walk([&](mlir::Operation *Op) {
+    if (isa<aievec::FMAOp>(Op) && canFuseMulFMAOpsForInt16(Op, state)) {
+      fuseMulFMAOpsForInt16(Op, state);
+    }
+  });
 }
 
 // Generate the AIE mul/fma op for each vector mul/fma op. This function is the
@@ -2188,9 +2464,10 @@ static void insertSRSOp(Operation *Op, VectState *state) {
     // Get the underlying scalar element type of user op. If the user is a
     // write op, it won't have a result. So get the element type from memref.
     Type scalarType = nullptr;
+    MemRefType memRefType = nullptr;
     if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
       // Get the element type from the memref output
-      MemRefType memRefType = writeOp.getSource().getType().cast<MemRefType>();
+      memRefType = writeOp.getSource().getType().cast<MemRefType>();
       scalarType = memRefType.getElementType();
     } else
       scalarType = getElementTypeOrSelf(*user->getResultTypes().begin());
@@ -2199,6 +2476,24 @@ static void insertSRSOp(Operation *Op, VectState *state) {
     // correspond to the Op.
     for (auto operand : user->getOperands()) {
       if (operand.getDefiningOp() == Op) {
+        // Generate an AIE-ML cast op for the case that result vector width less
+        // or equal that source vector width
+        if (AIEML && memRefType &&
+            Op->getResult(0)
+                    .getType()
+                    .cast<VectorType>()
+                    .getElementType()
+                    .getIntOrFloatBitWidth() ==
+                scalarType.getIntOrFloatBitWidth()) {
+          unsigned lanes =
+              getVectorLaneSize(Op->getResult(0).getType().cast<VectorType>());
+          VectorType castType = createVectorType(lanes, scalarType);
+          aievec::CastOp castOp = generateCastOp(Op->getResult(0), castType,
+                                                 false, state, Op->getLoc());
+          assert(castOp && "Failed to create Cast intrinsic");
+          user->replaceUsesOfWith(operand, castOp);
+          break;
+        }
         aievec::SRSOp srsOp = nullptr;
         if (!typeToSRSOpMap.count(scalarType)) {
           srsOp =
@@ -2392,6 +2687,13 @@ static void coalesceLHSOpVectorsInFunc(func::FuncOp func, VectState *state) {
   }
 }
 
+// Go through sext operations and record the operand's defining operation.
+static void recordSextOps(func::FuncOp func, VectState *state) {
+  func.walk([&](ExtSIOp op) {
+    state->sextDefMap[op] = op->getOperand(0).getDefiningOp();
+  });
+}
+
 // For each read operation, compute the potential vector-level data reuse we
 // can exploit for it.
 static void computeReuse(TransferReadOp readOp, VectState *state) {
@@ -2420,9 +2722,29 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
         break;
       }
     }
+    if (isa<ExtSIOp>(user)) {
+      auto extsiOp = cast<ExtSIOp>(user);
+      for (auto consumer : extsiOp->getUsers()) {
+        if (isa<MulIOp, MulFOp, vector::FMAOp>(consumer)) {
+          if ((state->sextDefMap.count(
+                   consumer->getOperand(0).getDefiningOp()) &&
+               state->sextDefMap[consumer->getOperand(0).getDefiningOp()] ==
+                   readOp) ||
+              (state->sextDefMap.count(
+                   consumer->getOperand(1).getDefiningOp()) &&
+               state->sextDefMap[consumer->getOperand(1).getDefiningOp()] ==
+                   readOp)) {
+            minVecSize = 256;
+            break;
+          }
+        }
+      }
+    }
   }
 
-  if (AIEML) {
+  VectorType vecType = readOp.getVector().getType().cast<VectorType>();
+  if (AIEML && (getVectorSizeInBits(vecType) == 512 ||
+                getElementSizeInBits(vecType) == 8)) {
     minVecSize *= 2;
   }
 
@@ -2620,6 +2942,9 @@ void AIEVectorize::runOnOperation() {
     VectState *state =
         new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
 
+    // record the sext op and its operand's def op to sextDefMap
+    recordSextOps(func, state);
+
     // First compute the loops surrounding each load/store operation. This is
     // necessary to identify loads/stores that are nested together.
     for (AffineForOp forOp : func.getOps<AffineForOp>()) {
@@ -2669,6 +2994,10 @@ void AIEVectorize::runOnOperation() {
     // those ops need to query transfer reads to know if their operand is
     // splat.
     insertUPDOpsInFunc(func, state);
+    // Check for the opportunities of fusing Mul and FMA ops by Mul_Conv or
+    // FMA_Conv.
+    if (AIEML)
+      fuseMulFMAOpsByMulFMAConv(func, state);
   }
 
   // Canonicalize the IR of all the functions in the module by running a set of

@@ -39,13 +39,13 @@ module @test23_broadcast_packet {
       AIE.dmaBdPacket(0x0, 0x0)
       AIE.dmaBd(<%buf72_0 : memref<1024xi32>, 0, 1024>, 0)
       AIE.useLock(%lock72_4, "Release", 0)
-      cf.br ^bd5
+      AIE.nextBd ^bd5
     ^bd5:
       AIE.useLock(%lock72_5, "Acquire", 1)
       AIE.dmaBdPacket(0x1, 0x1)
       AIE.dmaBd(<%buf72_1 : memref<1024xi32>, 0, 1024>, 0)
       AIE.useLock(%lock72_5, "Release", 0)
-      cf.br ^bd4
+      AIE.nextBd ^bd4
     ^end:
       AIE.end
   }
@@ -57,7 +57,7 @@ module @test23_broadcast_packet {
     AIE.useLock(%lock63_0, Acquire, 0)
     AIE.dmaBd(<%buf63_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock63_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^end: 
     AIE.end
   }
@@ -70,7 +70,7 @@ module @test23_broadcast_packet {
     AIE.useLock(%lock64_0, Acquire, 0)
     AIE.dmaBd(<%buf64_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock64_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^end: 
     AIE.end
   }
@@ -83,7 +83,7 @@ module @test23_broadcast_packet {
     AIE.useLock(%lock73_0, Acquire, 0)
     AIE.dmaBd(<%buf73_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock73_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^end: 
     AIE.end
   }
@@ -96,7 +96,7 @@ module @test23_broadcast_packet {
     AIE.useLock(%lock74_0, Acquire, 0)
     AIE.dmaBd(<%buf74_0 : memref<1024xi32>, 0, 1024>, 0)
     AIE.useLock(%lock74_0, Release, 1)
-    cf.br ^bd0
+    AIE.nextBd ^bd0
   ^end: 
     AIE.end
   }

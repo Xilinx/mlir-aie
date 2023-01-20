@@ -23,7 +23,7 @@ module @test_error_dma_multi_lock {
     AIE.useLock(%l33_1, Acquire, 1)
     AIE.useLock(%l33_0, Release, 0)
     AIE.useLock(%l33_1, Release, 0)
-    cf.br ^end
+    AIE.nextBd ^end
   ^end:
     AIE.end
   }
