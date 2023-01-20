@@ -16,7 +16,7 @@ Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 
 Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
 
-The python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions. This script requires `virtualenv`.
+The cmake and python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions. This script requires `virtualenv`.
 
 clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
 
