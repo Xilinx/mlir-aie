@@ -17,7 +17,7 @@ The context that the `mlir-aie` dialect sits with respect to other MLIR dialects
 <p align="left"><img src="images/diagram11.jpg" width="700"></p>
 
 
-Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialects that allows customizable tool development targeting AMD devices. 
+Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialects that allows customizable tool development targeting AMD devices. `mlir-aie` can be used to generate low-level configuration for the AIEngine portion of Versal devices, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is included, targeting the LibXAIE library. In the tutorial examples, the configuration is used by host code that executes the generated configuration, and makes use of APIs in the [mlir-aie/runtime_lib](https://github.com/Xilinx/mlir-aie/tree/main/runtime_lib) directory to interface with the design.
 
 This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and its architecture. 
 
