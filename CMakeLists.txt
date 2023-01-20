@@ -111,7 +111,9 @@ endif()
 
 add_subdirectory(include)
 add_subdirectory(lib)
+add_subdirectory(reference_designs)
 add_subdirectory(test)
+add_subdirectory(tutorials)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
