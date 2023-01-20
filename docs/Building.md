@@ -48,9 +48,9 @@ the tools are largely board and device independent and can be adapted to other e
     __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
 
 2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
-```
-source utils/setup_python_packages.sh
-```
+    ```
+    source utils/setup_python_packages.sh
+    ```
 
 3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
 enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
