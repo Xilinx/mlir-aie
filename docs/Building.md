@@ -36,7 +36,7 @@ the tools are largely board and device independent and can be adapted to other e
 
 2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
 ```
-source utils/setup_python_packages.sh
+./utils/setup_python_packages.sh
 ```
 
 3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
@@ -47,13 +47,13 @@ particular revision is expected to work.
 
     To clone llvm and cmakeModules, run utils/clone-llvm.sh (see utils/clone-llvm.sh for the correct llvm commithash).
     ```
-    source utils/clone-llvm.sh
+    ./utils/clone-llvm.sh
     ```
     To build (compile and install) llvm, run utils/build-llvm-local.sh in the directory that llvm and 
     cmakeModules are cloned in. See build-llvm-local.sh for additional shell script arguments. 
     Note that build-llvm.sh is a variation of the llvm build script used for CI on github.
     ```
-    source utils/build-llvm-local.sh 
+    ./utils/build-llvm-local.sh 
     ```
     This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
@@ -61,7 +61,7 @@ particular revision is expected to work.
 llvm/build and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
 cmakeModules/cmakeModulesXilinx). 
     ```
-    source utils/build-mlir-aie.sh <llvm dir>/<build dir> <cmakeModules dir>/cmakeModulesXilinx
+    ./utils/build-mlir-aie.sh <llvm dir>/<build dir> <cmakeModules dir>/cmakeModulesXilinx
     ```
     This will create a build and install folder under /mlir-aie. 
 
