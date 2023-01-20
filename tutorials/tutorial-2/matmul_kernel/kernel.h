@@ -18,4 +18,3 @@ void extern_kernel(int32_t *restrict A, int32_t *restrict B,
 } // extern "C"
 
 #endif
-

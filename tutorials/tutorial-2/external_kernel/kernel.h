@@ -18,4 +18,3 @@ void extern_kernel(int32_t *restrict buf);
 } // extern "C"
 
 #endif
-

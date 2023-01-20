@@ -14,9 +14,9 @@
 #define BUF_SIZE 256
 int main() {
 
-	int32_t buf[BUF_SIZE];
+  int32_t buf[BUF_SIZE];
 
-	extern_kernel(buf);
-	printf("buf[3] = %d\n",buf[3]);
-	return 0;
+  extern_kernel(buf);
+  printf("buf[3] = %d\n", buf[3]);
+  return 0;
 }

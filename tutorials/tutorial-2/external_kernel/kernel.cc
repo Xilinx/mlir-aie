@@ -1,4 +1,5 @@
-//===- kernel.cc -------------------------------------------------*- C++ -*-===//
+//===- kernel.cc -------------------------------------------------*- C++
+//-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -21,8 +22,6 @@
 
 extern "C" {
 
-void extern_kernel(int32_t *restrict buf) {
-	buf[3] = 14;
-}
+void extern_kernel(int32_t *restrict buf) { buf[3] = 14; }
 
 } // extern "C"

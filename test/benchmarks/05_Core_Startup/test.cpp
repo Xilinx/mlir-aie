@@ -47,13 +47,12 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
 
-//    mlir_aie_clear_tile_memory(_xaie, 1, 3);
+    //    mlir_aie_clear_tile_memory(_xaie, 1, 3);
 
     mlir_aie_configure_dmas(_xaie);
 
-	XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,3), 0, 0);
-	XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1,3), 1, 240);
-
+    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 3), 0, 0);
+    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 3), 1, 240);
 
     EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
                  XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
@@ -62,8 +61,8 @@ int main(int argc, char *argv[]) {
     pc0.set();
 
     EventMonitor pc1(_xaie, 1, 3, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
-					 XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
-	pc1.set();
+                     XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+    pc1.set();
 
     mlir_aie_start_cores(_xaie);
     usleep(1000);

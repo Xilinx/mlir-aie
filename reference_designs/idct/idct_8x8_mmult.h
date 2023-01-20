@@ -13,22 +13,21 @@
 #define __IDCT_8x8_MMULT_H__
 
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 // #include <adf.h>
 
-#define DCT8x8_BLOCK_WIDTH     (8)
-#define DCT8x8_BLOCK_HEIGHT    (8)
-#define NUM_DCT8x8_BLOCKS_PER_ITERATION     (1)
-#define NUM_ITERATION	(1)
+#define DCT8x8_BLOCK_WIDTH (8)
+#define DCT8x8_BLOCK_HEIGHT (8)
+#define NUM_DCT8x8_BLOCKS_PER_ITERATION (1)
+#define NUM_ITERATION (1)
 #define BYTES_PER_DATA (2)
 
-#define DCT8x8_BUF_SIZE        (NUM_DCT8x8_BLOCKS_PER_ITERATION  *\
-                                DCT8x8_BLOCK_WIDTH *\
-                                DCT8x8_BLOCK_HEIGHT)
+#define DCT8x8_BUF_SIZE                                                        \
+  (NUM_DCT8x8_BLOCKS_PER_ITERATION * DCT8x8_BLOCK_WIDTH * DCT8x8_BLOCK_HEIGHT)
 
-#define DCT8x8_SHIFT_H_TXFM    (11)  // 13 - 2
-#define DCT8x8_SHIFT_V_TXFM    (18)  // 13 + 5
+#define DCT8x8_SHIFT_H_TXFM (11) // 13 - 2
+#define DCT8x8_SHIFT_V_TXFM (18) // 13 + 5
 
 #define c1 11363
 #define c2 10703
@@ -46,10 +45,8 @@
 #define _c6 -4433
 #define _c7 -2260
 
-
-
 extern "C" {
-void dequant_8x8(int16_t  *restrict input, int16_t *restrict output);
+void dequant_8x8(int16_t *restrict input, int16_t *restrict output);
 void idct_8x8_mmult_h(int16_t *restrict input, int16_t *restrict output);
 void idct_8x8_mmult_v(int16_t *restrict input, int16_t *restrict output);
 }
