@@ -8,12 +8,23 @@ lld
 cmake 3.20.6
 ninja 1.8.2
 Xilinx Vitis 2022.2
-sudo pip3 install psutil rich pybind11 numpy
+python 3.8.x and pip
+pip3 install psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
-The python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions.
+Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site. 
+NOTE: using the Vitis recommended settings64.sh script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
+ 
+```
+export PATH=$PATH:<Vitis_install_path>/Vitis/2022.2/aietools/bin:<Vitis_install_path>/Vitis/2022.2/bin
+```
+
+The cmake and python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions. 
+This script requires `virtualenv`.
+
+clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
 
 In addition, the following optional packages may be useful:
 ```
@@ -37,9 +48,9 @@ the tools are largely board and device independent and can be adapted to other e
     __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
 
 2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
-```
-./utils/setup_python_packages.sh
-```
+    ```
+    source utils/setup_python_packages.sh
+    ```
 
 3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
 enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
