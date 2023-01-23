@@ -9,9 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license && jackl
-// RUN: xchesscc -p me -P ${CARDANO}/data/cervino/lib -c %S/kernel.cc %S/dequant.cc %S/pass.cc
+// RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/kernel.cc %S/dequant.cc %S/pass.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
+
+
 
 module @idct {
   %t74 = AIE.tile(7, 4)

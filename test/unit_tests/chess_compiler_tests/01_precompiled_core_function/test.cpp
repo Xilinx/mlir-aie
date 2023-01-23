@@ -20,10 +20,6 @@
 #include <xaiengine.h>
 #include "test_library.h"
 
-#define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
-#define MLIR_STACK_OFFSET 4096
-
 #include "aie_inc.cpp"
 
 int
