@@ -237,11 +237,7 @@ module @idct {
       AIE.useLock(%lock2, "Acquire", 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i16>, 0, 512>, 0)
       AIE.useLock(%lock2, "Release", 0)
-<<<<<<< HEAD:reference_designs/idct/aie.mlir
-      cf.br ^bd1
-=======
       AIE.nextBd ^bd1
->>>>>>> 82979c4855800d693d68fe4fe50fc3c3777c5730:test/reference_designs/idct/aie.mlir
     ^end:
       AIE.end
   }
