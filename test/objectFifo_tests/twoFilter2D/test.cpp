@@ -21,9 +21,6 @@
 #include <xaiengine.h>
 
 #define LOCK_TIMEOUT 100
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-#define mlir_aie_STACK_OFFSET 4096
 
 #define LINE_WIDTH 16
 #define HEIGHT 10
