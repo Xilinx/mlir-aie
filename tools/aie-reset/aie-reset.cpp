@@ -25,15 +25,6 @@
 #include <thread>
 #include <unistd.h>
 
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-
-#define MLIR_STACK_OFFSET 4096
-
 #define MAP_SIZE 16UL
 #define MAP_MASK (MAP_SIZE - 1)
 

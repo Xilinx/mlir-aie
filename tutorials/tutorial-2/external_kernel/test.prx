@@ -1,0 +1,6 @@
+<project name="test" processor="me">
+    <file type="c" name="kernel.cc" path=""/>
+    <file type="c" name="test.cc" path=""/>
+    <option id="project.name" value="test"/>
+    <option id="project.type" value="exe"/>
+</project>
