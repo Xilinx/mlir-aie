@@ -9,9 +9,11 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license && jackl
-// RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/../kernel.cc
+// RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/kernel.cc %S/dequant.cc %S/pass.cc
 // RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
+
+
 
 module @idct {
   %t74 = AIE.tile(7, 4)
@@ -235,7 +237,11 @@ module @idct {
       AIE.useLock(%lock2, "Acquire", 1)
       AIE.dmaBd(<%buffer_out : memref<512 x i16>, 0, 512>, 0)
       AIE.useLock(%lock2, "Release", 0)
+<<<<<<< HEAD:reference_designs/idct/aie.mlir
+      cf.br ^bd1
+=======
       AIE.nextBd ^bd1
+>>>>>>> 82979c4855800d693d68fe4fe50fc3c3777c5730:test/reference_designs/idct/aie.mlir
     ^end:
       AIE.end
   }
