@@ -228,9 +228,9 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
   int32_t lsize = getElementSizeInBits(ltype);
   int32_t rsize = getElementSizeInBits(rtype);
 
-  int32_t width = (lsize == 8 && rsize == 8)
-                      ? (AIEML ? 256 : 128)
-                      : (lsize == 16 && rsize == 8) ? 64 : 32;
+  int32_t width = (lsize == 8 && rsize == 8)    ? (AIEML ? 256 : 128)
+                  : (lsize == 16 && rsize == 8) ? 64
+                                                : 32;
 
   if (AIEML && getVectorSizeInBits(rtype) == 512) {
     width *= 2;
@@ -1652,8 +1652,9 @@ static void computeXbuffAttr_i8xi8(
 
   // Now compute the square for zbuff. We want a {0,x,0,x} pattern.
   int32_t offsetWithoutDup = colOffset / 2;
-  int32_t rstep =
-      offsetWithoutDup >= 2 ? 2 : colOffset == -1 ? 1 : offsetWithoutDup;
+  int32_t rstep = offsetWithoutDup >= 2 ? 2
+                  : colOffset == -1     ? 1
+                                        : offsetWithoutDup;
   assert(m4Offset == 0 || rstep <= 1);
 
   SmallVector<int32_t> sqPattern = {rstep, 0, rstep, 0};
