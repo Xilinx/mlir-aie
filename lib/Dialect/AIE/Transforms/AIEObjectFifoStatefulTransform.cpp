@@ -1103,8 +1103,8 @@ struct AIEObjectFifoStatefulTransformPass
     patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(
         m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
-    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
     patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
   }

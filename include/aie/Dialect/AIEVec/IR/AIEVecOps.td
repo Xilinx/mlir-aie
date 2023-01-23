@@ -578,11 +578,6 @@ def AIEVec_FMAConvOp:
     operation of (M x N)matrix with (N x 1)kernel.
     `$result = mac_convMxN($lhs, $rhs, $acc)`
   }];
-  let builders = [
-    OpBuilder<(ins "Value":$lhs, "Value":$rhs, "Value":$acc,
-               "int32_t":$M, "int32_t":$N, "bool":$fmsub),
-    [{build($_builder, $_state, lhs, rhs, acc, M, N, fmsub);}]>
-  ];
 
    let extraClassDeclaration = [{
      // Get the attributes name

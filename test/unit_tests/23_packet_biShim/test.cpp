@@ -20,13 +20,10 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-#define MLIR_STACK_OFFSET 4096
-
 #include "aie_inc.cpp"
 #define MAP_SIZE 16UL
 #define MAP_MASK (MAP_SIZE - 1)
+
 void devmemRW32(uint32_t address, uint32_t value, bool write) {
   int fd;
   uint32_t *map_base;

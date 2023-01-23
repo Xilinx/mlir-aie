@@ -79,7 +79,7 @@ Optional<TileID> getMemWest(TileID src) {
     ret = src;
   else
     ret = std::make_pair(src.first - 1, src.second);
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
@@ -91,21 +91,21 @@ Optional<TileID> getMemEast(TileID src) {
     ret = std::make_pair(src.first + 1, src.second);
   else
     ret = src;
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemNorth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 Optional<TileID> getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
-  if (!isValidTile(ret.value()) || ret->second == 0)
+  if (!isValidTile(*ret) || ret->second == 0)
     ret.reset();
   return ret;
 }
