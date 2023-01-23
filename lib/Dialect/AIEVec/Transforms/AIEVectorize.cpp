@@ -2513,7 +2513,12 @@ static void insertSRSOp(Operation *Op, VectState *state) {
       if (operand.getDefiningOp() == Op) {
         // Generate an AIE-ML cast op for the case that result vector width less
         // or equal that source vector width
-        if (AIEML && memRefType && scalarType.getIntOrFloatBitWidth() == 8 &&
+        if (AIEML && memRefType &&
+            Op->getOperand(0)
+                    .getType()
+                    .cast<VectorType>()
+                    .getElementType()
+                    .getIntOrFloatBitWidth() == 8 &&
             Op->getResult(0)
                     .getType()
                     .cast<VectorType>()
