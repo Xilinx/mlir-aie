@@ -11,9 +11,9 @@
 # <ins>Tutorial 8 - communication (cascade)</ins>
 
 Cascade is a specialized data transfer between horizontally adjacent tiles in a specific direction depending on the row. For first generation AI Engines, cascades flow in the following way:
-* Even rows - right to left
-* Odd rows - left to right
-> The first row starts at index 0 and is the shim row. Therefore, the first regular tile row is actually an odd row at row index 1 and flows left to right. Note that the last tile in each row cascades to the tile directly above it.
+* Even rows - East to West
+* Odd rows - West to East
+> The first row starts at index 0 and is the shim row. Therefore, the first regular tile row is actually an odd row at row index 1 and flows West to East. Note that the last tile in each row cascades to the tile directly above it.
 
 As far as  `mlir-aie` syntax support for cascade connections, we support cascade functionality by simply placing tiles directly horizontally adjacent to one another. No additional operators are needed in `mlir-aie`. There are `core` ops that push and pull data from the cascade ports
 
