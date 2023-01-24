@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//-->
 # <ins>Tutorial 2 - Single kernel compilation and simulation</ins>
 
-MLIR gives us the ability to leverage different dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) when defining AIE core functionality. The ability to lower from these dialects and many others into efficient AI Engine code is an active area of research and development. However, when working with existing optimized AIE kernel code written in C/C++ (or wanting to write your own), we can reference precompiled object code in our AIE core operation defintion through the use [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect. 
+MLIR gives us the ability to leverage different dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) when defining AIE core functionality. The ability to lower from these dialects and many others into efficient AI Engine code is an active area of research and development. However, when working with existing optimized AIE kernel code written in C/C++ (or wanting to write your own), we can reference precompiled object code in our AIE core operation definition through the use [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect.
 
 ## <ins>MLIR external functions</ins>
 
@@ -22,16 +22,16 @@ func.func private @extern_kernel(%b: memref<256xi32>) -> ()
     AIE.end
 } { link_with="kernel.o"}
 ```
-In this MLIR code snippet, we see that we first call `func.func` to define a private function whose function signature matches that of the AIE C/C++ function. The function name after the @ (e.g. `@external_kernel`) should match the C/C++ function name and the number of arguments should match the number of C/C++ function arguments. Arugment type matching is more flexible as memrefs will match data pointers of similar type.
+In this MLIR code snippet, we see that we first call `func.func` to define a private function whose function signature matches that of the AIE C/C++ function. The function name after the @ (e.g. `@external_kernel`) should match the C/C++ function name and the number of arguments should match the number of C/C++ function arguments. Argument type matching is more flexible as memrefs will match data pointers of similar type.
 
 Then, within the `AIE.core` operator, we use `func.call` to call the previously defined function from within our core, being sure to pass the appropriate function arguments. In this case, we pass in the the `AIE.buffer` `%buf`. 
 
-The final step is to tell our tools where to look for the object code that the function whose name we defined in `func.func`/ `func.call`. Using the additional operator defintion `link_with="kernel.o"`, we point to the file `kernel.o` in the current directory and link it in to create the final kernel object file. 
+The final step is to tell our tools where to look for the object code that the function whose name we defined in `func.func`/ `func.call`. Using the additional operator definition `link_with="kernel.o"`, we point to the file `kernel.o` in the current directory and link it in to create the final kernel object file.
 > Note that this allows us to call the function multiple times within the `AIE.core` or even separate functions in the same `AIE.core` if they are both defined within the single linked object file.
 
 ## <ins>Kernel object file generation</ins>
 
-Now that we know how to link in externally defined functions from precompoiled object files, it would be nice to be able to compile those object files quickly as well as test them. The main way to do this is to run Vitis to compile the object file from C/C++ source. But we can also directly call the compilation tools used by Vitis. 
+Now that we know how to link in externally defined functions from precompiled object files, it would be nice to be able to compile those object files quickly as well as test them. The main way to do this is to run Vitis to compile the object file from C/C++ source. But we can also directly call the compilation tools used by Vitis.
 
 To compile the C/C++ source into object code, we use the `xchesscc` command line tool as follows:
 ```

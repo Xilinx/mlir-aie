@@ -10,7 +10,7 @@
 
 # <ins>Tutorial 3 - communication (local memory), locks</ins>
 
-After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then defining the functionality within cores with either integrated dialect operations (arith, memref) or external kernel functions, the next major component of for AIE system design is communciation. As summarized briefly in the [Basic AI Engine Architecure](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well. 
+After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then defining the functionality within cores with either integrated dialect operations (arith, memref) or external kernel functions, the next major component of for AIE system design is communication. As summarized briefly in the [Basic AI Engine Architecture](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well.
 
 In the diagram below, we see that the local memory for tile(2,4) is accessible to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. That is why the core in tile(1,4) can reference the buffer declared by tile(2,4).
 
@@ -51,7 +51,7 @@ Notice the familiar design pattern of:
 * a set of operations
 * release lock in some value (usually the other value)
 
-The acquire value must match the current lock state in order for the acqure to succeed. The release value can be either 0 or 1. Below is another example of lock usage including a common state diagram of lock state transitions. Note that we can actually release to the same value if we choose.
+The acquire value must match the current lock state in order for the acquire to succeed. The release value can be either 0 or 1. Below is another example of lock usage including a common state diagram of lock state transitions. Note that we can actually release to the same value if we choose.
 <p><img src="../images/diagram5.jpg?raw=true" width="800"><p>
 
 ## <ins>Tutorial 3 Lab </ins>
@@ -74,6 +74,6 @@ The acquire value must match the current lock state in order for the acqure to s
 
 ## <ins>Object FIFO Abstraction </ins>
 
-In this tutorial the `objectFifo` abstraction is also introduced, see below. This is a higher-level abstraction which is used to establish communication accross the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
+In this tutorial the `objectFifo` abstraction is also introduced, see below. This is a higher-level abstraction which is used to establish communication across the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
 
 [Link to higher level objectFifo write-up](./objectFifo_ver)

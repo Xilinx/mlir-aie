@@ -15,7 +15,7 @@ Cascade is a specialized data transfer between horizontally adjacent tiles in a 
 * Odd rows - left to right
 > The first row starts at index 0 and is the shim row. Therefore, the first regular tile row is actually an odd row at row index 1 and flows left to right. Note that the last tile in each row cascades to the tile directly above it.
 
-As far as  `mlir-aie` syntax support for cascade connections, we support cascade functionalty by simply placing tiles directly horizontally adjacnet to one another. No additional operators are needed in `mlir-aie`. There are `core` ops that push and pull data from the cascade ports
+As far as  `mlir-aie` syntax support for cascade connections, we support cascade functionality by simply placing tiles directly horizontally adjacent to one another. No additional operators are needed in `mlir-aie`. There are `core` ops that push and pull data from the cascade ports
 
 ```
 AIE.getCascade()
@@ -23,7 +23,7 @@ AIE.putCascade($cascadeValue : type($cascadeValue))
 ```
 
 This allows us to push and pull data off the cascade ports.
-> This feature is currently not working so we rely instead on external compiled kernel functions to push and pull cascade data in our example desgn
+> This feature is currently not working so we rely instead on external compiled kernel functions to push and pull cascade data in our example design
 
 ## <ins>Tutorial 8 Lab </ins>
 
