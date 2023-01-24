@@ -22,9 +22,9 @@ module @module_name {
 ## <ins>Tile Components</ins>
 AI Engine tiles are the basic building blocks of AIE designs and can be declared as `AIE.tile(col,row)`. Examples incude:
 ```
-%tile13 = AIE.tile(1,3)
-%tile23 = AIE.tile(2,3)
-%tile33 = AIE.tile(3,3)
+%tile14 = AIE.tile(1,4)
+%tile24 = AIE.tile(2,4)
+%tile34 = AIE.tile(3,4)
 ```
 The two major components of an AI Engine tile is 
 
@@ -33,17 +33,17 @@ The two major components of an AI Engine tile is
 
 Examples declarations include:
 ```
-AIE.core(%tile13) {
+AIE.core(%tile14) {
     ... 
     core body 
     ...
 }
 
-%buff0 = AIE.buffer(%tile13) : memref<256xi32>
-%buff1 = AIE.buffer(%tile13) : memref<256xi32>
+%buff0 = AIE.buffer(%tile14) : memref<256xi32>
+%buff1 = AIE.buffer(%tile14) : memref<256xi32>
 ```
 The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the onine reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
-<img src="../images/diagram1.jpg?raw=true" width="800">
+<img src="../images/diagram1.png?raw=true" width="1000">
 
 ### <ins>Tile</ins>
 

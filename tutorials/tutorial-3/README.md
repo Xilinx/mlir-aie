@@ -12,9 +12,9 @@
 
 After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then defining the functionality within cores with either integrated dialect operations (arith, memref) or external kernel functions, the next major component of for AIE system design is communciation. As summarized briefly in the [Basic AI Engine Architecure](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well. 
 
-In the diagram below, we see that the local memory for tile(1,4) is accessible to the core in tile(1,3). If we were to expand the diagram further, we would see that tile(0,4) and  tile(1,5) can also access that buffer. That is why the core in tile(1,3) can reference the buffer declared by tile(1,4).
+In the diagram below, we see that the local memory for tile(2,4) is accessible to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. That is why the core in tile(1,4) can reference the buffer declared by tile(2,4).
 
-<p><img src="../images/diagram4.jpg?raw=true" width="800"><p>
+<p><img src="../images/diagram4.png?raw=true" width="1000"><p>
 
 
 While the tile does naturally arbitrate between read and write requests, to avoid access conflicts, we use such hardware locks to gain exclusive access to the local memory. Bear in mind that these locks are not explicitly tied to the local memory and can be use for any purpose. But using them in this way helps with arbitration and performance.
@@ -58,7 +58,7 @@ The acquire value must match the current lock state in order for the acqure to s
 
 1. Read through the [aie.mlir](aie.mlir) design. Which tile's local memory is being shared between the two tiles? <img src="../images/answer1.jpg" title="tile(2,4)" height=25>
 
-2. Can we share tile(1,4)'s local memory instead? Why or why not? <img src="../images/answer1.jpg" title="No, they do not both see tile(1,4) local memory" height=25>
+2. Can we share tile(1,4)'s local memory instead? Why or why not? <img src="../images/answer1.jpg" title="No, they do not both see tile(1,4) local memory." height=25>
 
 3. What about in the vertical direction, say between tile(1,3) and tile(1,4). Which tiles' local memory can be shared between these two tiles? <img src="../images/answer1.jpg" title="both tile(1,3) and tile(1,4) can be shared" height=25>
 

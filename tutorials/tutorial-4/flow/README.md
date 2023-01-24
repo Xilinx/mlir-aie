@@ -91,7 +91,7 @@ Each bd operation can also optionally be gated by locks meaning a lock must be a
 > The lock operations are optional and the lock ID used in acquire and release do not have to match each other though they usually do.
 
 Below is a diagram that maps the components introduced with the physical block on the AI Engine tile.
-<p><img src="../../images/diagram6.jpg?raw=true" width="800"><p>
+<p><img src="../../images/diagram6.png?raw=true" width="1000"><p>
 
 ## <ins>Tutorial 4 Lab </ins>
 
