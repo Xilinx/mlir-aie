@@ -15,12 +15,15 @@
 // RUN: aiecc.py --no-unified --no-xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
 // RUN: aiecc.py --no-unified --no-compile -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
 
+// XCHESSCC-NOT: {{^llc}}
 // XCHESSCC: xchesscc_wrapper
+// XCHESSCC-NOT: {{^llc}}
 // PEANO-NOT: xchesscc_wrapper
-// PEANO: llc
+// PEANO: {{^llc}}
 // PEANO-SAME: --march=aie
+// PEANO-NOT: xchesscc_wrapper
 // NOCOMPILE-NOT: xchesscc_wrapper
-// NOCOMPILE-NOT: llc
+// NOCOMPILE-NOT: {{^llc}}
 
 module {
   %12 = AIE.tile(1, 2)
