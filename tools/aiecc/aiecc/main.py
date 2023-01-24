@@ -115,7 +115,7 @@ class flow_runner:
       return llvmir_chesslinked
 
   async def prepare_for_chesshack(self, task):
-      if(opts.xchesscc == True):
+      if(opts.compile and opts.xchesscc):
         thispath = os.path.dirname(os.path.realpath(__file__))
         chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
@@ -318,7 +318,7 @@ class flow_runner:
           if(opts.compile and opts.xchesscc):
             file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir)
             await self.do_call(progress.task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
-          else:
+          elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
             await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 
