@@ -14,7 +14,7 @@ After declaring the `core` and `buffer` dialect operations which map to the core
 
 In the diagram below, we see that the local memory for tile(2,4) is accessible to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. That is why the core in tile(1,4) can reference the buffer declared by tile(2,4).
 
-<p><img src="../images/diagram4.png?raw=true" width="1000"><p>
+<p><img src="../images/diagram4.png" width="1000"><p>
 
 
 While the tile does naturally arbitrate between read and write requests, to avoid access conflicts, we use such hardware locks to gain exclusive access to the local memory. Bear in mind that these locks are not explicitly tied to the local memory and can be use for any purpose. But using them in this way helps with arbitration and performance.

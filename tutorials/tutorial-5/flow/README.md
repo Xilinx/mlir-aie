@@ -17,7 +17,7 @@ In thinking about data communication, it's often helpful to use the memory hiera
 * Host code for buffer allocation and virtual address mapping
 
 A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
-<p><img src="../../images/diagram9.png?raw=true" width="1000"><p>
+<p><img src="../../images/diagram9.png" width="1000"><p>
 
 Here, we see the different components of the L1-L3 communciation defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
 

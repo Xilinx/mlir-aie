@@ -43,7 +43,7 @@ AIE.core(%tile14) {
 %buff1 = AIE.buffer(%tile14) : memref<256xi32>
 ```
 The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the onine reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
-<img src="../images/diagram1.png?raw=true" width="1000">
+<img src="../images/diagram1.png" width="1000">
 
 ### <ins>Tile</ins>
 
