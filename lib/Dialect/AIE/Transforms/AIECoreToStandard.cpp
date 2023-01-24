@@ -17,7 +17,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -221,7 +221,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
   using OpConversionPattern<BufferOp>::OpConversionPattern;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
-                      BlockAndValueMapping &mapper, PatternBenefit benefit = 1)
+                      IRMapping &mapper, PatternBenefit benefit = 1)
       : OpConversionPattern<BufferOp>(context, benefit) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
@@ -253,13 +253,13 @@ struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
 struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
   using OpConversionPattern<CoreOp>::OpConversionPattern;
   ModuleOp &module;
-  BlockAndValueMapping &mapper;
+  IRMapping &mapper;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
   int tileCol = 0;
   int tileRow = 0;
 
   AIECoreToStandardFunc(
-      MLIRContext *context, ModuleOp &m, BlockAndValueMapping &mapper,
+      MLIRContext *context, ModuleOp &m, IRMapping &mapper,
       DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers,
       PatternBenefit benefit = 1, int tileCol = 1, int tileRow = 1)
       : OpConversionPattern<CoreOp>(context, benefit), module(m),
@@ -430,7 +430,7 @@ struct AIECoreToStandardPass
             FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
         .setPrivate();
 
-    BlockAndValueMapping mapper;
+    IRMapping mapper;
     ConversionTarget target(getContext());
     target.addLegalDialect<func::FuncDialect>();
     target.addLegalDialect<cf::ControlFlowDialect>();
