@@ -12,15 +12,14 @@
 
 After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then defining the functionality within cores with either integrated dialect operations (arith, memref) or external kernel functions, the next major component of for AIE system design is communication. As summarized briefly in the [Basic AI Engine Architecture](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well.
 
-In the diagram below, we see that the local memory for tile(2,4) is accessible to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. That is why the core in tile(1,4) can reference the buffer declared by tile(2,4).
+In the diagram below, we see that the local memory for tile(2,4) is physically adjacent to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. In general, each processor can access the memory in its own tile, the memory of the tile to the north and south, and the memory of the tile either to the east or the west.  As a result, communicating through shared memory is less constrained to the north and south: A processor can communicate in either of these directions using a buffer in two different tiles.  Communicating east and west is more more constrained: the communication buffer can be in only one tile, and it might not be in the same tile as the source of the data.  These constraints are verified in MLIR, so it's easy to know whether we've created a valid design.
 
 <p><img src="../images/diagram4.png" width="1000"><p>
 
-
-While the tile does naturally arbitrate between read and write requests, to avoid access conflicts, we use such hardware locks to gain exclusive access to the local memory. Bear in mind that these locks are not explicitly tied to the local memory and can be use for any purpose. But using them in this way helps with arbitration and performance.
+In the AIEngine architecture, read and write requests from different tiles are automatically arbitrated, so shared memory accesses are always well-ordered.  In addition, the architecture includes hardware locks to synchronize the operations of different processors.  We typically use these operations to transfer ownership of blocks of memory from one processor to another, by acquiring a lock before reading or writing memory and then releasing it in the opposite state to allow the buffer to be used by another processor.  Bear in mind, however, that locks are not explicitly tied to particular memory buffers and can be used for any purpose.
 
 ## <ins>Locks</ins>
-The `lock` operation, is actually a physical sub component of the `AIE.tile` but is declared within the `module` block. The syntax for declaring a lock is `AIE.lock(tileName, lockID)`. An example would be:
+Lock are declared using an `AIE.lock` operation in the toplevel `module`, and refer to their tile location. The syntax for declaring a lock is `AIE.lock(tileName, lockID)`. If no lockID is specified, then a lockID will be assigned later as a compiler pass.  An example would be:
 ```
 %lockName = AIE.lock(%tileName, %lockID)
 ```
@@ -30,9 +29,9 @@ Examples:
 %lock13_11 = AIE.lock(%tile13, 11)
 ```
 Each tile has 16 locks and each lock is in one of two states (acquired, released) and one of two values (0, 1).
-> By default, we tend to assume (value=0 is a "write", value=1 is "read"). But there is no real definition of these values. The only key thing to remember is that lock value start and is reset into the release val=0 state. Which means an acquire=0 will always succeed first while an acquire=1 needs the lock state to be release=1 to succeed. Once acquired, a lock can be released to the 0 or 1 state. 
+> By convention, we associate value=0 with an 'unused' buffer and value=1 with a 'used' buffer, but there is no intrinsic semantics to these values. The key thing to remember is that locks are initialized at reset with the value=0, and code will typically acquire with value=0 before writing into a buffer.  Code that acquires with value=1 will typically block until some other code releases the lock with value=1. 
 
-The 16 locks in a tile are accessible by it's the same 3 cardinal neighbors that can access the tile's local memory. This is to ensure all neighbors that can access the local memory can also access the locks. 
+The 16 locks in a tile are accessible in the same way that local memories are. This is ensures that all neighbors that can access the local memory can also access the corresponding locks. 
 
 To use the lock, we call the `useLock` operation either inside a `core` operation or `mem/ shimDMA` operation. 
 ```
