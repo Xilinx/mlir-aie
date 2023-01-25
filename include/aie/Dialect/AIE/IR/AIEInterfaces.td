@@ -13,6 +13,8 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/IR/EnumAttr.td"
+
 def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   let description = [{
     Interface for operations that have interconnect-like properties,
@@ -81,4 +83,40 @@ def TileElement : OpInterface<"TileElement"> {
       }]
     >
   ];
+}
+
+def Core: I32EnumAttrCase<"Core", 0>;
+def DMA: I32EnumAttrCase<"DMA", 1>;
+def FIFO: I32EnumAttrCase<"FIFO", 2>;
+def South: I32EnumAttrCase<"South", 3>;
+def West: I32EnumAttrCase<"West", 4>;
+def North: I32EnumAttrCase<"North", 5>;
+def East: I32EnumAttrCase<"East", 6>;
+def PLIO: I32EnumAttrCase<"PLIO", 7>;
+def NOC: I32EnumAttrCase<"NOC", 8>;
+def Trace: I32EnumAttrCase<"Trace", 9>;
+
+def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
+  [Core, DMA, FIFO, South, West, North, East, PLIO, NOC, Trace]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def Produce: I32EnumAttrCase<"Produce", 0>;
+def Consume: I32EnumAttrCase<"Consume", 1>;
+
+def Acquire: I32EnumAttrCase<"Acquire", 0>;
+def Release: I32EnumAttrCase<"Release", 1>;
+def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
+def Blocking: I32EnumAttrCase<"Blocking", 1>;
+
+def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
+  [Acquire, Release]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
+  [NonBlocking, Blocking]> {
+
+  let cppNamespace = "xilinx::AIE";
 }

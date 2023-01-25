@@ -11,14 +11,8 @@ add_mlir_dialect_library(AIETransforms
   AIEFindFlows.cpp
   AIEPathfinder.cpp
   AIECreatePathfindFlows.cpp
-  AIECreateCores.cpp
-  AIECreateLocks.cpp
   AIECoreToStandard.cpp
-  AIEHerdRouting.cpp
-  AIECreateBroadcastPacket.cpp
-  AIELowerMulticast.cpp
   AIECreatePacketFlows.cpp
-  AIELowerMemcpy.cpp
   AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp

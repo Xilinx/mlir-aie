@@ -20,10 +20,10 @@
 // CHECK:  %6 = AIE.tile(4, 3)
 // CHECK:  %7 = AIE.tile(3, 2)
 // CHECK:  %8 = AIE.lock(%7, 0)
-// CHECK:  AIE.token(0) {sym_name = "token0"}
-// CHECK:  AIE.token(0) {sym_name = "token1"}
-// CHECK:  AIE.token(0) {sym_name = "token2"}
-// CHECK:  AIE.token(0) {sym_name = "token3"}
+// CHECK:  AIEX.token(0) {sym_name = "token0"}
+// CHECK:  AIEX.token(0) {sym_name = "token1"}
+// CHECK:  AIEX.token(0) {sym_name = "token2"}
+// CHECK:  AIEX.token(0) {sym_name = "token3"}
 // CHECK:  %14 = AIE.core(%2) {
 // CHECK:    AIE.useLock(%3, Acquire, 1)
 // CHECK:    AIE.useLock(%3, Release, 0)
@@ -67,10 +67,10 @@ module @test_lock2 {
   %t43 = AIE.tile(4, 3)
   %t32 = AIE.tile(3, 2)
 
-  AIE.token(0) {sym_name = "token0"}
-  AIE.token(0) {sym_name = "token1"}
-  AIE.token(0) {sym_name = "token2"}
-  AIE.token(0) {sym_name = "token3"}
+  AIEX.token(0) {sym_name = "token0"}
+  AIEX.token(0) {sym_name = "token1"}
+  AIEX.token(0) {sym_name = "token2"}
+  AIEX.token(0) {sym_name = "token3"}
 
   %m33 = AIE.mem(%t33) {
       AIE.end
@@ -93,38 +93,38 @@ module @test_lock2 {
   }
 
   %c23 = AIE.core(%t23) {
-    AIE.useToken @token0(Acquire, 1)
-    AIE.useToken @token0(Release, 2)
+    AIEX.useToken @token0(Acquire, 1)
+    AIEX.useToken @token0(Release, 2)
     AIE.end
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token3(Acquire, 0)
-    AIE.useToken @token2(Acquire, 0)
-    AIE.useToken @token1(Acquire, 0)
-    AIE.useToken @token0(Acquire, 0)
-    AIE.useToken @token0(Release, 1)
-    AIE.useToken @token1(Release, 1)
-    AIE.useToken @token2(Release, 1)
-    AIE.useToken @token3(Release, 1)
+    AIEX.useToken @token3(Acquire, 0)
+    AIEX.useToken @token2(Acquire, 0)
+    AIEX.useToken @token1(Acquire, 0)
+    AIEX.useToken @token0(Acquire, 0)
+    AIEX.useToken @token0(Release, 1)
+    AIEX.useToken @token1(Release, 1)
+    AIEX.useToken @token2(Release, 1)
+    AIEX.useToken @token3(Release, 1)
     AIE.end
   }
 
   %c34 = AIE.core(%t34) {
-    AIE.useToken @token1(Acquire, 1)
-    AIE.useToken @token1(Release, 2)
+    AIEX.useToken @token1(Acquire, 1)
+    AIEX.useToken @token1(Release, 2)
     AIE.end
   }
 
   %c43 = AIE.core(%t43) {
-    AIE.useToken @token2(Acquire, 1)
-    AIE.useToken @token2(Release, 2)
+    AIEX.useToken @token2(Acquire, 1)
+    AIEX.useToken @token2(Release, 2)
     AIE.end
   }
 
   %c32 = AIE.core(%t32) {
-    AIE.useToken @token3(Acquire, 1)
-    AIE.useToken @token3(Release, 2)
+    AIEX.useToken @token3(Acquire, 1)
+    AIEX.useToken @token3(Release, 2)
     AIE.end
   }
 }

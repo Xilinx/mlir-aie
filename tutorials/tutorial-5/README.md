@@ -10,19 +10,19 @@
 
 # <ins>Tutorial 5 - communication via objectFifo (shim DMA, external memory aka DDR)</ins>
 
-In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up till now, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additional blocks in the AI engine array and Versal device.
+In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up to this point, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additional blocks in the AI engine array and Versal device.
 
 * Shim DMA and External Buffers
 * NOC configuration
 * Host code for buffer allocation and virtual address mapping
 
 A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
-<p><img src="../images/diagram9.jpg?raw=true" width="800"><p>
+<p><img src="../images/diagram9.png" width="1000"><p>
 
-Here, we see the different components of the L1-L3 communciation defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp). 
+Here, we see the different components of the L1-L3 communication defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
 > Note that shimDMA are defined for the shim tiles (row 0). Also note that not every column in row 0 is shimDMA capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
 
-Further in-depth descriptions of the components presented above can be found in the `./flow` subdirectory. 
+Further in-depth descriptions of the components presented above can be found in the `./flow` sub-directory.
 
 [Link to lower level flow write-up](./flow)
 
@@ -32,7 +32,7 @@ As was the case in the previous tutorial, we will first look at the design writt
 
 <img src="../images/OF_external_mem.png" width="1000">
 
-While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shimDMA, please refer to the `./flow` subdirectory. 
+While the shim DMA itself is not present in the design, the `AIE.external_buffer` is because it serves as a pointer to an external memory region (e.g. DDR). For additional details about this component and how it is linked to the shimDMA, please refer to the `./flow` sub-directory.
 
 As for now, the `objectFifo` lowering only instantiates memory elements in L1, i.e., in local memory. In order to make the objectFifo aware of external memory regions that are part of its data movement, the external buffers are registered to the objectFifo with the operation:
 ```

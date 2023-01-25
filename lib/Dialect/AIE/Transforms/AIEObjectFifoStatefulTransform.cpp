@@ -11,7 +11,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -896,14 +895,6 @@ struct AIEObjectFifoStatefulTransformPass
                 0);
 
       // create multicast
-      builder.setInsertionPointAfter(producer);
-      MulticastOp multicast = builder.create<MulticastOp>(
-          builder.getUnknownLoc(), producer.getProducerTile(), WireBundle::DMA,
-          producerChan.second);
-      Region &r = multicast.getPorts();
-      r.push_back(new Block);
-      Block &b = r.front();
-
       for (auto consumer : consumers) {
         // create consumer tile DMA
         xilinx::AIE::DMAChannel consumerChan =
@@ -911,13 +902,12 @@ struct AIEObjectFifoStatefulTransformPass
         createDMA(m, builder, consumer, consumerChan.first, consumerChan.second,
                   1);
 
-        // create multicast destination
-        builder.setInsertionPointToEnd(&b);
-        builder.create<MultiDestOp>(builder.getUnknownLoc(),
-                                    consumer.getProducerTile(), WireBundle::DMA,
-                                    consumerChan.second);
+        builder.setInsertionPointAfter(producer);
+        builder.create<FlowOp>(builder.getUnknownLoc(),
+                               producer.getProducerTile(), WireBundle::DMA,
+                               producerChan.second, consumer.getProducerTile(),
+                               WireBundle::DMA, consumerChan.second);
       }
-      builder.create<EndOp>(builder.getUnknownLoc());
     }
 
     //===----------------------------------------------------------------------===//

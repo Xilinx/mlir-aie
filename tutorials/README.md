@@ -17,13 +17,12 @@ The context that the `mlir-aie` dialect sits with respect to other MLIR dialects
 <p align="left"><img src="images/diagram11.jpg" width="700"></p>
 
 
-Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialects that allows customizable tool development targeting AMD devices. `mlir-aie` can be used to generate low-level configuration for the AIEngine portion of Versal devices, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is included, targeting the LibXAIE library. In the tutorial examples, the configuration is used by host code that executes the generated configuration, and makes use of APIs in the [mlir-aie/runtime_lib](https://github.com/Xilinx/mlir-aie/tree/main/runtime_lib) directory to interface with the design.
+Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialects that allows customized tool development targeting AMD devices. `mlir-aie` can be used to generate low-level configuration for the AIEngine portion of Versal devices, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is included, targeting the LibXAIE library. In the tutorial examples, the configuration is used by host code that executes the generated configuration, and makes use of APIs in the [mlir-aie/runtime_lib](https://github.com/Xilinx/mlir-aie/tree/main/runtime_lib) directory to interface with the design.
 
-This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and its architecture. 
+This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand overall AI Engine architecture.
 
-Following that brief introduction, the tutorials are ordered by the region of the AI Engine architecture that they cover as illustrated in the following diagram.
-
-<p align="left"><img src="images/diagram10.jpg" width="700"></p>
+The individual tutorials are listed below along with the AI Engine architecture topics they cover. Following this is a
+a more detailed description of the architecture, ending with an overview of how each tutorial maps onto it.
 
 * [Tutorial 1 - modules, tile, buffer, core](./tutorial-1)
 * [Tutorial 2 - single kernel compilation and simulation](./tutorial-2)
@@ -38,12 +37,13 @@ Following that brief introduction, the tutorials are ordered by the region of th
 * [Example Design #1 - 2x2 Matrix Multiplication](../reference_designs/MM_2x2)
 * [Example Design #2 - iDCT](../reference_designs/idct/)
 
+
 ## <ins>Basic AI Engine architecture</ins>
-AI Engines are architected as 2D arrays consisting of multiple AI Engine tiles and allow for a very scalable solution across the Versal portfolio, ranging from 10s to 100s of AI Engines in a single device, servicing the compute needs of a breadth of applications.
+In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and their architecture. AI Engines are architected as 2D arrays consisting of multiple AI Engine tiles and allow for a very scalable solution across the Versal portfolio, ranging from 10s to 100s of AI Engines in a single device, servicing the compute needs of a breadth of applications.
 
 To maximally utilize the full power of the AI Engine, designers are encouraged to familiarize themselves with [ug1076](https://docs.xilinx.com/r/en-US/ug1076-ai-engine-environment/) for the AI Engine design environment and [am009](https://docs.xilinx.com/r/en-US/am009-versal-ai-engine) for detailed AI Engine functional specification.  For the purposes of this MLIR-based representation, we will focus primarily on the main AI Engine components and the communication between them. Single core programming and optimization, while an important aspect of AI Engine application development, will be described primarily as a means to facilitate data communication.
 
-AI Engines are part of the larger Versal ACAP device and famiiarty with other ACAP components such as the NoC, ARM processors, and custom PL components such as datamovers will help the designer integrate their AI Engine design into a larger ACAP system design.
+AI Engines are part of the larger Versal ACAP device and familiarity with other ACAP components such as the NoC, ARM processors, and custom PL components such as datamovers will help the designer integrate their AI Engine design into a larger ACAP system design.
 
 <p align="left"><img src="https://www.xilinx.com/content/xilinx/en/products/technology/ai-engine/_jcr_content/root/imageTabParsys/childParsys-overview/xilinxcolumns_copy_c_1601636194/childParsys-1/xilinximage.img.png/1622238572946.png" width="400"></p>
 
@@ -72,7 +72,7 @@ In the diagram below, we see data being communicated between AIE tiles through l
 
 ### <ins>Communication - Stream Switch</ins>
 
-The second way to communicate between AI Engines is through the stream switch which moves data up to 32-bits per cycle per stream. Here, data travels through stream switches throughout the AI Engine array from a source AIE tile to destination one. These stream paths can be circuit switched or packet switched and can be connected directly to stream ports at the AIE tile or read/written via DMAs. This is the second most common method of data communication and is the only method for moving data between non-adjacent tiles and into/out of the AI Engine array. The diagram below shows a streaming mulitcast example where streams are multicast from one AIE tile to 3 destinations.
+The second way to communicate between AI Engines is through the stream switch which moves data up to 32-bits per cycle per stream. Here, data travels through stream switches throughout the AI Engine array from a source AIE tile to destination one. These stream paths can be circuit switched or packet switched and can be connected directly to stream ports at the AIE tile or read/written via DMAs. This is the second most common method of data communication and is the only method for moving data between non-adjacent tiles and into/out of the AI Engine array. The diagram below shows a streaming multicast example where streams are multicast from one AIE tile to 3 destinations.
 
 <p align="left"><img src="https://docs.xilinx.com/api/khub/maps/scNYG4asFKV~nqnjEkGwmA/resources/rJt9bOfzmlQdCPlCnG5_WQ/content?Ft-Calling-App=ft%2Fturnkey-portal&Ft-Calling-App-Version=3.11.43&filename=ixc1530655536100.image" width="410"></p>
 
@@ -85,5 +85,9 @@ Finally, we have cascade streams which has the widest data width (384-bits per c
 There are fixed number of vertical and horizontal streams routed by the stream switch so balancing the data movement over these shared resources is an important part of efficient AI Engine design. 
 
 We've only begun to touch the the processing and communication capabilities of the AI Engine so please refer to the online specification and user guides for more in-depth details.
+
+## <ins>Overview of the tutorials by AIE architecture region they cover</ins>
+
+<p align="left"><img src="images/diagram10.jpg" width="700"></p>
 
 

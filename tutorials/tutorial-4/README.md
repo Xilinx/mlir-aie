@@ -10,7 +10,7 @@
 
 # <ins>Tutorial 4 - communication via objectFifo (tile DMA, logical routing)</ins>
 
-Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjcent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has buit-in automatic routing capabilities and visulization tools for viewing the routing choices made. This is a great area for further research where additional transformations can be added to provide other optimized routing functionality.
+Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjacent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has built-in automatic routing capabilities and visualization tools for viewing the routing choices made. This is a great area for further research where additional transformations can be added to provide other optimized routing functionality.
 
 There are many components in the `mlir-aie` dialect that must be configured in order to achieve communication between two cores that are placed on tiles which do not share local memory. However, with the `objectFifo` abstraction introduced in the previous tutorial, there is no visible difference between an objectFifo created with adjacent tiles and one with non-adjacent tiles. 
 
@@ -18,7 +18,7 @@ Under the hood, the abstraction leverages tile DMAs and stream switches in order
 
 <img src="../images/OF_non_shared.png" width="1000">
 
-The components mentioned above are described in detail in the `./flow` and `./switchbox` subdirectories. 
+The components mentioned above are described in detail in the `./flow` and `./switchbox` sub-directories.
 
 [Link to lower level flow write-up](./flow)
 

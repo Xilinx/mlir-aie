@@ -20,11 +20,11 @@ module @module_name {
 ```
 
 ## <ins>Tile Components</ins>
-AI Engine tiles are the basic building blocks of AIE designs and can be declared as `AIE.tile(col,row)`. Examples incude:
+AI Engine tiles are the basic building blocks of AIE designs and can be declared as `AIE.tile(col,row)`. Examples include:
 ```
-%tile13 = AIE.tile(1,3)
-%tile23 = AIE.tile(2,3)
-%tile33 = AIE.tile(3,3)
+%tile14 = AIE.tile(1,4)
+%tile24 = AIE.tile(2,4)
+%tile34 = AIE.tile(3,4)
 ```
 The two major components of an AI Engine tile is 
 
@@ -33,17 +33,17 @@ The two major components of an AI Engine tile is
 
 Examples declarations include:
 ```
-AIE.core(%tile13) {
+AIE.core(%tile14) {
     ... 
     core body 
     ...
 }
 
-%buff0 = AIE.buffer(%tile13) : memref<256xi32>
-%buff1 = AIE.buffer(%tile13) : memref<256xi32>
+%buff0 = AIE.buffer(%tile14) : memref<256xi32>
+%buff1 = AIE.buffer(%tile14) : memref<256xi32>
 ```
-The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the onine reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
-<img src="../images/diagram1.jpg?raw=true" width="800">
+The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the online reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
+<img src="../images/diagram1.png" width="1000">
 
 ### <ins>Tile</ins>
 
@@ -59,14 +59,14 @@ The type of tiles and orientation of its associated local memory is architecture
 
 ### <ins>Buffer</ins>
 
-When delcaring a buffer, we pass in associated AIE tile and declare the buffer parameters. Those parameters are the depth and data type width (though the local memory itself is not physically organized in this way). 
+When declaring a buffer, we pass in associated AIE tile and declare the buffer parameters. Those parameters are the depth and data type width (though the local memory itself is not physically organized in this way).
 > One important note about buffers is that one buffer is not strictly mapped to the entire local memory. You can declare multiple buffers that are associated with the local memory of a tile and they would, by default, be allocated sequentially in that tile's local memory.
 
 ### <ins>Core</ins>
 
-The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other general dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalara operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple opertions may seem cumbersome at first glance but is designed to capture a robust set of operations.
+The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other general dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalar operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple operations may seem cumbersome at first glance but is designed to capture a robust set of operations.
 
-In addition to the integrated core functionality defintions, `mlir-aie` also supports linking with externally compiled kernel code which we will go into more detials in tutorial 2. This process allows custom kernels to be included directly in `mlir-aie` defined designs.
+In addition to the integrated core functionality definitions, `mlir-aie` also supports linking with externally compiled kernel code which we will go into more details in tutorial 2. This process allows custom kernels to be included directly in `mlir-aie` defined designs.
 
 We will be introducing more components and the ways these components are customized in subsequent tutorials. Additional syntax for these MLIR-based AI Engine components can be found in the github<area>.io docs [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
 
@@ -77,7 +77,7 @@ We will be introducing more components and the ways these components are customi
     ```
     > make
     ```
-Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities that are built as part of the `mlir-aie` project (`aie-translate`, `aie-opt`). The MLIR operations inside the core are then converted to an LLVM representation which the AMD internal compiler (currently xchesscc) takes and builds the executable that will run on each individaul AIE tile. 
+Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities that are built as part of the `mlir-aie` project (`aie-translate`, `aie-opt`). The MLIR operations inside the core are then converted to an LLVM representation which the AMD internal compiler (currently xchesscc) takes and builds the executable that will run on each individual AIE tile.
    
 3. In [aie.mlir](aie.mlir), what is the variable name for tile(1,4)? <img src="../images/answer1.jpg" title="%tile14" height=25> 
 
@@ -98,7 +98,7 @@ To create complete AI Engine designs that can run on a Versal device, we also ne
 
 7. Take a look at  [test.cpp](test.cpp). There are a number of configuration functions for initializing and configuring the AIE array. These functions are defined in the test library [test_library.h](../../runtime_lib/test_library.h) and the generated `acdc_project/aie_inc.cpp` file. Read through this testbench to see the explanations of what each helper function does and how we can check the results after configuring and enabling the AIE cores. What is the expected value at buf[3] that we're checking for after our design is run? <img src="../images/answer1.jpg" title="14" height=25>
 
-8. **PLACEHOLDER** Run simuation
+8. **PLACEHOLDER** Run simulation
 
 9. Copy the generated executables (tutorial-1.exe, core_1_4.elf) to the vck190 board and run the test bench executable to see that the compiled program works on the board.
     ```
@@ -133,7 +133,7 @@ We call the `set` class function to record the counter start value. Now we enabl
 ```
 pc0_times[0] = pc0.diff();
 ```
-The `diff` class functions calculates the differnece in the counter from the last `set` or `diff` call. We can call it multiple times and store the results from mutliple runs to see if the values vary. We finish our program by reporting the number of cycles captured by our program counters by calling:
+The `diff` class functions calculates the difference in the counter from the last `set` or `diff` call. We can call it multiple times and store the results from multiple runs to see if the values vary. We finish our program by reporting the number of cycles captured by our program counters by calling:
 ```
 computeStats(pc0_times, 1);
 ```
@@ -145,5 +145,5 @@ This is passed the array of times along with size of the array in order to repor
     ```
     How many cycles is reported by the performance counter? <img src="../images/answer1.jpg" title="6" height=25>
 
-This number includes program initalization and cleanup on top of the actual kernel code. As kernel code is often run in a loop or for multiple iterations, this initialization and cleanup code cost is amortized when the design is running in steady state. We can subtract the initialiation and cleanup cycles by building an empty design and counting its reported cycles (as seen [here](../../test/benchmarks/05_Core_Startup/)). For Vitis 2022.2, this baseline is 128 cycles, which means the kernel code was absorbed in the initialziation and cleanup code cycles.
+This number includes program initialization and cleanup on top of the actual kernel code. As kernel code is often run in a loop or for multiple iterations, this initialization and cleanup code cost is amortized when the design is running in steady state. We can subtract the initialization and cleanup cycles by building an empty design and counting its reported cycles (as seen [here](../../test/benchmarks/05_Core_Startup/)). For Vitis 2022.2, this baseline is 128 cycles, which means the kernel code was absorbed in the initialization and cleanup code cycles.
 

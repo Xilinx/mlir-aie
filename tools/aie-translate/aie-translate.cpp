@@ -23,6 +23,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 using namespace mlir;
 
