@@ -169,6 +169,11 @@ struct AIEObjectFifoStatefulTransformPass
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
+    if (a.isShimTile() || b.isShimTile()) {
+      *share_direction = 0;
+      return false;
+    }
+
     bool rightShared = isLegalMemAffinity(a.colIndex(), a.rowIndex(),
                                           b.colIndex(), b.rowIndex());
 
@@ -936,9 +941,9 @@ struct AIEObjectFifoStatefulTransformPass
           acquiresPerFifo; // maps each objFifo to indices of buffers acquired
                            // in latest subview of that objFifo (useful to
                            // cascade acquired elements to next AcquireOp)
-      std::vector<ObjectFifoReleaseOp>
+      DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoReleaseOp>>
           releaseOps; // useful to check which ReleaseOp has taken place before
-                      // an AcquireOp
+                      // an AcquireOp per objFifo
       DenseMap<ObjectFifoCreateOp, int>
           acqPerFifo; // maps each objFifo to its next index to acquire within
                       // this CoreOp
@@ -969,8 +974,13 @@ struct AIEObjectFifoStatefulTransformPass
         createUseLocks(builder, op, relPerFifo, numLocks, lockMode,
                        LockAction::Release);
 
-        // add release op to list
-        releaseOps.push_back(releaseOp);
+        // register release op
+        if (releaseOps.find(op) != releaseOps.end())
+          releaseOps[op].push_back(releaseOp);
+        else {
+          std::vector<ObjectFifoReleaseOp> release = {releaseOp};
+          releaseOps[op] = release;
+        }
       });
 
       //===----------------------------------------------------------------------===//
@@ -995,7 +1005,7 @@ struct AIEObjectFifoStatefulTransformPass
         // check how many elements have been released in between this AcquireOp
         // and the previous one
         int numRel = 0;
-        for (auto relOp : releaseOps) {
+        for (auto relOp : releaseOps[op]) {
           ObjectFifoCreateOp otherOp =
               relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
           // TODO: operations may not be in the same block: currently only
@@ -1004,8 +1014,8 @@ struct AIEObjectFifoStatefulTransformPass
             if (acquireOp.getOperation()->getBlock() ==
                 relOp.getOperation()->getBlock()) {
               if (!acquireOp->isBeforeInBlock(relOp)) {
-                releaseOps.erase(
-                    releaseOps.begin()); // to ensure that we do not account the
+                releaseOps[op].erase(
+                    releaseOps[op].begin()); // to ensure that we do not account the
                                          // ReleaseOps again later, after the
                                          // subview is created
                 numRel += relOp.relNumber();
@@ -1016,8 +1026,8 @@ struct AIEObjectFifoStatefulTransformPass
               if (relOp.getOperation()->getBlock() ==
                   acqBlockDefOp->getBlock()) {
                 if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
-                  releaseOps.erase(
-                      releaseOps.begin()); // to ensure that we do not account
+                  releaseOps[op].erase(
+                      releaseOps[op].begin()); // to ensure that we do not account
                                            // the ReleaseOps again later, after
                                            // the subview is created
                   numRel += relOp.relNumber();
@@ -1028,8 +1038,8 @@ struct AIEObjectFifoStatefulTransformPass
                 if (acquireOp.getOperation()->getBlock() ==
                     relBlockDefOp->getBlock()) {
                   if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
-                    releaseOps.erase(
-                        releaseOps.begin()); // to ensure that we do not account
+                    releaseOps[op].erase(
+                        releaseOps[op].begin()); // to ensure that we do not account
                                              // the ReleaseOps again later,
                                              // after the subview is created
                     numRel += relOp.relNumber();
