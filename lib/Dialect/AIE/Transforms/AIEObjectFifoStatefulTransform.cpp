@@ -168,7 +168,8 @@ struct AIEObjectFifoStatefulTransformPass
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    if (a.isShimTile() || b.isShimTile()) {
+    if ((a.isShimTile() && !b.isShimTile()) ||
+        (!a.isShimTile() && b.isShimTile())) {
       *share_direction = 0;
       return false;
     }
