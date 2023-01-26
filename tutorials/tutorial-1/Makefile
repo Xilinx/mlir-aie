@@ -4,16 +4,16 @@
 # TODO - Change this to env variable?
 SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
 
-all: tutorial-1.exe
+all: core_1_4.elf
 
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
-tutorial-1.exe: test.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+core_1_4.elf : aie.mlir
+	aiecc.py -j4 $<
 
 clean:
-	rm -rf acdc_project *elf *exe core*
+	rm -rf acdc_project *elf core*
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises

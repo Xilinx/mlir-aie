@@ -7,7 +7,7 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
-# <ins>Tutorial 10 - mlir-aie commands and utilities</ins>
+# <ins>Tutorial 10 - MLIR-AIE commands and utilities</ins>
 
 The MLIR-AIE dialect builds a number of command utilities for compiling and transforming operations written in the MLIR-AIE dialect into other intermediate representations (IRs) as well as generating AIE tile elfs and host executables to be run on the board. The two main output utilities that building the MLIR-AIE project gives you is `aie-translate` adn `aie-opt` which are used to transform MLIR-AIE dialect into other IRs. These utilities are then used by the convenience python utility `aiecc.py` to compile operations written in MLIR-AIE dialect into elf/host executables.
 

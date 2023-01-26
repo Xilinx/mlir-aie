@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 7 - communication via objectFifo (broadcast)</ins>
+# <ins>Tutorial 7 - Communication via objectFifo (broadcast)</ins>
 
 Now that we've seen how point to point communication is handled, we need to introduce the concept of broadcast. This is necessary to allow data from a single source to be sent to multiple destinations. This is also important because with a fixed set of routing resources (e.g. channels), we need to be efficient in how we move data to avoid congestion. Broadcast then is our one-to-many communication tool. Many-to-one is also possible but only in the packet routing case. For circuit switch routing, we would need some kind of aggregator that decides when connections can be switched, which packet routing already supports.
 

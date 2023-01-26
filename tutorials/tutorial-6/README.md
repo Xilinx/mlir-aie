@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 6 - communication (packet routing)</ins>
+# <ins>Tutorial 6 - Communication (packet routing)</ins>
 
 We already looked at how we can use stream switches and tile DMAs to communicate data between tiles that are non-adjacent/ far apart in [tutorial-4](../tutorial-4). There we discussed how routes in a switchbox can be configured in circuit switch mode or packet switch mode and showed examples of circuit switch mode routing. Packet switch mode is another communication format and will will examine it more closely in this tutorial.
 

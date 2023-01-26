@@ -46,6 +46,12 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   ctx->AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
   XAieGbl_CfgInitialize(&(ctx->AieInst), &(ctx->TileInst[0][0]),
                         ctx->AieConfigPtr);
+
+#if defined(__AIESIM__) && !defined(__CDO__)
+  printf("Turning ecc off\n");
+  XAie_TurnEccOff(&(ctx->DevInst));
+#endif
+
   return 0;
 }
 
@@ -479,6 +485,7 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
 
     _air_host_active_libxaie1 = xaie;
   */
+
   return ctx;
 }
 
@@ -524,6 +531,11 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
     printf("Failed to request tiles.\n");
     return -1;
   }
+
+#if defined(__AIESIM__) && !defined(__CDO__)
+  printf("Turning ecc off\n");
+  XAie_TurnEccOff(&(ctx->DevInst));
+#endif
 
   return 0;
 }

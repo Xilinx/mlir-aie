@@ -67,6 +67,7 @@ int main(int argc, char *argv[]) {
   usleep(100);
 
   // Check buffer at index 3 again for expected value of 14
+  printf("Checking buf[3] = 14.\n");
   mlir_aie_check("After start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 14,
                  errors);
 

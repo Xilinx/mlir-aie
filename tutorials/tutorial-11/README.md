@@ -7,6 +7,6 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
+# <ins>Tutorial 11 - Scaling up to large multi-core designs</ins>
 
-# <ins>Tutorial 4a - Communication (switchbox)</ins>
-
+***TODO: Move write-up for multi-core design/ python code to reference design/prime_sieve_large***
