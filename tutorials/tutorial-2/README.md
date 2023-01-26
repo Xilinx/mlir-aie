@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//-->
 # <ins>Tutorial 2 - Single kernel compilation and simulation</ins>
 
-MLIR gives us the ability to leverage different dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) when defining AIE core functionality. The ability to lower from these dialects and many others into efficient AI Engine code is an active area of research and development. However, when working with existing optimized AIE kernel code written in C/C++ (or wanting to write your own), we can reference precompiled object code in our AIE core operation defintion through the use [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect. 
+MLIR gives us the ability to leverage different dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) when defining AIE core functionality. The ability to lower from these dialects and many others into efficient AI Engine code is an active area of research and development. However, when working with existing optimized AIE kernel code written in C/C++ (or wanting to write your own), we can reference precompiled object code in our AIE core operation definition through the use [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect.
 
 ## <ins>MLIR external functions</ins>
 
@@ -22,25 +22,32 @@ func.func private @extern_kernel(%b: memref<256xi32>) -> ()
     AIE.end
 } { link_with="kernel.o"}
 ```
-In this MLIR code snippet, we see that we first call `func.func` to define a private function whose function signature matches that of the AIE C/C++ function. The function name after the @ (e.g. `@external_kernel`) should match the C/C++ function name and the number of arguments should match the number of C/C++ function arguments. Arugment type matching is more flexible as memrefs will match data pointers of similar type.
+In this MLIR code snippet, we see that we first call `func.func` to declare a private function whose function signature matches that of the AIE C/C++ function. The function name after the @ (e.g. `@external_kernel`) should match the C function name and the number of arguments should match the number of C function arguments.  C++ name mangling is not supported.  Argument types are converted according to the MLIR ['bare pointer' calling convention](https://mlir.llvm.org/docs/TargetLLVMIR/#bare-pointer-calling-convention-for-ranked-memref) (see below). 
+
+| MLIR type   | C type      |
+| ----------- | ----------- |
+| i32         | int32_t     |
+| f32         | float       |
+| Memref      | C pointer   |
+| index       | int64_t     |
 
 Then, within the `AIE.core` operator, we use `func.call` to call the previously defined function from within our core, being sure to pass the appropriate function arguments. In this case, we pass in the the `AIE.buffer` `%buf`. 
 
-The final step is to tell our tools where to look for the object code that the function whose name we defined in `func.func`/ `func.call`. Using the additional operator defintion `link_with="kernel.o"`, we point to the file `kernel.o` in the current directory and link it in to create the final kernel object file. 
+The final step is to tell our tools where to look for the object code that the function whose name we defined in `func.func`/ `func.call`. Using the additional operator definition `link_with="kernel.o"`, we point to the file `kernel.o` in the current directory and link it in to create the final kernel object file.
 > Note that this allows us to call the function multiple times within the `AIE.core` or even separate functions in the same `AIE.core` if they are both defined within the single linked object file.
 
 ## <ins>Kernel object file generation</ins>
 
-Now that we know how to link in externally defined functions from precompoiled object files, it would be nice to be able to compile those object files quickly as well as test them. The main way to do this is to run Vitis to compile the object file from C/C++ source. But we can also directly call the compilation tools used by Vitis. 
+Now that we know how to link in externally defined functions from precompiled object files, it would be nice to be able to compile those object files quickly as well as test them.  You may be familiar with using the Vitis GUI to, but we can also directly call the underlying compilation tools used by Vitis.
 
 To compile the C/C++ source into object code, we use the `xchesscc` command line tool as follows:
 ```
 xchesscc -p me -P <vitis install>/<release>/aietools/data/cervino/lib -c kernel.cc
 ```
-Within `kernel.cc`, we define the function as extern "C" with:
+Within `kernel.cc`, the function must be defined as extern "C" with:
 ```
 extern "C" {
-    <function defintion>
+    <function definition>
 }
 ```
 Place the `kernel.o` in the same directory as your MLIR source and you should now be able to run the build tools to generate the new aggregated object file.
@@ -61,9 +68,9 @@ xchessmk -P <vitis install>/<release>/aietools/data/cervino/lib test.prx
 ```
 This compiles our testbench and kernel into a default `work` directory so that it is ready to simulate, which we do so by calling the `xca_udm_dbg` command line tool as follows:
 ```
-xca_udm_dbg -P <vitis install>/<release>/aietools/data/cervion/lib -t sim.tcl
+xca_udm_dbg -P <vitis install>/<release>/aietools/data/cervino/lib -t sim.tcl
 ```
-This simulator executes a number of Tcl commands which we can group into tcl batch file called  `sim.tcl`. The cycle accurate simulator will run the commands in this tcl file to completion completion and outputs any testbench results. This allows us to iteratively compile and test our design multiple times to get the right behavior as well as profile code performance.
+This simulator executes a number of Tcl commands which we can group into Tcl batch file called  `sim.tcl`. The cycle accurate simulator will run the commands in this tcl file to completion completion and outputs any testbench results. This allows us to iteratively compile and test our design multiple times to get the right behavior as well as profile code performance.
 > Note that in `sim.tcl`, we call the command `iss profile save test.prf` which runs the profiler in our simulator and generates the profile summary file `test.prf`. We will look at this in more detail in the lab.
 
 Now we have all the pieces we need to compile and simulate single kernels from the command line and then compile the kernel core into an object file to be integrated into our MLIR description and expanded into full kernel object code.

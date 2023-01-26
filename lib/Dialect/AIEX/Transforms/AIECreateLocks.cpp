@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIETokenAnalysis.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -21,6 +22,7 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   using OpConversionPattern<UseTokenOp>::OpConversionPattern;
@@ -225,6 +227,6 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIECreateLocksPass() {
+xilinx::AIEX::createAIECreateLocksPass() {
   return std::make_unique<AIECreateLocksPass>();
 }

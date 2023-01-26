@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIETokenAnalysis.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -23,6 +24,7 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 struct RemoveAIEFuncs : public OpConversionPattern<func::FuncOp> {
   using OpConversionPattern<func::FuncOp>::OpConversionPattern;
@@ -251,6 +253,6 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIECreateCoresPass() {
+xilinx::AIEX::createAIECreateCoresPass() {
   return std::make_unique<AIECreateCoresPass>();
 }

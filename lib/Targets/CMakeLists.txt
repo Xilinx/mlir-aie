@@ -24,6 +24,8 @@ add_mlir_library(AIETargets
 
   LINK_LIBS PUBLIC
   AIE
+  AIEX
   AIEUtils
+  AIEXUtils
   ADF
 )

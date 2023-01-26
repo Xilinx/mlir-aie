@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIETokenAnalysis.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -23,11 +24,12 @@
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
-static TileOp srcTileOp(xilinx::AIE::MemcpyOp op) {
+static TileOp srcTileOp(xilinx::AIEX::MemcpyOp op) {
   return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getSrcTile().getDefiningOp());
 }
-static TileOp dstTileOp(xilinx::AIE::MemcpyOp op) {
+static TileOp dstTileOp(xilinx::AIEX::MemcpyOp op) {
   return llvm::dyn_cast<xilinx::AIE::TileOp>(op.getDstTile().getDefiningOp());
 }
 
@@ -140,6 +142,6 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIELowerMemcpyPass() {
+xilinx::AIEX::createAIELowerMemcpyPass() {
   return std::make_unique<AIELowerMemcpyPass>();
 }

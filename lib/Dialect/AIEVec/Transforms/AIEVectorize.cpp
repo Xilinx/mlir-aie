@@ -81,7 +81,7 @@ struct VectState {
   // attribute.
   DenseMap<Operation *, std::pair<int32_t, int32_t>> opToColOffsets;
   // Map from the sext op to the def op of the sext operand.
-  DenseMap<Operation *, Operation *> sextDefMap;
+  DenseMap<Operation *, Operation *> sextTruncDefMap;
   // A set of operations that are msc (fmsub) ops. We do not differentiate
   // between mac and msc ops at vector dialect level. The only op in vector
   // dialect is just FMA op.
@@ -186,8 +186,8 @@ static inline AIEVecAttributes getResultVecStats(Operation *op,
 
 static Operation *getOperandDefOp(VectState *state, Operation *op,
                                   unsigned idx) {
-  return state->sextDefMap.count(op->getOperand(idx).getDefiningOp())
-             ? state->sextDefMap[op->getOperand(idx).getDefiningOp()]
+  return state->sextTruncDefMap.count(op->getOperand(idx).getDefiningOp())
+             ? state->sextTruncDefMap[op->getOperand(idx).getDefiningOp()]
              : op->getOperand(idx).getDefiningOp();
 }
 
@@ -758,10 +758,10 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2 && state->dupFactor == 2);
 
-  Value lhs = state->sextDefMap.count(Op->getOperand(1).getDefiningOp())
+  Value lhs = state->sextTruncDefMap.count(Op->getOperand(1).getDefiningOp())
                   ? Op->getOperand(1).getDefiningOp()->getOperand(0)
                   : Op->getOperand(1);
-  Value rhs = state->sextDefMap.count(Op->getOperand(0).getDefiningOp())
+  Value rhs = state->sextTruncDefMap.count(Op->getOperand(0).getDefiningOp())
                   ? Op->getOperand(0).getDefiningOp()->getOperand(0)
                   : Op->getOperand(0);
   VectorType vType = lhs.getType().cast<VectorType>();
@@ -826,13 +826,13 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  Value lhs = state->sextDefMap.count(fmaOp.getLhs().getDefiningOp())
+  Value lhs = state->sextTruncDefMap.count(fmaOp.getLhs().getDefiningOp())
                   ? fmaOp.getLhs().getDefiningOp()->getOperand(0)
                   : fmaOp.getLhs();
-  Value rhs = state->sextDefMap.count(fmaOp.getRhs().getDefiningOp())
+  Value rhs = state->sextTruncDefMap.count(fmaOp.getRhs().getDefiningOp())
                   ? fmaOp.getRhs().getDefiningOp()->getOperand(0)
                   : fmaOp.getRhs();
-  Value acc = state->sextDefMap.count(fmaOp.getAcc().getDefiningOp())
+  Value acc = state->sextTruncDefMap.count(fmaOp.getAcc().getDefiningOp())
                   ? fmaOp.getAcc().getDefiningOp()->getOperand(0)
                   : fmaOp.getAcc();
 
@@ -925,10 +925,10 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
 
   // If the lhs operand vector is not >= twice the rhs operand vector, then use
   // concat operator.
-  Value lhs = state->sextDefMap.count(mulOp.getLhs().getDefiningOp())
+  Value lhs = state->sextTruncDefMap.count(mulOp.getLhs().getDefiningOp())
                   ? mulOp.getLhs().getDefiningOp()->getOperand(0)
                   : mulOp.getLhs();
-  Value rhs = state->sextDefMap.count(mulOp.getRhs().getDefiningOp())
+  Value rhs = state->sextTruncDefMap.count(mulOp.getRhs().getDefiningOp())
                   ? mulOp.getRhs().getDefiningOp()->getOperand(0)
                   : mulOp.getRhs();
   if (!isSimpleVectIntrinsic(mulOp, state)) {
@@ -1232,7 +1232,7 @@ static Operation *concatAndInterleave_i8xi8(Operation *source1,
 // Perform a multitude of checks to see if rhs operand of the incoming add/sub
 // operator is a mul operator, so that we can fuse them to form an FMA
 // operator.
-static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op) {
+static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
   // Check 1. This should be an add or sub operation
   assert((isa<AddIOp>(Op) || isa<AddFOp>(Op) || isa<SubIOp>(Op) ||
           isa<SubFOp>(Op)) &&
@@ -1244,7 +1244,7 @@ static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op) {
   // Check 3. rhs operand of the Op should be a mul op (If any operand of add
   // op is mul op, it is guaranteed to be rhs operand by explicit
   // reassociation done earlier).
-  Operation *mulOp = Op->getOperand(1).getDefiningOp();
+  Operation *mulOp = getOperandDefOp(state, Op, 1);
   if (!isa<MulIOp, MulFOp>(mulOp))
     return false;
 
@@ -1252,9 +1252,15 @@ static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op) {
   assert(mulOp->getNumOperands() == 2 && mulOp->getNumResults() == 1);
 
   // Determine the lhs, rhs, and accumulator values.
-  Value lhs = mulOp->getOperand(0);
-  Value rhs = mulOp->getOperand(1);
-  Value acc = Op->getOperand(0);
+  Value lhs = state->sextTruncDefMap.count(mulOp->getOperand(0).getDefiningOp())
+                  ? mulOp->getOperand(0).getDefiningOp()->getOperand(0)
+                  : mulOp->getOperand(0);
+  Value rhs = state->sextTruncDefMap.count(mulOp->getOperand(1).getDefiningOp())
+                  ? mulOp->getOperand(1).getDefiningOp()->getOperand(0)
+                  : mulOp->getOperand(1);
+  Value acc = state->sextTruncDefMap.count(Op->getOperand(0).getDefiningOp())
+                  ? Op->getOperand(0).getDefiningOp()->getOperand(0)
+                  : Op->getOperand(0);
 
   assert(lhs && rhs && acc &&
          "Failed to find the three operands of the FMA op");
@@ -1273,7 +1279,15 @@ static bool canFuseMulAndAddOrSubIntoFMAOp(Operation *Op) {
   // Check 7. All the vector sizes must be same
   VectorType lhsType = lhs.getType().cast<VectorType>();
   VectorType rhsType = rhs.getType().cast<VectorType>();
-  VectorType accType = acc.getType().cast<VectorType>();
+  VectorType accType = state->sextTruncDefMap.count(
+                           acc.getDefiningOp()->getOperand(0).getDefiningOp())
+                           ? acc.getDefiningOp()
+                                 ->getOperand(0)
+                                 .getDefiningOp()
+                                 ->getOperand(0)
+                                 .getType()
+                                 .cast<VectorType>()
+                           : acc.getType().cast<VectorType>();
 
   unsigned lhsVecSize = getVectorLaneSize(lhsType);
   unsigned rhsVecSize = getVectorLaneSize(rhsType);
@@ -1344,25 +1358,47 @@ static void reassociateMulOpWithSplat(Operation *Op, VectState *state) {
   // Check if this is an 8x8 scheme
   bool is8x8 = lstat.elementSizeInBits == 8 && rstat.elementSizeInBits == 8;
 
-  // Now flip operands if required
+  // Now flip operands if required and set the operands to the operands of the
+  // sext operations
   bool flip = is8x8 ? rstat.isSplat : lstat.isSplat;
+  Value left = state->sextTruncDefMap.count(Op->getOperand(0).getDefiningOp())
+                   ? Op->getOperand(0).getDefiningOp()->getOperand(0)
+                   : Op->getOperand(0);
+  Value right = state->sextTruncDefMap.count(Op->getOperand(1).getDefiningOp())
+                    ? Op->getOperand(1).getDefiningOp()->getOperand(0)
+                    : Op->getOperand(1);
   if (flip) {
     LLVM_DEBUG(llvm::dbgs() << "\n\nReassociating op " << *Op
                             << " to place splat as correct operand");
-    Value left = Op->getOperand(0);
-    Value right = Op->getOperand(1);
     Op->setOperand(0, right);
     Op->setOperand(1, left);
     LLVM_DEBUG(llvm::dbgs() << "\n\tOp after reassociation: " << *Op);
+  } else {
+    Op->setOperand(0, left);
+    Op->setOperand(1, right);
+  }
+
+  Op->getResult(0).setType(Op->getOperand(0).getType());
+
+  if (Op->hasOneUse() &&
+      isa<AddIOp, AddFOp, SubIOp, SubFOp>(*Op->getUsers().begin())) {
+    Operation *usrOp = *Op->getUsers().begin();
+    usrOp->getResult(0).setType(usrOp->getOperand(0).getType());
   }
 }
 
 // Rewrite a mul and add/sub op as a vector dialect FMA op
 static void fuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
-  Value acc = Op->getOperand(0);
-  Operation *mulOp = Op->getOperand(1).getDefiningOp();
-  Value lhs = mulOp->getOperand(0);
-  Value rhs = mulOp->getOperand(1);
+  Value acc = state->sextTruncDefMap.count(Op->getOperand(0).getDefiningOp())
+                  ? Op->getOperand(0).getDefiningOp()->getOperand(0)
+                  : Op->getOperand(0);
+  Operation *mulOp = getOperandDefOp(state, Op, 1);
+  Value lhs = state->sextTruncDefMap.count(mulOp->getOperand(0).getDefiningOp())
+                  ? mulOp->getOperand(0).getDefiningOp()->getOperand(0)
+                  : mulOp->getOperand(0);
+  Value rhs = state->sextTruncDefMap.count(mulOp->getOperand(1).getDefiningOp())
+                  ? mulOp->getOperand(1).getDefiningOp()->getOperand(0)
+                  : mulOp->getOperand(1);
 
   // Create a new FMA op
   state->builder.setInsertionPointAfter(Op);
@@ -1902,10 +1938,10 @@ static void generateSchemeBasedMulOrFMAOp(Operation *Op, VectState *state) {
   int32_t lanes, cols;
   std::tie(lanes, cols) = getNumRowsAndCols(Op, state);
   // Get the data sizes for left and right operands of mul/fma
-  Value lhs = state->sextDefMap.count(Op->getOperand(0).getDefiningOp())
+  Value lhs = state->sextTruncDefMap.count(Op->getOperand(0).getDefiningOp())
                   ? Op->getOperand(0).getDefiningOp()->getOperand(0)
                   : Op->getOperand(0);
-  Value rhs = state->sextDefMap.count(Op->getOperand(1).getDefiningOp())
+  Value rhs = state->sextTruncDefMap.count(Op->getOperand(1).getDefiningOp())
                   ? Op->getOperand(1).getDefiningOp()->getOperand(0)
                   : Op->getOperand(1);
   int32_t xbits = getElementSizeInBits(lhs.getType().cast<VectorType>());
@@ -2479,6 +2515,11 @@ static void insertSRSOp(Operation *Op, VectState *state) {
         // Generate an AIE-ML cast op for the case that result vector width less
         // or equal that source vector width
         if (AIEML && memRefType &&
+            Op->getOperand(0)
+                    .getType()
+                    .cast<VectorType>()
+                    .getElementType()
+                    .getIntOrFloatBitWidth() == 8 &&
             Op->getResult(0)
                     .getType()
                     .cast<VectorType>()
@@ -2613,6 +2654,7 @@ static void reassociateMulOpInFunc(func::FuncOp func, VectState *state) {
     if (isa<MulIOp, MulFOp, vector::FMAOp>(op) && isWellFormedVectorOp(op)) {
       // 1. Reassociate so that splat is in the correct place
       reassociateMulOpWithSplat(op, state);
+
       // 2. Reassociate so that bigger vector is the first operand
       reassociateMulOpBasedOnVecSize(op, state);
     }
@@ -2632,20 +2674,29 @@ static void reassociateAddOpInFunc(func::FuncOp func, VectState *state) {
       assert(op->getNumOperands() == 2 && op->getNumResults() == 1);
 
       // Determine which operand is the multiply
-      Operation *rhsOp = op->getOperand(1).getDefiningOp();
+      Operation *rhsOp = getOperandDefOp(state, op, 1);
+      Value left =
+          state->sextTruncDefMap.count(op->getOperand(0).getDefiningOp())
+              ? op->getOperand(0).getDefiningOp()->getOperand(0)
+              : op->getOperand(0);
+      Value right =
+          state->sextTruncDefMap.count(op->getOperand(1).getDefiningOp())
+              ? op->getOperand(1).getDefiningOp()->getOperand(0)
+              : op->getOperand(1);
       // If rhs is mul operand, no need to proceed further
       if (!isa<MulIOp, MulFOp>(rhsOp)) {
-        Operation *lhsOp = op->getOperand(0).getDefiningOp();
+        Operation *lhsOp = getOperandDefOp(state, op, 0);
         // If lhs is the mul operand, do the switcharoo
         if (isa<MulIOp, MulFOp>(lhsOp)) {
           LLVM_DEBUG(llvm::dbgs() << "\n\nReassociating addOp " << *op
                                   << " to place mul as rhs operand");
-          Value left = op->getOperand(0);
-          Value right = op->getOperand(1);
           op->setOperand(0, right);
           op->setOperand(1, left);
           LLVM_DEBUG(llvm::dbgs() << "\n\taddOp after reassociation: " << *op);
         }
+      } else {
+        op->setOperand(0, left);
+        op->setOperand(1, right);
       }
     }
   });
@@ -2690,7 +2741,10 @@ static void coalesceLHSOpVectorsInFunc(func::FuncOp func, VectState *state) {
 // Go through sext operations and record the operand's defining operation.
 static void recordSextOps(func::FuncOp func, VectState *state) {
   func.walk([&](ExtSIOp op) {
-    state->sextDefMap[op] = op->getOperand(0).getDefiningOp();
+    state->sextTruncDefMap[op] = op->getOperand(0).getDefiningOp();
+  });
+  func.walk([&](TruncIOp op) {
+    state->sextTruncDefMap[op] = op->getOperand(0).getDefiningOp();
   });
 }
 
@@ -2726,14 +2780,14 @@ static void computeReuse(TransferReadOp readOp, VectState *state) {
       auto extsiOp = cast<ExtSIOp>(user);
       for (auto consumer : extsiOp->getUsers()) {
         if (isa<MulIOp, MulFOp, vector::FMAOp>(consumer)) {
-          if ((state->sextDefMap.count(
+          if ((state->sextTruncDefMap.count(
                    consumer->getOperand(0).getDefiningOp()) &&
-               state->sextDefMap[consumer->getOperand(0).getDefiningOp()] ==
-                   readOp) ||
-              (state->sextDefMap.count(
+               state->sextTruncDefMap[consumer->getOperand(0)
+                                          .getDefiningOp()] == readOp) ||
+              (state->sextTruncDefMap.count(
                    consumer->getOperand(1).getDefiningOp()) &&
-               state->sextDefMap[consumer->getOperand(1).getDefiningOp()] ==
-                   readOp)) {
+               state->sextTruncDefMap[consumer->getOperand(1)
+                                          .getDefiningOp()] == readOp)) {
             minVecSize = 256;
             break;
           }
@@ -2893,7 +2947,7 @@ static void rewriteFMAOpsInFunc(func::FuncOp func, VectState *state) {
     if (isa<AddIOp, AddFOp, SubIOp, SubFOp>(Op) && isWellFormedVectorOp(Op)) {
       // Perform a series of checks to see if we can find a mul and add/sub
       // that can be fused into a FMA. If found, fuse.
-      if (canFuseMulAndAddOrSubIntoFMAOp(Op))
+      if (canFuseMulAndAddOrSubIntoFMAOp(Op, state))
         fuseMulAndAddOrSubIntoFMAOp(Op, state);
     }
   });
@@ -2942,7 +2996,7 @@ void AIEVectorize::runOnOperation() {
     VectState *state =
         new VectState(func.getContext(), shiftParam, zeroOffset, dupFactor);
 
-    // record the sext op and its operand's def op to sextDefMap
+    // record the sext op and its operand's def op to sextTruncDefMap
     recordSextOps(func, state);
 
     // First compute the loops surrounding each load/store operation. This is

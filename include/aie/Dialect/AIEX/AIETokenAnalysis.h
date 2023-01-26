@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_AIE_LOCKANALYSIS_H
-#define MLIR_AIE_LOCKANALYSIS_H
+#ifndef AIEX_TOKENANALYSIS_H
+#define AIEX_TOKENANALYSIS_H
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -27,7 +27,7 @@
 using namespace mlir;
 
 namespace xilinx {
-namespace AIE {
+namespace AIEX {
 
 class TokenAnalysis {
   ModuleOp &module;
@@ -63,7 +63,7 @@ public:
   void print(raw_ostream &os);
 };
 
-} // namespace AIE
+} // namespace AIEX
 } // namespace xilinx
 
 #endif
