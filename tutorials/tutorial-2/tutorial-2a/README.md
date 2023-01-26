@@ -25,7 +25,7 @@ The next set of functions are often called as a group to configure the AI Engine
 | mlir_aie_init_libxaie | Instantiates a struct of configuration information and data types used by later configuration functions. |
 | mlir_aie_init_device | Initializes our AI Engine array and reserves the entire array for configuration. |
 | mlir_aie_configure_cores | Disables and resets all relevant tiles and loads elfs into relevant tiles. It also releases all locks to value 0. |
-| mlir_aie_configure_switchboxes | Configures the switchboxess use to route stream connections. |
+| mlir_aie_configure_switchboxes | Configures the switchboxes use to route stream connections. |
 | mlir_aie_configure_dmas | Configures all tile DMAs |
 | mlir_aie_initialize_locks | Configures initial lock values as applicable. |
 | mlir_aie_clear_tile_memory | Clear tile data memory for a given tile. Call for each tile you wish to clear the tile memory for. |

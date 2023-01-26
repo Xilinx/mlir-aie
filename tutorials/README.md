@@ -21,8 +21,7 @@ Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialec
 
 This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. It can be consumed in different ways, depending on the user's end-goal. For a detailed walkthrough of the `mlir-aie` dialect at a physical-level, the tutorials should be followed in order and all the subdirectories of each tutorial should be read. For a more high-level description of the dialect the tutorials should still be followed in order, but reading only the first 5 tutorials will suffice to start building multi-core designs at a higher abstraction level without in-depth understanding of the low-level details. The subdirectories in each tutorial can thus be skipped (with the exception of tutorial-3 which introduces the high-level abstraction of the `mlir-aie` dialect). 
 
-The individual tutorials are listed below along with the AI Engine architecture topics they cover. Following this is a
-a more detailed description of the architecture, ending with an overview of how each tutorial maps onto it.
+The individual tutorials are listed below along with the AI Engine architecture topics they cover. Following this is a more detailed description of the architecture, ending with an overview of how each tutorial maps onto it.
 
 * [Tutorial 1 - Modules, tile, buffer, core, locks](./tutorial-1)
 * [Tutorial 2 - Host code configuration, simulation, hardware performance](./tutorial-2)
