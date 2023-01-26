@@ -45,7 +45,7 @@ AIE.core(%tile14) {
 The association between these declarations and the physical AI Engine tile components can be seen here. For more details on mlir-aie dialect syntax, you can refer to the online reference document [here](https://xilinx.github.io/mlir-aie/AIEDialect.html).
 <img src="../images/diagram1.png" width="1000">
 
-A third key component of a tile is the `lock` which is critical for synchronizing data between tiles and one another, and between tiles and the host controller. While not a physically large component, it plays a critical role in facilitiating efficient and correct data communication.
+A third key component of a tile is the `lock` which is critical for synchronizing data between tiles and one another, and between tiles and the host controller. While not a physically large component, it plays a critical role in facilitating efficient and correct data communication.
 
 ### <ins>Tile</ins>
 
@@ -68,13 +68,13 @@ When declaring a buffer, we pass in associated AIE tile and declare the buffer p
 
 ### <ins>Core</ins>
 
-The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other general dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalar operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple opertions may seem cumbersome at first glance but is designed to capture a robust set of operations.
+The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other general dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalar operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple operations may seem cumbersome at first glance but is designed to capture a robust set of operations.
 
-In addition to the integrated core functionality defintions, `mlir-aie` also supports linking with externally compiled kernel code which we you can explore in more detail in [tutorial 9](../tutorial-9). This process allows custom kernels to be included directly in `mlir-aie` defined designs.
+In addition to the integrated core functionality definitions, `mlir-aie` also supports linking with externally compiled kernel code which we you can explore in more detail in [tutorial 9](../tutorial-9). This process allows custom kernels to be included directly in `mlir-aie` defined designs.
 
 ### <ins>Lock</ins>
 
-Locks are components used by other components to arbitrate access to a shared resource. They are not tied to any particular resource and thus do not physically prevent the resource that they are associated with from being accessed. Instead, they facilitatea contractional agreement among users of a resource that a lock must be successfully acquired before the resource can be used. More details about how locks can be used will be presented in subsequent tutorials but a common resource they are associated with are buffers where two users of that buffer (e.g. core and DMA) may wish to access the buffer at the same time.
+Locks are components used by other components to arbitrate access to a shared resource. They are not tied to any particular resource and thus do not physically prevent the resource that they are associated with from being accessed. Instead, they facilitate a contractual agreement among users of a resource that a lock must be successfully acquired before the resource can be used. More details about how locks can be used will be presented in subsequent tutorials but a common resource they are associated with are buffers where two users of that buffer (e.g. core and DMA) may wish to access the buffer at the same time.
 
 The `lock` operation, is actually a physical sub component of the `AIE.tile` but is declared within the `module` block. The syntax for declaring a lock is `AIE.lock(tileName, lockID)`. An example would be:
 ```
@@ -120,9 +120,9 @@ We will be introducing more components and the ways these components are customi
     ```
 
 ### <ins>MLIR-AIE Transformations</ins>
-Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities that are built as part of the `mlir-aie` project (`aie-translate`, `aie-opt`). More details on these utilities can be found in [tutorial-10](../tutorial-10). These utiliies are built as part of the `mlir-aie` to perform IR transformations and lowerings. In this example, since we are already describing our design at a low physical level, we will perfrom the final transformation and produce an AI Engine program (core_1_4.elf).
+Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities that are built as part of the `mlir-aie` project (`aie-translate`, `aie-opt`). More details on these utilities can be found in [tutorial-10](../tutorial-10). These utilities are built as part of the `mlir-aie` to perform IR transformations and lowerings. In this example, since we are already describing our design at a low physical level, we will perform the final transformation and produce an AI Engine program (core_1_4.elf).
 
-The MLIR operations inside the core are then converted to an LLVM representation which the AMD internal compiler (currently xchesscc) takes and builds the executable that will run on each individaul AIE tile. 
+The MLIR operations inside the core are then converted to an LLVM representation which the AMD internal compiler (currently xchesscc) takes and builds the executable that will run on each individual AIE tile. 
    
 3. In [aie.mlir](aie.mlir), what is the variable name for tile(1,4)? <img src="../images/answer1.jpg" title="%tile14" height=25> 
 
@@ -139,6 +139,6 @@ In first generation AI Engines, each tile has 32 kB of local data memory assigne
 ### <ins>AI Engine Program Memory</ins>
 While we have a separate 16 kB of program memory which stores the AIE program code, the 32 kB of data memory is also used for the program stack. By default, the tool reserves 4096 bytes for the stack so all buffers are then allocated immediately after that. 
 
-6. Declare an horizontally adjacent tile (pay attention to which row we're in) so that tile (1,4) can access the neighbor tile's local memory. Declare a buffer in this tile that uses the entire local memory (8192 x i32) and replace the reference %buf in line 34 with the new buffer and run `make ` again. What do you expect to happen and what happens instead? <img src="../images/answer1.jpg" title="We expect to be able to compile successfully since we can use our neighbor's full local memory but the same error shows up. Right now, all tiles that are enabeld have a stack space of 4096 bytes reserved, even if that tile is not running any program code. This is an area for future improvement." height=25>
+6. Declare an horizontally adjacent tile (pay attention to which row we're in) so that tile (1,4) can access the neighbor tile's local memory. Declare a buffer in this tile that uses the entire local memory (8192 x i32) and replace the reference %buf in line 34 with the new buffer and run `make ` again. What do you expect to happen and what happens instead? <img src="../images/answer1.jpg" title="We expect to be able to compile successfully since we can use our neighbor's full local memory but the same error shows up. Right now, all tiles that are enabled have a stack space of 4096 bytes reserved, even if that tile is not running any program code. This is an area for future improvement." height=25>
 
 In the [tutorial-2](../tutorial-2), we we take a look at host code configuration, simulation, and hardware performance.

@@ -77,7 +77,7 @@ Now we have all the pieces we need to compile and simulate single kernels from t
 
 ## <ins>Tutorial 2 Lab</ins>
 
-1. We will work backwards in this lab to first compile and simulate our single kernel design (which is the duplicate of the simple design used in tutorial-1). Take a look at the file under the `external_kernel` directory, specifically the files [kernel.h](external_kernel/kernel.h), [test.cc](external_kernel/test.cc), and [test.prx](external_kernel/text.prx) to familiarize yourself with these file contents. When customizing this for your own kernel function, you will only need to modify `kenrnel.h` (to match your function signature) and `test.cc` (to customize the function call and testbench for your own function).
+1. We will work backwards in this lab to first compile and simulate our single kernel design (which is the duplicate of the simple design used in tutorial-1). Take a look at the file under the `external_kernel` directory, specifically the files [kernel.h](external_kernel/kernel.h), [test.cc](external_kernel/test.cc), and [test.prx](external_kernel/text.prx) to familiarize yourself with these file contents. When customizing this for your own kernel function, you will only need to modify `kernel.h` (to match your function signature) and `test.cc` (to customize the function call and testbench for your own function).
 
 2. Go into the `external_kernel` directory and compile and simulate as follows:
     ```

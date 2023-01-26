@@ -10,17 +10,17 @@
 
 # <ins>Tutorial 4 - Communication (tile DMA, logical routing)</ins>
 
-Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjcent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has buit-in automatic routing capabilities and visulization tools for viewing the routing choices made. This is an great area for further research where additional transformations can be added to provide other optimized routing functionality.
+Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjacent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has built-in automatic routing capabilities and visualization tools for viewing the routing choices made. This is an great area for further research where additional transformations can be added to provide other optimized routing functionality.
 
 ## <ins>Streams</ins>
-Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically in both into and out of the switchbox (except in the vertical direction going north where there are 6 streams in and out). The AIE core does have 2 input and 2 output stream ports that connect to its local swtichbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the swtichbox.
+Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically in both into and out of the switchbox (except in the vertical direction going north where there are 6 streams in and out). The AIE core does have 2 input and 2 output stream ports that connect to its local switchbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the switchbox.
 
 ## <ins>Logical routing (aka flows)</ins>
 The AIE switchboxes are very powerful configurable blocks for steering data between AI Engine tiles. Having 24 inputs and 24 outputs, the switchbox has connections to its neighbor, the tileDMA, the core, and an internal fifo. Each connection from input to output within the switchbox can operate in one of two modes: 
-* circuit swtich mode
-* packet swtich mode
+* circuit switch mode
+* packet switch mode
 
-We will discuss the circuit swtich mode first and take a look at the packet switch mode in [tutorial-6](../../tutorial-6). Circuit switch mode is where a given route between ports of the switchbox are fixed, allowing data to be passed from one input port to one or more output ports. The path is fixed after configuration and the data movers (DMAs) can push data as frequently as it wishes along that fixed route.
+We will discuss the circuit switch mode first and take a look at the packet switch mode in [tutorial-6](../../tutorial-6). Circuit switch mode is where a given route between ports of the switchbox are fixed, allowing data to be passed from one input port to one or more output ports. The path is fixed after configuration and the data movers (DMAs) can push data as frequently as it wishes along that fixed route.
 
 A set of circuit switched routes from a source port in one switchbox to a destination port in another switchbox (potentially far way) is called a `flow ` and can be automatically determined and configured using the `AIE.flow` operation. 
 ```
@@ -31,8 +31,8 @@ An example of a flow is shown below:
 AIE.flow(%tile71, "South" : 3, %tile73, "DMA"   : 0)
 AIE.flow(%tile73, "DMA"   : 1, %tile71, "South" : 2)
 ```
-Notice that the route from tile(7,1) to tile(7,3) will most likley involve tile(7,2) who's inclusion in the route is not explicitly stated. Instead, we just declare the end points and allow the logical routing algorihtm (aka pathfinder) to determine the optimized path for data to flow and configures the switchboxes to enable that flow.
-> You can explore the lowering of logical `flows` to physical switchbox configrations in [here](../switchbox)
+Notice that the route from tile(7,1) to tile(7,3) will most likely involve tile(7,2) who's inclusion in the route is not explicitly stated. Instead, we just declare the end points and allow the logical routing algorithm (aka pathfinder) to determine the optimized path for data to flow and configures the switchboxes to enable that flow.
+> You can explore the lowering of logical `flows` to physical switchbox configurations in [here](../switchbox)
 
 In the above flow syntax, valid bundle names and channels are listed below: 
 | Bundle | Channels (In) | Channels (Out) |
@@ -62,7 +62,7 @@ There are 2 tile DMAs connected to the local switchbox, each with a read and wri
 ```
 > Note that bds can be associated with any DMA (both input and output). They can also be flexibly chained together.
 
-The defintion of the body of the `AIE.mem` op is generally composed of labels which we use to chain bd definitions together using the `cf.br` op. These label names are arbitrary and do not necessarily correspond to a defined bd value. In our example, the `^bd0` label does define a bd definition but the `^end` label does not.  
+The definition of the body of the `AIE.mem` op is generally composed of labels which we use to chain bd definitions together using the `cf.br` op. These label names are arbitrary and do not necessarily correspond to a defined bd value. In our example, the `^bd0` label does define a bd definition but the `^end` label does not.  
 
 In defining bds within the local memory (`AIE.mem`), we start with defining the DMA used (`AIE.dmaStart`) which is defined as:
 ```
@@ -74,7 +74,7 @@ AIE.dmaStart($channelDir, $channelIndex, $dest, $chain)
 `$chain`: label of next definition in our declaration chain. Generally point to the label where `AIE.end` is defined but can point to the next call to another `AIE.dmaStart`
 
 ### <ins>Buffer descriptors</ins>
-Within a memory module, we can define up to 16 buffer descriptors, each which refrences the buffer in local memory that it will be accessing (either read from or write to).
+Within a memory module, we can define up to 16 buffer descriptors, each which references the buffer in local memory that it will be accessing (either read from or write to).
 The `AIE.dmaBd` syntax is:
 ```
 AIE.dmaBd(<$buffer : type($buffer), $offset, $len>, $AB)
@@ -87,7 +87,7 @@ AIE.dmaBd(<$buffer : type($buffer), $offset, $len>, $AB)
 
 `%AB`: unique configuration where the bd is set to use either the A or B buffer. For now, just leave this as a 0.
 
-Each bd operation can also optionally be gated by locks meaning a lock must be acquired before the bd operation starts and releaesd after the bd operation is complete. These lock acquires and releases can be used to time when bd transfers are done.
+Each bd operation can also optionally be gated by locks meaning a lock must be acquired before the bd operation starts and released after the bd operation is complete. These lock acquires and releases can be used to time when bd transfers are done.
 > The lock operations are optional and the lock ID used in acquire and release do not have to match each other though they usually do.
 
 Below is a diagram that maps the components introduced with the physical block on the AI Engine tile.
