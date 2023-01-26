@@ -1005,9 +1005,9 @@ struct AIEObjectFifoStatefulTransformPass
                 relOp.getOperation()->getBlock()) {
               if (!acquireOp->isBeforeInBlock(relOp)) {
                 releaseOps[op].erase(
-                    releaseOps[op].begin()); // to ensure that we do not account the
-                                         // ReleaseOps again later, after the
-                                         // subview is created
+                    releaseOps[op].begin()); // to ensure that we do not account
+                                             // the ReleaseOps again later,
+                                             // after the subview is created
                 numRel += relOp.relNumber();
               }
             } else {
@@ -1017,9 +1017,10 @@ struct AIEObjectFifoStatefulTransformPass
                   acqBlockDefOp->getBlock()) {
                 if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
                   releaseOps[op].erase(
-                      releaseOps[op].begin()); // to ensure that we do not account
-                                           // the ReleaseOps again later, after
-                                           // the subview is created
+                      releaseOps[op]
+                          .begin()); // to ensure that we do not account
+                                     // the ReleaseOps again later, after
+                                     // the subview is created
                   numRel += relOp.relNumber();
                 }
               } else {
@@ -1029,9 +1030,10 @@ struct AIEObjectFifoStatefulTransformPass
                     relBlockDefOp->getBlock()) {
                   if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
                     releaseOps[op].erase(
-                        releaseOps[op].begin()); // to ensure that we do not account
-                                             // the ReleaseOps again later,
-                                             // after the subview is created
+                        releaseOps[op]
+                            .begin()); // to ensure that we do not account
+                                       // the ReleaseOps again later,
+                                       // after the subview is created
                     numRel += relOp.relNumber();
                   }
                 }
