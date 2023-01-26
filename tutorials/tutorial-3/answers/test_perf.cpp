@@ -63,8 +63,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a24(_xaie, 5), 0,
                  errors);
 
-  EventMonitor pc0(_xaie, 2, 4, 0, XAIE_EVENT_LOCK_1_ACQ_MEM, XAIE_EVENT_LOCK_2_REL_MEM,
-                   XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
+  EventMonitor pc0(_xaie, 2, 4, 0, XAIE_EVENT_LOCK_1_ACQ_MEM,
+                   XAIE_EVENT_LOCK_2_REL_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
   pc0.set();
 
   // Helper function to enable all AIE cores
@@ -72,7 +73,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_start_cores(_xaie);
 
   // Wait time for cores to run. Number used here is much larger than needed.
-  if(mlir_aie_acquire_lock_a24_2(_xaie, 1, 1000) == XAIE_OK)
+  if (mlir_aie_acquire_lock_a24_2(_xaie, 1, 1000) == XAIE_OK)
     printf("Acquired lock_a24_2 (1) in tile (2,4). Done.\n");
   else
     printf("Timed out (1000) while trying to acquire lock_a24_2 (1).\n");
