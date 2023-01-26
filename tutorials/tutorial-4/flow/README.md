@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 4 - communication (tile DMA, logical routing)</ins>
+# <ins>Tutorial 4 - Communication (tile DMA, logical routing)</ins>
 
 Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjcent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has buit-in automatic routing capabilities and visulization tools for viewing the routing choices made. This is an great area for further research where additional transformations can be added to provide other optimized routing functionality.
 
@@ -55,7 +55,7 @@ There are 2 tile DMAs connected to the local switchbox, each with a read and wri
         AIE.useLock(%lock14_6, "Acquire", 1)
         AIE.dmaBd(<%buf14: memref<256xi32>, 0, 256>, 0)
         AIE.useLock(%lock14_6, "Release", 0)
-        cf.br ^end
+        AIE.nextBd ^end
     ^end:
         AIE.end
 }

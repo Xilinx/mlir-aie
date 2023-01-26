@@ -72,12 +72,15 @@ int main(int argc, char *argv[]) {
   usleep(100);
 
   // Check buffer at index 3 again for expected value of 14 for tile(1,4)
+  printf("Checking buf[3] = 14.\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_0_buff_0(_xaie, 3), 14, errors);
   // Check buffer at index 5 again for expected value of 114 for tile(3,4)
+  printf("Checking buf[5] = 114 for tile(3,4).\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_2_buff_0(_xaie, 5), 114, errors);
   // Check buffer at index 5 again for expected value of 114 for tile(3,5)
+  printf("Checking buf[5] = 114 for tile (3,5).\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 114, errors);
 

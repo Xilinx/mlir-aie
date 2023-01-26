@@ -23,7 +23,11 @@
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
-  printf("Tutorial-8 test start.\n");
+  printf("Tutorial-2c test start.\n");
+
+  int errors = 0;
+  int num_iter = 1;
+  u32 pc0_times[num_iter]; // track timer values
 
   // Standard helper function for initializing and configuring AIE array.
   // The host is used to initialize/ configure/ program the AIE array.
@@ -41,10 +45,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  int errors = 0;
-
   // Helper function to clear tile data memory
-  mlir_aie_clear_tile_memory(_xaie, 2, 3);
+  mlir_aie_clear_tile_memory(_xaie, 1, 4);
 
   // Check the buffer value at index 3 to ensure it is zeroed out
   // prior to running our simple kernel.
@@ -56,19 +58,36 @@ int main(int argc, char *argv[]) {
   // mlir_aie_check - helper function to compare values to expected
   // golden value and print error message to stdout and increment
   // "errors" variable if mismatch occurs.
-  mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a23(_xaie, 5), 0,
+  mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 0,
                  errors);
+
+  // Performance counters
+  // Trigger off start (0x00) of an AIE program
+  XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 4), 0, 0);
+  // Trigger off done (0x088) of an AIE program
+  XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 4), 1, 240);
+
+  // Define custom EventMonitor class to track event triggers for program
+  // counter
+  EventMonitor pc0(_xaie, 1, 4, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
+                   XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+  pc0.set();
 
   // Helper function to enable all AIE cores
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  // Wait time for cores to run. Number used here is much larger than needed.
-  usleep(100);
+  // Wait for lock14_0 to indicate tile(1,4) is done
+  if (mlir_aie_acquire_lock14_0(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock14_0 (1) in tile (1,4). Done.\n");
+  else
+    printf("Timed out (1000) while trying to acquire lock14_0 (1).\n");
 
-  // Check buffer at index 5 again for expected value of 114 for tile(2,3)
-  printf("Checking buf[5] = 114 for tile(2,3).\n");
-  mlir_aie_check("After start cores:", mlir_aie_read_buffer_a23(_xaie, 5), 114,
+  pc0_times[0] = pc0.diff(); // store program counter value (0th iteration)
+
+  // Check buffer at index 3 again for expected value of 14
+  printf("Checking buf[3] = 14.\n");
+  mlir_aie_check("After start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 14,
                  errors);
 
   // Print Pass/Fail result of our test
@@ -81,9 +100,13 @@ int main(int argc, char *argv[]) {
     res = -1;
   }
 
+  printf("\nProgram cycle counts:\n");
+  // Output the timer values (average, standard deviation) for 1 iteration
+  computeStats(pc0_times, 1);
+
   // Teardown and cleanup of AIE array
   mlir_aie_deinit_libxaie(_xaie);
 
-  printf("Tutorial-8 test done.\n");
+  printf("Tutorial-2c test done.\n");
   return res;
 }

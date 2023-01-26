@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 8 - communication (cascade)</ins>
+# <ins>Tutorial 8 - Communication (cascade)</ins>
 
 Cascade is a specialized data transfer between horizontally adjacent tiles in a specific direction depending on the row. For first generation AI Engines, cascades flow in the following way:
 * Even rows - East to West

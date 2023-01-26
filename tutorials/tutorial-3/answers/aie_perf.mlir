@@ -33,7 +33,7 @@ module @tutorial_3 {
 
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
-    %core14 = AIE.core(%tile14) {
+    %core24 = AIE.core(%tile24) {
         // Locks init value is Release 0, so this will always succeed first
         AIE.useLock(%lock24_1, "Acquire", 0)
 
@@ -47,7 +47,7 @@ module @tutorial_3 {
 
     // Define core algorithm for tile(2,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
-    %core24 = AIE.core(%tile24) {
+    %core14 = AIE.core(%tile14) {
         // This acquire succeeds when the core is enabled
         AIE.useLock(%lock24_2, "Acquire", 0)
         // This acquire will stall since locks are initialized to Release, 0
