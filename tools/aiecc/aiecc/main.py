@@ -34,7 +34,7 @@ class flow_runner:
       self.maxtasks = 5
       self.stopall = False
 
-  async def do_call(self, task, command):
+  async def do_call(self, task, command, force=False):
       if(self.stopall):
         return
 
@@ -44,7 +44,7 @@ class flow_runner:
       start = time.time()
       if(self.opts.verbose):
           print(commandstr)
-      if(self.opts.execute):
+      if(self.opts.execute or force):
         proc = await asyncio.create_subprocess_exec(*command)
         await proc.wait()
         ret = proc.returncode
@@ -289,7 +289,7 @@ class flow_runner:
                                           '--aie-create-packet-flows',
                                           '--aie-lower-multicast',
                                           '--aie-assign-buffer-addresses',
-                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
+                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses], True)
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
 
