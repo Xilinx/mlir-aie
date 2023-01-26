@@ -26,6 +26,7 @@
 
 #include "aie/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "AIETargets.h"
 
@@ -628,7 +629,7 @@ static void configure_dmas(mlir::ModuleOp module, NetlistAnalysis &NL) {
       int acqValue = 0, relValue = 0;
       auto acqEnable = disable;
       auto relEnable = disable;
-      Optional<int> lockID = llvm::None;
+      Optional<int> lockID = std::nullopt;
 
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
@@ -678,7 +679,7 @@ void XAieDma_TileBdSetLock(XAieDma_Tile *DmaInstPtr, u8 BdNum, u8 AbType, u8 Loc
         LockRelEn = relEnable
         LockRelVal = relValue
    clang-format on */
-          bdData.addr_a = bdAddressLockID(lockID.value()) |
+          bdData.addr_a = bdAddressLockID(*lockID) |
                           bdAddressReleaseEnable(relEnable) |
                           bdAddressAcquireEnable(acqEnable);
 
@@ -1155,7 +1156,7 @@ static void configure_switchboxes(mlir::ModuleOp &module) {
         if (!isEmpty) {
           result.emplace(switchboxOp);
         }
-      } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
+      } else if (AIEX::SelectOp sel = dyn_cast<AIEX::SelectOp>(
                      switchboxOp.getTile().getDefiningOp())) {
         // TODO: Use XAIEV1 target and translate into write32s
         TODO;
@@ -1419,7 +1420,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
     }
   }
 
-  Optional<TileAddress> currentTile = llvm::None;
+  Optional<TileAddress> currentTile = std::nullopt;
   for (auto op : module.getOps<ShimMuxOp>()) {
     Region &r = op.getConnections();
     Block &b = r.front();
@@ -1469,7 +1470,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
         }();
 
         // We need to add to the possibly preexisting mask.
-        Address addr{currentTile.value(), 0x1F004u};
+        Address addr{*currentTile, 0x1F004u};
         auto currentMask = read32(addr);
 
         write32(addr, currentMask |
@@ -1497,7 +1498,7 @@ void XAieTile_StrmConfigSlv(XAieGbl_Tile *TileInstPtr, u8 Slave, u8 Enable,
           }
         }();
 
-        Address addr{currentTile.value(), 0x1F000u};
+        Address addr{*currentTile, 0x1F000u};
         auto currentMask = read32(addr);
 
         write32(addr, currentMask |
