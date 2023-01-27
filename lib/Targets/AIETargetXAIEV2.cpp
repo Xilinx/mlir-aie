@@ -25,12 +25,14 @@
 
 #include "aie/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "AIETargets.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+using namespace xilinx::AIEX;
 
 namespace xilinx {
 namespace AIE {
@@ -258,9 +260,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       int bytesA = 0;
       int bytesB = 0;
       int offsetA = 0;
-      int offsetB = 0;
       int BaseAddrA = 0;
-      int BaseAddrB = 0;
       bool hasA = false;
       bool hasB = false;
       StringRef bufA = "0";
@@ -280,10 +280,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           hasA = true;
         }
         if (op.isB()) {
-          BaseAddrB = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
           lenB = op.getLenValue();
           bytesB = bufferType.getElementTypeBitWidth() / 8;
-          offsetB = op.getOffsetValue();
           bufB = "XAIEDMA_TILE_BD_ADDRB";
           hasB = true;
         }
@@ -449,7 +447,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       bool foundBd = false;
       int len = 0;
       uint64_t bytes = 0;
-      uint64_t offset = 0;
 
       for (auto op : block.getOps<DMABDOp>()) {
         foundBd = true;
@@ -457,7 +454,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         ShapedType bufferType =
             op.getBuffer().getType().cast<::mlir::MemRefType>();
         bytes = bufferType.getElementTypeBitWidth() / 8;
-        offset = op.getOffsetValue();
       }
 
       int acqValue = 0, relValue = 0;
@@ -611,7 +607,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         output << "x = " << col << ";\n";
         output << "y = " << row << ";\n";
       }
-    } else if (AIE::SelectOp sel = dyn_cast<AIE::SelectOp>(
+    } else if (AIEX::SelectOp sel = dyn_cast<AIEX::SelectOp>(
                    switchboxOp.getTile().getDefiningOp())) {
       // parameterize streamswitch's configuration
       isParam = true;

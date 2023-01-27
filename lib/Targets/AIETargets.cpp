@@ -128,8 +128,8 @@ void registerAIETranslations() {
           output << "// Memory map: name base_address num_bytes\n";
 
           auto doBuffer = [&](Optional<TileID> tile, int offset) {
-            if (tiles.count(tile.value()))
-              for (auto buf : buffers[tiles[tile.value()]])
+            if (tiles.count(*tile))
+              for (auto buf : buffers[tiles[*tile]])
                 writeBufferMap(output, buf, offset, NL);
           };
           if (auto tile = getMemSouth(srcCoord))
@@ -238,8 +238,8 @@ SECTIONS
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
               if (tile) {
-                if (tiles.count(tile.value()))
-                  for (auto buf : buffers[tiles[tile.value()]])
+                if (tiles.count(*tile))
+                  for (auto buf : buffers[tiles[*tile]])
                     writeLDScriptMap(output, buf, offset, NL);
               } else
                 output << "/* No tile with memoy exists to the " << dir
@@ -333,8 +333,8 @@ SECTIONS
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
               if (tile) {
-                if (tiles.count(tile.value()))
-                  for (auto buf : buffers[tiles[tile.value()]])
+                if (tiles.count(*tile))
+                  for (auto buf : buffers[tiles[*tile]])
                     writeBCFMap(output, buf, offset, NL);
               } else
                 output << "_reserved DMb 0x" << llvm::utohexstr(offset)

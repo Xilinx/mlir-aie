@@ -24,15 +24,6 @@
 #define XAIE_NUM_COLS 50
 #define XAIE_ADDR_ARRAY_OFF 0x800
 
-#define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
-#define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
-
-#define MAP_SIZE 16UL
-#define MAP_MASK (MAP_SIZE - 1)
-
-#define BRAM_ADDR (0x4000 + 0x020100000000LL)
-#define DMA_COUNT 512
-
 namespace {
 
 XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */

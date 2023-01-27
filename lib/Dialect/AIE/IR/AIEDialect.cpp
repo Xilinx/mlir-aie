@@ -79,7 +79,7 @@ Optional<TileID> getMemWest(TileID src) {
     ret = src;
   else
     ret = std::make_pair(src.first - 1, src.second);
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
@@ -91,21 +91,21 @@ Optional<TileID> getMemEast(TileID src) {
     ret = std::make_pair(src.first + 1, src.second);
   else
     ret = src;
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> getMemNorth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if (!isValidTile(ret.value()))
+  if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 Optional<TileID> getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
-  if (!isValidTile(ret.value()) || ret->second == 0)
+  if (!isValidTile(*ret) || ret->second == 0)
     ret.reset();
   return ret;
 }
@@ -658,15 +658,6 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIE::UseTokenOp::verify() {
-  auto parentOp = (*this)->getParentOp();
-  if (isa<func::FuncOp>(parentOp) || isa<xilinx::AIE::CoreOp>(parentOp) ||
-      isa<xilinx::AIE::MemOp>(parentOp) ||
-      isa<xilinx::AIE::ShimDMAOp>(parentOp))
-    return success();
-  return failure();
-}
-
 int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   switch (bundle) {
   case WireBundle::DMA:
@@ -723,36 +714,6 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
 }
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
-
-LogicalResult xilinx::AIE::MulticastOp::verify() {
-  Region &body = getPorts();
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
-  for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIE::MultiDestOp>(ops)) {
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-    } else {
-      return ops.emitOpError("cannot be contained in a Multicast op");
-    }
-  }
-
-  return success();
-}
-
-LogicalResult xilinx::AIE::BroadcastPacketOp::verify() {
-  Region &body = getPorts();
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
-  for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIE::BPIDOp>(ops)) {
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-    } else {
-      return ops.emitOpError("cannot be contained in a BroadcastPacket op");
-    }
-  }
-
-  return success();
-}
 
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = getPorts();

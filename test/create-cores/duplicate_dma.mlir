@@ -17,16 +17,16 @@ module @duplicate_dma  {
   %2 = AIE.mem(%0)  {
     %15 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb4)
   ^bb1:  // pred: ^bb0
-    AIE.useToken @token0(Acquire, 1)
+    AIEX.useToken @token0(Acquire, 1)
     AIE.dmaBd(<%1 : memref<256xi32>, 0, 256>, 0)
-    AIE.useToken @token0(Release, 2)
+    AIEX.useToken @token0(Release, 2)
     AIE.nextBd ^bb2
   ^bb2:  
     %16 = AIE.dmaStart(MM2S, 0, ^bb3, ^bb4)
   ^bb3:  
-    AIE.useToken @token1(Acquire, 1)
+    AIEX.useToken @token1(Acquire, 1)
     AIE.dmaBd(<%1 : memref<256xi32>, 0, 256>, 0)
-    AIE.useToken @token1(Release, 2)
+    AIEX.useToken @token1(Release, 2)
     AIE.nextBd ^bb4
   ^bb4:  // 4 preds: ^bb0, ^bb1, ^bb2, ^bb3
     AIE.end

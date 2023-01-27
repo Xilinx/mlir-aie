@@ -31,6 +31,9 @@ target_link_libraries(aie-translate
   AIE
   AIETransforms
   AIEUtils
+  AIEX
+  AIEXTransforms
+  AIEXUtils
   AIETargets
   MLIRIR
   MLIRParser

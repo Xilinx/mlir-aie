@@ -41,6 +41,13 @@ if(DEFINED VITIS_ROOT)
                     DEPENDS ${VITIS_AIE_LIBC})
     add_dependencies(aie-copy-runtime-libs aie-copy-runtime-libs-libc )
 
+    add_custom_target(aie-copy-runtime-libs-libsoftfloat ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libsoftfloat.a)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libsoftfloat.a
+                    COMMAND ${CMAKE_COMMAND} -E copy ${VITIS_AIE_LIBSOFTFLOAT}
+                    ${CMAKE_CURRENT_BINARY_DIR}/libsoftfloat.a
+                    DEPENDS ${VITIS_AIE_LIBSOFTFLOAT})
+    add_dependencies(aie-copy-runtime-libs aie-copy-runtime-libs-libsoftfloat )
+
     add_custom_target(aie-copy-runtime-libs-libm ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libm.a)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libm.a
                     COMMAND ${CMAKE_COMMAND} -E copy ${VITIS_AIE_LIBM}
@@ -49,6 +56,7 @@ if(DEFINED VITIS_ROOT)
     add_dependencies(aie-copy-runtime-libs aie-copy-runtime-libs-libm )
     install(FILES ${VITIS_AIE_LIBC} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
     install(FILES ${VITIS_AIE_LIBM} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
+    install(FILES ${VITIS_AIE_LIBSOFTFLOAT} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 else()
     message(WARNING "No source of libm/libc... Hope you don't need it!")
 endif()

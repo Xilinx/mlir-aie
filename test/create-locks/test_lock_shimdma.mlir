@@ -12,7 +12,7 @@
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // CHECK-LABELs: module @test_lock_shimdma  {
-// CHECK:   AIE.token(0) {sym_name = "token0"}
+// CHECK:   AIEX.token(0) {sym_name = "token0"}
 // CHECK:   %0 = AIE.external_buffer : memref<256xi32>
 // CHECK:   %1 = AIE.tile(6, 0)
 // CHECK:   %2 = AIE.lock(%1, 0)
@@ -57,23 +57,23 @@
 // [Core-Mem] ---> [ShimDMA] (non-neighboring tiles)
 // single producer, single consumer
 module @test_lock_shimdma {
-  AIE.token(0) {sym_name = "token0"}
+  AIEX.token(0) {sym_name = "token0"}
   %buf_ext = AIE.external_buffer : memref<256xi32>
 
   %t60 = AIE.tile(6, 0)
   %c60 = AIE.core(%t60) {
     // TODO: This represents the token uses on the host CPU. A representation of
     // the host CPU in MLIR might be a better place for holding this.
-    AIE.useToken @token0(Acquire, 2)
-    AIE.useToken @token0(Release, 3)
+    AIEX.useToken @token0(Acquire, 2)
+    AIEX.useToken @token0(Release, 3)
     AIE.end
   }
   %m60 = AIE.shimDMA(%t60) {
       %dmaSt = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useToken @token0(Acquire, 1)
+      AIEX.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf_ext : memref<256xi32>, 0, 256>, 0)
-      AIE.useToken @token0(Release, 2)
+      AIEX.useToken @token0(Release, 2)
       AIE.nextBd ^end
     ^end:
       AIE.end
@@ -82,16 +82,16 @@ module @test_lock_shimdma {
   %t33 = AIE.tile(3, 3)
   %buf33 = AIE.buffer(%t33) : memref<256xi32>
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token0(Acquire, 0)
-    AIE.useToken @token0(Release, 1)
+    AIEX.useToken @token0(Acquire, 0)
+    AIEX.useToken @token0(Release, 1)
     AIE.end
   }
   %m33 = AIE.mem(%t33) {
       %dmaSt = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      AIE.useToken @token0(Acquire, 1)
+      AIEX.useToken @token0(Acquire, 1)
       AIE.dmaBd(<%buf33 : memref<256xi32>, 0, 256>, 0)
-      AIE.useToken @token0(Release, 2)
+      AIEX.useToken @token0(Release, 2)
       AIE.nextBd ^end
     ^end:
       AIE.end

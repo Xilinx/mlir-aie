@@ -22,9 +22,7 @@
 // CHECK:   %5 = AIE.lock(%0, 1)
 // CHECK:   %6 = AIE.buffer(%0) : memref<16xi32>
 // CHECK:   %7 = AIE.lock(%0, 2)
-// CHECK:   AIE.multicast(%0, DMA : 1) {
-// CHECK:     AIE.multi_dest<%1, DMA : 0>
-// CHECK:   }
+// CHECK:   AIE.flow(%0, DMA : 1, %1, DMA : 0)
 // CHECK:   %8 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
 // CHECK:   %9 = AIE.lock(%0, 3) {sym_name = "of_0_lock_0"}
 // CHECK:   %10 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>

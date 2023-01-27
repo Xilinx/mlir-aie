@@ -19,12 +19,10 @@
 // CHECK:   %2 = AIE.tile(1, 4)
 // CHECK:   %3 = AIE.tile(3, 2)
 // CHECK:   %4 = AIE.tile(3, 3)
-// CHECK:   AIE.multicast(%1, DMA : 0) {
-// CHECK:     AIE.multi_dest<%0, DMA : 0>
-// CHECK:     AIE.multi_dest<%2, DMA : 0>
-// CHECK:     AIE.multi_dest<%3, DMA : 0>
-// CHECK:     AIE.multi_dest<%4, DMA : 0>
-// CHECK:   }
+// CHECK:   AIE.flow(%1, DMA : 0, %4, DMA : 0)
+// CHECK:   AIE.flow(%1, DMA : 0, %3, DMA : 0)
+// CHECK:   AIE.flow(%1, DMA : 0, %2, DMA : 0)
+// CHECK:   AIE.flow(%1, DMA : 0, %0, DMA : 0)
 // CHECK:   %5 = AIE.buffer(%1) {sym_name = "of_0_buff_0"} : memref<16xi32>
 // CHECK:   %6 = AIE.lock(%1, 0) {sym_name = "of_0_lock_0"}
 // CHECK:   %7 = AIE.buffer(%1) {sym_name = "of_0_buff_1"} : memref<16xi32>

@@ -6,7 +6,6 @@
 # (c) Copyright 2022 Xilinx Inc.
 
 add_mlir_dialect_library(AIEUtils
-  AIETokenAnalysis.cpp
   AIENetlistAnalysis.cpp
 
   ADDITIONAL_HEADER_DIRS

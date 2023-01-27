@@ -16,7 +16,7 @@
 // CHECK:  %2 = AIE.tile(2, 3)
 // CHECK:  %3 = AIE.lock(%2, 0)
 // CHECK:  %4 = AIE.tile(4, 3)
-// CHECK:  AIE.token(0) {sym_name = "token0"}
+// CHECK:  AIEX.token(0) {sym_name = "token0"}
 // CHECK:  %8 = AIE.core(%2) {
 // CHECK:    AIE.useLock(%3, Acquire, 0)
 // CHECK:    AIE.useLock(%3, Release, 1)
@@ -41,7 +41,7 @@ module @test_lock1 {
   %t23 = AIE.tile(2, 3)
   %t43 = AIE.tile(4, 3)
 
-  AIE.token(0) {sym_name = "token0"}
+  AIEX.token(0) {sym_name = "token0"}
 
   %m33 = AIE.mem(%t33) {
       AIE.end
@@ -56,20 +56,20 @@ module @test_lock1 {
   }
 
   %c23 = AIE.core(%t23) {
-    AIE.useToken @token0(Acquire, 0)
-    AIE.useToken @token0(Release, 1)
+    AIEX.useToken @token0(Acquire, 0)
+    AIEX.useToken @token0(Release, 1)
     AIE.end
   }
 
   %c33 = AIE.core(%t33) {
-    AIE.useToken @token0(Acquire, 1)
-    AIE.useToken @token0(Release, 2)
+    AIEX.useToken @token0(Acquire, 1)
+    AIEX.useToken @token0(Release, 2)
     AIE.end
   }
 
   %c43 = AIE.core(%t43) {
-    AIE.useToken @token0(Acquire, 2)
-    AIE.useToken @token0(Release, 3)
+    AIEX.useToken @token0(Acquire, 2)
+    AIEX.useToken @token0(Release, 3)
     AIE.end
   }
 }

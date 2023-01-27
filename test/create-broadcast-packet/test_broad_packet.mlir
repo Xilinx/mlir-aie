@@ -29,14 +29,14 @@ module @test_broadcast_packet {
   %t72 = AIE.tile(7, 2)
   %t73 = AIE.tile(7, 3)
   %t74 = AIE.tile(7, 4)
-  AIE.broadcast_packet(%t72, "DMA" : 0){
-    AIE.bp_id(0x0){
-      AIE.bp_dest<%t73, "DMA" : 0>
-      AIE.bp_dest<%t63, "DMA" : 0>
+  AIEX.broadcast_packet(%t72, "DMA" : 0){
+    AIEX.bp_id(0x0){
+      AIEX.bp_dest<%t73, "DMA" : 0>
+      AIEX.bp_dest<%t63, "DMA" : 0>
     }
-    AIE.bp_id(0x1){
-      AIE.bp_dest<%t74, "DMA" : 0>
-      AIE.bp_dest<%t64, "DMA" : 0>
+    AIEX.bp_id(0x1){
+      AIEX.bp_dest<%t74, "DMA" : 0>
+      AIEX.bp_dest<%t64, "DMA" : 0>
     }
   }
 }

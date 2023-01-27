@@ -34,7 +34,7 @@ class flow_runner:
       self.maxtasks = 5
       self.stopall = False
 
-  async def do_call(self, task, command):
+  async def do_call(self, task, command, force=False):
       if(self.stopall):
         return
 
@@ -44,7 +44,7 @@ class flow_runner:
       start = time.time()
       if(self.opts.verbose):
           print(commandstr)
-      if(self.opts.execute):
+      if(self.opts.execute or force):
         proc = await asyncio.create_subprocess_exec(*command)
         await proc.wait()
         ret = proc.returncode
@@ -115,7 +115,7 @@ class flow_runner:
       return llvmir_chesslinked
 
   async def prepare_for_chesshack(self, task):
-      if(opts.xchesscc == True):
+      if(opts.compile and opts.xchesscc):
         thispath = os.path.dirname(os.path.realpath(__file__))
         chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
@@ -136,6 +136,7 @@ class flow_runner:
       me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
       libc = os.path.join(thispath, '..','..','runtime_lib', 'libc.a')
       libm = os.path.join(thispath, '..','..','runtime_lib', 'libm.a')
+      libsoftfloat = os.path.join(thispath, '..','..','runtime_lib', 'libsoftfloat.a')
       chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
       if(opts.progress):
@@ -182,7 +183,7 @@ class flow_runner:
             await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           elif(self.opts.link):
             await self.do_call(task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
-            await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
+            await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc, libsoftfloat,
                         '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
         else:
           file_core_obj = self.file_obj
@@ -190,7 +191,7 @@ class flow_runner:
             link_with_obj = self.extract_input_files(file_core_bcf)
             await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           elif(opts.link):
-            await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
+            await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc, libsoftfloat,
                               '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
 
       elif(opts.compile):
@@ -204,7 +205,7 @@ class flow_runner:
           link_with_obj = self.extract_input_files(file_core_bcf)
           await self.do_call(task, ['xchesscc_wrapper', '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
         elif(opts.link):
-          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc,
+          await self.do_call(task, ['clang', '-O2', '--target=aie', file_core_obj, me_basic_o, libm, libc, libsoftfloat,
                             '-Wl,-T,'+file_core_ldscript, '-Wl,--gc-sections', '-o', file_core_elf])
 
       self.progress_bar.update(self.progress_bar.task_completed,advance=1)
@@ -288,7 +289,7 @@ class flow_runner:
                                           '--aie-create-packet-flows',
                                           '--aie-lower-multicast',
                                           '--aie-assign-buffer-addresses',
-                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
+                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses], True)
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
 
@@ -317,7 +318,7 @@ class flow_runner:
           if(opts.compile and opts.xchesscc):
             file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir)
             await self.do_call(progress.task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
-          else:
+          elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
             await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 

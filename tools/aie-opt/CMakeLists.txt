@@ -10,13 +10,6 @@ llvm_map_components_to_libnames(llvm_libs support core irreader)
 # Now build our tools
 add_llvm_executable(aie-opt aie-opt.cpp)
 llvm_update_compile_flags(aie-opt)
-add_dependencies(aie-opt 
-  MLIRADFIncGen
-  MLIRAIEIncGen
-  MLIRAIEEnumsIncGen
-  MLIRAIEPassIncGen
-  MLIRAIEVecPassIncGen
-)
 install(TARGETS aie-opt
 EXPORT AIETargets
 RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
@@ -32,8 +25,11 @@ set(LIBS
   AIE
   AIETransforms
   AIEUtils
+  AIEX
+  AIEXTransforms
+  AIEXUtils
   MLIRAIEVec
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM
   )
-target_link_libraries(aie-opt PRIVATE ${LIBS})
+target_link_libraries(aie-opt PUBLIC ${LIBS})
