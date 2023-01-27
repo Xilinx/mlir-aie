@@ -95,17 +95,6 @@ static std::string packetStr(int id, int type) {
   return packetStr(std::to_string(id), std::to_string(type));
 }
 
-// static int getNextObjectFifoID(std::string objFifo) {
-//   int id = -1;
-//   if (objectFifo_next_lockID.find(objFifo) == masterChannelsPerTile.end()) {
-//     objectFifo_next_lockID[objFifo] = 0;
-//   } else {
-//     objectFifo_next_lockID[objFifo]++;
-//   }
-//   return objectFifo_next_lockID[objFifo];
-// }
-
-
 mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
@@ -121,7 +110,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   DenseMap<std::pair<Operation *, int>, LockOp> locks;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
   DenseMap<Operation *, SwitchboxOp> switchboxes;
-  //DenseMap<std::string, int> objectFifo_next_lockID;
 
   NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
   NL.collectTiles(tiles);
@@ -863,27 +851,27 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   // Output ObjectFifo Accessors
   //---------------------------------------------------------------------------
   auto objFifoAccessor = [&](LockOp lock) {
-    // generate objectFifo acquire / release for producer and consumer:
-    // - acquire lock + return memory element (lock value depends on if producer / consumer)
-    // - release lock (lock value depends on if producer / consumer)
-
+    // for each lock generated from the objectFifo lowering,
+    // generate acquire / release accessors for producer and consumer sides
     int col = lock.colIndex();
     int row = lock.rowIndex();
     if (!lock.hasName())
       return;
-    std::string lockName(lock.name().getValue());
 
-    // naming scheme is /*objFifo_name*/_/*prod or cons*/_lock_number
-    // -> prod locks generate producer accessors and cons locks generate consumer ones
+    if (row != 0) 
+      return;
+      
+    // naming scheme is: <objFifo_name>_<'prod' or 'cons'>_<lock_number>
+    std::string lockName(lock.name().getValue());
+    std::string prodLock = "_prod_lock_";
+    std::string consLock = "_cons_lock_";
+
     int timeout = 10000;
     std::string objFifoName;
     std::string accessor_type;
     std::string objIndex;
     int acquireLockValue = -1;
     int releaseLockValue = -1;
-
-    std::string prodLock = "_prod_lock_";
-    std::string consLock = "_cons_lock_";
 
     auto pos = lockName.find(prodLock);
     if (pos != std::string::npos) {
@@ -904,6 +892,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         acquireLockValue = 1;
         releaseLockValue = 0;
       } else {
+        // this lock was not generated from an objectFifo
         return;
       }
     } 
@@ -925,18 +914,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
            << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
            << ", " << timeout << ");\n";
     output << "}\n";
-
-    // output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
-    //        << "(" << ctx_p << ") {\n";
-    // output << "return mlir_aie_acquire_" << lockName << "(" << "_xaie"
-    //        << ", " << acquireLockValue << ", " << timeout <<");\n";
-    // output << "}\n";
-
-    // output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
-    //        << "(" << ctx_p << ") {\n";
-    // output << "return mlir_aie_release_" << lockName << "(" << "_xaie"
-    //        << ", " << releaseLockValue << ", " << timeout <<");\n";
-    // output << "}\n";
   };
 
   for (auto lock : module.getOps<LockOp>())
