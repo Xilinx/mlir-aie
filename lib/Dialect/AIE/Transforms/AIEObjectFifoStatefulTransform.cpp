@@ -838,6 +838,7 @@ struct AIEObjectFifoStatefulTransformPass
       bool shared = false;
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int share_direction = 0;
+      int consumerIndex = 0;
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
@@ -862,7 +863,12 @@ struct AIEObjectFifoStatefulTransformPass
 
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerTile, consumerTile, consMaxAcquire);
-        consumerFifo.getOperation()->setAttr("sym_name", builder.getStringAttr(createOp.name().getValue() + "_cons"));
+        if (createOp.getConsumerTiles().size() > 1) {
+          consumerFifo.getOperation()->setAttr("sym_name", builder.getStringAttr(createOp.name().getValue() + "_" + std::to_string(consumerIndex) + "_cons"));
+          consumerIndex++;
+        } else {
+          consumerFifo.getOperation()->setAttr("sym_name", builder.getStringAttr(createOp.name().getValue() + "_cons"));
+        }
 
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
           detectExternalBuffers(m, createOp, consumerFifo, consumerTile);

@@ -848,7 +848,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     lockAccessor(lock);
 
   //---------------------------------------------------------------------------
-  // Output ObjectFifo Accessors
+  // Output ObjectFifo Accessors (Shim)
   //---------------------------------------------------------------------------
   auto objFifoAccessor = [&](LockOp lock) {
     // for each lock generated from the objectFifo lowering,
@@ -866,7 +866,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     std::string prodLock = "_prod_lock_";
     std::string consLock = "_cons_lock_";
 
-    int timeout = 10000;
     std::string objFifoName;
     std::string accessor_type;
     std::string objIndex;
@@ -898,21 +897,21 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     } 
 
     output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
-           << "_" << objIndex << "(" << ctx_p << ") {\n";
+           << "_" << objIndex << "(" << ctx_p << ", int timeout" << ") {\n";
     output << "  const int id = " << lock.getLockIDValue() << ";\n";
     output << "  const int value = " << acquireLockValue << ";\n";
     output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
            << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
-           << ", " << timeout << ");\n";
+           << ", timeout);\n";
     output << "}\n";
 
     output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
-           << "_" << objIndex << "(" << ctx_p << ") {\n";
+           << "_" << objIndex << "(" << ctx_p << ", int timeout" << ") {\n";
     output << "  const int id = " << lock.getLockIDValue() << ";\n";
     output << "  const int value = " << releaseLockValue << ";\n";
     output << "  return XAie_LockRelease(" << deviceInstRef << ", "
            << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
-           << ", " << timeout << ");\n";
+           << ", timeout);\n";
     output << "}\n";
   };
 

@@ -80,14 +80,15 @@ int main(int argc, char *argv[]) {
   // Helper function to enable all AIE cores
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
-
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
+  
+  // Release object 0 of objFifo_in as a producer.
+  mlir_aie_release_producer_objFifo_in_0(_xaie, 10000);
 
   // Wait time for cores to run. Number used here is much larger than needed.
   usleep(100);
 
-  mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
+  // Acquire object 0 of objFifo_out as a consumer.
+  mlir_aie_acquire_consumer_objFifo_out_0(_xaie, 10000);
   mlir_aie_sync_mem_cpu(_xaie, 1);
 
   // Check buffer at index 3 again for expected value of 14 for tile(3,4)

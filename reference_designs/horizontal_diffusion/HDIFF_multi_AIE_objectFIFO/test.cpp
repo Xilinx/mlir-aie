@@ -105,13 +105,8 @@ int main(int argc, char *argv[]) {
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
-  
-  
-
-
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 0); // (_xaie,release_value,time_out)
-  mlir_aie_release_of_5_lock_0(_xaie, 0, 0);
+  mlir_aie_release_producer_objFifo_in_0(_xaie, 10000); // (_xaie,time_out)
 
   printf("Start cores\n");
   ///// --- start counter-----
@@ -128,15 +123,12 @@ int main(int argc, char *argv[]) {
 
   usleep(sleep_u);
 
-
-//   mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
-//   mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
- 
+  mlir_aie_acquire_consumer_obj_out_flux_0(_xaie, 10000); // (_xaie,time_out)
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2 //sync up with output
   ///// --- end counter-----
   for (int i =0; i < 256; i ++ ){
-        printf("Location %d:  %d\n", i, ddr_ptr_out[i]);
-    }
+    printf("Location %d:  %d\n", i, ddr_ptr_out[i]);
+  }
 
   int res = 0;
   if (!errors) {

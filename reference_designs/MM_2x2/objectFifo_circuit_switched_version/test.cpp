@@ -97,19 +97,19 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
 
-  mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_6_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_8_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_12_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_10_lock_0(_xaie, 1, 0);
+  mlir_aie_release_producer_objFifo_LHS0_0(_xaie, 10000);
+  mlir_aie_release_producer_objFifo_LHS1_0(_xaie, 10000);
+  mlir_aie_release_producer_objFifo_RHS0_0(_xaie, 10000);
+  mlir_aie_release_producer_objFifo_RHS1_0(_xaie, 10000);
+  mlir_aie_release_producer_objFifo_RHS2_0(_xaie, 10000);
+  mlir_aie_release_producer_objFifo_RHS3_0(_xaie, 10000);
 
   mlir_aie_start_cores(_xaie);
 
   usleep(sleep_u);
 
-  mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
-  mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
+  mlir_aie_acquire_consumer_objFifo_out0_0(_xaie, 10000);
+  mlir_aie_acquire_consumer_objFifo_out1_0(_xaie, 10000);
   mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 

@@ -33,10 +33,10 @@ module @tutorial_5 {
     // The size of the object FIFO, i.e. its number of elements, is 1.
     // Objects, i.e. allocated memory elements, have type memref<256xi32>.
     // These tiles do not share memory between them.
-    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<256xi32>>
+    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) {sym_name = "objFifo_in"} : !AIE.objectFifo<memref<256xi32>>
 
     // Declare an object FIFO between the producer tile (3,4) and consumer shim tile (7,0).
-    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<256xi32>>
+    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) {sym_name = "objFifo_out"} : !AIE.objectFifo<memref<256xi32>>
 
     // Register the external memory pointers to the object FIFOs.
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_in}) : (memref<256xi32>)

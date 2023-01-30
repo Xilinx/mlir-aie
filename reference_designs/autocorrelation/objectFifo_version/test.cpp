@@ -54,10 +54,10 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 10000);
+  mlir_aie_release_producer_objFifo_in_0(_xaie, 10000);
 
   printf("Waiting for the result ...\n");
-  if (mlir_aie_acquire_of_6_lock_0(_xaie, 1, 100000)) {
+  if (mlir_aie_acquire_consumer_objFifo_out_0(_xaie, 100000)) {
     printf("ERROR: timeout hit!\n");
   }
 

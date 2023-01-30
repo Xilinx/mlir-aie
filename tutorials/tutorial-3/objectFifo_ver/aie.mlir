@@ -26,7 +26,7 @@ module @tutorial_3 {
     // The size of the object FIFO, i.e. its number of elements, is 1.
     // Objects, i.e. allocated memory elements, have type memref<256xi32>
     // These tiles share memory between them.
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile24}, 1) : !AIE.objectFifo<memref<256xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile24}, 1) {sym_name = "objFifo_14_24"} : !AIE.objectFifo<memref<256xi32>>
  
     // Define core algorithm for tile(1,4)
     // buf[3] = 14

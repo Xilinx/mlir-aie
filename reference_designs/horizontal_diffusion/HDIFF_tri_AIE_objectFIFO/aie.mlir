@@ -14,19 +14,18 @@ module @hdiff_tri_AIE{
   %lock73_14 = AIE.lock(%t73, 14) { sym_name = "lock73_14" }
   %lock75_14 = AIE.lock(%t75, 14) { sym_name = "lock75_14" }
 
-  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t73,%t74}, 6) {sym_name = "" }: !AIE.objectFifo<memref<256xi32>>
-  %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 5){sym_name = "obj_out_lap" } : !AIE.objectFifo<memref<256xi32>>
-  %obj_fifo_out_flux_inter1 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 6){sym_name = "obj_out_flux_inter1" } : !AIE.objectFifo<memref<512xi32>>
-  // %obj_fifo_out_flux_inter2 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 2){sym_name = "obj_out_flux_inter2" } : !AIE.objectFifo<memref<1280xi32>>
-  %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2){sym_name = "obj_out_flux" } : !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t73,%t74}, 6) {sym_name = "obj_in"}: !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 5) {sym_name = "obj_out_lap"} : !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_out_flux_inter1 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 6){sym_name = "obj_out_flux_inter1"} : !AIE.objectFifo<memref<512xi32>>
+  // %obj_fifo_out_flux_inter2 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 2) {sym_name = "obj_out_flux_inter2"} : !AIE.objectFifo<memref<1280xi32>>
+  %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2) {sym_name = "obj_out_flux"} : !AIE.objectFifo<memref<256xi32>>
    // DDR buffer
-  %ext_buffer_in0  = AIE.external_buffer  {sym_name = "ddr_test_buffer_in0"}: memref<1536 x i32>
-  %ext_buffer_out = AIE.external_buffer  {sym_name = "ddr_test_buffer_out"}: memref<512 x i32>
+  %ext_buffer_in0  = AIE.external_buffer {sym_name = "ddr_test_buffer_in0"} : memref<1536 x i32>
+  %ext_buffer_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"} : memref<512 x i32>
       
   // Register the external memory pointers to the object FIFOs.
   AIE.objectFifo.registerExternalBuffers(%t70, %obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buffer_in0}) : (memref<1536xi32>)
   AIE.objectFifo.registerExternalBuffers(%t70, %obj_fifo_out_flux : !AIE.objectFifo<memref<256xi32>>, {%ext_buffer_out}) : (memref<512xi32>)
-
 
   func.func private @hdiff_lap(%AL: memref<256xi32>,%BL: memref<256xi32>, %CL:  memref<256xi32>, %DL: memref<256xi32>, %EL:  memref<256xi32>,  %OLL1: memref<256xi32>,  %OLL2: memref<256xi32>,  %OLL3: memref<256xi32>,  %OLL4: memref<256xi32>) -> ()
   func.func private @hdiff_flux1(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  memref<256xi32>,   %OLF1: memref<256xi32>,  %OLF2: memref<256xi32>,  %OLF3: memref<256xi32>,  %OLF4: memref<256xi32>,  %OFI1: memref<512xi32>,  %OFI2: memref<512xi32>,  %OFI3: memref<512xi32>,  %OFI4: memref<512xi32>,  %OFI5: memref<512xi32>) -> ()
