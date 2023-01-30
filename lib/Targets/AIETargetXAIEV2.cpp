@@ -858,9 +858,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     if (!lock.hasName())
       return;
 
-    if (row != 0) 
+    if (row != 0)
       return;
-      
+
     // naming scheme is: <objFifo_name>_<'prod' or 'cons'>_<lock_number>
     std::string lockName(lock.name().getValue());
     std::string prodLock = "_prod_lock_";
@@ -894,10 +894,11 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         // this lock was not generated from an objectFifo
         return;
       }
-    } 
+    }
 
-    output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName 
-           << "_" << objIndex << "(" << ctx_p << ", int timeout" << ") {\n";
+    output << "int mlir_aie_acquire_" << accessor_type << "_" << objFifoName
+           << "_" << objIndex << "(" << ctx_p << ", int timeout"
+           << ") {\n";
     output << "  const int id = " << lock.getLockIDValue() << ";\n";
     output << "  const int value = " << acquireLockValue << ";\n";
     output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
@@ -905,8 +906,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
            << ", timeout);\n";
     output << "}\n";
 
-    output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName 
-           << "_" << objIndex << "(" << ctx_p << ", int timeout" << ") {\n";
+    output << "int mlir_aie_release_" << accessor_type << "_" << objFifoName
+           << "_" << objIndex << "(" << ctx_p << ", int timeout"
+           << ") {\n";
     output << "  const int id = " << lock.getLockIDValue() << ";\n";
     output << "  const int value = " << releaseLockValue << ";\n";
     output << "  return XAie_LockRelease(" << deviceInstRef << ", "

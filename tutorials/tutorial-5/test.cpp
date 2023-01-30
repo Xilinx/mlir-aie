@@ -80,7 +80,7 @@ int main(int argc, char *argv[]) {
   // Helper function to enable all AIE cores
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
-  
+
   // Release object 0 of objFifo_in as a producer.
   mlir_aie_release_producer_objFifo_in_0(_xaie, 10000);
 
