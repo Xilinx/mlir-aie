@@ -42,7 +42,7 @@ Instantiating the above as code block would look something like:
 
   mlir_aie_clear_tile_memory(_xaie, 1, 4); // clear local data memory for tile(1,4)
 ```
-Following this code block, the only components that are not yet configured are the shim DMAs because they require some parameters obtained at runtime. In the case of our example vck190 platform, to configure the shimDMA using the libxaingine drivers, we pass in a virtual address to DDR. The general order that we call our host config APIs for shim DMA configuration are:
+Following this code block, the only components that are not yet configured are the shim DMAs because they require some parameters obtained at runtime. In the case of our example vck190 platform, to configure the shimDMA using the libxaiengine drivers, we pass in a virtual address to DDR. The general order that we call our host config APIs for shim DMA configuration are:
 1. Allocate buffers
 2. Configure shim DMAs
 3. Synchronize DDR cache (virtual address) with DDR physical memory as needed

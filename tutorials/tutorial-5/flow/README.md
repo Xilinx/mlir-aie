@@ -43,12 +43,24 @@ Here, we see that the rules for bd and channel definitions are the same as in th
 
 Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../../tutorial-4) for more details.
 
-### <ins>external_buffer</ins>
+### <ins>External_buffer</ins>
 The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` operator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
 ```
 %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
 ```
 This looks very much like a local buffer definition except that it's not attached to any tile. Where this memory is physically located and how the shimDMA is able to connect to it is defined in the next two blocks.
+
+> **NOTE - switchbox for shim Tile**: The shim tile switchbox has slightly different capabilities than a standard tile. For shim tiles, valid bundle names and channels are listed below: 
+
+| Bundle | Channels (In) | Channels (Out) |
+|-------|---|---|
+| DMA   | 2 | 2 |
+| West  | 4 | 4 |
+| East  | 4 | 4 |
+| North | 4 | 6 |
+| South | 8 | 6 |
+| FIFO  | 2 | 2 |
+| Trace | 1 | 0 |
 
 ## <ins>NOC configuration</ins>
 
