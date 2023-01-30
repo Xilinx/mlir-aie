@@ -10,7 +10,7 @@ module @hdiff_single_AIE{
   
   %lock73_14 = AIE.lock(%t73, 14) { sym_name = "lock73_14" }
 
-  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t73}, 5) {sym_name = "obj_in"}: !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t73}, 5) {sym_name = "obj_in"} : !AIE.objectFifo<memref<256xi32>>
   %obj_fifo_out = AIE.objectFifo.createObjectFifo(%t73, {%t70}, 1) {sym_name = "obj_out"} : !AIE.objectFifo<memref<256xi32>>
 
    // DDR buffer
