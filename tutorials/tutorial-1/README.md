@@ -59,7 +59,7 @@ The type of tiles and orientation of its associated local memory is architecture
 * odd row - memory on left
 * even row - memory on right
 
-<p><img src="../images/diagram3.jpg?raw=true" width="500"><p>
+<p><img src="../images/diagram3.png" width="800"><p>
 
 ### <ins>Buffer</ins>
 
