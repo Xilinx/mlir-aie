@@ -14,7 +14,7 @@ In [tutorial-2b](../tutorial-2b), we walked through the steps of running our des
 ## <ins>Tutorial 2c Lab</ins>
 1. Run `make` again in this directory.
 
-You will have noticed from [tutorial-2a](../tutorial-2a) that `aiecc.py` generates a number of output files including the `core_1_4.elf` and `tutorial-2c.exe`. These files will be used now to run our design on hardware. In the `mlir-aie` repo, we have information on building a custom platform for the `vck190` that configures all the NOC connections to enable all shim DMAs to communicate to DDR memroy. Once your board is up and running, we can run our tutorial designs by copying our .elf and .exe files to the board. You can copy those files directly to the SD card or if the board is connected to your shared network, you can copy your files over with:
+You will have noticed from [tutorial-2a](../tutorial-2a) that `aiecc.py` generates a number of output files including the `core_1_4.elf` and `tutorial-2c.exe`. These files will be used now to run our design on hardware. In the `mlir-aie` repo, we have information on building a custom platform for the `vck190` that configures all the NOC connections to enable all shim DMAs to communicate to DDR memory. Once your board is up and running, we can run our tutorial designs by copying our .elf and .exe files to the board. You can copy those files directly to the SD card or if the board is connected to your shared network, you can copy your files over with:
 ```
 scp *elf xilinx@<board ip addr>:/home/xilinx/.
 scp *exe xilinx@<board ip addr>:/home/xilinx/.
@@ -65,7 +65,7 @@ We call the `set` class function to record the counter start value. Now we enabl
 ```
 pc0_times[0] = pc0.diff();
 ```
-The `diff` class functions calculates the differnece in the counter from the last `set` or `diff` call. We can call it multiple times and store the results from mutliple runs to see if the values vary. We finish our program by reporting the number of cycles captured by our performance counters by calling:
+The `diff` class functions calculates the difference in the counter from the last `set` or `diff` call. We can call it multiple times and store the results from multiple runs to see if the values vary. We finish our program by reporting the number of cycles captured by our performance counters by calling:
 ```
 computeStats(pc0_times, 1);
 ```
@@ -77,7 +77,7 @@ This is passed the array of times along with size of the array in order to repor
     ```
     How many cycles is reported by the performance counter? <img src="../images/answer1.jpg" title="6" height=25>
 
-This number includes program initalization and cleanup on top of the actual kernel code. As kernel code is often run in a loop or for multiple iterations, this initialization and cleanup code cost is amortized when the design is running in steady state. We can subtract the initialiation and cleanup cycles by building an empty design and counting its reported cycles (as seen [here](../../test/benchmarks/05_Core_Startup/)). For Vitis 2022.2, this baseline is 128 cycles, which means the kernel code was absorbed in the initialziation and cleanup code cycles.
+This number includes program initialization and cleanup on top of the actual kernel code. As kernel code is often run in a loop or for multiple iterations, this initialization and cleanup code cost is amortized when the design is running in steady state. We can subtract the initialization and cleanup cycles by building an empty design and counting its reported cycles (as seen [here](../../test/benchmarks/05_Core_Startup/)). For Vitis 2022.2, this baseline is 128 cycles, which means the kernel code was absorbed in the initialization and cleanup code cycles.
 
 We are now ready to start talking about how communication between AI Engine tiles is modeled in MLIR-AIE in [tutorial-3](../../tutorial-3).
 

@@ -56,7 +56,7 @@ The acquire value must match the current lock state in order for the acquire to 
 
 ## <ins>Object FIFO Abstraction </ins>
 
-In this tutorial the `objectFifo` abstraction is also introduced, see below. This is a higher-level abstraction which is used to establish communication accross the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
+In this tutorial the `objectFifo` abstraction is also introduced, see below. This is a higher-level abstraction which is used to establish communication across the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
 
 [Link to higher level objectFifo write-up](./objectFifo_ver)
 
@@ -79,7 +79,7 @@ In [tutorial-2c](../tutorial-2/tutorial-2c/answers/test_perf.cpp), we declared a
 
 10. Copy this design on the board and run the program with `sudo ./tutorial-3.exe`. What cycle count do you see? <img src="../images/answer1.jpg" title="~3300 cycles" height=25>
 
-The reason the cycle count is much higher here is because the time it takes for tiles to be enabled is the overhead of function calls on the host processor (ARM). This means the fist tile is enabled for some time (and done) before the second tile is enabled so we are essentially measuring the timing between core enable function calls from the host. This is realy an artifact of measuring performance of hardware components that are controlled by a software host processor.
+The reason the cycle count is much higher here is because the time it takes for tiles to be enabled is the overhead of function calls on the host processor (ARM). This means the fist tile is enabled for some time (and done) before the second tile is enabled so we are essentially measuring the timing between core enable function calls from the host. This is really an artifact of measuring performance of hardware components that are controlled by a software host processor.
 
 11. Change your [aie.mlir](./aie.mlir) design to swap the functionality of the two tiles, compile and simulate your design to confirm correct functionality. What cycle count do you get in simulation? <img src="../images/answer1.jpg" title="48 cycles" height=25>
     
