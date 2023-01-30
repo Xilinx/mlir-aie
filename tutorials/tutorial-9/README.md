@@ -7,7 +7,7 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
-# <ins>Tutorial 2 - Single kernel compilation and simulation</ins>
+# <ins>Tutorial 9 - Single kernel compilation and simulation</ins>
 
 MLIR gives us the ability to leverage different dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) when defining AIE core functionality. The ability to lower from these dialects and many others into efficient AI Engine code is an active area of research and development. However, when working with existing optimized AIE kernel code written in C/C++ (or wanting to write your own), we can reference precompiled object code in our AIE core operation definition through the use [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect.
 
@@ -75,9 +75,9 @@ This simulator executes a number of Tcl commands which we can group into Tcl bat
 
 Now we have all the pieces we need to compile and simulate single kernels from the command line and then compile the kernel core into an object file to be integrated into our MLIR description and expanded into full kernel object code.
 
-## <ins>Tutorial 2 Lab</ins>
+## <ins>Tutorial 9 Lab</ins>
 
-1. We will work backwards in this lab to first compile and simulate our single kernel design (which is the duplicate of the simple design used in tutorial-1). Take a look at the file under the `external_kernel` directory, specifically the files [kernel.h](external_kernel/kernel.h), [test.cc](external_kernel/test.cc), and [test.prx](external_kernel/text.prx) to familiarize yourself with these file contents. When customizing this for your own kernel function, you will only need to modify `kenrnel.h` (to match your function signature) and `test.cc` (to customize the function call and testbench for your own function).
+1. We will work backwards in this lab to first compile and simulate our single kernel design (which is the duplicate of the simple design used in tutorial-1). Take a look at the file under the `external_kernel` directory, specifically the files [kernel.h](external_kernel/kernel.h), [test.cc](external_kernel/test.cc), and [test.prx](external_kernel/text.prx) to familiarize yourself with these file contents. When customizing this for your own kernel function, you will only need to modify `kernel.h` (to match your function signature) and `test.cc` (to customize the function call and testbench for your own function).
 
 2. Go into the `external_kernel` directory and compile and simulate as follows:
     ```

@@ -19,13 +19,13 @@ In thinking about data communication, it's often helpful to use the memory hiera
 A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
 <p><img src="../../images/diagram9.png" width="1000"><p>
 
-Here, we see the different components of the L1-L3 communciation defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
+Here, we see the different components of the L1-L3 communication defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
 
 ## <ins>Shim DMA and External Buffers</ins>
 ### <ins>shimDMA</ins>
 We first need a component to move the data out of the AIE array and that component can be the shim DMA which is connected to the NoC block, or the PL interfaces. For this tutorial, we will focus on the shim DMA as that does not require custom PL blocks to move data to the DDR controller.
 
-The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rather than define the BD behavior inside an `AIE.mem` oeprator, we define the same set of BD behaviors inside the `AIE.shimDMA` operator as shown below:
+The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rather than define the BD behavior inside an `AIE.mem` operator, we define the same set of BD behaviors inside the `AIE.shimDMA` operator as shown below:
 ```
 %shimdma70 = AIE.shimDMA(%tile70) {
     AIE.dmaStart("MM2S", 0, ^bd1, ^end)
@@ -43,12 +43,24 @@ Here, we see that the rules for bd and channel definitions are the same as in th
 
 Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../../tutorial-4) for more details.
 
-### <ins>external_buffer</ins>
+### <ins>External_buffer</ins>
 The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` operator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
 ```
 %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
 ```
-This looks very much like a local buffer defintion except that it's not attached to any tile. Where this memory is physically located and how the shimDMA is able to connect to it is defined in the next two blocks.
+This looks very much like a local buffer definition except that it's not attached to any tile. Where this memory is physically located and how the shimDMA is able to connect to it is defined in the next two blocks.
+
+> **NOTE - switchbox for shim Tile**: The shim tile switchbox has slightly different capabilities than a standard tile. For shim tiles, valid bundle names and channels are listed below: 
+
+| Bundle | Channels (In) | Channels (Out) |
+|-------|---|---|
+| DMA   | 2 | 2 |
+| West  | 4 | 4 |
+| East  | 4 | 4 |
+| North | 4 | 6 |
+| South | 8 | 6 |
+| FIFO  | 2 | 2 |
+| Trace | 1 | 0 |
 
 ## <ins>NOC configuration</ins>
 
@@ -65,12 +77,12 @@ mlir_aie_configure_shimdma_70(_xaie);
 In this example, we first call `mlir_aie_mem_alloc` to allocate a region of DDR memory with a given offset and size and return a virtual address pointer. Then, in the `mlir_aie_external_set_addr_<bufname>(virtual_addr)`, we pass in the virtual address to MLIR defined external buffer. 
 > Note that the `<bufname>` used here is the `sym_name` defined in the MLIR code. 
 
-Finally, the `mlir_aie_configure_shimdma_<location>()` is called to configure the shimDMA given the shim DMA operators in MLIR and the virtual address defined at runtime in the host code. The `<location>` refers to the shim DMA defined in MLIR and is the concatentation of the column-row number, in this case column 7, row 0 or 70. 
+Finally, the `mlir_aie_configure_shimdma_<location>()` is called to configure the shimDMA given the shim DMA operators in MLIR and the virtual address defined at runtime in the host code. The `<location>` refers to the shim DMA defined in MLIR and is the concatenation of the column-row number, in this case column 7, row 0 or 70. 
 
 Once these three functions are called, the shim DMA is configured properly with the runtime allocated memory region in DDR. Since the common use of shimDMA requires timing synchronization to start a transaction, we often use locks to do this just as we did in the tile DMA example. Here, we can acquire and release locks in the shimDMA using the following access functions:
 ```
 mlir_aie_acquire_<sym_name>_lock(_xaie, 1, 100);
-mlir_aie_release_<symn_name_lock(_xaie, 0, 100);
+mlir_aie_release_<sym_name_lock(_xaie, 0, 100);
 ```
 The `<sym_name>` used here is the same sym_name of the external buffer. The first argument is the lock value (0,1) and the second argument is the timeout duration in microseconds.
 

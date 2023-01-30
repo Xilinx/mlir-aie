@@ -9,13 +9,13 @@
 //===----------------------------------------------------------------------===//-->
 # <ins>Tutorial 2b - Simulation</ins>
 
-In [tutorial-2a](../tutorial-2a), we described how to construct the host code `test.cpp` file for configuring, running and testing our AI Engine design. This tutorial focuses on how to run a hybrid software simulation of our design with the Vitis aiesimulator. While single kernel simulation is important and covered in [tutorial-9](../../tutorial-9), we focus here on simulating our entire AI Engine system design where individual tiles run a cycle accurate simulation and communciation between tiles are simulated at the transaction level. 
+In [tutorial-2a](../tutorial-2a), we described how to construct the host code `test.cpp` file for configuring, running and testing our AI Engine design. This tutorial focuses on how to run a hybrid software simulation of our design with the Vitis aiesimulator. While single kernel simulation is important and covered in [tutorial-9](../../tutorial-9), we focus here on simulating our entire AI Engine system design where individual tiles run a cycle accurate simulation and communication between tiles are simulated at the transaction level. 
 
-By default, `aiecc.py` will genearte the `Work` directory which contians the stub and configuration files necessary for integrating with aiesimulator. In our [Makefile](./Makefile), we call `make` to build the simulator object file.
+By default, `aiecc.py` will generate the `Work` directory which contains the stub and configuration files necessary for integrating with aiesimulator. In our [Makefile](./Makefile), we call `make` to build the simulator object file.
 ```
 make -C Work/ps/c_rts/systemC link
 ```
-> Note: Make sure the environemnt variable `MLIR_AIE_DIR` is set to the absolute path to your mlir-aie repo so the simulator can find the necessary reference files. 
+> Note: Make sure the environment variable `MLIR_AIE_DIR` is set to the absolute path to your mlir-aie repo so the simulator can find the necessary reference files. 
 
 Aiesimulator is then invoked with the following command:
 ```

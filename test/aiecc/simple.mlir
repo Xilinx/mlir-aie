@@ -8,12 +8,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --compile --xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=XCHESSCC
-// RUN: aiecc.py --compile --no-xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
-// RUN: aiecc.py --no-compile -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
-// RUN: aiecc.py --no-unified --compile --xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=XCHESSCC
-// RUN: aiecc.py --no-unified --compile --no-xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
-// RUN: aiecc.py --no-unified --no-compile -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: aiecc.py --compile --xchesscc --no-link -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=XCHESSCC
+// RUN: aiecc.py --compile --no-xchesscc --no-link -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
+// RUN: aiecc.py --no-compile --no-link -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: aiecc.py --no-unified --compile --no-link --xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=XCHESSCC
+// RUN: aiecc.py --no-unified --compile --no-link --no-xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
+// RUN: aiecc.py --no-unified --no-compile --no-link -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
 
 // XCHESSCC-NOT: {{^llc}}
 // XCHESSCC: xchesscc_wrapper
