@@ -5,18 +5,17 @@
 
 
 module @hdiff_multi_AIE{
-  %t74 = AIE.tile(7, 4)
-  %t73 = AIE.tile(7, 3)
+
   %t72 = AIE.tile(7, 2)
   %t71 = AIE.tile(7, 1)
   %t70 = AIE.tile(7, 0)
   
-  %lock73_14 = AIE.lock(%t73, 14) { sym_name = "lock73_14" }
-  %lock74_14 = AIE.lock(%t74, 14) { sym_name = "lock74_14" }
+  %lock71_14 = AIE.lock(%t71, 14) { sym_name = "lock71_14" }
+  %lock72_14 = AIE.lock(%t72, 14) { sym_name = "lock72_14" }
 
-  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t73,%t74}, 6) {sym_name = "" }: !AIE.objectFifo<memref<256xi32>>
-  %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 4){sym_name = "obj_out_lap" } : !AIE.objectFifo<memref<256xi32>>
-  %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t74, {%t70}, 2){sym_name = "obj_out_flux" } : !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t71,%t72}, 6) {sym_name = "" }: !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t71, {%t72}, 4){sym_name = "obj_out_lap" } : !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t72, {%t70}, 2){sym_name = "obj_out_flux" } : !AIE.objectFifo<memref<256xi32>>
    // DDR buffer
   %ext_buffer_in0  = AIE.external_buffer  {sym_name = "ddr_test_buffer_in0"}: memref<1536 x i32>
   %ext_buffer_out = AIE.external_buffer  {sym_name = "ddr_test_buffer_out"}: memref<512 x i32>
@@ -27,12 +26,12 @@ module @hdiff_multi_AIE{
 
   func.func private @hdiff_lap(%AL: memref<256xi32>,%BL: memref<256xi32>, %CL:  memref<256xi32>, %DL: memref<256xi32>, %EL:  memref<256xi32>,  %OLL1: memref<256xi32>,  %OLL2: memref<256xi32>,  %OLL3: memref<256xi32>,  %OLL4: memref<256xi32>) -> ()
   
-  %c13 = AIE.core(%t73) { 
+  %c13 = AIE.core(%t71) { 
     
     %lb = arith.constant 0 : index
-    %ub = arith.constant 1: index
+    %ub = arith.constant 2: index
     %step = arith.constant 1 : index
-    AIE.useLock(%lock73_14, "Acquire", 0) // start the timer
+    AIE.useLock(%lock71_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectFifo.acquire<Consume>(%obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, 5) : !AIE.objectFifoSubview<memref<256xi32>>
       %row0 = AIE.objectFifo.subview.access %obj_in_subview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
@@ -63,10 +62,10 @@ module @hdiff_multi_AIE{
 
 func.func private @hdiff_flux(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  memref<256xi32>,   %OLF1: memref<256xi32>,  %OLF2: memref<256xi32>,  %OLF3: memref<256xi32>,  %OLF4: memref<256xi32>,  %OF: memref<256xi32>) -> ()
   
-  %c14 = AIE.core(%t74) { 
+  %c14 = AIE.core(%t72) { 
     
     %lb = arith.constant 0 : index
-    %ub = arith.constant 1: index
+    %ub = arith.constant 2: index
     %step = arith.constant 1 : index
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectFifo.acquire<Consume>(%obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, 5) : !AIE.objectFifoSubview<memref<256xi32>>
@@ -90,7 +89,7 @@ func.func private @hdiff_flux(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  m
       AIE.objectFifo.release<Produce>(%obj_fifo_out_flux : !AIE.objectFifo<memref<256xi32>>, 1)
       AIE.objectFifo.release<Consume>(%obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, 1)
     }
-    AIE.useLock(%lock74_14, "Acquire", 0) // stop the timer
+    AIE.useLock(%lock72_14, "Acquire", 0) // stop the timer
     AIE.objectFifo.release<Consume>(%obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, 4)
 
     AIE.end

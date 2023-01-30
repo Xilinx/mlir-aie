@@ -45,13 +45,13 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  mlir_aie_acquire_lock(_xaie, 7, 3, 14, 0, 0); // for timing
+  mlir_aie_acquire_lock(_xaie, 7, 1, 14, 0, 0); // for timing
   // When lock 14 is acquired, we broadcast event 2 from tile t73
-  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,3), 
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,1), 
                         XAIE_MEM_MOD, 2,
                         XAIE_EVENT_LOCK_14_ACQ_MEM); 
   // we use broadcast event 2 at tile t74 to start the timer, and the local event lock 14 acquire to stop the timer
-  EventMonitor pc0(_xaie, 7, 4, 0, XAIE_EVENT_BROADCAST_2_MEM,
+  EventMonitor pc0(_xaie, 7, 2, 0, XAIE_EVENT_BROADCAST_2_MEM,
                  XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,
                  XAIE_MEM_MOD);
   pc0.set();
@@ -117,7 +117,7 @@ int main(int argc, char *argv[]) {
   ///// --- start counter-----
   t = clock(); 
   mlir_aie_start_cores(_xaie);
-  mlir_aie_release_lock(_xaie, 7, 3, 14, 0, 0); // for timing
+  mlir_aie_release_lock(_xaie, 7, 1, 14, 0, 0); // for timing
   t = clock() - t; 
 
   printf ("It took %ld clicks (%f seconds).\n",t,((float)t)/CLOCKS_PER_SEC);

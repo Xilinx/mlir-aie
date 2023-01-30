@@ -20,7 +20,7 @@
 #define TOTAL_B_BLOCK 1 // only 1
 #define B_BLOCK_DEPTH 4 //set how many rows
 #define HDIFF_COL 3 //columns
-#define START_ROW 2
+#define START_ROW 1
 #define INPUT_ROWS 8
 
 #include "aie_inc.cpp"
@@ -51,13 +51,13 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  mlir_aie_acquire_lock(_xaie, 7, 3, 14, 0, 0); // for timing
+  mlir_aie_acquire_lock(_xaie, 0, 1, 14, 0, 0); // for timing
   // When lock 14 is acquired, we broadcast event 2 from tile t73
-  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,3), 
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(0,1), 
                         XAIE_MEM_MOD, 2,
                         XAIE_EVENT_LOCK_14_ACQ_MEM); 
   // we use broadcast event 2 at tile t75 to start the timer, and the local event lock 14 acquire to stop the timer
-  EventMonitor pc0(_xaie, 7, 5, 0, XAIE_EVENT_BROADCAST_2_MEM,
+  EventMonitor pc0(_xaie, 2, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
                  XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,
                  XAIE_MEM_MOD);
   pc0.set();

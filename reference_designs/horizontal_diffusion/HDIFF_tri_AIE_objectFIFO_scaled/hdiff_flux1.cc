@@ -29,8 +29,8 @@ void hdiff_flux1(int32_t* restrict row1, int32_t* restrict row2,int32_t* restric
     v8int32 * restrict row2_ptr=(v8int32 *)row2;
     v8int32 * restrict row3_ptr=(v8int32 *)row3;
 
-    v8int32 * restrict r1=(v8int32 *)row1_ptr;
-    v8int32 * restrict r2=(v8int32 *)row2_ptr;
+    // v8int32 * restrict r1=(v8int32 *)row1_ptr;
+    // v8int32 * restrict r2=(v8int32 *)row2_ptr;
 
     // v8int32 * restrict row0_ptr=(v8int32 *)row0;
     // v8int32 * restrict row1_ptr=(v8int32 *)row1;
@@ -46,11 +46,11 @@ void hdiff_flux1(int32_t* restrict row1, int32_t* restrict row2,int32_t* restric
   
         // r1 = ptr_in + 1*COL/8 + aor*COL/8;
         // r2 = ptr_in + 2*COL/8 + aor*COL/8;
-        data_buf1 = upd_w(data_buf1, 0, *r1++);
-        data_buf1 = upd_w(data_buf1, 1, *r1);
+        data_buf1 = upd_w(data_buf1, 0, *row1_ptr++);
+        data_buf1 = upd_w(data_buf1, 1, *row1_ptr);
 
-        data_buf2 = upd_w(data_buf2, 0, *r2++);
-        data_buf2 = upd_w(data_buf2, 1, *r2);
+        data_buf2 = upd_w(data_buf2, 0, *row2_ptr++);
+        data_buf2 = upd_w(data_buf2, 1, *row2_ptr);
 
         
     // buf_2=R2 , and buf_1=R3
@@ -102,10 +102,9 @@ void hdiff_flux1(int32_t* restrict row1, int32_t* restrict row2,int32_t* restric
             *ptr_out++= flux_sub;
             *ptr_out++= srs(acc_1,0);
             
-            r1=row3_ptr+i;
-
-            data_buf1 = upd_w(data_buf1, 0, *r1++);
-            data_buf1 = upd_w(data_buf1, 1, *r1);
+            row3_ptr=((v8int32 *) (row3))+i;
+            data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
+            data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
 
             
          
@@ -126,9 +125,9 @@ void hdiff_flux1(int32_t* restrict row1, int32_t* restrict row2,int32_t* restric
             *ptr_out++= srs(acc_1,0);
 
             // r1 = ptr_in + 1*COL/8 + i+1+ aor*COL/8;
-            r1=row1_ptr+i;
-            data_buf1 = upd_w(data_buf1, 0, *r1++);
-            data_buf1 = upd_w(data_buf1, 1, *r1);
+            row1_ptr=((v8int32 *) (row1))+i+1;
+            data_buf2 = upd_w(data_buf2, 0, *(row1_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row1_ptr));
 
             
 
@@ -137,10 +136,10 @@ void hdiff_flux1(int32_t* restrict row1, int32_t* restrict row2,int32_t* restric
             *ptr_out++= ext_w(data_buf2,0);
 
           //LOAD DATA FOR NEXT ITERATION         
-            r2=row2_ptr+i;
+            row2_ptr=((v8int32 *) (row2))+i+1;
             // data_buf1=*r1++;
-            data_buf2 = upd_w(data_buf2, 0, *r2++);
-            data_buf2 = upd_w(data_buf2, 1, *r2);
+            data_buf2 = upd_w(data_buf2, 0, *(row2_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *row2_ptr);
 
 
                       

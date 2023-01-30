@@ -6,7 +6,8 @@ ACDC_AIE = $(dir $(shell which aie-opt))/..
 ACDC_AIR = $(dir $(shell which air-opt))/..
 SYSROOT = /mnt/scratch/gagsingh/sysroot/sysroot
 
-all: test.elf
+i32: i32_chess i32.elf
+f32: f32_chess f32.elf
 
 build: 
 	xchessmk test.prx
@@ -14,8 +15,12 @@ sim:
 	xca_udm_dbg -P /mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/data/cervino/lib/ -t sim.tcl
 
 
-chess: 
+i32_chess: 
 	/mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/bin/xchesscc -p me -P /mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/data/cervino/lib/ -L /mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/data/cervino/lib/ -c ./hdiff_lap.cc ./hdiff_flux.cc
+
+f32_chess: 
+	/mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/bin/xchesscc -p me -P /mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/data/cervino/lib/ -L /mnt/scratch/tools_tmp/Xilinx/Vitis/2021.2/aietools/data/cervino/lib/ -c ./hdiff_lap_fp32.cc ./hdiff_flux_fp32.cc
+
 # test.elf: 
 # 	/mnt/scratch/gagsingh/mlir-air/utils/mlir-aie/install/bin/aiecc.py -v --aie-generate-xaiev2 --host-target=x86_64-amd-linux-gnu --sysroot=/mnt/scratch/gagsingh/xilinx-versal-setup/xilinx-versal-common-sysroot-2020.2/sources/x86_64-linux aie.mlir \
 # 	-I/mnt/scratch/gagsingh/mlir-air/utils/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2/gaganlib/include -L/mnt/scratch/gagsingh/mlir-air/utils/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2/gaganlib/lib \
@@ -24,8 +29,12 @@ chess:
 # 	-L/mnt/scratch/gagsingh/mlir-air/install-pcie/runtime_lib/airhost test.cpp -Wl,--whole-archive -lairhost -Wl,--no-whole-archive -lstdc++ -o test.elf
 
 
-test.elf: 
+i32.elf: 
 	/mnt/scratch/gagsingh/mlir-aie/install/bin/aiecc.py --sysroot=/mnt/scratch/gagsingh/sysroot/sysroot --host-target=aarch64-linux-gnu aie.mlir \
+	-I/mnt/scratch/gagsingh/mlir-aie/install/runtime_lib /mnt/scratch/gagsingh/mlir-aie/install/runtime_lib/test_library.cpp ./test.cpp -o test.elf
+
+f32.elf: 
+	/mnt/scratch/gagsingh/mlir-aie/install/bin/aiecc.py --sysroot=/mnt/scratch/gagsingh/sysroot/sysroot --host-target=aarch64-linux-gnu aie_fp32.mlir \
 	-I/mnt/scratch/gagsingh/mlir-aie/install/runtime_lib /mnt/scratch/gagsingh/mlir-aie/install/runtime_lib/test_library.cpp ./test.cpp -o test.elf
 # test.elf: 
 # 	/mnt/scratch/gagsingh/mlir-aie/install/bin/aiecc.py --aie-generate-xaiev2 --host-target=aarch64-linux-gnu --sysroot=/mnt/scratch/gagsingh/sysroot/sysroot\

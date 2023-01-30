@@ -1,5 +1,6 @@
 /*  (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET             */
 
+
 // #include <adf.h>
 #include "./include.h"
 #include "hdiff.h"
@@ -63,9 +64,9 @@ void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             acc_1=lmac8   (acc_1,data_buf1,1,0x76543210,coeffs_rest,    0,0x00000000);    //b,j
           
             // r2 = ptr_in+2 * COL/8+i ;
-            r1=row2_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+            row2_ptr=((v8int32 *) (row2))+i;
+            data_buf2 = upd_w(data_buf2, 0, *(row2_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row2_ptr));
 
             acc_0=lmac8   (acc_0,data_buf2,1,0x76543210,coeffs_rest,    0,0x00000000); //c,k,f
             acc_0=lmsc8   (acc_0,data_buf2,2,0x76543210,coeffs,    0,0x00000000);      //c,k,f,4*g
@@ -90,9 +91,9 @@ void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
         
 
             // r1 = ptr_in+1 * COL/8+i ;
-            r1=row1_ptr+i;
-            data_buf1 = upd_w(data_buf1, 0, *(r1)++);
-            data_buf1 = upd_w(data_buf1, 1, *(r1));    
+            row1_ptr=((v8int32 *) (row1))+i;
+            data_buf1 = upd_w(data_buf1, 0, *(row1_ptr)++);
+            data_buf1 = upd_w(data_buf1, 1, *(row1_ptr));     
 
             acc_0=lmac8  (acc_0,data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);  // l, 4*h, g
             acc_0=lmac8   (acc_0,data_buf2,4,0x76543210,coeffs_rest,    0,0x00000000); // l, 4*h, g, i 
@@ -115,18 +116,18 @@ void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             acc_0=lmul8   (data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);   // g
 
             // r2 = ptr_in + 0*COL/8 + i ; 
-            r1=row0_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+            row0_ptr=((v8int32 *) (row0))+i;
+            data_buf2 = upd_w(data_buf2, 0, *(row0_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row0_ptr));
                   
             acc_1=lmsc8    (acc_1, data_buf1,2,0x76543210,coeffs,    0,0x00000000);             // g, 4*c
             acc_1=lmac8    (acc_1, data_buf1,1,0x76543210,coeffs_rest,    0,0x00000000);        // g, 4*c, b
             acc_1=lmac8   (acc_1,data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);          // g, 4*c, b, a
           
             // r2 = ptr_in + 4*COL/8 + i ; 
-            r1=row4_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+            row4_ptr=((v8int32 *) (row4))+i;
+            data_buf2 = upd_w(data_buf2, 0, *(row4_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row4_ptr));
 
             acc_1=lmac8    ( acc_1,data_buf1,3,0x76543210,coeffs_rest,    0,0x00000000);       // g, 4*c, b, a, d               
             acc_0=lmac8   (acc_0,data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);         // g, m
@@ -141,9 +142,9 @@ void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
 
             
             // r1 = ptr_in + 3*COL/8 + i ;
-            r1=row3_ptr+i;
-            data_buf1 = upd_w(data_buf1, 0, *(r1)++);
-            data_buf1 = upd_w(data_buf1, 1, *(r1));
+            row3_ptr=((v8int32 *) (row3))+i;
+            data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
+            data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
 
             acc_0=lmsc8   (acc_0,data_buf1,2,0x76543210,coeffs,    0,0x00000000); //g, m , k * 4
 
@@ -159,9 +160,9 @@ void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
              
             //LOAD DATA FOR NEXT ITERATION
             // r2 = ptr_in + 1*COL/8 + i + 1 ;
-            r1=row1_ptr+i+1;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+            row1_ptr=((v8int32 *) (row1))+i+1;
+            data_buf2 = upd_w(data_buf2, 0, *(row1_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row1_ptr));
 
         // }
 
