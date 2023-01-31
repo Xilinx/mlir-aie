@@ -25,18 +25,18 @@ module @idct {
   %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, {%t73}, 2) : !AIE.objectFifo<memref<64xi16>>
   %of_t73_t74 = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 2) : !AIE.objectFifo<memref<64xi16>>
   %of_t74_t75 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 2) : !AIE.objectFifo<memref<64xi16>>
-  %of_t75_t70 = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2) : !AIE.objectFifo<memref<64xi16>>
+  %of_t75_t70 = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2) : !AIE.objectFifo<memref<64xui8>>
 
   // DDR buffer
   %buffer_in  = AIE.external_buffer { sym_name = "buffer_in" }  : memref<512xi16>
-  %buffer_out = AIE.external_buffer { sym_name = "buffer_out" }  : memref<512xi16>
+  %buffer_out = AIE.external_buffer { sym_name = "buffer_out" }  : memref<512xui8>
 
   AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in}) : (memref<512xi16>)
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, {%buffer_out}) : (memref<512xi16>)
+  AIE.objectFifo.registerExternalBuffers(%t70, %of_t75_t70 : !AIE.objectFifo<memref<64xui8>>, {%buffer_out}) : (memref<512xui8>)
 
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
   func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
-  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
+  func.func private @idct_8x8_mmult_v(%A: memref<64xi16>, %B: memref<64xui8>) -> ()
   func.func private @pass(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
 
   %c13 = AIE.core(%t73) { 
@@ -63,7 +63,7 @@ module @idct {
     }
 
     AIE.end
-  } { link_with="dequant.o" }
+  } { link_with="buildAIE/dequant.cc.o" }
 
   %c74 = AIE.core(%t74) { 
     %lb = arith.constant 0 : index
@@ -89,7 +89,7 @@ module @idct {
     }
 
     AIE.end
-  } { link_with="idct_horizontal.o" }
+  } { link_with="buildAIE/idct_horizontal.cc.o" }
 
   %c75 = AIE.core(%t75) { 
     %lb = arith.constant 0 : index
@@ -105,15 +105,15 @@ module @idct {
     scf.for %iv = %lb to %ub step %step {
       %inputSubview = AIE.objectFifo.acquire<Consume>(%of_t74_t75 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
-      %outputSubview = AIE.objectFifo.acquire<Produce>(%of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
-      %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
+      %outputSubview = AIE.objectFifo.acquire<Produce>(%of_t75_t70 : !AIE.objectFifo<memref<64xui8>>, 1) : !AIE.objectFifoSubview<memref<64xui8>>
+      %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xui8>> -> memref<64xui8>
 
-      func.call @idct_8x8_mmult_v(%input, %output) : (memref<64xi16>, memref<64xi16>) -> ()
+      func.call @idct_8x8_mmult_v(%input, %output) : (memref<64xi16>, memref<64xui8>) -> ()
       
       AIE.objectFifo.release<Consume>(%of_t74_t75 : !AIE.objectFifo<memref<64xi16>>, 1)
-      AIE.objectFifo.release<Produce>(%of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, 1)   
+      AIE.objectFifo.release<Produce>(%of_t75_t70 : !AIE.objectFifo<memref<64xui8>>, 1)   
     }
 
     AIE.end
-  } { link_with="idct_vertical.o" }
+  } { link_with="buildAIE/idct_vertical.cc.o" }
 }

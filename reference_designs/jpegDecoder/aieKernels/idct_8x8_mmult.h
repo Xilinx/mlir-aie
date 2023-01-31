@@ -1,5 +1,4 @@
-//===- idct_8x8_mmult.h -------------------------------------------------*- C++
-//-*-===//
+//===- idct_8x8_mmult.h -----------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -48,7 +47,7 @@
 extern "C" {
 void dequant_8x8(int16_t *restrict input, int16_t *restrict output);
 void idct_8x8_mmult_h(int16_t *restrict input, int16_t *restrict output);
-void idct_8x8_mmult_v(int16_t *restrict input, int16_t *restrict output);
+void idct_8x8_mmult_v(int16_t *restrict input, uint8_t *restrict output);
 }
 
 #endif

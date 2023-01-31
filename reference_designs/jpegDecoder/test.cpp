@@ -79,8 +79,8 @@ int main(int argc, char *argv[]) {
   printf("IDCT data loaded.\n");
 
   mlir_aie_init_mems(_xaie, 2);
-  int16_t *ddr_ptr_in = (int16_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int16_t *ddr_ptr_out = (int16_t *)mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  int16_t *ddr_ptr_in = (int16_t *)mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT/2);
+  uint8_t *ddr_ptr_out = (uint8_t *)mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT/4);
   for (int16_t i = 0; i < DMA_COUNT; i++) {
     *(ddr_ptr_in + i) = image[i];
     *(ddr_ptr_out + i) = 0;

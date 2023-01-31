@@ -27,9 +27,9 @@ alignas(v8int16) int16_t ffv_lut[8] = {512, 512, 512, 512, 512, 512, 512, 512};
 //     }
 
 // }
-void idct_8x8_mmult_v(int16_t *restrict input, uint8_t *restrict output) {
+void idct_8x8_mmult_v(int16_t *restrict input, int16_t *restrict output) {
   v16int16 *restrict ptr_in = (v16int16 *)input;
-  v16uint8 *restrict ptr_out = (v16uint8 *)output;
+  v8int16 *restrict ptr_out = (v8int16 *)output;
   v16int16 *restrict ptr_coeff = (v16int16 *)cospi_coeff_lut_v;
   v8int16 *restrict ptr_ffv = (v8int16 *)ffv_lut;
 
@@ -60,45 +60,60 @@ void idct_8x8_mmult_v(int16_t *restrict input, uint8_t *restrict output) {
       vec_a_hi = upd_w(vec_a_hi, 1, *ptr_in++);
 
       acc_lo = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b0, 0, 0x00000000, 1);
-      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b0, 4, 0x00000000, 1);
-      //*ptr_out++ = srs(acc_lo, SHIFT_TXFM);
+      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b0, 0,
+                    0x00000000, 1);
+      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b0, 4, 0x00000000, 1);
+      *ptr_out++ = srs(acc_lo, SHIFT_TXFM);
 
       acc_hi = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b0, 0, 0x88888888, 1);
-      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b0, 4, 0x88888888, 1);
-      *ptr_out++ = ubsrs(concat(acc_hi, acc_lo), SHIFT_TXFM);
+      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b0, 0,
+                    0x88888888, 1);
+      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b0, 4, 0x88888888, 1);
+      *ptr_out++ = srs(acc_hi, SHIFT_TXFM);
 
       acc_lo = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b1, 0, 0x00000000, 1);
-      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b1, 4, 0x00000000, 1);
-      //*ptr_out++ = srs(acc_lo, SHIFT_TXFM);
+      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b1, 0,
+                    0x00000000, 1);
+      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b1, 4, 0x00000000, 1);
+      *ptr_out++ = srs(acc_lo, SHIFT_TXFM);
 
       acc_hi = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b1, 0, 0x88888888, 1);
-      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b1, 4, 0x88888888, 1);
-      *ptr_out++ = ubsrs(concat(acc_hi, acc_lo), SHIFT_TXFM);
+      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b1, 0,
+                    0x88888888, 1);
+      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b1, 4, 0x88888888, 1);
+      *ptr_out++ = srs(acc_hi, SHIFT_TXFM);
 
       acc_lo = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b2, 0, 0x00000000, 1);
-      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b2, 4, 0x00000000, 1);
-      //*ptr_out++ = srs(acc_lo, SHIFT_TXFM);
+      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b2, 0,
+                    0x00000000, 1);
+      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b2, 4, 0x00000000, 1);
+      *ptr_out++ = srs(acc_lo, SHIFT_TXFM);
 
       acc_hi = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b2, 0, 0x88888888, 1);
-      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b2, 4, 0x88888888, 1);
-      *ptr_out++ = ubsrs(concat(acc_hi, acc_lo), SHIFT_TXFM);
+      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b2, 0,
+                    0x88888888, 1);
+      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b2, 4, 0x88888888, 1);
+      *ptr_out++ = srs(acc_hi, SHIFT_TXFM);
 
       acc_lo = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b3, 0, 0x00000000, 1);
-      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b3, 4, 0x00000000, 1);
-      //*ptr_out++ = srs(acc_lo, SHIFT_TXFM);
+      acc_lo = mac8(acc_lo, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b3, 0,
+                    0x00000000, 1);
+      acc_lo = mac8(acc_lo, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b3, 4, 0x00000000, 1);
+      *ptr_out++ = srs(acc_lo, SHIFT_TXFM);
 
       acc_hi = ups(*ptr_ffv, SHIFT_TXFM);
-      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b3, 0, 0x88888888, 1);
-      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410, 2, 0x3210, vec_b3, 4, 0x88888888, 1);
-      *ptr_out++ = ubsrs(concat(acc_hi, acc_lo), SHIFT_TXFM);
-      
+      acc_hi = mac8(acc_hi, vec_a_lo, 0, 0x1c181410, 2, 0x3210, vec_b3, 0,
+                    0x88888888, 1);
+      acc_hi = mac8(acc_hi, concat(undef_v32int16(), vec_a_hi), 32, 0x1c181410,
+                    2, 0x3210, vec_b3, 4, 0x88888888, 1);
+      *ptr_out++ = srs(acc_hi, SHIFT_TXFM);
 
 #if (NUM_DCT8x8_BLOCKS_PER_ITERATION > 1)
       vec_a_lo = upd_w(vec_a_lo, 0, *ptr_in++);
