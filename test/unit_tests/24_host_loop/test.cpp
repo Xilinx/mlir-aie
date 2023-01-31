@@ -44,11 +44,13 @@ int main(int argc, char *argv[]) {
     int errors = 0;
 
     mlir_aie_clear_tile_memory(_xaie, 3, 4);
+    printf("Status of tile(3,4) before core start:\n");
+    mlir_aie_print_tile_status(_xaie, 3, 4);
 
     // Helper function to enable all AIE cores
     printf("Start cores\n");
     mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
-    printf("Status of shim (7,0) before core start:\n");
+    printf("Status of shim(7,0) before core start:\n");
     mlir_aie_print_shimdma_status(_xaie, 7, 0);
     mlir_aie_start_cores(_xaie);
 
@@ -58,8 +60,11 @@ int main(int argc, char *argv[]) {
         mlir_aie_sync_mem_dev(_xaie, 0);
         mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
 
-        printf("Status of shim (7,0) after core start, after host release for read:\n");
+        printf("Status of shim(7,0) after core start, after host release for read:\n");
         mlir_aie_print_shimdma_status(_xaie, 7, 0);
+
+        printf("Status of tile(3,4) after core start: after host release for read:\n");
+        mlir_aie_print_tile_status(_xaie, 3, 4);
 
         if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
             printf("Acquired objFifo 3 lock 0 for read\n");
@@ -79,8 +84,11 @@ int main(int argc, char *argv[]) {
         else
             printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
 
-        printf("Status of shim (7,0) after core start, after host release for write:\n");
+        printf("Status of shim(7,0) after core start, after host release for write:\n");
         mlir_aie_print_shimdma_status(_xaie, 7, 0);
+
+        printf("Status of tile(3,4) after core start: after host release for write:\n");
+        mlir_aie_print_tile_status(_xaie, 3, 4);
     }
 
     int res = 0;
