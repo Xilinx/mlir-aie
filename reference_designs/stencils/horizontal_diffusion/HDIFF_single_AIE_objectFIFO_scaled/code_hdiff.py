@@ -1,5 +1,8 @@
-#  (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET             */
-
+# (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
+  
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import sys
 import re
@@ -35,18 +38,11 @@ def main():
     # declare tile, column by row
 
 
-    f.write("""//===- aie.mlir ------------------------------------------------*- MLIR -*-===//
+    f.write("""// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
+  
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2021 Xilinx Inc.
-//
-//===----------------------------------------------------------------------===//
-//
-// Note:
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf \n\n\n""")
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n\n\n""")
 
 
 

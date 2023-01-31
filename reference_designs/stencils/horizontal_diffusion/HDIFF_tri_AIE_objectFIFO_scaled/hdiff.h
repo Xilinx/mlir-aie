@@ -1,6 +1,8 @@
-/*  (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET             */
-
-// #include <stdint.h>
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
+  
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 extern "C" {
 void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict row2,int32_t* restrict row3,int32_t* restrict row4, int32_t* restrict out_flux1, int32_t* restrict out_flux2, int32_t* restrict out_flux3, int32_t* restrict out_flux4 );

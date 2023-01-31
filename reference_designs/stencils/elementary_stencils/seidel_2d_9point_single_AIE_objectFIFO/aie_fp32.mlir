@@ -1,9 +1,11 @@
-// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET     
-//
-//===----------------------------------------------------------------------===//
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
+  
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 
-module @seidel_2d_9point{
+module @seidel_2d_9point_fp32{
 
   %t71 = AIE.tile(7, 1)
   %t70 = AIE.tile(7, 0)
