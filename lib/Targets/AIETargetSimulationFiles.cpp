@@ -161,6 +161,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     auto coreOps_in_tile =
         coreMap[std::make_pair(tileOp.colIndex(), tileOp.rowIndex())];
     for (auto coreOp : coreOps_in_tile) {
+      (void)(coreOp); // get around unused variable warning for coreOp
       output << "        <KERNEL name=\"i" << std::to_string(kernel_count++)
              << "\" "
              << "int_core_load=\"" << std::to_string(1 / coreOps_in_tile.size())
