@@ -28,17 +28,18 @@ void stencil_1d_3point(int32_t* restrict in, int32_t* restrict out)
     v8acc80 acc_0 = null_v8acc80();
     
        
-        data_buf1 = upd_w(data_buf1, 0, *r1++);
-        data_buf1 = upd_w(data_buf1, 1, *r1);
+    data_buf1 = upd_w(data_buf1, 0, *r1++);
+    data_buf1 = upd_w(data_buf1, 1, *r1);
     
-        for (unsigned i = 0; i < COL/8; i++)
+    for (unsigned i = 0; i < COL/8; i++)
             chess_prepare_for_pipelining
                     chess_loop_range(1,)
             {
             acc_0=lmul8   (data_buf1,0,0x76543210,coeffs_rest,    0,0x00000000);      
 			acc_0=lmac8   (acc_0,data_buf1,2,0x76543210,coeffs_rest,    0,0x00000000);     
 			acc_0=lmsc8   (acc_0,data_buf1,1,0x76543210,coeffs,    0,0x00000000);     
-         
+
+            r1=((v8int32 *) in)+i+1;
             data_buf1 = upd_w(data_buf1, 0, *r1++);
             data_buf1 = upd_w(data_buf1, 1, *r1);      
             // window_writeincr(out, srs(acc_0,0));

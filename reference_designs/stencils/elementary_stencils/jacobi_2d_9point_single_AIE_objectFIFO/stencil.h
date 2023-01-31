@@ -5,6 +5,7 @@
 
 extern "C" {
 void stencil_2d_9point(int32_t* restrict in0, int32_t* restrict in1,int32_t* restrict in2,int32_t* restrict in3, int32_t* restrict in4,int32_t* restrict out);
+void stencil_2d_9point_fp32(float* restrict in0, float* restrict in1,float* restrict in2,float* restrict in3, float* restrict in4,float* restrict out);
 
 }
 

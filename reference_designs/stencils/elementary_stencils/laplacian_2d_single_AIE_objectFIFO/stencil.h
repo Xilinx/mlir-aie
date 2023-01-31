@@ -5,6 +5,7 @@
 
 extern "C" {
 void laplacian_2d(int32_t* restrict in1,int32_t* restrict in2,int32_t* restrict in3, int32_t* restrict out);
+void laplacian_2d_fp32(float* restrict in1,float* restrict in2,float* restrict in3, float* restrict out);
 
 }
 

@@ -44,6 +44,7 @@ void laplacian_2d(int32_t* restrict in1,int32_t* restrict in2,int32_t* restrict 
             acc_0=lmul8   (data_buf1,2,0x76543210,coeffs_rest,    0,0x00000000);      
             acc_0=lmac8   (acc_0,data_buf2,1,0x76543210,coeffs_rest,    0,0x00000000); //
 
+            r3=((v8int32 *) in3)+i;
             // r1 = ptr_in+2 * COL/8+i + aor*COL/8;
             data_buf1 = upd_w(data_buf1, 0, *r3++);
             data_buf1 = upd_w(data_buf1, 1, *r3);
@@ -51,12 +52,14 @@ void laplacian_2d(int32_t* restrict in1,int32_t* restrict in2,int32_t* restrict 
             acc_0=lmac8   (acc_0,data_buf2,3,0x76543210,coeffs_rest,    0,0x00000000);  
             acc_0=lmac8   (acc_0,data_buf1,2,0x76543210,coeffs_rest,    0,0x00000000);  
 
+            r1=((v8int32 *) in1)+i+1;
             // r1 = ptr_in+0 * COL/8+i +1+aor*COL/8;
             data_buf1 = upd_w(data_buf1, 0, *r1++);
             data_buf1 = upd_w(data_buf1, 1, *r1);
 
             acc_0=lmsc8   (acc_0,data_buf2,2,0x76543210,coeffs,    0,0x00000000);      
 
+            r2=((v8int32 *) in2)+i+1;
             // r2 = ptr_in+1 * COL/8+i +1+aor*COL/8;
             data_buf2 = upd_w(data_buf2, 0, *r2++);
             data_buf2 = upd_w(data_buf2, 1, *r2);            
