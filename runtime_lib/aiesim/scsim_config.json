@@ -16,9 +16,9 @@
         },
         "pl_ip_block": [
             {
-                "name": "ps_i6_ps_main",
+                "name": "ps_ps_main",
                 "ip": "ps",
-                "lib_path": "ps/c_rts/systemC/generated-objects/ps_i6.so",
+                "lib_path": "ps/ps.so",
                 "pl_freq": 312500000.0,
                 "axi_mm": [
                     {

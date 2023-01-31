@@ -266,36 +266,31 @@ class flow_runner:
         self.progress_bar.update(task,advance=0,visible=False)
 
   async def gen_sim(self):
-      shutil.rmtree('Work', ignore_errors=True)
+      shutil.rmtree('sim', ignore_errors=True)
       try:
-        os.mkdir('Work')
-        os.mkdir('Work/arch')
-        os.mkdir('Work/reports')
-        os.mkdir('Work/config')
-        os.mkdir('Work/ps')
-        os.mkdir('Work/ps/c_rts')
-        os.mkdir('Work/ps/c_rts/systemC')
-        os.mkdir('Work/ps/c_rts/systemC/generated-source')
-        os.mkdir('Work/ps/c_rts/systemC/generated-objects')
+        os.makedirs('sim/arch', exist_ok=True)
+        os.makedirs('sim/reports', exist_ok=True)
+        os.makedirs('sim/config', exist_ok=True)
+        os.makedirs('sim/ps', exist_ok=True)
       except FileExistsError:
         pass
       self.do_run(['aie-translate', 
                    '--aie-mlir-to-shim-solution',
-                   './aie.mlir','-o','./Work/arch/aieshim_solution.aiesol'])
+                   opts.filename,'-o','./sim/arch/aieshim_solution.aiesol'])
       self.do_run(['aie-opt', 
                    '--aie-create-pathfinder-flows',
-                   './aie.mlir',
+                   opts.filename,
                    '-o', 'jtmp.mlir'])
       self.do_run(['aie-translate',
                    '--aie-mlir-to-xpe', './jtmp.mlir',
-                   '-o', './Work/reports/graph.xpe'])
+                   '-o', './sim/reports/graph.xpe'])
       self.do_run(['rm','-rf','./jtmp.mlir'])
       self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
-                   './Work/config/.'])
+                   './sim/config/.'])
       self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
-                   './Work/ps/c_rts/systemC/.'])
-      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps_i6.cpp"),
-                   './Work/ps/c_rts/systemC/generated-source/.'])
+                   './sim/.'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps.cpp"),
+                   './sim/ps/.'])
 
   async def run_flow(self):
       nworkers = int(opts.nthreads)

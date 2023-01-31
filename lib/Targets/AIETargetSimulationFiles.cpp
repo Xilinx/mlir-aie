@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,19 +37,18 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
   return mlir::success();
 }
 
+/* Generates a aieshim_solution.aiesol file which is necessary to run aiesim.
+Sample invocation:
+aie-translate --aie-mlir-to-shim-solution ./aie.mlir >
+./Work/arch/aieshim_solution.aiesol
+
+NOTE: to correctly enable all tiles used for routing, the aie-opt routing pass
+must be called first. So, a more practical invocation: aie-opt
+--aie-create-pathfinder-flows ./aie.mlir | aie-translate --aie-mlir-to-shim >
+./Work/arch/aieshim_solution.aiesol
+*/
 mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &output) {
-  /* Generates a aieshim_solution.aiesol file which is necessary to run aiesim.
-  Sample invocation:
-  aie-translate --aie-mlir-to-shim-solution ./aie.mlir >
-  ./Work/arch/aieshim_solution.aiesol
-
-  NOTE: to correctly enable all tiles used for routing, the aie-opt routing pass
-  must be called first. So, a more practical invocation: aie-opt
-  --aie-create-pathfinder-flows ./aie.mlir | aie-translate --aie-mlir-to-shim >
-  ./Work/arch/aieshim_solution.aiesol
-  */
-
   // Generate boilerplate header
   output << "{\n";
   output << "  \"Placement\": [\n";
