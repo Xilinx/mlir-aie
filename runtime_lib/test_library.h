@@ -32,9 +32,9 @@ extern "C" {
   }
 
 struct ext_mem_model_t {
-    void* virtualAddr;
-    uint64_t physicalAddr;
-    size_t size;
+  void *virtualAddr;
+  uint64_t physicalAddr;
+  size_t size;
 };
 
 #if defined(__AIESIM__)
@@ -133,7 +133,7 @@ private:
  * LIBXAIENGIENV2
  ******************************************************************************
  */
-#else //LIBXAIENGINEV1
+#else // LIBXAIENGINEV1
 
 #define XAIE_BASE_ADDR 0x20000000000
 #define XAIE_NUM_ROWS 9
@@ -252,8 +252,7 @@ private:
   XAie_DevInst *devInst;
 };
 
-#endif //LIBXAIENGINEV1
-
+#endif // LIBXAIENGINEV1
 
 /*
  ******************************************************************************

@@ -20,11 +20,11 @@ mlir::LogicalResult AIEFlowsToJSON(mlir::ModuleOp module,
                                    llvm::raw_ostream &output);
 mlir::LogicalResult ADFGenerateCPPGraph(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
-mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module, 
-											llvm::raw_ostream &output);
-mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module, 
-											 llvm::raw_ostream &);
-mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module, 
-										 llvm::raw_ostream &);                            
+mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
+                                            llvm::raw_ostream &output);
+mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
+                                             llvm::raw_ostream &);
+mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
+                                         llvm::raw_ostream &);
 }
 }

@@ -456,8 +456,8 @@ SECTIONS
       "aie-mlir-to-xpe", "Translate AIE design to XPE file for simulation",
       [](ModuleOp module, raw_ostream &output) {
         return AIETranslateGraphXPE(module, output);
-      }, 
-	  [](DialectRegistry & registry) {
+      },
+      [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
@@ -468,12 +468,12 @@ SECTIONS
         registry.insert<LLVM::LLVMDialect>();
       });
   TranslateFromMLIRRegistration registrationSCSimConfig(
-      "aie-mlir-to-scsim-config", 
+      "aie-mlir-to-scsim-config",
       "Translate AIE design to SCSimConfig file for simulation",
       [](ModuleOp module, raw_ostream &output) {
         return AIETranslateSCSimConfig(module, output);
-      }, 
-	  [](DialectRegistry & registry) {
+      },
+      [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
@@ -484,12 +484,12 @@ SECTIONS
         registry.insert<LLVM::LLVMDialect>();
       });
   TranslateFromMLIRRegistration registrationShimSolution(
-      "aie-mlir-to-shim-solution", 
+      "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       [](ModuleOp module, raw_ostream &output) {
         return AIETranslateShimSolution(module, output);
-      }, 
-	  [](DialectRegistry & registry) {
+      },
+      [](DialectRegistry &registry) {
         registry.insert<xilinx::AIE::AIEDialect>();
         registry.insert<func::FuncDialect>();
         registry.insert<cf::ControlFlowDialect>();
