@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 3 - communication via objectFifo (local memory), locks</ins>
+# <ins>Tutorial 3 - communication via objectFifo (local memory)</ins>
 
 This part of the tutorial introduces the `objectFifo` abstraction, which is used to setup communication between tiles without explicit configuration of the dataflow movement. The abstraction is then lowered via MLIR conversion passes onto the physical `mlir-aie` components.
 

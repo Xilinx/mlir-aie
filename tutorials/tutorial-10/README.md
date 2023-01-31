@@ -68,7 +68,7 @@ The main flow of `aiecc.py` is:
     10. Translate to generate .bcf or .ldscript 
     11. Compile core (e.g. xchesscc_wrapper)
 
-### <ins>1. First set of optimizations\</ins>
+### <ins>1. First set of optimizations</ins>
 ```
 aie-opt 
 --lower-affine
