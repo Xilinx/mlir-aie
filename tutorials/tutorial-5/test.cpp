@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   // Wait time for cores to run. Number used here is much larger than needed.
   usleep(100);
 
-  mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
+  mlir_aie_acquire_of_3_lock_0(_xaie, 1, 0);
   mlir_aie_sync_mem_cpu(_xaie, 1);
 
   // Check buffer at index 3 again for expected value of 14 for tile(3,4)
