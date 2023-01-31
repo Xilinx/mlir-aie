@@ -125,14 +125,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     int row = tileOp.rowIndex();
     if (tileOp.isShimNOCorPLTile()) {
       // Resets no needed with V2 kernel driver
-      output << "{\n";
-      output << "u64 tileAddr = _XAie_GetTileAddr(" << deviceInstRef << ", "
-             << row << ", " << col << ");\n";
-      output << "XAie_Write32(" << deviceInstRef << ", tileAddr + 0x00036048"
-             << ", !!1); // 1 == ResetEnable\n";
-      output << "XAie_Write32(" << deviceInstRef << ", tileAddr + 0x00036048"
-             << ", !!0); // 0 == ResetDisable\n";
-      output << "}\n";
     } else {
       // Resets no needed with V2 kernel driver
       output << "XAie_CoreReset(" << deviceInstRef << ", "
