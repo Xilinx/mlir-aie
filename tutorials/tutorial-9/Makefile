@@ -3,6 +3,7 @@
 
 # TODO - Change this to env variable?
 SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
+AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: tutorial-9.exe
 
@@ -23,7 +24,7 @@ kernel_matmul.o: matmul_kernel/kernel.o
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
 tutorial-9.exe: test.cpp aie.mlir kernel.o
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
 
 clean:
 	$(MAKE) -C external_kernel clean
@@ -33,7 +34,7 @@ clean:
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
 tutorial-9_perf.exe: ./answers/test_perf.cpp ./aie.mlir kernel.o
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
 
 tutorial-9_matmul_perf.exe: ./answers/test_perf.cpp ./answers/aie_matmul.mlir kernel_matmul.o
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
