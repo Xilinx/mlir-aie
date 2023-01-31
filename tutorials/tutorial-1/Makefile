@@ -3,6 +3,7 @@
 
 # TODO - Change this to env variable?
 SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
+AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: core_1_4.elf
 
@@ -19,8 +20,8 @@ clean:
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
 tutorial-1_perf.exe: ./answers/test_perf.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
 
 tutorial-1_q6.exe: ./answers/test_q6.cpp ./answers/aie_q6.mlir
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../runtime_lib ../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
 
