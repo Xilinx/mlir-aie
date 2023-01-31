@@ -2,8 +2,8 @@
     <file type="c" name="hdiff.cc" path="."/>
     <file type="c" name="chess_main.cc" path="."/>
     <option id="backend.mist2.xargs" value="-ggraph +A" inherit="1"/>
-    <issinit>fileinput add SCD 0 -field -file ./mnt/scratch/gagsingh/computationalBiology/stencils/horizontal_diffussion/mlir_test/HDIFF_single_AIE_objectFIFO/dataset_1x256x6.txt -interval_files {} -position 0 -type {} -radix decimal -filter {} -break_on_wrap 0 -cycle_based 0 -format integer -gen_vcd_event 0 -structured 0 -bin_nbr_bytes 4 -bin_lsb_first 0</issinit>
-    <issinit>fileoutput add MCD 0 -field -file ./mnt/scratch/gagsingh/computationalBiology/stencils/horizontal_diffussion/mlir_test/HDIFF_single_AIE_objectFIFO/TestOutputS.txt -interval_files {} -position 0 -type {} -radix decimal -filter {} -break_on_wrap 0 -cycle_based 0 -format integer -gen_vcd_event 0 -structured 0 -bin_nbr_bytes 4 -bin_lsb_first 0</issinit>
+    <issinit>fileinput add SCD 0 -field -file ./scratch/gagandee/acdc-aie/test/benchmarks/Gagan/HDIFF_single_AIE/data/dataset_256x256x64.txt -interval_files {} -position 0 -type {} -radix decimal -filter {} -break_on_wrap 0 -cycle_based 0 -format integer -gen_vcd_event 0 -structured 0 -bin_nbr_bytes 4 -bin_lsb_first 0</issinit>
+    <issinit>fileoutput add MCD 0 -field -file ./scratch/gagandee/acdc-aie/test/benchmarks/Gagan/HDIFF_single_AIE/data/TestOutputS.txt -interval_files {} -position 0 -type {} -radix decimal -filter {} -break_on_wrap 0 -cycle_based 0 -format integer -gen_vcd_event 0 -structured 0 -bin_nbr_bytes 4 -bin_lsb_first 0</issinit>
     <option id="cpp.include" value="." inherit="1"/>
     <option id="cpp.define" value="__AIENGINE__" inherit="1"/>
     <option id="project.name" value="test"/>

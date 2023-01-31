@@ -4,7 +4,6 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// #include <adf.h>
 #include "./include.h"
 #include "hdiff.h"
 #define kernel_load 14
