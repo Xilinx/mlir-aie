@@ -265,6 +265,38 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
+  async def gen_sim(self):
+      shutil.rmtree('Work', ignore_errors=True)
+      try:
+        os.mkdir('Work')
+        os.mkdir('Work/arch')
+        os.mkdir('Work/reports')
+        os.mkdir('Work/config')
+        os.mkdir('Work/ps')
+        os.mkdir('Work/ps/c_rts')
+        os.mkdir('Work/ps/c_rts/systemC')
+        os.mkdir('Work/ps/c_rts/systemC/generated-source')
+        os.mkdir('Work/ps/c_rts/systemC/generated-objects')
+      except FileExistsError:
+        pass
+      self.do_run(['aie-translate', 
+                   '--aie-mlir-to-shim-solution',
+                   './aie.mlir','-o','./Work/arch/aieshim_solution.aiesol'])
+      self.do_run(['aie-opt', 
+                   '--aie-create-pathfinder-flows',
+                   './aie.mlir',
+                   '-o', 'jtmp.mlir'])
+      self.do_run(['aie-translate',
+                   '--aie-mlir-to-xpe', './jtmp.mlir',
+                   '-o', './Work/reports/graph.xpe'])
+      self.do_run(['rm','-rf','./jtmp.mlir'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
+                   './Work/config/.'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
+                   './Work/ps/c_rts/systemC/.'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps_i6.cpp"),
+                   './Work/ps/c_rts/systemC/generated-source/.'])
+
   async def run_flow(self):
       nworkers = int(opts.nthreads)
       if(nworkers == 0):
@@ -328,6 +360,8 @@ class flow_runner:
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
         processes = [self.process_arm_cgen()]
+        if(opts.aiesim):
+          processes.append(self.gen_sim())
         for core in cores:
           processes.append(self.process_core(core))
         await asyncio.gather(*processes)

@@ -14,6 +14,10 @@
 #include <stdlib.h>
 #include <xaiengine.h>
 
+#if defined(__AIESIM__)
+#include "xioutils.h"
+#endif
+
 extern "C" {
 
 #define mlir_aie_check(s, r, v, errors)                                        \
@@ -26,6 +30,17 @@ extern "C" {
     printf("ERROR %s: %s expected %f, but was %f!\n", s, #r, v, r);            \
     errors++;                                                                  \
   }
+
+struct ext_mem_model_t {
+    void* virtualAddr;
+    uint64_t physicalAddr;
+    size_t size;
+};
+
+#if defined(__AIESIM__)
+// static variable for tracking current DDR physical addr during AIESIM
+static uint16_t nextAlignedAddr;
+#endif
 
 /*
  ******************************************************************************
@@ -41,6 +56,11 @@ extern "C" {
 #define MODE_CORE 0
 #define MODE_PL 1
 #define MODE_MEM 2
+
+//#define HIGH_ADDR(addr)	((addr & 0xffffffff00000000) >> 32)
+//#define LOW_ADDR(addr)	(addr & 0x00000000ffffffff)
+
+//#define MLIR_STACK_OFFSET 4096
 
 struct aie_libxaie_ctx_t {
   XAieGbl_Config *AieConfigPtr;
@@ -113,7 +133,7 @@ private:
  * LIBXAIENGIENV2
  ******************************************************************************
  */
-#else
+#else //LIBXAIENGINEV1
 
 #define XAIE_BASE_ADDR 0x20000000000
 #define XAIE_NUM_ROWS 9
@@ -151,7 +171,11 @@ struct aie_libxaie_ctx_t {
     XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
     XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
   */
+#if defined(__AIESIM__)
+  ext_mem_model_t **buffers;
+#else
   XAie_MemInst **buffers;
+#endif
 };
 
 
@@ -228,7 +252,14 @@ private:
   XAie_DevInst *devInst;
 };
 
-#endif
+#endif //LIBXAIENGINEV1
+
+
+/*
+ ******************************************************************************
+ * Common functions
+ ******************************************************************************
+ */
 
 aie_libxaie_ctx_t *mlir_aie_init_libxaie();
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *);
