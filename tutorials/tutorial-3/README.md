@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 3 - Communication (local memory), locks</ins>
+# <ins>Tutorial 3 - Communication (local memory)</ins>
 
 After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then adding the `lock` operation which is key to synchronizing use of shared resources in [tutorial-1](../tutorial-1), and defining the functionality within cores with integrated dialect operations (arith, memref), we have expanded on the host code configuration, simulation and hardware execution and performance measurement in [tutorial-2](../tutorial-2). We now come back to the `mlir-aie` dialect to talk about the next major component of for AIE system design - communication. As summarized briefly in the [Basic AI Engine Architecure](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well. 
 

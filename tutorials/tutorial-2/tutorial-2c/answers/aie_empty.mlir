@@ -28,7 +28,7 @@ module @tutorial_1 {
 
     // Declare a lock 0 associated with tile(1,4) with a 
     // symbolic name "lock14_0" which can be used by access functions
-    // in the generated host API (acdc_project/aie_inc.cpp)
+    // in the generated API (acdc_project/aie_inc.cpp)
     %lock14_0 = AIE.lock(%tile14, 0) { sym_name = "lock14_0" }
 
     // Define the algorithm for the core of tile(1, 4)
@@ -37,9 +37,9 @@ module @tutorial_1 {
         // Acquire lock right when core starts
         AIE.useLock(%lock14_0, "Acquire", 0)
 
-		%val = arith.constant 14 : i32 // declare a constant (int32)
-		%idx = arith.constant 3 : index // declare a constant (index)
-		memref.store %val, %buf[%idx] : memref<256xi32> // store val in buf[3]
+		// %val = arith.constant 14 : i32 // declare a constant (int32)
+		// %idx = arith.constant 3 : index // declare a constant (index)
+		// memref.store %val, %buf[%idx] : memref<256xi32> // store val in buf[3]
 
         // Release acquired lock at end of program.
         // This can be used by host to mark beginning/end of a program or

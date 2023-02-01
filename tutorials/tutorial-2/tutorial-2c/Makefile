@@ -26,6 +26,12 @@ clean:
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
-tutorial-1_perf.exe: ./answers/test_perf.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
+tutorial-2c_perf.exe: ./answers/test_perf.cpp aie.mlir
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
+
+tutorial-2c_empty_perf.exe: ./answers/test_perf.cpp ./answers/aie_empty.mlir
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
+
+tutorial-2c_real_empty_perf.exe: ./answers/test_perf.cpp ./answers/aie_real_empty.mlir
+	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
 

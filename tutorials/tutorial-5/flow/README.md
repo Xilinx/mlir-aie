@@ -8,22 +8,22 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 5 - Communication (shim DMA, external memory aka DDR)</ins>
+# <ins>Tutorial 5 - Communication via flows (shim DMA, external memory aka DDR)</ins>
 
-In thinking about data communication, it's often helpful to use the memory hierarchy model of CPU architectures where we have different levels of memory with level 1 (L1) being closest to the processing unit (AI Engine local memory) and level 3 (L3) being further away (e.g. DDR). Up till now, we've focused on communication between AI Engines or L1 to L1 communication. Supporting the communication of data between L3 (DDR) to L1 (local memory) uses the same tileDMA and stream switch components as when communicating data between L1 and L1, but requires 3 additional blocks in the AI engine array and Versal device.
+The [Tutorial-5 objectFifos](..) simplifies the process of declaring data communication across L1-L3 boundaries but understanding what components are needed at the flow level is very helpful in developing other abstractions of communications. As mentioned previously, the 3 additional blocks needed to support L1-L3 communication are:
 
 * Shim DMA and External Buffers
 * NOC configuration
 * Host code for buffer allocation and virtual address mapping
 
-A diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
+As review, the diagram featuring the 3 blocks needed to connect L1 to L3 can be seen in the following diagram.
 <p><img src="../../images/diagram9.png" width="1000"><p>
 
 Here, we see the different components of the L1-L3 communication defined in MLIR. The shim DMA is the box labeled AI Engine Interface Tile while the external buffer is the smaller gray box within the blue DDR box. We see the NOC block represented by the light gray box labeled NOC. And the host code portion would be found in the host code [test.cpp](./test.cpp).
 
 ## <ins>Shim DMA and External Buffers</ins>
 ### <ins>shimDMA</ins>
-We first need a component to move the data out of the AIE array and that component can be the shim DMA which is connected to the NoC block, or the PL interfaces. For this tutorial, we will focus on the shim DMA as that does not require custom PL blocks to move data to the DDR controller.
+We first need a component to move the data into and out of the AIE array and that component can be the shim DMA which is connected to the NoC block (the other option is the programmable logic or PL interfaces which we will not cover here). For this tutorial, we will focus on the shim DMA as that does not require PL blocks to move data to the DDR controller.
 
 The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rather than define the BD behavior inside an `AIE.mem` operator, we define the same set of BD behaviors inside the `AIE.shimDMA` operator as shown below:
 ```
@@ -39,12 +39,12 @@ The shim DMA functions very similarly to the tile DMA when defined in MLIR. Rath
 }
 ```
 Here, we see that the rules for bd and channel definitions are the same as in the tileDMA case.
-> Note that shimDMA are defined for the shim tiles (row 0). In this example, tile(7,0). Also note that not every column in row 0 is shimDMA capable. The list of capable tiles in the S70 device is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
+> Note that shimDMA are defined for the shim tiles (row 0). In this example, tile(7,0). Also note that not every column in row 0 is shimDMA capable. The list of column values of capable tiles in the S70 device for example is `(2,3,6,7,10,11,18,19,26,27,34,35,42,43,46,47)`.
 
-Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an AIE.shimDMA operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4](../../tutorial-4) for more details.
+Much like the tile DMA, the shim DMA has 2 DMA units, each with a read and write port, giving us 4 independent dma+channel data movers. Among all 4 data movers, we again have 16 buffer descriptors (bd) describing the rules of the data movement. The definition of these bds are declared within an `AIE.shimDMA` operation in the same way as the tile DMA. Please review the tile DMA operations in [tutorial-4/flow](../../tutorial-4/flow) for more details.
 
 ### <ins>External_buffer</ins>
-The second operator is the definition of the external buffer. tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` operator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
+The second operator is the definition of the external buffer. Tile DMA moves data from the local memory of each AI Engine. But shim DMA moves data from external buffers (e.g. DDR). The `dmabBd` operator then needs to refer to this buffer in its definition. External buffers are defined with the `AIE.external_buffer` operation as shown below:
 ```
 %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
 ```
@@ -90,12 +90,12 @@ The `<sym_name>` used here is the same sym_name of the external buffer. The firs
 
 1. Read through the [aie.mlir](aie.mlir) design. How many external buffers are defined and which direction are they? <img src="../../images/answer1.jpg" title="2 buffers. ext_buf70_in is for reading (DDR->L1). ext_buf70_out is for writing (L1->DDR)" height=25>
 
-External buffers on their own cannot give any indication as to what they are used for but we can figure this out based on the bd description that the buffer is used in. For example, `ext_buf70_in` is defined in `bd1` which is itself defined for `dmaStart("S2MM")` which tells us this is a S2MM connection. 
-> Note that S2MM means stream to memory map. In this case, the stream is the AIE array side and the MM is the external buffer side (e.g. DDR) so we are moving data out of the AIE array or writing data to the external buffer. This is kind of the opposite to the tile DMA case where S2MM would be moving data from the stream to the local memory which would be reading from the perspective of the AIE core.
+External buffers on their own cannot give any indication as to what they are used for but we can figure this out based on the bd description that the buffer is used in. For example, `ext_buf70_in` is defined in `bd1` which is itself defined for `dmaStart("MM2S")` which tells us this is a MM2S connection. 
+> Note that MM2S means memory map to stream. In this case, the MM is the external buffer side (e.g. DDR) and the stream is the AIE array side. So we are moving data from the external buffer to the AIE array. This is kind of the opposite to the tile DMA case where MM2S would be moving data from local memory to the stream which would be writing data out from the perspective of the AIE core.
 
 2. Add a second read and write channel to the single shimDMA (tile(7,0)) that moves data to and from another tile. That tile can have the same function as the existing tile.
 
-3. Can we add a third read or write channel to our shimDMA? <img src="../../images/answer1.jpg" title="No" height=25>
+3. Can we add a third read or write channel to our shimDMA? <img src="../../images/answer1.jpg" title="No, DMAs have only 2 channels in first generation AI Engines" height=25>
 
 4. Change the design so that the external buffer acts like a ping-pong buffer.
 

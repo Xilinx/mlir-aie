@@ -265,6 +265,33 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
+  async def gen_sim(self):
+      shutil.rmtree('sim', ignore_errors=True)
+      try:
+        os.makedirs('sim/arch', exist_ok=True)
+        os.makedirs('sim/reports', exist_ok=True)
+        os.makedirs('sim/config', exist_ok=True)
+        os.makedirs('sim/ps', exist_ok=True)
+      except FileExistsError:
+        pass
+      self.do_run(['aie-translate', 
+                   '--aie-mlir-to-shim-solution',
+                   opts.filename,'-o','./sim/arch/aieshim_solution.aiesol'])
+      self.do_run(['aie-opt', 
+                   '--aie-create-pathfinder-flows',
+                   opts.filename,
+                   '-o', 'jtmp.mlir'])
+      self.do_run(['aie-translate',
+                   '--aie-mlir-to-xpe', './jtmp.mlir',
+                   '-o', './sim/reports/graph.xpe'])
+      self.do_run(['rm','-rf','./jtmp.mlir'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
+                   './sim/config/.'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
+                   './sim/.'])
+      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps.cpp"),
+                   './sim/ps/.'])
+
   async def run_flow(self):
       nworkers = int(opts.nthreads)
       if(nworkers == 0):
@@ -328,6 +355,8 @@ class flow_runner:
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
         processes = [self.process_arm_cgen()]
+        if(opts.aiesim):
+          processes.append(self.gen_sim())
         for core in cores:
           processes.append(self.process_core(core))
         await asyncio.gather(*processes)

@@ -29,7 +29,7 @@ AI Engine tiles are the basic building blocks of AIE designs and can be declared
 The two major components of an AI Engine tile is 
 
 * VLIW processor core declared as `AIE.core(tileName) { body }`
-* Local memory buffer declared as `AIE.buffer(tileName) : memref<depthxdata_type> { body }`. 
+* Local memory buffer declared as `AIE.buffer(tileName) : memref<depth x data_type> { body }`. 
 
 Examples declarations include:
 ```
@@ -66,9 +66,14 @@ The type of tiles and orientation of its associated local memory is architecture
 When declaring a buffer, we pass in associated AIE tile and declare the buffer parameters. Those parameters are the depth and data type width (though the local memory itself is not physically organized in this way). 
 > One important note about buffers is that one buffer is not strictly mapped to the entire local memory. You can declare multiple buffers that are associated with the local memory of a tile and they would, by default, be allocated sequentially in that tile's local memory.
 
+Operators such buffers (and some other components such as locks) also can have a symbolic name defined in the body to make it easier to refer to the component in generated host access functions. The syntax for this looks like:
+```
+%buf = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
+```
+
 ### <ins>Core</ins>
 
-The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other general dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalar operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple operations may seem cumbersome at first glance but is designed to capture a robust set of operations.
+The AIE core functionality is defined within the core body. This functionality is a combination of AIE dialect specific operations as well as other dialects that are supported by the MLIR compiler. This includes a large set of dialects such as [arith](https://mlir.llvm.org/docs/Dialects/ArithOps/) and [memref](https://mlir.llvm.org/docs/Dialects/MemRef/) but can also include many others. Custom functions that are not inherently supported on AI Engines can be translated into scalar operations that are (e.g. arctan). Keep in mind that MLIR is not a programming language but a intermediate representation so the syntax of doing simple operations may seem cumbersome at first glance but is designed to capture a robust set of operations.
 
 In addition to the integrated core functionality definitions, `mlir-aie` also supports linking with externally compiled kernel code which we you can explore in more detail in [tutorial 9](../tutorial-9). This process allows custom kernels to be included directly in `mlir-aie` defined designs.
 
@@ -78,12 +83,12 @@ Locks are components used by other components to arbitrate access to a shared re
 
 The `lock` operation, is actually a physical sub component of the `AIE.tile` but is declared within the `module` block. The syntax for declaring a lock is `AIE.lock(tileName, lockID)`. An example would be:
 ```
-%lockName = AIE.lock(%tileName, %lockID)
+%lockName = AIE.lock(%tileName, %lockID) { body }
 ```
 Examples:
 ```
 %lock13_4 = AIE.lock(%tile13, 4)
-%lock13_11 = AIE.lock(%tile13, 11)
+%lock13_11 = AIE.lock(%tile13, 11) { sym_name = "lock13_11" }
 ```
 Each tile has 16 locks and each lock is in one of two states (acquired, released) and one of two values (0, 1).
 > By default, we tend to assume (value=0 is a "write", value=1 is "read"). But there is no real definition of these values. The only key thing to remember is that lock value start and is reset into the release val=0 state. Which means an acquire=0 will always succeed first while an acquire=1 needs the lock state to be release=1 to succeed. Once acquired, a lock can be released to the 0 or 1 state. 

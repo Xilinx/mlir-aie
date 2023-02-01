@@ -10,6 +10,10 @@ set(INSTALLS
     test_library.h
     chess_intrinsic_wrapper.cpp)
 
+set(AIESIM_INSTALLS
+    aiesim/Makefile
+    aiesim/genwrapper_for_ps.cpp
+    aiesim/scsim_config.json)
 
 # Stuff into the build area:
 add_custom_target(aie-copy-runtime-libs ALL)
@@ -73,3 +77,4 @@ endforeach()
 # Install too
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
+install(FILES ${AIESIM_INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/aiesim)

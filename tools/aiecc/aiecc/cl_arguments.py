@@ -46,6 +46,16 @@ def parse_args():
             default=not aie_link_with_xchesscc,
             action='store_false',
             help='Link using peano')
+    parser.add_argument('--aiesim',
+            dest="aiesim",
+            default=True,
+            action='store_true',
+            help='Generate aiesim Work folder')
+    parser.add_argument('--no-aiesim',
+            dest="aiesim",
+            default=False,
+            action='store_false',
+            help='Do no generate aiesim Work folder')
     parser.add_argument('--xchesscc',
             dest="xchesscc",
             default=aie_compile_with_xchesscc,
