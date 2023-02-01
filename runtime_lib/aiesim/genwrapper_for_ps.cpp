@@ -1,8 +1,7 @@
-#include "../../test.cpp"
-#include "test_library.cpp"
 #include <adf/wrapper/wrapper.h>
 #include <xtlm.h>
-//#include "../../answers/test_perf.cpp"
+#include "test_library.cpp"
+#include "../../test.cpp"
 #define BUSWIDTH 128
 
 // Global flag for controlling simulator exit after PS IP execution is completed
