@@ -10,6 +10,11 @@ jobs:
   build-docs:
     name: Generate Documentation
     runs-on: ubuntu-latest
+    
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      contents: write
+      
     steps:
       - name: Configure Environment
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
