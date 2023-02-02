@@ -44,38 +44,38 @@ int main(int argc, char *argv[]) {
     int errors = 0;
 
     mlir_aie_clear_tile_memory(_xaie, 3, 4);
-    printf("Status of tile(3,4) before core start:\n");
-    mlir_aie_print_tile_status(_xaie, 3, 4);
+    // printf("Status of tile(3,4) before core start:\n");
+    // mlir_aie_print_tile_status(_xaie, 3, 4);
 
     // Helper function to enable all AIE cores
     printf("Start cores\n");
     mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
-    printf("Status of shim(7,0) before core start:\n");
-    mlir_aie_print_shimdma_status(_xaie, 7, 0);
+    // printf("Status of shim(7,0) before core start:\n");
+    // mlir_aie_print_shimdma_status(_xaie, 7, 0);
     mlir_aie_start_cores(_xaie);
 
-    for (int i = 11; i < 13; i++) {
+    int i = 1;
+    while (i < 21) {
         mlir_aie_acquire_of_0_lock_0(_xaie, 0, 10000);
-        mem_ptr_in[3] = i;
+        for (int j = 0; j < 256; j++)
+            mem_ptr_in[j] = i;
         mlir_aie_sync_mem_dev(_xaie, 0);
+        mlir_aie_sync_mem_cpu(_xaie, 1);
         mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
 
-        printf("Status of shim(7,0) after core start, after host release for read:\n");
-        mlir_aie_print_shimdma_status(_xaie, 7, 0);
+        // printf("Status of shim(7,0) after core start, after host release for read:\n");
+        // mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
-        printf("Status of tile(3,4) after core start: after host release for read:\n");
-        mlir_aie_print_tile_status(_xaie, 3, 4);
+        // printf("Status of tile(3,4) after core start: after host release for read:\n");
+        // mlir_aie_print_tile_status(_xaie, 3, 4);
+
+        //mlir_aie_sync_mem_cpu(_xaie, 1);
 
         if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
             printf("Acquired objFifo 3 lock 0 for read\n");
         else
             printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
 
-        mlir_aie_sync_mem_cpu(_xaie, 1);
-
-        printf("Checking buf[3]...\n");
-        mlir_aie_check("After start cores:",
-                        mlir_aie_read_buffer_of_1_buff_0(_xaie, 3), i, errors);
         for (int j = 0; j < 256; j++)
             mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[j], errors);
 
@@ -83,12 +83,13 @@ int main(int argc, char *argv[]) {
             printf("Released objFifo 3 lock 0 for write\n");
         else
             printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
+        i++;
 
-        printf("Status of shim(7,0) after core start, after host release for write:\n");
-        mlir_aie_print_shimdma_status(_xaie, 7, 0);
+        // printf("Status of shim(7,0) after core start, after host release for write:\n");
+        // mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
-        printf("Status of tile(3,4) after core start: after host release for write:\n");
-        mlir_aie_print_tile_status(_xaie, 3, 4);
+        // printf("Status of tile(3,4) after core start: after host release for write:\n");
+        // mlir_aie_print_tile_status(_xaie, 3, 4);
     }
 
     int res = 0;
