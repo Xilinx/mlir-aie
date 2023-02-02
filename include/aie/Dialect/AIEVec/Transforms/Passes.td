@@ -37,8 +37,9 @@ def AIEVectorize : Pass<"aie-vectorize", "ModuleOp"> {
   ];
 }
 
-def ConvertVectorToAIEVec : Pass<"convert-vector-to-aievec", "func::FuncOp"> {
-  let summary = "Convert arithmetic and vector operations to AIE vector ops";
+def LowerVectorToAIEVec : Pass<"lower-vector-to-aievec", "func::FuncOp"> {
+  let summary = "Convert standard Vector dialect operations to equivalent AIE "
+                "vector ops";
   let dependentDialects = ["AffineDialect", // NOTE: Do we need this?
                            "xilinx::aievec::AIEVecDialect",
                            "arith::ArithDialect",
@@ -54,7 +55,7 @@ def ConvertVectorToAIEVec : Pass<"convert-vector-to-aievec", "func::FuncOp"> {
     Option<"dupFactor", "dup-factor", "unsigned", /*default=*/"2",
      "Duplication factor for each value in convolution filter "
      "(useful for 8x8 scheme)">,
-    Option<"aieTarget", "aie-target", "std::string", /*default=*/"",
+    Option<"aieTarget", "aie-target", "std::string", /*default=*/"\"aie\"",
      "Select AIE version: \\\"aie\\\" or \\\"aieml\\\". This will determine "
      "the vector size and available operations.">,
   ];

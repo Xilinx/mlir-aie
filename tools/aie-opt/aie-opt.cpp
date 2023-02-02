@@ -26,6 +26,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
@@ -40,6 +41,7 @@ int main(int argc, char **argv) {
   aie::registerAIEPasses();
   xilinx::AIEX::registerAIEXPasses();
   xilinx::aievec::registerAIEVecPasses();
+  xilinx::aievec::registerAIEVecPipelines();
 
   DialectRegistry registry;
   registerAllDialects(registry);
