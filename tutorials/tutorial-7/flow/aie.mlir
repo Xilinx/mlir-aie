@@ -35,6 +35,10 @@ module @tutorial_7 {
     %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
     %lock35_7 = AIE.lock(%tile35, 7) { sym_name = "lock_a35_7" }
 
+    // These locks will be used to gate when our end cores are done
+    %lock34_8 = AIE.lock(%tile34, 8) { sym_name = "lock_a34_8" }
+    %lock35_8 = AIE.lock(%tile35, 8) { sym_name = "lock_a35_8" }
+
     // Broadcast DMA channel 0 on tile(1,4) to both DMA channel 1 in 
     // tile(3,4) and tile(3,5) with automatic shortest distance routing for
     // packets (ID=0xD). Additional routes can be defined for each 
@@ -42,10 +46,10 @@ module @tutorial_7 {
     // AIE.bp_id(newID) { AIE.bp_dest routes ... } within the 
     // AIE.broadcast_packet block.
     // NOTE: By default, packet header are dropped at destination
-    AIE.broadcast_packet(%tile14, DMA: 0) {
-      AIE.bp_id(0xD) {
-        AIE.bp_dest<%tile34, DMA: 1>
-        AIE.bp_dest<%tile35, DMA: 1>
+    AIEX.broadcast_packet(%tile14, DMA: 0) {
+      AIEX.bp_id(0xD) {
+        AIEX.bp_dest<%tile34, DMA: 1>
+        AIEX.bp_dest<%tile35, DMA: 1>
       }
     }
 
@@ -83,6 +87,8 @@ module @tutorial_7 {
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
+        // This acquire succeeds when the core is enabled
+        AIE.useLock(%lock34_8, "Acquire", 0)
         // This acquire will stall since locks are initialized to Release, 0
         AIE.useLock(%lock34_7, "Acquire", 1)
 
@@ -94,6 +100,8 @@ module @tutorial_7 {
 		memref.store %d2, %buf34[%idx2] : memref<256xi32> 
 
         AIE.useLock(%lock34_7, "Release", 0)
+        // This release means our 2nd core is done
+        AIE.useLock(%lock34_8, "Release", 1)
         AIE.end
     }
 
@@ -114,6 +122,8 @@ module @tutorial_7 {
     // Define core algorithm for tile(3,5) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core35 = AIE.core(%tile35) {
+        // This acquire succeeds when the core is enabled
+        AIE.useLock(%lock35_8, "Acquire", 0)
         // This acquire will stall since locks are initialized to Release, 0
         AIE.useLock(%lock35_7, "Acquire", 1)
 
@@ -125,6 +135,8 @@ module @tutorial_7 {
 		memref.store %d2, %buf35[%idx2] : memref<256xi32> 
 
         AIE.useLock(%lock35_7, "Release", 0)
+        // This release means our 2nd core is done
+        AIE.useLock(%lock35_8, "Release", 1)
         AIE.end
     }
 

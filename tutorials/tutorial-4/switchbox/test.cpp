@@ -66,7 +66,7 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  if(mlir_aie_acquire_lock_a34_8(_xaie, 1, 1000) == XAIE_OK)
+  if (mlir_aie_acquire_lock_a34_8(_xaie, 1, 1000) == XAIE_OK)
     printf("Acquired lock_a34_8(1). Tile(3,4) is done.\n");
   else
     printf("Timed out (1000) while trying to acquire lock_a34_8(1).\n");

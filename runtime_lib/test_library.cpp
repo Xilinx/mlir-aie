@@ -1005,7 +1005,7 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
             << (ctx->buffers[bufIdx])->physicalAddr << ", size " << std::dec
             << (ctx->buffers[bufIdx])->size << std::endl;
 
-  return (ctx->buffers[bufIdx])->virtualAddr;
+  return (int *)(ctx->buffers[bufIdx])->virtualAddr;
 #else
   //  ctx->InBuffers = (XAie_MemInst**)malloc(sizeof(XAie_MemInst*));
   //  XAie_MemInst *IN;
