@@ -62,9 +62,6 @@ namespace aievec {
 
 std::unique_ptr<Pass> createAIEVectorizePass();
 
-std::unique_ptr<Pass>
-createConvertVectorToAIEVecPass(const ConvertVectorToAIEVecOptions &options);
-
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
