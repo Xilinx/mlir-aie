@@ -265,7 +265,7 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
-  async def gen_sim(self):
+  async def gen_sim(self, task):
       shutil.rmtree('sim', ignore_errors=True)
       try:
         os.makedirs('sim/arch', exist_ok=True)
@@ -274,22 +274,17 @@ class flow_runner:
         os.makedirs('sim/ps', exist_ok=True)
       except FileExistsError:
         pass
-      self.do_run(['aie-translate', 
-                   '--aie-mlir-to-shim-solution',
-                   opts.filename,'-o','./sim/arch/aieshim_solution.aiesol'])
-      self.do_run(['aie-opt', 
-                   '--aie-create-pathfinder-flows',
-                   opts.filename,
-                   '-o', 'jtmp.mlir'])
-      self.do_run(['aie-translate',
-                   '--aie-mlir-to-xpe', './jtmp.mlir',
+      await self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
+                   './acdc_project/input_physical.mlir',
                    '-o', './sim/reports/graph.xpe'])
-      self.do_run(['rm','-rf','./jtmp.mlir'])
-      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
+      await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
+                   './acdc_project/input_physical.mlir',
+                   '-o','./sim/arch/aieshim_solution.aiesol'])
+      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
                    './sim/config/.'])
-      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
+      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
                    './sim/.'])
-      self.do_run(['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps.cpp"),
+      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps.cpp"),
                    './sim/ps/.'])
 
   async def run_flow(self):
@@ -355,8 +350,10 @@ class flow_runner:
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
         processes = [self.process_arm_cgen()]
+        await asyncio.gather(*processes) # ensure that process_arm_cgen finishes before running gen_sim
+        processes = []
         if(opts.aiesim):
-          processes.append(self.gen_sim())
+          processes.append(self.gen_sim(progress.task))
         for core in cores:
           processes.append(self.process_core(core))
         await asyncio.gather(*processes)
