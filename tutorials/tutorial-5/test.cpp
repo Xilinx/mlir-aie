@@ -52,8 +52,10 @@ int main(int argc, char *argv[]) {
 
   // Set virtual pointer used to configure
 #if defined(__AIESIM__)
-  mlir_aie_external_set_addr_ddr_test_buffer_in((u64)((_xaie->buffers[0])->physicalAddr));
-  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)((_xaie->buffers[1])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_in(
+      (u64)((_xaie->buffers[0])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_out(
+      (u64)((_xaie->buffers[1])->physicalAddr));
 #else
   mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
   mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
@@ -91,7 +93,7 @@ int main(int argc, char *argv[]) {
   // mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
 
   if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 1000) == XAIE_OK)
-  // if(mlir_aie_acquire_of_3_lock_0(_xaie, 0, 1000) == XAIE_OK)
+    // if(mlir_aie_acquire_of_3_lock_0(_xaie, 0, 1000) == XAIE_OK)
     printf("Acquired ddr output lock(1). Output shim dma done.\n");
   else
     printf("Timed out (1000) while trying to acquire ddr output lock (1).\n");
