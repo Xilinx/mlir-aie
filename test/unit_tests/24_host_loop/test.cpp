@@ -57,7 +57,7 @@ int main(int argc, char *argv[]) {
     mlir_aie_sync_mem_dev(_xaie, 0);
     mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
 
-    //acquire output shim
+    // acquire output shim
     if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
-      
+
     i++;
   }
 

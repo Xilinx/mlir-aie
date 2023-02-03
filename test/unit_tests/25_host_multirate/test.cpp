@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_acquire_of_0_lock_0(_xaie, 0, 10000);
   for (int i = 0; i < 256; i++)
-      mem_ptr_in[i] = i;
+    mem_ptr_in[i] = i;
   mlir_aie_sync_mem_dev(_xaie, 0);
   mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
 
@@ -64,8 +64,8 @@ int main(int argc, char *argv[]) {
   // check output DDR
   mlir_aie_sync_mem_cpu(_xaie, 1);
   for (int j = 0; j < 64; j++)
-    mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[(0 * 64) + j],
-                    errors);
+    mlir_aie_check("After start cores:", mem_ptr_out[j],
+                   mem_ptr_in[(0 * 64) + j], errors);
 
   // release output shim
   if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
@@ -82,8 +82,8 @@ int main(int argc, char *argv[]) {
   // check output DDR
   mlir_aie_sync_mem_cpu(_xaie, 1);
   for (int j = 0; j < 64; j++)
-    mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[(1 * 64) + j],
-                        errors);
+    mlir_aie_check("After start cores:", mem_ptr_out[j],
+                   mem_ptr_in[(1 * 64) + j], errors);
 
   int i = 0;
   while (i < 4) {
@@ -96,7 +96,8 @@ int main(int argc, char *argv[]) {
     // check output DDR
     // mlir_aie_sync_mem_cpu(_xaie, 1);
     // for (int j = 0; j < 64; j++)
-    //   mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[(i * 64) + j],
+    //   mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[(i *
+    //   64) + j],
     //                  errors);
 
     // release output shim
