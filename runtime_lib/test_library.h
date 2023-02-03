@@ -15,7 +15,6 @@
 #include <xaiengine.h>
 
 #if defined(__AIESIM__)
-#include <iostream>
 #include "xioutils.h"
 #include <iostream>
 #endif
