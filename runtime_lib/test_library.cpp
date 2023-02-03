@@ -983,21 +983,25 @@ void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {
 #endif
 }
 
+/*
+ * size - size in words (4 bytes)
+ */
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
 #if defined(__AIESIM__)
+  int size_bytes = size * sizeof(int);
   ctx->buffers[bufIdx] = new ext_mem_model_t;
-  (ctx->buffers[bufIdx])->virtualAddr = std::malloc(size * sizeof(int));
+  (ctx->buffers[bufIdx])->virtualAddr = std::malloc(size_bytes);
   if ((ctx->buffers[bufIdx])->virtualAddr) {
-    (ctx->buffers[bufIdx])->size = size;
+    (ctx->buffers[bufIdx])->size = size_bytes;
     // assign physical space in SystemC DDR memory controller
     (ctx->buffers[bufIdx])->physicalAddr = nextAlignedAddr;
     // adjust nextAlignedAddr to the next 128-bit aligned address
-    nextAlignedAddr = nextAlignedAddr + size;
+    nextAlignedAddr = nextAlignedAddr + size_bytes;
     uint64_t gapToAligned = nextAlignedAddr % 16; // 16byte (128bit)
     if (gapToAligned > 0)
       nextAlignedAddr += (16 - gapToAligned);
   } else {
-    printf("ExtMemModel: Failed to allocate %d memory.\n", size);
+    printf("ExtMemModel: Failed to allocate %d memory.\n", size_bytes);
   }
 
   std::cout << "ExtMemModel constructor: virutal address " << std::hex
