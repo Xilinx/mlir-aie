@@ -62,7 +62,7 @@ int main(int argc, char *argv[]) {
   while (i < 4) {
     mlir_aie_release_hostLock(_xaie, 1, 0);
 
-    //acquire output shim
+    // acquire output shim
     if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
@@ -71,8 +71,8 @@ int main(int argc, char *argv[]) {
     // check output DDR
     mlir_aie_sync_mem_cpu(_xaie, 1);
     for (int j = 0; j < 64; j++)
-      mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[(i *
-      64) + j], errors);
+      mlir_aie_check("After start cores:", mem_ptr_out[j],
+                     mem_ptr_in[(i * 64) + j], errors);
 
     // release output shim
     if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
