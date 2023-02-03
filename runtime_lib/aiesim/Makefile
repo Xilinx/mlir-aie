@@ -3,10 +3,10 @@
 
 #
 # From one diretory up, you can invoke the simulator by typing
-# > make -C sim sim
+# > make -C sim
 #
 # If you want to change the host source file, you can redefine host:
-# > make -C sim sim host=../yourhost.cpp
+# > make -C sim host=../yourhost.cpp
 #
 # Note: The host file location is relative to the <sim> folder or can 
 #       be an absolute path
@@ -25,7 +25,7 @@ XILINX_VITIS_AIETOOLS:=${XILINX_VITIS}/aietools
 endif
 .PHONY: all link sim clean
 .NOTPARALLEL:
-all: link
+all: sim
 
 CC_ENV := (export LD_LIBRARY_PATH=${XILINX_VITIS_AIETOOLS}/lib/lnx64.o:$(LD_LIBRARY_PATH))
 CC := "${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++" 
