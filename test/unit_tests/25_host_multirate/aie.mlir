@@ -16,6 +16,8 @@ module @host_multirate {
     %tile34 = AIE.tile(3, 4)
     %tile70 = AIE.tile(7, 0)
 
+    %hostLock = AIE.lock(%tile34, 0) {sym_name="hostLock"}
+
     func.func @evaluate_condition(%argIn : i32) -> (i1) {
         %true = arith.constant 1 : i1
         return %true : i1
@@ -48,6 +50,8 @@ module @host_multirate {
             ^bb0(%arg2: i32):
             %next = func.call @payload(%arg2) : (i32) -> i32
 
+            AIE.useLock(%hostLock, Acquire, 1)
+
             %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo_in : !AIE.objectFifo<memref<64xi32>>, 1) : !AIE.objectFifoSubview<memref<64xi32>>
             %outputSubview = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1) : !AIE.objectFifoSubview<memref<64xi32>>
             
@@ -61,6 +65,8 @@ module @host_multirate {
             
             AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<64xi32>>, 1)
             AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1)
+
+            AIE.useLock(%hostLock, Release, 0)
             
             scf.yield %next : i32
         }
