@@ -16,6 +16,7 @@
 
 #if defined(__AIESIM__)
 #include "xioutils.h"
+#include <iostream>
 #endif
 
 extern "C" {
