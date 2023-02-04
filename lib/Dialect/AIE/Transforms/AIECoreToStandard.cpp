@@ -220,8 +220,8 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
 
 struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
   using OpConversionPattern<BufferOp>::OpConversionPattern;
-  AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
-                      IRMapping &mapper, PatternBenefit benefit = 1)
+  AIEBufferToStandard(MLIRContext *context, ModuleOp &m, IRMapping &mapper,
+                      PatternBenefit benefit = 1)
       : OpConversionPattern<BufferOp>(context, benefit) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
