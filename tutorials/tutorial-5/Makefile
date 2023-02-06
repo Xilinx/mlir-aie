@@ -13,10 +13,5 @@ all: tutorial-5.exe
 tutorial-5.exe: aie.mlir test.cpp 
 	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./test.cpp -o $@
 
-view: routes.json
-
-routes.json: aie.mlir
-	aie-opt --aie-objectFifo-stateful-transform --aie-create-pathfinder-flows --aie-find-flows $< | aie-translate --aie-flows-to-json > $@
-
 clean:
-	rm -rf acdc_project *elf *exe core*
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts

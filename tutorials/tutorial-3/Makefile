@@ -13,14 +13,8 @@ all: tutorial-3.exe
 tutorial-3.exe: test.cpp aie.mlir
 	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
 
-Work/ps/c_rts/systemC/generated-objects/ps_i96.so: test.cpp aie.mlir
-	make -C Work/ps/c_rts/systemC link
-
-sim: Work/ps/c_rts/systemC/generated-objects/ps_i96.so
-	aiesimulator --pkg-dir=./Work --dump-vcd foo
-
 clean:
-	rm -rf acdc_project *elf *exe core* Work/ps/c_rts/systemC/generated-objects/*o
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises

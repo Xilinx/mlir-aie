@@ -13,7 +13,6 @@ all: tutorial-9.exe
 external_kernel/kernel.o: external_kernel/kernel.cc
 	$(MAKE) -C external_kernel mlir
 
-
 kernel.o: external_kernel/kernel.o
 	cp external_kernel/kernel.o ./kernel.o
 
@@ -28,7 +27,7 @@ tutorial-9.exe: test.cpp aie.mlir kernel.o
 
 clean:
 	$(MAKE) -C external_kernel clean
-	rm -rf acdc_project *elf *exe core* kernel.o
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts *.o
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises

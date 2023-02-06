@@ -21,7 +21,7 @@ sim: Work/ps/c_rts/systemC/generated-objects/ps_i96.so
 
 
 clean:
-	rm -rf acdc_project *elf core* *log pl_sample_counts foo.vcd *exe aiesimulator_output
+	rm -rf acdc_project *elf core* *log pl_sample_counts foo.vcd *exe aiesimulator_output sim
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises
