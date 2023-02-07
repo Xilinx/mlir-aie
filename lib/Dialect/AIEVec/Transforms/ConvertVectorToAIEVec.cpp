@@ -33,6 +33,7 @@
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
+#define GEN_PASS_DEF_CANONICALIZEFORAIEVEC
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 } // namespace xilinx::aievec
 
@@ -437,39 +438,75 @@ template <typename AddOpTy> static bool canFoldToFMA(AddOpTy addOp) {
 //    1) Merge `arith::mul` followed by `arith::add` into `vector::fma`
 //    2) Replace splat transfer reads with contiguous transfer reads followed by
 //       `extract` + `broadcast` operations.
-// TODO: Make this into a public pass so it can be individually tested.
-struct PreCanonicalizeVectorPass
-    : public PassWrapper<PreCanonicalizeVectorPass,
-                         OperationPass<func::FuncOp>> {
-  void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
-    ConversionTarget target(*context);
+struct CanonicalizeForAIEVecPass
+    : public aievec::impl::CanonicalizeForAIEVecBase<
+          CanonicalizeForAIEVecPass> {
+  using Base::Base;
 
-    // Configure legalizations
-    target.addLegalDialect<vector::VectorDialect>();
-    target.addDynamicallyLegalOp<arith::AddIOp>(
-        [](arith::AddIOp op) { return !canFoldToFMA(op); });
-    target.addDynamicallyLegalOp<arith::AddFOp>(
-        [](arith::AddFOp op) { return !canFoldToFMA(op); });
-    target.addDynamicallyLegalOp<vector::TransferReadOp>(
-        [](vector::TransferReadOp op) {
-          return !op.getPermutationMap().isConstant();
-        });
-
-    // Gather legalization patterns
-    patterns.add<FoldMulAddIntToFMAPattern, FoldMulAddFloatToFMAPattern,
-                 ConvertSplatTransferReadToBroadcastPattern>(context);
-
-    if (failed(applyPartialConversion(funcOp, target, std::move(patterns)))) {
-      signalPassFailure();
-    }
-  }
+  void runOnOperation() override;
 };
 
-std::unique_ptr<::mlir::Pass> createPreCanonicalizeVectorPass() {
-  return std::make_unique<PreCanonicalizeVectorPass>();
+static void
+configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
+  target.addLegalDialect<vector::VectorDialect>();
+  target.addDynamicallyLegalOp<arith::AddIOp>(
+      [](arith::AddIOp op) { return !canFoldToFMA(op); });
+  target.addDynamicallyLegalOp<arith::AddFOp>(
+      [](arith::AddFOp op) { return !canFoldToFMA(op); });
+  target.addDynamicallyLegalOp<vector::TransferReadOp>(
+      [](vector::TransferReadOp op) {
+        return !op.getPermutationMap().isConstant();
+      });
+}
+
+static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {}
+
+static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {}
+
+static void
+populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+  patterns.add<FoldMulAddIntToFMAPattern, FoldMulAddFloatToFMAPattern,
+               ConvertSplatTransferReadToBroadcastPattern>(
+      patterns.getContext());
+}
+
+static void
+populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
+
+static void
+populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
+
+void CanonicalizeForAIEVecPass::runOnOperation() {
+  func::FuncOp funcOp = getOperation();
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
+  ConversionTarget target(*context);
+
+  AIEArch aieVersion = AIEArch::AIE;
+  if (!aieTarget.empty()) {
+    std::string target = aieTarget;
+    if (target == "aieml") {
+      aieVersion = AIEArch::AIE_ML;
+    } else if (target != "aie") {
+      funcOp.emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
+    }
+  }
+
+  populateCommonAIECanonicalizeConversionPatterns(patterns);
+  configureCommonAIECanonicalizeLegalizations(target);
+  if (aieVersion == AIEArch::AIE) {
+    populateAIEv1CanonicalizeConversionPatterns(patterns);
+    configureAIEv1CanonicalizeLegalizations(target);
+  } else {
+    populateAIEMLCanonicalizeConversionPatterns(patterns);
+    configureAIEMLCanonicalizeLegalizations(target);
+  }
+
+  if (failed(applyPartialConversion(funcOp, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
 }
 
 //===---------------------------------------------------------------------------
@@ -480,7 +517,8 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
-  pm.addPass(createPreCanonicalizeVectorPass());
+  pm.addPass(
+      createCanonicalizeForAIEVec(options.getCanonicalizeForAIEVecOptions()));
   // Add lowering from `Vector` to `AIEVec`
   pm.addPass(
       createLowerVectorToAIEVec(options.getLowerVectorToAIEVecOptions()));
