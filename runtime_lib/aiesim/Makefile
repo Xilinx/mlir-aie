@@ -17,11 +17,11 @@ MLIR_AIE_INSTALL = $(dir $(shell which aie-opt))/..
 ifeq ($(host),) 
 host:=../test.cpp
 endif
-ifeq ($(AIE_SRC_DIR),) 
-AIE_SRC_DIR:=. 
+ifeq ($(MLIR_AIE_SRC_DIR),) 
+MLIR_AIE_SRC_DIR:=. 
 endif
 ifeq ($(XILINX_VITIS_AIETOOLS),)
-XILINX_VITIS_AIETOOLS:=${XILINX_VITIS}/aietools
+XILINX_VITIS_AIETOOLS = $(dir $(shell which aiesimulator))/..
 endif
 .PHONY: all link sim clean
 .NOTPARALLEL:
@@ -29,7 +29,7 @@ all: sim
 
 CC_ENV := (export LD_LIBRARY_PATH=${XILINX_VITIS_AIETOOLS}/lib/lnx64.o:$(LD_LIBRARY_PATH))
 CC := "${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++" 
-CC_ARGS := -fPIC -fpermissive -c -std=c++17 -D__AIEARCH__=10 -DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR -Wno-deprecated-declarations -DSC_INCLUDE_DYNAMIC_PROCESSES -D__AIESIM__ -D__PS_INIT_AIE__ -DXAIE_DEBUG -Og -flto -D main\(...\)=ps_main\(...\) -I${XILINX_VITIS_AIETOOLS}/include -I${XILINX_VITIS_AIETOOLS}/include/drivers/aiengine -I${XILINX_HLS}/include -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0 -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/backward -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/x86_64-pc-linux-gnu -I${XILINX_VITIS_AIETOOLS}/data/osci_systemc/include -I${XILINX_VITIS_AIETOOLS}/tps/boost_1_72_0 -I. -I$(AIE_SRC_DIR) -I${XILINX_VITIS_AIETOOLS}/include/xtlm/include -I${XILINX_VITIS_AIETOOLS}/include/common_cpp/common_cpp_v1_0/include -I${MLIR_AIE_INSTALL}/runtime_lib  -I ../. -I ../acdc_project 
+CC_ARGS := -fPIC -fpermissive -c -std=c++17 -D__AIEARCH__=10 -DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR -Wno-deprecated-declarations -DSC_INCLUDE_DYNAMIC_PROCESSES -D__AIESIM__ -D__PS_INIT_AIE__ -DXAIE_DEBUG -Og -flto -D main\(...\)=ps_main\(...\) -I${XILINX_VITIS_AIETOOLS}/include -I${XILINX_VITIS_AIETOOLS}/include/drivers/aiengine -I${XILINX_HLS}/include -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0 -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/backward -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/x86_64-pc-linux-gnu -I${XILINX_VITIS_AIETOOLS}/data/osci_systemc/include -I${XILINX_VITIS_AIETOOLS}/tps/boost_1_72_0 -I. -I$(MLIR_AIE_SRC_DIR) -I${XILINX_VITIS_AIETOOLS}/include/xtlm/include -I${XILINX_VITIS_AIETOOLS}/include/common_cpp/common_cpp_v1_0/include -I${MLIR_AIE_INSTALL}/runtime_lib  -I ../. -I ../acdc_project 
 
 ps/test_library.o: ${MLIR_AIE_INSTALL}/runtime_lib/test_library.cpp
 	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<

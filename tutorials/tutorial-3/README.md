@@ -48,7 +48,7 @@ The acquire value must match the current lock state in order for the acquire to 
 
 5. Based on what you know about locks, which tile will execute its kernel code inside the lock calls first in this design? <img src="../images/answer1.jpg" title="tile(1,4)" height=25>
 
-6. Run `make` and `make sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
+6. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
 7. Change the design so that tile(2,4) runs first. What do you expect the value of buf[5] will be with this change? <img src="../images/answer1.jpg" title="100" height=25>
 

@@ -274,18 +274,20 @@ class flow_runner:
         os.makedirs('sim/ps', exist_ok=True)
       except FileExistsError:
         pass
+      thispath = os.path.dirname(os.path.realpath(__file__))
+      sim_scsim_json = os.path.join(thispath, '..','..','runtime_lib',"aiesim","scsim_config.json")
+      sim_makefile   = os.path.join(thispath, '..','..','runtime_lib',"aiesim","Makefile")
+      sim_genwrapper = os.path.join(thispath, '..','..','runtime_lib',"aiesim","genwrapper_for_ps.cpp")
+
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
                    './acdc_project/input_physical.mlir',
                    '-o', './sim/reports/graph.xpe'])
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
                    './acdc_project/input_physical.mlir',
                    '-o','./sim/arch/aieshim_solution.aiesol'])
-      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
-                   './sim/config/.'])
-      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
-                   './sim/.'])
-      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps.cpp"),
-                   './sim/ps/.'])
+      await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
+      await self.do_call(task, ['cp',sim_makefile,'./sim/.'])
+      await self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.'])
 
   async def run_flow(self):
       nworkers = int(opts.nthreads)

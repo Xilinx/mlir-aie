@@ -26,15 +26,17 @@ Here, the same tile DMA and channel combination is used as the source. The route
 
 The packet switch case is much more robust as we can not do both one-to-many connections as well as many-to-one. This is because packets have natural boundaries where the data begins and ends and the stream switch is configured to do a round-robin arbitration between ports sharing a single stream. Because packets are labeled with packet type and packet IDs, the broadcast definition will likewise use these designations to help guide the stream switch configurations. A simple example configuration where we route all packets from a source with a certain packet ID to a set of destination (one-to-many) is shown below: 
 ```
- AIE.broadcast_packet(%tile14, DMA: 0) {
-      AIE.bp_id(0xD) {
-        AIE.bp_dest<%tile34, DMA: 1>
-        AIE.bp_dest<%tile35, DMA: 1>
+ AIEX.broadcast_packet(%tile14, DMA: 0) {
+      AIEX.bp_id(0xD) {
+        AIEX.bp_dest<%tile34, DMA: 1>
+        AIEX.bp_dest<%tile35, DMA: 1>
       }
       ...
     }
 ```
-Here, we use `AIE.broadcast_packet` operator to denote the definition of packet flows from a given tile and DMA + channel (in this case, tile(1,4) and tileDMA MM2S channel 0). We then define the flows for every defined packet ID since packet IDs refer to a particular flow. For example, packet ID 3 might go one particular route, while packet ID 4 might go another route (or the same route). In this example, we define the flow for packet ID 0xD and indicate that it goes to both tile(3,4) and tile (3,5) to the associated tile DMA (S2MM, both channel 1). This list of destinations can be just one or as many as desired. The ... in this code snippet indicates that we can continue to define more flows for different packet IDs.
+Here, we use `AIEX.broadcast_packet` operator to denote the definition of packet flows from a given tile and DMA + channel (in this case, tile(1,4) and tileDMA MM2S channel 0). We then define the flows for every defined packet ID since packet IDs refer to a particular flow. For example, packet ID 3 might go one particular route, while packet ID 4 might go another route (or the same route). In this example, we define the flow for packet ID 0xD and indicate that it goes to both tile(3,4) and tile (3,5) to the associated tile DMA (S2MM, both channel 1). This list of destinations can be just one or as many as desired. The ... in this code snippet indicates that we can continue to define more flows for different packet IDs.
+
+> **NOTE**: We have used the AIEX dialect which is an experimental extension of the MLIR-AIE dialect where new dialect operations are being developed. Moe details of existing `AIEX` dialect operations can be found [here](https://xilinx.github.io/mlir-aie/AIEXDialect.html).
 
 If broadcast is not needed, you could use the simpler `AIE.packet_flow`. This functions very similarly to `AIE.flow` with two differences: (1) packet ID is associated with a packet flow, (2) We wrap the source and destination ports with `AIE.packet_source` and `AIE.packet_dest` like:
 ```
