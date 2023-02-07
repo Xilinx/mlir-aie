@@ -89,6 +89,47 @@ struct UPDOpEffectiveAccessSizeAnalysis {
 // Lowering patterns
 //===----------------------------------------------------------------------===//
 
+// This pattern converts a `vector.transfer_read` with a splat permutation map
+// into a contiguous `vector.transfer_read` followed by a `vector.extract` to
+// obtain the splat value and a `vector.broadcast` to broadcast it into a
+// vector of the right size.
+struct ConvertSplatTransferReadToBroadcastPattern
+    : public OpConversionPattern<vector::TransferReadOp> {
+  using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    AffineMap map = readOp.getPermutationMap();
+    if (!map.isConstant())
+      return failure();
+
+    // If the innermost index comes from an `affine.apply` op, take the base
+    // as the new innermost index for the new `vector.transfer_read`, and the
+    // offset as the index for the `aievec.broadcast` op.
+    SmallVector<Value, 8> indices;
+    indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
+    Value innerMostIdx = indices[indices.size() - 1];
+    Value newIdx = innerMostIdx;
+    int64_t offset = 0;
+    if (auto defOp = innerMostIdx.getDefiningOp())
+      if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
+        if (applyOp.getAffineMap().getNumDims() == 1) {
+          newIdx = applyOp.getMapOperands()[0];
+          offset = applyOp.getAffineMap().compose({0})[0];
+        }
+    indices[indices.size() - 1] = newIdx;
+    auto newReadOp = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), readOp.getVector().getType(), adaptor.getSource(),
+        indices, adaptor.getPadding());
+    auto extractOp = rewriter.create<vector::ExtractOp>(
+        readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
+    rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
+        readOp, newReadOp.getVector().getType(), extractOp.getResult());
+    return success();
+  }
+};
+
 // This pattern converts a vector `arith.add` following a vector `arith.mul`
 // into a `vector.fma`.
 template <typename MulOpTy, typename AddOpTy>
@@ -126,43 +167,6 @@ using FoldMulAddIntToFMAPattern =
     FoldMulAddToFMAPattern<arith::MulIOp, arith::AddIOp>;
 using FoldMulAddFloatToFMAPattern =
     FoldMulAddToFMAPattern<arith::MulFOp, arith::AddFOp>;
-
-// This pattern replaces a `vector.transfer_read` performing a splat with a
-// regular `vector.transfer_read` a `aievec.broadcast`
-struct LowerSplatTransferReadToBroadcastPattern
-    : public OpConversionPattern<vector::TransferReadOp> {
-  using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    AffineMap map = readOp.getPermutationMap();
-    if (!map.isConstant())
-      return failure();
-
-    // If the innermost index comes from an `affine.apply` op, take the base
-    // as the new innermost index for the new `vector.transfer_read`, and the
-    // offset as the index for the `aievec.broadcast` op.
-    SmallVector<Value, 8> indices;
-    indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
-    Value innerMostIdx = indices[indices.size() - 1];
-    Value newIdx = innerMostIdx;
-    int32_t offset = 0;
-    if (auto defOp = innerMostIdx.getDefiningOp())
-      if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
-        if (applyOp.getAffineMap().getNumDims() == 1) {
-          newIdx = applyOp.getMapOperands()[0];
-          offset = static_cast<int32_t>(applyOp.getAffineMap().compose({0})[0]);
-        }
-    indices[indices.size() - 1] = newIdx;
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVector().getType(), adaptor.getSource(),
-        indices, adaptor.getPadding());
-    rewriter.replaceOpWithNewOp<xilinx::aievec::BroadcastOp>(
-        readOp, newReadOp.getResult(), offset);
-    return success();
-  }
-};
 
 struct LowerVectorFMAOpPattern : public OpConversionPattern<vector::FMAOp> {
   using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
@@ -219,8 +223,7 @@ struct LowerVectorTransferReadToAIEUPD
     AffineMap map = readOp.getPermutationMap();
     if (!map.isMinorIdentity())
       return failure();
-    //      return readOp.emitError() << "AIE doesn't support non-contiguous
-    //      loads.";
+
     // Splats
     if (map.isConstant())
       return failure();
@@ -317,9 +320,7 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 256);
-  patterns
-      .add<LowerSplatTransferReadToBroadcastPattern, LowerVectorFMAOpPattern>(
-          patterns.getContext());
+  patterns.add<LowerVectorFMAOpPattern>(patterns.getContext());
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
@@ -430,10 +431,16 @@ template <typename AddOpTy> static bool canFoldToFMA(AddOpTy addOp) {
   return false;
 }
 
-// This pass locates and replaces chains of `arith.mul` -> `arith.add` ops on
-// vectors with `vector.fma` ops.
-struct FoldMulAddToFMAPass
-    : public PassWrapper<FoldMulAddToFMAPass, OperationPass<func::FuncOp>> {
+// This pass converts standard vector ops into a subset of `Vector` ops more
+// amenable to being converted to `AIEVec`. So far, this process consists of two
+// steps:
+//    1) Merge `arith::mul` followed by `arith::add` into `vector::fma`
+//    2) Replace splat transfer reads with contiguous transfer reads followed by
+//       `extract` + `broadcast` operations.
+// TODO: Make this into a public pass so it can be individually tested.
+struct PreCanonicalizeVectorPass
+    : public PassWrapper<PreCanonicalizeVectorPass,
+                         OperationPass<func::FuncOp>> {
   void runOnOperation() override {
     func::FuncOp funcOp = getOperation();
     MLIRContext *context = &getContext();
@@ -446,10 +453,14 @@ struct FoldMulAddToFMAPass
         [](arith::AddIOp op) { return !canFoldToFMA(op); });
     target.addDynamicallyLegalOp<arith::AddFOp>(
         [](arith::AddFOp op) { return !canFoldToFMA(op); });
+    target.addDynamicallyLegalOp<vector::TransferReadOp>(
+        [](vector::TransferReadOp op) {
+          return !op.getPermutationMap().isConstant();
+        });
 
     // Gather legalization patterns
-    patterns.add<FoldMulAddIntToFMAPattern, FoldMulAddFloatToFMAPattern>(
-        context);
+    patterns.add<FoldMulAddIntToFMAPattern, FoldMulAddFloatToFMAPattern,
+                 ConvertSplatTransferReadToBroadcastPattern>(context);
 
     if (failed(applyPartialConversion(funcOp, target, std::move(patterns)))) {
       signalPassFailure();
@@ -457,8 +468,8 @@ struct FoldMulAddToFMAPass
   }
 };
 
-std::unique_ptr<::mlir::Pass> createFoldMulAddToFMAPass() {
-  return std::make_unique<FoldMulAddToFMAPass>();
+std::unique_ptr<::mlir::Pass> createPreCanonicalizeVectorPass() {
+  return std::make_unique<PreCanonicalizeVectorPass>();
 }
 
 //===---------------------------------------------------------------------------
@@ -469,7 +480,7 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
-  pm.addPass(createFoldMulAddToFMAPass());
+  pm.addPass(createPreCanonicalizeVectorPass());
   // Add lowering from `Vector` to `AIEVec`
   pm.addPass(
       createLowerVectorToAIEVec(options.getLowerVectorToAIEVecOptions()));
