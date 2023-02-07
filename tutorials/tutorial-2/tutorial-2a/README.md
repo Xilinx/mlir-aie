@@ -18,17 +18,18 @@ Of particular interest is the `acdc_project/aie_inc.cpp` file which contains man
 1. Run `make` in this directory. Then take a look at the file under `acdc_project/aie_inc.cpp`. You will see a number of helpful API functions for initializing and configuring our design from the host. We've built a host program that does this named [test.cpp](./test.cpp). Take a look at this file to see the common set of init/config functions which will be describing in more detail below:
 
 ### <ins>Common Host API init/config functions</ins>
-The next set of functions are often called as a group to configure the AI Engine array and program the elf files for each individual tile. 
+The next set of functions are often called as a group to configure the AI Engine array and program the elf files for each individual tile. Detailed descriptions of these functions can be found in the common `test_library.cpp` and design specific `acdc_project/aie_inc.cpp`.
 
 | Host Config API | Description |
 |----------|-------------|
-| mlir_aie_init_libxaie | Instantiates a struct of configuration information and data types used by later configuration functions. |
-| mlir_aie_init_device | Initializes our AI Engine array and reserves the entire array for configuration. |
-| mlir_aie_configure_cores | Disables and resets all relevant tiles and loads elfs into relevant tiles. It also releases all locks to value 0. |
-| mlir_aie_configure_switchboxes | Configures the switchboxes use to route stream connections. |
-| mlir_aie_configure_dmas | Configures all tile DMAs |
-| mlir_aie_initialize_locks | Configures initial lock values (placeholder). |
-| mlir_aie_clear_tile_memory | Clear tile data memory for a given tile. Call for each tile you wish to clear the tile memory for. |
+| aie_libxaie_ctx_t | Struct of AI Engine configuration information and data types use by configuration functions |
+| mlir_aie_init_libxaie () | Allocates and initializes aie_libxaie_ctx_t struct |
+| mlir_aie_init_device (_xaie) | Initializes our AI Engine array and reserves the entire array for configuration. |
+| mlir_aie_configure_cores (_xaie) | Disables and resets all relevant tiles and loads elfs into relevant tiles. It also releases all locks to value 0. |
+| mlir_aie_configure_switchboxes (_xaie) | Configures the switchboxes use to route stream connections. |
+| mlir_aie_configure_dmas (_xaie) | Configures all tile DMAs |
+| mlir_aie_initialize_locks (_xaie) | Configures initial lock values (placeholder). |
+| mlir_aie_clear_tile_memory (_xaie, int col, int row) | Clear tile data memory for a given tile. Call for each tile you wish to clear the tile memory for. |
 
 
 Instantiating the above as code block would look something like:
@@ -67,12 +68,14 @@ The dynamic buffer allocation and shim DMA config function calls would look like
 ```
 | Host Config API | Description |
 |----------|-------------|
-| mlir_aie_init_mems | Initialize N DDR memory buffers. At the moment, we need to know the number of buffers we need up front. |
-| mlir_aie_mem_alloc | Dynamic allocation of memory buffer associated with buffer ID number and a size. The ID is numbered sequentially starting from 0 and matches the description as defined in the MLIR_AIE source file (e.g. aie.mlir) |
-| mlir_aie_external_set_addr_< symbol name > | Set the address for an MLIR-AIE external buffer used in configuring the shim DMA |
-| mlir_aie_configure_shimdma_< location > | Complete shim DMA configuration given the virtual address value set by mlir_aie_external_set_addr_ for all DMAs belonging to this shimDMA tile (up to 4). |
-| mlir_aie_sync_mem_dev | Synchronize between DDR cache (virtual address) and DDR physical memory accessed by NOC/ shimDMA. In simulation, we explicitly copy from host memory to the memory region accessed by shim DMA model. We call this after we update DDR data and want the shim DMA to see the new data. |
-| mlir_aie_sync_mem_cpu | Synchronize between DDR physical memory accessed by NOC/ shimDMA and DDR cache (virtual address). In simulation, we explicitly copy from shim DMA model accessible memory to host memory. We call this before we read DDR data to make sure shim DMA written data is updated by the host program. |
+| mlir_aie_init_mems (_xaie, int numBufs) | Initialize `numbBufs` DDR memory buffers. At the moment, with these APIs, we need to know the number of buffers we need up front. |
+| mlir_aie_mem_alloc (_xaie, int bufIdx, int size) | Dynamic allocation of memory buffer associated with buffer ID number (bufIdx) and a size. The ID is numbered sequentially starting from 0 and matches the description as defined in the MLIR_AIE source file (e.g. aie.mlir). Size is defined in words (4 bytes). |
+| mlir_aie_external_set_addr_< symbol name > (u64 addr) | Set the address (addr) for an MLIR-AIE external buffer used in configuring the shim DMA |
+| mlir_aie_configure_shimdma_< location > (_xaie) | Complete shim DMA configuration given the virtual address value set by mlir_aie_external_set_addr_ for all DMAs belonging to this shimDMA tile (up to 4). |
+| mlir_aie_sync_mem_dev (_xaie, int bufIdx)| Synchronize between DDR cache (virtual address) and DDR physical memory accessed by NOC/ shimDMA. In simulation, we explicitly copy from host memory to the memory region accessed by shim DMA model. We call this after we update DDR data and want the shim DMA to see the new data. |
+| mlir_aie_sync_mem_cpu (_xaie, int bufIdx)| Synchronize between DDR physical memory accessed by NOC/ shimDMA and DDR cache (virtual address). In simulation, we explicitly copy from shim DMA model accessible memory to host memory. We call this before we read DDR data to make sure shim DMA written data is updated before being read by the host program. |
+
+> **More information about "syncing" memory**: In a system with caches, the data in the cache can be out of date with the data in global memory.  If an accelerator has coherent access to the caches, then this inconsistency isn't a problem because the accelerator will be able to access data in the cache directly and the cache will do the right thing.  This is called "shared virtual memory".  However in a system where the accelerator only sees global memory and does not have cache-coherent view of data in the caches, then we need to make sure that the accelerator 'sees' the data in the cache, when it can only access global memory.  The solution to this is to explicitly flush or invalidate data in the caches.  Normally this would be taken care of in the operating system, but this is a high-latency operation.  In this case, we do it in userspace:  `mlir_aie_sync_mem_dev` is essentially "flush the processor caches so that the device can see data" and `mlir_aie_sync_mem_cpu` is essentially "invalidate the processor caches so that the processor will reread data from global memory".
 
 Finally, we are ready to start the cores and poll and test values to ensure correct functionality. An example sequence of host commands might look like:
 ```
@@ -104,19 +107,19 @@ Finally, we are ready to start the cores and poll and test values to ensure corr
 
 | Host Config API | Description |
 |----------|-------------|
-| mlir_aie_start_cores | Unresets and enables all tiles in the design.|
-| mlir_aie_print_tile_status | Prints out tile status to stdout |
-| mlir_aie_print_shimdma_status | Prints out shim DMA tile status to stdout |
-| mlir_aie_release_< symbolic lock name > | Release lock for a given lock based on the symbolic lock name and lock value. |
-| mlir_aie_acquire_< symbolic lock name > | Acquire lock for a given lock based on the symbolic lock name, lock value, and timeout value in microseconds. This acquire is non-blocking. If timeout is set to 0, we check once and return. If set to a positive integer value, we poll the lock for that period of time and then return after the timeout value. |
-| mlir_aie_read_buffer_< symbolic buffer name > | Read buffer from tile local memory based on the symbolic buffer name. |
-| mlir_aie_write_buffer_< symbolic buffer name > | Write value to buffer in tile local memory based on the symbolic buffer name. |
-| mlir_aie_check | Check between a value and the expected value and output the prepended error message. Increment error variable if difference is found. |
+| mlir_aie_start_cores (_xaie)| Unresets and enables all tiles in the design.|
+| mlir_aie_print_tile_status (_xaie, int col, int row) | Prints out tile status to stdout |
+| mlir_aie_print_shimdma_status (_xaie, int col, int row) | Prints out shim DMA tile status to stdout |
+| mlir_aie_acquire_< symbolic lock name > (_xaie, int value, int timeout)| Acquire lock for a given lock associated with a symbolic lock name with the lock value (value, 0 or 1). Timeout is the amount of time in microseconds that the operation waits to succeed. This acquire is non-blocking. If timeout is set to 0, we check once and return. If set to a positive integer value, we poll the lock for that period of time and then return after the timeout value. |
+| mlir_aie_release_< symbolic lock name > (_xaie, int value, int timeout) | Release lock for a given lock associated with a symbolic lock name to the lock value (value, 0 or 1). Timeout is the amount of time in microseconds that the operation waits to succeed. |
+| mlir_aie_read_buffer_< symbolic buffer name > (_xaie, int index) | Read buffer from tile's local memory based on the symbolic buffer name at the index offset (index). |
+| mlir_aie_write_buffer_< symbolic buffer name > (_xaie, int index, int value) | Write value to buffer in tile's local memory based on the symbolic buffer name with value (value) at the index offset (index). |
+| mlir_aie_check (s, r, v, errors) | Macro definition to check between a value (v) and the expected reference value (r). If an inequality is found, the output error message include the string (s) and we increment (errors). |
 
 You will notice that in our example, we use the `mlir_aie_acquire_< symbolic lock name >` to gate when the execution of our design is done. This is facilitated by having added locks around the kernel code. While this is not strictly necessary, it is a helpful technique for checking when a AI engine core is done. We will explore this in future tutorials as locks can be used in various ways to control data communication and gate operations of AI engines.
 
-2. Look again in the main directory and you will see several key files including `core_1_4.elf` which is the elf program for tile(1,4). You also will see `tutorial-2a.exe` which is the cross-compiled host binary generated from the host code source `test.cpp`.
-3. Take a look at [Makefile](./Makefile) and notice the additional arguments added to `aiecc.py`. We've included the `test_library.cpp` and the host code source [test.cpp](./test.cpp) and specified the final host executable output with a -o tutorial-2a.exe.
+2. Look again in the main directory and you will see several key files including `core_1_4.elf` which is the elf program for tile(1,4). You also will see `tutorial-2a.exe` which is the cross-compiled host executable generated from the host code source `test.cpp`.
+3. Take a look at [Makefile](./Makefile) and notice the additional compile arguments added to `aiecc.py`. We've included the `test_library.cpp` and the host code source [test.cpp](./test.cpp) and specified the final host executable output with a -o `tutorial-2a.exe`.
 
 With all these host API calls, we can build a complete host program that configures and initializes our AI Engine design, enable it to run, and check for results. In [tutorial-2b](../tutorial-2b), we go through the steps of running a simulation of this design. In [tutorial-2c](../tutorial-2c), we run our design on the board and describe how to measure performance in hardware.
 

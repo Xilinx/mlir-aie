@@ -31,11 +31,11 @@ int main(int argc, char *argv[]) {
   // The host is used to initialize/ configure/ program the AIE array.
   // ------------------------------------------------------------------------
   // aie_libxaie_ctx_t - AIE config struct
-  // mlir_aie_init_device ##### TODO #######
+  // mlir_aie_init_device - Alloc AIE config struct
   // mlir_aie_configure_cores - Reset cores and locks. Load elfs.
   // mlir_aie_configure_switchboxes - Switchboxes not used in this example.
   // mlir_aie_configure_dmas - TileDMAs not used in this example.
-  // mlir_aie_initialize_locks - Locks not used in this example.
+  // mlir_aie_initialize_locks - placeholder
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
   mlir_aie_configure_cores(_xaie);
