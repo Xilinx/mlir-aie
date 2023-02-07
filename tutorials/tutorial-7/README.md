@@ -8,13 +8,13 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 7 - communication via objectFifo (broadcast)</ins>
+# <ins>Tutorial 7 - Communication via objectFifo (broadcast)</ins>
 
 Now that we've seen how point to point communication is handled, we need to introduce the concept of broadcast. This is necessary to allow data from a single source to be sent to multiple destinations. This is also important because with a fixed set of routing resources (e.g. channels), we need to be efficient in how we move data to avoid congestion. Broadcast then is our one-to-many communication tool. Many-to-one is also possible but only in the packet routing case. For circuit switch routing, we would need some kind of aggregator that decides when connections can be switched, which packet routing already supports.
 
-This tutorial first introduces broadcast through the `objectFifo` abstraction, which for now only supports one-to-many broadcast and lowers it further onto physical AIE components using circuit switch routing. The aim in the future is to have the lowering be able to support both routing types and even choose between the two based on hardware restraints. For in-depth descriptions of how each routing is achieved in `mlir-aie` please refer to the `./flow` sub-directory.
+This tutorial first introduces broadcast through the `objectFifo` abstraction, which for now only supports one-to-many broadcast and lowers it further onto physical AIE components using circuit switch routing. The aim in the future is to have the lowering be able to support both routing types and even choose between the two based on hardware restraints. For in-depth descriptions of how each routing is achieved in `mlir-aie` please refer to the [flow](./flow) sub-directory.
 
-[Link to lower level flow write-up](./flow/README.md)
+[Link to lower level flow write-up](./flow)
 
 To express a one-to-many broadcast in the `objectFifo` abstraction, we create an objectFifo with one producer tile and many consumer tiles. It does not make a difference whether these consumer tiles share memory or not with the producer tile as they are all treated as if they did not. This is because the `objectFifo` lowering leverages the tile DMAs and stream switch to account for back pressure from the producer for each individual consumer such that no data is lost. An example of one-to-many broadcast is shown in the diagram below where an objectFifo is created between producer tile(1,4) and consumer tiles (3,4) and (3,5).
 

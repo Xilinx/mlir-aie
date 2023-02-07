@@ -28,6 +28,9 @@ module @tutorial_4 {
     // These tiles do not share memory between them.
     %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile34}, 1) : !AIE.objectFifo<memref<256xi32>>
 
+    // This lock will be used to gate when our 2nd core is done
+    %lock34_8 = AIE.lock(%tile34, 8) { sym_name = "lock_a34_8" }
+
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
     %core14 = AIE.core(%tile14) {
@@ -55,6 +58,9 @@ module @tutorial_4 {
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
+        // This acquire succeeds when the core is enabled
+        AIE.useLock(%lock34_8, "Acquire", 0)
+
         %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
         %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
@@ -66,6 +72,9 @@ module @tutorial_4 {
 		memref.store %d2, %input[%idx2] : memref<256xi32> 
         
         AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
+
+        // This release means our 2nd core is done
+        AIE.useLock(%lock34_8, "Release", 1)
         AIE.end
     }
 }

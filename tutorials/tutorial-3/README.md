@@ -8,9 +8,9 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 3 - communication (local memory), locks</ins>
+# <ins>Tutorial 3 - Communication (local memory)</ins>
 
-After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then defining the functionality within cores with either integrated dialect operations (arith, memref) or external kernel functions, the next major component of for AIE system design is communication. As summarized briefly in the [Basic AI Engine Architecture](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well.
+After declaring the `core` and `buffer` dialect operations which map to the core and local memory respectively, and then adding the `lock` operation which is key to synchronizing use of shared resources in [tutorial-1](../tutorial-1), and defining the functionality within cores with integrated dialect operations (arith, memref), we have expanded on the host code configuration, simulation and hardware execution and performance measurement in [tutorial-2](../tutorial-2). We now come back to the `mlir-aie` dialect to talk about the next major component of for AIE system design - communication. As summarized briefly in the [Basic AI Engine Architecure](../README.md) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well. 
 
 In the diagram below, we see that the local memory for tile(2,4) is physically adjacent to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. In general, each processor can access the memory in its own tile, the memory of the tile to the north and south, and the memory of the tile either to the east (in odd rows) or the west (in even rows).  As a result, communicating through shared memory is less constrained to the north and south: A processor can communicate in either of these directions using a buffer in two different tiles.  Communicating east and west is more more constrained: the communication buffer can be in only one tile, and it might not be in the same tile as the source of the data.  These constraints are verified in MLIR, so it's easy to know whether we've created a valid design.
 
@@ -21,43 +21,19 @@ In the diagram below, we see that the local memory for tile(2,4) is physically a
 
 <p><img src="../images/diagram4.png" width="1000"><p>
 
-    
-    
+
 In the AIEngine architecture, read and write requests from different tiles are automatically arbitrated, so shared memory accesses are always well-ordered.  However, since the architecture includes hardware locks, polling on memory is not the preferred way to synchronize the operations of different processors.  We typically use these operations to transfer ownership of blocks of memory from one processor to another, by acquiring a lock before reading or writing memory and then releasing it with a different value to allow the buffer to be used by another processor.  Bear in mind, however, that locks are not explicitly tied to particular memory buffers and can be used for any purpose.
 
-## <ins>Locks</ins>
-Lock are declared using an `AIE.lock` operation in the toplevel `module`, and refer to their tile location. The syntax for declaring a lock is `AIE.lock(tileName, lockID)`. If no lockID is specified, then a lockID will be assigned later as a compiler pass.  An example would be:
-```
-%lockName = AIE.lock(%tileName, %lockID)
-```
-Examples:
-```
-%lock13_4 = AIE.lock(%tile13, 4)
-%lock13_11 = AIE.lock(%tile13, 11)
-```
-Each tile has 16 locks and each lock is in one of two states (acquired, released) and one of two values (0, 1).
-> By convention, we associate value=0 with an 'unused' buffer and value=1 with a 'used' buffer, but there is no intrinsic semantics to these values. The key thing to remember is that locks are initialized at reset with the value=0, and code will typically acquire with value=0 before writing into a buffer.  Code that acquires with value=1 will typically block until some other code releases the lock with value=1. 
 
-The 16 locks in a tile are accessible in the same way that local memories are. This is ensures that all neighbors that can access the local memory can also access the corresponding locks. 
+## <ins>Using Locks to share local memory</ins>
 
-To use the lock, we call the `useLock` operation either inside a `core` operation or `mem/ shimDMA` operation. 
-```
-AIE.useLock(%lockName, "Acquire|Release", 0|1)
-```
-That code would look something like:
-```
-%core14 = AIE.core(%tile14) {
-    AIE.useLock(%lock14_7, "Acquire", 0)
-    ... core ops ...
-    AIE.useLock(%lock14_7, "Release", 1)
-}
-```
-Notice the familiar design pattern of:
+As a reminder, the use of locks can have the following familiar design pattern:
 * acquire lock in some value
 * a set of operations
 * release lock in some value (usually the other value)
 
 The acquire value must match the current lock state in order for the acquire to succeed. The release value can be either 0 or 1. Below is another example of lock usage including a common state diagram of lock state transitions. Note that we can actually release to the same value if we choose.
+
 <p><img src="../images/diagram5.jpg?raw=true" width="800"><p>
 
 ## <ins>Tutorial 3 Lab </ins>
@@ -72,7 +48,7 @@ The acquire value must match the current lock state in order for the acquire to 
 
 5. Based on what you know about locks, which tile will execute its kernel code inside the lock calls first in this design? <img src="../images/answer1.jpg" title="tile(1,4)" height=25>
 
-6. **Add simulation instructions here**
+6. Run `make` and `make sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
 7. Change the design so that tile(2,4) runs first. What do you expect the value of buf[5] will be with this change? <img src="../images/answer1.jpg" title="100" height=25>
 
@@ -83,3 +59,32 @@ The acquire value must match the current lock state in order for the acquire to 
 In this tutorial the `objectFifo` abstraction is also introduced, see below. This is a higher-level abstraction which is used to establish communication across the AI Engine array without explicit configuration of the involved `mlir-aie` components. The following tutorials will use this abstraction to introduce the `mlir-aie` dialect further.
 
 [Link to higher level objectFifo write-up](./objectFifo_ver)
+
+## <ins>Advanced Topics -  Performance measurement in hardware</ins>
+
+In expanding how to measure performance in hardware, we are often interested in system level performance rather than just a single kernel's program cycle count. Here, locks that arbitrate communication can be used as event triggers to measure performance between tiles. 
+
+The previous `EventMonitor` function can be reused with different event triggers, this time tied to lock acquire and release. The `EventMonitor` struct sets triggers for the hardware performance counters in the AI Engine tile.
+```
+EventMonitor pc0(_xaie, 2, 4, 0, XAIE_EVENT_LOCK_1_ACQ_MEM, XAIE_EVENT_LOCK_2_REL_MEM,
+                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
+```
+> **Reminder Note**: For each tile, we have 4 performance counters in the core and 2 performance counters in the local memory. 
+
+In [tutorial-2c](../tutorial-2/tutorial-2c/answers/test_perf.cpp), we declared an event monitor connected to 1 of 4 core performance counters. Here, we will use 1 of 2 memory performance counters (id 0) because our lock event triggers are associated with the local memory. Our start trigger will be `XAIE_EVENT_LOCK_1_ACQ_MEM` (acquire on lock id 1), and our stop trigger will be `XAIE_EVENT_LOCK_2_REL_MEM` (release on lock id 2). 
+
+> **Note**: These lock acquire and release triggers do not check specific lock values. This means we start our counter when the 2nd tile begins (which starts at the beginning of the entire multi-tile design) and stops when the 2nd tile is done.
+
+9. Modify `test.cpp` to add the new lock triggered  `EventMonitor`. See [test_perf.cpp](./answers/test_perf.cpp) for reference but be sure to modify the top level test.cpp so the simulator has the right reference. Run the simulator. What is the cycle count for the two tile sequential operation? <img src="../images/answer1.jpg" title="48 cycles" height=25>
+
+10. Copy this design on the board and run the program with `sudo ./tutorial-3.exe`. What cycle count do you see? <img src="../images/answer1.jpg" title="~3300 cycles" height=25>
+
+The reason the cycle count is much higher here is because the time it takes for tiles to be enabled is the overhead of function calls on the host processor (ARM). This means the fist tile is enabled for some time (and done) before the second tile is enabled so we are essentially measuring the timing between core enable function calls from the host. This is really an artifact of measuring performance of hardware components that are controlled by a software host processor.
+
+11. Change your [aie.mlir](./aie.mlir) design to swap the functionality of the two tiles, compile and simulate your design to confirm correct functionality. What cycle count do you get in simulation? <img src="../images/answer1.jpg" title="48 cycles" height=25>
+    
+    Run this new design on the board. What cycle count do you get now? <img src="../images/answer1.jpg" title="49 cycles" height=25> What is the reason for this difference? <img src="../images/answer1.jpg" title="The first core is now enabled after the second core." height=25>
+
+The reason this occurs is an artifact of the tools since the tiles are enabled in numerical order. You can see this in the `mlir_aie_start_cores` defined in `acdc_project/aie_inc.cpp`. Changing tile declaration order is not a preferred way to change the behavior of designs but is shown here to give more understanding into the timing between software control of hardware components. Designs should be operating at steady state and would therefore be measured differently with our event triggered performance counters. We will cover this in more detail in future tutorials.
+
+We now will look at communication with objectFifo (tileDMA, logical routing) in [tutorial-4](../tutorial-4).

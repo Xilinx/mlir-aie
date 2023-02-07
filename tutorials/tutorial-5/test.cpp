@@ -51,8 +51,15 @@ int main(int argc, char *argv[]) {
   int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 256);
 
   // Set virtual pointer used to configure
+#if defined(__AIESIM__)
+  mlir_aie_external_set_addr_ddr_test_buffer_in(
+      (u64)((_xaie->buffers[0])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_out(
+      (u64)((_xaie->buffers[1])->physicalAddr));
+#else
   mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
   mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
+#endif
   mlir_aie_configure_shimdma_70(_xaie);
   mem_ptr_in[3] = 14;
 
@@ -82,20 +89,26 @@ int main(int argc, char *argv[]) {
   mlir_aie_start_cores(_xaie);
 
   mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
+  // mlir_aie_release_of_3_lock_0(_xaie, 0, 0); // True by default
+  // mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
 
-  // Wait time for cores to run. Number used here is much larger than needed.
-  usleep(100);
+  if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 1000) == XAIE_OK)
+    // if(mlir_aie_acquire_of_3_lock_0(_xaie, 0, 1000) == XAIE_OK)
+    printf("Acquired ddr output lock(1). Output shim dma done.\n");
+  else
+    printf("Timed out (1000) while trying to acquire ddr output lock (1).\n");
 
-  mlir_aie_release_of_3_lock_0(_xaie, 1, 0);
   mlir_aie_sync_mem_cpu(_xaie, 1);
 
   // Check buffer at index 3 again for expected value of 14 for tile(3,4)
+  printf("Checking buf[3] = 14.\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_1_buff_0(_xaie, 3), 14, errors);
   // Check buffer at index 5 again for expected value of 114 for tile(3,4)
+  printf("Checking buf[5] = 114.\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 114, errors);
+  printf("Checking ddr_ptr[5] = 114.\n");
   mlir_aie_check("After start cores:", mem_ptr_out[5], 114, errors);
 
   // Print Pass/Fail result of our test

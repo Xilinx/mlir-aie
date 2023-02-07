@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 6 - communication (packet routing)</ins>
+# <ins>Tutorial 6 - Communication (packet routing)</ins>
 
 We already looked at how we can use stream switches and tile DMAs to communicate data between tiles that are non-adjacent/ far apart in [tutorial-4](../tutorial-4). There we discussed how routes in a switchbox can be configured in circuit switch mode or packet switch mode and showed examples of circuit switch mode routing. Packet switch mode is another communication format and will will examine it more closely in this tutorial.
 
@@ -49,7 +49,7 @@ Valid bundle names and channels are listed below:
 | East  | 4 | 4 |
 | North | 4 | 6 |
 | South | 6 | 4 |
-| PLIO  | 2?| 2?|
+| Trace | 1 | 0 |
 
 > Note that be default, packet flows with a DMA destination will configure the destination tile switchbox to strip off the packet header.
 
@@ -68,9 +68,10 @@ An example of this inside a BD definition would be:
         AIE.useLock(%lock14_6, Release, 0)
         cf.br ^end
 ```
-`$packet_type`: arbitrary 3-bit value that is used to identify source packet types
-
-`$packet_id`: arbitrary 5-bit value used to identify packet routes. Switchboxes match the packet id to determine if packets should follow the switchbox route rules or if the packet should be dropped
+| Argument | Description |
+|----------|-------------|
+|`$packet_type`| Arbitrary 3-bit value that is used to identify source packet types. These can be used to indicate that packets from the same source to the same destination might belong to different sets. The switches do no use these values but the other components can if they process the packet headers. For general packet routing, these can be left to the default. |
+|`$packet_id`| Arbitrary 5-bit value used to identify packet routes. Switchboxes match the packet id to determine if packets should follow the switchbox route rules or if the packet should be dropped|
 
 The configuration parameters that needs to match in order for packets to be successfully routed along a flow is the packet ID, which is specified in (1) the tile DMA BD config and (2) the packet switched flow. As as these match, the packetized data will be communicated along the flow path the same as in the circuit switch case.
 

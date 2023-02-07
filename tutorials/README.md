@@ -19,21 +19,21 @@ The context that the `mlir-aie` dialect sits with respect to other MLIR dialects
 
 Here, we see that `mlir-aie` is part of a larger ecosystem of open source dialects that allows customized tool development targeting AMD devices. `mlir-aie` can be used to generate low-level configuration for the AIEngine portion of Versal devices, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is included, targeting the LibXAIE library. In the tutorial examples, the configuration is used by host code that executes the generated configuration, and makes use of APIs in the [mlir-aie/runtime_lib](https://github.com/Xilinx/mlir-aie/tree/main/runtime_lib) directory to interface with the design.
 
-This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. In order to understand this MLIR-based representation for AI Engine design, it is important to first understand overall AI Engine architecture.
+This design tutorial will help guide someone new to MLIR through the steps of building increasingly complex multi-core designs. It can be consumed in different ways, depending on the user's end-goal. For a detailed walkthrough of the `mlir-aie` dialect at a physical-level, the tutorials should be followed in order and all the subdirectories of each tutorial should be read. For a more high-level description of the dialect the tutorials should still be followed in order, but reading only the first 5 tutorials will suffice to start building multi-core designs at a higher abstraction level without in-depth understanding of the low-level details. The subdirectories in each tutorial can thus be skipped (with the exception of tutorial-3 which introduces the high-level abstraction of the `mlir-aie` dialect). 
 
-The individual tutorials are listed below along with the AI Engine architecture topics they cover. Following this is a
-a more detailed description of the architecture, ending with an overview of how each tutorial maps onto it.
+The individual tutorials are listed below along with the AI Engine architecture topics they cover. Following this is a more detailed description of the architecture, ending with an overview of how each tutorial maps onto it.
 
-* [Tutorial 1 - modules, tile, buffer, core](./tutorial-1)
-* [Tutorial 2 - single kernel compilation and simulation](./tutorial-2)
-* [Tutorial 3 - communication (local memory), locks](./tutorial-3) 
-* [Tutorial 4 - communication (tile DMA, logical routing)](./tutorial-4)
-* [Tutorial 5 - communication (shim DMA, external memory aka DDR)](./tutorial-5)
-* [Tutorial 6 - communication (packet routing)](./tutorial-6)
-* [Tutorial 7 - communication (broadcast)](./tutorial-7)
-* [Tutorial 8 - communication (cascade)](./tutorial-8)
-* [Tutorial 9 - scaling up to large multi-core designs](./tutorial-9)
-* [Tutorial 10 - mlir-aie commands and utilities](./tutorial-10)
+* [Tutorial 1 - Modules, tile, buffer, core, locks](./tutorial-1)
+* [Tutorial 2 - Host code configuration, simulation, hardware performance](./tutorial-2)
+* [Tutorial 3 - Communication (local memory)](./tutorial-3) 
+* [Tutorial 4 - Communication (tile DMA, logical routing)](./tutorial-4)
+* [Tutorial 5 - Communication (shim DMA, external memory aka DDR)](./tutorial-5)
+* [Tutorial 6 - Communication (packet routing)](./tutorial-6)
+* [Tutorial 7 - Communication (broadcast)](./tutorial-7)
+* [Tutorial 8 - Communication (cascade)](./tutorial-8)
+* [Tutorial 9 - External kernel - compilation and simulation](./tutorial-9)
+* [Tutorial 10 - MLIR-AIE commands and utilities](./tutorial-10)
+* [Tutorial 11 - Scaling up to large multi-core designs](./tutorial-11)
 * [Example Design #1 - 2x2 Matrix Multiplication](../reference_designs/MM_2x2)
 * [Example Design #2 - iDCT](../reference_designs/idct/)
 
@@ -62,7 +62,7 @@ Focusing back on communication, there are 3 primary ways AI Engines communicate 
 3. cascade. 
 
 ### <ins>Communication - Local Memory</ins>
-For local memory, each AI Engine is able to access the local memory of its immediate neighbor in all 4 cardinal directions. This communication method with the most bandwidth as load and store units in first generation AI Engines will access up to 256-bits per cycle.
+For local memory, each AI Engine is able to access the local memory of its immediate neighbor in all 4 cardinal directions. This communication method has the most bandwidth as first generation AI Engines can do 2x 256-bit load and 1x 256-bit store per cycle.
 
 >**Note for first generation AI Engines:** We have a notion of even and odd rows where the local memory of an AI Engine Core may be to the left (in even rows) or the right (in odd rows) of the AIE tile. As such, the local memory on the left for a given AIE tile may be its own local memory (for even rows) or that of its left neighbor (for odd rows). More on this in tutorial 1.
 

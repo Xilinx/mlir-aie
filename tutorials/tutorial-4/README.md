@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Tutorial 4 - communication via objectFifo (tile DMA, logical routing)</ins>
+# <ins>Tutorial 4 - Communication via objectFifo (tile DMA, logical routing)</ins>
 
 Even though shared local memory is ideal for communicating between adjacent tiles, for non-adjacent tiles or tiles that are far away, communication is instead done through the stream switch network with the tile DMAs serving as data movers and each tile's local switchbox serving as the data steering highway. Efficient movement of data through the AIE array is key to achieving high performance. The `mlir-aie` dialect has built-in automatic routing capabilities and visualization tools for viewing the routing choices made. This is a great area for further research where additional transformations can be added to provide other optimized routing functionality.
 

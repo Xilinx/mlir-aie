@@ -1,0 +1,35 @@
+{
+    "SimulationConfig": {
+        "device_json": {
+            "directory": "data/devices",
+            "file": "VC1902.json"
+        },
+        "phy_device_file": "xcvc1902-vsva2197-2MP-e-S",
+        "aiearch": "aie",
+        "aie_freq": 1250000000.0,
+        "use_real_noc": 1,
+        "evaluate_fifo_depth": 0,
+        "noc_ip_block": {
+            "lib_path": "./Work/noc/liblnoc_tlm.so",
+            "traffic_file": "./Work/noc/noc_traffic.nts",
+            "config_file": "./Work/noc/noc_soln.ncr"
+        },
+        "pl_ip_block": [
+            {
+                "name": "ps_ps_main",
+                "ip": "ps",
+                "lib_path": "ps/ps.so",
+                "pl_freq": 312500000.0,
+                "axi_mm": [
+                    {
+                        "port_name": "ps_axi",
+                        "direction": "ps_to_gm",
+                        "noc_endpoint": "NOC_NMU128_X0Y5",
+                        "bus_width": 0
+                    }
+                ],
+                "event_bus": []
+            }
+        ]
+    }
+}

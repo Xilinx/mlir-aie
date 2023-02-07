@@ -31,6 +31,7 @@ module @tutorial_4 {
     // unique lock ID values 6 and 7
     %lock14_6 = AIE.lock(%tile14, 6) { sym_name = "lock_a14_6" }
     %lock34_7 = AIE.lock(%tile34, 7) { sym_name = "lock_a34_7" }
+    %lock34_8 = AIE.lock(%tile34, 8) { sym_name = "lock_a34_8" }
 
     // Connect DMA channel 0 on tile(1,4) to DMA channel 1 in tile(3,4)
     // with automatic shortest distance routing
@@ -69,6 +70,7 @@ module @tutorial_4 {
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
+        AIE.useLock(%lock34_8, "Acquire", 0)
         // This acquire will stall since locks are initialized to Release, 0
         AIE.useLock(%lock34_7, "Acquire", 1)
 
@@ -81,6 +83,7 @@ module @tutorial_4 {
 
         // This release doesn't do much in our example but mimics ping-pong
         AIE.useLock(%lock34_7, "Release", 0)
+        AIE.useLock(%lock34_8, "Release", 1)
         AIE.end
     }
 

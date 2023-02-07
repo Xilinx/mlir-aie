@@ -34,7 +34,7 @@ class flow_runner:
       self.maxtasks = 5
       self.stopall = False
 
-  async def do_call(self, task, command):
+  async def do_call(self, task, command, force=False):
       if(self.stopall):
         return
 
@@ -44,7 +44,7 @@ class flow_runner:
       start = time.time()
       if(self.opts.verbose):
           print(commandstr)
-      if(self.opts.execute):
+      if(self.opts.execute or force):
         proc = await asyncio.create_subprocess_exec(*command)
         await proc.wait()
         ret = proc.returncode
@@ -115,7 +115,7 @@ class flow_runner:
       return llvmir_chesslinked
 
   async def prepare_for_chesshack(self, task):
-      if(opts.xchesscc == True):
+      if(opts.compile and opts.xchesscc):
         thispath = os.path.dirname(os.path.realpath(__file__))
         chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
 
@@ -265,6 +265,28 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
+  async def gen_sim(self, task):
+      shutil.rmtree('sim', ignore_errors=True)
+      try:
+        os.makedirs('sim/arch', exist_ok=True)
+        os.makedirs('sim/reports', exist_ok=True)
+        os.makedirs('sim/config', exist_ok=True)
+        os.makedirs('sim/ps', exist_ok=True)
+      except FileExistsError:
+        pass
+      await self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
+                   './acdc_project/input_physical.mlir',
+                   '-o', './sim/reports/graph.xpe'])
+      await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
+                   './acdc_project/input_physical.mlir',
+                   '-o','./sim/arch/aieshim_solution.aiesol'])
+      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/scsim_config.json"),
+                   './sim/config/.'])
+      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/Makefile"),
+                   './sim/.'])
+      await self.do_call(task, ['cp',os.path.expandvars("${MLIR_AIE_DIR}/runtime_lib/aiesim/genwrapper_for_ps.cpp"),
+                   './sim/ps/.'])
+
   async def run_flow(self):
       nworkers = int(opts.nthreads)
       if(nworkers == 0):
@@ -289,7 +311,7 @@ class flow_runner:
                                           '--aie-create-packet-flows',
                                           '--aie-lower-multicast',
                                           '--aie-assign-buffer-addresses',
-                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses])
+                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses], True)
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
 
@@ -318,7 +340,7 @@ class flow_runner:
           if(opts.compile and opts.xchesscc):
             file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir)
             await self.do_call(progress.task, ['xchesscc_wrapper', '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
-          else:
+          elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
             await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 
@@ -328,6 +350,10 @@ class flow_runner:
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
         processes = [self.process_arm_cgen()]
+        await asyncio.gather(*processes) # ensure that process_arm_cgen finishes before running gen_sim
+        processes = []
+        if(opts.aiesim):
+          processes.append(self.gen_sim(progress.task))
         for core in cores:
           processes.append(self.process_core(core))
         await asyncio.gather(*processes)

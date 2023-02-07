@@ -46,6 +46,7 @@ int main(int argc, char *argv[]) {
   // Helper function to clear tile data memory
   mlir_aie_clear_tile_memory(_xaie, 1, 4);
   mlir_aie_clear_tile_memory(_xaie, 3, 4);
+  mlir_aie_clear_tile_memory(_xaie, 3, 5);
 
   // Check the buffer value at index 3 to ensure it is zeroed out
   // prior to running our simple kernel.
@@ -68,16 +69,25 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  // Wait time for cores to run. Number used here is much larger than needed.
-  usleep(100);
+  if (mlir_aie_acquire_lock_a34_8(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock_a34_8(1). Tile(3,4) is done.\n");
+  else
+    printf("Timed out (1000) while trying to acquire lock_a34_8(1).\n");
+  if (mlir_aie_acquire_lock_a35_8(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock_a35_8(1). Tile(3,5) is done.\n");
+  else
+    printf("Timed out (1000) while trying to acquire lock_a35_8(1).\n");
 
   // Check buffer at index 3 again for expected value of 14 for tile(1,4)
+  printf("Checking buf[3] = 14.\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_0_buff_0(_xaie, 3), 14, errors);
   // Check buffer at index 5 again for expected value of 114 for tile(3,4)
+  printf("Checking buf[5] = 114 for tile(3,4).\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_2_buff_0(_xaie, 5), 114, errors);
   // Check buffer at index 5 again for expected value of 114 for tile(3,5)
+  printf("Checking buf[5] = 114 for tile (3,5).\n");
   mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_1_buff_0(_xaie, 5), 114, errors);
 
