@@ -28,7 +28,7 @@ jobs:
         run: sudo apt-get install -y libboost-all-dev
 
       - name: Install python packages
-        run: sudo pip install psutil rich pybind11
+        run: sudo pip install psutil rich numpy pybind11
 
       - name: Install Ninja
         uses: llvm/actions/install-ninja@55d844821959226fab4911f96f37071c1d4c3268
