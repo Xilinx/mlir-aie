@@ -1,0 +1,10 @@
+/// \mainpage MLIR-AIE
+///
+/// \section main_intro Introduction
+/// Welcome to the MLIR-AIE project.
+///
+/// This documentation describes the **internal** software that makes
+/// up MLIR, not the **external** use of MLIR. There are no instructions
+/// here on how to use MLIR, only the APIs that make up the software. For
+/// usage instructions, please see the [project website](http://mlir.llvm.org)
+/// for further detail.
