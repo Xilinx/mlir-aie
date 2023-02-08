@@ -61,4 +61,16 @@ def LowerVectorToAIEVec : Pass<"lower-vector-to-aievec", "func::FuncOp"> {
   ];
 }
 
+def CanonicalizeForAIEVec : Pass<"canonicalize-for-aievec", "func::FuncOp"> {
+  let summary = "Transform common vector ops into a subset of vector ops with "
+                "standard vector ops closer to AIEVec semantics.";
+  let dependentDialects = ["arith::ArithDialect",
+                           "vector::VectorDialect"];
+  let options = [
+    Option<"aieTarget", "aie-target", "std::string", /*default=*/"\"aie\"",
+     "Select AIE version: \\\"aie\\\" or \\\"aieml\\\". This will determine "
+     "the vector size and available operations.">,
+  ];
+}
+
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

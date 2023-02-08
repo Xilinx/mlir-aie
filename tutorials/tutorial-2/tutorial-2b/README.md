@@ -19,7 +19,7 @@ The wrapper and necessary host API source files (test.cpp, test_library.cpp) are
 ```
 aiesimulator --pkg-dir=./sim --dump-vcd foo
 ```
-This command points the simulator to the local `sim` directory and genertes the simulation waveform vcd to `foo.vcd`. The simulation results will be outputted to the terminal as applicable. 
+This command points the simulator to the local `sim` directory and generates the simulation waveform vcd to `foo.vcd`. The simulation results will be outputted to the terminal as applicable. 
 
 Because `aiesimulator` is to set to run a cycle accurate simulation for each tile, the simulation time for our small tutorial design only take a few minutes to complete on modern machines. However, much bigger designs that involve a large number of tiles may take longer. A more effective strategy is to simulate a sub portion of that design in `aiesimulator` and then run the full design directly on hardware.
 
@@ -44,10 +44,20 @@ In simulation, the transaction model requires the allocated physical address rat
     ```
     make; make -C sim
     ```
-    You should see the simulator print a number ofstatus messages before finally running the host code and outputting the `PASS` message.
+    You should see the simulator print a number of status messages before finally running the host code and outputting the `PASS` message.
 
 2. Modify the host code `test.cpp` to add a `mlir_aie_print_tile_status` for tile(1,4) and rerun the simulator. Did we need to recompile the `aie.mlir` and regenerate the core .elf files when we modify the host API? <img src="../../images/answer1.jpg" title="No. We just need to cross-compile the host." height=25>
 
-3. **Add steps to view waveform in gtkwave**
+As mentioned earlier, the Makefile for running aiesimulator also generates a vcd file for viewing the resulting output transaction level waveforms. This can be view in a vcd viewer like `gtkwave`. 
+
+3. Run `gtkwave` on the generated vcd wave form. 
+    ```
+    gtkwave foo.vcd
+    ```
+    Gtkwave is like most standard waveform viewers and allows you to select nodes, zoom in and out, and view the simulation. Selecting some notable signals would give an waveform image like:
+    <img src="../../images/wave0.jpg" width="1000">
+    > Solution: `gtkwave ./answers/tutorial-2b.gtkw`
+
+    Here, we see a few notable simulation timings. First, lock 0 is released during initialization (during the time that all locks are released in the 0 state). Then the tile is activated when `mlir_aie_start_cores` is asserted. The program on the core begins to run for a number of cycles including startup code. After some cycles, the lock 0 acquire is asserted signaling the beginning of our main kernel code. Then after some more time, the lock 0 release is asserted indicating the end of our kernel code. The final lock 0 acquire is asserted by the host API (`test.cpp`) so it knows when the kernel program is done.
 
 The next [tutorial-2c](../tutorial-2c) walks us through running our design on hardware and measuring performance.

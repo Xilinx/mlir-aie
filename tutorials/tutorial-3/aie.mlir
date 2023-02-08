@@ -53,10 +53,10 @@ module @tutorial_3 {
         // This acquire will stall since locks are initialized to Release, 0
         AIE.useLock(%lock24_1, "Acquire", 1)
 
-        %idx1 = arith.constant 3 : index
-        %d1   = memref.load %buf[%idx1] : memref<256xi32>
-        %c1   = arith.constant 100 : i32 
-        %d2   = arith.addi %d1, %c1 : i32
+		%idx1 = arith.constant 3 : index
+		%d1   = memref.load %buf[%idx1] : memref<256xi32>
+		%c1   = arith.constant 100 : i32 
+		%d2   = arith.addi %d1, %c1 : i32
 		%idx2 = arith.constant 5 : index
 		memref.store %d2, %buf[%idx2] : memref<256xi32> 
 
