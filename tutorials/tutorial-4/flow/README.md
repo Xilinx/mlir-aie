@@ -143,7 +143,3 @@ In a common scenario where we may declare 2x DMAs (1x MM2S, 1x S2MM), each with 
     What do you expect to happen to the output? <img src="../../images/answer1.jpg" title="Test will fail since the we overwrite the buf34 again." height=25>
 
 6. ***TODO: Add timers to measure tiledma transfer time***
-
-7. ***TODO: Add example that cannot route?***
-
-8. ***TODO: View route results*** 

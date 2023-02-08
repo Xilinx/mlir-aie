@@ -35,10 +35,12 @@ module @tutorial_4 {
 
     // Connect DMA channel 0 on tile(1,4) to DMA channel 1 in tile(3,4)
     // with automatic shortest distance routing
-    // AIE.flow(%tile14, DMA: 0, %tile34, DMA:1)
-    AIE.switchbox(%tile14) { AIE.connect<"DMA": 0, "East": 1> }
-    AIE.switchbox(%tile24) { AIE.connect<"West": 1, "East": 3> }
-    AIE.switchbox(%tile34) { AIE.connect<"West": 3, "DMA": 1> }
+
+    //This flow op is replaced by switchbox ops
+    //AIE.flow(%tile14, DMA: 0, %tile34, DMA:1)
+    %sb14 = AIE.switchbox(%tile14) { AIE.connect<"DMA": 0, "East": 1> }
+    %sb24 = AIE.switchbox(%tile24) { AIE.connect<"West": 1, "East": 3> }
+    %sb34 = AIE.switchbox(%tile34) { AIE.connect<"West": 3, "DMA": 1> }
 
     // Define core algorithm for tile(1,4)
     // buf[3] = 14
@@ -108,5 +110,4 @@ module @tutorial_4 {
         ^end:
             AIE.end
     }    
-
 }

@@ -258,6 +258,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
     routeString += std::string(" ],\n");
     output << routeString;
   }
+  output << "\"route_all\": []\n";
   output << "\n\"end json\": 0\n"; // dummy line to avoid errors from commas
   output << "}";
   return success();
