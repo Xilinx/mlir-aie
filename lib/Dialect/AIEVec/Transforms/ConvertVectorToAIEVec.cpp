@@ -136,18 +136,18 @@ struct LowerVectorFMAToAIEVecFMAElem
       return failure();
 
     Value acc = adaptor.getAcc();
-    Type accType =
-        getVectorOpDestType(acc.getType().cast<VectorType>(), true);
+    Type accType = getVectorOpDestType(acc.getType().cast<VectorType>(), true);
 
     if (!writesToAccumulator(acc.getDefiningOp())) {
-      acc = rewriter.create<xilinx::aievec::UPSOp>(fmaOp->getLoc(), accType, acc,
-                                                   0);
+      acc = rewriter.create<xilinx::aievec::UPSOp>(fmaOp->getLoc(), accType,
+                                                   acc, 0);
       LLVM_DEBUG(llvm::dbgs()
                  << "\n\nCreated UPS op " << acc << " to move the output of "
                  << fmaOp << " into accumulator");
     }
 
-    auto bcastOp = dyn_cast<vector::BroadcastOp>(adaptor.getRhs().getDefiningOp());
+    auto bcastOp =
+        dyn_cast<vector::BroadcastOp>(adaptor.getRhs().getDefiningOp());
     Value lhs = adaptor.getLhs();
 
     if (!bcastOp) {
@@ -161,22 +161,23 @@ struct LowerVectorFMAToAIEVecFMAElem
         dyn_cast<vector::ExtractOp>(bcastOp.getSource().getDefiningOp());
     if (!extOp)
       return failure();
-   
+
     auto newRhs = extOp.getVector();
     auto pos = extOp.getPosition();
 
     Value rhsVal = rewriter.create<aievec::BroadcastOp>(
-        fmaOp->getLoc(), resultType, newRhs, cast<IntegerAttr>(pos[0]).getInt());
+        fmaOp->getLoc(), resultType, newRhs,
+        cast<IntegerAttr>(pos[0]).getInt());
 
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
         fmaOp->getLoc(), lhs, rhsVal, acc, /*fmsub=*/false);
-   
+
     for (auto user : fmaOp->getUsers()) {
       if (isAIEOp(user))
         continue;
-    
+
       auto writeOp = dyn_cast<TransferWriteOp>(user);
-      if(!writeOp)
+      if (!writeOp)
         continue;
 
       MemRefType memRefType = writeOp.getSource().getType().cast<MemRefType>();
@@ -186,17 +187,15 @@ struct LowerVectorFMAToAIEVecFMAElem
       VectorType srsType = createVectorType(lanes, scalarType);
 
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(fmaElemOp, srsType,
-                                               fmaElemOp.getResult());
-          
-   }
-    
+                                                 fmaElemOp.getResult());
+    }
+
     return success();
   }
 };
 
 // This pattern insert SRS operation
-struct InsertSRS
-    : public OpConversionPattern<xilinx::aievec::FMAElemOp> {
+struct InsertSRS : public OpConversionPattern<xilinx::aievec::FMAElemOp> {
   using OpConversionPattern<xilinx::aievec::FMAElemOp>::OpConversionPattern;
 
   LogicalResult
@@ -204,22 +203,22 @@ struct InsertSRS
                   ConversionPatternRewriter &rewriter) const override {
     if (!writesToAccumulator(Op))
       return failure();
-   
+
     for (auto user : Op->getUsers()) {
       // Skip AIE ops
       Type scalarType = nullptr;
-        MemRefType memRefType = nullptr;
-        if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
-          memRefType = writeOp.getSource().getType().cast<MemRefType>();
-          scalarType = memRefType.getElementType();
-        } else
-          scalarType = getElementTypeOrSelf(*user->getResultTypes().begin());
-        assert(scalarType && "failed to form SRS op");
+      MemRefType memRefType = nullptr;
+      if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
+        memRefType = writeOp.getSource().getType().cast<MemRefType>();
+        scalarType = memRefType.getElementType();
+      } else
+        scalarType = getElementTypeOrSelf(*user->getResultTypes().begin());
+      assert(scalarType && "failed to form SRS op");
 
-        rewriter.replaceOpWithNewOp<aievec::SRSOp>(Op, scalarType,
-                                               Op.getResult());
-   }  
-         
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(Op, scalarType,
+                                                 Op.getResult());
+    }
+
     return success();
   }
 };
@@ -504,8 +503,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 512);
 
-  patterns.add<LowerVectorFMAToAIEVecFMAElem>(
-      patterns.getContext());
+  patterns.add<LowerVectorFMAToAIEVecFMAElem>(patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//
