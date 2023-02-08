@@ -131,6 +131,43 @@ struct ConvertSplatTransferReadToBroadcastPattern
   }
 };
 
+// This pattern folds an extract + broadcast feeding into an `aievec::FMAOp`
+// into the op, using the shuffle attributes.
+struct FoldBroadcastToFMAOp : public OpConversionPattern<aievec::FMAOp> {
+  using OpConversionPattern<aievec::FMAOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FMAOp fmaOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto bcastOp =
+        dyn_cast<vector::BroadcastOp>(adaptor.getLhs().getDefiningOp());
+    Value rhs = adaptor.getRhs();
+    if (!bcastOp) {
+      bcastOp = dyn_cast<vector::BroadcastOp>(adaptor.getRhs().getDefiningOp());
+      rhs = adaptor.getLhs();
+      if (!bcastOp)
+        return failure();
+    }
+    auto extOp =
+        dyn_cast<vector::ExtractOp>(bcastOp.getSource().getDefiningOp());
+    if (!extOp)
+      return failure();
+
+    auto newLhs = extOp.getVector();
+    // XXX: We assume a 1D vector
+    auto pos = extOp.getPosition();
+    int64_t zstart = cast<IntegerAttr>(pos[0]).getInt();
+    rewriter.replaceOpWithNewOp<aievec::FMAOp>(
+        fmaOp, fmaOp.getResult().getType(), newLhs, rhs, adaptor.getAcc(),
+        /*xstart =*/"0", /*xoffsets =*/"0x76543210", adaptor.getXoffsetsHi(),
+        adaptor.getXstep(), adaptor.getXsquare(),
+        /*zstart =*/std::to_string(zstart), adaptor.getZoffsets(),
+        adaptor.getZoffsetsHi(), adaptor.getZstep(), adaptor.getZsquare(),
+        adaptor.getFmsub());
+    return success();
+  }
+};
+
 // This pattern converts a vector `arith.add` following a vector `arith.mul`
 // into a `vector.fma`.
 template <typename MulOpTy, typename AddOpTy>
@@ -192,8 +229,9 @@ struct LowerVectorFMAOpPattern : public OpConversionPattern<vector::FMAOp> {
     auto aiFmaOp = rewriter.create<aievec::FMAOp>(
         fmaOp.getLoc(), accVecTy, adaptor.getLhs(), adaptor.getRhs(),
         upsOp.getResult(),
-        /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xsquare=*/"",
-        /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"", /*zsquare=*/"");
+        /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xstep=*/"",
+        /*xsquare=*/"", /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"",
+        /*zstep=*/"", /*zsquare=*/"", /*fmsub=*/false);
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(fmaOp, fmaVecTy,
                                                aiFmaOp.getResult());
     return success();
@@ -201,8 +239,8 @@ struct LowerVectorFMAOpPattern : public OpConversionPattern<vector::FMAOp> {
 };
 
 // This pattern replaces `vector.transfer_read` with `aievec.upd`. Right now,
-// it performs a naïve direct translation. This needs to be expanded to support
-// more complex scenarios.
+// it performs a naïve direct translation. This needs to be expanded to
+// support more complex scenarios.
 struct LowerVectorTransferReadToAIEUPD
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
@@ -230,7 +268,8 @@ struct LowerVectorTransferReadToAIEUPD
       return failure();
 
     // TODO: Verify alignment
-    // TODO: Extend this function so it can address more than the trivial case.
+    // TODO: Extend this function so it can address more than the trivial
+    // case.
     SmallVector<Value, 4> indices(adaptor.getIndices().begin(),
                                   adaptor.getIndices().end());
     rewriter.replaceOpWithNewOp<xilinx::aievec::UPDOp>(
@@ -243,7 +282,8 @@ struct LowerVectorTransferReadToAIEUPD
   int32_t maxVectorSize;
 };
 
-// XXX: Notice that this template doesn't verify that the vector element type is
+// XXX: Notice that this template doesn't verify that the vector element type
+// is
 // XXX: supported by the target architecture.
 template <typename SrcOpTy, typename DstOpTy>
 struct OneToOneVectorOpToAIEVecOpPattern : public OpConversionPattern<SrcOpTy> {
@@ -321,7 +361,8 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 256);
-  patterns.add<LowerVectorFMAOpPattern>(patterns.getContext());
+  patterns.add<LowerVectorFMAOpPattern, FoldBroadcastToFMAOp>(
+      patterns.getContext());
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
@@ -358,6 +399,14 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
     return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
                .effectiveSize <= 512;
   });
+  target.addDynamicallyLegalOp<aievec::FMAOp>([](xilinx::aievec::FMAOp op) {
+    auto srcBcast = dyn_cast<vector::BroadcastOp>(op.getLhs().getDefiningOp());
+    if (!srcBcast)
+      srcBcast = dyn_cast<vector::BroadcastOp>(op.getRhs().getDefiningOp());
+    if (srcBcast)
+      return !isa<vector::ExtractOp>(srcBcast.getSource().getDefiningOp());
+    return true;
+  });
   target.addLegalDialect<memref::MemRefDialect>();
 }
 
@@ -373,7 +422,8 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 // Lowering passes
 //===----------------------------------------------------------------------===//
 
-// TODO: For more complex conversion from Vector to AIEVec, we may want to make
+// TODO: For more complex conversion from Vector to AIEVec, we may want to
+// make
 // TODO: this into a pipeline where:
 // TODO:     1. If the operands of a vector op are too long, split it down to
 // TODO:        right-sized vectors.
@@ -433,10 +483,11 @@ template <typename AddOpTy> static bool canFoldToFMA(AddOpTy addOp) {
 }
 
 // This pass converts standard vector ops into a subset of `Vector` ops more
-// amenable to being converted to `AIEVec`. So far, this process consists of two
-// steps:
+// amenable to being converted to `AIEVec`. So far, this process consists of
+// two steps:
 //    1) Merge `arith::mul` followed by `arith::add` into `vector::fma`
-//    2) Replace splat transfer reads with contiguous transfer reads followed by
+//    2) Replace splat transfer reads with contiguous transfer reads followed
+//    by
 //       `extract` + `broadcast` operations.
 struct CanonicalizeForAIEVecPass
     : public aievec::impl::CanonicalizeForAIEVecBase<
@@ -534,6 +585,7 @@ void xilinx::aievec::registerAIEVecPipelines() {
   PassPipelineRegistration<ConvertVectorToAIEVecOptions>(
       "convert-vector-to-aievec",
       "This pass pipeline takes standard \"Vector\" code and converts it to "
-      "\"AIEVec\" code targeting the selected Xilinx AIE vector architecture.",
+      "\"AIEVec\" code targeting the selected Xilinx AIE vector "
+      "architecture.",
       buildConvertVectorToAIEVec);
 }
