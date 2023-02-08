@@ -19,10 +19,11 @@ Generated code documentation
 - [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
 
 Tutorials
+- [Step-by-step Tutorial](../tutorials/README.md)
 - [AIE Design Patterns](AIEDesignPatterns)
 - [AIE Routing](AIERouting)
 - [AIE Vectorization of Scalar Code](AIEVectorization)
 
 -----
 
-<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2019-2023 AMD/Xilinx</p>
