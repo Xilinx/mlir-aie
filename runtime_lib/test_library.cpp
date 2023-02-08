@@ -9,9 +9,10 @@
 //===----------------------------------------------------------------------===//
 
 /// \file
-/// This file contains common libraries used for testing. Many of these functions
-/// are relatively thin wrappers around underlying libXAIE call and are provided
-/// to expose a relatively consistent API.  Others are more complex.
+/// This file contains common libraries used for testing. Many of these
+/// functions are relatively thin wrappers around underlying libXAIE call and
+/// are provided to expose a relatively consistent API.  Others are more
+/// complex.
 
 #include "test_library.h"
 #include "math.h"
@@ -494,7 +495,6 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   return ctx;
 }
 
-
 /// @brief  Release access to the libXAIE context.
 /// @param ctx The context
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
@@ -549,7 +549,6 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
 
   return 0;
 }
-
 
 /// @brief Acquire a physical lock
 /// @param ctx The context
@@ -892,8 +891,8 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
-/// @brief Print the status of a core represented by the given tile, at the given
-/// coordinates.
+/// @brief Print the status of a core represented by the given tile, at the
+/// given coordinates.
 void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int col = loc.Col;
   // int row = loc.Row;
@@ -1113,7 +1112,8 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {
  ******************************************************************************
  */
 
-/// @brief Given an array of values, compute and print statistics about those values.
+/// @brief Given an array of values, compute and print statistics about those
+/// values.
 /// @param performance_counter An array of values
 /// @param n The number of values
 void computeStats(u32 performance_counter[], int n) {
