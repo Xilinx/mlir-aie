@@ -52,6 +52,30 @@ using namespace xilinx::aievec;
 
 #define DEBUG_TYPE "aievec-lowering"
 
+// Given an AIEOp, determines if an operation writes to an accumulator
+// based on operation type and operand types
+static bool writesToAccumulator(Operation *op) {
+  // Integer muls and FMAs write to accumulator
+  if (!isAIEOp(op))
+    return false;
+  if (auto mulOp = dyn_cast<aievec::MulOp>(op))
+    return mulOp.getResult()
+        .getType()
+        .cast<VectorType>()
+        .getElementType()
+        .isa<IntegerType>();
+  if (auto fmaOp = dyn_cast<aievec::FMAOp>(op))
+    return fmaOp.getResult()
+        .getType()
+        .cast<VectorType>()
+        .getElementType()
+        .isa<IntegerType>();
+
+  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::FMAConvOp,
+             aievec::MulConvOp, aievec::UPSOp>(op);
+}
+
+//
 //===----------------------------------------------------------------------===//
 // Analyses
 //===----------------------------------------------------------------------===//
@@ -89,6 +113,116 @@ struct UPDOpEffectiveAccessSizeAnalysis {
 //===----------------------------------------------------------------------===//
 // Lowering patterns
 //===----------------------------------------------------------------------===//
+// This pattern replaces `vector.fma` with `aievec.mac_elem`.
+struct LowerVectorFMAToAIEVecFMAElem
+    : public OpConversionPattern<vector::FMAOp> {
+  using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::FMAOp fmaOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    VectorType resultType = fmaOp.getResult().getType().cast<VectorType>();
+
+    if (!resultType.getElementType().isa<IntegerType>())
+      return failure();
+
+    IntegerType resultElType = resultType.getElementType().cast<IntegerType>();
+    unsigned resultElWidth = resultElType.getWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if ((laneSize != 32 || resultElWidth != 16) &&
+        (laneSize != 16 || resultElWidth != 32))
+      return failure();
+
+    Value acc = adaptor.getAcc();
+    Type accType =
+        getVectorOpDestType(acc.getType().cast<VectorType>(), true);
+
+    if (!writesToAccumulator(acc.getDefiningOp())) {
+      acc = rewriter.create<xilinx::aievec::UPSOp>(fmaOp->getLoc(), accType, acc,
+                                                   0);
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\nCreated UPS op " << acc << " to move the output of "
+                 << fmaOp << " into accumulator");
+    }
+
+    auto bcastOp = dyn_cast<vector::BroadcastOp>(adaptor.getRhs().getDefiningOp());
+    Value lhs = adaptor.getLhs();
+
+    if (!bcastOp) {
+      bcastOp = dyn_cast<vector::BroadcastOp>(adaptor.getLhs().getDefiningOp());
+      lhs = adaptor.getRhs();
+      if (!bcastOp)
+        return failure();
+    }
+
+    auto extOp =
+        dyn_cast<vector::ExtractOp>(bcastOp.getSource().getDefiningOp());
+    if (!extOp)
+      return failure();
+   
+    auto newRhs = extOp.getVector();
+    auto pos = extOp.getPosition();
+
+    Value rhsVal = rewriter.create<aievec::BroadcastOp>(
+        fmaOp->getLoc(), resultType, newRhs, cast<IntegerAttr>(pos[0]).getInt());
+
+    auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
+        fmaOp->getLoc(), lhs, rhsVal, acc, /*fmsub=*/false);
+   
+    for (auto user : fmaOp->getUsers()) {
+      if (isAIEOp(user))
+        continue;
+    
+      auto writeOp = dyn_cast<TransferWriteOp>(user);
+      if(!writeOp)
+        continue;
+
+      MemRefType memRefType = writeOp.getSource().getType().cast<MemRefType>();
+      Type scalarType = memRefType.getElementType();
+      Type accType = fmaElemOp.getType();
+      unsigned lanes = getVectorLaneSize(accType.cast<VectorType>());
+      VectorType srsType = createVectorType(lanes, scalarType);
+
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(fmaElemOp, srsType,
+                                               fmaElemOp.getResult());
+          
+   }
+    
+    return success();
+  }
+};
+
+// This pattern insert SRS operation
+struct InsertSRS
+    : public OpConversionPattern<xilinx::aievec::FMAElemOp> {
+  using OpConversionPattern<xilinx::aievec::FMAElemOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(xilinx::aievec::FMAElemOp Op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!writesToAccumulator(Op))
+      return failure();
+   
+    for (auto user : Op->getUsers()) {
+      // Skip AIE ops
+      Type scalarType = nullptr;
+        MemRefType memRefType = nullptr;
+        if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
+          memRefType = writeOp.getSource().getType().cast<MemRefType>();
+          scalarType = memRefType.getElementType();
+        } else
+          scalarType = getElementTypeOrSelf(*user->getResultTypes().begin());
+        assert(scalarType && "failed to form SRS op");
+
+        rewriter.replaceOpWithNewOp<aievec::SRSOp>(Op, scalarType,
+                                               Op.getResult());
+   }  
+         
+    return success();
+  }
+};
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
 // into a contiguous `vector.transfer_read` followed by a `vector.extract` to
@@ -369,6 +503,9 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 512);
+
+  patterns.add<LowerVectorFMAToAIEVecFMAElem>(
+      patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -412,10 +549,20 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
 
 static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                            AnalysisManager &am) {
+  target.addIllegalOp<vector::FMAOp>();
   target.addDynamicallyLegalOp<aievec::UPDOp>([&am](aievec::UPDOp op) {
     return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
                .effectiveSize <= 1024;
   });
+  target.addDynamicallyLegalOp<aievec::FMAOp>([](xilinx::aievec::FMAOp op) {
+    auto srcBcast = dyn_cast<vector::BroadcastOp>(op.getLhs().getDefiningOp());
+    if (!srcBcast)
+      srcBcast = dyn_cast<vector::BroadcastOp>(op.getRhs().getDefiningOp());
+    if (srcBcast)
+      return !isa<vector::ExtractOp>(srcBcast.getSource().getDefiningOp());
+    return true;
+  });
+  target.addLegalDialect<memref::MemRefDialect>();
 }
 
 //===----------------------------------------------------------------------===//
