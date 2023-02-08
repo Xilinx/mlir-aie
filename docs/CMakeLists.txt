@@ -1,5 +1,6 @@
 
-find_package(Doxygen REQUIRED)
+find_package(Doxygen)
+
 if (DOXYGEN_FOUND)
   set(abs_top_srcdir ${CMAKE_CURRENT_SOURCE_DIR})
   set(abs_top_builddir ${CMAKE_CURRENT_BINARY_DIR})
