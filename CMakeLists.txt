@@ -87,6 +87,7 @@ set_target_properties(aie-headers PROPERTIES FOLDER "Misc")
 add_dependencies(aie-headers mlir-headers)
 # Make sure we build the docs
 add_custom_target(docs ALL)
+add_subdirectory(docs)
 add_dependencies(docs mlir-doc)
 
 # python install directory
