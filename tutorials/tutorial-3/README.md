@@ -78,12 +78,14 @@ In [tutorial-2c](../tutorial-2/tutorial-2c/answers/test_perf.cpp), we declared a
 > **Note**: These lock acquire and release triggers do not check specific lock values. This means we start our counter when the 2nd tile begins (which starts at the beginning of the entire multi-tile design) and stops when the 2nd tile is done.
 
 9. Modify `test.cpp` to add the new lock triggered  `EventMonitor`. See [test_perf.cpp](./answers/test_perf.cpp) for reference but be sure to modify the top level test.cpp so the simulator has the right reference. Run the simulator. What is the cycle count for the two tile sequential operation? <img src="../images/answer1.jpg" title="48 cycles" height=25>
+    > Solution: `make tutorial-3_perf1.exe; make -C sim host=../answers/test_perf.cpp`
 
 10. Copy this design on the board and run the program with `sudo ./tutorial-3.exe`. What cycle count do you see? <img src="../images/answer1.jpg" title="~3300 cycles" height=25>
 
 The reason the cycle count is much higher here is because the time it takes for tiles to be enabled is the overhead of function calls on the host processor (ARM). This means the fist tile is enabled for some time (and done) before the second tile is enabled so we are essentially measuring the timing between core enable function calls from the host. This is really an artifact of measuring performance of hardware components that are controlled by a software host processor.
 
 11. Change your [aie.mlir](./aie.mlir) design to swap the functionality of the two tiles, compile and simulate your design to confirm correct functionality. What cycle count do you get in simulation? <img src="../images/answer1.jpg" title="48 cycles" height=25>
+    > Solution: `make tutorial-3_perf2.exe; make -C sim host=../answers/test_perf.cpp`
     
     Run this new design on the board. What cycle count do you get now? <img src="../images/answer1.jpg" title="49 cycles" height=25> What is the reason for this difference? <img src="../images/answer1.jpg" title="The first core is now enabled after the second core." height=25>
 
