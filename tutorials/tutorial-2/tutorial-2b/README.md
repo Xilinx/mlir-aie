@@ -44,7 +44,7 @@ In simulation, the transaction model requires the allocated physical address rat
     ```
     make; make -C sim
     ```
-    You should see the simulator print a number ofstatus messages before finally running the host code and outputting the `PASS` message.
+    You should see the simulator print a number of status messages before finally running the host code and outputting the `PASS` message.
 
 2. Modify the host code `test.cpp` to add a `mlir_aie_print_tile_status` for tile(1,4) and rerun the simulator. Did we need to recompile the `aie.mlir` and regenerate the core .elf files when we modify the host API? <img src="../../images/answer1.jpg" title="No. We just need to cross-compile the host." height=25>
 
