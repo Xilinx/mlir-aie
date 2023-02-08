@@ -8,6 +8,9 @@ endif
 AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: core_1_4.elf
+	@mkdir -p elf
+	@mv *.elf* ./elf
+	@cp ./elf/*.elf ./elf/*.elf.map .
 
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable

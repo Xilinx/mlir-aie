@@ -8,6 +8,9 @@ endif
 AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: tutorial-8.exe
+	@mkdir -p elf
+	@mv *.elf* ./elf
+	@cp ./elf/*.elf ./elf/*.elf.map .
 
 # Command line AIE kernel compile. See tutorial-2 for more info.
 %.o: %.cc
