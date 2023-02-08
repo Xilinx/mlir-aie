@@ -64,8 +64,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a34(_xaie, 5), 0,
                  errors);
 
-  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(1,4),
-                      XAIE_MEM_MOD, 2, XAIE_EVENT_LOCK_6_ACQ_MEM);
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(1, 4), XAIE_MEM_MOD, 2,
+                      XAIE_EVENT_LOCK_6_ACQ_MEM);
 
   EventMonitor pc0(_xaie, 3, 4, 0, XAIE_EVENT_BROADCAST_2_MEM,
                    XAIE_EVENT_LOCK_8_REL_MEM, XAIE_EVENT_NONE_MEM,
