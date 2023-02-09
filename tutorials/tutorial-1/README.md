@@ -56,8 +56,8 @@ Tile declaration is mainly needed so other sub components can be associated to t
 >**ADF Graph NOTE:** ADF graph descriptions treat the first full row of AI Engines as row 0 and does not count the shim tiles. As such, be sure to add one to the row value when moving from ADF designs to MLIR-AIE descriptions.
 
 The type of tiles and orientation of its associated local memory is architecture dependent. In the case of the first generation of AI Engines, each tile has an associated local memory physically to its left or right depending on the row.
-* odd row - memory on left
-* even row - memory on right
+* odd row (1, 3, ...) - memory on right
+* even row (2, 4, ...) - memory on left
 
 <p><img src="../images/diagram3.png" width="800"><p>
 
