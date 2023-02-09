@@ -7,6 +7,10 @@ MLIR_AIE_SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
 endif
 AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
+ifeq (${AIETOOLS_ROOT},)
+AIETOOLS_ROOT = $(dir $(shell which xchesscc))/..
+endif
+
 all: tutorial-8.exe
 	@mkdir -p elf
 	@mv *.elf* ./elf

@@ -25,6 +25,8 @@ Because `aiesimulator` is to set to run a cycle accurate simulation for each til
 
 > Some things to note about the differences between running simulation and running on hardware. It is important to note the differences between host code timing and AIE timing in simulation compared to hardware. In hardware, the AI engines complete operation extremely quickly (in real time) while host code commands take a much longer time (as compared to AI Engine program cycles). As a result, a host command like `usleep` could be used to wait for a program to be done when AIE operations complete very quickly. However, in simulation, the opposite is true as the cycle accurate AIE simulator takes more time than the host program (in real time) which is why we use host API functions like `mlir_aie_acquire_lock` to ensure we are synchronizing AIE simulation and host code timings. These differences can also come up in unique ways which we will highlight in later tutorials.
 
+> **NOTE**: The simulator cleanup process can take a few minutes but you can exit the simulator once you see the terminal message: `"Info: /OSCI/SystemC: Simulation stopped by user"` by pressing `Ctrl-C`.
+
 ### <ins>Simulating with shim DMAs</ins>
 Integration with aiesimulator is supported with the same host API calls in the host program running in both simulation and on hardware. In most cases, the API calls abstracts the differences between the underlying function calls depending on if you're compiling for simulation. This is gated by the #define __ AIESIM __. However, at the moment, in order to support shim DMA in simulation, a customization is needed in the host code as shown below:
 ```

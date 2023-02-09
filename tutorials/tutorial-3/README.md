@@ -14,12 +14,12 @@ In [tutorial-1](../tutorial-1), we have explored the `core` and `buffer` dialect
 
 We now come back to the `mlir-aie` dialect to talk about the next major component of for AIE system design - communication. As summarized briefly in the [Basic AI Engine Architecure](../README.md#basic-ai-engine-architecture) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well. 
 
-In the diagram below, we see that the local memory for tile(2,4) is physically adjacent to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. In general, each processor can access the memory in its own tile, the memory of the tile to the north and south, and the memory of the tile either to the east (in odd rows) or the west (in even rows).  As a result, communicating through shared memory is less constrained to the north and south: A processor can communicate in either of these directions using a buffer in two different tiles.  Communicating east and west is more more constrained: the communication buffer can be in only one tile, and it might not be in the same tile as the source of the data.  These constraints are verified in MLIR, so it's easy to know whether we've created a valid design.
+In the diagram below, we see that the local memory for tile(2,4) is physically adjacent to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. In general, each processor can access the memory in its own tile, the memory of the tile to the north and south, and the memory of the tile either to the east (in even rows) or the west (in odd rows).  As a result, communicating through shared memory is less constrained to the north and south: A processor can communicate in either of these directions using a buffer in two different tiles.  Communicating east and west is more constrained: the communication buffer can be in only one tile, and it might not be in the same tile as the source of the data.  These constraints are verified in MLIR, so it's easy to know whether we've created a valid design.
 
 |   | tile(col-1, row) _West_ | tile(col, row) | tile(col+1, row) _East_ |
 |---|---|---|---|
-| Odd Row |$$\color{red}{inaccessible}$$ | Shared West | Shared East   |
-| Even Row | Shared West | Shared East  | $$\color{red}{inaccessible}$$  |
+| Even Row | $$\color{red}{inaccessible}$$ | Shared West | Shared East   |
+| Odd Row | Shared West | Shared East  | $$\color{red}{inaccessible}$$  |
 
 <p><img src="../images/diagram4.png" width="1000"><p>
 
