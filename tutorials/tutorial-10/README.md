@@ -111,7 +111,7 @@ input_with_addresses.mlir -o input_opt_with_addresses.mlir
 aie-translate 
 --opaque-pointers=0 
 --mlir-to-llvmir 
-input_opt_with_addreses -o input.ll
+input_opt_with_addreses.mlir -o input.ll
 ```
 ### <ins>5. Compile individual cores (e.g. xchesscc_wrapper)</ins>
 ```
