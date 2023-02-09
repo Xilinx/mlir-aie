@@ -113,6 +113,8 @@ struct UPDOpEffectiveAccessSizeAnalysis {
 //===----------------------------------------------------------------------===//
 // Lowering patterns
 //===----------------------------------------------------------------------===//
+// This pattern fold `vector.extract` and `vector.broadcast` into
+// `aievec.broadcast` for aie-ml
 struct FoldVectorExtractAndBroadcastToAIEBroadcast
     : public OpConversionPattern<vector::BroadcastOp> {
   using OpConversionPattern<vector::BroadcastOp>::OpConversionPattern;
@@ -138,7 +140,9 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
   }
 };
 
-// This pattern replaces `vector.fma` with `aievec.mac_elem`.
+// This pattern replaces `vector.fma` with `aievec.mac_elem` for aie-ml.
+// One of operand of `vector.fma` should be a splat which is represented
+// by an `aievec.broadcast` operation
 struct LowerVectorFMAToAIEVecFMAElem
     : public OpConversionPattern<vector::FMAOp> {
   using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
