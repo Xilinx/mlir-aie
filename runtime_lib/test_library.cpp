@@ -1055,7 +1055,7 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
     printf("ExtMemModel: Failed to allocate %d memory.\n", size_bytes);
   }
 
-  std::cout << "ExtMemModel constructor: virutal address " << std::hex
+  std::cout << "ExtMemModel constructor: virtual address " << std::hex
             << (ctx->buffers[bufIdx])->virtualAddr << ", physical address "
             << (ctx->buffers[bufIdx])->physicalAddr << ", size " << std::dec
             << (ctx->buffers[bufIdx])->size << std::endl;
