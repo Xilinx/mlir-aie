@@ -141,8 +141,6 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
 };
 
 // This pattern replaces `vector.fma` with `aievec.mac_elem` for aie-ml.
-// One of operand of `vector.fma` should be a splat which is represented
-// by an `aievec.broadcast` operation
 struct LowerVectorFMAToAIEVecFMAElem
     : public OpConversionPattern<vector::FMAOp> {
   using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
@@ -174,18 +172,8 @@ struct LowerVectorFMAToAIEVecFMAElem
                  << fmaOp << " into accumulator");
     }
 
-    auto bcastOp =
-        dyn_cast<aievec::BroadcastOp>(adaptor.getRhs().getDefiningOp());
     Value lhs = adaptor.getLhs();
     Value rhs = adaptor.getRhs();
-
-    if (!bcastOp) {
-      bcastOp = dyn_cast<aievec::BroadcastOp>(adaptor.getLhs().getDefiningOp());
-      if (!bcastOp)
-        return failure();
-      lhs = adaptor.getRhs();
-      rhs = adaptor.getLhs();
-    }
 
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
         fmaOp->getLoc(), lhs, rhs, acc, /*fmsub=*/false);
