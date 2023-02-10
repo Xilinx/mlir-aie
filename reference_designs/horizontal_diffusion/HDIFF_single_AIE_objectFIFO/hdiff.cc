@@ -98,7 +98,8 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             acc_0=lmsc8   (acc_0,data_buf2,3,0x76543210,coeffs,    0,0x00000000);  // l, 4*h
             
             //Calculate final fly_ijm
-            v16int32 out_flx_inter1=select16(flx_compare_imj,flux_sub,null_v16int32());
+            v16int32 out_flx_inter1 =
+                select16(flx_compare_imj, flux_sub, null_v16int32());
 
             // r1 = ptr_in+1 * COL/8+i ;
             // r1=row1_ptr+i;
@@ -188,7 +189,8 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             flux_sub = sub16(concat(srs(acc_0,0),undef_v8int32()), 0, 0x76543210, 0xFEDCBA98, concat(lap_ij,undef_v8int32()),   0,  0x76543210, 0xFEDCBA98 ); 
 
             //below reuisng acc_1 for flux calculation //CHANGED FROM 3 TO 2
-            acc_1=lmul8   (data_buf1,2,0x76543210,ext_w(flux_sub,0),    0,0x00000000);      //  (lap_ipj - lap_ij) * k
+            acc_1 = lmul8(data_buf1, 2, 0x76543210, ext_w(flux_sub, 0), 0,
+                          0x00000000); //  (lap_ipj - lap_ij) * k
 
             // LOAD DATA FOR NEXT ITERATION
             //  r1 = ptr_in + 3*COL/8 + i + 1 ;
@@ -206,7 +208,9 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             v16int32 flx_out4=add16(flx_out3,out_flx_inter4); //adds fly_ij - fly_ijm - flx_imj + flx_ij
 
             v8acc80 final_output = lmul8  (flx_out4, 0, 0x76543210, flux_out_coeff,    0,0x00000000);  // Multiply by -7s
-            final_output=lmac8(final_output, data_buf2,  2, 0x76543210,concat(coeffs1, undef_v8int32()), 0 , 0x76543210);
+            final_output =
+                lmac8(final_output, data_buf2, 2, 0x76543210,
+                      concat(coeffs1, undef_v8int32()), 0, 0x76543210);
 
             // LOAD DATA FOR NEXT ITERATION
             //  r2 = ptr_in + 1*COL/8 + i + 1 ;

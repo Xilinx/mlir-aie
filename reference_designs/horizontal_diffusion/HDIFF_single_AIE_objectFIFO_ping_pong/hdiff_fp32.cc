@@ -172,7 +172,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
       acc_1 = fpmul(data_buf2, 2, 0x76543210, coeffs_rest, 0, 0x00000000); // g
 
       //////// **************************LAP_ipj for fly_ij sincer2=R2 are
-      ///already loaded********
+      /// already loaded********
       acc_0 = fpmul(data_buf2, 2, 0x76543210, coeffs_rest, 0, 0x00000000); // g
 
       row0_ptr = ((v8float *)(row0)) + i;
