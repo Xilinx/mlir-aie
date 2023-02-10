@@ -1,5 +1,5 @@
-// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-  
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -13,9 +13,9 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
 #include <xaiengine.h>
-#include <time.h>  
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 #define MLIR_STACK_OFFSET 4096
@@ -27,7 +27,7 @@
 
 int main(int argc, char *argv[]) {
   printf("test start.\n");
-  clock_t t; 
+  clock_t t;
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
@@ -36,9 +36,8 @@ int main(int argc, char *argv[]) {
   usleep(sleep_u);
   printf("before configure cores.\n");
 
-  for (int i=0; i<AIE_COL;i++)
-  {
-    for (int j=START_ROW; j<START_ROW+BROAD_CORES;j++)
+  for (int i = 0; i < AIE_COL; i++) {
+    for (int j = START_ROW; j < START_ROW + BROAD_CORES; j++)
       mlir_aie_clear_tile_memory(_xaie, i, j);
   }
 
@@ -51,8 +50,8 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_acquire_lock(_xaie, 7, 3, 14, 0, 0); // for timing
   EventMonitor pc0(_xaie, 7, 3, 0, XAIE_EVENT_LOCK_14_ACQ_MEM,
-          XAIE_EVENT_LOCK_14_REL_MEM, XAIE_EVENT_NONE_MEM,
-          XAIE_MEM_MOD);
+                   XAIE_EVENT_LOCK_14_REL_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
   pc0.set();
 
   usleep(sleep_u);
@@ -63,8 +62,8 @@ int main(int argc, char *argv[]) {
 
   printf("Finish configure\n");
 
-  #define DMA_COUNT_IN 1536
-  #define DMA_COUNT_OUT 512
+#define DMA_COUNT_IN 1536
+#define DMA_COUNT_OUT 512
   int *ddr_ptr_in_0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT_IN);
   int *ddr_ptr_in_1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT_IN);
   int *ddr_ptr_in_2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT_IN);
@@ -97,7 +96,6 @@ int main(int argc, char *argv[]) {
   int *ddr_ptr_in_29 = mlir_aie_mem_alloc(_xaie, 29, DMA_COUNT_IN);
   int *ddr_ptr_in_30 = mlir_aie_mem_alloc(_xaie, 30, DMA_COUNT_IN);
   int *ddr_ptr_in_31 = mlir_aie_mem_alloc(_xaie, 31, DMA_COUNT_IN);
-
 
   int *ddr_ptr_out_0_2 = mlir_aie_mem_alloc(_xaie, 32, DMA_COUNT_OUT);
   int *ddr_ptr_out_1_2 = mlir_aie_mem_alloc(_xaie, 33, DMA_COUNT_OUT);
@@ -132,8 +130,6 @@ int main(int argc, char *argv[]) {
   int *ddr_ptr_out_30_2 = mlir_aie_mem_alloc(_xaie, 62, DMA_COUNT_OUT);
   int *ddr_ptr_out_31_2 = mlir_aie_mem_alloc(_xaie, 63, DMA_COUNT_OUT);
 
-
-
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT_IN; i++) {
     *(ddr_ptr_in_0 + i) = i;  // input
@@ -146,30 +142,29 @@ int main(int argc, char *argv[]) {
     *(ddr_ptr_in_7 + i) = i;  // input
     *(ddr_ptr_in_8 + i) = i;  // input
     *(ddr_ptr_in_9 + i) = i;  // input
-    *(ddr_ptr_in_10 + i) = i;  // input
-    *(ddr_ptr_in_11 + i) = i;  // input
-    *(ddr_ptr_in_12 + i) = i;  // input
-    *(ddr_ptr_in_13 + i) = i;  // input
-    *(ddr_ptr_in_14 + i) = i;  // input
-    *(ddr_ptr_in_15 + i) = i;  // input
-    *(ddr_ptr_in_16 + i) = i;  // input
-    *(ddr_ptr_in_17 + i) = i;  // input
-    *(ddr_ptr_in_18 + i) = i;  // input
-    *(ddr_ptr_in_19 + i) = i;  // input
-    *(ddr_ptr_in_20 + i) = i;  // input
-    *(ddr_ptr_in_21 + i) = i;  // input
-    *(ddr_ptr_in_22 + i) = i;  // input
-    *(ddr_ptr_in_23 + i) = i;  // input
-    *(ddr_ptr_in_24 + i) = i;  // input
-    *(ddr_ptr_in_25 + i) = i;  // input
-    *(ddr_ptr_in_26 + i) = i;  // input
-    *(ddr_ptr_in_27 + i) = i;  // input
-    *(ddr_ptr_in_28 + i) = i;  // input
-    *(ddr_ptr_in_29 + i) = i;  // input
-    *(ddr_ptr_in_30 + i) = i;  // input
-    *(ddr_ptr_in_31 + i) = i;  // input
+    *(ddr_ptr_in_10 + i) = i; // input
+    *(ddr_ptr_in_11 + i) = i; // input
+    *(ddr_ptr_in_12 + i) = i; // input
+    *(ddr_ptr_in_13 + i) = i; // input
+    *(ddr_ptr_in_14 + i) = i; // input
+    *(ddr_ptr_in_15 + i) = i; // input
+    *(ddr_ptr_in_16 + i) = i; // input
+    *(ddr_ptr_in_17 + i) = i; // input
+    *(ddr_ptr_in_18 + i) = i; // input
+    *(ddr_ptr_in_19 + i) = i; // input
+    *(ddr_ptr_in_20 + i) = i; // input
+    *(ddr_ptr_in_21 + i) = i; // input
+    *(ddr_ptr_in_22 + i) = i; // input
+    *(ddr_ptr_in_23 + i) = i; // input
+    *(ddr_ptr_in_24 + i) = i; // input
+    *(ddr_ptr_in_25 + i) = i; // input
+    *(ddr_ptr_in_26 + i) = i; // input
+    *(ddr_ptr_in_27 + i) = i; // input
+    *(ddr_ptr_in_28 + i) = i; // input
+    *(ddr_ptr_in_29 + i) = i; // input
+    *(ddr_ptr_in_30 + i) = i; // input
+    *(ddr_ptr_in_31 + i) = i; // input
   }
-
 
   for (int i = 0; i < DMA_COUNT_OUT; i++) {
     *(ddr_ptr_out_0_2 + i) = 0;
@@ -270,96 +265,93 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 62);
   mlir_aie_sync_mem_dev(_xaie, 63);
 
+#ifdef LIBXAIENGINEV2
 
+  mlir_aie_external_set_addr_ddr_buffer_in_0((u64)ddr_ptr_in_0);
+  mlir_aie_external_set_addr_ddr_buffer_in_1((u64)ddr_ptr_in_1);
+  mlir_aie_external_set_addr_ddr_buffer_in_2((u64)ddr_ptr_in_2);
+  mlir_aie_external_set_addr_ddr_buffer_in_3((u64)ddr_ptr_in_3);
+  mlir_aie_external_set_addr_ddr_buffer_in_4((u64)ddr_ptr_in_4);
+  mlir_aie_external_set_addr_ddr_buffer_in_5((u64)ddr_ptr_in_5);
+  mlir_aie_external_set_addr_ddr_buffer_in_6((u64)ddr_ptr_in_6);
+  mlir_aie_external_set_addr_ddr_buffer_in_7((u64)ddr_ptr_in_7);
+  mlir_aie_external_set_addr_ddr_buffer_in_8((u64)ddr_ptr_in_8);
+  mlir_aie_external_set_addr_ddr_buffer_in_9((u64)ddr_ptr_in_9);
+  mlir_aie_external_set_addr_ddr_buffer_in_10((u64)ddr_ptr_in_10);
+  mlir_aie_external_set_addr_ddr_buffer_in_11((u64)ddr_ptr_in_11);
+  mlir_aie_external_set_addr_ddr_buffer_in_12((u64)ddr_ptr_in_12);
+  mlir_aie_external_set_addr_ddr_buffer_in_13((u64)ddr_ptr_in_13);
+  mlir_aie_external_set_addr_ddr_buffer_in_14((u64)ddr_ptr_in_14);
+  mlir_aie_external_set_addr_ddr_buffer_in_15((u64)ddr_ptr_in_15);
+  mlir_aie_external_set_addr_ddr_buffer_in_16((u64)ddr_ptr_in_16);
+  mlir_aie_external_set_addr_ddr_buffer_in_17((u64)ddr_ptr_in_17);
+  mlir_aie_external_set_addr_ddr_buffer_in_18((u64)ddr_ptr_in_18);
+  mlir_aie_external_set_addr_ddr_buffer_in_19((u64)ddr_ptr_in_19);
+  mlir_aie_external_set_addr_ddr_buffer_in_20((u64)ddr_ptr_in_20);
+  mlir_aie_external_set_addr_ddr_buffer_in_21((u64)ddr_ptr_in_21);
+  mlir_aie_external_set_addr_ddr_buffer_in_22((u64)ddr_ptr_in_22);
+  mlir_aie_external_set_addr_ddr_buffer_in_23((u64)ddr_ptr_in_23);
+  mlir_aie_external_set_addr_ddr_buffer_in_24((u64)ddr_ptr_in_24);
+  mlir_aie_external_set_addr_ddr_buffer_in_25((u64)ddr_ptr_in_25);
+  mlir_aie_external_set_addr_ddr_buffer_in_26((u64)ddr_ptr_in_26);
+  mlir_aie_external_set_addr_ddr_buffer_in_27((u64)ddr_ptr_in_27);
+  mlir_aie_external_set_addr_ddr_buffer_in_28((u64)ddr_ptr_in_28);
+  mlir_aie_external_set_addr_ddr_buffer_in_29((u64)ddr_ptr_in_29);
+  mlir_aie_external_set_addr_ddr_buffer_in_30((u64)ddr_ptr_in_30);
+  mlir_aie_external_set_addr_ddr_buffer_in_31((u64)ddr_ptr_in_31);
 
+  mlir_aie_external_set_addr_ddr_buffer_out_0_2((u64)ddr_ptr_out_0_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_1_2((u64)ddr_ptr_out_1_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_2_2((u64)ddr_ptr_out_2_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_3_2((u64)ddr_ptr_out_3_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_4_2((u64)ddr_ptr_out_4_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_5_2((u64)ddr_ptr_out_5_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_6_2((u64)ddr_ptr_out_6_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_7_2((u64)ddr_ptr_out_7_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_8_2((u64)ddr_ptr_out_8_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_9_2((u64)ddr_ptr_out_9_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_10_2((u64)ddr_ptr_out_10_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_11_2((u64)ddr_ptr_out_11_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_12_2((u64)ddr_ptr_out_12_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_13_2((u64)ddr_ptr_out_13_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_14_2((u64)ddr_ptr_out_14_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_15_2((u64)ddr_ptr_out_15_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_16_2((u64)ddr_ptr_out_16_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_17_2((u64)ddr_ptr_out_17_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_18_2((u64)ddr_ptr_out_18_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_19_2((u64)ddr_ptr_out_19_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_20_2((u64)ddr_ptr_out_20_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_21_2((u64)ddr_ptr_out_21_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_22_2((u64)ddr_ptr_out_22_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_23_2((u64)ddr_ptr_out_23_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_24_2((u64)ddr_ptr_out_24_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_25_2((u64)ddr_ptr_out_25_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_26_2((u64)ddr_ptr_out_26_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_27_2((u64)ddr_ptr_out_27_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_28_2((u64)ddr_ptr_out_28_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_29_2((u64)ddr_ptr_out_29_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_30_2((u64)ddr_ptr_out_30_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_31_2((u64)ddr_ptr_out_31_2);
 
-  #ifdef LIBXAIENGINEV2
+  mlir_aie_configure_shimdma_20(_xaie);
+  mlir_aie_configure_shimdma_30(_xaie);
+  mlir_aie_configure_shimdma_60(_xaie);
+  mlir_aie_configure_shimdma_70(_xaie);
+  mlir_aie_configure_shimdma_100(_xaie);
+  mlir_aie_configure_shimdma_110(_xaie);
+  mlir_aie_configure_shimdma_180(_xaie);
+  mlir_aie_configure_shimdma_190(_xaie);
+  mlir_aie_configure_shimdma_260(_xaie);
+  mlir_aie_configure_shimdma_270(_xaie);
+  mlir_aie_configure_shimdma_340(_xaie);
+  mlir_aie_configure_shimdma_350(_xaie);
+  mlir_aie_configure_shimdma_420(_xaie);
+  mlir_aie_configure_shimdma_430(_xaie);
+  mlir_aie_configure_shimdma_460(_xaie);
+  mlir_aie_configure_shimdma_470(_xaie);
 
-    mlir_aie_external_set_addr_ddr_buffer_in_0((u64)ddr_ptr_in_0); 
-    mlir_aie_external_set_addr_ddr_buffer_in_1((u64)ddr_ptr_in_1); 
-    mlir_aie_external_set_addr_ddr_buffer_in_2((u64)ddr_ptr_in_2); 
-    mlir_aie_external_set_addr_ddr_buffer_in_3((u64)ddr_ptr_in_3); 
-    mlir_aie_external_set_addr_ddr_buffer_in_4((u64)ddr_ptr_in_4); 
-    mlir_aie_external_set_addr_ddr_buffer_in_5((u64)ddr_ptr_in_5); 
-    mlir_aie_external_set_addr_ddr_buffer_in_6((u64)ddr_ptr_in_6); 
-    mlir_aie_external_set_addr_ddr_buffer_in_7((u64)ddr_ptr_in_7); 
-    mlir_aie_external_set_addr_ddr_buffer_in_8((u64)ddr_ptr_in_8); 
-    mlir_aie_external_set_addr_ddr_buffer_in_9((u64)ddr_ptr_in_9); 
-    mlir_aie_external_set_addr_ddr_buffer_in_10((u64)ddr_ptr_in_10); 
-    mlir_aie_external_set_addr_ddr_buffer_in_11((u64)ddr_ptr_in_11); 
-    mlir_aie_external_set_addr_ddr_buffer_in_12((u64)ddr_ptr_in_12); 
-    mlir_aie_external_set_addr_ddr_buffer_in_13((u64)ddr_ptr_in_13); 
-    mlir_aie_external_set_addr_ddr_buffer_in_14((u64)ddr_ptr_in_14); 
-    mlir_aie_external_set_addr_ddr_buffer_in_15((u64)ddr_ptr_in_15); 
-    mlir_aie_external_set_addr_ddr_buffer_in_16((u64)ddr_ptr_in_16); 
-    mlir_aie_external_set_addr_ddr_buffer_in_17((u64)ddr_ptr_in_17); 
-    mlir_aie_external_set_addr_ddr_buffer_in_18((u64)ddr_ptr_in_18); 
-    mlir_aie_external_set_addr_ddr_buffer_in_19((u64)ddr_ptr_in_19); 
-    mlir_aie_external_set_addr_ddr_buffer_in_20((u64)ddr_ptr_in_20); 
-    mlir_aie_external_set_addr_ddr_buffer_in_21((u64)ddr_ptr_in_21); 
-    mlir_aie_external_set_addr_ddr_buffer_in_22((u64)ddr_ptr_in_22); 
-    mlir_aie_external_set_addr_ddr_buffer_in_23((u64)ddr_ptr_in_23); 
-    mlir_aie_external_set_addr_ddr_buffer_in_24((u64)ddr_ptr_in_24); 
-    mlir_aie_external_set_addr_ddr_buffer_in_25((u64)ddr_ptr_in_25); 
-    mlir_aie_external_set_addr_ddr_buffer_in_26((u64)ddr_ptr_in_26); 
-    mlir_aie_external_set_addr_ddr_buffer_in_27((u64)ddr_ptr_in_27); 
-    mlir_aie_external_set_addr_ddr_buffer_in_28((u64)ddr_ptr_in_28); 
-    mlir_aie_external_set_addr_ddr_buffer_in_29((u64)ddr_ptr_in_29); 
-    mlir_aie_external_set_addr_ddr_buffer_in_30((u64)ddr_ptr_in_30); 
-    mlir_aie_external_set_addr_ddr_buffer_in_31((u64)ddr_ptr_in_31); 
-
-    mlir_aie_external_set_addr_ddr_buffer_out_0_2((u64)ddr_ptr_out_0_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_1_2((u64)ddr_ptr_out_1_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_2_2((u64)ddr_ptr_out_2_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_3_2((u64)ddr_ptr_out_3_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_4_2((u64)ddr_ptr_out_4_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_5_2((u64)ddr_ptr_out_5_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_6_2((u64)ddr_ptr_out_6_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_7_2((u64)ddr_ptr_out_7_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_8_2((u64)ddr_ptr_out_8_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_9_2((u64)ddr_ptr_out_9_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_10_2((u64)ddr_ptr_out_10_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_11_2((u64)ddr_ptr_out_11_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_12_2((u64)ddr_ptr_out_12_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_13_2((u64)ddr_ptr_out_13_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_14_2((u64)ddr_ptr_out_14_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_15_2((u64)ddr_ptr_out_15_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_16_2((u64)ddr_ptr_out_16_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_17_2((u64)ddr_ptr_out_17_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_18_2((u64)ddr_ptr_out_18_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_19_2((u64)ddr_ptr_out_19_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_20_2((u64)ddr_ptr_out_20_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_21_2((u64)ddr_ptr_out_21_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_22_2((u64)ddr_ptr_out_22_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_23_2((u64)ddr_ptr_out_23_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_24_2((u64)ddr_ptr_out_24_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_25_2((u64)ddr_ptr_out_25_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_26_2((u64)ddr_ptr_out_26_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_27_2((u64)ddr_ptr_out_27_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_28_2((u64)ddr_ptr_out_28_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_29_2((u64)ddr_ptr_out_29_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_30_2((u64)ddr_ptr_out_30_2); 
-    mlir_aie_external_set_addr_ddr_buffer_out_31_2((u64)ddr_ptr_out_31_2); 
-
-    mlir_aie_configure_shimdma_20(_xaie);
-    mlir_aie_configure_shimdma_30(_xaie);
-    mlir_aie_configure_shimdma_60(_xaie);
-    mlir_aie_configure_shimdma_70(_xaie);
-    mlir_aie_configure_shimdma_100(_xaie);
-    mlir_aie_configure_shimdma_110(_xaie);
-    mlir_aie_configure_shimdma_180(_xaie);
-    mlir_aie_configure_shimdma_190(_xaie);
-    mlir_aie_configure_shimdma_260(_xaie);
-    mlir_aie_configure_shimdma_270(_xaie);
-    mlir_aie_configure_shimdma_340(_xaie);
-    mlir_aie_configure_shimdma_350(_xaie);
-    mlir_aie_configure_shimdma_420(_xaie);
-    mlir_aie_configure_shimdma_430(_xaie);
-    mlir_aie_configure_shimdma_460(_xaie);
-    mlir_aie_configure_shimdma_470(_xaie);
-
-    //   mlir_aie_configure_shimdma_100(_xaie);
-  #endif
+  //   mlir_aie_configure_shimdma_100(_xaie);
+#endif
 
   printf("Release lock for accessing DDR.\n");
 
@@ -368,16 +360,14 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_of_44_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_47_lock_0(_xaie, 0, 0);
 
-
   mlir_aie_release_of_64_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_67_lock_0(_xaie, 0, 0);
   mlir_aie_release_of_68_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_71_lock_0(_xaie, 0, 0);
 
-
   mlir_aie_release_of_96_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_99_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_100_lock_0(_xaie, 1, 0);   
+  mlir_aie_release_of_100_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_103_lock_0(_xaie, 0, 0);
 
   mlir_aie_release_of_80_lock_0(_xaie, 1, 0);
@@ -394,8 +384,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_of_123_lock_0(_xaie, 0, 0);
   mlir_aie_release_of_124_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_127_lock_0(_xaie, 0, 0);
-
-
 
   mlir_aie_release_of_88_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_91_lock_0(_xaie, 0, 0);
@@ -423,7 +411,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_of_108_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_111_lock_0(_xaie, 0, 0);
 
-
   mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
   mlir_aie_release_of_4_lock_0(_xaie, 1, 0);
@@ -449,59 +436,91 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_of_76_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_79_lock_0(_xaie, 0, 0);
 
-
   printf("Start cores\n");
-  t = clock(); 
+  t = clock();
   ///// --- start counter-----
   mlir_aie_start_cores(_xaie);
 
   mlir_aie_release_lock(_xaie, 7, 3, 14, 0, 0); // for timing
-  t = clock() - t; 
+  t = clock() - t;
 
-  printf ("It took %ld clicks (%f seconds).\n",t,((float)t)/CLOCKS_PER_SEC);
+  printf("It took %ld clicks (%f seconds).\n", t, ((float)t) / CLOCKS_PER_SEC);
 
   usleep(sleep_u);
   printf("after core start\n");
   // mlir_aie_print_tile_status(_xaie, 7, 3);
 
   usleep(sleep_u);
-  // /mnt/scratch/gagsingh/mlir-aie/install/bin/aie-opt --aie-objectFifo-stateful-transform aie.mlir
+  // /mnt/scratch/gagsingh/mlir-aie/install/bin/aie-opt
+  // --aie-objectFifo-stateful-transform aie.mlir
 
   //   mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
   //   mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
 
-  mlir_aie_sync_mem_cpu(_xaie, 32); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 33); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 34); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 35); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 36); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 37); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 38); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 39); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 40); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 41); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 42); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 43); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 44); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 45); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 46); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 47); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 48); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 49); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 50); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 51); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 52); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 53); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 54); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 55); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 56); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 57); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 58); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 59); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 60); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 61); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 62); //// only used in libaiev2 //sync up with output
-  mlir_aie_sync_mem_cpu(_xaie, 63); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        32); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        33); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        34); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        35); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        36); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        37); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        38); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        39); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        40); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        41); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        42); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        43); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        44); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        45); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        46); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        47); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        48); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        49); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        50); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        51); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        52); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        53); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        54); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        55); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        56); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        57); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        58); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        59); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        60); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        61); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        62); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        63); //// only used in libaiev2 //sync up with output
   ///// --- end counter-----
   // for (int i =0; i < 256; i ++ ){
   //       printf("Location %d:  %d\n", i, ddr_ptr_out[i]);
@@ -511,8 +530,7 @@ int main(int argc, char *argv[]) {
   if (!errors) {
     printf("PASS!\n");
     res = 0;
-  } 
-  else {
+  } else {
     printf("Fail!\n");
     res = -1;
   }

@@ -1,9 +1,8 @@
-// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-    
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
 
 #include "test_library.h"
 #include <cassert>
@@ -14,23 +13,23 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <thread>
+#include <time.h>
 #include <unistd.h>
 #include <xaiengine.h>
-#include <time.h>  
 #define HIGH_ADDR(addr) ((addr & 0xffffffff00000000) >> 32)
 #define LOW_ADDR(addr) (addr & 0x00000000ffffffff)
 #define MLIR_STACK_OFFSET 4096
-#define B_BLOCK_DEPTH 4 //set how many rows
-#define HDIFF_COL 3 //columns
+#define B_BLOCK_DEPTH 4 // set how many rows
+#define HDIFF_COL 3     // columns
 #define START_ROW 1
-#define INPUT_ROWS 9   
-    
-    #define TOTAL_B_BLOCK 4
- #include "aie_inc.cpp"
+#define INPUT_ROWS 9
+
+#define TOTAL_B_BLOCK 4
+#include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
   printf("test start.");
-  clock_t t; 
+  clock_t t;
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
@@ -38,15 +37,14 @@ int main(int argc, char *argv[]) {
   u32 sleep_u = 100000;
   usleep(sleep_u);
   printf("before configure cores.");
-   for (int b=0; b<TOTAL_B_BLOCK;b++)
-  {
-    for (int i=0; i<HDIFF_COL;i++){
-      for (int j=START_ROW; j<START_ROW+B_BLOCK_DEPTH;j++)
+  for (int b = 0; b < TOTAL_B_BLOCK; b++) {
+    for (int i = 0; i < HDIFF_COL; i++) {
+      for (int j = START_ROW; j < START_ROW + B_BLOCK_DEPTH; j++)
         mlir_aie_clear_tile_memory(_xaie, i, j);
     }
   }
 
-//   mlir_aie_clear_tile_memory(_xaie, 6, 4);
+  //   mlir_aie_clear_tile_memory(_xaie, 6, 4);
   mlir_aie_configure_cores(_xaie);
 
   usleep(sleep_u);
@@ -54,141 +52,146 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-      mlir_aie_acquire_lock(_xaie, 0, 1, 14, 0, 0); // for timing
-   XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(0,1), XAIE_MEM_MOD, 2,XAIE_EVENT_LOCK_14_ACQ_MEM);
-   EventMonitor pc0(_xaie, 2, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,XAIE_MEM_MOD);
-   pc0.set();
- 
-  mlir_aie_acquire_lock(_xaie, 0, 5, 14, 0, 0); // for timing
-   XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(0,5), XAIE_MEM_MOD, 2,XAIE_EVENT_LOCK_14_ACQ_MEM);
-   EventMonitor pc1(_xaie, 2, 5, 0, XAIE_EVENT_BROADCAST_2_MEM,XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,XAIE_MEM_MOD);
-   pc1.set();
- 
-  mlir_aie_acquire_lock(_xaie, 3, 1, 14, 0, 0); // for timing
-   XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(3,1), XAIE_MEM_MOD, 2,XAIE_EVENT_LOCK_14_ACQ_MEM);
-   EventMonitor pc2(_xaie, 5, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,XAIE_MEM_MOD);
-   pc2.set();
- 
-  mlir_aie_acquire_lock(_xaie, 3, 5, 14, 0, 0); // for timing
-   XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(3,5), XAIE_MEM_MOD, 2,XAIE_EVENT_LOCK_14_ACQ_MEM);
-   EventMonitor pc3(_xaie, 5, 5, 0, XAIE_EVENT_BROADCAST_2_MEM,XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,XAIE_MEM_MOD);
-   pc3.set();
- 
+  mlir_aie_acquire_lock(_xaie, 0, 1, 14, 0, 0); // for timing
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(0, 1), XAIE_MEM_MOD, 2,
+                      XAIE_EVENT_LOCK_14_ACQ_MEM);
+  EventMonitor pc0(_xaie, 2, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                   XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
+  pc0.set();
 
-    usleep(sleep_u);
+  mlir_aie_acquire_lock(_xaie, 0, 5, 14, 0, 0); // for timing
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(0, 5), XAIE_MEM_MOD, 2,
+                      XAIE_EVENT_LOCK_14_ACQ_MEM);
+  EventMonitor pc1(_xaie, 2, 5, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                   XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
+  pc1.set();
+
+  mlir_aie_acquire_lock(_xaie, 3, 1, 14, 0, 0); // for timing
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(3, 1), XAIE_MEM_MOD, 2,
+                      XAIE_EVENT_LOCK_14_ACQ_MEM);
+  EventMonitor pc2(_xaie, 5, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                   XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
+  pc2.set();
+
+  mlir_aie_acquire_lock(_xaie, 3, 5, 14, 0, 0); // for timing
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(3, 5), XAIE_MEM_MOD, 2,
+                      XAIE_EVENT_LOCK_14_ACQ_MEM);
+  EventMonitor pc3(_xaie, 5, 5, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                   XAIE_EVENT_LOCK_14_ACQ_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
+  pc3.set();
+
+  usleep(sleep_u);
   printf("before configure DMA");
   mlir_aie_configure_dmas(_xaie);
   int errors = 0;
-      mlir_aie_init_mems(_xaie, 8);
- 
-    printf("Finish configure");
-  #define DMA_COUNT_IN 256*INPUT_ROWS
-  #define DMA_COUNT_OUT 256*2*B_BLOCK_DEPTH
+  mlir_aie_init_mems(_xaie, 8);
 
-      int *ddr_ptr_in_0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT_IN);
-   int *ddr_ptr_in_1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT_IN);
-   int *ddr_ptr_in_2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT_IN);
-   int *ddr_ptr_in_3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT_IN);
-   int *ddr_ptr_out_0 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT_OUT);
-   int *ddr_ptr_out_1 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT_OUT);
-   int *ddr_ptr_out_2 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT_OUT);
-   int *ddr_ptr_out_3 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT_OUT);
-   for (int i = 0; i < DMA_COUNT_IN; i++) {
-     *(ddr_ptr_in_0+ i) = i;
-     *(ddr_ptr_in_1+ i) = i;
-     *(ddr_ptr_in_2+ i) = i;
-     *(ddr_ptr_in_3+ i) = i;
-   }
-   for (int i = 0; i < DMA_COUNT_OUT; i++) {
-     *(ddr_ptr_out_0+ i) = i;
-     *(ddr_ptr_out_1+ i) = i;
-     *(ddr_ptr_out_2+ i) = i;
-     *(ddr_ptr_out_3+ i) = i;
-   }
-   mlir_aie_sync_mem_dev(_xaie, 0);
-   mlir_aie_sync_mem_dev(_xaie, 1);
-   mlir_aie_sync_mem_dev(_xaie, 2);
-   mlir_aie_sync_mem_dev(_xaie, 3);
-   mlir_aie_sync_mem_dev(_xaie, 4);
-   mlir_aie_sync_mem_dev(_xaie, 5);
-   mlir_aie_sync_mem_dev(_xaie, 6);
-   mlir_aie_sync_mem_dev(_xaie, 7);
- #ifdef LIBXAIENGINEV2
-    mlir_aie_external_set_addr_ddr_buffer_in_0((u64)ddr_ptr_in_0); 
-     mlir_aie_external_set_addr_ddr_buffer_in_1((u64)ddr_ptr_in_1); 
-     mlir_aie_external_set_addr_ddr_buffer_in_2((u64)ddr_ptr_in_2); 
-     mlir_aie_external_set_addr_ddr_buffer_in_3((u64)ddr_ptr_in_3); 
-     mlir_aie_external_set_addr_ddr_buffer_out_0((u64)ddr_ptr_out_0); 
-     mlir_aie_external_set_addr_ddr_buffer_out_1((u64)ddr_ptr_out_1); 
-     mlir_aie_external_set_addr_ddr_buffer_out_2((u64)ddr_ptr_out_2); 
-     mlir_aie_external_set_addr_ddr_buffer_out_3((u64)ddr_ptr_out_3); 
-     mlir_aie_configure_shimdma_20(_xaie);
-     mlir_aie_configure_shimdma_30(_xaie);
- #endif
+  printf("Finish configure");
+#define DMA_COUNT_IN 256 * INPUT_ROWS
+#define DMA_COUNT_OUT 256 * 2 * B_BLOCK_DEPTH
 
-    printf("before core start");
+  int *ddr_ptr_in_0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT_IN);
+  int *ddr_ptr_in_1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT_IN);
+  int *ddr_ptr_in_2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT_IN);
+  int *ddr_ptr_in_3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT_IN);
+  int *ddr_ptr_out_0 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT_OUT);
+  int *ddr_ptr_out_1 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT_OUT);
+  int *ddr_ptr_out_2 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT_OUT);
+  int *ddr_ptr_out_3 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT_OUT);
+  for (int i = 0; i < DMA_COUNT_IN; i++) {
+    *(ddr_ptr_in_0 + i) = i;
+    *(ddr_ptr_in_1 + i) = i;
+    *(ddr_ptr_in_2 + i) = i;
+    *(ddr_ptr_in_3 + i) = i;
+  }
+  for (int i = 0; i < DMA_COUNT_OUT; i++) {
+    *(ddr_ptr_out_0 + i) = i;
+    *(ddr_ptr_out_1 + i) = i;
+    *(ddr_ptr_out_2 + i) = i;
+    *(ddr_ptr_out_3 + i) = i;
+  }
+  mlir_aie_sync_mem_dev(_xaie, 0);
+  mlir_aie_sync_mem_dev(_xaie, 1);
+  mlir_aie_sync_mem_dev(_xaie, 2);
+  mlir_aie_sync_mem_dev(_xaie, 3);
+  mlir_aie_sync_mem_dev(_xaie, 4);
+  mlir_aie_sync_mem_dev(_xaie, 5);
+  mlir_aie_sync_mem_dev(_xaie, 6);
+  mlir_aie_sync_mem_dev(_xaie, 7);
+#ifdef LIBXAIENGINEV2
+  mlir_aie_external_set_addr_ddr_buffer_in_0((u64)ddr_ptr_in_0);
+  mlir_aie_external_set_addr_ddr_buffer_in_1((u64)ddr_ptr_in_1);
+  mlir_aie_external_set_addr_ddr_buffer_in_2((u64)ddr_ptr_in_2);
+  mlir_aie_external_set_addr_ddr_buffer_in_3((u64)ddr_ptr_in_3);
+  mlir_aie_external_set_addr_ddr_buffer_out_0((u64)ddr_ptr_out_0);
+  mlir_aie_external_set_addr_ddr_buffer_out_1((u64)ddr_ptr_out_1);
+  mlir_aie_external_set_addr_ddr_buffer_out_2((u64)ddr_ptr_out_2);
+  mlir_aie_external_set_addr_ddr_buffer_out_3((u64)ddr_ptr_out_3);
+  mlir_aie_configure_shimdma_20(_xaie);
+  mlir_aie_configure_shimdma_30(_xaie);
+#endif
+
+  printf("before core start");
   // mlir_aie_print_tile_status(_xaie, 7, 3);
 
   printf("Release lock for accessing DDR.");
   mlir_aie_release_of_0_lock_0(_xaie, 1, 0); // (_xaie,release_value,time_out)
   mlir_aie_release_of_15_lock_0(_xaie, 0, 0);
 
-
-/*ADDD ALL THE LOCKS*/
-
-
-
+  /*ADDD ALL THE LOCKS*/
 
   printf("Start cores");
   ///// --- start counter-----
-  t = clock(); 
+  t = clock();
   mlir_aie_start_cores(_xaie);
-      mlir_aie_release_lock(_xaie, 0, 1, 14, 0, 0); // for timing
-   mlir_aie_release_lock(_xaie, 0, 5, 14, 0, 0); // for timing
-   mlir_aie_release_lock(_xaie, 3, 1, 14, 0, 0); // for timing
-   mlir_aie_release_lock(_xaie, 3, 5, 14, 0, 0); // for timing
- 
+  mlir_aie_release_lock(_xaie, 0, 1, 14, 0, 0); // for timing
+  mlir_aie_release_lock(_xaie, 0, 5, 14, 0, 0); // for timing
+  mlir_aie_release_lock(_xaie, 3, 1, 14, 0, 0); // for timing
+  mlir_aie_release_lock(_xaie, 3, 5, 14, 0, 0); // for timing
 
-         t = clock() - t; 
+  t = clock() - t;
 
-  printf ("It took %ld clicks (%f seconds).",t,((float)t)/CLOCKS_PER_SEC);
+  printf("It took %ld clicks (%f seconds).", t, ((float)t) / CLOCKS_PER_SEC);
 
   usleep(sleep_u);
   printf("after core start");
   // mlir_aie_print_tile_status(_xaie, 7, 3);
 
   usleep(sleep_u);
-  mlir_aie_sync_mem_cpu(_xaie, 4); //// only used in libaiev2 //sync up with output
-   mlir_aie_sync_mem_cpu(_xaie, 5); //// only used in libaiev2 //sync up with output
-   mlir_aie_sync_mem_cpu(_xaie, 6); //// only used in libaiev2 //sync up with output
-   mlir_aie_sync_mem_cpu(_xaie, 7); //// only used in libaiev2 //sync up with output
- }
-
-      for (int i =0; i < 512; i ++ ){
-    printf("Location %d:  %d", i, ddr_ptr_out_0[i]);
-  }
-
-  int res = 0;
-  if (!errors) {
-    printf("PASS!");
-    res = 0;
-  } else {
-    printf("Fail!");
-    res = -1;
-  } 
-  printf("PC0 cycles: %d", pc0.diff());
-   printf("PC1 cycles: %d", pc1.diff());
-   printf("PC2 cycles: %d", pc2.diff());
-   printf("PC3 cycles: %d", pc3.diff());
- 
-
-  mlir_aie_deinit_libxaie(_xaie);
-
-  printf("test done.");
-
-  return res;
+  mlir_aie_sync_mem_cpu(_xaie,
+                        4); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        5); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        6); //// only used in libaiev2 //sync up with output
+  mlir_aie_sync_mem_cpu(_xaie,
+                        7); //// only used in libaiev2 //sync up with output
 }
 
-    
-    
-    
+for (int i = 0; i < 512; i++) {
+  printf("Location %d:  %d", i, ddr_ptr_out_0[i]);
+}
+
+int res = 0;
+if (!errors) {
+  printf("PASS!");
+  res = 0;
+} else {
+  printf("Fail!");
+  res = -1;
+}
+printf("PC0 cycles: %d", pc0.diff());
+printf("PC1 cycles: %d", pc1.diff());
+printf("PC2 cycles: %d", pc2.diff());
+printf("PC3 cycles: %d", pc3.diff());
+
+mlir_aie_deinit_libxaie(_xaie);
+
+printf("test done.");
+
+return res;
+}

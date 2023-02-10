@@ -1,5 +1,5 @@
-// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-  
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -46,8 +46,8 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_acquire_lock(_xaie, 7, 1, 14, 0, 0); // for timing
   EventMonitor pc0(_xaie, 7, 1, 0, XAIE_EVENT_LOCK_14_ACQ_MEM,
-                 XAIE_EVENT_LOCK_14_REL_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                   XAIE_EVENT_LOCK_14_REL_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD);
   pc0.set();
 
   usleep(sleep_u);
@@ -98,10 +98,6 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 1);
-
-  
-  
-
 
   printf("Release lock for accessing DDR.\n");
   mlir_aie_release_of_0_lock_0(_xaie, 1, 0); // (_xaie,release_value,time_out)
