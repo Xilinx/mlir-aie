@@ -1,0 +1,2652 @@
+module @hdiff_bundle_2 {
+  %0 = AIE.tile(0, 1)
+  %1 = AIE.tile(0, 2)
+  %2 = AIE.tile(0, 3)
+  %3 = AIE.tile(0, 4)
+  %4 = AIE.tile(1, 1)
+  %5 = AIE.tile(1, 2)
+  %6 = AIE.tile(1, 3)
+  %7 = AIE.tile(1, 4)
+  %8 = AIE.tile(2, 1)
+  %9 = AIE.tile(2, 2)
+  %10 = AIE.tile(2, 3)
+  %11 = AIE.tile(2, 4)
+  %12 = AIE.tile(0, 5)
+  %13 = AIE.tile(0, 6)
+  %14 = AIE.tile(0, 7)
+  %15 = AIE.tile(0, 8)
+  %16 = AIE.tile(1, 5)
+  %17 = AIE.tile(1, 6)
+  %18 = AIE.tile(1, 7)
+  %19 = AIE.tile(1, 8)
+  %20 = AIE.tile(2, 5)
+  %21 = AIE.tile(2, 6)
+  %22 = AIE.tile(2, 7)
+  %23 = AIE.tile(2, 8)
+  %24 = AIE.tile(2, 0)
+  %25 = AIE.lock(%0, 14) {sym_name = "lock01_14"}
+  %26 = AIE.lock(%8, 14) {sym_name = "lock21_14"}
+  %27 = AIE.lock(%12, 14) {sym_name = "lock05_14"}
+  %28 = AIE.lock(%20, 14) {sym_name = "lock25_14"}
+  AIE.flow(%24, DMA : 0, %7, DMA : 0)
+  AIE.flow(%24, DMA : 0, %3, DMA : 0)
+  AIE.flow(%24, DMA : 0, %6, DMA : 0)
+  AIE.flow(%24, DMA : 0, %2, DMA : 0)
+  AIE.flow(%24, DMA : 0, %5, DMA : 0)
+  AIE.flow(%24, DMA : 0, %1, DMA : 0)
+  AIE.flow(%24, DMA : 0, %4, DMA : 0)
+  AIE.flow(%24, DMA : 0, %0, DMA : 0)
+  %29 = AIE.lock(%24, 0) {sym_name = "of_0_lock_0"}
+  %30 = AIE.buffer(%7) {sym_name = "of_1_buff_0"} : memref<256xi32>
+  %31 = AIE.lock(%7, 0) {sym_name = "of_1_lock_0"}
+  %32 = AIE.buffer(%7) {sym_name = "of_1_buff_1"} : memref<256xi32>
+  %33 = AIE.lock(%7, 1) {sym_name = "of_1_lock_1"}
+  %34 = AIE.buffer(%7) {sym_name = "of_1_buff_2"} : memref<256xi32>
+  %35 = AIE.lock(%7, 2) {sym_name = "of_1_lock_2"}
+  %36 = AIE.buffer(%7) {sym_name = "of_1_buff_3"} : memref<256xi32>
+  %37 = AIE.lock(%7, 3) {sym_name = "of_1_lock_3"}
+  %38 = AIE.buffer(%7) {sym_name = "of_1_buff_4"} : memref<256xi32>
+  %39 = AIE.lock(%7, 4) {sym_name = "of_1_lock_4"}
+  %40 = AIE.buffer(%7) {sym_name = "of_1_buff_5"} : memref<256xi32>
+  %41 = AIE.lock(%7, 5) {sym_name = "of_1_lock_5"}
+  %42 = AIE.buffer(%7) {sym_name = "of_1_buff_6"} : memref<256xi32>
+  %43 = AIE.lock(%7, 6) {sym_name = "of_1_lock_6"}
+  %44 = AIE.buffer(%7) {sym_name = "of_1_buff_7"} : memref<256xi32>
+  %45 = AIE.lock(%7, 7) {sym_name = "of_1_lock_7"}
+  %46 = AIE.buffer(%7) {sym_name = "of_1_buff_8"} : memref<256xi32>
+  %47 = AIE.lock(%7, 8) {sym_name = "of_1_lock_8"}
+  %48 = AIE.buffer(%3) {sym_name = "of_2_buff_0"} : memref<256xi32>
+  %49 = AIE.lock(%3, 0) {sym_name = "of_2_lock_0"}
+  %50 = AIE.buffer(%3) {sym_name = "of_2_buff_1"} : memref<256xi32>
+  %51 = AIE.lock(%3, 1) {sym_name = "of_2_lock_1"}
+  %52 = AIE.buffer(%3) {sym_name = "of_2_buff_2"} : memref<256xi32>
+  %53 = AIE.lock(%3, 2) {sym_name = "of_2_lock_2"}
+  %54 = AIE.buffer(%3) {sym_name = "of_2_buff_3"} : memref<256xi32>
+  %55 = AIE.lock(%3, 3) {sym_name = "of_2_lock_3"}
+  %56 = AIE.buffer(%3) {sym_name = "of_2_buff_4"} : memref<256xi32>
+  %57 = AIE.lock(%3, 4) {sym_name = "of_2_lock_4"}
+  %58 = AIE.buffer(%3) {sym_name = "of_2_buff_5"} : memref<256xi32>
+  %59 = AIE.lock(%3, 5) {sym_name = "of_2_lock_5"}
+  %60 = AIE.buffer(%3) {sym_name = "of_2_buff_6"} : memref<256xi32>
+  %61 = AIE.lock(%3, 6) {sym_name = "of_2_lock_6"}
+  %62 = AIE.buffer(%3) {sym_name = "of_2_buff_7"} : memref<256xi32>
+  %63 = AIE.lock(%3, 7) {sym_name = "of_2_lock_7"}
+  %64 = AIE.buffer(%3) {sym_name = "of_2_buff_8"} : memref<256xi32>
+  %65 = AIE.lock(%3, 8) {sym_name = "of_2_lock_8"}
+  %66 = AIE.buffer(%6) {sym_name = "of_3_buff_0"} : memref<256xi32>
+  %67 = AIE.lock(%6, 0) {sym_name = "of_3_lock_0"}
+  %68 = AIE.buffer(%6) {sym_name = "of_3_buff_1"} : memref<256xi32>
+  %69 = AIE.lock(%6, 1) {sym_name = "of_3_lock_1"}
+  %70 = AIE.buffer(%6) {sym_name = "of_3_buff_2"} : memref<256xi32>
+  %71 = AIE.lock(%6, 2) {sym_name = "of_3_lock_2"}
+  %72 = AIE.buffer(%6) {sym_name = "of_3_buff_3"} : memref<256xi32>
+  %73 = AIE.lock(%6, 3) {sym_name = "of_3_lock_3"}
+  %74 = AIE.buffer(%6) {sym_name = "of_3_buff_4"} : memref<256xi32>
+  %75 = AIE.lock(%6, 4) {sym_name = "of_3_lock_4"}
+  %76 = AIE.buffer(%6) {sym_name = "of_3_buff_5"} : memref<256xi32>
+  %77 = AIE.lock(%6, 5) {sym_name = "of_3_lock_5"}
+  %78 = AIE.buffer(%6) {sym_name = "of_3_buff_6"} : memref<256xi32>
+  %79 = AIE.lock(%6, 6) {sym_name = "of_3_lock_6"}
+  %80 = AIE.buffer(%6) {sym_name = "of_3_buff_7"} : memref<256xi32>
+  %81 = AIE.lock(%6, 7) {sym_name = "of_3_lock_7"}
+  %82 = AIE.buffer(%6) {sym_name = "of_3_buff_8"} : memref<256xi32>
+  %83 = AIE.lock(%6, 8) {sym_name = "of_3_lock_8"}
+  %84 = AIE.buffer(%2) {sym_name = "of_4_buff_0"} : memref<256xi32>
+  %85 = AIE.lock(%2, 0) {sym_name = "of_4_lock_0"}
+  %86 = AIE.buffer(%2) {sym_name = "of_4_buff_1"} : memref<256xi32>
+  %87 = AIE.lock(%2, 1) {sym_name = "of_4_lock_1"}
+  %88 = AIE.buffer(%2) {sym_name = "of_4_buff_2"} : memref<256xi32>
+  %89 = AIE.lock(%2, 2) {sym_name = "of_4_lock_2"}
+  %90 = AIE.buffer(%2) {sym_name = "of_4_buff_3"} : memref<256xi32>
+  %91 = AIE.lock(%2, 3) {sym_name = "of_4_lock_3"}
+  %92 = AIE.buffer(%2) {sym_name = "of_4_buff_4"} : memref<256xi32>
+  %93 = AIE.lock(%2, 4) {sym_name = "of_4_lock_4"}
+  %94 = AIE.buffer(%2) {sym_name = "of_4_buff_5"} : memref<256xi32>
+  %95 = AIE.lock(%2, 5) {sym_name = "of_4_lock_5"}
+  %96 = AIE.buffer(%2) {sym_name = "of_4_buff_6"} : memref<256xi32>
+  %97 = AIE.lock(%2, 6) {sym_name = "of_4_lock_6"}
+  %98 = AIE.buffer(%2) {sym_name = "of_4_buff_7"} : memref<256xi32>
+  %99 = AIE.lock(%2, 7) {sym_name = "of_4_lock_7"}
+  %100 = AIE.buffer(%2) {sym_name = "of_4_buff_8"} : memref<256xi32>
+  %101 = AIE.lock(%2, 8) {sym_name = "of_4_lock_8"}
+  %102 = AIE.buffer(%5) {sym_name = "of_5_buff_0"} : memref<256xi32>
+  %103 = AIE.lock(%5, 0) {sym_name = "of_5_lock_0"}
+  %104 = AIE.buffer(%5) {sym_name = "of_5_buff_1"} : memref<256xi32>
+  %105 = AIE.lock(%5, 1) {sym_name = "of_5_lock_1"}
+  %106 = AIE.buffer(%5) {sym_name = "of_5_buff_2"} : memref<256xi32>
+  %107 = AIE.lock(%5, 2) {sym_name = "of_5_lock_2"}
+  %108 = AIE.buffer(%5) {sym_name = "of_5_buff_3"} : memref<256xi32>
+  %109 = AIE.lock(%5, 3) {sym_name = "of_5_lock_3"}
+  %110 = AIE.buffer(%5) {sym_name = "of_5_buff_4"} : memref<256xi32>
+  %111 = AIE.lock(%5, 4) {sym_name = "of_5_lock_4"}
+  %112 = AIE.buffer(%5) {sym_name = "of_5_buff_5"} : memref<256xi32>
+  %113 = AIE.lock(%5, 5) {sym_name = "of_5_lock_5"}
+  %114 = AIE.buffer(%5) {sym_name = "of_5_buff_6"} : memref<256xi32>
+  %115 = AIE.lock(%5, 6) {sym_name = "of_5_lock_6"}
+  %116 = AIE.buffer(%5) {sym_name = "of_5_buff_7"} : memref<256xi32>
+  %117 = AIE.lock(%5, 7) {sym_name = "of_5_lock_7"}
+  %118 = AIE.buffer(%5) {sym_name = "of_5_buff_8"} : memref<256xi32>
+  %119 = AIE.lock(%5, 8) {sym_name = "of_5_lock_8"}
+  %120 = AIE.buffer(%1) {sym_name = "of_6_buff_0"} : memref<256xi32>
+  %121 = AIE.lock(%1, 0) {sym_name = "of_6_lock_0"}
+  %122 = AIE.buffer(%1) {sym_name = "of_6_buff_1"} : memref<256xi32>
+  %123 = AIE.lock(%1, 1) {sym_name = "of_6_lock_1"}
+  %124 = AIE.buffer(%1) {sym_name = "of_6_buff_2"} : memref<256xi32>
+  %125 = AIE.lock(%1, 2) {sym_name = "of_6_lock_2"}
+  %126 = AIE.buffer(%1) {sym_name = "of_6_buff_3"} : memref<256xi32>
+  %127 = AIE.lock(%1, 3) {sym_name = "of_6_lock_3"}
+  %128 = AIE.buffer(%1) {sym_name = "of_6_buff_4"} : memref<256xi32>
+  %129 = AIE.lock(%1, 4) {sym_name = "of_6_lock_4"}
+  %130 = AIE.buffer(%1) {sym_name = "of_6_buff_5"} : memref<256xi32>
+  %131 = AIE.lock(%1, 5) {sym_name = "of_6_lock_5"}
+  %132 = AIE.buffer(%1) {sym_name = "of_6_buff_6"} : memref<256xi32>
+  %133 = AIE.lock(%1, 6) {sym_name = "of_6_lock_6"}
+  %134 = AIE.buffer(%1) {sym_name = "of_6_buff_7"} : memref<256xi32>
+  %135 = AIE.lock(%1, 7) {sym_name = "of_6_lock_7"}
+  %136 = AIE.buffer(%1) {sym_name = "of_6_buff_8"} : memref<256xi32>
+  %137 = AIE.lock(%1, 8) {sym_name = "of_6_lock_8"}
+  %138 = AIE.buffer(%4) {sym_name = "of_7_buff_0"} : memref<256xi32>
+  %139 = AIE.lock(%4, 0) {sym_name = "of_7_lock_0"}
+  %140 = AIE.buffer(%4) {sym_name = "of_7_buff_1"} : memref<256xi32>
+  %141 = AIE.lock(%4, 1) {sym_name = "of_7_lock_1"}
+  %142 = AIE.buffer(%4) {sym_name = "of_7_buff_2"} : memref<256xi32>
+  %143 = AIE.lock(%4, 2) {sym_name = "of_7_lock_2"}
+  %144 = AIE.buffer(%4) {sym_name = "of_7_buff_3"} : memref<256xi32>
+  %145 = AIE.lock(%4, 3) {sym_name = "of_7_lock_3"}
+  %146 = AIE.buffer(%4) {sym_name = "of_7_buff_4"} : memref<256xi32>
+  %147 = AIE.lock(%4, 4) {sym_name = "of_7_lock_4"}
+  %148 = AIE.buffer(%4) {sym_name = "of_7_buff_5"} : memref<256xi32>
+  %149 = AIE.lock(%4, 5) {sym_name = "of_7_lock_5"}
+  %150 = AIE.buffer(%4) {sym_name = "of_7_buff_6"} : memref<256xi32>
+  %151 = AIE.lock(%4, 6) {sym_name = "of_7_lock_6"}
+  %152 = AIE.buffer(%4) {sym_name = "of_7_buff_7"} : memref<256xi32>
+  %153 = AIE.lock(%4, 7) {sym_name = "of_7_lock_7"}
+  %154 = AIE.buffer(%4) {sym_name = "of_7_buff_8"} : memref<256xi32>
+  %155 = AIE.lock(%4, 8) {sym_name = "of_7_lock_8"}
+  %156 = AIE.buffer(%0) {sym_name = "of_8_buff_0"} : memref<256xi32>
+  %157 = AIE.lock(%0, 0) {sym_name = "of_8_lock_0"}
+  %158 = AIE.buffer(%0) {sym_name = "of_8_buff_1"} : memref<256xi32>
+  %159 = AIE.lock(%0, 1) {sym_name = "of_8_lock_1"}
+  %160 = AIE.buffer(%0) {sym_name = "of_8_buff_2"} : memref<256xi32>
+  %161 = AIE.lock(%0, 2) {sym_name = "of_8_lock_2"}
+  %162 = AIE.buffer(%0) {sym_name = "of_8_buff_3"} : memref<256xi32>
+  %163 = AIE.lock(%0, 3) {sym_name = "of_8_lock_3"}
+  %164 = AIE.buffer(%0) {sym_name = "of_8_buff_4"} : memref<256xi32>
+  %165 = AIE.lock(%0, 4) {sym_name = "of_8_lock_4"}
+  %166 = AIE.buffer(%0) {sym_name = "of_8_buff_5"} : memref<256xi32>
+  %167 = AIE.lock(%0, 5) {sym_name = "of_8_lock_5"}
+  %168 = AIE.buffer(%0) {sym_name = "of_8_buff_6"} : memref<256xi32>
+  %169 = AIE.lock(%0, 6) {sym_name = "of_8_lock_6"}
+  %170 = AIE.buffer(%0) {sym_name = "of_8_buff_7"} : memref<256xi32>
+  %171 = AIE.lock(%0, 7) {sym_name = "of_8_lock_7"}
+  %172 = AIE.buffer(%0) {sym_name = "of_8_buff_8"} : memref<256xi32>
+  %173 = AIE.lock(%0, 8) {sym_name = "of_8_lock_8"}
+  %174 = AIE.buffer(%0) {sym_name = "of_9_buff_0"} : memref<256xi32>
+  %175 = AIE.lock(%0, 9) {sym_name = "of_9_lock_0"}
+  %176 = AIE.buffer(%0) {sym_name = "of_9_buff_1"} : memref<256xi32>
+  %177 = AIE.lock(%0, 10) {sym_name = "of_9_lock_1"}
+  %178 = AIE.buffer(%0) {sym_name = "of_9_buff_2"} : memref<256xi32>
+  %179 = AIE.lock(%0, 11) {sym_name = "of_9_lock_2"}
+  %180 = AIE.buffer(%0) {sym_name = "of_9_buff_3"} : memref<256xi32>
+  %181 = AIE.lock(%0, 12) {sym_name = "of_9_lock_3"}
+  %182 = AIE.buffer(%0) {sym_name = "of_9_buff_4"} : memref<256xi32>
+  %183 = AIE.lock(%0, 13) {sym_name = "of_9_lock_4"}
+  %184 = AIE.buffer(%4) {sym_name = "of_10_buff_0"} : memref<512xi32>
+  %185 = AIE.lock(%4, 9) {sym_name = "of_10_lock_0"}
+  %186 = AIE.buffer(%4) {sym_name = "of_10_buff_1"} : memref<512xi32>
+  %187 = AIE.lock(%4, 10) {sym_name = "of_10_lock_1"}
+  %188 = AIE.buffer(%4) {sym_name = "of_10_buff_2"} : memref<512xi32>
+  %189 = AIE.lock(%4, 11) {sym_name = "of_10_lock_2"}
+  %190 = AIE.buffer(%4) {sym_name = "of_10_buff_3"} : memref<512xi32>
+  %191 = AIE.lock(%4, 12) {sym_name = "of_10_lock_3"}
+  %192 = AIE.buffer(%4) {sym_name = "of_10_buff_4"} : memref<512xi32>
+  %193 = AIE.lock(%4, 13) {sym_name = "of_10_lock_4"}
+  %194 = AIE.buffer(%4) {sym_name = "of_10_buff_5"} : memref<512xi32>
+  %195 = AIE.lock(%4, 14) {sym_name = "of_10_lock_5"}
+  %196 = AIE.buffer(%8) {sym_name = "of_11_buff_0"} : memref<256xi32>
+  %197 = AIE.lock(%8, 0) {sym_name = "of_11_lock_0"}
+  %198 = AIE.buffer(%8) {sym_name = "of_11_buff_1"} : memref<256xi32>
+  %199 = AIE.lock(%8, 1) {sym_name = "of_11_lock_1"}
+  %200 = AIE.buffer(%5) {sym_name = "of_12_buff_0"} : memref<256xi32>
+  %201 = AIE.lock(%5, 9) {sym_name = "of_12_lock_0"}
+  %202 = AIE.buffer(%5) {sym_name = "of_12_buff_1"} : memref<256xi32>
+  %203 = AIE.lock(%5, 10) {sym_name = "of_12_lock_1"}
+  %204 = AIE.buffer(%5) {sym_name = "of_12_buff_2"} : memref<256xi32>
+  %205 = AIE.lock(%5, 11) {sym_name = "of_12_lock_2"}
+  %206 = AIE.buffer(%5) {sym_name = "of_12_buff_3"} : memref<256xi32>
+  %207 = AIE.lock(%5, 12) {sym_name = "of_12_lock_3"}
+  %208 = AIE.buffer(%5) {sym_name = "of_12_buff_4"} : memref<256xi32>
+  %209 = AIE.lock(%5, 13) {sym_name = "of_12_lock_4"}
+  %210 = AIE.buffer(%9) {sym_name = "of_13_buff_0"} : memref<512xi32>
+  %211 = AIE.lock(%9, 0) {sym_name = "of_13_lock_0"}
+  %212 = AIE.buffer(%9) {sym_name = "of_13_buff_1"} : memref<512xi32>
+  %213 = AIE.lock(%9, 1) {sym_name = "of_13_lock_1"}
+  %214 = AIE.buffer(%9) {sym_name = "of_13_buff_2"} : memref<512xi32>
+  %215 = AIE.lock(%9, 2) {sym_name = "of_13_lock_2"}
+  %216 = AIE.buffer(%9) {sym_name = "of_13_buff_3"} : memref<512xi32>
+  %217 = AIE.lock(%9, 3) {sym_name = "of_13_lock_3"}
+  %218 = AIE.buffer(%9) {sym_name = "of_13_buff_4"} : memref<512xi32>
+  %219 = AIE.lock(%9, 4) {sym_name = "of_13_lock_4"}
+  %220 = AIE.buffer(%9) {sym_name = "of_13_buff_5"} : memref<512xi32>
+  %221 = AIE.lock(%9, 5) {sym_name = "of_13_lock_5"}
+  AIE.flow(%9, DMA : 0, %24, DMA : 0)
+  %222 = AIE.buffer(%9) {sym_name = "of_14_buff_0"} : memref<256xi32>
+  %223 = AIE.lock(%9, 6) {sym_name = "of_14_lock_0"}
+  %224 = AIE.buffer(%9) {sym_name = "of_14_buff_1"} : memref<256xi32>
+  %225 = AIE.lock(%9, 7) {sym_name = "of_14_lock_1"}
+  %226 = AIE.buffer(%9) {sym_name = "of_14_buff_2"} : memref<256xi32>
+  %227 = AIE.lock(%9, 8) {sym_name = "of_14_lock_2"}
+  %228 = AIE.buffer(%9) {sym_name = "of_14_buff_3"} : memref<256xi32>
+  %229 = AIE.lock(%9, 9) {sym_name = "of_14_lock_3"}
+  %230 = AIE.buffer(%9) {sym_name = "of_14_buff_4"} : memref<256xi32>
+  %231 = AIE.lock(%9, 10) {sym_name = "of_14_lock_4"}
+  %232 = AIE.lock(%24, 1) {sym_name = "of_15_lock_0"}
+  %233 = AIE.buffer(%2) {sym_name = "of_16_buff_0"} : memref<256xi32>
+  %234 = AIE.lock(%2, 9) {sym_name = "of_16_lock_0"}
+  %235 = AIE.buffer(%2) {sym_name = "of_16_buff_1"} : memref<256xi32>
+  %236 = AIE.lock(%2, 10) {sym_name = "of_16_lock_1"}
+  %237 = AIE.buffer(%2) {sym_name = "of_16_buff_2"} : memref<256xi32>
+  %238 = AIE.lock(%2, 11) {sym_name = "of_16_lock_2"}
+  %239 = AIE.buffer(%2) {sym_name = "of_16_buff_3"} : memref<256xi32>
+  %240 = AIE.lock(%2, 12) {sym_name = "of_16_lock_3"}
+  %241 = AIE.buffer(%2) {sym_name = "of_16_buff_4"} : memref<256xi32>
+  %242 = AIE.lock(%2, 13) {sym_name = "of_16_lock_4"}
+  %243 = AIE.buffer(%6) {sym_name = "of_17_buff_0"} : memref<512xi32>
+  %244 = AIE.lock(%6, 9) {sym_name = "of_17_lock_0"}
+  %245 = AIE.buffer(%6) {sym_name = "of_17_buff_1"} : memref<512xi32>
+  %246 = AIE.lock(%6, 10) {sym_name = "of_17_lock_1"}
+  %247 = AIE.buffer(%6) {sym_name = "of_17_buff_2"} : memref<512xi32>
+  %248 = AIE.lock(%6, 11) {sym_name = "of_17_lock_2"}
+  %249 = AIE.buffer(%6) {sym_name = "of_17_buff_3"} : memref<512xi32>
+  %250 = AIE.lock(%6, 12) {sym_name = "of_17_lock_3"}
+  %251 = AIE.buffer(%6) {sym_name = "of_17_buff_4"} : memref<512xi32>
+  %252 = AIE.lock(%6, 13) {sym_name = "of_17_lock_4"}
+  %253 = AIE.buffer(%6) {sym_name = "of_17_buff_5"} : memref<512xi32>
+  %254 = AIE.lock(%6, 14) {sym_name = "of_17_lock_5"}
+  %255 = AIE.buffer(%10) {sym_name = "of_18_buff_0"} : memref<256xi32>
+  %256 = AIE.lock(%10, 0) {sym_name = "of_18_lock_0"}
+  %257 = AIE.buffer(%10) {sym_name = "of_18_buff_1"} : memref<256xi32>
+  %258 = AIE.lock(%10, 1) {sym_name = "of_18_lock_1"}
+  %259 = AIE.buffer(%7) {sym_name = "of_19_buff_0"} : memref<256xi32>
+  %260 = AIE.lock(%7, 9) {sym_name = "of_19_lock_0"}
+  %261 = AIE.buffer(%7) {sym_name = "of_19_buff_1"} : memref<256xi32>
+  %262 = AIE.lock(%7, 10) {sym_name = "of_19_lock_1"}
+  %263 = AIE.buffer(%7) {sym_name = "of_19_buff_2"} : memref<256xi32>
+  %264 = AIE.lock(%7, 11) {sym_name = "of_19_lock_2"}
+  %265 = AIE.buffer(%7) {sym_name = "of_19_buff_3"} : memref<256xi32>
+  %266 = AIE.lock(%7, 12) {sym_name = "of_19_lock_3"}
+  %267 = AIE.buffer(%7) {sym_name = "of_19_buff_4"} : memref<256xi32>
+  %268 = AIE.lock(%7, 13) {sym_name = "of_19_lock_4"}
+  %269 = AIE.buffer(%11) {sym_name = "of_20_buff_0"} : memref<512xi32>
+  %270 = AIE.lock(%11, 0) {sym_name = "of_20_lock_0"}
+  %271 = AIE.buffer(%11) {sym_name = "of_20_buff_1"} : memref<512xi32>
+  %272 = AIE.lock(%11, 1) {sym_name = "of_20_lock_1"}
+  %273 = AIE.buffer(%11) {sym_name = "of_20_buff_2"} : memref<512xi32>
+  %274 = AIE.lock(%11, 2) {sym_name = "of_20_lock_2"}
+  %275 = AIE.buffer(%11) {sym_name = "of_20_buff_3"} : memref<512xi32>
+  %276 = AIE.lock(%11, 3) {sym_name = "of_20_lock_3"}
+  %277 = AIE.buffer(%11) {sym_name = "of_20_buff_4"} : memref<512xi32>
+  %278 = AIE.lock(%11, 4) {sym_name = "of_20_lock_4"}
+  %279 = AIE.buffer(%11) {sym_name = "of_20_buff_5"} : memref<512xi32>
+  %280 = AIE.lock(%11, 5) {sym_name = "of_20_lock_5"}
+  AIE.flow(%11, DMA : 0, %9, DMA : 0)
+  %281 = AIE.buffer(%11) {sym_name = "of_21_buff_0"} : memref<256xi32>
+  %282 = AIE.lock(%11, 6) {sym_name = "of_21_lock_0"}
+  %283 = AIE.buffer(%11) {sym_name = "of_21_buff_1"} : memref<256xi32>
+  %284 = AIE.lock(%11, 7) {sym_name = "of_21_lock_1"}
+  %285 = AIE.buffer(%9) {sym_name = "of_22_buff_0"} : memref<256xi32>
+  %286 = AIE.lock(%9, 11) {sym_name = "of_22_lock_0"}
+  %287 = AIE.buffer(%9) {sym_name = "of_22_buff_1"} : memref<256xi32>
+  %288 = AIE.lock(%9, 12) {sym_name = "of_22_lock_1"}
+  AIE.flow(%24, DMA : 1, %19, DMA : 0)
+  AIE.flow(%24, DMA : 1, %15, DMA : 0)
+  AIE.flow(%24, DMA : 1, %18, DMA : 0)
+  AIE.flow(%24, DMA : 1, %14, DMA : 0)
+  AIE.flow(%24, DMA : 1, %17, DMA : 0)
+  AIE.flow(%24, DMA : 1, %13, DMA : 0)
+  AIE.flow(%24, DMA : 1, %16, DMA : 0)
+  AIE.flow(%24, DMA : 1, %12, DMA : 0)
+  %289 = AIE.lock(%24, 2) {sym_name = "of_23_lock_0"}
+  %290 = AIE.buffer(%19) {sym_name = "of_24_buff_0"} : memref<256xi32>
+  %291 = AIE.lock(%19, 0) {sym_name = "of_24_lock_0"}
+  %292 = AIE.buffer(%19) {sym_name = "of_24_buff_1"} : memref<256xi32>
+  %293 = AIE.lock(%19, 1) {sym_name = "of_24_lock_1"}
+  %294 = AIE.buffer(%19) {sym_name = "of_24_buff_2"} : memref<256xi32>
+  %295 = AIE.lock(%19, 2) {sym_name = "of_24_lock_2"}
+  %296 = AIE.buffer(%19) {sym_name = "of_24_buff_3"} : memref<256xi32>
+  %297 = AIE.lock(%19, 3) {sym_name = "of_24_lock_3"}
+  %298 = AIE.buffer(%19) {sym_name = "of_24_buff_4"} : memref<256xi32>
+  %299 = AIE.lock(%19, 4) {sym_name = "of_24_lock_4"}
+  %300 = AIE.buffer(%19) {sym_name = "of_24_buff_5"} : memref<256xi32>
+  %301 = AIE.lock(%19, 5) {sym_name = "of_24_lock_5"}
+  %302 = AIE.buffer(%19) {sym_name = "of_24_buff_6"} : memref<256xi32>
+  %303 = AIE.lock(%19, 6) {sym_name = "of_24_lock_6"}
+  %304 = AIE.buffer(%19) {sym_name = "of_24_buff_7"} : memref<256xi32>
+  %305 = AIE.lock(%19, 7) {sym_name = "of_24_lock_7"}
+  %306 = AIE.buffer(%19) {sym_name = "of_24_buff_8"} : memref<256xi32>
+  %307 = AIE.lock(%19, 8) {sym_name = "of_24_lock_8"}
+  %308 = AIE.buffer(%15) {sym_name = "of_25_buff_0"} : memref<256xi32>
+  %309 = AIE.lock(%15, 0) {sym_name = "of_25_lock_0"}
+  %310 = AIE.buffer(%15) {sym_name = "of_25_buff_1"} : memref<256xi32>
+  %311 = AIE.lock(%15, 1) {sym_name = "of_25_lock_1"}
+  %312 = AIE.buffer(%15) {sym_name = "of_25_buff_2"} : memref<256xi32>
+  %313 = AIE.lock(%15, 2) {sym_name = "of_25_lock_2"}
+  %314 = AIE.buffer(%15) {sym_name = "of_25_buff_3"} : memref<256xi32>
+  %315 = AIE.lock(%15, 3) {sym_name = "of_25_lock_3"}
+  %316 = AIE.buffer(%15) {sym_name = "of_25_buff_4"} : memref<256xi32>
+  %317 = AIE.lock(%15, 4) {sym_name = "of_25_lock_4"}
+  %318 = AIE.buffer(%15) {sym_name = "of_25_buff_5"} : memref<256xi32>
+  %319 = AIE.lock(%15, 5) {sym_name = "of_25_lock_5"}
+  %320 = AIE.buffer(%15) {sym_name = "of_25_buff_6"} : memref<256xi32>
+  %321 = AIE.lock(%15, 6) {sym_name = "of_25_lock_6"}
+  %322 = AIE.buffer(%15) {sym_name = "of_25_buff_7"} : memref<256xi32>
+  %323 = AIE.lock(%15, 7) {sym_name = "of_25_lock_7"}
+  %324 = AIE.buffer(%15) {sym_name = "of_25_buff_8"} : memref<256xi32>
+  %325 = AIE.lock(%15, 8) {sym_name = "of_25_lock_8"}
+  %326 = AIE.buffer(%18) {sym_name = "of_26_buff_0"} : memref<256xi32>
+  %327 = AIE.lock(%18, 0) {sym_name = "of_26_lock_0"}
+  %328 = AIE.buffer(%18) {sym_name = "of_26_buff_1"} : memref<256xi32>
+  %329 = AIE.lock(%18, 1) {sym_name = "of_26_lock_1"}
+  %330 = AIE.buffer(%18) {sym_name = "of_26_buff_2"} : memref<256xi32>
+  %331 = AIE.lock(%18, 2) {sym_name = "of_26_lock_2"}
+  %332 = AIE.buffer(%18) {sym_name = "of_26_buff_3"} : memref<256xi32>
+  %333 = AIE.lock(%18, 3) {sym_name = "of_26_lock_3"}
+  %334 = AIE.buffer(%18) {sym_name = "of_26_buff_4"} : memref<256xi32>
+  %335 = AIE.lock(%18, 4) {sym_name = "of_26_lock_4"}
+  %336 = AIE.buffer(%18) {sym_name = "of_26_buff_5"} : memref<256xi32>
+  %337 = AIE.lock(%18, 5) {sym_name = "of_26_lock_5"}
+  %338 = AIE.buffer(%18) {sym_name = "of_26_buff_6"} : memref<256xi32>
+  %339 = AIE.lock(%18, 6) {sym_name = "of_26_lock_6"}
+  %340 = AIE.buffer(%18) {sym_name = "of_26_buff_7"} : memref<256xi32>
+  %341 = AIE.lock(%18, 7) {sym_name = "of_26_lock_7"}
+  %342 = AIE.buffer(%18) {sym_name = "of_26_buff_8"} : memref<256xi32>
+  %343 = AIE.lock(%18, 8) {sym_name = "of_26_lock_8"}
+  %344 = AIE.buffer(%14) {sym_name = "of_27_buff_0"} : memref<256xi32>
+  %345 = AIE.lock(%14, 0) {sym_name = "of_27_lock_0"}
+  %346 = AIE.buffer(%14) {sym_name = "of_27_buff_1"} : memref<256xi32>
+  %347 = AIE.lock(%14, 1) {sym_name = "of_27_lock_1"}
+  %348 = AIE.buffer(%14) {sym_name = "of_27_buff_2"} : memref<256xi32>
+  %349 = AIE.lock(%14, 2) {sym_name = "of_27_lock_2"}
+  %350 = AIE.buffer(%14) {sym_name = "of_27_buff_3"} : memref<256xi32>
+  %351 = AIE.lock(%14, 3) {sym_name = "of_27_lock_3"}
+  %352 = AIE.buffer(%14) {sym_name = "of_27_buff_4"} : memref<256xi32>
+  %353 = AIE.lock(%14, 4) {sym_name = "of_27_lock_4"}
+  %354 = AIE.buffer(%14) {sym_name = "of_27_buff_5"} : memref<256xi32>
+  %355 = AIE.lock(%14, 5) {sym_name = "of_27_lock_5"}
+  %356 = AIE.buffer(%14) {sym_name = "of_27_buff_6"} : memref<256xi32>
+  %357 = AIE.lock(%14, 6) {sym_name = "of_27_lock_6"}
+  %358 = AIE.buffer(%14) {sym_name = "of_27_buff_7"} : memref<256xi32>
+  %359 = AIE.lock(%14, 7) {sym_name = "of_27_lock_7"}
+  %360 = AIE.buffer(%14) {sym_name = "of_27_buff_8"} : memref<256xi32>
+  %361 = AIE.lock(%14, 8) {sym_name = "of_27_lock_8"}
+  %362 = AIE.buffer(%17) {sym_name = "of_28_buff_0"} : memref<256xi32>
+  %363 = AIE.lock(%17, 0) {sym_name = "of_28_lock_0"}
+  %364 = AIE.buffer(%17) {sym_name = "of_28_buff_1"} : memref<256xi32>
+  %365 = AIE.lock(%17, 1) {sym_name = "of_28_lock_1"}
+  %366 = AIE.buffer(%17) {sym_name = "of_28_buff_2"} : memref<256xi32>
+  %367 = AIE.lock(%17, 2) {sym_name = "of_28_lock_2"}
+  %368 = AIE.buffer(%17) {sym_name = "of_28_buff_3"} : memref<256xi32>
+  %369 = AIE.lock(%17, 3) {sym_name = "of_28_lock_3"}
+  %370 = AIE.buffer(%17) {sym_name = "of_28_buff_4"} : memref<256xi32>
+  %371 = AIE.lock(%17, 4) {sym_name = "of_28_lock_4"}
+  %372 = AIE.buffer(%17) {sym_name = "of_28_buff_5"} : memref<256xi32>
+  %373 = AIE.lock(%17, 5) {sym_name = "of_28_lock_5"}
+  %374 = AIE.buffer(%17) {sym_name = "of_28_buff_6"} : memref<256xi32>
+  %375 = AIE.lock(%17, 6) {sym_name = "of_28_lock_6"}
+  %376 = AIE.buffer(%17) {sym_name = "of_28_buff_7"} : memref<256xi32>
+  %377 = AIE.lock(%17, 7) {sym_name = "of_28_lock_7"}
+  %378 = AIE.buffer(%17) {sym_name = "of_28_buff_8"} : memref<256xi32>
+  %379 = AIE.lock(%17, 8) {sym_name = "of_28_lock_8"}
+  %380 = AIE.buffer(%13) {sym_name = "of_29_buff_0"} : memref<256xi32>
+  %381 = AIE.lock(%13, 0) {sym_name = "of_29_lock_0"}
+  %382 = AIE.buffer(%13) {sym_name = "of_29_buff_1"} : memref<256xi32>
+  %383 = AIE.lock(%13, 1) {sym_name = "of_29_lock_1"}
+  %384 = AIE.buffer(%13) {sym_name = "of_29_buff_2"} : memref<256xi32>
+  %385 = AIE.lock(%13, 2) {sym_name = "of_29_lock_2"}
+  %386 = AIE.buffer(%13) {sym_name = "of_29_buff_3"} : memref<256xi32>
+  %387 = AIE.lock(%13, 3) {sym_name = "of_29_lock_3"}
+  %388 = AIE.buffer(%13) {sym_name = "of_29_buff_4"} : memref<256xi32>
+  %389 = AIE.lock(%13, 4) {sym_name = "of_29_lock_4"}
+  %390 = AIE.buffer(%13) {sym_name = "of_29_buff_5"} : memref<256xi32>
+  %391 = AIE.lock(%13, 5) {sym_name = "of_29_lock_5"}
+  %392 = AIE.buffer(%13) {sym_name = "of_29_buff_6"} : memref<256xi32>
+  %393 = AIE.lock(%13, 6) {sym_name = "of_29_lock_6"}
+  %394 = AIE.buffer(%13) {sym_name = "of_29_buff_7"} : memref<256xi32>
+  %395 = AIE.lock(%13, 7) {sym_name = "of_29_lock_7"}
+  %396 = AIE.buffer(%13) {sym_name = "of_29_buff_8"} : memref<256xi32>
+  %397 = AIE.lock(%13, 8) {sym_name = "of_29_lock_8"}
+  %398 = AIE.buffer(%16) {sym_name = "of_30_buff_0"} : memref<256xi32>
+  %399 = AIE.lock(%16, 0) {sym_name = "of_30_lock_0"}
+  %400 = AIE.buffer(%16) {sym_name = "of_30_buff_1"} : memref<256xi32>
+  %401 = AIE.lock(%16, 1) {sym_name = "of_30_lock_1"}
+  %402 = AIE.buffer(%16) {sym_name = "of_30_buff_2"} : memref<256xi32>
+  %403 = AIE.lock(%16, 2) {sym_name = "of_30_lock_2"}
+  %404 = AIE.buffer(%16) {sym_name = "of_30_buff_3"} : memref<256xi32>
+  %405 = AIE.lock(%16, 3) {sym_name = "of_30_lock_3"}
+  %406 = AIE.buffer(%16) {sym_name = "of_30_buff_4"} : memref<256xi32>
+  %407 = AIE.lock(%16, 4) {sym_name = "of_30_lock_4"}
+  %408 = AIE.buffer(%16) {sym_name = "of_30_buff_5"} : memref<256xi32>
+  %409 = AIE.lock(%16, 5) {sym_name = "of_30_lock_5"}
+  %410 = AIE.buffer(%16) {sym_name = "of_30_buff_6"} : memref<256xi32>
+  %411 = AIE.lock(%16, 6) {sym_name = "of_30_lock_6"}
+  %412 = AIE.buffer(%16) {sym_name = "of_30_buff_7"} : memref<256xi32>
+  %413 = AIE.lock(%16, 7) {sym_name = "of_30_lock_7"}
+  %414 = AIE.buffer(%16) {sym_name = "of_30_buff_8"} : memref<256xi32>
+  %415 = AIE.lock(%16, 8) {sym_name = "of_30_lock_8"}
+  %416 = AIE.buffer(%12) {sym_name = "of_31_buff_0"} : memref<256xi32>
+  %417 = AIE.lock(%12, 0) {sym_name = "of_31_lock_0"}
+  %418 = AIE.buffer(%12) {sym_name = "of_31_buff_1"} : memref<256xi32>
+  %419 = AIE.lock(%12, 1) {sym_name = "of_31_lock_1"}
+  %420 = AIE.buffer(%12) {sym_name = "of_31_buff_2"} : memref<256xi32>
+  %421 = AIE.lock(%12, 2) {sym_name = "of_31_lock_2"}
+  %422 = AIE.buffer(%12) {sym_name = "of_31_buff_3"} : memref<256xi32>
+  %423 = AIE.lock(%12, 3) {sym_name = "of_31_lock_3"}
+  %424 = AIE.buffer(%12) {sym_name = "of_31_buff_4"} : memref<256xi32>
+  %425 = AIE.lock(%12, 4) {sym_name = "of_31_lock_4"}
+  %426 = AIE.buffer(%12) {sym_name = "of_31_buff_5"} : memref<256xi32>
+  %427 = AIE.lock(%12, 5) {sym_name = "of_31_lock_5"}
+  %428 = AIE.buffer(%12) {sym_name = "of_31_buff_6"} : memref<256xi32>
+  %429 = AIE.lock(%12, 6) {sym_name = "of_31_lock_6"}
+  %430 = AIE.buffer(%12) {sym_name = "of_31_buff_7"} : memref<256xi32>
+  %431 = AIE.lock(%12, 7) {sym_name = "of_31_lock_7"}
+  %432 = AIE.buffer(%12) {sym_name = "of_31_buff_8"} : memref<256xi32>
+  %433 = AIE.lock(%12, 8) {sym_name = "of_31_lock_8"}
+  %434 = AIE.buffer(%12) {sym_name = "of_32_buff_0"} : memref<256xi32>
+  %435 = AIE.lock(%12, 9) {sym_name = "of_32_lock_0"}
+  %436 = AIE.buffer(%12) {sym_name = "of_32_buff_1"} : memref<256xi32>
+  %437 = AIE.lock(%12, 10) {sym_name = "of_32_lock_1"}
+  %438 = AIE.buffer(%12) {sym_name = "of_32_buff_2"} : memref<256xi32>
+  %439 = AIE.lock(%12, 11) {sym_name = "of_32_lock_2"}
+  %440 = AIE.buffer(%12) {sym_name = "of_32_buff_3"} : memref<256xi32>
+  %441 = AIE.lock(%12, 12) {sym_name = "of_32_lock_3"}
+  %442 = AIE.buffer(%12) {sym_name = "of_32_buff_4"} : memref<256xi32>
+  %443 = AIE.lock(%12, 13) {sym_name = "of_32_lock_4"}
+  %444 = AIE.buffer(%16) {sym_name = "of_33_buff_0"} : memref<512xi32>
+  %445 = AIE.lock(%16, 9) {sym_name = "of_33_lock_0"}
+  %446 = AIE.buffer(%16) {sym_name = "of_33_buff_1"} : memref<512xi32>
+  %447 = AIE.lock(%16, 10) {sym_name = "of_33_lock_1"}
+  %448 = AIE.buffer(%16) {sym_name = "of_33_buff_2"} : memref<512xi32>
+  %449 = AIE.lock(%16, 11) {sym_name = "of_33_lock_2"}
+  %450 = AIE.buffer(%16) {sym_name = "of_33_buff_3"} : memref<512xi32>
+  %451 = AIE.lock(%16, 12) {sym_name = "of_33_lock_3"}
+  %452 = AIE.buffer(%16) {sym_name = "of_33_buff_4"} : memref<512xi32>
+  %453 = AIE.lock(%16, 13) {sym_name = "of_33_lock_4"}
+  %454 = AIE.buffer(%16) {sym_name = "of_33_buff_5"} : memref<512xi32>
+  %455 = AIE.lock(%16, 14) {sym_name = "of_33_lock_5"}
+  %456 = AIE.buffer(%20) {sym_name = "of_34_buff_0"} : memref<256xi32>
+  %457 = AIE.lock(%20, 0) {sym_name = "of_34_lock_0"}
+  %458 = AIE.buffer(%20) {sym_name = "of_34_buff_1"} : memref<256xi32>
+  %459 = AIE.lock(%20, 1) {sym_name = "of_34_lock_1"}
+  %460 = AIE.buffer(%17) {sym_name = "of_35_buff_0"} : memref<256xi32>
+  %461 = AIE.lock(%17, 9) {sym_name = "of_35_lock_0"}
+  %462 = AIE.buffer(%17) {sym_name = "of_35_buff_1"} : memref<256xi32>
+  %463 = AIE.lock(%17, 10) {sym_name = "of_35_lock_1"}
+  %464 = AIE.buffer(%17) {sym_name = "of_35_buff_2"} : memref<256xi32>
+  %465 = AIE.lock(%17, 11) {sym_name = "of_35_lock_2"}
+  %466 = AIE.buffer(%17) {sym_name = "of_35_buff_3"} : memref<256xi32>
+  %467 = AIE.lock(%17, 12) {sym_name = "of_35_lock_3"}
+  %468 = AIE.buffer(%17) {sym_name = "of_35_buff_4"} : memref<256xi32>
+  %469 = AIE.lock(%17, 13) {sym_name = "of_35_lock_4"}
+  %470 = AIE.buffer(%21) {sym_name = "of_36_buff_0"} : memref<512xi32>
+  %471 = AIE.lock(%21, 0) {sym_name = "of_36_lock_0"}
+  %472 = AIE.buffer(%21) {sym_name = "of_36_buff_1"} : memref<512xi32>
+  %473 = AIE.lock(%21, 1) {sym_name = "of_36_lock_1"}
+  %474 = AIE.buffer(%21) {sym_name = "of_36_buff_2"} : memref<512xi32>
+  %475 = AIE.lock(%21, 2) {sym_name = "of_36_lock_2"}
+  %476 = AIE.buffer(%21) {sym_name = "of_36_buff_3"} : memref<512xi32>
+  %477 = AIE.lock(%21, 3) {sym_name = "of_36_lock_3"}
+  %478 = AIE.buffer(%21) {sym_name = "of_36_buff_4"} : memref<512xi32>
+  %479 = AIE.lock(%21, 4) {sym_name = "of_36_lock_4"}
+  %480 = AIE.buffer(%21) {sym_name = "of_36_buff_5"} : memref<512xi32>
+  %481 = AIE.lock(%21, 5) {sym_name = "of_36_lock_5"}
+  AIE.flow(%21, DMA : 0, %24, DMA : 1)
+  %482 = AIE.buffer(%21) {sym_name = "of_37_buff_0"} : memref<256xi32>
+  %483 = AIE.lock(%21, 6) {sym_name = "of_37_lock_0"}
+  %484 = AIE.buffer(%21) {sym_name = "of_37_buff_1"} : memref<256xi32>
+  %485 = AIE.lock(%21, 7) {sym_name = "of_37_lock_1"}
+  %486 = AIE.buffer(%21) {sym_name = "of_37_buff_2"} : memref<256xi32>
+  %487 = AIE.lock(%21, 8) {sym_name = "of_37_lock_2"}
+  %488 = AIE.buffer(%21) {sym_name = "of_37_buff_3"} : memref<256xi32>
+  %489 = AIE.lock(%21, 9) {sym_name = "of_37_lock_3"}
+  %490 = AIE.buffer(%21) {sym_name = "of_37_buff_4"} : memref<256xi32>
+  %491 = AIE.lock(%21, 10) {sym_name = "of_37_lock_4"}
+  %492 = AIE.lock(%24, 3) {sym_name = "of_38_lock_0"}
+  %493 = AIE.buffer(%14) {sym_name = "of_39_buff_0"} : memref<256xi32>
+  %494 = AIE.lock(%14, 9) {sym_name = "of_39_lock_0"}
+  %495 = AIE.buffer(%14) {sym_name = "of_39_buff_1"} : memref<256xi32>
+  %496 = AIE.lock(%14, 10) {sym_name = "of_39_lock_1"}
+  %497 = AIE.buffer(%14) {sym_name = "of_39_buff_2"} : memref<256xi32>
+  %498 = AIE.lock(%14, 11) {sym_name = "of_39_lock_2"}
+  %499 = AIE.buffer(%14) {sym_name = "of_39_buff_3"} : memref<256xi32>
+  %500 = AIE.lock(%14, 12) {sym_name = "of_39_lock_3"}
+  %501 = AIE.buffer(%14) {sym_name = "of_39_buff_4"} : memref<256xi32>
+  %502 = AIE.lock(%14, 13) {sym_name = "of_39_lock_4"}
+  %503 = AIE.buffer(%18) {sym_name = "of_40_buff_0"} : memref<512xi32>
+  %504 = AIE.lock(%18, 9) {sym_name = "of_40_lock_0"}
+  %505 = AIE.buffer(%18) {sym_name = "of_40_buff_1"} : memref<512xi32>
+  %506 = AIE.lock(%18, 10) {sym_name = "of_40_lock_1"}
+  %507 = AIE.buffer(%18) {sym_name = "of_40_buff_2"} : memref<512xi32>
+  %508 = AIE.lock(%18, 11) {sym_name = "of_40_lock_2"}
+  %509 = AIE.buffer(%18) {sym_name = "of_40_buff_3"} : memref<512xi32>
+  %510 = AIE.lock(%18, 12) {sym_name = "of_40_lock_3"}
+  %511 = AIE.buffer(%18) {sym_name = "of_40_buff_4"} : memref<512xi32>
+  %512 = AIE.lock(%18, 13) {sym_name = "of_40_lock_4"}
+  %513 = AIE.buffer(%18) {sym_name = "of_40_buff_5"} : memref<512xi32>
+  %514 = AIE.lock(%18, 14) {sym_name = "of_40_lock_5"}
+  %515 = AIE.buffer(%22) {sym_name = "of_41_buff_0"} : memref<256xi32>
+  %516 = AIE.lock(%22, 0) {sym_name = "of_41_lock_0"}
+  %517 = AIE.buffer(%22) {sym_name = "of_41_buff_1"} : memref<256xi32>
+  %518 = AIE.lock(%22, 1) {sym_name = "of_41_lock_1"}
+  %519 = AIE.buffer(%19) {sym_name = "of_42_buff_0"} : memref<256xi32>
+  %520 = AIE.lock(%19, 9) {sym_name = "of_42_lock_0"}
+  %521 = AIE.buffer(%19) {sym_name = "of_42_buff_1"} : memref<256xi32>
+  %522 = AIE.lock(%19, 10) {sym_name = "of_42_lock_1"}
+  %523 = AIE.buffer(%19) {sym_name = "of_42_buff_2"} : memref<256xi32>
+  %524 = AIE.lock(%19, 11) {sym_name = "of_42_lock_2"}
+  %525 = AIE.buffer(%19) {sym_name = "of_42_buff_3"} : memref<256xi32>
+  %526 = AIE.lock(%19, 12) {sym_name = "of_42_lock_3"}
+  %527 = AIE.buffer(%19) {sym_name = "of_42_buff_4"} : memref<256xi32>
+  %528 = AIE.lock(%19, 13) {sym_name = "of_42_lock_4"}
+  %529 = AIE.buffer(%23) {sym_name = "of_43_buff_0"} : memref<512xi32>
+  %530 = AIE.lock(%23, 0) {sym_name = "of_43_lock_0"}
+  %531 = AIE.buffer(%23) {sym_name = "of_43_buff_1"} : memref<512xi32>
+  %532 = AIE.lock(%23, 1) {sym_name = "of_43_lock_1"}
+  %533 = AIE.buffer(%23) {sym_name = "of_43_buff_2"} : memref<512xi32>
+  %534 = AIE.lock(%23, 2) {sym_name = "of_43_lock_2"}
+  %535 = AIE.buffer(%23) {sym_name = "of_43_buff_3"} : memref<512xi32>
+  %536 = AIE.lock(%23, 3) {sym_name = "of_43_lock_3"}
+  %537 = AIE.buffer(%23) {sym_name = "of_43_buff_4"} : memref<512xi32>
+  %538 = AIE.lock(%23, 4) {sym_name = "of_43_lock_4"}
+  %539 = AIE.buffer(%23) {sym_name = "of_43_buff_5"} : memref<512xi32>
+  %540 = AIE.lock(%23, 5) {sym_name = "of_43_lock_5"}
+  AIE.flow(%23, DMA : 0, %21, DMA : 0)
+  %541 = AIE.buffer(%23) {sym_name = "of_44_buff_0"} : memref<256xi32>
+  %542 = AIE.lock(%23, 6) {sym_name = "of_44_lock_0"}
+  %543 = AIE.buffer(%23) {sym_name = "of_44_buff_1"} : memref<256xi32>
+  %544 = AIE.lock(%23, 7) {sym_name = "of_44_lock_1"}
+  %545 = AIE.buffer(%21) {sym_name = "of_45_buff_0"} : memref<256xi32>
+  %546 = AIE.lock(%21, 11) {sym_name = "of_45_lock_0"}
+  %547 = AIE.buffer(%21) {sym_name = "of_45_buff_1"} : memref<256xi32>
+  %548 = AIE.lock(%21, 12) {sym_name = "of_45_lock_1"}
+  %549 = AIE.external_buffer {sym_name = "ddr_buffer_in_0"} : memref<2304xi32>
+  %550 = AIE.external_buffer {sym_name = "ddr_buffer_out_0"} : memref<2048xi32>
+  %551 = AIE.external_buffer {sym_name = "ddr_buffer_in_1"} : memref<2304xi32>
+  %552 = AIE.external_buffer {sym_name = "ddr_buffer_out_1"} : memref<2048xi32>
+  func.func private @hdiff_lap(memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>)
+  func.func private @hdiff_flux1(memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>)
+  func.func private @hdiff_flux2(memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>)
+  %553 = AIE.core(%0) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%25, Acquire, 0)
+    AIE.useLock(%157, Acquire, 1)
+    AIE.useLock(%159, Acquire, 1)
+    AIE.useLock(%161, Acquire, 1)
+    AIE.useLock(%163, Acquire, 1)
+    AIE.useLock(%165, Acquire, 1)
+    AIE.useLock(%167, Acquire, 1)
+    AIE.useLock(%169, Acquire, 1)
+    AIE.useLock(%171, Acquire, 1)
+    AIE.useLock(%175, Acquire, 0)
+    AIE.useLock(%177, Acquire, 0)
+    AIE.useLock(%179, Acquire, 0)
+    AIE.useLock(%181, Acquire, 0)
+    func.call @hdiff_lap(%156, %158, %160, %162, %164, %174, %176, %178, %180) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%157, Release, 0)
+    AIE.useLock(%175, Release, 1)
+    AIE.useLock(%177, Release, 1)
+    AIE.useLock(%179, Release, 1)
+    AIE.useLock(%181, Release, 1)
+    AIE.useLock(%173, Acquire, 1)
+    AIE.useLock(%183, Acquire, 0)
+    AIE.useLock(%175, Acquire, 0)
+    AIE.useLock(%177, Acquire, 0)
+    AIE.useLock(%179, Acquire, 0)
+    func.call @hdiff_lap(%158, %160, %162, %164, %166, %182, %174, %176, %178) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%159, Release, 0)
+    AIE.useLock(%183, Release, 1)
+    AIE.useLock(%175, Release, 1)
+    AIE.useLock(%177, Release, 1)
+    AIE.useLock(%179, Release, 1)
+    AIE.useLock(%161, Release, 0)
+    AIE.useLock(%163, Release, 0)
+    AIE.useLock(%165, Release, 0)
+    AIE.useLock(%167, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %554 = AIE.core(%4) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%139, Acquire, 1)
+    AIE.useLock(%141, Acquire, 1)
+    AIE.useLock(%143, Acquire, 1)
+    AIE.useLock(%145, Acquire, 1)
+    AIE.useLock(%147, Acquire, 1)
+    AIE.useLock(%149, Acquire, 1)
+    AIE.useLock(%151, Acquire, 1)
+    AIE.useLock(%153, Acquire, 1)
+    AIE.useLock(%175, Acquire, 1)
+    AIE.useLock(%177, Acquire, 1)
+    AIE.useLock(%179, Acquire, 1)
+    AIE.useLock(%181, Acquire, 1)
+    AIE.useLock(%185, Acquire, 0)
+    AIE.useLock(%187, Acquire, 0)
+    AIE.useLock(%189, Acquire, 0)
+    AIE.useLock(%191, Acquire, 0)
+    AIE.useLock(%193, Acquire, 0)
+    func.call @hdiff_flux1(%140, %142, %144, %174, %176, %178, %180, %184, %186, %188, %190, %192) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%175, Release, 0)
+    AIE.useLock(%177, Release, 0)
+    AIE.useLock(%179, Release, 0)
+    AIE.useLock(%181, Release, 0)
+    AIE.useLock(%185, Release, 1)
+    AIE.useLock(%187, Release, 1)
+    AIE.useLock(%189, Release, 1)
+    AIE.useLock(%191, Release, 1)
+    AIE.useLock(%193, Release, 1)
+    AIE.useLock(%139, Release, 0)
+    AIE.useLock(%155, Acquire, 1)
+    AIE.useLock(%183, Acquire, 1)
+    AIE.useLock(%175, Acquire, 1)
+    AIE.useLock(%177, Acquire, 1)
+    AIE.useLock(%179, Acquire, 1)
+    AIE.useLock(%195, Acquire, 0)
+    AIE.useLock(%185, Acquire, 0)
+    AIE.useLock(%187, Acquire, 0)
+    AIE.useLock(%189, Acquire, 0)
+    AIE.useLock(%191, Acquire, 0)
+    func.call @hdiff_flux1(%142, %144, %146, %182, %174, %176, %178, %194, %184, %186, %188, %190) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%183, Release, 0)
+    AIE.useLock(%175, Release, 0)
+    AIE.useLock(%177, Release, 0)
+    AIE.useLock(%179, Release, 0)
+    AIE.useLock(%195, Release, 1)
+    AIE.useLock(%185, Release, 1)
+    AIE.useLock(%187, Release, 1)
+    AIE.useLock(%189, Release, 1)
+    AIE.useLock(%191, Release, 1)
+    AIE.useLock(%141, Release, 0)
+    AIE.useLock(%143, Release, 0)
+    AIE.useLock(%145, Release, 0)
+    AIE.useLock(%147, Release, 0)
+    AIE.useLock(%149, Release, 0)
+    AIE.useLock(%151, Release, 0)
+    AIE.useLock(%153, Release, 0)
+    AIE.useLock(%155, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %555 = AIE.core(%8) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%185, Acquire, 1)
+    AIE.useLock(%187, Acquire, 1)
+    AIE.useLock(%189, Acquire, 1)
+    AIE.useLock(%191, Acquire, 1)
+    AIE.useLock(%193, Acquire, 1)
+    AIE.useLock(%197, Acquire, 0)
+    func.call @hdiff_flux2(%184, %186, %188, %190, %192, %196) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%185, Release, 0)
+    AIE.useLock(%187, Release, 0)
+    AIE.useLock(%189, Release, 0)
+    AIE.useLock(%191, Release, 0)
+    AIE.useLock(%193, Release, 0)
+    AIE.useLock(%197, Release, 1)
+    AIE.useLock(%195, Acquire, 1)
+    AIE.useLock(%185, Acquire, 1)
+    AIE.useLock(%187, Acquire, 1)
+    AIE.useLock(%189, Acquire, 1)
+    AIE.useLock(%191, Acquire, 1)
+    AIE.useLock(%199, Acquire, 0)
+    func.call @hdiff_flux2(%194, %184, %186, %188, %190, %198) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%195, Release, 0)
+    AIE.useLock(%185, Release, 0)
+    AIE.useLock(%187, Release, 0)
+    AIE.useLock(%189, Release, 0)
+    AIE.useLock(%191, Release, 0)
+    AIE.useLock(%199, Release, 1)
+    AIE.useLock(%26, Acquire, 0)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %556 = AIE.core(%1) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%121, Acquire, 1)
+    AIE.useLock(%123, Acquire, 1)
+    AIE.useLock(%125, Acquire, 1)
+    AIE.useLock(%127, Acquire, 1)
+    AIE.useLock(%129, Acquire, 1)
+    AIE.useLock(%131, Acquire, 1)
+    AIE.useLock(%133, Acquire, 1)
+    AIE.useLock(%135, Acquire, 1)
+    AIE.useLock(%201, Acquire, 0)
+    AIE.useLock(%203, Acquire, 0)
+    AIE.useLock(%205, Acquire, 0)
+    AIE.useLock(%207, Acquire, 0)
+    func.call @hdiff_lap(%122, %124, %126, %128, %130, %200, %202, %204, %206) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%121, Release, 0)
+    AIE.useLock(%201, Release, 1)
+    AIE.useLock(%203, Release, 1)
+    AIE.useLock(%205, Release, 1)
+    AIE.useLock(%207, Release, 1)
+    AIE.useLock(%137, Acquire, 1)
+    AIE.useLock(%209, Acquire, 0)
+    AIE.useLock(%201, Acquire, 0)
+    AIE.useLock(%203, Acquire, 0)
+    AIE.useLock(%205, Acquire, 0)
+    func.call @hdiff_lap(%124, %126, %128, %130, %132, %208, %200, %202, %204) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%123, Release, 0)
+    AIE.useLock(%209, Release, 1)
+    AIE.useLock(%201, Release, 1)
+    AIE.useLock(%203, Release, 1)
+    AIE.useLock(%205, Release, 1)
+    AIE.useLock(%125, Release, 0)
+    AIE.useLock(%127, Release, 0)
+    AIE.useLock(%129, Release, 0)
+    AIE.useLock(%131, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %557 = AIE.core(%5) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%103, Acquire, 1)
+    AIE.useLock(%105, Acquire, 1)
+    AIE.useLock(%107, Acquire, 1)
+    AIE.useLock(%109, Acquire, 1)
+    AIE.useLock(%111, Acquire, 1)
+    AIE.useLock(%113, Acquire, 1)
+    AIE.useLock(%115, Acquire, 1)
+    AIE.useLock(%117, Acquire, 1)
+    AIE.useLock(%201, Acquire, 1)
+    AIE.useLock(%203, Acquire, 1)
+    AIE.useLock(%205, Acquire, 1)
+    AIE.useLock(%207, Acquire, 1)
+    AIE.useLock(%211, Acquire, 0)
+    AIE.useLock(%213, Acquire, 0)
+    AIE.useLock(%215, Acquire, 0)
+    AIE.useLock(%217, Acquire, 0)
+    AIE.useLock(%219, Acquire, 0)
+    func.call @hdiff_flux1(%106, %108, %110, %200, %202, %204, %206, %210, %212, %214, %216, %218) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%201, Release, 0)
+    AIE.useLock(%203, Release, 0)
+    AIE.useLock(%205, Release, 0)
+    AIE.useLock(%207, Release, 0)
+    AIE.useLock(%211, Release, 1)
+    AIE.useLock(%213, Release, 1)
+    AIE.useLock(%215, Release, 1)
+    AIE.useLock(%217, Release, 1)
+    AIE.useLock(%219, Release, 1)
+    AIE.useLock(%103, Release, 0)
+    AIE.useLock(%119, Acquire, 1)
+    AIE.useLock(%209, Acquire, 1)
+    AIE.useLock(%201, Acquire, 1)
+    AIE.useLock(%203, Acquire, 1)
+    AIE.useLock(%205, Acquire, 1)
+    AIE.useLock(%221, Acquire, 0)
+    AIE.useLock(%211, Acquire, 0)
+    AIE.useLock(%213, Acquire, 0)
+    AIE.useLock(%215, Acquire, 0)
+    AIE.useLock(%217, Acquire, 0)
+    func.call @hdiff_flux1(%108, %110, %112, %208, %200, %202, %204, %220, %210, %212, %214, %216) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%209, Release, 0)
+    AIE.useLock(%201, Release, 0)
+    AIE.useLock(%203, Release, 0)
+    AIE.useLock(%205, Release, 0)
+    AIE.useLock(%221, Release, 1)
+    AIE.useLock(%211, Release, 1)
+    AIE.useLock(%213, Release, 1)
+    AIE.useLock(%215, Release, 1)
+    AIE.useLock(%217, Release, 1)
+    AIE.useLock(%105, Release, 0)
+    AIE.useLock(%107, Release, 0)
+    AIE.useLock(%109, Release, 0)
+    AIE.useLock(%111, Release, 0)
+    AIE.useLock(%113, Release, 0)
+    AIE.useLock(%115, Release, 0)
+    AIE.useLock(%117, Release, 0)
+    AIE.useLock(%119, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %558 = AIE.core(%9) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%211, Acquire, 1)
+    AIE.useLock(%213, Acquire, 1)
+    AIE.useLock(%215, Acquire, 1)
+    AIE.useLock(%217, Acquire, 1)
+    AIE.useLock(%219, Acquire, 1)
+    AIE.useLock(%223, Acquire, 0)
+    AIE.useLock(%225, Acquire, 0)
+    AIE.useLock(%227, Acquire, 0)
+    AIE.useLock(%229, Acquire, 0)
+    AIE.useLock(%197, Acquire, 1)
+    AIE.useLock(%256, Acquire, 1)
+    AIE.useLock(%286, Acquire, 1)
+    memref.copy %196, %222 : memref<256xi32> to memref<256xi32>
+    memref.copy %255, %226 : memref<256xi32> to memref<256xi32>
+    memref.copy %285, %228 : memref<256xi32> to memref<256xi32>
+    func.call @hdiff_flux2(%210, %212, %214, %216, %218, %224) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%211, Release, 0)
+    AIE.useLock(%213, Release, 0)
+    AIE.useLock(%215, Release, 0)
+    AIE.useLock(%217, Release, 0)
+    AIE.useLock(%219, Release, 0)
+    AIE.useLock(%197, Release, 0)
+    AIE.useLock(%256, Release, 0)
+    AIE.useLock(%286, Release, 0)
+    AIE.useLock(%223, Release, 1)
+    AIE.useLock(%225, Release, 1)
+    AIE.useLock(%227, Release, 1)
+    AIE.useLock(%229, Release, 1)
+    AIE.useLock(%221, Acquire, 1)
+    AIE.useLock(%211, Acquire, 1)
+    AIE.useLock(%213, Acquire, 1)
+    AIE.useLock(%215, Acquire, 1)
+    AIE.useLock(%217, Acquire, 1)
+    AIE.useLock(%231, Acquire, 0)
+    AIE.useLock(%223, Acquire, 0)
+    AIE.useLock(%225, Acquire, 0)
+    AIE.useLock(%227, Acquire, 0)
+    AIE.useLock(%199, Acquire, 1)
+    AIE.useLock(%258, Acquire, 1)
+    AIE.useLock(%288, Acquire, 1)
+    memref.copy %198, %230 : memref<256xi32> to memref<256xi32>
+    memref.copy %257, %224 : memref<256xi32> to memref<256xi32>
+    memref.copy %287, %226 : memref<256xi32> to memref<256xi32>
+    func.call @hdiff_flux2(%220, %210, %212, %214, %216, %222) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%221, Release, 0)
+    AIE.useLock(%211, Release, 0)
+    AIE.useLock(%213, Release, 0)
+    AIE.useLock(%215, Release, 0)
+    AIE.useLock(%217, Release, 0)
+    AIE.useLock(%199, Release, 0)
+    AIE.useLock(%258, Release, 0)
+    AIE.useLock(%288, Release, 0)
+    AIE.useLock(%231, Release, 1)
+    AIE.useLock(%223, Release, 1)
+    AIE.useLock(%225, Release, 1)
+    AIE.useLock(%227, Release, 1)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %559 = AIE.core(%2) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%85, Acquire, 1)
+    AIE.useLock(%87, Acquire, 1)
+    AIE.useLock(%89, Acquire, 1)
+    AIE.useLock(%91, Acquire, 1)
+    AIE.useLock(%93, Acquire, 1)
+    AIE.useLock(%95, Acquire, 1)
+    AIE.useLock(%97, Acquire, 1)
+    AIE.useLock(%99, Acquire, 1)
+    AIE.useLock(%234, Acquire, 0)
+    AIE.useLock(%236, Acquire, 0)
+    AIE.useLock(%238, Acquire, 0)
+    AIE.useLock(%240, Acquire, 0)
+    func.call @hdiff_lap(%88, %90, %92, %94, %96, %233, %235, %237, %239) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%85, Release, 0)
+    AIE.useLock(%234, Release, 1)
+    AIE.useLock(%236, Release, 1)
+    AIE.useLock(%238, Release, 1)
+    AIE.useLock(%240, Release, 1)
+    AIE.useLock(%101, Acquire, 1)
+    AIE.useLock(%242, Acquire, 0)
+    AIE.useLock(%234, Acquire, 0)
+    AIE.useLock(%236, Acquire, 0)
+    AIE.useLock(%238, Acquire, 0)
+    func.call @hdiff_lap(%90, %92, %94, %96, %98, %241, %233, %235, %237) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%87, Release, 0)
+    AIE.useLock(%242, Release, 1)
+    AIE.useLock(%234, Release, 1)
+    AIE.useLock(%236, Release, 1)
+    AIE.useLock(%238, Release, 1)
+    AIE.useLock(%89, Release, 0)
+    AIE.useLock(%91, Release, 0)
+    AIE.useLock(%93, Release, 0)
+    AIE.useLock(%95, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %560 = AIE.core(%6) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%67, Acquire, 1)
+    AIE.useLock(%69, Acquire, 1)
+    AIE.useLock(%71, Acquire, 1)
+    AIE.useLock(%73, Acquire, 1)
+    AIE.useLock(%75, Acquire, 1)
+    AIE.useLock(%77, Acquire, 1)
+    AIE.useLock(%79, Acquire, 1)
+    AIE.useLock(%81, Acquire, 1)
+    AIE.useLock(%234, Acquire, 1)
+    AIE.useLock(%236, Acquire, 1)
+    AIE.useLock(%238, Acquire, 1)
+    AIE.useLock(%240, Acquire, 1)
+    AIE.useLock(%244, Acquire, 0)
+    AIE.useLock(%246, Acquire, 0)
+    AIE.useLock(%248, Acquire, 0)
+    AIE.useLock(%250, Acquire, 0)
+    AIE.useLock(%252, Acquire, 0)
+    func.call @hdiff_flux1(%72, %74, %76, %233, %235, %237, %239, %243, %245, %247, %249, %251) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%234, Release, 0)
+    AIE.useLock(%236, Release, 0)
+    AIE.useLock(%238, Release, 0)
+    AIE.useLock(%240, Release, 0)
+    AIE.useLock(%244, Release, 1)
+    AIE.useLock(%246, Release, 1)
+    AIE.useLock(%248, Release, 1)
+    AIE.useLock(%250, Release, 1)
+    AIE.useLock(%252, Release, 1)
+    AIE.useLock(%67, Release, 0)
+    AIE.useLock(%83, Acquire, 1)
+    AIE.useLock(%242, Acquire, 1)
+    AIE.useLock(%234, Acquire, 1)
+    AIE.useLock(%236, Acquire, 1)
+    AIE.useLock(%238, Acquire, 1)
+    AIE.useLock(%254, Acquire, 0)
+    AIE.useLock(%244, Acquire, 0)
+    AIE.useLock(%246, Acquire, 0)
+    AIE.useLock(%248, Acquire, 0)
+    AIE.useLock(%250, Acquire, 0)
+    func.call @hdiff_flux1(%74, %76, %78, %241, %233, %235, %237, %253, %243, %245, %247, %249) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%242, Release, 0)
+    AIE.useLock(%234, Release, 0)
+    AIE.useLock(%236, Release, 0)
+    AIE.useLock(%238, Release, 0)
+    AIE.useLock(%254, Release, 1)
+    AIE.useLock(%244, Release, 1)
+    AIE.useLock(%246, Release, 1)
+    AIE.useLock(%248, Release, 1)
+    AIE.useLock(%250, Release, 1)
+    AIE.useLock(%69, Release, 0)
+    AIE.useLock(%71, Release, 0)
+    AIE.useLock(%73, Release, 0)
+    AIE.useLock(%75, Release, 0)
+    AIE.useLock(%77, Release, 0)
+    AIE.useLock(%79, Release, 0)
+    AIE.useLock(%81, Release, 0)
+    AIE.useLock(%83, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %561 = AIE.core(%10) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%244, Acquire, 1)
+    AIE.useLock(%246, Acquire, 1)
+    AIE.useLock(%248, Acquire, 1)
+    AIE.useLock(%250, Acquire, 1)
+    AIE.useLock(%252, Acquire, 1)
+    AIE.useLock(%256, Acquire, 0)
+    func.call @hdiff_flux2(%243, %245, %247, %249, %251, %255) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%244, Release, 0)
+    AIE.useLock(%246, Release, 0)
+    AIE.useLock(%248, Release, 0)
+    AIE.useLock(%250, Release, 0)
+    AIE.useLock(%252, Release, 0)
+    AIE.useLock(%256, Release, 1)
+    AIE.useLock(%254, Acquire, 1)
+    AIE.useLock(%244, Acquire, 1)
+    AIE.useLock(%246, Acquire, 1)
+    AIE.useLock(%248, Acquire, 1)
+    AIE.useLock(%250, Acquire, 1)
+    AIE.useLock(%258, Acquire, 0)
+    func.call @hdiff_flux2(%253, %243, %245, %247, %249, %257) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%254, Release, 0)
+    AIE.useLock(%244, Release, 0)
+    AIE.useLock(%246, Release, 0)
+    AIE.useLock(%248, Release, 0)
+    AIE.useLock(%250, Release, 0)
+    AIE.useLock(%258, Release, 1)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %562 = AIE.core(%3) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%49, Acquire, 1)
+    AIE.useLock(%51, Acquire, 1)
+    AIE.useLock(%53, Acquire, 1)
+    AIE.useLock(%55, Acquire, 1)
+    AIE.useLock(%57, Acquire, 1)
+    AIE.useLock(%59, Acquire, 1)
+    AIE.useLock(%61, Acquire, 1)
+    AIE.useLock(%63, Acquire, 1)
+    AIE.useLock(%260, Acquire, 0)
+    AIE.useLock(%262, Acquire, 0)
+    AIE.useLock(%264, Acquire, 0)
+    AIE.useLock(%266, Acquire, 0)
+    func.call @hdiff_lap(%54, %56, %58, %60, %62, %259, %261, %263, %265) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%49, Release, 0)
+    AIE.useLock(%260, Release, 1)
+    AIE.useLock(%262, Release, 1)
+    AIE.useLock(%264, Release, 1)
+    AIE.useLock(%266, Release, 1)
+    AIE.useLock(%65, Acquire, 1)
+    AIE.useLock(%268, Acquire, 0)
+    AIE.useLock(%260, Acquire, 0)
+    AIE.useLock(%262, Acquire, 0)
+    AIE.useLock(%264, Acquire, 0)
+    func.call @hdiff_lap(%56, %58, %60, %62, %64, %267, %259, %261, %263) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%51, Release, 0)
+    AIE.useLock(%268, Release, 1)
+    AIE.useLock(%260, Release, 1)
+    AIE.useLock(%262, Release, 1)
+    AIE.useLock(%264, Release, 1)
+    AIE.useLock(%53, Release, 0)
+    AIE.useLock(%55, Release, 0)
+    AIE.useLock(%57, Release, 0)
+    AIE.useLock(%59, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %563 = AIE.core(%7) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%31, Acquire, 1)
+    AIE.useLock(%33, Acquire, 1)
+    AIE.useLock(%35, Acquire, 1)
+    AIE.useLock(%37, Acquire, 1)
+    AIE.useLock(%39, Acquire, 1)
+    AIE.useLock(%41, Acquire, 1)
+    AIE.useLock(%43, Acquire, 1)
+    AIE.useLock(%45, Acquire, 1)
+    AIE.useLock(%260, Acquire, 1)
+    AIE.useLock(%262, Acquire, 1)
+    AIE.useLock(%264, Acquire, 1)
+    AIE.useLock(%266, Acquire, 1)
+    AIE.useLock(%270, Acquire, 0)
+    AIE.useLock(%272, Acquire, 0)
+    AIE.useLock(%274, Acquire, 0)
+    AIE.useLock(%276, Acquire, 0)
+    AIE.useLock(%278, Acquire, 0)
+    func.call @hdiff_flux1(%38, %40, %42, %259, %261, %263, %265, %269, %271, %273, %275, %277) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%260, Release, 0)
+    AIE.useLock(%262, Release, 0)
+    AIE.useLock(%264, Release, 0)
+    AIE.useLock(%266, Release, 0)
+    AIE.useLock(%270, Release, 1)
+    AIE.useLock(%272, Release, 1)
+    AIE.useLock(%274, Release, 1)
+    AIE.useLock(%276, Release, 1)
+    AIE.useLock(%278, Release, 1)
+    AIE.useLock(%31, Release, 0)
+    AIE.useLock(%47, Acquire, 1)
+    AIE.useLock(%268, Acquire, 1)
+    AIE.useLock(%260, Acquire, 1)
+    AIE.useLock(%262, Acquire, 1)
+    AIE.useLock(%264, Acquire, 1)
+    AIE.useLock(%280, Acquire, 0)
+    AIE.useLock(%270, Acquire, 0)
+    AIE.useLock(%272, Acquire, 0)
+    AIE.useLock(%274, Acquire, 0)
+    AIE.useLock(%276, Acquire, 0)
+    func.call @hdiff_flux1(%40, %42, %44, %267, %259, %261, %263, %279, %269, %271, %273, %275) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%268, Release, 0)
+    AIE.useLock(%260, Release, 0)
+    AIE.useLock(%262, Release, 0)
+    AIE.useLock(%264, Release, 0)
+    AIE.useLock(%280, Release, 1)
+    AIE.useLock(%270, Release, 1)
+    AIE.useLock(%272, Release, 1)
+    AIE.useLock(%274, Release, 1)
+    AIE.useLock(%276, Release, 1)
+    AIE.useLock(%33, Release, 0)
+    AIE.useLock(%35, Release, 0)
+    AIE.useLock(%37, Release, 0)
+    AIE.useLock(%39, Release, 0)
+    AIE.useLock(%41, Release, 0)
+    AIE.useLock(%43, Release, 0)
+    AIE.useLock(%45, Release, 0)
+    AIE.useLock(%47, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %564 = AIE.core(%11) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%270, Acquire, 1)
+    AIE.useLock(%272, Acquire, 1)
+    AIE.useLock(%274, Acquire, 1)
+    AIE.useLock(%276, Acquire, 1)
+    AIE.useLock(%278, Acquire, 1)
+    AIE.useLock(%282, Acquire, 0)
+    func.call @hdiff_flux2(%269, %271, %273, %275, %277, %281) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%270, Release, 0)
+    AIE.useLock(%272, Release, 0)
+    AIE.useLock(%274, Release, 0)
+    AIE.useLock(%276, Release, 0)
+    AIE.useLock(%278, Release, 0)
+    AIE.useLock(%282, Release, 1)
+    AIE.useLock(%280, Acquire, 1)
+    AIE.useLock(%270, Acquire, 1)
+    AIE.useLock(%272, Acquire, 1)
+    AIE.useLock(%274, Acquire, 1)
+    AIE.useLock(%276, Acquire, 1)
+    AIE.useLock(%284, Acquire, 0)
+    func.call @hdiff_flux2(%279, %269, %271, %273, %275, %283) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%280, Release, 0)
+    AIE.useLock(%270, Release, 0)
+    AIE.useLock(%272, Release, 0)
+    AIE.useLock(%274, Release, 0)
+    AIE.useLock(%276, Release, 0)
+    AIE.useLock(%284, Release, 1)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %565 = AIE.core(%12) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%27, Acquire, 0)
+    AIE.useLock(%417, Acquire, 1)
+    AIE.useLock(%419, Acquire, 1)
+    AIE.useLock(%421, Acquire, 1)
+    AIE.useLock(%423, Acquire, 1)
+    AIE.useLock(%425, Acquire, 1)
+    AIE.useLock(%427, Acquire, 1)
+    AIE.useLock(%429, Acquire, 1)
+    AIE.useLock(%431, Acquire, 1)
+    AIE.useLock(%435, Acquire, 0)
+    AIE.useLock(%437, Acquire, 0)
+    AIE.useLock(%439, Acquire, 0)
+    AIE.useLock(%441, Acquire, 0)
+    func.call @hdiff_lap(%416, %418, %420, %422, %424, %434, %436, %438, %440) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%417, Release, 0)
+    AIE.useLock(%435, Release, 1)
+    AIE.useLock(%437, Release, 1)
+    AIE.useLock(%439, Release, 1)
+    AIE.useLock(%441, Release, 1)
+    AIE.useLock(%433, Acquire, 1)
+    AIE.useLock(%443, Acquire, 0)
+    AIE.useLock(%435, Acquire, 0)
+    AIE.useLock(%437, Acquire, 0)
+    AIE.useLock(%439, Acquire, 0)
+    func.call @hdiff_lap(%418, %420, %422, %424, %426, %442, %434, %436, %438) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%419, Release, 0)
+    AIE.useLock(%443, Release, 1)
+    AIE.useLock(%435, Release, 1)
+    AIE.useLock(%437, Release, 1)
+    AIE.useLock(%439, Release, 1)
+    AIE.useLock(%421, Release, 0)
+    AIE.useLock(%423, Release, 0)
+    AIE.useLock(%425, Release, 0)
+    AIE.useLock(%427, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %566 = AIE.core(%16) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%399, Acquire, 1)
+    AIE.useLock(%401, Acquire, 1)
+    AIE.useLock(%403, Acquire, 1)
+    AIE.useLock(%405, Acquire, 1)
+    AIE.useLock(%407, Acquire, 1)
+    AIE.useLock(%409, Acquire, 1)
+    AIE.useLock(%411, Acquire, 1)
+    AIE.useLock(%413, Acquire, 1)
+    AIE.useLock(%435, Acquire, 1)
+    AIE.useLock(%437, Acquire, 1)
+    AIE.useLock(%439, Acquire, 1)
+    AIE.useLock(%441, Acquire, 1)
+    AIE.useLock(%445, Acquire, 0)
+    AIE.useLock(%447, Acquire, 0)
+    AIE.useLock(%449, Acquire, 0)
+    AIE.useLock(%451, Acquire, 0)
+    AIE.useLock(%453, Acquire, 0)
+    func.call @hdiff_flux1(%400, %402, %404, %434, %436, %438, %440, %444, %446, %448, %450, %452) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%435, Release, 0)
+    AIE.useLock(%437, Release, 0)
+    AIE.useLock(%439, Release, 0)
+    AIE.useLock(%441, Release, 0)
+    AIE.useLock(%445, Release, 1)
+    AIE.useLock(%447, Release, 1)
+    AIE.useLock(%449, Release, 1)
+    AIE.useLock(%451, Release, 1)
+    AIE.useLock(%453, Release, 1)
+    AIE.useLock(%399, Release, 0)
+    AIE.useLock(%415, Acquire, 1)
+    AIE.useLock(%443, Acquire, 1)
+    AIE.useLock(%435, Acquire, 1)
+    AIE.useLock(%437, Acquire, 1)
+    AIE.useLock(%439, Acquire, 1)
+    AIE.useLock(%455, Acquire, 0)
+    AIE.useLock(%445, Acquire, 0)
+    AIE.useLock(%447, Acquire, 0)
+    AIE.useLock(%449, Acquire, 0)
+    AIE.useLock(%451, Acquire, 0)
+    func.call @hdiff_flux1(%402, %404, %406, %442, %434, %436, %438, %454, %444, %446, %448, %450) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%443, Release, 0)
+    AIE.useLock(%435, Release, 0)
+    AIE.useLock(%437, Release, 0)
+    AIE.useLock(%439, Release, 0)
+    AIE.useLock(%455, Release, 1)
+    AIE.useLock(%445, Release, 1)
+    AIE.useLock(%447, Release, 1)
+    AIE.useLock(%449, Release, 1)
+    AIE.useLock(%451, Release, 1)
+    AIE.useLock(%401, Release, 0)
+    AIE.useLock(%403, Release, 0)
+    AIE.useLock(%405, Release, 0)
+    AIE.useLock(%407, Release, 0)
+    AIE.useLock(%409, Release, 0)
+    AIE.useLock(%411, Release, 0)
+    AIE.useLock(%413, Release, 0)
+    AIE.useLock(%415, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %567 = AIE.core(%20) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%445, Acquire, 1)
+    AIE.useLock(%447, Acquire, 1)
+    AIE.useLock(%449, Acquire, 1)
+    AIE.useLock(%451, Acquire, 1)
+    AIE.useLock(%453, Acquire, 1)
+    AIE.useLock(%457, Acquire, 0)
+    func.call @hdiff_flux2(%444, %446, %448, %450, %452, %456) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%445, Release, 0)
+    AIE.useLock(%447, Release, 0)
+    AIE.useLock(%449, Release, 0)
+    AIE.useLock(%451, Release, 0)
+    AIE.useLock(%453, Release, 0)
+    AIE.useLock(%457, Release, 1)
+    AIE.useLock(%455, Acquire, 1)
+    AIE.useLock(%445, Acquire, 1)
+    AIE.useLock(%447, Acquire, 1)
+    AIE.useLock(%449, Acquire, 1)
+    AIE.useLock(%451, Acquire, 1)
+    AIE.useLock(%459, Acquire, 0)
+    func.call @hdiff_flux2(%454, %444, %446, %448, %450, %458) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%455, Release, 0)
+    AIE.useLock(%445, Release, 0)
+    AIE.useLock(%447, Release, 0)
+    AIE.useLock(%449, Release, 0)
+    AIE.useLock(%451, Release, 0)
+    AIE.useLock(%459, Release, 1)
+    AIE.useLock(%28, Acquire, 0)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %568 = AIE.core(%13) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%381, Acquire, 1)
+    AIE.useLock(%383, Acquire, 1)
+    AIE.useLock(%385, Acquire, 1)
+    AIE.useLock(%387, Acquire, 1)
+    AIE.useLock(%389, Acquire, 1)
+    AIE.useLock(%391, Acquire, 1)
+    AIE.useLock(%393, Acquire, 1)
+    AIE.useLock(%395, Acquire, 1)
+    AIE.useLock(%461, Acquire, 0)
+    AIE.useLock(%463, Acquire, 0)
+    AIE.useLock(%465, Acquire, 0)
+    AIE.useLock(%467, Acquire, 0)
+    func.call @hdiff_lap(%382, %384, %386, %388, %390, %460, %462, %464, %466) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%381, Release, 0)
+    AIE.useLock(%461, Release, 1)
+    AIE.useLock(%463, Release, 1)
+    AIE.useLock(%465, Release, 1)
+    AIE.useLock(%467, Release, 1)
+    AIE.useLock(%397, Acquire, 1)
+    AIE.useLock(%469, Acquire, 0)
+    AIE.useLock(%461, Acquire, 0)
+    AIE.useLock(%463, Acquire, 0)
+    AIE.useLock(%465, Acquire, 0)
+    func.call @hdiff_lap(%384, %386, %388, %390, %392, %468, %460, %462, %464) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%383, Release, 0)
+    AIE.useLock(%469, Release, 1)
+    AIE.useLock(%461, Release, 1)
+    AIE.useLock(%463, Release, 1)
+    AIE.useLock(%465, Release, 1)
+    AIE.useLock(%385, Release, 0)
+    AIE.useLock(%387, Release, 0)
+    AIE.useLock(%389, Release, 0)
+    AIE.useLock(%391, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %569 = AIE.core(%17) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%363, Acquire, 1)
+    AIE.useLock(%365, Acquire, 1)
+    AIE.useLock(%367, Acquire, 1)
+    AIE.useLock(%369, Acquire, 1)
+    AIE.useLock(%371, Acquire, 1)
+    AIE.useLock(%373, Acquire, 1)
+    AIE.useLock(%375, Acquire, 1)
+    AIE.useLock(%377, Acquire, 1)
+    AIE.useLock(%461, Acquire, 1)
+    AIE.useLock(%463, Acquire, 1)
+    AIE.useLock(%465, Acquire, 1)
+    AIE.useLock(%467, Acquire, 1)
+    AIE.useLock(%471, Acquire, 0)
+    AIE.useLock(%473, Acquire, 0)
+    AIE.useLock(%475, Acquire, 0)
+    AIE.useLock(%477, Acquire, 0)
+    AIE.useLock(%479, Acquire, 0)
+    func.call @hdiff_flux1(%366, %368, %370, %460, %462, %464, %466, %470, %472, %474, %476, %478) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%461, Release, 0)
+    AIE.useLock(%463, Release, 0)
+    AIE.useLock(%465, Release, 0)
+    AIE.useLock(%467, Release, 0)
+    AIE.useLock(%471, Release, 1)
+    AIE.useLock(%473, Release, 1)
+    AIE.useLock(%475, Release, 1)
+    AIE.useLock(%477, Release, 1)
+    AIE.useLock(%479, Release, 1)
+    AIE.useLock(%363, Release, 0)
+    AIE.useLock(%379, Acquire, 1)
+    AIE.useLock(%469, Acquire, 1)
+    AIE.useLock(%461, Acquire, 1)
+    AIE.useLock(%463, Acquire, 1)
+    AIE.useLock(%465, Acquire, 1)
+    AIE.useLock(%481, Acquire, 0)
+    AIE.useLock(%471, Acquire, 0)
+    AIE.useLock(%473, Acquire, 0)
+    AIE.useLock(%475, Acquire, 0)
+    AIE.useLock(%477, Acquire, 0)
+    func.call @hdiff_flux1(%368, %370, %372, %468, %460, %462, %464, %480, %470, %472, %474, %476) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%469, Release, 0)
+    AIE.useLock(%461, Release, 0)
+    AIE.useLock(%463, Release, 0)
+    AIE.useLock(%465, Release, 0)
+    AIE.useLock(%481, Release, 1)
+    AIE.useLock(%471, Release, 1)
+    AIE.useLock(%473, Release, 1)
+    AIE.useLock(%475, Release, 1)
+    AIE.useLock(%477, Release, 1)
+    AIE.useLock(%365, Release, 0)
+    AIE.useLock(%367, Release, 0)
+    AIE.useLock(%369, Release, 0)
+    AIE.useLock(%371, Release, 0)
+    AIE.useLock(%373, Release, 0)
+    AIE.useLock(%375, Release, 0)
+    AIE.useLock(%377, Release, 0)
+    AIE.useLock(%379, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %570 = AIE.core(%21) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%471, Acquire, 1)
+    AIE.useLock(%473, Acquire, 1)
+    AIE.useLock(%475, Acquire, 1)
+    AIE.useLock(%477, Acquire, 1)
+    AIE.useLock(%479, Acquire, 1)
+    AIE.useLock(%483, Acquire, 0)
+    AIE.useLock(%485, Acquire, 0)
+    AIE.useLock(%487, Acquire, 0)
+    AIE.useLock(%489, Acquire, 0)
+    AIE.useLock(%457, Acquire, 1)
+    AIE.useLock(%516, Acquire, 1)
+    AIE.useLock(%546, Acquire, 1)
+    memref.copy %456, %482 : memref<256xi32> to memref<256xi32>
+    memref.copy %515, %486 : memref<256xi32> to memref<256xi32>
+    memref.copy %545, %488 : memref<256xi32> to memref<256xi32>
+    func.call @hdiff_flux2(%470, %472, %474, %476, %478, %484) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%471, Release, 0)
+    AIE.useLock(%473, Release, 0)
+    AIE.useLock(%475, Release, 0)
+    AIE.useLock(%477, Release, 0)
+    AIE.useLock(%479, Release, 0)
+    AIE.useLock(%457, Release, 0)
+    AIE.useLock(%516, Release, 0)
+    AIE.useLock(%546, Release, 0)
+    AIE.useLock(%483, Release, 1)
+    AIE.useLock(%485, Release, 1)
+    AIE.useLock(%487, Release, 1)
+    AIE.useLock(%489, Release, 1)
+    AIE.useLock(%481, Acquire, 1)
+    AIE.useLock(%471, Acquire, 1)
+    AIE.useLock(%473, Acquire, 1)
+    AIE.useLock(%475, Acquire, 1)
+    AIE.useLock(%477, Acquire, 1)
+    AIE.useLock(%491, Acquire, 0)
+    AIE.useLock(%483, Acquire, 0)
+    AIE.useLock(%485, Acquire, 0)
+    AIE.useLock(%487, Acquire, 0)
+    AIE.useLock(%459, Acquire, 1)
+    AIE.useLock(%518, Acquire, 1)
+    AIE.useLock(%548, Acquire, 1)
+    memref.copy %458, %490 : memref<256xi32> to memref<256xi32>
+    memref.copy %517, %484 : memref<256xi32> to memref<256xi32>
+    memref.copy %547, %486 : memref<256xi32> to memref<256xi32>
+    func.call @hdiff_flux2(%480, %470, %472, %474, %476, %482) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%481, Release, 0)
+    AIE.useLock(%471, Release, 0)
+    AIE.useLock(%473, Release, 0)
+    AIE.useLock(%475, Release, 0)
+    AIE.useLock(%477, Release, 0)
+    AIE.useLock(%459, Release, 0)
+    AIE.useLock(%518, Release, 0)
+    AIE.useLock(%548, Release, 0)
+    AIE.useLock(%491, Release, 1)
+    AIE.useLock(%483, Release, 1)
+    AIE.useLock(%485, Release, 1)
+    AIE.useLock(%487, Release, 1)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %571 = AIE.core(%14) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%345, Acquire, 1)
+    AIE.useLock(%347, Acquire, 1)
+    AIE.useLock(%349, Acquire, 1)
+    AIE.useLock(%351, Acquire, 1)
+    AIE.useLock(%353, Acquire, 1)
+    AIE.useLock(%355, Acquire, 1)
+    AIE.useLock(%357, Acquire, 1)
+    AIE.useLock(%359, Acquire, 1)
+    AIE.useLock(%494, Acquire, 0)
+    AIE.useLock(%496, Acquire, 0)
+    AIE.useLock(%498, Acquire, 0)
+    AIE.useLock(%500, Acquire, 0)
+    func.call @hdiff_lap(%348, %350, %352, %354, %356, %493, %495, %497, %499) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%345, Release, 0)
+    AIE.useLock(%494, Release, 1)
+    AIE.useLock(%496, Release, 1)
+    AIE.useLock(%498, Release, 1)
+    AIE.useLock(%500, Release, 1)
+    AIE.useLock(%361, Acquire, 1)
+    AIE.useLock(%502, Acquire, 0)
+    AIE.useLock(%494, Acquire, 0)
+    AIE.useLock(%496, Acquire, 0)
+    AIE.useLock(%498, Acquire, 0)
+    func.call @hdiff_lap(%350, %352, %354, %356, %358, %501, %493, %495, %497) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%347, Release, 0)
+    AIE.useLock(%502, Release, 1)
+    AIE.useLock(%494, Release, 1)
+    AIE.useLock(%496, Release, 1)
+    AIE.useLock(%498, Release, 1)
+    AIE.useLock(%349, Release, 0)
+    AIE.useLock(%351, Release, 0)
+    AIE.useLock(%353, Release, 0)
+    AIE.useLock(%355, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %572 = AIE.core(%18) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%327, Acquire, 1)
+    AIE.useLock(%329, Acquire, 1)
+    AIE.useLock(%331, Acquire, 1)
+    AIE.useLock(%333, Acquire, 1)
+    AIE.useLock(%335, Acquire, 1)
+    AIE.useLock(%337, Acquire, 1)
+    AIE.useLock(%339, Acquire, 1)
+    AIE.useLock(%341, Acquire, 1)
+    AIE.useLock(%494, Acquire, 1)
+    AIE.useLock(%496, Acquire, 1)
+    AIE.useLock(%498, Acquire, 1)
+    AIE.useLock(%500, Acquire, 1)
+    AIE.useLock(%504, Acquire, 0)
+    AIE.useLock(%506, Acquire, 0)
+    AIE.useLock(%508, Acquire, 0)
+    AIE.useLock(%510, Acquire, 0)
+    AIE.useLock(%512, Acquire, 0)
+    func.call @hdiff_flux1(%332, %334, %336, %493, %495, %497, %499, %503, %505, %507, %509, %511) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%494, Release, 0)
+    AIE.useLock(%496, Release, 0)
+    AIE.useLock(%498, Release, 0)
+    AIE.useLock(%500, Release, 0)
+    AIE.useLock(%504, Release, 1)
+    AIE.useLock(%506, Release, 1)
+    AIE.useLock(%508, Release, 1)
+    AIE.useLock(%510, Release, 1)
+    AIE.useLock(%512, Release, 1)
+    AIE.useLock(%327, Release, 0)
+    AIE.useLock(%343, Acquire, 1)
+    AIE.useLock(%502, Acquire, 1)
+    AIE.useLock(%494, Acquire, 1)
+    AIE.useLock(%496, Acquire, 1)
+    AIE.useLock(%498, Acquire, 1)
+    AIE.useLock(%514, Acquire, 0)
+    AIE.useLock(%504, Acquire, 0)
+    AIE.useLock(%506, Acquire, 0)
+    AIE.useLock(%508, Acquire, 0)
+    AIE.useLock(%510, Acquire, 0)
+    func.call @hdiff_flux1(%334, %336, %338, %501, %493, %495, %497, %513, %503, %505, %507, %509) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%502, Release, 0)
+    AIE.useLock(%494, Release, 0)
+    AIE.useLock(%496, Release, 0)
+    AIE.useLock(%498, Release, 0)
+    AIE.useLock(%514, Release, 1)
+    AIE.useLock(%504, Release, 1)
+    AIE.useLock(%506, Release, 1)
+    AIE.useLock(%508, Release, 1)
+    AIE.useLock(%510, Release, 1)
+    AIE.useLock(%329, Release, 0)
+    AIE.useLock(%331, Release, 0)
+    AIE.useLock(%333, Release, 0)
+    AIE.useLock(%335, Release, 0)
+    AIE.useLock(%337, Release, 0)
+    AIE.useLock(%339, Release, 0)
+    AIE.useLock(%341, Release, 0)
+    AIE.useLock(%343, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %573 = AIE.core(%22) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%504, Acquire, 1)
+    AIE.useLock(%506, Acquire, 1)
+    AIE.useLock(%508, Acquire, 1)
+    AIE.useLock(%510, Acquire, 1)
+    AIE.useLock(%512, Acquire, 1)
+    AIE.useLock(%516, Acquire, 0)
+    func.call @hdiff_flux2(%503, %505, %507, %509, %511, %515) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%504, Release, 0)
+    AIE.useLock(%506, Release, 0)
+    AIE.useLock(%508, Release, 0)
+    AIE.useLock(%510, Release, 0)
+    AIE.useLock(%512, Release, 0)
+    AIE.useLock(%516, Release, 1)
+    AIE.useLock(%514, Acquire, 1)
+    AIE.useLock(%504, Acquire, 1)
+    AIE.useLock(%506, Acquire, 1)
+    AIE.useLock(%508, Acquire, 1)
+    AIE.useLock(%510, Acquire, 1)
+    AIE.useLock(%518, Acquire, 0)
+    func.call @hdiff_flux2(%513, %503, %505, %507, %509, %517) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%514, Release, 0)
+    AIE.useLock(%504, Release, 0)
+    AIE.useLock(%506, Release, 0)
+    AIE.useLock(%508, Release, 0)
+    AIE.useLock(%510, Release, 0)
+    AIE.useLock(%518, Release, 1)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %574 = AIE.core(%15) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%309, Acquire, 1)
+    AIE.useLock(%311, Acquire, 1)
+    AIE.useLock(%313, Acquire, 1)
+    AIE.useLock(%315, Acquire, 1)
+    AIE.useLock(%317, Acquire, 1)
+    AIE.useLock(%319, Acquire, 1)
+    AIE.useLock(%321, Acquire, 1)
+    AIE.useLock(%323, Acquire, 1)
+    AIE.useLock(%520, Acquire, 0)
+    AIE.useLock(%522, Acquire, 0)
+    AIE.useLock(%524, Acquire, 0)
+    AIE.useLock(%526, Acquire, 0)
+    func.call @hdiff_lap(%314, %316, %318, %320, %322, %519, %521, %523, %525) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%309, Release, 0)
+    AIE.useLock(%520, Release, 1)
+    AIE.useLock(%522, Release, 1)
+    AIE.useLock(%524, Release, 1)
+    AIE.useLock(%526, Release, 1)
+    AIE.useLock(%325, Acquire, 1)
+    AIE.useLock(%528, Acquire, 0)
+    AIE.useLock(%520, Acquire, 0)
+    AIE.useLock(%522, Acquire, 0)
+    AIE.useLock(%524, Acquire, 0)
+    func.call @hdiff_lap(%316, %318, %320, %322, %324, %527, %519, %521, %523) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%311, Release, 0)
+    AIE.useLock(%528, Release, 1)
+    AIE.useLock(%520, Release, 1)
+    AIE.useLock(%522, Release, 1)
+    AIE.useLock(%524, Release, 1)
+    AIE.useLock(%313, Release, 0)
+    AIE.useLock(%315, Release, 0)
+    AIE.useLock(%317, Release, 0)
+    AIE.useLock(%319, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_lap.o"}
+  %575 = AIE.core(%19) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%291, Acquire, 1)
+    AIE.useLock(%293, Acquire, 1)
+    AIE.useLock(%295, Acquire, 1)
+    AIE.useLock(%297, Acquire, 1)
+    AIE.useLock(%299, Acquire, 1)
+    AIE.useLock(%301, Acquire, 1)
+    AIE.useLock(%303, Acquire, 1)
+    AIE.useLock(%305, Acquire, 1)
+    AIE.useLock(%520, Acquire, 1)
+    AIE.useLock(%522, Acquire, 1)
+    AIE.useLock(%524, Acquire, 1)
+    AIE.useLock(%526, Acquire, 1)
+    AIE.useLock(%530, Acquire, 0)
+    AIE.useLock(%532, Acquire, 0)
+    AIE.useLock(%534, Acquire, 0)
+    AIE.useLock(%536, Acquire, 0)
+    AIE.useLock(%538, Acquire, 0)
+    func.call @hdiff_flux1(%298, %300, %302, %519, %521, %523, %525, %529, %531, %533, %535, %537) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%520, Release, 0)
+    AIE.useLock(%522, Release, 0)
+    AIE.useLock(%524, Release, 0)
+    AIE.useLock(%526, Release, 0)
+    AIE.useLock(%530, Release, 1)
+    AIE.useLock(%532, Release, 1)
+    AIE.useLock(%534, Release, 1)
+    AIE.useLock(%536, Release, 1)
+    AIE.useLock(%538, Release, 1)
+    AIE.useLock(%291, Release, 0)
+    AIE.useLock(%307, Acquire, 1)
+    AIE.useLock(%528, Acquire, 1)
+    AIE.useLock(%520, Acquire, 1)
+    AIE.useLock(%522, Acquire, 1)
+    AIE.useLock(%524, Acquire, 1)
+    AIE.useLock(%540, Acquire, 0)
+    AIE.useLock(%530, Acquire, 0)
+    AIE.useLock(%532, Acquire, 0)
+    AIE.useLock(%534, Acquire, 0)
+    AIE.useLock(%536, Acquire, 0)
+    func.call @hdiff_flux1(%300, %302, %304, %527, %519, %521, %523, %539, %529, %531, %533, %535) : (memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>) -> ()
+    AIE.useLock(%528, Release, 0)
+    AIE.useLock(%520, Release, 0)
+    AIE.useLock(%522, Release, 0)
+    AIE.useLock(%524, Release, 0)
+    AIE.useLock(%540, Release, 1)
+    AIE.useLock(%530, Release, 1)
+    AIE.useLock(%532, Release, 1)
+    AIE.useLock(%534, Release, 1)
+    AIE.useLock(%536, Release, 1)
+    AIE.useLock(%293, Release, 0)
+    AIE.useLock(%295, Release, 0)
+    AIE.useLock(%297, Release, 0)
+    AIE.useLock(%299, Release, 0)
+    AIE.useLock(%301, Release, 0)
+    AIE.useLock(%303, Release, 0)
+    AIE.useLock(%305, Release, 0)
+    AIE.useLock(%307, Release, 0)
+    AIE.end
+  } {link_with = "hdiff_flux1.o"}
+  %576 = AIE.core(%23) {
+    %c0 = arith.constant 0 : index
+    %c2 = arith.constant 2 : index
+    %c1 = arith.constant 1 : index
+    AIE.useLock(%530, Acquire, 1)
+    AIE.useLock(%532, Acquire, 1)
+    AIE.useLock(%534, Acquire, 1)
+    AIE.useLock(%536, Acquire, 1)
+    AIE.useLock(%538, Acquire, 1)
+    AIE.useLock(%542, Acquire, 0)
+    func.call @hdiff_flux2(%529, %531, %533, %535, %537, %541) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%530, Release, 0)
+    AIE.useLock(%532, Release, 0)
+    AIE.useLock(%534, Release, 0)
+    AIE.useLock(%536, Release, 0)
+    AIE.useLock(%538, Release, 0)
+    AIE.useLock(%542, Release, 1)
+    AIE.useLock(%540, Acquire, 1)
+    AIE.useLock(%530, Acquire, 1)
+    AIE.useLock(%532, Acquire, 1)
+    AIE.useLock(%534, Acquire, 1)
+    AIE.useLock(%536, Acquire, 1)
+    AIE.useLock(%544, Acquire, 0)
+    func.call @hdiff_flux2(%539, %529, %531, %533, %535, %543) : (memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
+    AIE.useLock(%540, Release, 0)
+    AIE.useLock(%530, Release, 0)
+    AIE.useLock(%532, Release, 0)
+    AIE.useLock(%534, Release, 0)
+    AIE.useLock(%536, Release, 0)
+    AIE.useLock(%544, Release, 1)
+    AIE.end
+  } {link_with = "hdiff_flux2.o"}
+  %577 = AIE.shimDMA(%24) {
+    %598 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+  ^bb1:  // 2 preds: ^bb0, ^bb1
+    AIE.useLock(%29, Acquire, 1)
+    AIE.dmaBd(<%549 : memref<2304xi32>, 0, 2304>, 0)
+    AIE.useLock(%29, Release, 0)
+    AIE.nextBd ^bb1
+  ^bb2:  // pred: ^bb0
+    %599 = AIE.dmaStart(MM2S, 1, ^bb3, ^bb4)
+  ^bb3:  // 2 preds: ^bb2, ^bb3
+    AIE.useLock(%289, Acquire, 1)
+    AIE.dmaBd(<%551 : memref<2304xi32>, 0, 2304>, 0)
+    AIE.useLock(%289, Release, 0)
+    AIE.nextBd ^bb3
+  ^bb4:  // pred: ^bb2
+    %600 = AIE.dmaStart(S2MM, 0, ^bb5, ^bb6)
+  ^bb5:  // 2 preds: ^bb4, ^bb5
+    AIE.useLock(%232, Acquire, 0)
+    AIE.dmaBd(<%550 : memref<2048xi32>, 0, 2048>, 0)
+    AIE.useLock(%232, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb6:  // pred: ^bb4
+    %601 = AIE.dmaStart(S2MM, 1, ^bb7, ^bb8)
+  ^bb7:  // 2 preds: ^bb6, ^bb7
+    AIE.useLock(%492, Acquire, 0)
+    AIE.dmaBd(<%552 : memref<2048xi32>, 0, 2048>, 0)
+    AIE.useLock(%492, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb8:  // pred: ^bb6
+    AIE.end
+  }
+  %578 = AIE.mem(%0) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%157, Acquire, 0)
+    AIE.dmaBd(<%156 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%157, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%159, Acquire, 0)
+    AIE.dmaBd(<%158 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%159, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%161, Acquire, 0)
+    AIE.dmaBd(<%160 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%161, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%163, Acquire, 0)
+    AIE.dmaBd(<%162 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%163, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%165, Acquire, 0)
+    AIE.dmaBd(<%164 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%165, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%167, Acquire, 0)
+    AIE.dmaBd(<%166 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%167, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%169, Acquire, 0)
+    AIE.dmaBd(<%168 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%169, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%171, Acquire, 0)
+    AIE.dmaBd(<%170 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%171, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%173, Acquire, 0)
+    AIE.dmaBd(<%172 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%173, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %579 = AIE.mem(%4) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%139, Acquire, 0)
+    AIE.dmaBd(<%138 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%139, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%141, Acquire, 0)
+    AIE.dmaBd(<%140 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%141, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%143, Acquire, 0)
+    AIE.dmaBd(<%142 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%143, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%145, Acquire, 0)
+    AIE.dmaBd(<%144 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%145, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%147, Acquire, 0)
+    AIE.dmaBd(<%146 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%147, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%149, Acquire, 0)
+    AIE.dmaBd(<%148 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%149, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%151, Acquire, 0)
+    AIE.dmaBd(<%150 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%151, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%153, Acquire, 0)
+    AIE.dmaBd(<%152 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%153, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%155, Acquire, 0)
+    AIE.dmaBd(<%154 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%155, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %580 = AIE.mem(%1) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%121, Acquire, 0)
+    AIE.dmaBd(<%120 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%121, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%123, Acquire, 0)
+    AIE.dmaBd(<%122 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%123, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%125, Acquire, 0)
+    AIE.dmaBd(<%124 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%125, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%127, Acquire, 0)
+    AIE.dmaBd(<%126 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%127, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%129, Acquire, 0)
+    AIE.dmaBd(<%128 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%129, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%131, Acquire, 0)
+    AIE.dmaBd(<%130 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%131, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%133, Acquire, 0)
+    AIE.dmaBd(<%132 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%133, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%135, Acquire, 0)
+    AIE.dmaBd(<%134 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%135, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%137, Acquire, 0)
+    AIE.dmaBd(<%136 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%137, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %581 = AIE.mem(%5) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%103, Acquire, 0)
+    AIE.dmaBd(<%102 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%103, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%105, Acquire, 0)
+    AIE.dmaBd(<%104 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%105, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%107, Acquire, 0)
+    AIE.dmaBd(<%106 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%107, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%109, Acquire, 0)
+    AIE.dmaBd(<%108 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%109, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%111, Acquire, 0)
+    AIE.dmaBd(<%110 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%111, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%113, Acquire, 0)
+    AIE.dmaBd(<%112 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%113, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%115, Acquire, 0)
+    AIE.dmaBd(<%114 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%115, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%117, Acquire, 0)
+    AIE.dmaBd(<%116 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%117, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%119, Acquire, 0)
+    AIE.dmaBd(<%118 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%119, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %582 = AIE.mem(%2) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%85, Acquire, 0)
+    AIE.dmaBd(<%84 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%85, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%87, Acquire, 0)
+    AIE.dmaBd(<%86 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%87, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%89, Acquire, 0)
+    AIE.dmaBd(<%88 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%89, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%91, Acquire, 0)
+    AIE.dmaBd(<%90 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%91, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%93, Acquire, 0)
+    AIE.dmaBd(<%92 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%93, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%95, Acquire, 0)
+    AIE.dmaBd(<%94 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%95, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%97, Acquire, 0)
+    AIE.dmaBd(<%96 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%97, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%99, Acquire, 0)
+    AIE.dmaBd(<%98 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%99, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%101, Acquire, 0)
+    AIE.dmaBd(<%100 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%101, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %583 = AIE.mem(%6) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%67, Acquire, 0)
+    AIE.dmaBd(<%66 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%67, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%69, Acquire, 0)
+    AIE.dmaBd(<%68 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%69, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%71, Acquire, 0)
+    AIE.dmaBd(<%70 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%71, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%73, Acquire, 0)
+    AIE.dmaBd(<%72 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%73, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%75, Acquire, 0)
+    AIE.dmaBd(<%74 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%75, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%77, Acquire, 0)
+    AIE.dmaBd(<%76 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%77, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%79, Acquire, 0)
+    AIE.dmaBd(<%78 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%79, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%81, Acquire, 0)
+    AIE.dmaBd(<%80 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%81, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%83, Acquire, 0)
+    AIE.dmaBd(<%82 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%83, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %584 = AIE.mem(%3) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%49, Acquire, 0)
+    AIE.dmaBd(<%48 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%49, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%51, Acquire, 0)
+    AIE.dmaBd(<%50 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%51, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%53, Acquire, 0)
+    AIE.dmaBd(<%52 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%53, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%55, Acquire, 0)
+    AIE.dmaBd(<%54 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%55, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%57, Acquire, 0)
+    AIE.dmaBd(<%56 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%57, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%59, Acquire, 0)
+    AIE.dmaBd(<%58 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%59, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%61, Acquire, 0)
+    AIE.dmaBd(<%60 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%61, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%63, Acquire, 0)
+    AIE.dmaBd(<%62 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%63, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%65, Acquire, 0)
+    AIE.dmaBd(<%64 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%65, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %585 = AIE.mem(%7) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%31, Acquire, 0)
+    AIE.dmaBd(<%30 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%31, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%33, Acquire, 0)
+    AIE.dmaBd(<%32 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%33, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%35, Acquire, 0)
+    AIE.dmaBd(<%34 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%35, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%37, Acquire, 0)
+    AIE.dmaBd(<%36 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%37, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%39, Acquire, 0)
+    AIE.dmaBd(<%38 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%39, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%41, Acquire, 0)
+    AIE.dmaBd(<%40 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%41, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%43, Acquire, 0)
+    AIE.dmaBd(<%42 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%43, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%45, Acquire, 0)
+    AIE.dmaBd(<%44 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%45, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%47, Acquire, 0)
+    AIE.dmaBd(<%46 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%47, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %586 = AIE.mem(%12) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%417, Acquire, 0)
+    AIE.dmaBd(<%416 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%417, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%419, Acquire, 0)
+    AIE.dmaBd(<%418 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%419, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%421, Acquire, 0)
+    AIE.dmaBd(<%420 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%421, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%423, Acquire, 0)
+    AIE.dmaBd(<%422 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%423, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%425, Acquire, 0)
+    AIE.dmaBd(<%424 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%425, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%427, Acquire, 0)
+    AIE.dmaBd(<%426 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%427, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%429, Acquire, 0)
+    AIE.dmaBd(<%428 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%429, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%431, Acquire, 0)
+    AIE.dmaBd(<%430 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%431, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%433, Acquire, 0)
+    AIE.dmaBd(<%432 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%433, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %587 = AIE.mem(%16) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%399, Acquire, 0)
+    AIE.dmaBd(<%398 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%399, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%401, Acquire, 0)
+    AIE.dmaBd(<%400 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%401, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%403, Acquire, 0)
+    AIE.dmaBd(<%402 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%403, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%405, Acquire, 0)
+    AIE.dmaBd(<%404 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%405, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%407, Acquire, 0)
+    AIE.dmaBd(<%406 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%407, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%409, Acquire, 0)
+    AIE.dmaBd(<%408 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%409, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%411, Acquire, 0)
+    AIE.dmaBd(<%410 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%411, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%413, Acquire, 0)
+    AIE.dmaBd(<%412 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%413, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%415, Acquire, 0)
+    AIE.dmaBd(<%414 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%415, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %588 = AIE.mem(%13) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%381, Acquire, 0)
+    AIE.dmaBd(<%380 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%381, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%383, Acquire, 0)
+    AIE.dmaBd(<%382 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%383, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%385, Acquire, 0)
+    AIE.dmaBd(<%384 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%385, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%387, Acquire, 0)
+    AIE.dmaBd(<%386 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%387, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%389, Acquire, 0)
+    AIE.dmaBd(<%388 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%389, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%391, Acquire, 0)
+    AIE.dmaBd(<%390 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%391, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%393, Acquire, 0)
+    AIE.dmaBd(<%392 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%393, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%395, Acquire, 0)
+    AIE.dmaBd(<%394 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%395, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%397, Acquire, 0)
+    AIE.dmaBd(<%396 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%397, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %589 = AIE.mem(%17) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%363, Acquire, 0)
+    AIE.dmaBd(<%362 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%363, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%365, Acquire, 0)
+    AIE.dmaBd(<%364 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%365, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%367, Acquire, 0)
+    AIE.dmaBd(<%366 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%367, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%369, Acquire, 0)
+    AIE.dmaBd(<%368 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%369, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%371, Acquire, 0)
+    AIE.dmaBd(<%370 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%371, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%373, Acquire, 0)
+    AIE.dmaBd(<%372 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%373, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%375, Acquire, 0)
+    AIE.dmaBd(<%374 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%375, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%377, Acquire, 0)
+    AIE.dmaBd(<%376 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%377, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%379, Acquire, 0)
+    AIE.dmaBd(<%378 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%379, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %590 = AIE.mem(%14) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%345, Acquire, 0)
+    AIE.dmaBd(<%344 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%345, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%347, Acquire, 0)
+    AIE.dmaBd(<%346 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%347, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%349, Acquire, 0)
+    AIE.dmaBd(<%348 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%349, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%351, Acquire, 0)
+    AIE.dmaBd(<%350 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%351, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%353, Acquire, 0)
+    AIE.dmaBd(<%352 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%353, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%355, Acquire, 0)
+    AIE.dmaBd(<%354 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%355, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%357, Acquire, 0)
+    AIE.dmaBd(<%356 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%357, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%359, Acquire, 0)
+    AIE.dmaBd(<%358 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%359, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%361, Acquire, 0)
+    AIE.dmaBd(<%360 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%361, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %591 = AIE.mem(%18) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%327, Acquire, 0)
+    AIE.dmaBd(<%326 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%327, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%329, Acquire, 0)
+    AIE.dmaBd(<%328 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%329, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%331, Acquire, 0)
+    AIE.dmaBd(<%330 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%331, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%333, Acquire, 0)
+    AIE.dmaBd(<%332 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%333, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%335, Acquire, 0)
+    AIE.dmaBd(<%334 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%335, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%337, Acquire, 0)
+    AIE.dmaBd(<%336 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%337, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%339, Acquire, 0)
+    AIE.dmaBd(<%338 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%339, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%341, Acquire, 0)
+    AIE.dmaBd(<%340 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%341, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%343, Acquire, 0)
+    AIE.dmaBd(<%342 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%343, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %592 = AIE.mem(%15) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%309, Acquire, 0)
+    AIE.dmaBd(<%308 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%309, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%311, Acquire, 0)
+    AIE.dmaBd(<%310 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%311, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%313, Acquire, 0)
+    AIE.dmaBd(<%312 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%313, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%315, Acquire, 0)
+    AIE.dmaBd(<%314 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%315, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%317, Acquire, 0)
+    AIE.dmaBd(<%316 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%317, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%319, Acquire, 0)
+    AIE.dmaBd(<%318 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%319, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%321, Acquire, 0)
+    AIE.dmaBd(<%320 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%321, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%323, Acquire, 0)
+    AIE.dmaBd(<%322 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%323, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%325, Acquire, 0)
+    AIE.dmaBd(<%324 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%325, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %593 = AIE.mem(%19) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb10)
+  ^bb1:  // 2 preds: ^bb0, ^bb9
+    AIE.useLock(%291, Acquire, 0)
+    AIE.dmaBd(<%290 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%291, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%293, Acquire, 0)
+    AIE.dmaBd(<%292 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%293, Release, 1)
+    AIE.nextBd ^bb3
+  ^bb3:  // pred: ^bb2
+    AIE.useLock(%295, Acquire, 0)
+    AIE.dmaBd(<%294 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%295, Release, 1)
+    AIE.nextBd ^bb4
+  ^bb4:  // pred: ^bb3
+    AIE.useLock(%297, Acquire, 0)
+    AIE.dmaBd(<%296 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%297, Release, 1)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%299, Acquire, 0)
+    AIE.dmaBd(<%298 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%299, Release, 1)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%301, Acquire, 0)
+    AIE.dmaBd(<%300 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%301, Release, 1)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%303, Acquire, 0)
+    AIE.dmaBd(<%302 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%303, Release, 1)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%305, Acquire, 0)
+    AIE.dmaBd(<%304 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%305, Release, 1)
+    AIE.nextBd ^bb9
+  ^bb9:  // pred: ^bb8
+    AIE.useLock(%307, Acquire, 0)
+    AIE.dmaBd(<%306 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%307, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb10:  // pred: ^bb0
+    AIE.end
+  }
+  %594 = AIE.mem(%11) {
+    %598 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+  ^bb1:  // 2 preds: ^bb0, ^bb2
+    AIE.useLock(%282, Acquire, 1)
+    AIE.dmaBd(<%281 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%282, Release, 0)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%284, Acquire, 1)
+    AIE.dmaBd(<%283 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%284, Release, 0)
+    AIE.nextBd ^bb1
+  ^bb3:  // pred: ^bb0
+    AIE.end
+  }
+  %595 = AIE.mem(%9) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+  ^bb1:  // 2 preds: ^bb0, ^bb2
+    AIE.useLock(%286, Acquire, 0)
+    AIE.dmaBd(<%285 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%286, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%288, Acquire, 0)
+    AIE.dmaBd(<%287 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%288, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb3:  // pred: ^bb0
+    %599 = AIE.dmaStart(MM2S, 0, ^bb4, ^bb9)
+  ^bb4:  // 2 preds: ^bb3, ^bb8
+    AIE.useLock(%223, Acquire, 1)
+    AIE.dmaBd(<%222 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%223, Release, 0)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%225, Acquire, 1)
+    AIE.dmaBd(<%224 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%225, Release, 0)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%227, Acquire, 1)
+    AIE.dmaBd(<%226 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%227, Release, 0)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%229, Acquire, 1)
+    AIE.dmaBd(<%228 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%229, Release, 0)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%231, Acquire, 1)
+    AIE.dmaBd(<%230 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%231, Release, 0)
+    AIE.nextBd ^bb4
+  ^bb9:  // pred: ^bb3
+    AIE.end
+  }
+  %596 = AIE.mem(%23) {
+    %598 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+  ^bb1:  // 2 preds: ^bb0, ^bb2
+    AIE.useLock(%542, Acquire, 1)
+    AIE.dmaBd(<%541 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%542, Release, 0)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%544, Acquire, 1)
+    AIE.dmaBd(<%543 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%544, Release, 0)
+    AIE.nextBd ^bb1
+  ^bb3:  // pred: ^bb0
+    AIE.end
+  }
+  %597 = AIE.mem(%21) {
+    %598 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+  ^bb1:  // 2 preds: ^bb0, ^bb2
+    AIE.useLock(%546, Acquire, 0)
+    AIE.dmaBd(<%545 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%546, Release, 1)
+    AIE.nextBd ^bb2
+  ^bb2:  // pred: ^bb1
+    AIE.useLock(%548, Acquire, 0)
+    AIE.dmaBd(<%547 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%548, Release, 1)
+    AIE.nextBd ^bb1
+  ^bb3:  // pred: ^bb0
+    %599 = AIE.dmaStart(MM2S, 0, ^bb4, ^bb9)
+  ^bb4:  // 2 preds: ^bb3, ^bb8
+    AIE.useLock(%483, Acquire, 1)
+    AIE.dmaBd(<%482 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%483, Release, 0)
+    AIE.nextBd ^bb5
+  ^bb5:  // pred: ^bb4
+    AIE.useLock(%485, Acquire, 1)
+    AIE.dmaBd(<%484 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%485, Release, 0)
+    AIE.nextBd ^bb6
+  ^bb6:  // pred: ^bb5
+    AIE.useLock(%487, Acquire, 1)
+    AIE.dmaBd(<%486 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%487, Release, 0)
+    AIE.nextBd ^bb7
+  ^bb7:  // pred: ^bb6
+    AIE.useLock(%489, Acquire, 1)
+    AIE.dmaBd(<%488 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%489, Release, 0)
+    AIE.nextBd ^bb8
+  ^bb8:  // pred: ^bb7
+    AIE.useLock(%491, Acquire, 1)
+    AIE.dmaBd(<%490 : memref<256xi32>, 0, 256>, 0)
+    AIE.useLock(%491, Release, 0)
+    AIE.nextBd ^bb4
+  ^bb9:  // pred: ^bb3
+    AIE.end
+  }
+}
+

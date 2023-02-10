@@ -1,12 +1,8 @@
-//===- test.cpp -------------------------------------------------*- C++ -*-===//
-//
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
+  
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-//
-//===----------------------------------------------------------------------===//
 
 #include "test_library.h"
 #include <cassert>
@@ -48,8 +44,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  mlir_aie_acquire_lock(_xaie, 7, 3, 14, 0, 0); // for timing
-  EventMonitor pc0(_xaie, 7, 3, 0, XAIE_EVENT_LOCK_14_ACQ_MEM,
+  mlir_aie_acquire_lock(_xaie, 7, 1, 14, 0, 0); // for timing
+  EventMonitor pc0(_xaie, 7, 1, 0, XAIE_EVENT_LOCK_14_ACQ_MEM,
                  XAIE_EVENT_LOCK_14_REL_MEM, XAIE_EVENT_NONE_MEM,
                  XAIE_MEM_MOD);
   pc0.set();
@@ -101,7 +97,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   printf("before core start\n");
-  mlir_aie_print_tile_status(_xaie, 7, 3);
+  mlir_aie_print_tile_status(_xaie, 7, 1);
 
   
   
@@ -115,14 +111,14 @@ int main(int argc, char *argv[]) {
   t = clock(); 
   ///// --- start counter-----
   mlir_aie_start_cores(_xaie);
-  mlir_aie_release_lock(_xaie, 7, 3, 14, 0, 0); // for timing
+  mlir_aie_release_lock(_xaie, 7, 1, 14, 0, 0); // for timing
   t = clock() - t; 
 
   printf ("It took %ld clicks (%f seconds).\n",t,((float)t)/CLOCKS_PER_SEC);
 
   usleep(sleep_u);
   printf("after core start\n");
-  mlir_aie_print_tile_status(_xaie, 7, 3);
+  mlir_aie_print_tile_status(_xaie, 7, 1);
 
   usleep(sleep_u);
 
@@ -144,6 +140,7 @@ int main(int argc, char *argv[]) {
     printf("Fail!\n");
     res = -1;
   }
+
   printf("PC0 cycles: %d\n", pc0.diff());
   mlir_aie_deinit_libxaie(_xaie);
 

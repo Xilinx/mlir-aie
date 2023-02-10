@@ -1,0 +1,20 @@
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
+  
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+extern "C" {
+void hdiff_lap(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict row2,int32_t* restrict row3,int32_t* restrict row4, int32_t* restrict out_flux1, int32_t* restrict out_flux2, int32_t* restrict out_flux3, int32_t* restrict out_flux4 );
+void hdiff_flux1(int32_t* restrict row1, int32_t* restrict row2,int32_t* restrict row3, int32_t* restrict flux_forward1,int32_t* restrict flux_forward2,int32_t* restrict flux_forward3,int32_t* restrict flux_forward4,  int32_t* restrict flux_inter1,int32_t* restrict flux_inter2,int32_t* restrict flux_inter3,int32_t* restrict flux_inter4,int32_t* restrict flux_inter5);
+void hdiff_flux2(int32_t* restrict flux_inter1,int32_t* restrict flux_inter2,int32_t* restrict flux_inter3,int32_t* restrict flux_inter4,int32_t* restrict flux_inter5,  int32_t * restrict out);
+
+void hdiff_lap_fp32(float* restrict row0, float* restrict row1,float* restrict row2,float* restrict row3,float* restrict row4, float* restrict out_flux1, float* restrict out_flux2, float* restrict out_flux3, float* restrict out_flux4 );
+void hdiff_flux1_fp32(float* restrict row1, float* restrict row2,float* restrict row3,\
+ float* restrict flux_forward1,float* restrict flux_forward2,float* restrict flux_forward3,float* restrict flux_forward4, \
+  float * restrict flux_inter1,float * restrict flux_inter2,float * restrict flux_inter3,float * restrict flux_inter4,float * restrict flux_inter5);
+
+void hdiff_flux2_fp32(float* restrict flux_inter1,float* restrict flux_inter2, float* restrict flux_inter3,float* restrict flux_inter4,float* restrict flux_inter5, float * restrict out);
+
+}
+
