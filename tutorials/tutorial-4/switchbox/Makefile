@@ -8,6 +8,9 @@ endif
 AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: tutorial-4.exe
+	@mkdir -p elf
+	@mv *.elf* ./elf
+	@cp ./elf/*.elf ./elf/*.elf.map .
 
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable
@@ -15,5 +18,9 @@ all: tutorial-4.exe
 tutorial-4.exe: test.cpp aie.mlir
 	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
 
+pathfinder:
+	aie-opt --aie-create-pathfinder-flows ./path/pathfinder_input.mlir > ./path/pathfinder_output.mlir
+	aie-opt --aie-find-flows ./path/pathfinder_output.mlir | aie-translate --aie-flows-to-json > ./path/pathfinder_output.json
+
 clean:
-	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts ./path/pathfinder_output.*

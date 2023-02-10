@@ -8,6 +8,9 @@ endif
 AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: tutorial-9.exe
+	@mkdir -p elf
+	@mv *.elf* ./elf
+	@cp ./elf/*.elf ./elf/*.elf.map .
 
 #external_kernel/work/Release_LLVM/test.prx/kernel.o: external_kernel/kernel.cc
 #	$(MAKE) -C external_kernel build

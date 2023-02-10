@@ -41,7 +41,7 @@ The individual tutorials are listed below along with the AI Engine architecture 
 ## <ins>Basic AI Engine architecture</ins>
 In order to understand this MLIR-based representation for AI Engine design, it is important to first understand AI Engines and their architecture. AI Engines are architected as 2D arrays consisting of multiple AI Engine tiles and allow for a very scalable solution across the Versal portfolio, ranging from 10s to 100s of AI Engines in a single device, servicing the compute needs of a breadth of applications.
 
-To maximally utilize the full power of the AI Engine, designers are encouraged to familiarize themselves with [ug1076](https://docs.xilinx.com/r/en-US/ug1076-ai-engine-environment/) for the AI Engine design environment and [am009](https://docs.xilinx.com/r/en-US/am009-versal-ai-engine) for detailed AI Engine functional specification.  For the purposes of this MLIR-based representation, we will focus primarily on the main AI Engine components and the communication between them. Single core programming and optimization, while an important aspect of AI Engine application development, will be described primarily as a means to facilitate data communication.
+To maximally utilize the full power of the AI Engine, designers are encouraged to familiarize themselves with [ug1076](https://docs.xilinx.com/r/en-US/ug1076-ai-engine-environment) for the AI Engine design environment and [am009](https://docs.xilinx.com/r/en-US/am009-versal-ai-engine) for detailed AI Engine functional specification.  For the purposes of this MLIR-based representation, we will focus primarily on the main AI Engine components and the communication between them. Single core programming and optimization, while an important aspect of AI Engine application development, will be described primarily as a means to facilitate data communication.
 
 AI Engines are part of the larger Versal ACAP device and familiarity with other ACAP components such as the NoC, ARM processors, and custom PL components such as datamovers will help the designer integrate their AI Engine design into a larger ACAP system design.
 
@@ -78,7 +78,7 @@ The second way to communicate between AI Engines is through the stream switch wh
 
 ### <ins>Communication - Cascade</ins>
 
-Finally, we have cascade streams which has the widest data width (384-bits per cycle) of any communication channel but only moves data between accumulator registers of horizontally adjacent neighbors (for first generation AI Engines). In addition, the cascade direction is right-to-left for even rows and left-to-right for odd rows (wrapping around and up such that the rightmost tile in row 1 has a cascade connection to the rightmost tile in row 2, while the leftmost tile of row 2 cascades into the leftmost tile of row 3).
+Finally, we have cascade streams, a communication channel that has the widest data width (384-bits per cycle), but only moves data between accumulator registers of horizontally adjacent neighbors (for first generation AI Engines). The cascade direction serpentines in a zig-zag fashion across the array: Connections are right-to-left for even rows and left-to-right for odd rows. At the left end of even rows and the right end of odd rows, the connection wraps up to the next row. For example, the rightmost tile in row 1 has a cascade connection to the rightmost tile in row 2, while the leftmost tile of row 2 cascades into the leftmost tile of row 3.
 
 ## <ins>More on streams</ins>
 

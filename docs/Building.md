@@ -14,14 +14,17 @@ clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
-Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site. 
-NOTE: using the Vitis recommended settings64.sh script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
+Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
+
+In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip libboost-all-dev` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
+
+NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
  
 ```
 export PATH=$PATH:<Vitis_install_path>/Vitis/2022.2/aietools/bin:<Vitis_install_path>/Vitis/2022.2/bin
 ```
 
-The cmake and python packages prerequisites can be satisfied by sourcing the setup_python_packages.sh script. See step 2. of the build instructions. 
+The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions. 
 This script requires `virtualenv`.
 
 clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. 
@@ -36,6 +39,7 @@ define the LibXAIE_DIR cmake parameter.
 
 Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-based Linux, however
 the tools are largely board and device independent and can be adapted to other environments.
+
 
 ## Building on X86
 
@@ -70,18 +74,18 @@ particular revision is expected to work.
     ```
     This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-4. Build the mlir-aie tools by calling utils/build-mlir-aie.sh with paths to the 
-llvm/build and cmakeModules repos (note that clone-llvm.sh puts the cmakeModules repo under 
-cmakeModules/cmakeModulesXilinx). 
+4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` with paths to the `llvm/build` and `cmakeModules` repos (note that `clone-llvm.sh` puts the cmakeModules repo under 
+`cmakeModules/cmakeModulesXilinx`). The Vitis enviroment will have to be set up for this to succeed. 
     ```
+    source <Vitis Install Path>/settings64.sh
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir> <cmakeModules dir>/cmakeModulesXilinx
     ```
-    This will create a build and install folder under /mlir-aie. 
+    This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
     The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
 
 5. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
-done by calling the utils/env_setup.sh script with the paths to the install folders for mlir-aie
+done by calling the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
 and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
@@ -97,7 +101,7 @@ Absolute symbolic links can be converted to relative symbolic links using [symli
 cd /
 sudo symlinks -rc .
 ```
-Following the [platform build steps](Platform.md) will also create a sysroot.
+Following the [platform build steps](Platform.md) will create such a sysroot based on PetaLinux. Note that those instructions require Vitis 2021.2 -- building a sysroot with Vitis 2022.2 will not currently succeed. 
 
 -----
 

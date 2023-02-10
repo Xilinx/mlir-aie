@@ -49,6 +49,10 @@ struct ConvertVectorToAIEVecOptions
     return LowerVectorToAIEVecOptions{shiftParam, zeroOffset, dupFactor,
                                       aieTarget};
   }
+
+  CanonicalizeForAIEVecOptions getCanonicalizeForAIEVecOptions() const {
+    return CanonicalizeForAIEVecOptions{aieTarget};
+  }
 };
 
 //===----------------------------------------------------------------------===//
