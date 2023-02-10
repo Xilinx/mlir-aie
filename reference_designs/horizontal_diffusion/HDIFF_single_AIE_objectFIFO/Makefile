@@ -19,10 +19,10 @@ sim:
 
 
 i32_chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
 
 f32_chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff_fp32.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff_fp32.cc
 
 
 i32.elf: 

@@ -4,18 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// #include <adf.h>
 #include "./include.h"
 #include "hdiff.h"
 #define kernel_load 14
-// typedef int int32;
 
-// align to 16 bytes boundary, equivalent to "alignas(v4int32)"
 void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
                     float *restrict row2, float *restrict row3,
                     float *restrict row4, float *restrict out) {
 
-  // const float *restrict w = weights;
   alignas(32) float weights[8] = {-4, -4, -4, -4, -4, -4, -4, -4};
   alignas(32) float weights1[8] = {1, 1, 1, 1, 1, 1, 1, 1};
   alignas(32) float weights_rest[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
@@ -26,7 +22,6 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
   v8float coeffs_rest = *(v8float *)weights_rest; //  8 x int32 = 256b W vector
   v8float flux_out_coeff = *(v8float *)flux_out;
 
-  // v8float * restrict ptr_in = (v8float *) in;
   v8float *ptr_out = (v8float *)out;
   v8float *restrict row0_ptr = (v8float *)row0;
   v8float *restrict row1_ptr = (v8float *)row1;
@@ -34,7 +29,6 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
   v8float *restrict row3_ptr = (v8float *)row3;
   v8float *restrict row4_ptr = (v8float *)row4;
   v8float *restrict r1;
-  // v8float * restrict r2=ptr_in+1*COL/8;
 
   v16float data_buf1 = null_v16float();
   v16float data_buf2 = null_v16float();
@@ -42,7 +36,6 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
   v8float acc_0 = null_v8float();
   v8float acc_1 = null_v8float();
 
-  //  v8acc80 acc_1=null_v8acc80();
   v8float lap_ij = null_v8float(); //  8 x int32 = 256b W vector
   v8float lap_0 = null_v8float();  //  8 x int32 = 256b W vector
 
@@ -127,9 +120,8 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
           flx_compare_imj, concat(flux_sub, null_v8float()), 0, 0x76543210,
           0xFEDCBA98, null_v16float(), 0, 0x76543210, 0xFEDCBA98);
 
-      // r1 = ptr_in+1 * COL/8+i + aor*COL/8;
       row1_ptr = ((v8float *)(row1)) + i;
-      // data_buf1=*r1++;
+
       data_buf1 = upd_w(data_buf1, 0, *row1_ptr++);
       data_buf1 = upd_w(data_buf1, 1, *row1_ptr);
 
@@ -177,7 +169,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
       acc_0 = fpmul(data_buf2, 2, 0x76543210, coeffs_rest, 0, 0x00000000); // g
 
       row0_ptr = ((v8float *)(row0)) + i;
-      // r2 = ptr_in + 0*COL/8 + i + aor*COL/8;  // load for LAP_ijm for fly_ijm
+      // load for LAP_ijm for fly_ijm
       data_buf2 = upd_w(data_buf2, 0, *row0_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row0_ptr);
 
@@ -192,7 +184,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
                     0x00000000); /// // g, 4*c, b, a
 
       row4_ptr = ((v8float *)(row4)) + i;
-      // r2 = ptr_in + 4*COL/8 + i + aor*COL/8;  // load for LAP_ijm for fly_ijm
+      // load for LAP_ijm for fly_ijm
       data_buf2 = upd_w(data_buf2, 0, *row4_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row4_ptr);
       //////// **************************LAP_ipj for fly_ij since r2=R4********
@@ -202,7 +194,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
                     0x00000000); ///   // g, m
 
       row2_ptr = ((v8float *)(row2)) + i;
-      // r2 = ptr_in + 2*COL/8 + i + aor*COL/8;  // load for LAP_ijm for fly_ijm
+      // load for LAP_ijm for fly_ijm
       data_buf2 = upd_w(data_buf2, 0, *row2_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row2_ptr);
 
@@ -223,8 +215,8 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
           0xFEDCBA98, null_v16float(), 0, 0x76543210, 0xFEDCBA98);
 
       row3_ptr = ((v8float *)(row3)) + i;
-      // r1 = ptr_in + 3*COL/8 + i + aor*COL/8; // load for LAP_ijp for fly_ij
-      // data_buf1=*r1++;
+      // load for LAP_ijp for fly_ij
+      
       data_buf1 = upd_w(data_buf1, 0, *row3_ptr++);
       data_buf1 = upd_w(data_buf1, 1, *row3_ptr);
       ////// **************************since r1=R1********
@@ -238,7 +230,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
                     0x00000000); ///  //g, m , k * 4, j
       acc_0 = fpmac(acc_0, data_buf1, 3, 0x76543210, coeffs_rest, 0,
                     0x00000000); ///   //g, m , k * 4, j, l
-      // lap_0=srs(acc_0,0); //LAP_ijp
+      
       ///////// **************************fly_ij
       ///*************************************
       //  flx_ij = lap_ipj - lap_ij
@@ -250,8 +242,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
 
       // LOAD DATA FOR NEXT ITERATION
       row3_ptr = ((v8float *)(row3)) + i + 1;
-      // r1 = ptr_in + 3*COL/8 + i + 1 + aor*COL/8;
-      // data_buf1=*r1++;
+      
       data_buf1 = upd_w(data_buf1, 0, *row3_ptr++);
       data_buf1 = upd_w(data_buf1, 1, *row3_ptr);
 
@@ -278,12 +269,10 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
           fpmac(final_output, data_buf2, 2, 0x76543210, coeffs1, 0, 0x76543210);
       // LOAD DATA FOR NEXT ITERATION
       row1_ptr = ((v8float *)(row1)) + i + 1;
-      // r2 = ptr_in + 1*COL/8 + i + 1 + aor*COL/8;
+
       data_buf2 = upd_w(data_buf2, 0, *row1_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row1_ptr);
       *ptr_out++ = final_output;
-      // *ptr_out++ =  srs(final_output,0);
-      //  window_writeincr(out, final_output);
-      // }
+
     }
 }

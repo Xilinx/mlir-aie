@@ -18,7 +18,7 @@ sim:
 
 
 chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
 
 test.elf: 
 	aiecc.py --sysroot=$SYSROOT --host-target=aarch64-linux-gnu aie.mlir \

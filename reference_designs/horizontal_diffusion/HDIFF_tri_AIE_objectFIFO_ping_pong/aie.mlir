@@ -5,8 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 module @hdiff_tri_AIE{
-  // %t73 = AIE.tile(7, 5)
-  // %t72 = AIE.tile(7, 4)
   %t73 = AIE.tile(7, 3)
   %t72 = AIE.tile(7, 2)
   %t71 = AIE.tile(7, 1)
@@ -18,7 +16,7 @@ module @hdiff_tri_AIE{
   %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t71,%t72}, 6) {sym_name = "" }: !AIE.objectFifo<memref<256xi32>>
   %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t71, {%t72}, 5){sym_name = "obj_out_lap" } : !AIE.objectFifo<memref<256xi32>>
   %obj_fifo_out_flux_inter1 = AIE.objectFifo.createObjectFifo(%t72, {%t73}, 6){sym_name = "obj_out_flux_inter1" } : !AIE.objectFifo<memref<512xi32>>
-  // %obj_fifo_out_flux_inter2 = AIE.objectFifo.createObjectFifo(%t72, {%t73}, 2){sym_name = "obj_out_flux_inter2" } : !AIE.objectFifo<memref<1280xi32>>
+
   %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t73, {%t70}, 2){sym_name = "obj_out_flux" } : !AIE.objectFifo<memref<256xi32>>
    // DDR buffer
   %ext_buffer_in0  = AIE.external_buffer  {sym_name = "ddr_test_buffer_in0"}: memref<1536 x i32>
@@ -71,11 +69,11 @@ module @hdiff_tri_AIE{
     %step = arith.constant 1 : index
     scf.for %iv = %lb to %ub step %step {  
       %obj_in_subview = AIE.objectFifo.acquire<Consume>(%obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, 5) : !AIE.objectFifoSubview<memref<256xi32>>
-      // %row0 = AIE.objectFifo.subview.access %obj_in_subview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+
       %row1 = AIE.objectFifo.subview.access %obj_in_subview[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %row2 = AIE.objectFifo.subview.access %obj_in_subview[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %row3 = AIE.objectFifo.subview.access %obj_in_subview[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
-      // %row4 = AIE.objectFifo.subview.access %obj_in_subview[4] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
+
       %obj_out_subview_lap = AIE.objectFifo.acquire<Consume>(%obj_fifo_out_lap : !AIE.objectFifo<memref<256xi32>>, 4) : !AIE.objectFifoSubview<memref<256xi32>>
       %obj_out_lap1 = AIE.objectFifo.subview.access %obj_out_subview_lap[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %obj_out_lap2 = AIE.objectFifo.subview.access %obj_out_subview_lap[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
@@ -85,7 +83,7 @@ module @hdiff_tri_AIE{
       %obj_out_subview_flux1 = AIE.objectFifo.acquire<Produce>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 5) : !AIE.objectFifoSubview<memref<512xi32>>
       %obj_out_flux_inter1 = AIE.objectFifo.subview.access %obj_out_subview_flux1[0] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
 
-      // %obj_out_subview_flux2 = AIE.objectFifo.acquire<Produce>(%obj_fifo_out_flux_inter2 : !AIE.objectFifo<memref<1280xi32>>, 1) : !AIE.objectFifoSubview<memref<1280xi32>>
+
       %obj_out_flux_inter2 = AIE.objectFifo.subview.access %obj_out_subview_flux1[1] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
       %obj_out_flux_inter3 = AIE.objectFifo.subview.access %obj_out_subview_flux1[2] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
       %obj_out_flux_inter4 = AIE.objectFifo.subview.access %obj_out_subview_flux1[3] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
@@ -110,7 +108,7 @@ module @hdiff_tri_AIE{
       %obj_out_subview_flux_inter1 = AIE.objectFifo.acquire<Consume>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 5) : !AIE.objectFifoSubview<memref<512xi32>>
       %obj_flux_inter_element1 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[0] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
 
-      // %obj_out_subview_flux_inter2 = AIE.objectFifo.acquire<Consume>(%obj_fifo_out_flux_inter2 : !AIE.objectFifo<memref<1280xi32>>, 1) : !AIE.objectFifoSubview<memref<1280xi32>>
+
       %obj_flux_inter_element2 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[1] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
       %obj_flux_inter_element3 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[2] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
       %obj_flux_inter_element4 = AIE.objectFifo.subview.access %obj_out_subview_flux_inter1[3] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
@@ -122,10 +120,6 @@ module @hdiff_tri_AIE{
 
       func.call @hdiff_flux2(%obj_flux_inter_element1, %obj_flux_inter_element2,%obj_flux_inter_element3, %obj_flux_inter_element4, %obj_flux_inter_element5,  %obj_out_flux_element ) : ( memref<512xi32>,  memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<512xi32>, memref<256xi32>) -> ()
       AIE.objectFifo.release<Consume>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 5)
-      // AIE.objectFifo.release<Consume>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 1)
-      // AIE.objectFifo.release<Consume>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 1)
-      // AIE.objectFifo.release<Consume>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 1)
-      // AIE.objectFifo.release<Consume>(%obj_fifo_out_flux_inter1 : !AIE.objectFifo<memref<512xi32>>, 1)
       AIE.objectFifo.release<Produce>(%obj_fifo_out_flux : !AIE.objectFifo<memref<256xi32>>, 1)
     }
     AIE.useLock(%lock73_14, "Acquire", 0) // stop the timer

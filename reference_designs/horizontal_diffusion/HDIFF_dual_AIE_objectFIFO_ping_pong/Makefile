@@ -18,10 +18,10 @@ sim:
 
 
 i32_chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c ./hdiff_lap.cc ./hdiff_flux.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c ./hdiff_lap.cc ./hdiff_flux.cc
 
 f32_chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c ./hdiff_lap_fp32.cc ./hdiff_flux_fp32.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c ./hdiff_lap_fp32.cc ./hdiff_flux_fp32.cc
 
 i32.elf: 
 	aiecc.py --sysroot=$SYSROOT --host-target=aarch64-linux-gnu aie.mlir \
