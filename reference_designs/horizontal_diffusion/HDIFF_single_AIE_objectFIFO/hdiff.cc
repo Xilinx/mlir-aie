@@ -1,6 +1,8 @@
-// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET     
-//
-//===----------------------------------------------------------------------===//
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // #include <adf.h>
 #include "./include.h"
@@ -62,11 +64,12 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
           
             acc_0=lmac8   (acc_0,data_buf1,2,0x76543210,coeffs_rest,    0,0x00000000);    //c,k
             acc_1=lmac8   (acc_1,data_buf1,1,0x76543210,coeffs_rest,    0,0x00000000);    //b,j
-          
+
             // r2 = ptr_in+2 * COL/8+i ;
-            r1=row2_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+            // r1=row2_ptr+i;
+            row2_ptr = ((v8int32 *)(row2)) + i;
+            data_buf2 = upd_w(data_buf2, 0, *(row2_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row2_ptr));
 
             acc_0=lmac8   (acc_0,data_buf2,1,0x76543210,coeffs_rest,    0,0x00000000); //c,k,f
             acc_0=lmsc8   (acc_0,data_buf2,2,0x76543210,coeffs,    0,0x00000000);      //c,k,f,4*g
@@ -95,12 +98,13 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             acc_0=lmsc8   (acc_0,data_buf2,3,0x76543210,coeffs,    0,0x00000000);  // l, 4*h
             
             //Calculate final fly_ijm
-            v16int32 out_flx_inter1=select16(flx_compare_imj,flux_sub,null_v16int32()); 
+            v16int32 out_flx_inter1=select16(flx_compare_imj,flux_sub,null_v16int32());
 
             // r1 = ptr_in+1 * COL/8+i ;
-            r1=row1_ptr+i;
-            data_buf1 = upd_w(data_buf1, 0, *(r1)++);
-            data_buf1 = upd_w(data_buf1, 1, *(r1));    
+            // r1=row1_ptr+i;
+            row1_ptr = ((v8int32 *)(row1)) + i;
+            data_buf1 = upd_w(data_buf1, 0, *(row1_ptr)++);
+            data_buf1 = upd_w(data_buf1, 1, *(row1_ptr));
 
             acc_0=lmac8  (acc_0,data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);  // l, 4*h, g
             acc_0=lmac8   (acc_0,data_buf2,4,0x76543210,coeffs_rest,    0,0x00000000); // l, 4*h, g, i 
@@ -129,28 +133,31 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             acc_1=lmul8    ( data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000); // g                     
             acc_0=lmul8   (data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);   // g
 
-            // r2 = ptr_in + 0*COL/8 + i ; 
-            r1=row0_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
-                  
+            // r2 = ptr_in + 0*COL/8 + i ;
+            // r1=row0_ptr+i;
+            row0_ptr = ((v8int32 *)(row0)) + i;
+            data_buf2 = upd_w(data_buf2, 0, *(row0_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row0_ptr));
+
             acc_1=lmsc8    (acc_1, data_buf1,2,0x76543210,coeffs,    0,0x00000000);             // g, 4*c
             acc_1=lmac8    (acc_1, data_buf1,1,0x76543210,coeffs_rest,    0,0x00000000);        // g, 4*c, b
             acc_1=lmac8   (acc_1,data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);          // g, 4*c, b, a
-          
-            // r2 = ptr_in + 4*COL/8 + i ; 
-            r1=row4_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+
+            // r2 = ptr_in + 4*COL/8 + i ;
+            // r1=row4_ptr+i;
+            row4_ptr = ((v8int32 *)(row4)) + i;
+            data_buf2 = upd_w(data_buf2, 0, *(row4_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row4_ptr));
 
             acc_1=lmac8    ( acc_1,data_buf1,3,0x76543210,coeffs_rest,    0,0x00000000);       // g, 4*c, b, a, d               
             acc_0=lmac8   (acc_0,data_buf2,2,0x76543210,coeffs_rest,    0,0x00000000);         // g, m
-            
-            // r2 = ptr_in + 2*COL/8 + i ; 
-            r1=row2_ptr+i;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
-            
+
+            // r2 = ptr_in + 2*COL/8 + i ;
+            // r1=row2_ptr+i;
+            row2_ptr = ((v8int32 *)(row2)) + i;
+            data_buf2 = upd_w(data_buf2, 0, *(row2_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row2_ptr));
+
             //Calculates lap_imj
             lap_0=srs(acc_1,0); 
 
@@ -165,9 +172,10 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             v16int32 out_flx_inter3=select16(fly_compare_ijm,flux_sub,null_v16int32());
 
             // r1 = ptr_in + 3*COL/8 + i ;
-            r1=row3_ptr+i;
-            data_buf1 = upd_w(data_buf1, 0, *(r1)++);
-            data_buf1 = upd_w(data_buf1, 1, *(r1));
+            // r1=row3_ptr+i;
+            row3_ptr = ((v8int32 *)(row3)) + i;
+            data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
+            data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
 
             acc_0=lmsc8   (acc_0,data_buf1,2,0x76543210,coeffs,    0,0x00000000); //g, m , k * 4
 
@@ -180,14 +188,15 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             flux_sub = sub16(concat(srs(acc_0,0),undef_v8int32()), 0, 0x76543210, 0xFEDCBA98, concat(lap_ij,undef_v8int32()),   0,  0x76543210, 0xFEDCBA98 ); 
 
             //below reuisng acc_1 for flux calculation //CHANGED FROM 3 TO 2
-            acc_1=lmul8   (data_buf1,2,0x76543210,ext_w(flux_sub,0),    0,0x00000000);      //  (lap_ipj - lap_ij) * k       
-            
-            //LOAD DATA FOR NEXT ITERATION
-            // r1 = ptr_in + 3*COL/8 + i + 1 ;
-            r1=row3_ptr+i+1;
-            data_buf1 = upd_w(data_buf1, 0, *(r1)++);
-            data_buf1 = upd_w(data_buf1, 1, *(r1));
-            
+            acc_1=lmul8   (data_buf1,2,0x76543210,ext_w(flux_sub,0),    0,0x00000000);      //  (lap_ipj - lap_ij) * k
+
+            // LOAD DATA FOR NEXT ITERATION
+            //  r1 = ptr_in + 3*COL/8 + i + 1 ;
+            //  r1=row3_ptr+i+1;
+            row3_ptr = ((v8int32 *)(row3)) + i + 1;
+            data_buf1 = upd_w(data_buf1, 0, *(row3_ptr)++);
+            data_buf1 = upd_w(data_buf1, 1, *(row3_ptr));
+
             acc_1=lmsc8   (acc_1,data_buf2,2,0x76543210,ext_w(flux_sub,0),    0,0x00000000);    //  (lap_ipj - lap_ij) * k - (lap_ipj - lap_ij) * g   
 
             // final flx_ij (comparison > 0 )
@@ -197,13 +206,14 @@ void vec_hdiff(int32_t* restrict row0, int32_t* restrict row1,int32_t* restrict 
             v16int32 flx_out4=add16(flx_out3,out_flx_inter4); //adds fly_ij - fly_ijm - flx_imj + flx_ij
 
             v8acc80 final_output = lmul8  (flx_out4, 0, 0x76543210, flux_out_coeff,    0,0x00000000);  // Multiply by -7s
-            final_output=lmac8(final_output, data_buf2,  2, 0x76543210,concat(coeffs1, undef_v8int32()), 0 , 0x76543210); 
+            final_output=lmac8(final_output, data_buf2,  2, 0x76543210,concat(coeffs1, undef_v8int32()), 0 , 0x76543210);
 
-            //LOAD DATA FOR NEXT ITERATION
-            // r2 = ptr_in + 1*COL/8 + i + 1 ;
-            r1=row1_ptr+i+1;
-            data_buf2 = upd_w(data_buf2, 0, *(r1)++);
-            data_buf2 = upd_w(data_buf2, 1, *(r1));
+            // LOAD DATA FOR NEXT ITERATION
+            //  r2 = ptr_in + 1*COL/8 + i + 1 ;
+            //  r1=row1_ptr+i+1;
+            row1_ptr = ((v8int32 *)(row1)) + i + 1;
+            data_buf2 = upd_w(data_buf2, 0, *(row1_ptr)++);
+            data_buf2 = upd_w(data_buf2, 1, *(row1_ptr));
 
             // window_writeincr(out, srs(final_output,0));
             *ptr_out++ =  srs(final_output,0);       
