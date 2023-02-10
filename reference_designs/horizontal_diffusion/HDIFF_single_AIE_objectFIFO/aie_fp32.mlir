@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 module @hdiff_single_AIE_fp32{
-  // %t73 = AIE.tile(7, 3)
   %t72 = AIE.tile(7, 2)
   %t71 = AIE.tile(7, 1)
   %t70 = AIE.tile(7, 0)
@@ -28,7 +27,7 @@ module @hdiff_single_AIE_fp32{
   %c13 = AIE.core(%t71) { 
     
     %lb = arith.constant 0 : index
-    %ub = arith.constant 2: index // 256*1= (256-2)*1
+    %ub = arith.constant 2: index 
     %step = arith.constant 1 : index
     AIE.useLock(%lock71_14, "Acquire", 0) // start the timer
     scf.for %iv = %lb to %ub step %step {  

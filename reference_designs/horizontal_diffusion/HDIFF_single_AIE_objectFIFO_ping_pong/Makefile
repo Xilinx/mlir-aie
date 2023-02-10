@@ -10,7 +10,6 @@ SYSROOT = $XILINX_SYSROOT
 
 i32: i32_chess i32.elf
 f32: f32_chess f32.elf
-# all: chess test.elf
 
 build: 
 	xchessmk test.prx
@@ -19,10 +18,10 @@ sim:
 
 
 i32_chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff.cc
 
 f32_chess: 
-	$AIETOOLS_ROOT/bin/xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff_fp32.cc
+	xchesscc -p me -P $AIETOOLS_ROOT/data/cervino/lib/ -L $AIETOOLS_ROOT/data/cervino/lib/ -c hdiff_fp32.cc
 
 
 i32.elf: 
