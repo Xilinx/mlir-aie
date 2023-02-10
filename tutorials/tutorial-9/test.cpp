@@ -63,8 +63,11 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  // Wait time for cores to run. Number used here is much larger than needed.
-  usleep(100);
+  // Wait for lock14_0 to indicate tile(1,4) is done
+  if (mlir_aie_acquire_lock14_0(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock14_0 (1) in tile (1,4). Done.\n");
+  else
+    printf("Timed out (1000) while trying to acquire lock14_0 (1).\n");
 
   // Check buffer at index 3 again for expected value of 14
   printf("Checking buf[3] = 14.\n");
