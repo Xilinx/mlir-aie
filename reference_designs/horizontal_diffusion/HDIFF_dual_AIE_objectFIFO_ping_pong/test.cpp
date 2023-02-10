@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 7, 3);
   mlir_aie_clear_tile_memory(_xaie, 7, 2);
   mlir_aie_clear_tile_memory(_xaie, 7, 1);
-  
+
   mlir_aie_configure_cores(_xaie);
 
   usleep(sleep_u);
@@ -67,7 +67,6 @@ int main(int argc, char *argv[]) {
 #define DMA_COUNT 1536
   int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
   int *ddr_ptr_out = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-  
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT; i++) {
@@ -77,7 +76,7 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
-  
+
 #ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_ddr_test_buffer_in0(
       (u64)ddr_ptr_in); // external set address
@@ -89,7 +88,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 0); 
+  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
   mlir_aie_release_of_5_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");

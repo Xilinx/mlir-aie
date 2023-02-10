@@ -114,7 +114,7 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
 
       // LOAD DATA FOR NEXT ITERATION
       row2_ptr = ((v8int32 *)(row2)) + i + 1;
-      
+
       data_buf2 = upd_w(data_buf2, 0, *(row2_ptr)++);
       data_buf2 = upd_w(data_buf2, 1, *row2_ptr);
     }

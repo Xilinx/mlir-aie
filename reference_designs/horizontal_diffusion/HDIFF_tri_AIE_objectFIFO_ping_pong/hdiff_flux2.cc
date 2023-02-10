@@ -44,7 +44,7 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
       v16int32 out_flx_inter1 = select16(
           flx_compare_imj, concat(flux_sub, undef_v8int32()), null_v16int32());
 
-      //still fly_ijm
+      // still fly_ijm
 
       /////////////////////////////////////////////////////////////////////////////////////
       ptr_forward = (v8int32 *)flux_inter2 + 2 * i;

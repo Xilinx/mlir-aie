@@ -70,7 +70,7 @@ void hdiff_flux2_fp32(float *restrict flux_inter1, float *restrict flux_inter2,
       // Calculates final flx_imj (comparison > 0)
       unsigned int fly_compare_ijm =
           fpge(acc_1, null_v16float(), 0, 0x76543210);
-        v16float out_flx_inter3 = fpselect16(
+      v16float out_flx_inter3 = fpselect16(
           fly_compare_ijm, concat(flux_sub, null_v8float()), 0, 0x76543210,
           0xFEDCBA98, null_v16float(), 0, 0x76543210, 0xFEDCBA98);
 

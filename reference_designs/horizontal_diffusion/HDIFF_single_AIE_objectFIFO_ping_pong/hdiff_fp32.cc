@@ -273,6 +273,5 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
       data_buf2 = upd_w(data_buf2, 0, *row1_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row1_ptr);
       *ptr_out++ = final_output;
-
     }
 }

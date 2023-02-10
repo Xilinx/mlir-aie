@@ -8,7 +8,6 @@
 #include "./include.h"
 #define kernel_load 14
 
-
 void vec_hdiff(int32_t *restrict row0, int32_t *restrict row1,
                int32_t *restrict row2, int32_t *restrict row3,
                int32_t *restrict row4, int32_t *restrict out) {
@@ -30,7 +29,7 @@ void vec_hdiff(int32_t *restrict row0, int32_t *restrict row1,
   v8int32 *restrict row3_ptr = (v8int32 *)row3;
   v8int32 *restrict row4_ptr = (v8int32 *)row4;
   v8int32 *restrict r1;
-  
+
   v16int32 data_buf1 = null_v16int32();
   v16int32 data_buf2 = null_v16int32();
   ;

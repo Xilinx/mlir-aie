@@ -33,13 +33,11 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
   v8float *restrict row4_ptr = (v8float *)row4;
   v8float *restrict r1;
 
-
   v16float data_buf1 = null_v16float();
   v16float data_buf2 = null_v16float();
 
   v8float acc_0 = null_v8float();
   v8float acc_1 = null_v8float();
-
 
   v8float lap_ij = null_v8float(); //  8 x int32 = 256b W vector
   v8float lap_0 = null_v8float();  //  8 x int32 = 256b W vector
@@ -128,7 +126,7 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
                     0x00000000); /// // g, 4*c, b, a
 
       row4_ptr = ((v8float *)(row4)) + i;
-      
+
       data_buf2 = upd_w(data_buf2, 0, *row4_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row4_ptr);
       //////// **************************LAP_ipj for fly_ij since r2=R4********
@@ -137,7 +135,6 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
       acc_0 = fpmac(acc_0, data_buf2, 2, 0x76543210, coeffs_rest, 0,
                     0x00000000); ///   // g, m
 
-      
       flux_sub = fpsub(lap_ij, concat(acc_1, undef_v8float()), 0, 0x76543210);
       ptr_out = (v8float *)out_flux3 + i;
       *ptr_out = flux_sub;

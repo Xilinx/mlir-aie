@@ -44,7 +44,7 @@ void hdiff_flux_fp32(float *restrict row1, float *restrict row2,
       v8float flux_sub;
       ptr_forward = (v8float *)flux_forward1 + i;
       flux_sub = *ptr_forward;
-      
+
       acc_1 = fpmul(data_buf2, 2, 0x76543210, flux_sub, 0,
                     0x00000000); ///  (lap_ij - lap_ijm)*g
       acc_1 = fpmsc(acc_1, data_buf2, 1, 0x76543210, flux_sub, 0,

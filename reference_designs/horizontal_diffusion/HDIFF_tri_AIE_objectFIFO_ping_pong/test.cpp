@@ -75,7 +75,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-
 #ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_ddr_test_buffer_in0(
       (u64)ddr_ptr_in); // external set address

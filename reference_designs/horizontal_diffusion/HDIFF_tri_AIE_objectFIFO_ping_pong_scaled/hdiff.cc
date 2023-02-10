@@ -30,7 +30,6 @@ void vec_hdiff(int32_t *restrict row0, int32_t *restrict row1,
   v8int32 *restrict row4_ptr = (v8int32 *)row4;
   v8int32 *restrict r1;
 
-
   v16int32 data_buf1 = null_v16int32();
   v16int32 data_buf2 = null_v16int32();
 

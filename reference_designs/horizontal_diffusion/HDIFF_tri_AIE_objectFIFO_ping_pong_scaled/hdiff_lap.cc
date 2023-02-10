@@ -14,7 +14,6 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
                int32_t *restrict out_flux2, int32_t *restrict out_flux3,
                int32_t *restrict out_flux4) {
 
-
   alignas(32) int32_t weights[8] = {-4, -4, -4, -4, -4, -4, -4, -4};
   alignas(32) int32_t weights1[8] = {1, 1, 1, 1, 1, 1, 1, 1};
   alignas(32) int32_t weights_rest[8] = {-1, -1, -1, -1, -1, -1, -1, -1};
@@ -24,7 +23,6 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
   v8int32 coeffs1 = *(v8int32 *)weights1;         //  8 x int32 = 256b W vector
   v8int32 coeffs_rest = *(v8int32 *)weights_rest; //  8 x int32 = 256b W vector
   v8int32 flux_out_coeff = *(v8int32 *)flux_out;
-
 
   v8int32 *ptr_out = (v8int32 *)out_flux1;
   v8int32 *restrict row0_ptr = (v8int32 *)row0;

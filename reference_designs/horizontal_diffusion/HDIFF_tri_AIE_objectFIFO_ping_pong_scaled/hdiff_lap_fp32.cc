@@ -25,7 +25,6 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
   v8float coeffs_rest = *(v8float *)weights_rest; //  8 x int32 = 256b W vector
   v8float flux_out_coeff = *(v8float *)flux_out;
 
-
   v8float *ptr_out = (v8float *)out_flux1;
   v8float *restrict row0_ptr = (v8float *)row0;
   v8float *restrict row1_ptr = (v8float *)row1;
@@ -96,7 +95,6 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
       acc_0 = fpmsc(acc_0, data_buf2, 3, 0x76543210, coeffs, 0,
                     0x00000000); ///   // l, 4*h
 
-
       row1_ptr = ((v8float *)(row1)) + i;
       data_buf1 = upd_w(data_buf1, 0, *(row1_ptr)++);
       data_buf1 = upd_w(data_buf1, 1, *(row1_ptr));
@@ -127,7 +125,6 @@ void hdiff_lap_fp32(float *restrict row0, float *restrict row1,
                     0x00000000); // g, 4*c, b
       acc_1 = fpmac(acc_1, data_buf2, 2, 0x76543210, coeffs_rest, 0,
                     0x00000000); /// // g, 4*c, b, a
-
 
       row4_ptr = ((v8float *)(row4)) + i;
 

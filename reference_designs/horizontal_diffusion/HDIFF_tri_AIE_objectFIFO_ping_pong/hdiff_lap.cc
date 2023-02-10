@@ -8,13 +8,11 @@
 #include "hdiff.h"
 #define kernel_load 14
 
-
 void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
                int32_t *restrict row2, int32_t *restrict row3,
                int32_t *restrict row4, int32_t *restrict out_flux1,
                int32_t *restrict out_flux2, int32_t *restrict out_flux3,
                int32_t *restrict out_flux4) {
-
 
   alignas(32) int32_t weights[8] = {-4, -4, -4, -4, -4, -4, -4, -4};
   alignas(32) int32_t weights1[8] = {1, 1, 1, 1, 1, 1, 1, 1};
@@ -39,7 +37,6 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
 
   v8acc80 acc_0 = null_v8acc80();
   v8acc80 acc_1 = null_v8acc80();
-
 
   v8int32 lap_ij = null_v8int32(); //  8 x int32 = 256b W vector
   v8int32 lap_0 = null_v8int32();  //  8 x int32 = 256b W vector

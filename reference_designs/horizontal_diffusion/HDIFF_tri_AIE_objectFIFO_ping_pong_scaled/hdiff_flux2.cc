@@ -18,7 +18,6 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
   v8int32 coeffs1 = *(v8int32 *)weights1; //  8 x int32 = 256b W vector
   v8int32 flux_out_coeff = *(v8int32 *)flux_out;
 
-
   v8int32 *restrict ptr_forward = (v8int32 *)flux_inter1;
   v8int32 *ptr_out = (v8int32 *)out;
 

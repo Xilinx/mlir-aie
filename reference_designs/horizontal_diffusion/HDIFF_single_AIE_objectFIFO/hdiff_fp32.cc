@@ -216,7 +216,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
 
       row3_ptr = ((v8float *)(row3)) + i;
       // load for LAP_ijp for fly_ij
-      
+
       data_buf1 = upd_w(data_buf1, 0, *row3_ptr++);
       data_buf1 = upd_w(data_buf1, 1, *row3_ptr);
       ////// **************************since r1=R1********
@@ -230,7 +230,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
                     0x00000000); ///  //g, m , k * 4, j
       acc_0 = fpmac(acc_0, data_buf1, 3, 0x76543210, coeffs_rest, 0,
                     0x00000000); ///   //g, m , k * 4, j, l
-      
+
       ///////// **************************fly_ij
       ///*************************************
       //  flx_ij = lap_ipj - lap_ij
@@ -242,7 +242,7 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
 
       // LOAD DATA FOR NEXT ITERATION
       row3_ptr = ((v8float *)(row3)) + i + 1;
-      
+
       data_buf1 = upd_w(data_buf1, 0, *row3_ptr++);
       data_buf1 = upd_w(data_buf1, 1, *row3_ptr);
 
@@ -273,6 +273,5 @@ void vec_hdiff_fp32(float *restrict row0, float *restrict row1,
       data_buf2 = upd_w(data_buf2, 0, *row1_ptr++);
       data_buf2 = upd_w(data_buf2, 1, *row1_ptr);
       *ptr_out++ = final_output;
-
     }
 }
