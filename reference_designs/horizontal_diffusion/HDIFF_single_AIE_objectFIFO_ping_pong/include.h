@@ -5,11 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #pragma once
-// #define WITH_MARGIN
 #define VECTORIZED_KERNEL
-// #define MULTI_CORE
-// #define  MULTI_4x4
-// #include <adf.h>
 #include <stdint.h>
 #define GRIDROW     256
 #define GRIDCOL     256

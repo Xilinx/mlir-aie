@@ -5,8 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 module @hdiff_single_AIE{
-  // %t73 = AIE.tile(7, 3)
-  // %t72 = AIE.tile(7, 2)
   %t71 = AIE.tile(7, 1)
   %t70 = AIE.tile(7, 0)
   
