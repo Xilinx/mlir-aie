@@ -1,0 +1,42 @@
+[*]
+[*] GTKWave Analyzer v3.3.103 (w)1999-2019 BSI
+[*] Tue Feb  7 21:00:01 2023
+[*]
+[dumpfile] "./foo.vcd"
+[dumpfile_mtime] "Tue Feb  7 18:17:16 2023"
+[dumpfile_size] 8994816
+[savefile] "./answers/tutorial-4_perf.gtkw"
+[timestart] 156600
+[size] 1920 1004
+[pos] -3 -27
+*-16.471033 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 228
+[signals_width] 806
+[sst_expanded] 1
+[sst_vpaned_height] 294
+@28
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.clk
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.event_trace.event56_lock_6_acquired
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.event_trace.event109_broadcast_2
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.cm.event_trace.event109_broadcast_2
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.cm.event_trace.event109_broadcast_2
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.event_trace.event57_lock_6_release
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.cm.event_trace.event28_active
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.event_trace.event60_lock_8_acquired
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.event_trace.event58_lock_7_acquired
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.event_trace.event59_lock_7_release
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.event_trace.event61_lock_8_release
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.cm.event_trace.event28_active
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.event_trace.event23_dma_mm2s_0_start_bd
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.event_trace.event27_dma_mm2s_0_finished_bd
+@22
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.dma.mm2s_state0.status[31:0]
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_1_4.mm.dma.mm2s.address[31:0]
+@28
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.event_trace.event22_dma_s2mm_1_start_bd
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.event_trace.event26_dma_s2mm_1_finished_bd
+@22
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.dma.s2mm.address[31:0]
+SystemC.\tl.aie_logical.aie_xtlm.math_engine.array.tile_3_4.mm.dma.s2mm_state1.status[31:0]
+[pattern_trace] 1
+[pattern_trace] 0

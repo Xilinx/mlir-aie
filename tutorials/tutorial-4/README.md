@@ -30,8 +30,25 @@ This is where the advantage of implementing designs at the `objectFifo` abstract
 
 1. Read through the [aie.mlir](aie.mlir) design. In the previous tutorial we saw that the objectFifo lowering creates buffer/lock pairs in the shared memory module between two tiles. Where are these elements created for tiles (1,4) and (3,4)? Verify your answer by applying the objectFifo lowering on the [aie.mlir](aie.mlir) design (see tutorial-3/README.md for the command). <img src="../images/answer1.jpg" title="The objectFifo lowering will create one buffer/lock pair in the memory module local to each tile: total of 2 buffers and 2 locks created. Because each tile has its own buffer/lock pair we say that the objectFifo was split as the total number of created elements is > than the original objectFifo size." height=25>
 
-2. Increase the size of the objectFifo to 2. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="Yes. Each tile DMA now has access to a double buffer." height=25>
+2. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
-3. Increase the size of the objectFifo to 4. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="No. When an objectFifo is split due to non-adjacency of its tiles, the lowering identifies the maximum number of elements acquired by the core of each tile, in this case 1. The lowering considers the double buffer an optimization, but does not create additional buffer/lock pairs beyond that as only 1 is acquired at max." height=25>
+3. Increase the size of the objectFifo to 2. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="Yes. Each tile DMA now has access to a double buffer." height=25>
 
-4. Keep the objectFifo size of 4. Increase the number of acquired elements by %core14 to 2. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="Yes. As the maximum number of acquired elements by %core14 is now 2, it is efficient to create up to 3 buffer/lock pairs. Note that this is still less than the indicated objectFifo size of 4." height=25>
+4. Increase the size of the objectFifo to 4. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="No. When an objectFifo is split due to non-adjacency of its tiles, the lowering identifies the maximum number of elements acquired by the core of each tile, in this case 1. The lowering considers the double buffer an optimization, but does not create additional buffer/lock pairs beyond that as only 1 is acquired at max." height=25>
+
+5. Keep the objectFifo size of 4. Increase the number of acquired elements by %core14 to 2. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="Yes. As the maximum number of acquired elements by %core14 is now 2, it is efficient to create up to 3 buffer/lock pairs. Note that this is still less than the indicated objectFifo size of 4." height=25>
+
+
+## <ins> Routing Visualization </ins>
+
+When working on a design, it can be informative to see what the tools have done in a human friendly format. We can use a VScode extension called `prviewer` to visualize the routing done in an AI Engine array. This extension should already be installed in your tutorial AWS environment, but it is currently not published for public use.
+
+Here we see the design of tutorial 4 visualized as a single flow from the source in AIE tile (1,4) to the destination DMA in AIE tile (3, 4). 
+
+<img src="../images/routing_visualization.png" width="200">
+
+> Note: The VS code extension uses a (row, col) format instead of the (col, row) format used elsewhere.
+
+To use the extension, locate the file `sim/flows_physical.json` which is generated when you run `make` in any of the tutorials. (You can also examine `sim/flows_physical.mlir` to see what the mlir looks like after some physical routing lowerings have been applied.) With the JSON file opened, press Ctrl + Shift + p or F1 and search for the "Routing View" command. Press Enter and the visualization extension will run using the JSON file as input.
+
+For more usage of this visualization, see the Advanced Topic section in [./switchbox/README.md](./switchbox/README.md).

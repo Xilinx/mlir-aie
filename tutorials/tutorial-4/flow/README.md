@@ -13,10 +13,10 @@
 Where `objectFifos` in [tutorial-4](..) provided automated connections between non-adjacent tiles, understanding the mechanism by which these connections are made is important to be able to improve on existing routing algorithms. In this tutorial, we will examine configuration of switchboxes and the DMAs (tileDMA) that moves data across those switchboxes in more detail.
 
 ## <ins>Streams</ins>
-Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically in both into and out of the switchbox (except in the vertical direction going north where there are 6 streams in and out). The AIE core does have 2 input and 2 output stream ports that connect to its local switchbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the switchbox.
+Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically both into and out of the switchbox (except in the vertical output direction going north and the vertical input direction coming from south, where there are 6 streams). The AIE core does have 2 input and 2 output stream ports that connect to its local switchbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the switchbox.
 
 ## <ins>Logical routing (aka flows)</ins>
-The AIE switchboxes are very powerful configurable blocks for steering data between AI Engine tiles. Having 24 inputs and 24 outputs, the switchbox has connections to its neighbor, the tileDMA, the core, and an internal fifo. Each connection from input to output within the switchbox can operate in one of two modes: 
+The AIE switchboxes are very powerful configurable blocks for steering data between AI Engine tiles. Having 18 inputs and 18 outputs, the switchbox has connections to its neighbor, the tileDMA, the core, and an internal fifo. Each connection from input to output within the switchbox can operate in one of two modes: 
 * circuit switch mode
 * packet switch mode
 
@@ -142,8 +142,28 @@ In a common scenario where we may declare 2x DMAs (1x MM2S, 1x S2MM), each with 
 
     What do you expect to happen to the output? <img src="../../images/answer1.jpg" title="Test will fail since the we overwrite the buf34 again." height=25>
 
-6. ***TODO: Add timers to measure tiledma transfer time***
+## <ins>Advanced Topics -  Performance measurement in hardware</ins>
 
-7. ***TODO: Add example that cannot route?***
+We're already touched upon using performance counters to measure things like program cycle count ([tutorial-2c](../../tutorial-2/tutorial-2c/)) and compute and communication cycles between  lock acquire/ release events ([tutorial-3](../../tutorial-3)). We now expand that definition to include measuring events that occur in non-adjacent tiles. A tile can only trigger off events that occur within the tile so core events can trigger core performance counters while memory events trigger memory performance counters. But if we want to trigger off events from non-adjacent tiles, we can use event broadcast to aggregate event signals into a single tile. Event broadcasts are where we configure triggered events to broadcast to all tiles along event broadcast channels. This means a lock acquire event in tile(1,4) can be broadcasted to tile(3,4) on these event broadcast channels. The event does incur additional latency (2 cycles for each "hop" along from source to destination). In our example design, we can broadcast the start trigger event of acquiring lock id #6 from tile(1,4) as shown below:
+```
+XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(1,4),
+                    XAIE_MEM_MOD, 2, XAIE_EVENT_LOCK_6_ACQ_MEM);
+```
+Here, we are using event broadcast channel #2. No additional routing is needed since it's a broadcast. Then, at a destination tile, we can specify the broadcast event trigger:
+```
+EventMonitor pc0(_xaie, 3, 4, 0, XAIE_EVENT_BROADCAST_2_MEM,
+                XAIE_EVENT_LOCK_8_REL_MEM, XAIE_EVENT_NONE_MEM,
+                XAIE_MEM_MOD);
+```
+The reported performance counter value then gives the difference between the two triggers. You would have to account for the 2 cycles per hop difference based on distance but for larger designs, that delta would be small.
 
-8. ***TODO: View route results*** 
+6. Add the performance timers to the tutorial-4 design and measure the difference between the lock id #6 acquire for tile(1,4) and lock id #8 release for tile(3,4). Run the design in simulation to measure the result. How many cycles did you measure? <img src="../../images/answer1.jpg" title="339 cycles." height=25>
+    > Solution: `make -C sim host=../answers/test_perf.cpp`
+
+7. Compare this number with the design in tutorial-3. Why is there such a large difference? <img src="../../images/answer1.jpg" title="The tile DMA is transferring 256 words which adds 256 cycles to the two cores. 339-256 = 83 cycles." height=25>
+
+8. Run `gtkwave` on the vcd file and view the relevant lock signals to see how long each operation is taking. You can see a preconfigured gtkwave by calling:
+    ```
+    gtkwave ./answers/tutorial-4_perf.gtkw
+    ```
+    which would look something like the link here: <a href="../../images/wave1.jpg"><img src="../../images/answer1.jpg" title="Click here for waveform picture." height=25></a>

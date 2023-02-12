@@ -26,6 +26,11 @@ module @tutorial_9 {
     // all subsequent buffers are allocated one after another in memory.
     %buf = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
 
+    // Declare a lock 0 associated with tile(1,4) with a 
+    // symbolic name "lock14_0" which can be used by access functions
+    // in the generated API (acdc_project/aie_inc.cpp)
+    %lock14_0 = AIE.lock(%tile14, 0) { sym_name = "lock14_0" }
+
     // declare kernel function name "extern_kernel" with one positional 
     // function argument, in this case mapped to a memref
     func.func private @extern_kernel(%b: memref<256xi32>) -> ()
@@ -33,8 +38,17 @@ module @tutorial_9 {
     // Define the algorithm for the core of tile(1, 4)
     // buf[3] = 14
     %core14 = AIE.core(%tile14) {
+        // Acquire lock right when core starts
+        AIE.useLock(%lock14_0, "Acquire", 0)
+
         // Call function and map local buffer %buf to function argument
         func.call @extern_kernel(%buf) : (memref<256xi32>) -> ()
+
+        // Release acquired lock at end of program.
+        // This can be used by host to mark beginning/end of a program or
+        // when the host is trying to determine when the program is done
+        // by acquiring this lock (with value 1). 
+        AIE.useLock(%lock14_0, "Release", 1)
         AIE.end
     } { link_with="kernel.o" } // indicate kernel object name used by this core
 

@@ -285,6 +285,11 @@ class flow_runner:
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
                    './acdc_project/input_physical.mlir',
                    '-o','./sim/arch/aieshim_solution.aiesol'])
+      await self.do_call(task, ['aie-opt', '--aie-find-flows',
+                   './acdc_project/input_physical.mlir',
+                   '-o', './sim/flows_physical.mlir'])
+      await self.do_call(task, ['aie-translate', '--aie-flows-to-json',
+                   './sim/flows_physical.mlir', '-o','./sim/flows_physical.json'])
       await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
       await self.do_call(task, ['cp',sim_makefile,'./sim/.'])
       await self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.'])

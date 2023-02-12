@@ -8,7 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This file contains common libraries used for testing.
+/// \file
+/// This file contains common libraries used for testing. Many of these
+/// functions are relatively thin wrappers around underlying libXAIE call and
+/// are provided to expose a relatively consistent API.  Others are more
+/// complex.
 
 #include "test_library.h"
 #include "math.h"
@@ -453,6 +457,8 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {} // Placeholder
 // namespace aie_device {
 //}
 
+/// @brief  Initialize libXAIE and allocate a new context object.
+/// @return A pointer to the context
 aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   aie_libxaie_ctx_t *ctx =
       (aie_libxaie_ctx_t *)malloc(sizeof(aie_libxaie_ctx_t));
@@ -489,6 +495,8 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   return ctx;
 }
 
+/// @brief  Release access to the libXAIE context.
+/// @param ctx The context
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
   //  if (xaie == _air_host_active_libxaie1)
   //    _air_host_active_libxaie1 = nullptr;
@@ -499,7 +507,9 @@ void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
   free(ctx);
 }
 
-// Return zero on success
+/// @brief Initialize the device represented by the context.
+/// @param ctx The context
+/// @return Zero on success
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   AieRC RC = XAIE_OK;
 
@@ -540,30 +550,51 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
   return 0;
 }
 
-// Return non-zero on success
+/// @brief Acquire a physical lock
+/// @param ctx The context
+/// @param col The column of the lock
+/// @param row The row of the lock
+/// @param lockid The ID of the lock in the tile.
+/// @param lockval The value to acquire the lock with.
+/// @param timeout The number of microseconds to wait
+/// @return Return non-zero on success, i.e. the operation did not timeout.
 int mlir_aie_acquire_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout) {
   return (XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(col, row),
                            XAie_LockInit(lockid, lockval), timeout) == XAIE_OK);
 }
 
-// Return non-zero on success
+/// @brief Release a physical lock
+/// @param ctx The context
+/// @param col The column of the lock
+/// @param row The row of the lock
+/// @param lockid The ID of the lock in the tile.
+/// @param lockval The value to acquire the lock with.
+/// @param timeout The number of microseconds to wait
+/// @return Return non-zero on success, i.e. the operation did not timeout.
 int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout) {
   return (XAie_LockRelease(&(ctx->DevInst), XAie_TileLoc(col, row),
                            XAie_LockInit(lockid, lockval), timeout) == XAIE_OK);
 }
 
+/// @brief Read the AIE configuration memory at the given physical address.
 u32 mlir_aie_read32(aie_libxaie_ctx_t *ctx, u64 addr) {
   u32 val;
   XAie_Read32(&(ctx->DevInst), addr, &val);
   return val;
 }
 
+/// @brief Write the AIE configuration memory at the given physical address.
+/// It's almost always better to use some more indirect method of accessing
+/// configuration registers, but this is provided as a last resort.
 void mlir_aie_write32(aie_libxaie_ctx_t *ctx, u64 addr, u32 val) {
   XAie_Write32(&(ctx->DevInst), addr, val);
 }
 
+/// @brief Read a value from the data memory of a particular tile memory
+/// @param addr The address in the given tile.
+/// @return The data
 u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
                               u64 addr) {
   u32 data;
@@ -571,15 +602,23 @@ u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
   return data;
 }
 
+/// @brief Write a value to the data memory of a particular tile memory
+/// @param addr The address in the given tile.
+/// @param data The data
 void mlir_aie_data_mem_wr_word(aie_libxaie_ctx_t *ctx, int col, int row,
                                u64 addr, u32 data) {
   XAie_DataMemWrWord(&(ctx->DevInst), XAie_TileLoc(col, row), addr, data);
 }
 
+/// @brief Return the base address of the given tile.
+/// The configuration address space of most tiles is very similar,
+/// relative to this base address.
 u64 mlir_aie_get_tile_addr(aie_libxaie_ctx_t *ctx, int col, int row) {
   return _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 }
 
+/// @brief Dump the tile memory of the given tile
+/// Values that are zero are not shown
 void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
   for (int i = 0; i < 0x2000; i++) {
     uint32_t d;
@@ -590,12 +629,15 @@ void mlir_aie_dump_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
+/// @brief Fill the tile memory of the given tile with zeros.
+/// Values that are zero are not shown
 void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
   for (int i = 0; i < 0x2000; i++) {
     XAie_DataMemWrWord(&(ctx->DevInst), XAie_TileLoc(col, row), (i * 4), 0);
   }
 }
 
+/// @brief Print a summary of the status of the given Tile DMA.
 void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 
@@ -710,6 +752,7 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
+/// @brief Print a summary of the status of the given Shim DMA.
 void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int col = loc.Col;
   // int row = loc.Row;
@@ -848,8 +891,8 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
-/// Print the status of a core represented by the given tile, at the given
-/// coordinates.
+/// @brief Print the status of a core represented by the given tile, at the
+/// given coordinates.
 void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int col = loc.Col;
   // int row = loc.Row;
@@ -925,9 +968,11 @@ static void clear_range(XAie_DevInst *devInst, u64 tileAddr, u64 low,
     // }
   }
 }
+
+/// @brief Clear the configuration of the given (non-shim) tile.
+/// This includes: clearing the program memory, data memory,
+/// DMA descriptors, and stream switch configuration.
 void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = loc.Col;
-  // int row = loc.Row;
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 
   // Put the core in reset first, otherwise bus collisions
@@ -954,9 +999,10 @@ void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
   XAie_CoreEnable(&(ctx->DevInst), XAie_TileLoc(col, row));
 }
 
+/// @brief Clear the configuration of the given shim tile.
+/// This includes: clearing the program memory, data memory,
+/// DMA descriptors, and stream switch configuration.
 void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
-  // int col = loc.Col;
-  // int row = loc.Row;
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 
   // ShimDMA
@@ -974,6 +1020,9 @@ void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
   clear_range(&(ctx->DevInst), tileAddr, 0x3F200, 0x3F37C);
 }
 
+/// @brief Initialize the memory allocator for buffers in device memory
+/// @param numBufs The number of buffers to reserve
+/// @todo This is at best a quick hack and should be replaced
 void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {
 #if defined(__AIESIM__)
   ctx->buffers =
@@ -983,9 +1032,11 @@ void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {
 #endif
 }
 
-/*
- * size - size in words (4 bytes)
- */
+/// @brief Allocate a buffer in device memory
+/// @param bufIdx The index of the buffer to allocate.
+/// @param size The number of 32-bit words to allocate
+/// @return A host-side pointer that can write into the given buffer.
+/// @todo This is at best a quick hack and should be replaced
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
 #if defined(__AIESIM__)
   int size_bytes = size * sizeof(int);
@@ -1004,7 +1055,7 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
     printf("ExtMemModel: Failed to allocate %d memory.\n", size_bytes);
   }
 
-  std::cout << "ExtMemModel constructor: virutal address " << std::hex
+  std::cout << "ExtMemModel constructor: virtual address " << std::hex
             << (ctx->buffers[bufIdx])->virtualAddr << ", physical address "
             << (ctx->buffers[bufIdx])->physicalAddr << ", size " << std::dec
             << (ctx->buffers[bufIdx])->size << std::endl;
@@ -1021,6 +1072,12 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
 #endif
 }
 
+/// @brief Synchronize the buffer from the device to the host CPU.
+/// This is expected to be called after the device writes data into
+/// device memory, so that the data can be read by the CPU.  In
+/// a non-cache coherent system, this implies invalidating the
+/// processor cache associated with the buffer.
+/// @param bufIdx The buffer index.
 void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx) {
 #if defined(__AIESIM__)
   aiesim_ReadGM((ctx->buffers[bufIdx])->physicalAddr,
@@ -1031,6 +1088,12 @@ void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx) {
 #endif
 }
 
+/// @brief Synchronize the buffer from the host CPU to the device.
+/// This is expected to be called after the host writes data into
+/// device memory, so that the data can be read by the device.  In
+/// a non-cache coherent system, this implies flushing the
+/// processor cache associated with the buffer.
+/// @param bufIdx The buffer index.
 void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {
 #if defined(__AIESIM__)
   aiesim_WriteGM((ctx->buffers[bufIdx])->physicalAddr,
@@ -1049,6 +1112,10 @@ void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {
  ******************************************************************************
  */
 
+/// @brief Given an array of values, compute and print statistics about those
+/// values.
+/// @param performance_counter An array of values
+/// @param n The number of values
 void computeStats(u32 performance_counter[], int n) {
   u32 total_0 = 0;
 

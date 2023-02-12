@@ -70,14 +70,14 @@ This compiles our testbench and kernel into a default `work` directory so that i
 ```
 xca_udm_dbg -P <vitis install>/<release>/aietools/data/cervino/lib -t sim.tcl
 ```
-This simulator executes a number of Tcl commands which we can group into Tcl batch file called  `sim.tcl`. The cycle accurate simulator will run the commands in this tcl file to completion completion and outputs any testbench results. This allows us to iteratively compile and test our design multiple times to get the right behavior as well as profile code performance.
+This simulator executes a number of Tcl commands which we can group into Tcl batch file called  `sim.tcl`. The cycle accurate simulator will run the commands in this tcl file to completion and outputs any testbench results. This allows us to iteratively compile and test our design multiple times to get the right behavior as well as profile code performance.
 > Note that in `sim.tcl`, we call the command `iss profile save test.prf` which runs the profiler in our simulator and generates the profile summary file `test.prf`. We will look at this in more detail in the lab.
 
 Now we have all the pieces we need to compile and simulate single kernels from the command line and then compile the kernel core into an object file to be integrated into our MLIR description and expanded into full kernel object code.
 
 ## <ins>Tutorial 9 Lab</ins>
 
-1. We will work backwards in this lab to first compile and simulate our single kernel design (which is the duplicate of the simple design used in tutorial-1). Take a look at the file under the `external_kernel` directory, specifically the files [kernel.h](external_kernel/kernel.h), [test.cc](external_kernel/test.cc), and [test.prx](external_kernel/text.prx) to familiarize yourself with these file contents. When customizing this for your own kernel function, you will only need to modify `kernel.h` (to match your function signature) and `test.cc` (to customize the function call and testbench for your own function).
+1. We will work backwards in this lab to first compile and simulate our single kernel design (which is the duplicate of the simple design used in tutorial-1). Take a look at the file under the `external_kernel` directory, specifically the files [kernel.h](external_kernel/kernel.h), [test.cc](external_kernel/test.cc), and [test.prx](external_kernel/test.prx) to familiarize yourself with these file contents. When customizing this for your own kernel function, you will only need to modify `kernel.h` (to match your function signature) and `test.cc` (to customize the function call and testbench for your own function).
 
 2. Go into the `external_kernel` directory and compile and simulate as follows:
     ```
@@ -91,11 +91,14 @@ Now we have all the pieces we need to compile and simulate single kernels from t
 4. The profile information also breaks down the cycle count of the design and more importantly, the function we implemented. What is the cycle count of the function `extern_kernel`? <img src="../images/answer1.jpg" title="6 cycles" height=25>
 There is also the microcode of the function under `Function detail: extern_kernel`. Understanding the microcode can be helpful in maximally optimizing your AI Engine kernel but that is beyond the scope of this tutorial.
 
-5. There is another design under the `matmul_kernel` directory. Build and simulate this design. Based on the profile results, what is the cycle count of main() and that of the matmul function (also called `extern_kernel`)? <img src="../images/answer1.jpg" title="testbench cycle coutn = 5128 cyles. extern_kernel = 4978 cycles" height=25>
+5. There is another design under the `matmul_kernel` directory. Build and simulate this design. Based on the profile results, what is the cycle count of main() and that of the matmul function (also called `extern_kernel`)? <img src="../images/answer1.jpg" title="testbench cycle count = 5128 cyles. extern_kernel = 4978 cycles" height=25>
 
 6. Take a look at [aie.mlir](aie.mlir) to see how we used the [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect to map externally compiled AIE kernel objects. Run `make` to build our MLIR design.
 
-7. **Add simulation instructions here**
+7. Verify functionality by running simulation
+    ```
+    make -C sim
+    ```
 
 8. Copy the design files (tutorial-2.exe, core_1_4.elf) to the board and run the design to check that the design runs successfully on hardware.
 
