@@ -13,10 +13,10 @@
 Where `objectFifos` in [tutorial-4](..) provided automated connections between non-adjacent tiles, understanding the mechanism by which these connections are made is important to be able to improve on existing routing algorithms. In this tutorial, we will examine configuration of switchboxes and the DMAs (tileDMA) that moves data across those switchboxes in more detail.
 
 ## <ins>Streams</ins>
-Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically in both into and out of the switchbox (except in the vertical direction going north where there are 6 streams in and out). The AIE core does have 2 input and 2 output stream ports that connect to its local switchbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the switchbox.
+Streams are 32-bits wide and runs at the system clock rate (e.g. 1 GHz). There are 4 streams running horizontally and vertically both into and out of the switchbox (except in the vertical output direction going north and the vertical input direction coming from south, where there are 6 streams). The AIE core does have 2 input and 2 output stream ports that connect to its local switchbox but the more common way of pushing large blocks of data into and out of the stream network is with the tile DMAs. Rather than having the core read and write streams directly, the core accesses local memory and the tile DMA moves the data from local memory to the switchbox.
 
 ## <ins>Logical routing (aka flows)</ins>
-The AIE switchboxes are very powerful configurable blocks for steering data between AI Engine tiles. Having 24 inputs and 24 outputs, the switchbox has connections to its neighbor, the tileDMA, the core, and an internal fifo. Each connection from input to output within the switchbox can operate in one of two modes: 
+The AIE switchboxes are very powerful configurable blocks for steering data between AI Engine tiles. Having 18 inputs and 18 outputs, the switchbox has connections to its neighbor, the tileDMA, the core, and an internal fifo. Each connection from input to output within the switchbox can operate in one of two modes: 
 * circuit switch mode
 * packet switch mode
 
