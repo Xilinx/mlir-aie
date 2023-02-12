@@ -52,6 +52,30 @@ using namespace xilinx::aievec;
 
 #define DEBUG_TYPE "aievec-lowering"
 
+// Given an AIEOp, determines if an operation writes to an accumulator
+// based on operation type and operand types
+static bool writesToAccumulator(Operation *op) {
+  // Integer muls and FMAs write to accumulator
+  if (!isAIEOp(op))
+    return false;
+  if (auto mulOp = dyn_cast<aievec::MulOp>(op))
+    return mulOp.getResult()
+        .getType()
+        .cast<VectorType>()
+        .getElementType()
+        .isa<IntegerType>();
+  if (auto fmaOp = dyn_cast<aievec::FMAOp>(op))
+    return fmaOp.getResult()
+        .getType()
+        .cast<VectorType>()
+        .getElementType()
+        .isa<IntegerType>();
+
+  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::FMAConvOp,
+             aievec::MulConvOp, aievec::UPSOp>(op);
+}
+
+//
 //===----------------------------------------------------------------------===//
 // Analyses
 //===----------------------------------------------------------------------===//
@@ -89,6 +113,87 @@ struct UPDOpEffectiveAccessSizeAnalysis {
 //===----------------------------------------------------------------------===//
 // Lowering patterns
 //===----------------------------------------------------------------------===//
+// This pattern fold `vector.extract` and `vector.broadcast` into
+// `aievec.broadcast` for aie-ml
+struct FoldVectorExtractAndBroadcastToAIEBroadcast
+    : public OpConversionPattern<vector::BroadcastOp> {
+  using OpConversionPattern<vector::BroadcastOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto extOp =
+        dyn_cast<vector::ExtractOp>(bcastOp.getSource().getDefiningOp());
+
+    if (!extOp)
+      return failure();
+
+    auto src = extOp.getVector();
+    auto pos = extOp.getPosition();
+    VectorType resultType = bcastOp.getResult().getType().cast<VectorType>();
+
+    rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(
+        bcastOp, resultType, src, cast<IntegerAttr>(pos[0]).getInt());
+
+    return success();
+  }
+};
+
+// This pattern replaces `vector.fma` with `aievec.mac_elem` for aie-ml.
+struct LowerVectorFMAToAIEVecFMAElem
+    : public OpConversionPattern<vector::FMAOp> {
+  using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::FMAOp fmaOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    VectorType resultType = fmaOp.getResult().getType().cast<VectorType>();
+
+    if (!resultType.getElementType().isa<IntegerType>())
+      return failure();
+
+    IntegerType resultElType = resultType.getElementType().cast<IntegerType>();
+    unsigned resultElWidth = resultElType.getWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if ((laneSize != 32 || resultElWidth != 16) &&
+        (laneSize != 16 || resultElWidth != 32))
+      return failure();
+
+    Value acc = adaptor.getAcc();
+    Type accType = getVectorOpDestType(acc.getType().cast<VectorType>(), true);
+    auto accDefOp = acc.getDefiningOp();
+    if (!writesToAccumulator(accDefOp)) {
+      acc = rewriter.create<aievec::UPSOp>(fmaOp->getLoc(), accType, acc);
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\n\nCreated UPS op " << acc << " to move the output of "
+                 << fmaOp << " into accumulator");
+    }
+
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+
+    auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
+        fmaOp->getLoc(), lhs, rhs, acc, /*fmsub=*/false);
+
+    VectorType fmaElemResultType =
+        fmaElemOp.getResult().getType().cast<VectorType>();
+    IntegerType fmaElemResultElType =
+        fmaElemResultType.getElementType().cast<IntegerType>();
+    unsigned fmaResultElWidth = fmaElemResultElType.getWidth();
+
+    if (fmaResultElWidth > resultElWidth) {
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(fmaOp, resultType,
+                                                 fmaElemOp.getResult());
+    } else {
+      rewriter.replaceOpWithNewOp<aievec::FMAElemOp>(fmaOp, lhs, rhs, acc,
+                                                     /*fmsub=*/false);
+    }
+    return success();
+  }
+};
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
 // into a contiguous `vector.transfer_read` followed by a `vector.extract` to
@@ -369,6 +474,9 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 512);
+
+  patterns.add<FoldVectorExtractAndBroadcastToAIEBroadcast,
+               LowerVectorFMAToAIEVecFMAElem>(patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//

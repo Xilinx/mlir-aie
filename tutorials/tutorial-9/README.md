@@ -95,7 +95,10 @@ There is also the microcode of the function under `Function detail: extern_kerne
 
 6. Take a look at [aie.mlir](aie.mlir) to see how we used the [func](https://mlir.llvm.org/docs/Dialects/Func/) dialect to map externally compiled AIE kernel objects. Run `make` to build our MLIR design.
 
-7. **Add simulation instructions here**
+7. Verify functionality by running simulation
+    ```
+    make -C sim
+    ```
 
 8. Copy the design files (tutorial-2.exe, core_1_4.elf) to the board and run the design to check that the design runs successfully on hardware.
 
