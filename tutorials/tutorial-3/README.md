@@ -14,12 +14,12 @@ In [tutorial-1](../tutorial-1), we have explored the `core` and `buffer` dialect
 
 We now come back to the `mlir-aie` dialect to talk about the next major component of for AIE system design - communication. As summarized briefly in the [Basic AI Engine Architecure](../README.md#basic-ai-engine-architecture) section, communication via local memory is one of the most efficient ways to share data and can be done among up to 4 tiles adjacent to a local memory. In `mlir-aie`, all tiles have an associated local memory but adjacent tiles are able to read and write to that memory as well. 
 
-In the diagram below, we see that the local memory for tile(2,4) is physically adjacent to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. In general, each processor can access the memory in its own tile, the memory of the tile to the north and south, and the memory of the tile either to the east (in even rows) or the west (in odd rows).  As a result, communicating through shared memory is less constrained to the north and south: A processor can communicate in either of these directions using a buffer in two different tiles.  Communicating east and west is more constrained: the communication buffer can be in only one tile, and it might not be in the same tile as the source of the data.  These constraints are verified in MLIR, so it's easy to know whether we've created a valid design.
+In the diagram below, we see that the local memory for tile(2,4) is physically adjacent to the core in tile(1,4). If we were to expand the diagram further, we would see that tile(2,3) and tile(2,5) can also access that buffer. In general, each processor can access the memory in its own tile, the memory of the tile to the north and south, and the memory of the tile either to the east (in even rows) or the west (in odd rows).  As a result, communicating through shared memory is less constrained to the north and south: A processor can communicate in either of these directions using a buffer in two different tiles.  Communicating east and west is more constrained: the communication buffer can be in only one tile, and it might not be in the same tile as the source of the data.  These constraints are verified in MLIR, so it's easy to know whether we've created a valid design. Below is a table to illustrate for a given row, whether the local memory for a tile to the west or east is sharable with tile(col,row).
 
 |   | tile(col-1, row) _West_ | tile(col, row) | tile(col+1, row) _East_ |
 |---|---|---|---|
-| Even Row | $$\color{red}{inaccessible}$$ | Shared West | Shared East   |
-| Odd Row | Shared West | Shared East  | $$\color{red}{inaccessible}$$  |
+| Even Row | $$\color{red}{inaccessible}$$ | Local Memory | Shared - East   |
+| Odd Row | Shared - West | Local Memory  | $$\color{red}{inaccessible}$$  |
 
 <p><img src="../images/diagram4.png" width="1000"><p>
 
@@ -48,7 +48,7 @@ The acquire value must match the current lock state in order for the acquire to 
 
 4. Change the lock from belonging to tile(2,4) to tile(1,4). Does this change the behavior of our design? What does that say about the total number of locks available between two adjacent tiles? <img src="../images/answer1.jpg" title="Yes. Tile(2,4) does not have access to tile(1,4)'s memory module where its locks are. This means that any tile has access to up to 48 locks (from its two vertical neighbours and one horizontal neighbour)." height=25>
 
-5. Based on what you know about locks, which tile will execute its kernel code inside the lock calls first in this design? <img src="../images/answer1.jpg" title="Tile(1,4), because the lock initially starts in state Release 0, so Acquire 0 will succeed first." height=25>
+5. Based on what you know about locks, which tile will execute its kernel code first (inside the lock calls) in this design? <img src="../images/answer1.jpg" title="tile(1,4), because the lock initially starts in state Release 0, so Acquire 0 will succeed first." height=25>
 
 6. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 

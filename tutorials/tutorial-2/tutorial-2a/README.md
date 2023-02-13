@@ -11,14 +11,14 @@
 
 From the previous introduction in [tutorial-2](..), the first step is to initialize and configure our design (whether it be for simulation or hardware implementaion). Our build utility `aiecc.py` had actually already done part of this for us since `aie.mlir` specifies a design for the entire AI Engine array. As a result, `aiecc.py` has already generated a directory with the host API libraries necessary to initialize, configure and interact with our design. These can be found in the `acdc_project` folder after you run `aiecc.py`. 
 
-Of particular interest is the `acdc_project/aie_inc.cpp` file which contains many of the custom API functions for our design. These functions can be invoked from host code to initialize, configure and control our AI Engine design. Additional common host code API functions for testing can also be found in the [runtime_lib/test_library.cpp](../../../runtime_lib/test_library.cpp).
+Of particular interest is the `acdc_project/aie_inc.cpp` file which contains many of the configuration API functions for our design. These functions can be invoked from host code to initialize, configure and control our AI Engine design. Additional common host code API functions for testing can also be found in the [runtime_lib/test_library.cpp](../../../runtime_lib/test_library.cpp).
 
 ## <ins>Tutorial 2a Lab</ins>
 
 1. Run `make` in this directory. Then take a look at the file under `acdc_project/aie_inc.cpp`. You will see a number of helpful API functions for initializing and configuring our design from the host. We've built a host program that does this named [test.cpp](./test.cpp). Take a look at this file to see the common set of init/config functions which will be describing in more detail below:
 
-### <ins>Common Host API init/config functions</ins>
-The next set of functions are often called as a group to configure the AI Engine array and program the elf files for each individual tile. Detailed descriptions of these functions can be found in the common `test_library.cpp` and design specific `acdc_project/aie_inc.cpp`.
+### <ins>Host Code Configuration API</ins>
+The set of functions described below are often called as a group to configure the AI Engine array and program the elf files for each individual tile. Detailed descriptions of these functions can be found in the common `test_library.cpp` and design specific `acdc_project/aie_inc.cpp`.
 
 | Host Config API | Description |
 |----------|-------------|
@@ -26,7 +26,7 @@ The next set of functions are often called as a group to configure the AI Engine
 | mlir_aie_init_libxaie () | Allocates and initializes aie_libxaie_ctx_t struct |
 | mlir_aie_init_device (_xaie) | Initializes our AI Engine array and reserves the entire array for configuration. |
 | mlir_aie_configure_cores (_xaie) | Disables and resets all relevant tiles and loads elfs into relevant tiles. It also releases all locks to value 0. |
-| mlir_aie_configure_switchboxes (_xaie) | Configures the switchboxes use to route stream connections. |
+| mlir_aie_configure_switchboxes (_xaie) | Configures the switchboxes used to route stream connections. |
 | mlir_aie_configure_dmas (_xaie) | Configures all tile DMAs |
 | mlir_aie_initialize_locks (_xaie) | Configures initial lock values (placeholder). |
 | mlir_aie_clear_tile_memory (_xaie, int col, int row) | Clear tile data memory for a given tile. Call for each tile you wish to clear the tile memory for. |
@@ -68,9 +68,9 @@ The dynamic buffer allocation and shim DMA config function calls would look like
 ```
 | Host Config API | Description |
 |----------|-------------|
-| mlir_aie_init_mems (_xaie, int numBufs) | Initialize `numbBufs` DDR memory buffers. At the moment, with these APIs, we need to know the number of buffers we need up front. |
+| mlir_aie_init_mems (_xaie, int numBufs) | Initialize `numBufs` DDR memory buffers. At the moment, with these APIs, we need to know the number of buffers we need up front. |
 | mlir_aie_mem_alloc (_xaie, int bufIdx, int size) | Dynamic allocation of memory buffer associated with buffer ID number (bufIdx) and a size. The ID is numbered sequentially starting from 0 and matches the description as defined in the MLIR_AIE source file (e.g. aie.mlir). Size is defined in words (4 bytes). |
-| mlir_aie_external_set_addr_< symbol name > (u64 addr) | Set the address (addr) for an MLIR-AIE external buffer used in configuring the shim DMA |
+| mlir_aie_external_set_addr_< symbol name > (u64 addr) | Set the address (addr) for an MLIR-AIE external buffer used in configuring the shim DMA. This address is usually the virtual address when working with the backend linux kernel drivers. |
 | mlir_aie_configure_shimdma_< location > (_xaie) | Complete shim DMA configuration given the virtual address value set by mlir_aie_external_set_addr_ for all DMAs belonging to this shimDMA tile (up to 4). |
 | mlir_aie_sync_mem_dev (_xaie, int bufIdx)| Synchronize between DDR cache (virtual address) and DDR physical memory accessed by NOC/ shimDMA, i.e, flush the DDR cache. In simulation, we explicitly copy from host memory to the memory region accessed by shim DMA model. We call this after we update DDR data and want the shim DMA to see the new data. |
 | mlir_aie_sync_mem_cpu (_xaie, int bufIdx)| Synchronize between DDR physical memory accessed by NOC/ shimDMA and DDR cache (virtual address), i.e., invalidate the DDR cache. In simulation, we explicitly copy from shim DMA model accessible memory to host memory. We call this before we read DDR data to make sure shim DMA written data is updated before being read by the host program. |
@@ -119,7 +119,7 @@ Finally, we are ready to start the cores and poll and test values to ensure corr
 You will notice that in our example, we use the `mlir_aie_acquire_< symbolic lock name >` to gate when the execution of our design is done. This is facilitated by having added locks around the kernel code. While this is not strictly necessary, it is a helpful technique for checking when a AI engine core is done. We will explore this in future tutorials as locks can be used in various ways to control data communication and gate operations of AI engines.
 
 2. Look again in the main directory and you will see several key files including `core_1_4.elf` which is the elf program for tile(1,4). You also will see `tutorial-2a.exe` which is the cross-compiled host executable generated from the host code source `test.cpp`.
-3. Take a look at [Makefile](./Makefile) and notice the additional compile arguments added to `aiecc.py`. We've included the `test_library.cpp` and the host code source [test.cpp](./test.cpp) and specified the final host executable output with a -o `tutorial-2a.exe`.
+3. Take a look at [Makefile](./Makefile) and notice the additional compile arguments added to `aiecc.py`. We've included the `test_library.cpp` and the host code source [test.cpp](./test.cpp) and specified the final host executable output with a `-o tutorial-2a.exe`.
 
 With all these host API calls, we can build a complete host program that configures and initializes our AI Engine design, enable it to run, and check for results. In [tutorial-2b](../tutorial-2b), we go through the steps of running a simulation of this design. In [tutorial-2c](../tutorial-2c), we run our design on the board and describe how to measure performance in hardware.
 
