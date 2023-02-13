@@ -140,7 +140,7 @@ The MLIR operations inside the core are then converted to an LLVM representation
 In first generation AI Engines, each tile has 32 kB of local data memory assigned to it. In addition, it can access the local memory in the other 3 cardinal directions giving a total accessible memory of 128 kB.
 
 4. What percentage of the local memory (32 kB) does this design currently use?
-<img src="../images/answer1.jpg" title="3.125% = (256 int32s * 32 bytes each) / 32 kBytes" height=25>
+<img src="../images/answer1.jpg" title="3.125% = (256 int32s * 4 bytes each) / 32 kBytes" height=25>
 
 5. Change the size of the buffer to the size of our local memory (8192 x i32) and run `make` again. What do you expect to happen and what happens instead? <img src="../images/answer1.jpg" title="You may expect to be able to define a buffer that uses the entirety of local memory. Instead, an error occurs: Allocated buffers exceed local memory. (The next paragraph explains why this happens.)" height=25>
 
