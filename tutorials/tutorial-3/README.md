@@ -46,9 +46,9 @@ The acquire value must match the current lock state in order for the acquire to 
 
 3. What about in the vertical direction, say between tile(1,3) and tile(1,4). Which tiles' local memory can be shared between these two tiles? <img src="../images/answer1.jpg" title="both tile(1,3) and tile(1,4) can be shared" height=25>
 
-4. Change the lock from belonging to tile(2,4) to tile(1,4). Does this change the behavior of our design? What does that say about the total number of locks available between two adjacent tiles? <img src="../images/answer1.jpg" title="No. Two adjacent tiles have up to 32 locks available to them." height=25>
+4. Change the lock from belonging to tile(2,4) to tile(1,4). Does this change the behavior of our design? What does that say about the total number of locks available between two adjacent tiles? <img src="../images/answer1.jpg" title="Yes. Tile(2,4) does not have access to tile(1,4)'s memory module where its locks are. This means that any tile has access to up to 48 locks (from its two vertical neighbours and one horizontal neighbour)." height=25>
 
-5. Based on what you know about locks, which tile will execute its kernel code inside the lock calls first in this design? <img src="../images/answer1.jpg" title="tile(1,4), because the lock initially starts in state Release 0, so Acquire 0 will succeed first." height=25>
+5. Based on what you know about locks, which tile will execute its kernel code inside the lock calls first in this design? <img src="../images/answer1.jpg" title="Tile(1,4), because the lock initially starts in state Release 0, so Acquire 0 will succeed first." height=25>
 
 6. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 

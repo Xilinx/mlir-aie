@@ -19,4 +19,4 @@ tutorial-5.exe: aie.mlir test.cpp
 	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./test.cpp -o $@
 
 clean:
-	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts .AIE_SIM_CMD_LINE_OPTIONS
