@@ -279,17 +279,18 @@ class flow_runner:
       sim_makefile   = os.path.join(thispath, '..','..','runtime_lib',"aiesim","Makefile")
       sim_genwrapper = os.path.join(thispath, '..','..','runtime_lib',"aiesim","genwrapper_for_ps.cpp")
 
+      file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
-                   './acdc_project/input_physical.mlir',
-                   '-o', './sim/reports/graph.xpe'])
+                                file_physical, '-o', './sim/reports/graph.xpe'])
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
-                   './acdc_project/input_physical.mlir',
-                   '-o','./sim/arch/aieshim_solution.aiesol'])
+                                file_physical,
+                                '-o','./sim/arch/aieshim_solution.aiesol'])
       await self.do_call(task, ['aie-opt', '--aie-find-flows',
-                   './acdc_project/input_physical.mlir',
-                   '-o', './sim/flows_physical.mlir'])
+                                file_physical,
+                                '-o', './sim/flows_physical.mlir'])
       await self.do_call(task, ['aie-translate', '--aie-flows-to-json',
-                   './sim/flows_physical.mlir', '-o','./sim/flows_physical.json'])
+                                './sim/flows_physical.mlir',
+                                '-o','./sim/flows_physical.json'])
       await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
       await self.do_call(task, ['cp',sim_makefile,'./sim/.'])
       await self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.'])
