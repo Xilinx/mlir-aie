@@ -38,12 +38,10 @@ module {
 //      CHECK:          %[[T3:.*]] = aievec.upd %[[A2]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
 //      CHECK:          %[[T4:.*]] = aievec.ups %[[T3:.*]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
 //      CHECK:          %[[T5:.*]] = aievec.mac_elem %[[T2:.*]], %[[T1:.*]], %[[T4:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
-//      CHECK:          %[[T6:.*]] = aievec.srs %[[T5:.*]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
 //      CHECK:          %[[T7:.*]] = aievec.broadcast %[[T0:.*]] {idx = 1 : i8} : vector<16xi32>, vector<16xi32>
 //      CHECK:          %[[T8:.*]] = affine.apply #map(%[[A5:.*]])
 //      CHECK:          %[[T9:.*]] = aievec.upd %[[A1]][%[[T8:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T10:.*]] = aievec.ups %[[T6:.*]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
-//      CHECK:          %[[T11:.*]] = aievec.mac_elem %[[T9:.*]], %[[T7:.*]], %[[T10:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
+//      CHECK:          %[[T11:.*]] = aievec.mac_elem %[[T9:.*]], %[[T7:.*]], %[[T5:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
 //      CHECK:          %[[T12:.*]] = aievec.srs %[[T11:.*]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
 //      CHECK:          vector.transfer_write %[[T12:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] {in_bounds = [true]} : vector<16xi32>, memref<64x64xi32>
 
