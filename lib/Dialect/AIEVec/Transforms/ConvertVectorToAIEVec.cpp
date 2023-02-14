@@ -635,8 +635,29 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
 
+template <typename TransferOp> static void setInBounds(TransferOp op) {
+  if (op.getTransferRank() == 0)
+    return;
+  SmallVector<bool, 4> bools(op.getTransferRank(), true);
+  OpBuilder b(op.getContext());
+  op->setAttr(op.getInBoundsAttrName(), b.getBoolArrayAttr(bools));
+}
+
 void CanonicalizeForAIEVecPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
+
+  funcOp.walk([&](Operation *Op) {
+    if (auto readOp = dyn_cast<TransferReadOp>(Op)) {
+      if (!readOp.getInBounds())
+        setInBounds<TransferReadOp>(readOp);
+    } else if (auto writeOp = dyn_cast<TransferWriteOp>(Op)) {
+      if (!writeOp.getInBounds())
+        setInBounds<TransferWriteOp>(writeOp);
+    }
+  });
+
+  transferOpflowOpt(funcOp);
+
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
   ConversionTarget target(*context);
@@ -673,6 +694,7 @@ void CanonicalizeForAIEVecPass::runOnOperation() {
 //===---------------------------------------------------------------------------
 void xilinx::aievec::buildConvertVectorToAIEVec(
     OpPassManager &pm, const ConvertVectorToAIEVecOptions &options) {
+  pm.addPass(createCanonicalizerPass());
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
@@ -684,6 +706,8 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // Add post-lowering canonicalization passes
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
+  pm.addPass(createLoopInvariantCodeMotionPass());
+  pm.addPass(createLowerAffinePass());
 }
 
 //===---------------------------------------------------------------------------
