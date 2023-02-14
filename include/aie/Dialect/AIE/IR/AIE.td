@@ -40,6 +40,7 @@ switch is referred to as 'switchbox' to avoid confusion with the
 
   }];
   let useDefaultTypePrinterParser = 1;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 
