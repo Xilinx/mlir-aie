@@ -11,18 +11,9 @@
 #limitations under the License.
 #
 
-#SYSROOT = /proj/xbuilds/2021.1_daily_latest/internal_platforms/sw/versal/xilinx-versal-common-v2021.1/sysroots/aarch64-xilinx-linux/
-#IMAGE = /proj/xbuilds/2021.1_daily_latest/internal_platforms/sw/versal/xilinx-versal-common-v2021.1/Image
-#ROOTFS = /proj/xbuilds/2021.1_daily_latest/internal_platforms/sw/versal/xilinx-versal-common-v2021.1/rootfs.ext4
-#CXX = aarch64-linux-gnu-g++
-
-#SYSROOT = /group/xrlabs2/jackl/proj/acdc/vitis_2021.2_bram_platform_prod/sysroots/cortexa72-cortexa53-xilinx-linux
-#IMAGE = /group/xrlabs2/jackl/proj/acdc/vitis_2021.2_bram_platform_prod/build/petalinux/images/linux/Image
-#ROOTFS = /group/xrlabs2/jackl/proj/acdc/vitis_2021.2_bram_platform_prod/build/petalinux/images/linux/rootfs.ext4
-
-SYSROOT = ../petalinux/build/petalinux/images/linux/sdk/sysroots/cortexa72-cortex53-xilinx-linux
-IMAGE   = ../petalinux/build/petalinux/images/linux/Image
-ROOTFS  = ../petalinux/build/petalinux/images/linux/rootfs.ext4
+SYSROOT ?= ../petalinux/build/petalinux/images/linux/sdk/sysroots/cortexa72-cortexa53-xilinx-linux
+IMAGE    = ../petalinux/build/petalinux/images/linux/Image
+ROOTFS   = ../petalinux/build/petalinux/images/linux/rootfs.ext4
 
 
 #------------------------------------------------------------------------------
@@ -88,9 +79,6 @@ pfm:
 #TARGET   = hw_emu
 TARGET   = hw
 MODE	 = linux
-#PLATFORM = ${PLATFORM_REPO_PATHS}/xilinx_vck190_es1_base_202110_1/xilinx_vck190_es1_base_202110_1.xpfm
-#PLATFORM = /group/xrlabs2/jackl/proj/acdc/vitis_2021.2_bram_platform/platforms/vck190_bare_2021.2/vck190_bare_2021.2.xpfm
-#PLATFORM = /group/xrlabs2/jackl/proj/acdc/vitis_2021.2_bram_platform/platforms/vck190_bare_2021_2/vck190_bare_2021_2.xpfm
 PLATFORM = ./platform_repo/xilinx_vck190_prod_bare/export/xilinx_vck190_prod_bare/xilinx_vck190_prod_bare.xpfm
 
 XCLBIN   = vck190_aie_base_graph_${TARGET}.xclbin
@@ -128,9 +116,6 @@ __check_defined = \
 	$(if $(value $1),, \
 		$(error Undefined $1$(if $2, ($2))))
 
-guard-PLATFORM_REPO_PATHS:
-	$(call check_defined, PLATFORM_REPO_PATHS, Set your where you downloaded xilinx_vck190_es1_base_202110_1)
-
 guard-ROOTFS:
 	$(call check_defined, ROOTFS, Set to: xilinx-versal-common-v2021.1/rootfs.ext4)
 
@@ -150,14 +135,14 @@ all: prep_sd_dir prep_sw_comp pfm prep_sysroot ${XCLBIN} ${HOST_EXE} package
 #run: all run_hw_emu
 sd_card: all
 
-aie: guard-PLATFORM_REPO_PATHS ${LIBADF}
+aie: ${LIBADF}
 ${LIBADF}: aie/*
 	${AIE_CMPL_CMD}
 
 aiesim: ${LIBADF}
 	${AIE_SIM_CMD}
 
-xclbin: guard-PLATFORM_REPO_PATHS ${XCLBIN}
+xclbin: ${XCLBIN}
 
 
 ${XCLBIN}: ${LIBADF} ${VPP_SPEC} 
@@ -167,7 +152,7 @@ host: guard-CXX guard-SDKTARGETSYSROOT ${HOST_EXE}
 ${HOST_EXE}: ${GRAPH} ./Work/ps/c_rts/aie_control_xrt.cpp
 	$(MAKE) -C sw/
 
-package: guard-ROOTFS guard-IMAGE guard-PLATFORM_REPO_PATHS package_${TARGET}
+package: guard-ROOTFS guard-IMAGE package_${TARGET}
 package_${TARGET}: ${LIBADF} ${XCLBIN} ${HOST_EXE} 
 	${VCC} -p -t ${TARGET} -f ${PLATFORM} \
 		--package.rootfs ${ROOTFS} \
