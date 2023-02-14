@@ -1,11 +1,6 @@
+include ../makefile-common
 
 .PHONY: all clean
-
-# TODO - Change this to env variable?
-ifeq ($(MLIR_AIE_SYSROOT),)
-MLIR_AIE_SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
-endif
-AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 ifeq (${AIETOOLS_ROOT},)
 AIETOOLS_ROOT = $(dir $(shell which xchesscc))/..
@@ -24,7 +19,7 @@ all: tutorial-8.exe
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
 tutorial-8.exe: test.cpp aie.mlir kernel1.o kernel2.o
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 clean:
 	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts *.o .AIE_SIM_CMD_LINE_OPTIONS
@@ -33,4 +28,4 @@ clean:
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
 tutorial-8_q3.exe: test.cpp ./answers/aie.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
