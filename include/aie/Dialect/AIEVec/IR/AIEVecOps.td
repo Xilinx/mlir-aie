@@ -330,6 +330,7 @@ def AIEVec_UPSOp:
     OpBuilder<(ins "Value":$source, "int8_t":$shift),
     [{build($_builder, $_state, source.getType(), source, shift);}]>
   ];
+  let hasFolder = 1;
 }
 
 def AIEVec_CastOp:
