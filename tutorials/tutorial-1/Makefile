@@ -1,11 +1,6 @@
+include ../makefile-common
 
 .PHONY: all clean
-
-# TODO - Change this to env variable?
-ifeq ($(MLIR_AIE_SYSROOT),)
-MLIR_AIE_SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
-endif
-AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: core_1_4.elf
 	@mkdir -p elf
@@ -23,10 +18,8 @@ clean:
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises
+# Note: AIECC_HOST_FLAGS is defined in the included tutorials/makefile-common.
 #------------------------------------------------------------------------------
-tutorial-1_perf.exe: ./answers/test_perf.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
-
-tutorial-1_q6.exe: ./answers/test_q6.cpp ./answers/aie_q6.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
+tutorial: ./test.cpp aie.mlir
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 

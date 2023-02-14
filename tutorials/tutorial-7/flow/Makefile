@@ -1,3 +1,4 @@
+include ../../makefile-common
 
 .PHONY: all clean
 
@@ -16,7 +17,7 @@ all: tutorial-7.exe
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
 tutorial-7.exe: test.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 clean:
 	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts .AIE_SIM_CMD_LINE_OPTIONS
