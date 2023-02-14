@@ -13,6 +13,8 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -290,6 +292,24 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 // UPSOp
 //===----------------------------------------------------------------------===//
+
+// UPS fold method. It will fold with a preceding SRS operation.
+// TODO: The interface for folding methods has changed. We will need to update
+// TODO: this next time we bump our llvm version.
+// TODO: New interface: OpFoldResult UPSOp::fold(FoldAdaptor adaptor) {
+OpFoldResult UPSOp::fold(ArrayRef<Attribute> operands) {
+  // TODO: Both UPS and SRS have an aditional parameter (shift) that's being
+  // TODO: ignored here. Somebody should take a careful look at it.
+  // TODO: In next llvm version: auto srsDefOp =
+  // adaptor.getSource().getDefiningOp();
+  auto srcDefOp = getSource().getDefiningOp();
+  if (!srcDefOp)
+    return nullptr;
+  auto srsOp = dyn_cast<SRSOp>(srcDefOp);
+  if (!srsOp)
+    return nullptr;
+  return srsOp.getSource();
+}
 
 // Print out UPS op.
 void UPSOp::print(OpAsmPrinter &p) {

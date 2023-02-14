@@ -28,7 +28,7 @@ This is where the advantage of implementing designs at the `objectFifo` abstract
 
 ## <ins>Tutorial 4 Lab </ins>
 
-1. Read through the [aie.mlir](aie.mlir) design. In the previous tutorial we saw that the objectFifo lowering creates buffer/lock pairs in the shared memory module between two tiles. Where are these elements created for tiles (1,4) and (3,4)? Verify your answer by applying the objectFifo lowering on the [aie.mlir](aie.mlir) design (see tutorial-3/README.md for the command). <img src="../images/answer1.jpg" title="The objectFifo lowering will create one buffer/lock pair in the memory module local to each tile: total of 2 buffers and 2 locks created. Because each tile has its own buffer/lock pair we say that the objectFifo was split as the total number of created elements is > than the original objectFifo size." height=25>
+1. Read through the [aie.mlir](aie.mlir) design. In the previous tutorial we saw that the objectFifo lowering creates buffer/lock pairs in the shared memory module between two tiles. Where are these elements created for tiles (1,4) and (3,4)? Verify your answer by applying the objectFifo lowering on the [aie.mlir](aie.mlir) design (see [tutorial-3](../tutorial-3) for the command). <img src="../images/answer1.jpg" title="The objectFifo lowering will create one buffer/lock pair in the memory module local to each tile: total of 2 buffers and 2 locks created. Because each tile has its own buffer/lock pair we say that the objectFifo was split as the total number of created elements is > than the original objectFifo size." height=25>
 
 2. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
@@ -51,4 +51,4 @@ Here we see the design of tutorial 4 visualized as a single flow from the source
 
 To use the extension, locate the file `sim/flows_physical.json` which is generated when you run `make` in any of the tutorials. (You can also examine `sim/flows_physical.mlir` to see what the mlir looks like after some physical routing lowerings have been applied.) With the JSON file opened, press Ctrl + Shift + p or F1 and search for the "Routing View" command. Press Enter and the visualization extension will run using the JSON file as input.
 
-For more usage of this visualization, see the Advanced Topic section in [./switchbox/README.md](./switchbox/README.md).
+For more usage of this visualization, see the Advanced Topic section in [switchbox](./switchbox).

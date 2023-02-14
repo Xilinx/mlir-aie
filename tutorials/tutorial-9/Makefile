@@ -32,7 +32,7 @@ tutorial-9.exe: test.cpp aie.mlir kernel.o
 
 clean:
 	$(MAKE) -C external_kernel clean
-	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts *.o
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts *.o .AIE_SIM_CMD_LINE_OPTIONS
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises

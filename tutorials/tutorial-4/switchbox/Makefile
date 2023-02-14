@@ -23,4 +23,4 @@ pathfinder:
 	aie-opt --aie-find-flows ./path/pathfinder_output.mlir | aie-translate --aie-flows-to-json > ./path/pathfinder_output.json
 
 clean:
-	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts ./path/pathfinder_output.*
+	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts .AIE_SIM_CMD_LINE_OPTIONS ./path/pathfinder_output.*
