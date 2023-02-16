@@ -463,8 +463,9 @@ struct SetInboundsToReadStoreOpPattern : public OpConversionPattern<OpTy> {
                   ConversionPatternRewriter &rewriter) const override {
     if ((!op.getInBounds()) && op.getTransferRank() != 0) {
       SmallVector<bool, 4> bools(op.getTransferRank(), true);
-      OpBuilder b(op.getContext());
-      op->setAttr(op.getInBoundsAttrName(), b.getBoolArrayAttr(bools));
+      auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
+      rewriter.updateRootInPlace(
+          op, [&]() { op->setAttr(op.getInBoundsAttrName(), inBoundsAttr); });
     }
     return success();
   }
