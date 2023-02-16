@@ -1,4 +1,4 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -canonicalize | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -lower-affine -canonicalize | FileCheck %s
 
 module {
   func.func @matmul(%arg0: memref<64x64xi32>, %arg1: memref<64x64xi32>, %arg2: memref<64x64xi32>) {

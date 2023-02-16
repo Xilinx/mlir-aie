@@ -73,4 +73,15 @@ def CanonicalizeForAIEVec : Pass<"canonicalize-for-aievec", "func::FuncOp"> {
   ];
 }
 
+def RedundantLoadStoreOptimization : Pass<"redundant-load-store-optimization", "func::FuncOp"> {
+  let summary = "Set inbounds for loads and stores.";
+  let dependentDialects = ["vector::VectorDialect"];
+}
+
+def TransferOpflowOpt : Pass<"transfer-op-flow-opt", "func::FuncOp"> {
+  let summary = "Implement transfer op write to read forwarding and " 
+                "dead transfer write optimizations.";
+  let dependentDialects = ["vector::VectorDialect"];
+}
+
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES
