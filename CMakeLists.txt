@@ -56,7 +56,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 
-find_package(Vitis)
+find_package(Vitis COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Define the default arguments to use with 'lit', and an option for the user to
@@ -73,6 +73,7 @@ include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)
+include(ExternalProject)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
@@ -113,10 +114,10 @@ endif()
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(reference_designs)
+add_subdirectory(runtime_lib)
 add_subdirectory(test)
 add_subdirectory(tutorials)
 add_subdirectory(tools)
-add_subdirectory(runtime_lib)
 
 if (AIE_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
