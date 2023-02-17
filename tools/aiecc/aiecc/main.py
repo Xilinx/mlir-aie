@@ -117,7 +117,9 @@ class flow_runner:
   async def prepare_for_chesshack(self, task):
       if(opts.compile and opts.xchesscc):
         thispath = os.path.dirname(os.path.realpath(__file__))
-        chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
+        # Should be architecture-specific
+        runtime_lib_path = os.path.join(thispath, '..','..','runtime_lib', 'AIE')
+        chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, 'chess_intrinsic_wrapper.cpp')
 
         self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
         await self.do_call(task, ['xchesscc_wrapper', '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
@@ -133,11 +135,13 @@ class flow_runner:
         return
 
       thispath = os.path.dirname(os.path.realpath(__file__))
-      me_basic_o = os.path.join(thispath, '..','..','runtime_lib', 'me_basic.o')
-      libc = os.path.join(thispath, '..','..','runtime_lib', 'libc.a')
-      libm = os.path.join(thispath, '..','..','runtime_lib', 'libm.a')
-      libsoftfloat = os.path.join(thispath, '..','..','runtime_lib', 'libsoftfloat.a')
-      chess_intrinsic_wrapper_cpp = os.path.join(thispath, '..','..','runtime_lib', 'chess_intrinsic_wrapper.cpp')
+      # Should be architecture-specific
+      runtime_lib_path = os.path.join(thispath, '..','..','runtime_lib', 'AIE')
+      me_basic_o = os.path.join(runtime_lib_path, 'me_basic.o')
+      libc = os.path.join(runtime_lib_path, 'libc.a')
+      libm = os.path.join(runtime_lib_path, 'libm.a')
+      libsoftfloat = os.path.join(runtime_lib_path, 'libsoftfloat.a')
+      chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, 'chess_intrinsic_wrapper.cpp')
 
       if(opts.progress):
         task = self.progress_bar.add_task("[yellow] Core (%d, %d)" % core[0:2], total=self.maxtasks, command="starting")
@@ -275,9 +279,11 @@ class flow_runner:
       except FileExistsError:
         pass
       thispath = os.path.dirname(os.path.realpath(__file__))
-      sim_scsim_json = os.path.join(thispath, '..','..','runtime_lib',"aiesim","scsim_config.json")
-      sim_makefile   = os.path.join(thispath, '..','..','runtime_lib',"aiesim","Makefile")
-      sim_genwrapper = os.path.join(thispath, '..','..','runtime_lib',"aiesim","genwrapper_for_ps.cpp")
+      # Should be architecture-specific
+      runtime_lib_path = os.path.join(thispath, '..','..','runtime_lib', 'AIE')
+      sim_scsim_json = os.path.join(runtime_lib_path,"aiesim","scsim_config.json")
+      sim_makefile   = os.path.join(runtime_lib_path,"aiesim","Makefile")
+      sim_genwrapper = os.path.join(runtime_lib_path,"aiesim","genwrapper_for_ps.cpp")
 
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
