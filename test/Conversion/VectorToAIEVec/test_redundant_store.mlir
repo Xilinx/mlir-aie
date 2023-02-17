@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" -redundant-load-store-optimization -transfer-op-flow-opt -canonicalize | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" -redundant-load-store-optimization -canonicalize | FileCheck %s
 module {
   func.func @matmul(%arg0: memref<64x64xi32>, %arg1: memref<64x64xi32>, %arg2: memref<64x64xi32>) {
     affine.for %arg3 = 0 to 64 {
