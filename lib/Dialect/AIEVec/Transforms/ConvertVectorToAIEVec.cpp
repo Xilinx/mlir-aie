@@ -456,17 +456,14 @@ struct SplitUPDOpOnAccPattern : public OpConversionPattern<aievec::UPDOp> {
 
 template <typename OpTy>
 struct SetInboundsToReadStoreOpPattern : public RewritePattern {
-  // using OpConversionPattern<OpTy>::OpConversionPattern;
-  // using OpAdaptor = typename OpTy::Adaptor;
   SetInboundsToReadStoreOpPattern(MLIRContext *context)
       : RewritePattern(OpTy::getOperationName(), /*benefit=*/1, context) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    OpTy writeOrReadOp = dyn_cast<OpTy>(op);
-    if (!writeOrReadOp)
-      return failure();
+    OpTy writeOrReadOp = cast<OpTy>(op);
 
+    // TODO:set up inbounds for TransferWrite or TransferRead in a proper way
     if ((!writeOrReadOp.getInBounds()) &&
         writeOrReadOp.getTransferRank() != 0) {
       SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
@@ -671,7 +668,6 @@ populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
 
 void CanonicalizeForAIEVecPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
-
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
   ConversionTarget target(*context);
