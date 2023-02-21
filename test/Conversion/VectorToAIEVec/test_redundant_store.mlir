@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" -redundant-load-store-optimization -canonicalize | FileCheck %s
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --convert-vector-to-aievec="aie-target=aieml" -lower-affine -canonicalize | FileCheck %s
 module {
   func.func @matmul(%arg0: memref<64x64xi32>, %arg1: memref<64x64xi32>, %arg2: memref<64x64xi32>) {
     affine.for %arg3 = 0 to 64 {
@@ -27,19 +27,22 @@ module {
 // CHECK-SAME: %[[A0:[0-9a-zA-Z]*]]: memref<64x64xi32>
 // CHECK-SAME: %[[A1:[0-9a-zA-Z]*]]: memref<64x64xi32>
 // CHECK-SAME: %[[A2:[0-9a-zA-Z]*]]: memref<64x64xi32>
-//      CHECK:    %[[C0:.*]] = arith.constant 0 : i32
-//      CHECK:    affine.for %[[A3:.*]] = 0 to 64 {
-//      CHECK:      affine.for %[[A4:.*]] = 0 to 64 step 16 {
-//      CHECK:        affine.for %[[A5:.*]] = 0 to 64 step 16 {
-//      CHECK:          %[[T0:.*]] = vector.transfer_read %[[A0]][%[[A3:.*]], %[[A5:.*]]], %[[C0:.*]] {in_bounds = [true], permutation_map = #map} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T1:.*]] = vector.transfer_read %[[A1]][%[[A5:.*]], %[[A4:.*]]], %[[C0:.*]] {in_bounds = [true]} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T2:.*]] = arith.muli %[[T0:.*]], %[[T1:.*]] : vector<16xi32>
-//      CHECK:          %[[T3:.*]] = vector.transfer_read %[[A2]][%[[A3:.*]], %[[A4:.*]]], %[[C0:.*]] {in_bounds = [true]} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T4:.*]] = arith.addi %[[T3:.*]], %[[T2:.*]] : vector<16xi32>
-//      CHECK:          %[[T5:.*]] = affine.apply #map1(%[[A5:.*]])
-//      CHECK:          %[[T6:.*]] = vector.transfer_read %[[A0]][%[[A3:.*]], %[[T5:.*]]], %[[C0:.*]] {in_bounds = [true], permutation_map = #map} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T7:.*]] = affine.apply #map1(%[[A5:.*]])
-//      CHECK:          %[[T8:.*]] = vector.transfer_read %[[A1]][%[[T7:.*]], %[[A4:.*]]], %[[C0:.*]] {in_bounds = [true]} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T9:.*]] = arith.muli %[[T6:.*]], %[[T8:.*]] : vector<16xi32>
-//      CHECK:          %[[T10:.*]] = arith.addi %[[T4:.*]], %[[T9:.*]] : vector<16xi32>
+//      CHECK:    %[[C16:.*]] = arith.constant 16 : index
+//      CHECK:    %[[C0:.*]] = arith.constant 0 : index
+//      CHECK:    %[[C64:.*]] = arith.constant 64 : index
+//      CHECK:    %[[C1:.*]] = arith.constant 1 : index
+//      CHECK:    scf.for %[[A3:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C1:.*]]{
+//      CHECK:      scf.for %[[A4:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C16:.*]] {
+//      CHECK:          %[[T0:.*]] = aievec.upd %[[A2]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
+//      CHECK:          %[[T1:.*]] = aievec.ups %[[T0:.*]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
+//      CHECK:        scf.for %[[A5:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C16:.*]] {
+//      CHECK:          %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A5:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
+//      CHECK:          %[[T3:.*]] = aievec.broadcast %[[T2:.*]] {idx = 0 : i8} : vector<16xi32>, vector<16xi32>
+//      CHECK:          %[[T4:.*]] = aievec.upd %[[A1]][%[[A5:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
+//      CHECK:          %[[T5:.*]] = aievec.mac_elem %[[T3:.*]], %[[T4:.*]], %[[T1:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
+//      CHECK:          %[[T6:.*]] = aievec.broadcast %[[T2:.*]] {idx = 1 : i8} : vector<16xi32>, vector<16xi32>
+//      CHECK:          %[[T7:.*]] = arith.addi %[[A5:.*]], %[[C1:.*]] : index
+//      CHECK:          %[[T8:.*]] = aievec.upd %[[A1]][%[[T7:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
+//      CHECK:          %[[T9:.*]] = aievec.mac_elem %[[T6:.*]], %[[T8:.*]], %[[T5:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
+//      CHECK:          %[[T10:.*]] = aievec.srs %[[T9:.*]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
 //      CHECK:          vector.transfer_write %[[T10:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] {in_bounds = [true]} : vector<16xi32>, memref<64x64xi32>

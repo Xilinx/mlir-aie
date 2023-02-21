@@ -73,9 +73,4 @@ def CanonicalizeForAIEVec : Pass<"canonicalize-for-aievec", "func::FuncOp"> {
   ];
 }
 
-def RedundantLoadStoreOptimization : Pass<"redundant-load-store-optimization", "func::FuncOp"> {
-  let summary = "Redundant load and store optimization.";
-  let dependentDialects = ["vector::VectorDialect"];
-}
-
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

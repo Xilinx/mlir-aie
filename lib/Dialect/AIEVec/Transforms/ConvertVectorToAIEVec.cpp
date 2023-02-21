@@ -25,9 +25,11 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 
@@ -453,18 +455,26 @@ struct SplitUPDOpOnAccPattern : public OpConversionPattern<aievec::UPDOp> {
 };
 
 template <typename OpTy>
-struct SetInboundsToReadStoreOpPattern : public OpConversionPattern<OpTy> {
-  using OpConversionPattern<OpTy>::OpConversionPattern;
-  using OpAdaptor = typename OpTy::Adaptor;
+struct SetInboundsToReadStoreOpPattern : public RewritePattern {
+  // using OpConversionPattern<OpTy>::OpConversionPattern;
+  // using OpAdaptor = typename OpTy::Adaptor;
+  SetInboundsToReadStoreOpPattern(MLIRContext *context)
+      : RewritePattern(OpTy::getOperationName(), /*benefit=*/1, context) {}
 
-  LogicalResult
-  matchAndRewrite(OpTy op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    if ((!op.getInBounds()) && op.getTransferRank() != 0) {
-      SmallVector<bool, 4> bools(op.getTransferRank(), true);
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    OpTy writeOrReadOp = dyn_cast<OpTy>(op);
+    if (!writeOrReadOp)
+      return failure();
+
+    if ((!writeOrReadOp.getInBounds()) &&
+        writeOrReadOp.getTransferRank() != 0) {
+      SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
       auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
-      rewriter.updateRootInPlace(
-          op, [&]() { op->setAttr(op.getInBoundsAttrName(), inBoundsAttr); });
+      rewriter.updateRootInPlace(writeOrReadOp, [&]() {
+        writeOrReadOp->setAttr(writeOrReadOp.getInBoundsAttrName(),
+                               inBoundsAttr);
+      });
       return success();
     }
     return failure();
@@ -585,6 +595,7 @@ void LowerVectorToAIEVec::runOnOperation() {
       return;
     }
   }
+
   AnalysisManager am = getAnalysisManager();
   populateAIEVecCommonConversionPatterns(patterns, am);
   configureAIEVecCommonLegalizations(target, am);
@@ -693,44 +704,26 @@ void CanonicalizeForAIEVecPass::runOnOperation() {
 }
 
 struct RedundantLoadStoreOptimizationPass
-    : public aievec::impl::RedundantLoadStoreOptimizationBase<
-          RedundantLoadStoreOptimizationPass> {
-  using Base::Base;
-
+    : public PassWrapper<RedundantLoadStoreOptimizationPass,
+                         OperationPass<func::FuncOp>> {
   void runOnOperation() override;
 };
-
-static void
-configureRedundantLoadStoreOptimizationLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<vector::VectorDialect>();
-  target.addDynamicallyLegalOp<TransferReadOp>(
-      [](vector::TransferReadOp op) { return !(!op.getInBounds()); });
-  target.addDynamicallyLegalOp<TransferWriteOp>(
-      [](vector::TransferWriteOp op) { return !(!op.getInBounds()); });
-}
-
-static void populateRedundantLoadStoreOptimizationConversionPatterns(
-    RewritePatternSet &patterns) {
-  patterns.add<SetInboundsToReadOp, SetInboundsToWriteOp>(
-      patterns.getContext());
-}
 
 void RedundantLoadStoreOptimizationPass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
-  ConversionTarget target(*context);
 
-  populateRedundantLoadStoreOptimizationConversionPatterns(patterns);
-  configureRedundantLoadStoreOptimizationLegalizations(target);
+  patterns.add<SetInboundsToReadOp, SetInboundsToWriteOp>(
+      patterns.getContext());
 
+  (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
   transferOpflowOpt(funcOp);
-
-  if (failed(applyPartialConversion(funcOp, target, std::move(patterns)))) {
-    signalPassFailure();
-  }
 }
 
+std::unique_ptr<::mlir::Pass> createRedundantLoadStoreOptimizationPass() {
+  return std::make_unique<RedundantLoadStoreOptimizationPass>();
+}
 //===---------------------------------------------------------------------------
 // Pipeline implementations
 //===---------------------------------------------------------------------------
@@ -738,7 +731,7 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
     OpPassManager &pm, const ConvertVectorToAIEVecOptions &options) {
   pm.addPass(createCanonicalizerPass());
 
-  pm.addPass(createRedundantLoadStoreOptimization());
+  pm.addPass(createRedundantLoadStoreOptimizationPass());
 
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
