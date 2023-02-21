@@ -25,15 +25,18 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
 #define GEN_PASS_DEF_CANONICALIZEFORAIEVEC
+#define GEN_PASS_DEF_REDUNDANTLOADSTOREOPTIMIZATION
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 } // namespace xilinx::aievec
 
@@ -56,7 +59,7 @@ using namespace xilinx::aievec;
 // based on operation type and operand types
 static bool writesToAccumulator(Operation *op) {
   // Integer muls and FMAs write to accumulator
-  if (!isAIEOp(op))
+  if (!op || !isAIEOp(op))
     return false;
   if (auto mulOp = dyn_cast<aievec::MulOp>(op))
     return mulOp.getResult()
@@ -451,6 +454,34 @@ struct SplitUPDOpOnAccPattern : public OpConversionPattern<aievec::UPDOp> {
   int32_t maxVectorSize;
 };
 
+template <typename OpTy>
+struct SetInboundsToReadStoreOpPattern : public RewritePattern {
+  SetInboundsToReadStoreOpPattern(MLIRContext *context)
+      : RewritePattern(OpTy::getOperationName(), /*benefit=*/1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    OpTy writeOrReadOp = cast<OpTy>(op);
+
+    // TODO: We are currently setting all `vector.transfer_read` and
+    // TODO: `vector.transfer_write` as "in bounds". We need to add
+    // TODO: an analysis to verify that this is true before doing so.
+    if (writeOrReadOp.getInBounds() || writeOrReadOp.getTransferRank() == 0) {
+      return failure();
+    }
+
+    SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
+    auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
+    rewriter.updateRootInPlace(writeOrReadOp, [&]() {
+      writeOrReadOp->setAttr(writeOrReadOp.getInBoundsAttrName(), inBoundsAttr);
+    });
+    return success();
+  }
+};
+
+using SetInboundsToReadOp = SetInboundsToReadStoreOpPattern<TransferReadOp>;
+using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -562,6 +593,7 @@ void LowerVectorToAIEVec::runOnOperation() {
       return;
     }
   }
+
   AnalysisManager am = getAnalysisManager();
   populateAIEVecCommonConversionPatterns(patterns, am);
   configureAIEVecCommonLegalizations(target, am);
@@ -668,11 +700,36 @@ void CanonicalizeForAIEVecPass::runOnOperation() {
   }
 }
 
+struct RedundantLoadStoreOptimizationPass
+    : public PassWrapper<RedundantLoadStoreOptimizationPass,
+                         OperationPass<func::FuncOp>> {
+  void runOnOperation() override;
+};
+
+void RedundantLoadStoreOptimizationPass::runOnOperation() {
+  func::FuncOp funcOp = getOperation();
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
+
+  patterns.add<SetInboundsToReadOp, SetInboundsToWriteOp>(
+      patterns.getContext());
+
+  (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+  transferOpflowOpt(funcOp);
+}
+
+std::unique_ptr<::mlir::Pass> createRedundantLoadStoreOptimizationPass() {
+  return std::make_unique<RedundantLoadStoreOptimizationPass>();
+}
 //===---------------------------------------------------------------------------
 // Pipeline implementations
 //===---------------------------------------------------------------------------
 void xilinx::aievec::buildConvertVectorToAIEVec(
     OpPassManager &pm, const ConvertVectorToAIEVecOptions &options) {
+  pm.addPass(createCanonicalizerPass());
+
+  pm.addPass(createRedundantLoadStoreOptimizationPass());
+
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
@@ -682,8 +739,9 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   pm.addPass(
       createLowerVectorToAIEVec(options.getLowerVectorToAIEVecOptions()));
   // Add post-lowering canonicalization passes
-  pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
+  pm.addPass(createLoopInvariantCodeMotionPass());
+  pm.addPass(createCanonicalizerPass());
 }
 
 //===---------------------------------------------------------------------------
