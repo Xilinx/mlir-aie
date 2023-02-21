@@ -463,7 +463,9 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
                                 PatternRewriter &rewriter) const override {
     OpTy writeOrReadOp = cast<OpTy>(op);
 
-    // TODO:set up inbounds for TransferWrite or TransferRead in a proper way
+    // TODO: We are currently setting all `vector.transfer_read` and
+    // TODO: `vector.transfer_write` as "in bounds". We need to add
+    // TODO: an analysis to verify that this is true before doing so.
     if (writeOrReadOp.getInBounds() || writeOrReadOp.getTransferRank() == 0) {
       return failure();
     }
