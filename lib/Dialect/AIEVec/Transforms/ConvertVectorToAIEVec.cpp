@@ -59,7 +59,7 @@ using namespace xilinx::aievec;
 // based on operation type and operand types
 static bool writesToAccumulator(Operation *op) {
   // Integer muls and FMAs write to accumulator
-  if (!isAIEOp(op))
+  if (!op || !isAIEOp(op))
     return false;
   if (auto mulOp = dyn_cast<aievec::MulOp>(op))
     return mulOp.getResult()

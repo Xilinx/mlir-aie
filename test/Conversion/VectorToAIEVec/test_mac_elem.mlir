@@ -1,51 +1,18 @@
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" -lower-affine -canonicalize | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" | FileCheck %s
 
-module {
-  func.func @matmul(%arg0: memref<64x64xi32>, %arg1: memref<64x64xi32>, %arg2: memref<64x64xi32>) {
-    %c0_i32 = arith.constant 0 : i32
-    affine.for %arg3 = 0 to 64 {
-      affine.for %arg4 = 0 to 64 step 16 {
-        affine.for %arg5 = 0 to 64 step 16 {
-          %0 = vector.transfer_read %arg0[%arg3, %arg5], %c0_i32 {in_bounds = [true], permutation_map = affine_map<(d0, d1) -> (0)>} : memref<64x64xi32>, vector<16xi32>
-          %1 = vector.transfer_read %arg1[%arg5, %arg4], %c0_i32 {in_bounds = [true]} : memref<64x64xi32>, vector<16xi32>
-          %2 = arith.muli %0, %1 : vector<16xi32>
-          %3 = vector.transfer_read %arg2[%arg3, %arg4], %c0_i32 {in_bounds = [true]} : memref<64x64xi32>, vector<16xi32>
-          %4 = arith.addi %3, %2 : vector<16xi32>
-          %5 = affine.apply affine_map<(d0) -> (d0 + 1)>(%arg5)
-          %6 = vector.transfer_read %arg0[%arg3, %5], %c0_i32 {in_bounds = [true], permutation_map = affine_map<(d0, d1) -> (0)>} : memref<64x64xi32>, vector<16xi32>
-          %7 = affine.apply affine_map<(d0) -> (d0 + 1)>(%arg5)
-          %8 = vector.transfer_read %arg1[%7, %arg4], %c0_i32 {in_bounds = [true]} : memref<64x64xi32>, vector<16xi32>
-          %9 = arith.muli %6, %8 : vector<16xi32>
-          %10 = arith.addi %4, %9 : vector<16xi32>
-          vector.transfer_write %10, %arg2[%arg3, %arg4] {in_bounds = [true]} : vector<16xi32>, memref<64x64xi32>
-        }
-      }
-    }
-    return
-  }
+func.func @test_mac_elem(%a : vector<16xi32>, %b : vector<16xi32>, %c : vector<16xi32>) -> vector<16xi32> {
+    %0 = vector.extract %a[0] : vector<16xi32>
+    %1 = vector.broadcast %0 : i32 to vector<16xi32>
+    %2 = vector.fma %1, %b, %c : vector<16xi32>
+    return %2 : vector<16xi32>
 }
 
-// CHECK-LABEL: @matmul
-// CHECK-SAME: %[[A0:[0-9a-zA-Z]*]]: memref<64x64xi32>
-// CHECK-SAME: %[[A1:[0-9a-zA-Z]*]]: memref<64x64xi32>
-// CHECK-SAME: %[[A2:[0-9a-zA-Z]*]]: memref<64x64xi32>
-//      CHECK:    %[[C16:.*]] = arith.constant 16 : index
-//      CHECK:    %[[C0:.*]] = arith.constant 0 : index
-//      CHECK:    %[[C64:.*]] = arith.constant 64 : index
-//      CHECK:    %[[C1:.*]] = arith.constant 1 : index
-//      CHECK:    scf.for %[[A3:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C1:.*]]{
-//      CHECK:      scf.for %[[A4:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C16:.*]] {
-//      CHECK:          %[[T0:.*]] = aievec.upd %[[A2]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T1:.*]] = aievec.ups %[[T0:.*]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
-//      CHECK:        scf.for %[[A5:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C16:.*]] {
-//      CHECK:          %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A5:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T3:.*]] = aievec.broadcast %[[T2:.*]] {idx = 0 : i8} : vector<16xi32>, vector<16xi32>
-//      CHECK:          %[[T4:.*]] = aievec.upd %[[A1]][%[[A5:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T5:.*]] = aievec.mac_elem %[[T3:.*]], %[[T4:.*]], %[[T1:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
-//      CHECK:          %[[T6:.*]] = aievec.broadcast %[[T2:.*]] {idx = 1 : i8} : vector<16xi32>, vector<16xi32>
-//      CHECK:          %[[T7:.*]] = arith.addi %[[A5:.*]], %[[C1:.*]] : index
-//      CHECK:          %[[T8:.*]] = aievec.upd %[[A1]][%[[T7:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<64x64xi32>, vector<16xi32>
-//      CHECK:          %[[T9:.*]] = aievec.mac_elem %[[T6:.*]], %[[T8:.*]], %[[T5:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
-//      CHECK:          %[[T10:.*]] = aievec.srs %[[T9:.*]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
-//      CHECK:          vector.transfer_write %[[T10:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] {in_bounds = [true]} : vector<16xi32>, memref<64x64xi32>
-
+// CHECK-LABEL: func @test_mac_elem
+// CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<16xi32>
+// CHECK-SAME: %[[B:[A-Za-z0-9]+]]: vector<16xi32>
+// CHECK-SAME: %[[C:[A-Za-z0-9]+]]: vector<16xi32>
+//      CHECK: %[[BC:.*]] = aievec.broadcast %[[A]] {idx = 0 : i8} : vector<16xi32>, vector<16xi32>
+//      CHECK: %[[UPS:.*]] = aievec.ups %[[C]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
+//      CHECK: %[[ME:.*]] = aievec.mac_elem %[[BC:.*]], %[[B]], %[[UPS:.*]] : vector<16xi32>, vector<16xi32>, vector<16xi64>
+//      CHECK: %[[RES:.*]] = aievec.srs %[[ME:.*]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
+//      CHECK: return %[[RES:.*]] : vector<16xi32>  
