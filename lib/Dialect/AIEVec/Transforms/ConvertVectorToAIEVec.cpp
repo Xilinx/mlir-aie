@@ -464,17 +464,16 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
     OpTy writeOrReadOp = cast<OpTy>(op);
 
     // TODO:set up inbounds for TransferWrite or TransferRead in a proper way
-    if ((!writeOrReadOp.getInBounds()) &&
-        writeOrReadOp.getTransferRank() != 0) {
-      SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
-      auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
-      rewriter.updateRootInPlace(writeOrReadOp, [&]() {
-        writeOrReadOp->setAttr(writeOrReadOp.getInBoundsAttrName(),
-                               inBoundsAttr);
-      });
-      return success();
+    if (writeOrReadOp.getInBounds() || writeOrReadOp.getTransferRank() == 0) {
+      return failure();
     }
-    return failure();
+
+    SmallVector<bool, 4> bools(writeOrReadOp.getTransferRank(), true);
+    auto inBoundsAttr = rewriter.getBoolArrayAttr(bools);
+    rewriter.updateRootInPlace(writeOrReadOp, [&]() {
+      writeOrReadOp->setAttr(writeOrReadOp.getInBoundsAttrName(), inBoundsAttr);
+    });
+    return success();
   }
 };
 
