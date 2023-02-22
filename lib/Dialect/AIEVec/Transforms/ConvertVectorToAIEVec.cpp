@@ -539,11 +539,21 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
                .effectiveSize <= 512;
   });
   target.addDynamicallyLegalOp<aievec::FMAOp>([](xilinx::aievec::FMAOp op) {
-    auto srcBcast = dyn_cast<vector::BroadcastOp>(op.getLhs().getDefiningOp());
-    if (!srcBcast)
-      srcBcast = dyn_cast<vector::BroadcastOp>(op.getRhs().getDefiningOp());
-    if (srcBcast)
-      return !isa<vector::ExtractOp>(srcBcast.getSource().getDefiningOp());
+    vector::BroadcastOp srcBcast = nullptr;
+    auto lhsOp = op.getLhs().getDefiningOp();
+    if (lhsOp)
+      srcBcast = dyn_cast<vector::BroadcastOp>(lhsOp);
+    if (!srcBcast) {
+      auto rhsOp = op.getRhs().getDefiningOp();
+      if (!rhsOp)
+        return true;
+      srcBcast = dyn_cast<vector::BroadcastOp>(rhsOp);
+    }
+    if (srcBcast) {
+      auto srcOp = srcBcast.getSource().getDefiningOp();
+      if (srcOp)
+        return !isa<vector::ExtractOp>(srcOp);
+    }
     return true;
   });
   target.addLegalDialect<memref::MemRefDialect>();

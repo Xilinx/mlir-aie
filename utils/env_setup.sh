@@ -17,7 +17,7 @@
 
 if [ "$#" -ne 2 ]; then
     echo "ERROR: Needs 2 arguments for <mlir-aie install dir> and <llvm install dir>"
-    exit 1
+    return 1
 fi
 
 export MLIR_AIE_INSTALL_DIR=`realpath $1`
