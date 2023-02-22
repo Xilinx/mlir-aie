@@ -10,7 +10,7 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: aiecc.py --xchesscc --xbridge --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
-// RUN: xchesscc_wrapper +l acdc_project/core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
+// RUN: xchesscc_wrapper aie +l acdc_project/core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
 // RUN: %run_on_board ./test.elf
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{

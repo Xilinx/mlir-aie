@@ -10,7 +10,7 @@
 
 //  clang -O2 --target=aie -c %S/kernel.cc
 // REQUIRES: valid_xchess_license
-// RUN: xchesscc_wrapper -c %S/kernel.cc
+// RUN: xchesscc_wrapper aie -c %S/kernel.cc
 // RUN: aiecc.py --xbridge --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
