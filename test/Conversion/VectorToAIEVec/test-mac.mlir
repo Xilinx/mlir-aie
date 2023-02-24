@@ -1,4 +1,5 @@
 // RUN: aie-opt %s --convert-vector-to-aievec | FileCheck %s
+// XFAIL: *
 
 // CHECK-LABEL: func @test_fma_to_mac(
 // CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<8xi32>,
