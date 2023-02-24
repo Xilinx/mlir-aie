@@ -80,11 +80,14 @@ int main(int argc, char *argv[]);
 
 int _main_init(int argc, char **argv) property(envelope);
 
+// clang-format off
 inline assembly void chess_envelope_open() {
-  asm_begin.label __AIE_ARCH_MODEL_VERSION__20010000 global MOVXM sp,
-#_sp_start_value_DM_stack // init SP
-      asm_end
+  asm_begin
+  .label __AIE_ARCH_MODEL_VERSION__20010000 global
+    MOVXM sp, #_sp_start_value_DM_stack // init SP
+  asm_end
 }
+// clang-format on
 
 int _main_init(int argc, char **argv) property(envelope) {
   _init();
