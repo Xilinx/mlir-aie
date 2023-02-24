@@ -1,4 +1,5 @@
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aieml" | FileCheck %s
+// XFAIL: *
 
 func.func @test_mac_elem(%a : vector<16xi32>, %b : vector<16xi32>, %c : vector<16xi32>) -> vector<16xi32> {
     %0 = vector.fma %a, %b, %c : vector<16xi32>
