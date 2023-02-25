@@ -76,7 +76,7 @@ foreach(file ${INSTALLS})
 endforeach()
 
 # Install too
-install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 
 add_subdirectory(aiesim)
 add_subdirectory(AIE)
