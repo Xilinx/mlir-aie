@@ -118,7 +118,7 @@ class flow_runner:
       if(opts.compile and opts.xchesscc):
         thispath = os.path.dirname(os.path.realpath(__file__))
         # Should be architecture-specific ?
-        runtime_lib_path = os.path.join(thispath, '..','..','runtime_lib')
+        runtime_lib_path = os.path.join(thispath, '..','..')
         chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, 'chess_intrinsic_wrapper.cpp')
 
         self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
@@ -282,7 +282,7 @@ class flow_runner:
         pass
       thispath = os.path.dirname(os.path.realpath(__file__))
       # Should be architecture-specific
-      runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','aiesim')
+      runtime_simlib_path = os.path.join(thispath, '..','..','aiesim')
       sim_scsim_json = os.path.join(runtime_simlib_path,"scsim_config.json")
       sim_makefile   = os.path.join(runtime_simlib_path,"Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path,"genwrapper_for_ps.cpp")

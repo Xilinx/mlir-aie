@@ -57,6 +57,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 
 find_package(Vitis COMPONENTS AIE AIE2)
+configure_file(./utils/vitisVariables.config.in ${CMAKE_CURRENT_SOURCE_DIR}/utils/vitisVariables.config @ONLY)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Define the default arguments to use with 'lit', and an option for the user to
