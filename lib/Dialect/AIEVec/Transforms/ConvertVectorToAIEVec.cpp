@@ -55,30 +55,34 @@ using namespace xilinx::aievec;
 
 #define DEBUG_TYPE "aievec-lowering"
 
-// Given an AIEOp, determines if an operation writes to an accumulator
-// based on operation type and operand types
-static bool writesToAccumulator(Operation *op) {
-  // Integer muls and FMAs write to accumulator
-  if (!op || !isAIEOp(op))
-    return false;
-  if (auto mulOp = dyn_cast<aievec::MulOp>(op))
-    return mulOp.getResult()
-        .getType()
-        .cast<VectorType>()
-        .getElementType()
-        .isa<IntegerType>();
-  if (auto fmaOp = dyn_cast<aievec::FMAOp>(op))
-    return fmaOp.getResult()
-        .getType()
-        .cast<VectorType>()
-        .getElementType()
-        .isa<IntegerType>();
+//===----------------------------------------------------------------------===//
+// Utility functions
+//===----------------------------------------------------------------------===//
 
-  return isa<aievec::FMAElemOp, aievec::MulElemOp, aievec::FMAConvOp,
-             aievec::MulConvOp, aievec::UPSOp>(op);
+// Given the LHS and RHS of an `arith::AddIOp`, return whether one of them is
+// defined by an `arith::MulIOp` and, therefore, the `lhs`, `rhs`, and `acc`
+// operands of the MAC operation that can replace them.
+static bool extractMACOperandsFromAddOperands(Value addLhs, Value addRhs,
+                                              Value &macLhs, Value &macRhs,
+                                              Value &macAcc) {
+  auto lhsDefOp = addLhs.getDefiningOp();
+  auto rhsDefOp = addRhs.getDefiningOp();
+  arith::MulIOp mulOp = nullptr;
+  if (lhsDefOp) {
+    mulOp = dyn_cast<arith::MulIOp>(lhsDefOp);
+    macAcc = addRhs;
+  }
+  if (!mulOp && rhsDefOp) {
+    mulOp = dyn_cast<arith::MulIOp>(rhsDefOp);
+    macAcc = addLhs;
+  }
+  if (!mulOp)
+    return false;
+  macLhs = mulOp.getLhs();
+  macRhs = mulOp.getRhs();
+  return true;
 }
 
-//
 //===----------------------------------------------------------------------===//
 // Analyses
 //===----------------------------------------------------------------------===//
@@ -143,21 +147,28 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
   }
 };
 
-// This pattern replaces `vector.fma` with `aievec.mac_elem` for aie-ml.
-struct LowerVectorFMAToAIEVecFMAElem
-    : public OpConversionPattern<vector::FMAOp> {
-  using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
+// This pattern replaces `arith.muli`+`arith.addi` on vectors with
+// `aievec.mac_elem`. This pattern works for aie-ml.
+struct ConvertMulAddToAIEVecFMAElemOpPattern
+    : public OpConversionPattern<arith::AddIOp> {
+  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(vector::FMAOp fmaOp, OpAdaptor adaptor,
+  matchAndRewrite(arith::AddIOp addOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
-    VectorType resultType = fmaOp.getResult().getType().cast<VectorType>();
-
-    if (!resultType.getElementType().isa<IntegerType>())
+    // Verify it's a vector operation
+    VectorType resultType = dyn_cast<VectorType>(addOp.getType());
+    if (!resultType)
       return failure();
 
-    IntegerType resultElType = resultType.getElementType().cast<IntegerType>();
+    // Verify it can be replaced by a MAC
+    Value macLhs, macRhs, macAcc;
+    if (!extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs(),
+                                           macLhs, macRhs, macAcc))
+      return failure();
+
+    // Verify the vector type is supported by AIEML
+    IntegerType resultElType = cast<IntegerType>(resultType.getElementType());
     unsigned resultElWidth = resultElType.getWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
@@ -165,35 +176,16 @@ struct LowerVectorFMAToAIEVecFMAElem
         (laneSize != 16 || resultElWidth != 32))
       return failure();
 
-    Value acc = adaptor.getAcc();
-    Type accType = getVectorOpDestType(acc.getType().cast<VectorType>(), true);
-    auto accDefOp = acc.getDefiningOp();
-    if (!writesToAccumulator(accDefOp)) {
-      acc = rewriter.create<aievec::UPSOp>(fmaOp->getLoc(), accType, acc);
-      LLVM_DEBUG(llvm::dbgs()
-                 << "\n\nCreated UPS op " << acc << " to move the output of "
-                 << fmaOp << " into accumulator");
-    }
-
-    Value lhs = adaptor.getLhs();
-    Value rhs = adaptor.getRhs();
-
+    Type accType = getVectorOpDestType(cast<VectorType>(macAcc.getType()),
+                                       /*AIEML =*/true);
+    auto upsOp =
+        rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, macAcc);
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
-        fmaOp->getLoc(), lhs, rhs, acc, /*fmsub=*/false);
+        addOp.getLoc(), accType, macLhs, macRhs, upsOp.getResult(),
+        /*fmsub=*/false);
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(addOp, resultType,
+                                               fmaElemOp.getResult());
 
-    VectorType fmaElemResultType =
-        fmaElemOp.getResult().getType().cast<VectorType>();
-    IntegerType fmaElemResultElType =
-        fmaElemResultType.getElementType().cast<IntegerType>();
-    unsigned fmaResultElWidth = fmaElemResultElType.getWidth();
-
-    if (fmaResultElWidth > resultElWidth) {
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(fmaOp, resultType,
-                                                 fmaElemOp.getResult());
-    } else {
-      rewriter.replaceOpWithNewOp<aievec::FMAElemOp>(fmaOp, lhs, rhs, acc,
-                                                     /*fmsub=*/false);
-    }
     return success();
   }
 };
@@ -276,72 +268,33 @@ struct FoldBroadcastToFMAOp : public OpConversionPattern<aievec::FMAOp> {
   }
 };
 
-// This pattern converts a vector `arith.add` following a vector `arith.mul`
-// into a `vector.fma`.
-template <typename MulOpTy, typename AddOpTy>
-struct FoldMulAddToFMAPattern : public OpConversionPattern<AddOpTy> {
-  using OpConversionPattern<AddOpTy>::OpConversionPattern;
-  using OpAdaptor = typename AddOpTy::Adaptor;
+struct ConvertMulAddToAIEVecFMAOpPattern
+    : public OpConversionPattern<arith::AddIOp> {
+  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(AddOpTy addOp, OpAdaptor adaptor,
+  matchAndRewrite(arith::AddIOp addOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!isa<VectorType>(addOp.getType()))
+    VectorType vecType = dyn_cast<VectorType>(addOp.getType());
+    if (!vecType)
       return failure();
-    auto lhsDefOp = adaptor.getLhs().getDefiningOp();
-    auto rhsDefOp = adaptor.getRhs().getDefiningOp();
-    MulOpTy lhsOp = nullptr, rhsOp = nullptr;
-    if (lhsDefOp)
-      lhsOp = dyn_cast<MulOpTy>(lhsDefOp);
-    if (rhsDefOp)
-      rhsOp = dyn_cast<MulOpTy>(rhsDefOp);
-    if (!(lhsOp || rhsOp))
+
+    Value macLhs, macRhs, macAcc;
+    if (!extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs(),
+                                           macLhs, macRhs, macAcc))
       return failure();
-    MulOpTy mulOp = lhsOp;
-    auto acc = adaptor.getRhs();
-    if (!mulOp) {
-      mulOp = rhsOp;
-      acc = adaptor.getLhs();
-    }
-    rewriter.replaceOpWithNewOp<vector::FMAOp>(
-        addOp, addOp.getType(), mulOp.getLhs(), mulOp.getRhs(), acc);
-    return success();
-  }
-};
 
-using FoldMulAddIntToFMAPattern =
-    FoldMulAddToFMAPattern<arith::MulIOp, arith::AddIOp>;
-using FoldMulAddFloatToFMAPattern =
-    FoldMulAddToFMAPattern<arith::MulFOp, arith::AddFOp>;
-
-struct LowerVectorFMAOpPattern : public OpConversionPattern<vector::FMAOp> {
-  using OpConversionPattern<vector::FMAOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(vector::FMAOp fmaOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-
-    VectorType fmaVecTy = cast<VectorType>(fmaOp.getType());
-    auto fmaVecElemTy = fmaVecTy.getElementType();
-    // TODO: Select the appropriate wide type for the accumulator
-    //    unsigned vecElemWidth = fmaVecElemTy.getIntOrFloatBitWidth();
-    unsigned wideElemWidth = 80;
-    Type wideElemTy;
-    if (isa<IntegerType>(fmaVecElemTy))
-      wideElemTy = rewriter.getIntegerType(wideElemWidth);
-    else
-      wideElemTy = rewriter.getF64Type();
-    VectorType accVecTy = VectorType::get(fmaVecTy.getShape(), wideElemTy);
-    auto upsOp = rewriter.create<aievec::UPSOp>(fmaOp.getLoc(), accVecTy,
-                                                fmaOp.getAcc());
-    auto aiFmaOp = rewriter.create<aievec::FMAOp>(
-        fmaOp.getLoc(), accVecTy, adaptor.getLhs(), adaptor.getRhs(),
-        upsOp.getResult(),
+    Type accType = getVectorOpDestType(cast<VectorType>(macAcc.getType()),
+                                       /*AIEML =*/false);
+    auto upsOp =
+        rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, macAcc);
+    auto fmaOp = rewriter.create<aievec::FMAOp>(
+        addOp.getLoc(), accType, macLhs, macRhs, upsOp.getResult(),
         /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xstep=*/"",
         /*xsquare=*/"", /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"",
         /*zstep=*/"", /*zsquare=*/"", /*fmsub=*/false);
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(fmaOp, fmaVecTy,
-                                               aiFmaOp.getResult());
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(addOp, vecType,
+                                               fmaOp.getResult());
     return success();
   }
 };
@@ -391,8 +344,7 @@ struct LowerVectorTransferReadToAIEUPD
 };
 
 // XXX: Notice that this template doesn't verify that the vector element type
-// is
-// XXX: supported by the target architecture.
+// XXX: is supported by the target architecture.
 template <typename SrcOpTy, typename DstOpTy>
 struct OneToOneVectorOpToAIEVecOpPattern : public OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
@@ -409,8 +361,33 @@ struct OneToOneVectorOpToAIEVecOpPattern : public OpConversionPattern<SrcOpTy> {
   }
 };
 
-using LowerVectorAddIOpToAIEVecAddOp =
-    OneToOneVectorOpToAIEVecOpPattern<arith::AddIOp, aievec::AddOp>;
+struct LowerVectorAddIOpToAIEVecAddOp
+    : public OpConversionPattern<arith::AddIOp> {
+  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::AddIOp addOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resType = addOp.getType();
+    if (!isa<VectorType>(resType))
+      return failure();
+
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto lhsDefOp = lhs.getDefiningOp();
+    auto rhsDefOp = rhs.getDefiningOp();
+    if ((lhsDefOp && isa<arith::MulIOp>(lhsDefOp)) ||
+        (rhsDefOp && isa<arith::MulIOp>(rhsDefOp)))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<aievec::AddOp>(
+        addOp, resType, lhs, rhs,
+        /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xsquare=*/"",
+        /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"", /*zsquare=*/"");
+    return success();
+  }
+};
+
 using LowerVectorAddFOpToAIEVecAddOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::AddFOp, aievec::AddOp>;
 using LowerVectorMulIOpToAIEVecMulOp =
@@ -488,17 +465,16 @@ using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
 
 static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns,
                                                    AnalysisManager &am) {
-  patterns.add<LowerVectorAddIOpToAIEVecAddOp, LowerVectorAddFOpToAIEVecAddOp,
-               LowerVectorSubIOpToAIEVecSubOp, LowerVectorSubFOpToAIEVecSubOp>(
-      patterns.getContext());
+  patterns.add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
+               LowerVectorSubFOpToAIEVecSubOp>(patterns.getContext());
 }
 
 static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 256);
-  patterns.add<LowerVectorFMAOpPattern, FoldBroadcastToFMAOp>(
-      patterns.getContext());
+  patterns.add<ConvertMulAddToAIEVecFMAOpPattern, FoldBroadcastToFMAOp,
+               LowerVectorAddIOpToAIEVecAddOp>(patterns.getContext());
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
@@ -506,8 +482,9 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 512);
 
-  patterns.add<FoldVectorExtractAndBroadcastToAIEBroadcast,
-               LowerVectorFMAToAIEVecFMAElem>(patterns.getContext());
+  patterns.add<LowerVectorAddIOpToAIEVecAddOp,
+               FoldVectorExtractAndBroadcastToAIEBroadcast,
+               ConvertMulAddToAIEVecFMAElemOpPattern>(patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -533,7 +510,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
 static void configureAIEVecV1Legalizations(ConversionTarget &target,
                                            AnalysisManager &am) {
-  target.addIllegalOp<vector::FMAOp>();
   target.addDynamicallyLegalOp<aievec::UPDOp>([&am](xilinx::aievec::UPDOp op) {
     return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
                .effectiveSize <= 512;
@@ -619,26 +595,11 @@ void LowerVectorToAIEVec::runOnOperation() {
   }
 }
 
-// Check whether one of the operands of the AddOp is defined by a MulOp
-template <typename AddOpTy> static bool canFoldToFMA(AddOpTy addOp) {
-  if (isa<VectorType>(addOp.getType())) {
-    auto lhsOp = addOp.getLhs().getDefiningOp();
-    if (lhsOp && isa<arith::MulIOp, arith::MulFOp>(lhsOp))
-      return true;
-    auto rhsOp = addOp.getRhs().getDefiningOp();
-    if (rhsOp && isa<arith::MulIOp, arith::MulFOp>(rhsOp))
-      return true;
-  }
-  return false;
-}
-
 // This pass converts standard vector ops into a subset of `Vector` ops more
 // amenable to being converted to `AIEVec`. So far, this process consists of
-// two steps:
-//    1) Merge `arith::mul` followed by `arith::add` into `vector::fma`
-//    2) Replace splat transfer reads with contiguous transfer reads followed
-//    by
-//       `extract` + `broadcast` operations.
+// one steps:
+//    1) Replace splat transfer reads with contiguous transfer reads followed
+//       by `extract` + `broadcast` operations.
 struct CanonicalizeForAIEVecPass
     : public aievec::impl::CanonicalizeForAIEVecBase<
           CanonicalizeForAIEVecPass> {
@@ -650,10 +611,6 @@ struct CanonicalizeForAIEVecPass
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
   target.addLegalDialect<vector::VectorDialect>();
-  target.addDynamicallyLegalOp<arith::AddIOp>(
-      [](arith::AddIOp op) { return !canFoldToFMA(op); });
-  target.addDynamicallyLegalOp<arith::AddFOp>(
-      [](arith::AddFOp op) { return !canFoldToFMA(op); });
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant();
@@ -666,8 +623,7 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {}
 
 static void
 populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<FoldMulAddIntToFMAPattern, FoldMulAddFloatToFMAPattern,
-               ConvertSplatTransferReadToBroadcastPattern>(
+  patterns.add<ConvertSplatTransferReadToBroadcastPattern>(
       patterns.getContext());
 }
 
@@ -731,6 +687,7 @@ void RedundantLoadStoreOptimizationPass::runOnOperation() {
 std::unique_ptr<::mlir::Pass> createRedundantLoadStoreOptimizationPass() {
   return std::make_unique<RedundantLoadStoreOptimizationPass>();
 }
+
 //===---------------------------------------------------------------------------
 // Pipeline implementations
 //===---------------------------------------------------------------------------
