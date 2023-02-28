@@ -21,5 +21,5 @@ foreach(file ${INSTALLS})
     add_dependencies(runtime-libs aie-copy-runtime-libs-${file} )
 endforeach()
 
-install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/aiesim)
+install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/aiesim)
 
