@@ -164,7 +164,7 @@ class flow_runner:
                             '--expand-strided-metadata',
                             '--lower-affine',
                             '--convert-arith-to-llvm',
-                            '--convert-memref-to-llvm',
+                            '--finalize-memref-to-llvm',
                             '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
                             '--convert-cf-to-llvm',
                             '--canonicalize', '--cse', file_core, '-o', file_opt_core])
@@ -344,7 +344,7 @@ class flow_runner:
                               '--expand-strided-metadata',
                               '--lower-affine',
                               '--convert-arith-to-llvm',
-                              '--convert-memref-to-llvm',
+                              '--finalize-memref-to-llvm',
                               '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
                               '--convert-cf-to-llvm',
                               '--canonicalize', '--cse', self.file_with_addresses, '-o', self.file_opt_with_addresses])

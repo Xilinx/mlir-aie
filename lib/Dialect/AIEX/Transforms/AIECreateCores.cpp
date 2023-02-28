@@ -14,7 +14,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -152,7 +152,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
         if (func::FuncOp func = dyn_cast<func::FuncOp>(callable)) {
           funcs[func] = std::make_pair(colIndex, rowIndex);
 
-          BlockAndValueMapping mapper;
+          IRMapping mapper;
 
           builder.setInsertionPoint(callOp);
 
