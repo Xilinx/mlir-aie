@@ -5,12 +5,10 @@
 # (c) Copyright 2023 AMD
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.20.1)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-message(STATUS "NOLF NOLF: in libxaie cmake file")
 
 project("xaiengine driver")
 file(COPY ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_2/src DESTINATION ${PROJECT_SOURCE_DIR})
