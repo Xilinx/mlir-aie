@@ -1,10 +1,7 @@
+include ../../utils/vitisVariables.config
 include ../makefile-common
 
 .PHONY: all clean
-
-ifeq (${AIETOOLS_ROOT},)
-AIETOOLS_ROOT = $(dir $(shell which xchesscc))/..
-endif
 
 all: tutorial-8.exe
 	@mkdir -p elf
@@ -13,7 +10,7 @@ all: tutorial-8.exe
 
 # Command line AIE kernel compile. See tutorial-2 for more info.
 %.o: %.cc
-	xchesscc -p me -P ${AIETOOLS_ROOT}/data/cervino/lib -c $<
+	xchesscc ${CHESSCC_FLAGS} -c $<
 
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable

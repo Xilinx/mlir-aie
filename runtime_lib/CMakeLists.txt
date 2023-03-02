@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
+include(ExternalProject)
+
 # copy libc and libm from Vitis
 function(add_aie_runtime_libs arch) 
   if(DEFINED VITIS_ROOT)
@@ -81,3 +83,15 @@ install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 add_subdirectory(aiesim)
 add_subdirectory(AIE)
 add_subdirectory(AIE2)
+
+if(DEFINED VITIS_ROOT)
+ExternalProject_Add(libxaie
+  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/libxaieTmp
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libxaie
+  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libxaie
+  CMAKE_ARGS
+    -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
+    -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAINFILES_PATH}/toolchain_vitis_crosscomp_arm.cmake
+    -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+  )
+endif()

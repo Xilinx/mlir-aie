@@ -7,6 +7,8 @@
 
 cmake_minimum_required(VERSION 3.10)
 
+set(CMAKE_TOOLCHAINFILES_PATH ${CMAKE_MODULE_PATH})
+
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
   set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
@@ -57,6 +59,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 
 find_package(Vitis COMPONENTS AIE AIE2)
+configure_file(./utils/vitisVariables.config.in ${CMAKE_CURRENT_SOURCE_DIR}/utils/vitisVariables.config @ONLY)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Define the default arguments to use with 'lit', and an option for the user to
