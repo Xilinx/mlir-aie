@@ -15,6 +15,7 @@
 // RUN: aiecc.py --unified    --no-xchesscc --xbridge %s
 // RUN: aiecc.py --no-unified --xchesscc    --no-xbridge %s
 // RUN: aiecc.py --unified    --xchesscc    --no-xbridge %s
+// RUN: aiecc.py --aie-target=aie2 --xbridge %s
 
 module @test00_itsalive {
   %tile12 = AIE.tile(1, 2)

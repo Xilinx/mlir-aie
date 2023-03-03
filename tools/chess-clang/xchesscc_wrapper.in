@@ -6,10 +6,25 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
+TARGET_AIE_LIBDIR="@VITIS_AIE_INCLUDE_DIR@"
+TARGET_AIE2_LIBDIR="@VITIS_AIE2_INCLUDE_DIR@"
+
+TARGET=${1^^}
+shift
+
+if [ $TARGET != "AIE" -a $TARGET != "AIE2" ]
+  then
+    echo "xchesscc_wrapper: first argument is expected to be the target architecture (aie or aie2)"
+    exit 1
+fi
+
+TARGETVAR=TARGET_${TARGET}_LIBDIR
+LIBDIR=${!TARGETVAR}
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 export RDI_DATADIR=$AIETOOLS/data
 export UNWRAPPED_XCHESSCC=$AIETOOLS/bin/unwrapped/lnx64.o/xchesscc
 export LD_LIBRARY_PATH=$AIETOOLS/lib/lnx64.o:$AIETOOLS/lnx64/tools/dot/lib:$LD_LIBRARY_PATH
 # Carefully crafted path so that we can inject other scripts into the chess path, namely chess-clang
 export PATH=$DIR:$AIETOOLS/bin/unwrapped/lnx64.o:$AIETOOLS/tps/lnx64/target/bin/LNa64bin
-$UNWRAPPED_XCHESSCC +P 4 -p me -C Release_LLVM -Y clang=$DIR/chess-clang -P $AIETOOLS/data/cervino/lib -d -f $@
+$UNWRAPPED_XCHESSCC +P 4 -p me -C Release_LLVM -Y clang=$DIR/chess-clang -P $LIBDIR -d -f $@

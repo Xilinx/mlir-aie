@@ -1,11 +1,7 @@
+include ../../../utils/vitisVariables.config
+include ../../makefile-common
 
 .PHONY: all clean
-
-# TODO - Change this to env variable?
-ifeq ($(MLIR_AIE_SYSROOT),)
-MLIR_AIE_SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
-endif
-AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: tutorial-2c.exe
 	@mkdir -p elf
@@ -16,7 +12,7 @@ all: tutorial-2c.exe
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
 tutorial-2c.exe : test.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 Work/ps/c_rts/systemC/generated-objects/ps_i96.so: test.cpp aie.mlir
 	make -C Work/ps/c_rts/systemC link
@@ -32,11 +28,11 @@ clean:
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
 tutorial-2c_perf.exe: ./answers/test_perf.cpp aie.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 tutorial-2c_empty_perf.exe: ./answers/test_perf.cpp ./answers/aie_empty.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 tutorial-2c_real_empty_perf.exe: ./answers/test_perf.cpp ./answers/aie_real_empty.mlir
-	aiecc.py -j4 --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu $(word 2,$^) -I../../../runtime_lib ../../../runtime_lib/test_library.cpp ./$< -o $@
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 

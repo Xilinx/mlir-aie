@@ -25,15 +25,14 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
-  bool
-  isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                  BlockAndValueMapping &valueMapping) const final override {
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
+                       IRMapping &valueMapping) const final override {
     return true;
   }
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final override {
+                       IRMapping &) const final override {
     return true;
   }
   // Handle the given inlined terminator by replacing it with a new operation

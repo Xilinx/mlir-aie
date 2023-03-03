@@ -294,10 +294,7 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
 //===----------------------------------------------------------------------===//
 
 // UPS fold method. It will fold with a preceding SRS operation.
-// TODO: The interface for folding methods has changed. We will need to update
-// TODO: this next time we bump our llvm version.
-// TODO: New interface: OpFoldResult UPSOp::fold(FoldAdaptor adaptor) {
-OpFoldResult UPSOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult UPSOp::fold(FoldAdaptor adaptor) {
   // TODO: Both UPS and SRS have an aditional parameter (shift) that's being
   // TODO: ignored here. Somebody should take a careful look at it.
   // TODO: In next llvm version: auto srsDefOp =

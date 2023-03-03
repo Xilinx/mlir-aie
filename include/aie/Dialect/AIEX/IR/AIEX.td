@@ -36,6 +36,7 @@ to the more mature AIE dialect.
 
   }];
   let useDefaultTypePrinterParser = 1;
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 

@@ -42,7 +42,7 @@ Now that we know how to link in externally defined functions from precompiled ob
 
 To compile the C/C++ source into object code, we use the `xchesscc` command line tool as follows:
 ```
-xchesscc -p me -P <vitis install>/<release>/aietools/data/cervino/lib -c kernel.cc
+xchesscc -p me -P <vitis install>/<release>/aietools/data/<aie-version>/lib -c kernel.cc
 ```
 Within `kernel.cc`, the function must be defined as extern "C" with:
 ```
@@ -64,11 +64,11 @@ test.prx - XML project file
 ```
 Once these file are defined, we call the `xchessmk` command line tool as follows:
 ```
-xchessmk -P <vitis install>/<release>/aietools/data/cervino/lib test.prx
+xchessmk -P <vitis install>/<release>/aietools/data/<aie-version>/lib test.prx
 ```
 This compiles our testbench and kernel into a default `work` directory so that it is ready to simulate, which we do so by calling the `xca_udm_dbg` command line tool as follows:
 ```
-xca_udm_dbg -P <vitis install>/<release>/aietools/data/cervino/lib -t sim.tcl
+xca_udm_dbg -P <vitis install>/<release>/aietools/data/<aie-version>/lib -t sim.tcl
 ```
 This simulator executes a number of Tcl commands which we can group into Tcl batch file called  `sim.tcl`. The cycle accurate simulator will run the commands in this tcl file to completion and outputs any testbench results. This allows us to iteratively compile and test our design multiple times to get the right behavior as well as profile code performance.
 > Note that in `sim.tcl`, we call the command `iss profile save test.prf` which runs the profiler in our simulator and generates the profile summary file `test.prf`. We will look at this in more detail in the lab.

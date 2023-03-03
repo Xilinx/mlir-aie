@@ -1,3 +1,4 @@
+include ../../utils/vitisVariables.config
 include ../makefile-common
 
 .PHONY: all clean

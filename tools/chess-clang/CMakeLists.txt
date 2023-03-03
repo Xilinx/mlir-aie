@@ -8,9 +8,11 @@
 if(NOT DEFINED CMAKE_CROSSCOMPILE)
   set(SCRIPT_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/bin)
   # These files are only useful on host x86 compiles.
+  configure_file(xchesscc_wrapper.in ${PROJECT_BINARY_DIR}/bin/xchesscc_wrapper @ONLY)
+  install(PROGRAMS ${PROJECT_BINARY_DIR}/bin/xchesscc_wrapper DESTINATION ${SCRIPT_INSTALL_PATH})
+
   set(FILES
-    chess-clang
-    xchesscc_wrapper)
+    chess-clang)
 
   set(TARGETS ${FILES})
   list(TRANSFORM TARGETS PREPEND ${PROJECT_BINARY_DIR}/bin/)

@@ -9,8 +9,8 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/kernel.cc
-// RUN: aiecc.py --xbridge --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%S/../../../../runtime_lib/ %S/../../../../runtime_lib/test_library.cpp %S/test.cpp -o test.elf
+// RUN: xchesscc_wrapper aie -c %S/kernel.cc
+// RUN: aiecc.py --xbridge --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @test_chesss_01_precompiled_core_function {

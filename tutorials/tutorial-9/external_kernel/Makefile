@@ -1,23 +1,21 @@
+include ../../../utils/vitisVariables.config
+include ../../makefile-common
 
 .PHONY: build gui sim
-
-MY_VITIS_BIN_DIR := `dirname \`which vitis\``
 
 mlir: kernel.o
 
 %.o: %.cc
-	xchesscc -p me -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib/ -c $<
+	xchesscc ${CHESSCC_FLAGS} -c $<
 
 build:
-	#xchessmk -P ${XILINX_VITIS}/aietools/data/aie_ml/lib/ test.prx
-	#xchessmk -P ${XILINX_LOC}/aietools/data/cervino/lib/ test.prx
-	xchessmk -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib/ test.prx
+	xchessmk ${CHESS_FLAGS} test.prx
 
 gui:
-	xchessde -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib/ test.prx &
+	xchessde ${CHESS_FLAGS} test.prx &
 
 sim:
-	xca_udm_dbg -P ${MY_VITIS_BIN_DIR}/../aietools/data/cervino/lib -t sim.tcl
+	xca_udm_dbg ${CHESS_FLAGS} -t sim.tcl
 
 clean:
 	rm -rf work kernel.o test.prf
