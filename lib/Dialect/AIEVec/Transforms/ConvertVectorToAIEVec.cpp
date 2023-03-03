@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include <algorithm>
+#include <optional>
+#include <tuple>
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
@@ -60,28 +62,26 @@ using namespace xilinx::aievec;
 // Utility functions
 //===----------------------------------------------------------------------===//
 
-// Given the LHS and RHS of an `arith::AddIOp`, return whether one of them is
-// defined by an `arith::MulIOp` and, therefore, the `lhs`, `rhs`, and `acc`
-// operands of the MAC operation that can replace them.
-static bool extractMACOperandsFromAddOperands(Value addLhs, Value addRhs,
-                                              Value &macLhs, Value &macRhs,
-                                              Value &macAcc) {
+// Given the LHS and RHS of an `arith::AddIOp`, if one of them is defined by an
+// `arith::MulIOp`, return a tuple with the `lhs`, `rhs`, and `acc` of the MAC
+// operation that can replace them.
+static std::optional<std::tuple<Value, Value, Value>>
+extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
   auto lhsDefOp = addLhs.getDefiningOp();
   auto rhsDefOp = addRhs.getDefiningOp();
   arith::MulIOp mulOp = nullptr;
+  Value acc;
   if (lhsDefOp) {
     mulOp = dyn_cast<arith::MulIOp>(lhsDefOp);
-    macAcc = addRhs;
+    acc = addRhs;
   }
   if (!mulOp && rhsDefOp) {
     mulOp = dyn_cast<arith::MulIOp>(rhsDefOp);
-    macAcc = addLhs;
+    acc = addLhs;
   }
   if (!mulOp)
-    return false;
-  macLhs = mulOp.getLhs();
-  macRhs = mulOp.getRhs();
-  return true;
+    return {};
+  return std::make_tuple(mulOp.getLhs(), mulOp.getRhs(), acc);
 }
 
 //===----------------------------------------------------------------------===//
@@ -210,10 +210,11 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
       return failure();
 
     // Verify it can be replaced by a MAC
-    Value macLhs, macRhs, macAcc;
-    if (!extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs(),
-                                           macLhs, macRhs, macAcc))
+    auto res =
+        extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
+    if (!res)
       return failure();
+    auto [lhs, rhs, acc] = *res;
 
     // Verify the vector type is supported by AIEML
     IntegerType resultElType = cast<IntegerType>(resultType.getElementType());
@@ -224,12 +225,11 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
         (laneSize != 16 || resultElWidth != 32))
       return failure();
 
-    Type accType = getVectorOpDestType(cast<VectorType>(macAcc.getType()),
+    Type accType = getVectorOpDestType(cast<VectorType>(acc.getType()),
                                        /*AIEML =*/true);
-    auto upsOp =
-        rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, macAcc);
+    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc);
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
-        addOp.getLoc(), accType, macLhs, macRhs, upsOp.getResult(),
+        addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(addOp, resultType,
                                                fmaElemOp.getResult());
@@ -327,17 +327,17 @@ struct ConvertMulAddToAIEVecFMAOpPattern
     if (!vecType)
       return failure();
 
-    Value macLhs, macRhs, macAcc;
-    if (!extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs(),
-                                           macLhs, macRhs, macAcc))
+    auto res =
+        extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
+    if (!res)
       return failure();
+    auto [lhs, rhs, acc] = *res;
 
-    Type accType = getVectorOpDestType(cast<VectorType>(macAcc.getType()),
+    Type accType = getVectorOpDestType(cast<VectorType>(acc.getType()),
                                        /*AIEML =*/false);
-    auto upsOp =
-        rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, macAcc);
+    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc);
     auto fmaOp = rewriter.create<aievec::FMAOp>(
-        addOp.getLoc(), accType, macLhs, macRhs, upsOp.getResult(),
+        addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xstep=*/"",
         /*xsquare=*/"", /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"",
         /*zstep=*/"", /*zsquare=*/"", /*fmsub=*/false);
