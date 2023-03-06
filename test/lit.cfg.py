@@ -36,6 +36,7 @@ config.test_source_root = os.path.dirname(__file__)
 config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 config.substitutions.append(('%VITIS_SYSROOT%', config.vitis_sysroot))
+config.substitutions.append(('%extraAieCcFlags%', config.extraAieCcFlags))
 config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib")))
 config.substitutions.append(('%aietools', config.vitis_aietools_dir))
 # for xchesscc_wrapper
