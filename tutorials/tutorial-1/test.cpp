@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie_inc.cpp"
 #include "test_library.h"
 #include <cassert>
 #include <cmath>
@@ -20,6 +19,8 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+
+#include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
   printf("Tutorial-1 test start.\n");
