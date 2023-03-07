@@ -329,7 +329,7 @@ struct LowerVectorTransferReadToAIEUPD
       return failure();
 
     // When a transfer read with a constant innermost index is not aligned, we
-    // load the corresponding aligned load with an aieve.shift op.
+    // get the corresponding aligned load followed by an aievec.shift op.
     // Example:
     // Convert -
     // %0 = vector.transfer_read %arg1[16] : vector<32xi8>
