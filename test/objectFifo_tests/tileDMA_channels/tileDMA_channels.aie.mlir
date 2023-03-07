@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 // This test uses all four channels of the tileDMAs of tiles (1, 2) and (3, 3) as four object FIFOs.
