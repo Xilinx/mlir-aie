@@ -328,14 +328,59 @@ struct LowerVectorTransferReadToAIEUPD
     if (map.isConstant())
       return failure();
 
-    // TODO: Verify alignment
-    // TODO: Extend this function so it can address more than the trivial
-    // case.
+    // When a transfer read with a constant innermost index is not aligned, we
+    // get the corresponding aligned load followed by an aievec.shift op.
+    // Example:
+    // Convert -
+    // %0 = vector.transfer_read %arg1[16] : vector<32xi8>
+    // %1 = vector.transfer_read %arg1[34] : vector<32xi8>
+    //
+    // to -
+    //
+    // %0 = aievec.upd %arg1[0] : vector<32xi8>
+    // %1 = aievec.shift %0 {shift = 16 : i32} : vector<32xi8>
+    // %2 = aievec.upd %arg1[32] : vector<32xi8>
+    // %3 = aievec.shift %2 {shift = 2 : i32} : vector<32xi8>
+    //
     SmallVector<Value, 4> indices(adaptor.getIndices().begin(),
                                   adaptor.getIndices().end());
+    Value innerMostIdx = indices[indices.size() - 1];
+    Value newIdx = innerMostIdx;
+    VectorType vType = readOp.getVector().getType().cast<VectorType>();
+    int32_t lanes = getVectorLaneSize(vType);
+
+    if (auto defOp = innerMostIdx.getDefiningOp()) {
+      if (auto constOp = dyn_cast<arith::ConstantOp>(defOp)) {
+        int64_t val = constOp.getValue().cast<IntegerAttr>().getInt();
+        if (val) {
+          int64_t offset = val % lanes;
+          int64_t idx = val / lanes * lanes;
+          newIdx = rewriter.create<arith::ConstantOp>(
+              constOp.getLoc(),
+              rewriter.getIntegerAttr(constOp.getType(), idx));
+          indices[indices.size() - 1] = newIdx;
+          int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
+
+          if (shiftBytes) {
+            auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
+                readOp.getLoc(), vType, adaptor.getSource(), indices, 0, 0,
+                TypedValue<VectorType>(nullptr));
+
+            SmallVector<Value> sources = {updOp->getResult(0)};
+            rewriter.replaceOpWithNewOp<xilinx::aievec::ShiftOp>(
+                readOp, vType, sources, shiftBytes);
+          } else {
+            rewriter.replaceOpWithNewOp<xilinx::aievec::UPDOp>(
+                readOp, vType, adaptor.getSource(), indices, 0, 0,
+                TypedValue<VectorType>(nullptr));
+          }
+          return success();
+        }
+      }
+    }
     rewriter.replaceOpWithNewOp<xilinx::aievec::UPDOp>(
-        readOp, readOp.getVector().getType(), adaptor.getSource(), indices, 0,
-        0, TypedValue<VectorType>(nullptr));
+        readOp, vType, adaptor.getSource(), indices, 0, 0,
+        TypedValue<VectorType>(nullptr));
     return success();
   }
 
