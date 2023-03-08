@@ -585,8 +585,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
   target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
   target.addIllegalOp<vector::TransferReadOp>();
-  // target.addDynamicallyLegalOp<arith::AddIOp>(
-  //    [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
+  target.addDynamicallyLegalOp<arith::AddIOp>(
+      [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubIOp>(
