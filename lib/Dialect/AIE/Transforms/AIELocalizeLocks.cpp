@@ -32,7 +32,6 @@ struct AIELocalizeLocksPass
 
     ModuleOp moduleOp = getOperation();
 
-
     for (auto coreOp : moduleOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
 

@@ -54,7 +54,8 @@ struct AIEAssignBufferAddressesPass
       }
     }
 
-    int max_data_memory_size = (getTargetArch(m) == AIEArch::AIE2) ? 0x10000 : 0x8000;
+    int max_data_memory_size =
+        (getTargetArch(m) == AIEArch::AIE2) ? 0x10000 : 0x8000;
 
     for (auto tile : m.getOps<TileOp>()) {
       SmallVector<BufferOp, 4> buffers;

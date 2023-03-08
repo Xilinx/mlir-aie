@@ -132,7 +132,8 @@ bool AIE1Utils::isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
 
 bool AIE1Utils::isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
   bool IsEvenRow = ((srcRow % 2) == 0);
-  return (!IsEvenRow && AIE1Utils::isInternal(srcCol, srcRow, dstCol, dstRow)) ||
+  return (!IsEvenRow &&
+          AIE1Utils::isInternal(srcCol, srcRow, dstCol, dstRow)) ||
          (IsEvenRow && AIE1Utils::isEast(srcCol, srcRow, dstCol, dstRow));
 }
 
@@ -152,14 +153,17 @@ bool AIE1Utils::isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
   return AIE1Utils::isSouth(srcCol, srcRow, dstCol, dstRow);
 }
 
-bool AIE1Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
+bool AIE1Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
+                                   int memRow) {
   bool IsEvenRow = ((coreRow % 2) == 0);
 
-  bool IsMemWest = (AIE1Utils::isWest(coreCol, coreRow, memCol, memRow) && !IsEvenRow) ||
-                   (AIE1Utils::isInternal(coreCol, coreRow, memCol, memRow) && IsEvenRow);
+  bool IsMemWest =
+      (AIE1Utils::isWest(coreCol, coreRow, memCol, memRow) && !IsEvenRow) ||
+      (AIE1Utils::isInternal(coreCol, coreRow, memCol, memRow) && IsEvenRow);
 
-  bool IsMemEast = (AIE1Utils::isEast(coreCol, coreRow, memCol, memRow) && IsEvenRow) ||
-                   (AIE1Utils::isInternal(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
+  bool IsMemEast =
+      (AIE1Utils::isEast(coreCol, coreRow, memCol, memRow) && IsEvenRow) ||
+      (AIE1Utils::isInternal(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
 
   bool IsMemNorth = AIE1Utils::isNorth(coreCol, coreRow, memCol, memRow);
   bool IsMemSouth = AIE1Utils::isSouth(coreCol, coreRow, memCol, memRow);
@@ -202,7 +206,8 @@ Optional<TileID> AIE2Utils::getMemNorth(TileID src) {
 Optional<TileID> AIE2Utils::getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first two rows doesn't have a tile memory south
-  if (!AIE2Utils::isValidTile(*ret) || ret->second < 2) // TODO - Is memtile valid?
+  if (!AIE2Utils::isValidTile(*ret) ||
+      ret->second < 2) // TODO - Is memtile valid?
     ret.reset();
   return ret;
 }
@@ -243,7 +248,8 @@ bool AIE2Utils::isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
   return (AIE2Utils::isSouth(srcCol, srcRow, dstCol, dstRow));
 }
 
-bool AIE2Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow) {
+bool AIE2Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
+                                   int memRow) {
   bool IsMemWest = AIE2Utils::isWest(coreCol, coreRow, memCol, memRow);
   bool IsMemEast = AIE2Utils::isInternal(coreCol, coreRow, memCol, memRow);
   bool IsMemNorth = AIE2Utils::isNorth(coreCol, coreRow, memCol, memRow);
@@ -266,7 +272,6 @@ AIEArch getTargetArch(mlir::ModuleOp module) {
   }
   return targetOp.getArch();
 }
-
 
 // Walk the operation hierarchy until we find a containing TileElement.
 // If no parent is a TileElement, then return null.
@@ -293,8 +298,8 @@ struct UsesAreAccessable {
 
         auto tileID = element.getTileID();
         // TODO - Needs moduleOp to decide which AIE?Utils to call
-        if (!xilinx::AIE::AIE1Utils::isLegalMemAffinity(tileID.first, tileID.second,
-                                             thisID.first, thisID.second))
+        if (!xilinx::AIE::AIE1Utils::isLegalMemAffinity(
+                tileID.first, tileID.second, thisID.first, thisID.second))
           return (op->emitOpError("in Column ")
                   << thisID.first << " and Row " << thisID.second
                   << " is accessed from an unreachable tile in Column "
@@ -600,10 +605,9 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   return success();
 }
 
-
 LogicalResult xilinx::AIE::TargetOp::verify() {
   auto aie_module = (*this)->getParentOfType<mlir::ModuleOp>();
-  auto  tOps = aie_module.getOps<TargetOp>();
+  auto tOps = aie_module.getOps<TargetOp>();
   int size = 0;
   for (auto tOp : tOps) {
     size++;
@@ -985,8 +989,8 @@ struct UsesReachableLock {
     auto tileID = parent.getTileID();
 
     // TODO - Needs moduleOp to decide which AIE?Utils to call
-    if (!xilinx::AIE::AIE1Utils::isLegalMemAffinity(tileID.first, tileID.second,
-                                         lock.colIndex(), lock.rowIndex()))
+    if (!xilinx::AIE::AIE1Utils::isLegalMemAffinity(
+            tileID.first, tileID.second, lock.colIndex(), lock.rowIndex()))
       return failure();
     return success();
   }

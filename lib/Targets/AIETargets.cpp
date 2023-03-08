@@ -93,9 +93,9 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset,
 
 // Return the base address of the memory associated with this tile.
 static int internalMemAddress(TileID src, ModuleOp module) {
-  if(getTargetArch(module) == AIEArch::AIE2) {
+  if (getTargetArch(module) == AIEArch::AIE2) {
     return 0x70000; // Always east
-  } else { // AIE1
+  } else {          // AIE1
     bool IsEvenRow = ((src.second % 2) == 0);
     if (IsEvenRow)
       // Internal is West
@@ -136,7 +136,7 @@ void registerAIETranslations() {
               for (auto buf : buffers[tiles[*tile]])
                 writeBufferMap(output, buf, offset, NL);
           };
-                   
+
           if (getTargetArch(module) == AIEArch::AIE2) {
             if (auto tile = AIE2Utils::getMemSouth(srcCoord))
               doBuffer(tile, 0x00040000);
@@ -156,7 +156,7 @@ void registerAIETranslations() {
             if (auto tile = AIE1Utils::getMemEast(srcCoord))
               doBuffer(tile, 0x00038000);
           }
-          }
+        }
         return success();
       },
       [](DialectRegistry &registry) {
@@ -266,21 +266,31 @@ SECTIONS
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
             // Stack
-            output << ". = 0x" << llvm::utohexstr(internalMemAddress(srcCoord, module))
+            output << ". = 0x"
+                   << llvm::utohexstr(internalMemAddress(srcCoord, module))
                    << ";\n";
             output << "_sp_start_value_DM_stack = .;\n";
-            output << ". += 0x" << llvm::utohexstr(0x1000) << ";\n"; // TODO to match stack size
+            output << ". += 0x" << llvm::utohexstr(0x1000)
+                   << ";\n"; // TODO to match stack size
 
             if (getTargetArch(module) == AIEArch::AIE2) {
-              doBuffer(AIE2Utils::getMemSouth(srcCoord), 0x00040000, std::string("south"));
-              doBuffer(AIE2Utils::getMemWest(srcCoord),  0x00050000, std::string("west"));
-              doBuffer(AIE2Utils::getMemNorth(srcCoord), 0x00060000, std::string("north"));
-              doBuffer(AIE2Utils::getMemEast(srcCoord),  0x00070000, std::string("east"));
+              doBuffer(AIE2Utils::getMemSouth(srcCoord), 0x00040000,
+                       std::string("south"));
+              doBuffer(AIE2Utils::getMemWest(srcCoord), 0x00050000,
+                       std::string("west"));
+              doBuffer(AIE2Utils::getMemNorth(srcCoord), 0x00060000,
+                       std::string("north"));
+              doBuffer(AIE2Utils::getMemEast(srcCoord), 0x00070000,
+                       std::string("east"));
             } else {
-              doBuffer(AIE1Utils::getMemSouth(srcCoord), 0x00020000, std::string("south"));
-              doBuffer(AIE1Utils::getMemWest(srcCoord), 0x00028000, std::string("west"));
-              doBuffer(AIE1Utils::getMemNorth(srcCoord), 0x00030000, std::string("north"));
-              doBuffer(AIE1Utils::getMemEast(srcCoord), 0x00038000, std::string("east"));
+              doBuffer(AIE1Utils::getMemSouth(srcCoord), 0x00020000,
+                       std::string("south"));
+              doBuffer(AIE1Utils::getMemWest(srcCoord), 0x00028000,
+                       std::string("west"));
+              doBuffer(AIE1Utils::getMemNorth(srcCoord), 0x00030000,
+                       std::string("north"));
+              doBuffer(AIE1Utils::getMemEast(srcCoord), 0x00038000,
+                       std::string("east"));
             }
             output << "  .bss : { *(.bss) } > data\n";
             output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
@@ -351,8 +361,9 @@ SECTIONS
             output << "_symbol " << corefunc << " _after _main_init\n";
             output << "_symbol      _main_init 0\n";
             std::string initReserved = (getTargetArch(module) == AIEArch::AIE2)
-              ? "0x40000" : "0x20000";
-            output << "_reserved DMb      0x00000 " << initReserved 
+                                           ? "0x40000"
+                                           : "0x20000";
+            output << "_reserved DMb      0x00000 " << initReserved
                    << "//Don't put data in code memory\n";
 
             auto doBuffer = [&](Optional<TileID> tile, int offset,
@@ -361,13 +372,14 @@ SECTIONS
                 if (tiles.count(*tile))
                   for (auto buf : buffers[tiles[*tile]])
                     writeBCFMap(output, buf, offset, NL);
-                  // TODO How to set as reserved if no buffer exists (or reserve 
-                  // remaining buffer)
+                // TODO How to set as reserved if no buffer exists (or reserve
+                // remaining buffer)
               } else {
-                std::string localMemSize = (getTargetArch(module) == AIEArch::AIE2)
-                  ? "0x10000" : "0x8000";
-                output << "_reserved DMb 0x" << llvm::utohexstr(offset)
-                       << " " << localMemSize << " "
+                std::string localMemSize =
+                    (getTargetArch(module) == AIEArch::AIE2) ? "0x10000"
+                                                             : "0x8000";
+                output << "_reserved DMb 0x" << llvm::utohexstr(offset) << " "
+                       << localMemSize << " "
                        << "// No tile with memory exists to the " << dir
                        << ".\n";
               }
@@ -375,20 +387,29 @@ SECTIONS
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
             if (getTargetArch(module) == AIEArch::AIE2) {
-              doBuffer(AIE2Utils::getMemSouth(srcCoord), 0x00040000, std::string("south"));
-              doBuffer(AIE2Utils::getMemWest(srcCoord),  0x00050000, std::string("west"));
-              doBuffer(AIE2Utils::getMemNorth(srcCoord), 0x00060000, std::string("north"));
-              doBuffer(AIE2Utils::getMemEast(srcCoord),  0x00070000, std::string("east"));
+              doBuffer(AIE2Utils::getMemSouth(srcCoord), 0x00040000,
+                       std::string("south"));
+              doBuffer(AIE2Utils::getMemWest(srcCoord), 0x00050000,
+                       std::string("west"));
+              doBuffer(AIE2Utils::getMemNorth(srcCoord), 0x00060000,
+                       std::string("north"));
+              doBuffer(AIE2Utils::getMemEast(srcCoord), 0x00070000,
+                       std::string("east"));
             } else {
-              doBuffer(AIE1Utils::getMemSouth(srcCoord), 0x00020000, std::string("south"));
-              doBuffer(AIE1Utils::getMemWest(srcCoord),  0x00028000, std::string("west"));
-              doBuffer(AIE1Utils::getMemNorth(srcCoord), 0x00030000, std::string("north"));
-              doBuffer(AIE1Utils::getMemEast(srcCoord),  0x00038000, std::string("east"));
+              doBuffer(AIE1Utils::getMemSouth(srcCoord), 0x00020000,
+                       std::string("south"));
+              doBuffer(AIE1Utils::getMemWest(srcCoord), 0x00028000,
+                       std::string("west"));
+              doBuffer(AIE1Utils::getMemNorth(srcCoord), 0x00030000,
+                       std::string("north"));
+              doBuffer(AIE1Utils::getMemEast(srcCoord), 0x00038000,
+                       std::string("east"));
             }
 
             output << "_stack    DM_stack 0x"
                    << llvm::utohexstr(internalMemAddress(srcCoord, module))
-                   << "  0x1000 //stack for core\n"; // TODO Needs to match stack size!!!
+                   << "  0x1000 //stack for core\n"; // TODO Needs to match
+                                                     // stack size!!!
             // output << "_reserved DMb 0x40000 0xc0000 // And everything else "
             //           "the core can't see\n";
             if (auto coreOp = tile.getCoreOp()) {

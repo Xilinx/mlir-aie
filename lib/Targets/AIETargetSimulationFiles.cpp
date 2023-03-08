@@ -31,80 +31,78 @@ namespace AIE {
 
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
                                             llvm::raw_ostream &output) {
-  if(getTargetArch(module) == AIEArch::AIE2) {
-    output 
-      << "{\n"
-      << "    \"SimulationConfig\": {\n"
-      << "        \"device_json\": {\n"
-      << "            \"directory\": \"data/aie_ml/devices\",\n"
-      << "            \"file\": \"VE2302.json\"\n"
-      << "        },\n"
-      << "        \"phy_device_file\": \"xcve2302-sfva784-1MP-e-S-es1\",\n"
-      << "        \"aiearch\": \"aie2\",\n"
-      << "        \"aie_freq\": 1150000000.0,\n"
-      << "        \"use_real_noc\": 1,\n"
-      << "        \"evaluate_fifo_depth\": 0,\n"
-      << "        \"noc_ip_block\": {\n"
-      << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
-      << "            \"traffic_file\": \"./sim/noc/noc_traffic.nts\",\n"
-      << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
-      << "        },\n"
-      << "        \"pl_ip_block\": [\n"
-      << "            {\n"
-      << "                \"name\": \"ps_ps_main\",\n"
-      << "                \"ip\": \"ps\",\n"
-      << "                \"lib_path\": \"ps/ps.so\",\n"
-      << "                \"pl_freq\": 312500000.0,\n"
-      << "                \"axi_mm\": [\n"
-      << "                    {\n"
-      << "                        \"port_name\": \"ps_axi\",\n"
-      << "                        \"direction\": \"ps_to_gm\",\n"
-      << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
-      << "                        \"bus_width\": 0\n"
-      << "                    }\n"
-      << "                ],\n"
-      << "                \"event_bus\": []\n"
-      << "            }\n"
-      << "        ]\n"
-      << "    }\n"
-      << "}\n";
+  if (getTargetArch(module) == AIEArch::AIE2) {
+    output << "{\n"
+           << "    \"SimulationConfig\": {\n"
+           << "        \"device_json\": {\n"
+           << "            \"directory\": \"data/aie_ml/devices\",\n"
+           << "            \"file\": \"VE2302.json\"\n"
+           << "        },\n"
+           << "        \"phy_device_file\": \"xcve2302-sfva784-1MP-e-S-es1\",\n"
+           << "        \"aiearch\": \"aie2\",\n"
+           << "        \"aie_freq\": 1150000000.0,\n"
+           << "        \"use_real_noc\": 1,\n"
+           << "        \"evaluate_fifo_depth\": 0,\n"
+           << "        \"noc_ip_block\": {\n"
+           << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
+           << "            \"traffic_file\": \"./sim/noc/noc_traffic.nts\",\n"
+           << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
+           << "        },\n"
+           << "        \"pl_ip_block\": [\n"
+           << "            {\n"
+           << "                \"name\": \"ps_ps_main\",\n"
+           << "                \"ip\": \"ps\",\n"
+           << "                \"lib_path\": \"ps/ps.so\",\n"
+           << "                \"pl_freq\": 312500000.0,\n"
+           << "                \"axi_mm\": [\n"
+           << "                    {\n"
+           << "                        \"port_name\": \"ps_axi\",\n"
+           << "                        \"direction\": \"ps_to_gm\",\n"
+           << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
+           << "                        \"bus_width\": 0\n"
+           << "                    }\n"
+           << "                ],\n"
+           << "                \"event_bus\": []\n"
+           << "            }\n"
+           << "        ]\n"
+           << "    }\n"
+           << "}\n";
   } else { // AIEArch::AIE1
-    output 
-      << "{\n"
-      << "    \"SimulationConfig\": {\n"
-      << "        \"device_json\": {\n"
-      << "            \"directory\": \"data/devices\",\n"
-      << "            \"file\": \"VC1902.json\"\n"
-      << "        },\n"
-      << "        \"phy_device_file\": \"xcvc1902-vsva2197-2MP-e-S\",\n"
-      << "        \"aiearch\": \"aie\",\n"
-      << "        \"aie_freq\": 1250000000.0,\n"
-      << "        \"use_real_noc\": 1,\n"
-      << "        \"evaluate_fifo_depth\": 0,\n"
-      << "        \"noc_ip_block\": {\n"
-      << "            \"lib_path\": \"./Work/noc/liblnoc_tlm.so\",\n"
-      << "            \"traffic_file\": \"./Work/noc/noc_traffic.nts\",\n"
-      << "            \"config_file\": \"./Work/noc/noc_soln.ncr\"\n"
-      << "        },\n"
-      << "        \"pl_ip_block\": [\n"
-      << "            {\n"
-      << "                \"name\": \"ps_ps_main\",\n"
-      << "                \"ip\": \"ps\",\n"
-      << "                \"lib_path\": \"ps/ps.so\",\n"
-      << "                \"pl_freq\": 312500000.0,\n"
-      << "                \"axi_mm\": [\n"
-      << "                    {\n"
-      << "                        \"port_name\": \"ps_axi\",\n"
-      << "                        \"direction\": \"ps_to_gm\",\n"
-      << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
-      << "                        \"bus_width\": 0\n"
-      << "                    }\n"
-      << "                ],\n"
-      << "                \"event_bus\": []\n"
-      << "            }\n"
-      << "        ]\n"
-      << "    }\n"
-      << "}\n";
+    output << "{\n"
+           << "    \"SimulationConfig\": {\n"
+           << "        \"device_json\": {\n"
+           << "            \"directory\": \"data/devices\",\n"
+           << "            \"file\": \"VC1902.json\"\n"
+           << "        },\n"
+           << "        \"phy_device_file\": \"xcvc1902-vsva2197-2MP-e-S\",\n"
+           << "        \"aiearch\": \"aie\",\n"
+           << "        \"aie_freq\": 1250000000.0,\n"
+           << "        \"use_real_noc\": 1,\n"
+           << "        \"evaluate_fifo_depth\": 0,\n"
+           << "        \"noc_ip_block\": {\n"
+           << "            \"lib_path\": \"./Work/noc/liblnoc_tlm.so\",\n"
+           << "            \"traffic_file\": \"./Work/noc/noc_traffic.nts\",\n"
+           << "            \"config_file\": \"./Work/noc/noc_soln.ncr\"\n"
+           << "        },\n"
+           << "        \"pl_ip_block\": [\n"
+           << "            {\n"
+           << "                \"name\": \"ps_ps_main\",\n"
+           << "                \"ip\": \"ps\",\n"
+           << "                \"lib_path\": \"ps/ps.so\",\n"
+           << "                \"pl_freq\": 312500000.0,\n"
+           << "                \"axi_mm\": [\n"
+           << "                    {\n"
+           << "                        \"port_name\": \"ps_axi\",\n"
+           << "                        \"direction\": \"ps_to_gm\",\n"
+           << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
+           << "                        \"bus_width\": 0\n"
+           << "                    }\n"
+           << "                ],\n"
+           << "                \"event_bus\": []\n"
+           << "            }\n"
+           << "        ]\n"
+           << "    }\n"
+           << "}\n";
   }
   return mlir::success();
 }
@@ -199,25 +197,25 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
             "design=\"graph\" date=\"2023\">\n";
   if (getTargetArch(module) == AIEArch::AIE2) {
     output
-      << " <DEVICE part=\"xcve2302\" grade=\"extended\" package=\"sfva784\" "
-         "speed=\"-1MP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
+        << " <DEVICE part=\"xcve2302\" grade=\"extended\" package=\"sfva784\" "
+           "speed=\"-1MP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
   } else { // AIEArch::AIE1
     output
-      << " <DEVICE part=\"xcvc1902\" grade=\"extended\" package=\"vsva2197\" "
-         "speed=\"-2MP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
+        << " <DEVICE part=\"xcvc1902\" grade=\"extended\" package=\"vsva2197\" "
+           "speed=\"-2MP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
   }
   output << "  <AIE status=\"COMPILER_OUTPUT\">\n";
 
   // Generate design specific info on tiles within the mlir module
   auto module_tile_ops = module.getOps<TileOp>();
-  int num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());  
+  int num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());
   // TODO: clk_freq only 1150 for AIE2
   if (getTargetArch(module) == AIEArch::AIE2) {
     output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
-          << std::to_string(num_tiles) << "\" clk_freq=\"1150\">\n";
+           << std::to_string(num_tiles) << "\" clk_freq=\"1150\">\n";
   } else {
     output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
-          << std::to_string(num_tiles) << "\" clk_freq=\"1250\">\n";
+           << std::to_string(num_tiles) << "\" clk_freq=\"1250\">\n";
   }
 
   // Get all CoreOps into a convenient map which can then be referenced by
@@ -239,10 +237,10 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, hence row-1
           std::to_string(col) << "," << std::to_string(row - 2) << ")\" "
-            << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
-            << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
+             << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
+             << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
                 "coordinates=\""
-            <<
+             <<
           // TODO: where does number of mem_banks come from?? Hardcoded to 0 for
           // now
           // TODO: does stream_util matter for sim?
@@ -252,10 +250,10 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, hence row-1
           std::to_string(col) << "," << std::to_string(row - 1) << ")\" "
-            << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
-            << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
+             << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
+             << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
                 "coordinates=\""
-            <<
+             <<
           // TODO: where does number of mem_banks come from?? Hardcoded to 0 for
           // now
           // TODO: does stream_util matter for sim?

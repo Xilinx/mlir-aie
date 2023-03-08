@@ -20,8 +20,8 @@
 /// are defined that way.
 
 extern "C" void llvm___aie___lock___acquire___reg(unsigned id, unsigned val) {
-    acquire_equal(id, val);
+  acquire_equal(id, val);
 }
 extern "C" void llvm___aie___lock___release___reg(unsigned id, unsigned val) {
-    release(id, val);
+  release(id, val);
 }

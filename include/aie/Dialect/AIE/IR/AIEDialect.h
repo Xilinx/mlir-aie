@@ -173,9 +173,11 @@ class AIE1Utils {
 public:
   static bool isValidTile(TileID src);
 
-  // Return the tile ID of the memory to the west of the given tile, if it exists.
+  // Return the tile ID of the memory to the west of the given tile, if it
+  // exists.
   static mlir::Optional<TileID> getMemWest(TileID src);
-  // Return the tile ID of the memory to the east of the given tile, if it exists.
+  // Return the tile ID of the memory to the east of the given tile, if it
+  // exists.
   static mlir::Optional<TileID> getMemEast(TileID src);
   // Return the tile ID of the memory to the north of the given tile, if it
   // exists.
@@ -195,16 +197,19 @@ public:
   static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
   static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
-  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
+  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
+                                 int memRow);
 };
 
 class AIE2Utils {
 public:
   static bool isValidTile(TileID src);
 
-  // Return the tile ID of the memory to the west of the given tile, if it exists.
+  // Return the tile ID of the memory to the west of the given tile, if it
+  // exists.
   static mlir::Optional<TileID> getMemWest(TileID src);
-  // Return the tile ID of the memory to the east of the given tile, if it exists.
+  // Return the tile ID of the memory to the east of the given tile, if it
+  // exists.
   static mlir::Optional<TileID> getMemEast(TileID src);
   // Return the tile ID of the memory to the north of the given tile, if it
   // exists.
@@ -224,7 +229,8 @@ public:
   static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
   static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
-  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
+  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
+                                 int memRow);
 };
 
 struct AIEArchDesc {
@@ -233,7 +239,7 @@ struct AIEArchDesc {
 
 // xcve2302 17x2, xcvc1902 50x8
 struct AIEDevDesc {
-  unsigned int rows; 
+  unsigned int rows;
   unsigned int cols;
   AIEArchDesc arch;
 };
