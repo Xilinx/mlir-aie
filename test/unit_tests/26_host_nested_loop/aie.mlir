@@ -66,16 +66,16 @@ module @host_loop {
             // end first subblock
 
             // second subblock
-            %outputSubview2 = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1) : !AIE.objectFifoSubview<memref<64xi32>>
-            %output2 = AIE.objectFifo.subview.access %outputSubview2[0] : !AIE.objectFifoSubview<memref<64xi32>> -> memref<64xi32>
+            // %outputSubview2 = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1) : !AIE.objectFifoSubview<memref<64xi32>>
+            // %output2 = AIE.objectFifo.subview.access %outputSubview2[0] : !AIE.objectFifoSubview<memref<64xi32>> -> memref<64xi32>
 
-            scf.for %indexInHeight = %c65 to %c128 step %c1 { 
-                %outIndex = arith.subi %indexInHeight, %c64 : index
-                %d1 = memref.load %input[%indexInHeight] : memref<256xi32>
-                memref.store %d1, %output2[%outIndex] : memref<64xi32> 
-            }
+            // scf.for %indexInHeight = %c65 to %c128 step %c1 { 
+            //     %outIndex = arith.subi %indexInHeight, %c64 : index
+            //     %d1 = memref.load %input[%indexInHeight] : memref<256xi32>
+            //     memref.store %d1, %output2[%outIndex] : memref<64xi32> 
+            // }
             
-            AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1)
+            // AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1)
             // end second subblock
 
             AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1)

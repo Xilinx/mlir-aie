@@ -86,6 +86,7 @@ int main(int argc, char *argv[]) {
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
 
+/*
     // SECOND sub-block
     printf("Receiving SECOND sub-block\n");
     // acquire output shim
@@ -105,6 +106,7 @@ int main(int argc, char *argv[]) {
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
+    */
 
   }
 
