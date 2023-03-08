@@ -147,6 +147,41 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
   }
 };
 
+struct FoldAIEShiftAndBroadcast
+    : public OpConversionPattern<aievec::BroadcastOp> {
+  using OpConversionPattern<aievec::BroadcastOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::BroadcastOp bcastOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto shiftOp =
+        dyn_cast<aievec::ShiftOp>(bcastOp.getSource().getDefiningOp());
+
+    if (!shiftOp)
+      return failure();
+
+    VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
+    int32_t elemSize = getElementSizeInBits(vType);
+    int32_t idx = shiftOp.getShift() * 8 / elemSize;
+
+    if (!idx)
+      return failure();
+
+    SmallVector<Value> sources = shiftOp.getSources();
+
+    if (sources.size() != 1)
+      return failure();
+
+    VectorType resultType = bcastOp.getResult().getType().cast<VectorType>();
+
+    rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType,
+                                                     sources[0], idx);
+
+    return success();
+  }
+};
+
 // This pattern replaces `arith.muli`+`arith.addi` on vectors with
 // `aievec.mac_elem`. This pattern works for aie-ml.
 struct ConvertMulAddToAIEVecFMAElemOpPattern
@@ -532,6 +567,11 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                ConvertMulAddToAIEVecFMAElemOpPattern>(patterns.getContext());
 }
 
+static void populatePostAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
+                                                   AnalysisManager &am) {
+  patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
+}
+
 //===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
@@ -588,6 +628,30 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   });
 }
 
+static void configurePostAIEVecV2Legalizations(ConversionTarget &target,
+                                               AnalysisManager &am) {
+  target.addDynamicallyLegalOp<xilinx::aievec::BroadcastOp>(
+      [](xilinx::aievec::BroadcastOp op) {
+        if (!op.getSource().getDefiningOp())
+          return true;
+
+        auto shiftOp =
+            dyn_cast<aievec::ShiftOp>(op.getSource().getDefiningOp());
+
+        if (!shiftOp)
+          return true;
+
+        VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
+        int32_t elemSize = getElementSizeInBits(vType);
+        int32_t idx = shiftOp.getShift() * 8 / elemSize;
+
+        if (idx)
+          return false;
+
+        return true;
+      });
+}
+
 //===----------------------------------------------------------------------===//
 // Lowering passes
 //===----------------------------------------------------------------------===//
@@ -635,8 +699,18 @@ void LowerVectorToAIEVec::runOnOperation() {
     populateAIEVecV2ConversionPatterns(patterns, am);
     configureAIEVecV2Legalizations(target, am);
   }
+
   if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
     signalPassFailure();
+  }
+
+  if (aieVersion == AIEArch::AIE_ML) {
+    RewritePatternSet newPatterns(context);
+    populatePostAIEVecV2ConversionPatterns(newPatterns, am);
+    configurePostAIEVecV2Legalizations(target, am);
+    if (failed(applyPartialConversion(func, target, std::move(newPatterns)))) {
+      signalPassFailure();
+    }
   }
 }
 
