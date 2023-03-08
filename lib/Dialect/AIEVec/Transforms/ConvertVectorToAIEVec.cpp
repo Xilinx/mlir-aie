@@ -167,7 +167,7 @@ struct FoldAIEShiftAndBroadcast
     int32_t elemSize = getElementSizeInBits(vType);
     int32_t idx = shiftOp.getShift() * 8 / elemSize + bcastOp.getIdx();
 
-    if (!idx)
+    if (idx <= 0 || idx >= (int32_t)getVectorLaneSize(vType))
       return failure();
 
     SmallVector<Value> sources = shiftOp.getSources();
@@ -585,8 +585,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
   target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
   target.addIllegalOp<vector::TransferReadOp>();
-  target.addDynamicallyLegalOp<arith::AddIOp>(
-      [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
+  // target.addDynamicallyLegalOp<arith::AddIOp>(
+  //    [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubIOp>(
@@ -645,9 +645,9 @@ static void configurePostAIEVecV2Legalizations(ConversionTarget &target,
 
         VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
         int32_t elemSize = getElementSizeInBits(vType);
-        int32_t idx = shiftOp.getShift() * 8 / elemSize;
+        int32_t idx = shiftOp.getShift() * 8 / elemSize + op.getIdx();
 
-        if (idx)
+        if (idx == 0 || idx >= (int32_t)getVectorLaneSize(vType))
           return false;
 
         return true;
