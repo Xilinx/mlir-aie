@@ -647,10 +647,11 @@ static void configurePostAIEVecV2Legalizations(ConversionTarget &target,
         int32_t elemSize = getElementSizeInBits(vType);
         int32_t idx = shiftOp.getShift() * 8 / elemSize + op.getIdx();
 
-        if (idx == 0 || idx >= (int32_t)getVectorLaneSize(vType))
-          return false;
+        if (idx == 0 || idx >= (int32_t)getVectorLaneSize(vType)) {
+          return true;
+        }
 
-        return true;
+        return false;
       });
 }
 
