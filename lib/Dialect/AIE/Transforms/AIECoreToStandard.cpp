@@ -453,7 +453,8 @@ struct AIECoreToStandardPass
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns
-        .add<AIEOpRemoval<AIE::TileOp>, AIEOpRemoval<AIE::FlowOp>,
+        .add<AIEOpRemoval<AIE::TargetOp>,
+             AIEOpRemoval<AIE::TileOp>, AIEOpRemoval<AIE::FlowOp>,
              AIEOpRemoval<AIE::MemOp>, AIEOpRemoval<AIE::ShimDMAOp>,
              AIEOpRemoval<AIE::ShimMuxOp>, AIEOpRemoval<AIE::SwitchboxOp>,
              AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::BufferOp>,

@@ -465,7 +465,7 @@ aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
   if (!ctx)
     return 0;
 
-  ctx->AieConfigPtr.AieGen = XAIE_DEV_GEN_AIE;
+  ctx->AieConfigPtr.AieGen = XAIE_HW_GEN;
   ctx->AieConfigPtr.BaseAddr = XAIE_BASE_ADDR;
   ctx->AieConfigPtr.ColShift = XAIE_COL_SHIFT;
   ctx->AieConfigPtr.RowShift = XAIE_ROW_SHIFT;
@@ -519,6 +519,7 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
     return -1;
   }
 
+#if !defined(__AIESIM__) || !(__AIEARCH__ == 20)
   RC = XAie_PmRequestTiles(&(ctx->DevInst), NULL, 0);
   if (RC != XAIE_OK) {
     printf("Failed to request tiles.\n");
@@ -541,6 +542,7 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
     printf("Failed to request tiles.\n");
     return -1;
   }
+#endif
 
 #if defined(__AIESIM__) && !defined(__CDO__)
   printf("Turning ecc off\n");

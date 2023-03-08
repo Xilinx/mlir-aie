@@ -54,6 +54,8 @@ struct AIEAssignBufferAddressesPass
       }
     }
 
+    int max_data_memory_size = (getTargetArch(m) == AIEArch::AIE2) ? 0x10000 : 0x8000;
+
     for (auto tile : m.getOps<TileOp>()) {
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
@@ -71,7 +73,7 @@ struct AIEAssignBufferAddressesPass
       int address = stacksize;
       for (auto buffer : buffers)
         address = assignAddress(buffer, address, builder);
-      if (address > 0x8000) {
+      if (address > max_data_memory_size) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory\n");
         auto &note = error.attachNote() << "MemoryMap:\n";

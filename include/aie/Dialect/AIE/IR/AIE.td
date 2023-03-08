@@ -74,6 +74,24 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                    AnyFloat.predicate]>,
                                   "scalar">;
 
+
+def AIE_TargetOp: AIE_Op<"target", []>, Results<(outs Index)> {
+  let summary = "Define AIE target such as architecture";
+  let description = [{
+    This operation allows specifications of the target such as the AIE architecture. Currently,
+    we support targets for AIE architecture for AIE and AIE2.
+  }];
+  let arguments = (
+    ins AIEArch:$arch
+  );
+  let assemblyFormat = [{
+    attr-dict `(` $arch `)` 
+  }];
+  let hasVerifier = 1;
+}
+
+// `(` $arch `)` attr-dict
+
 def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<I32Attr, [IntMinValue<0>]>:$col,

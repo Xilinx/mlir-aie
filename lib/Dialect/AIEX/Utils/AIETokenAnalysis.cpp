@@ -175,10 +175,11 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
   int col2 = coord2.first;
   int row2 = coord2.second;
 
+  // TODO - Needs moduleOp to decide which AIE?Utils to call
   bool IsOp1ShareableMem =
-      IsOp1Mem && isLegalMemAffinity(col2, row2, col1, row1);
+      IsOp1Mem && AIE1Utils::isLegalMemAffinity(col2, row2, col1, row1);
   bool IsOp2ShareableMem =
-      IsOp2Mem && isLegalMemAffinity(col1, row1, col2, row2);
+      IsOp2Mem && AIE1Utils::isLegalMemAffinity(col1, row1, col2, row2);
 
   if (IsOp1ShareableMem)
     return tiles[coord1];
@@ -186,12 +187,13 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
     return tiles[coord2];
 
   // both Op1 and Op2 are core ops
+  // TODO - Needs moduleOp to decide which AIE?Utils to call. EvenRow!!
   if (!IsOp1Mem && !IsOp2Mem) {
-    bool IsS = isSouth(col1, row1, col2, row2);
-    bool IsW = isWest(col1, row1, col2, row2);
-    bool IsN = isNorth(col1, row1, col2, row2);
-    bool IsE = isEast(col1, row1, col2, row2);
-    bool IsInternal = isInternal(col1, row1, col2, row2);
+    bool IsS = AIE1Utils::isSouth(col1, row1, col2, row2);
+    bool IsW = AIE1Utils::isWest(col1, row1, col2, row2);
+    bool IsN = AIE1Utils::isNorth(col1, row1, col2, row2);
+    bool IsE = AIE1Utils::isEast(col1, row1, col2, row2);
+    bool IsInternal = AIE1Utils::isInternal(col1, row1, col2, row2);
     bool IsEvenRow = ((row1 % 2) == 0);
 
     if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))

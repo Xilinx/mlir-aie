@@ -131,16 +131,39 @@ private:
  */
 #else // LIBXAIENGINEV1
 
-#define XAIE_BASE_ADDR 0x20000000000
-#define XAIE_NUM_ROWS 9
-#define XAIE_NUM_COLS 50
-#define XAIE_COL_SHIFT 23
-#define XAIE_ROW_SHIFT 18
-#define XAIE_SHIM_ROW 0
-#define XAIE_RES_TILE_ROW_START 0
-#define XAIE_RES_TILE_NUM_ROWS 0
-#define XAIE_AIE_TILE_ROW_START 1
-#define XAIE_AIE_TILE_NUM_ROWS 8
+#if __AIEARCH__== 20
+// TODO - Need flag in sim to choose between AIE or AIEML
+#define XAIE_HW_GEN              XAIE_DEV_GEN_AIEML
+#define XAIE_NUM_ROWS            4
+#define XAIE_NUM_COLS            17
+#define XAIE_BASE_ADDR           0x20000000000
+#define XAIE_COL_SHIFT           25
+#define XAIE_ROW_SHIFT           20
+#define XAIE_SHIM_ROW            0
+#define XAIE_MEM_TILE_ROW_START  1
+#define XAIE_MEM_TILE_NUM_ROWS   1
+#define XAIE_RES_TILE_ROW_START  1
+#define XAIE_RES_TILE_NUM_ROWS   1
+#define XAIE_AIE_TILE_ROW_START  2
+#define XAIE_AIE_TILE_NUM_ROWS   2
+// #define FOR_WRITE                0
+// #define FOR_READ                 1
+
+#else
+
+#define XAIE_HW_GEN              XAIE_DEV_GEN_AIE
+#define XAIE_BASE_ADDR           0x20000000000
+#define XAIE_NUM_ROWS            9
+#define XAIE_NUM_COLS            50
+#define XAIE_COL_SHIFT           23
+#define XAIE_ROW_SHIFT           18
+#define XAIE_SHIM_ROW            0
+#define XAIE_RES_TILE_ROW_START  0
+#define XAIE_RES_TILE_NUM_ROWS   0
+#define XAIE_AIE_TILE_ROW_START  1
+#define XAIE_AIE_TILE_NUM_ROWS   8
+
+#endif // __AIEARCH__=20
 
 // XAie_SetupConfig(ConfigPtr, XAIE_DEV_GEN_AIE, XAIE_BASE_ADDR,
 //        XAIE_COL_SHIFT, XAIE_ROW_SHIFT,

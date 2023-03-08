@@ -169,31 +169,77 @@ typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
 typedef std::pair<DMAChannelDir, int> DMAChannel;
 
-bool isValidTile(TileID src);
+class AIE1Utils {
+public:
+  static bool isValidTile(TileID src);
 
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-mlir::Optional<TileID> getMemWest(TileID src);
-// Return the tile ID of the memory to the east of the given tile, if it exists.
-mlir::Optional<TileID> getMemEast(TileID src);
-// Return the tile ID of the memory to the north of the given tile, if it
-// exists.
-mlir::Optional<TileID> getMemNorth(TileID src);
-// Return the tile ID of the memory to the south of the given tile, if it
-// exists.
-mlir::Optional<TileID> getMemSouth(TileID src);
+  // Return the tile ID of the memory to the west of the given tile, if it exists.
+  static mlir::Optional<TileID> getMemWest(TileID src);
+  // Return the tile ID of the memory to the east of the given tile, if it exists.
+  static mlir::Optional<TileID> getMemEast(TileID src);
+  // Return the tile ID of the memory to the north of the given tile, if it
+  // exists.
+  static mlir::Optional<TileID> getMemNorth(TileID src);
+  // Return the tile ID of the memory to the south of the given tile, if it
+  // exists.
+  static mlir::Optional<TileID> getMemSouth(TileID src);
 
-bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isEast(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow);
 
-bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
-bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
 
-bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
+  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
+};
+
+class AIE2Utils {
+public:
+  static bool isValidTile(TileID src);
+
+  // Return the tile ID of the memory to the west of the given tile, if it exists.
+  static mlir::Optional<TileID> getMemWest(TileID src);
+  // Return the tile ID of the memory to the east of the given tile, if it exists.
+  static mlir::Optional<TileID> getMemEast(TileID src);
+  // Return the tile ID of the memory to the north of the given tile, if it
+  // exists.
+  static mlir::Optional<TileID> getMemNorth(TileID src);
+  // Return the tile ID of the memory to the south of the given tile, if it
+  // exists.
+  static mlir::Optional<TileID> getMemSouth(TileID src);
+
+  static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow);
+
+  static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
+  static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
+
+  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol, int memRow);
+};
+
+struct AIEArchDesc {
+  bool checkerboard;
+};
+
+// xcve2302 17x2, xcvc1902 50x8
+struct AIEDevDesc {
+  unsigned int rows; 
+  unsigned int cols;
+  AIEArchDesc arch;
+};
+
+AIEArch getTargetArch(mlir::ModuleOp module);
+
 } // namespace AIE
 } // namespace xilinx
 
