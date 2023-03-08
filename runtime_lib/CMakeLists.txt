@@ -85,10 +85,10 @@ add_subdirectory(AIE)
 add_subdirectory(AIE2)
 
 if(DEFINED VITIS_ROOT)
-ExternalProject_Add(libxaie
-  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/libxaieTmp
-  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libxaie
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libxaie
+ExternalProject_Add(xaiengine
+  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp
+  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/xaiengine
+  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/xaiengine
   CMAKE_ARGS
     -DCMAKE_MODULE_PATH=${CMAKE_MODULE_PATH}
     -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAINFILES_PATH}/toolchain_vitis_crosscomp_arm.cmake
