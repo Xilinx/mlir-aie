@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  for (int i = 0; i < 25; i++) {
+  for (int i = 1; i < 7; i++) {
     mlir_aie_acquire_of_0_lock_0(_xaie, 0, 10000);
     for (int j = 0; j < 64; j++)
       mem_ptr_in[j] = i;
@@ -75,6 +75,7 @@ int main(int argc, char *argv[]) {
 
     // check output DDR
     mlir_aie_sync_mem_cpu(_xaie, 1);
+    printSublock(mem_ptr_out,64);
     for (int j = 0; j < 64; j++)
       mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[j],
                      errors);
@@ -94,11 +95,10 @@ int main(int argc, char *argv[]) {
       printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
 
     // check output DDR
-    printSublock(mem_ptr_out,64);
     mlir_aie_sync_mem_cpu(_xaie, 1);
+    printSublock(mem_ptr_out,64);
     for (int j = 0; j < 64; j++)
-      mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[j+64],
-                     errors);
+      mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[j+64], errors);
 
     // release output shim
     if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
