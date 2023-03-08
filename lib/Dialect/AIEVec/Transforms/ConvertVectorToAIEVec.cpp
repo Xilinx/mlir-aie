@@ -155,6 +155,9 @@ struct FoldAIEShiftAndBroadcast
   matchAndRewrite(aievec::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    if (!(bcastOp.getSource().getDefiningOp()))
+      return failure();
+
     auto shiftOp =
         dyn_cast<aievec::ShiftOp>(bcastOp.getSource().getDefiningOp());
 
