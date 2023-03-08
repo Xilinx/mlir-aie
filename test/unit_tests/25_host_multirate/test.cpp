@@ -60,13 +60,16 @@ int main(int argc, char *argv[]) {
 
   int i = 0;
   while (i < 4) {
-    mlir_aie_release_hostLock(_xaie, 1, 0);
+    if (mlir_aie_release_hostLock(_xaie, 1, 0, 10000) == XAIE_OK)
+      printf("Release hostlock for read\n");
+    else
+      printf("ERROR: timed out on hostlock relase for read\n");
 
     // acquire output shim
     if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
-      printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
+      printf("ERROR: timed out on objFifo 3 lock 0 acquire for read\n");
 
     // check output DDR
     mlir_aie_sync_mem_cpu(_xaie, 1);
@@ -79,6 +82,12 @@ int main(int argc, char *argv[]) {
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
+    
+    // acquire host lock for write
+    if (mlir_aie_acquire_hostLock(_xaie, 0, 10000) == XAIE_OK)
+      printf("Acquired host lock for write\n");
+    else
+      printf("ERROR: timed out on host lock for write\n");
 
     i++;
   }

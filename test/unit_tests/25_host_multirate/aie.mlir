@@ -15,6 +15,7 @@
 module @host_multirate {
     %tile34 = AIE.tile(3, 4)
     %tile70 = AIE.tile(7, 0)
+    %tile60 = AIE.tile(6, 0)
 
     %hostLock = AIE.lock(%tile34, 0) {sym_name="hostLock"}
 
@@ -32,10 +33,10 @@ module @host_multirate {
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<64xi32> 
 
     %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<64xi32>>
-    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<64xi32>>
+    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile60}, 1) : !AIE.objectFifo<memref<64xi32>>
 
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_out}) : (memref<64xi32>)
+    AIE.objectFifo.registerExternalBuffers(%tile60, %objFifo_out : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_out}) : (memref<64xi32>)
  
     %core34 = AIE.core(%tile34) {
         %c0 = arith.constant 0 : index
