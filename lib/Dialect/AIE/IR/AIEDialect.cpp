@@ -610,6 +610,7 @@ LogicalResult xilinx::AIE::TargetOp::verify() {
   auto tOps = aie_module.getOps<TargetOp>();
   int size = 0;
   for (auto tOp : tOps) {
+    (void)tOp;
     size++;
     if (size > 1) {
       return failure();
