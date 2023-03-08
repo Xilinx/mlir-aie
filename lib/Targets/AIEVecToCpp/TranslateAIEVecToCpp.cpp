@@ -2183,26 +2183,46 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     }
   }
   if (auto dense = attr.dyn_cast<DenseIntElementsAttr>()) {
-    if (auto iType = dense.getType()
-                         .cast<TensorType>()
-                         .getElementType()
-                         .dyn_cast<IntegerType>()) {
-      os << '{';
-      interleaveComma(dense, os, [&](const APInt &val) {
-        printInt(val, shouldMapToUnsigned(iType.getSignedness()));
-      });
-      os << '}';
-      return success();
+    if (auto tType = dense.getType().dyn_cast<TensorType>()) {
+      if (auto iType = tType.getElementType().dyn_cast<IntegerType>()) {
+        os << '{';
+        interleaveComma(dense, os, [&](const APInt &val) {
+          printInt(val, shouldMapToUnsigned(iType.getSignedness()));
+        });
+        os << '}';
+        return success();
+      }
+      if (auto iType = tType.getElementType().dyn_cast<IndexType>()) {
+        os << '{';
+        interleaveComma(dense, os,
+                        [&](const APInt &val) { printInt(val, false); });
+        os << '}';
+        return success();
+      }
     }
-    if (auto iType = dense.getType()
-                         .cast<TensorType>()
-                         .getElementType()
-                         .dyn_cast<IndexType>()) {
-      os << '{';
-      interleaveComma(dense, os,
-                      [&](const APInt &val) { printInt(val, false); });
-      os << '}';
-      return success();
+    if (auto vType = dense.getType().dyn_cast<VectorType>()) {
+      if (auto iType = vType.getElementType().dyn_cast<IntegerType>()) {
+        if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
+          os << "null_";
+          if (failed(emitType(loc, vType)))
+            return failure();
+          os << "()";
+          return success();
+        }
+        os << '{';
+        interleaveComma(dense, os, [&](const APInt &val) {
+          printInt(val, shouldMapToUnsigned(iType.getSignedness()));
+        });
+        os << '}';
+        return success();
+      }
+      if (auto iType = vType.getElementType().dyn_cast<IndexType>()) {
+        os << '{';
+        interleaveComma(dense, os,
+                        [&](const APInt &val) { printInt(val, false); });
+        os << '}';
+        return success();
+      }
     }
   }
 
