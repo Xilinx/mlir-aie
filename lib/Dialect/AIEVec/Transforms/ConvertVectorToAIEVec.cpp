@@ -154,7 +154,6 @@ struct FoldAIEShiftAndBroadcast
   LogicalResult
   matchAndRewrite(aievec::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
     if (!(bcastOp.getSource().getDefiningOp()))
       return failure();
 
@@ -166,7 +165,7 @@ struct FoldAIEShiftAndBroadcast
 
     VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
     int32_t elemSize = getElementSizeInBits(vType);
-    int32_t idx = shiftOp.getShift() * 8 / elemSize;
+    int32_t idx = shiftOp.getShift() * 8 / elemSize + bcastOp.getIdx();
 
     if (!idx)
       return failure();
