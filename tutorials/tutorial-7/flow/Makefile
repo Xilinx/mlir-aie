@@ -1,12 +1,7 @@
+include ../../../utils/vitisVariables.config
 include ../../makefile-common
 
 .PHONY: all clean
-
-# TODO - Change this to env variable?
-ifeq ($(MLIR_AIE_SYSROOT),)
-MLIR_AIE_SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
-endif
-AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 all: tutorial-7.exe
 	@mkdir -p elf

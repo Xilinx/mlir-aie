@@ -16,4 +16,4 @@ __pycache__
 /platforms/vck190_bare/vivado/*.xsa
 /platforms/vck190_bare/vivado/vck190_bare_proj
 utils/vitisVariables.config
-runtime_lib/libxaie/src
+runtime_lib/xaiengine/src
