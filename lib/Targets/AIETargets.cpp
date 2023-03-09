@@ -410,8 +410,13 @@ SECTIONS
                    << llvm::utohexstr(internalMemAddress(srcCoord, module))
                    << "  0x400 //stack for core\n"; // TODO Needs to match
                                                     // stack size!!!
-            // output << "_reserved DMb 0x40000 0xc0000 // And everything else "
-            //           "the core can't see\n";
+            if (getTargetArch(module) == AIEArch::AIE2) {
+              output << "_reserved DMb 0x80000 0x80000 // And everything else "
+                        "the core can't see\n";
+            } else {
+              output << "_reserved DMb 0x40000 0xc0000 // And everything else "
+                        "the core can't see\n";
+            }
             if (auto coreOp = tile.getCoreOp()) {
               if (auto fileAttr =
                       coreOp->getAttrOfType<StringAttr>("link_with")) {
