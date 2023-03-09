@@ -58,12 +58,28 @@ function(add_aie_runtime_libs arch)
 
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${arch})
 
+
+  set(INSTALLS
+      chess_intrinsic_wrapper.cpp)
+
+  foreach(file ${INSTALLS})
+      add_custom_target(aie-copy-${arch}-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
+      add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}//${file}
+                      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
+                      ${CMAKE_CURRENT_BINARY_DIR}/${file}
+                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+      add_dependencies(runtime-libs aie-copy-${arch}-runtime-libs-${file} )
+  endforeach()
+
+  install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${arch})
+
+  add_subdirectory(aiesim)
+
 endfunction()
 
 set(INSTALLS
     test_library.cpp
-    test_library.h
-    chess_intrinsic_wrapper.cpp)
+    test_library.h)
 
 # Stuff into the build area:
 add_custom_target(runtime-libs ALL)
@@ -80,7 +96,6 @@ endforeach()
 # Install too
 install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 
-add_subdirectory(aiesim)
 add_subdirectory(AIE)
 add_subdirectory(AIE2)
 

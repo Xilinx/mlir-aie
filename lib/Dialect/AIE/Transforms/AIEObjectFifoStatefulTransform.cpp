@@ -174,11 +174,12 @@ struct AIEObjectFifoStatefulTransformPass
       return false;
     }
 
-    bool rightShared = isLegalMemAffinity(a.colIndex(), a.rowIndex(),
-                                          b.colIndex(), b.rowIndex());
+    // TODO - Needs moduleOp to decide which AIE?Utils to call
+    bool rightShared = AIE1Utils::isLegalMemAffinity(
+        a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-    bool leftShared = isLegalMemAffinity(b.colIndex(), b.rowIndex(),
-                                         a.colIndex(), a.rowIndex());
+    bool leftShared = AIE1Utils::isLegalMemAffinity(b.colIndex(), b.rowIndex(),
+                                                    a.colIndex(), a.rowIndex());
 
     if (leftShared)
       *share_direction = -1;

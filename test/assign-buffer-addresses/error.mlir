@@ -10,10 +10,10 @@
 
 // RUN: not aie-opt --aie-assign-buffer-addresses %s |& FileCheck %s
 // CHECK:   error: 'AIE.tile' op allocated buffers exceeded available memory
-// CHECK:   (stack) : 0x0-0xFFF     (4096 bytes)
-// CHECK:   b       : 0x1000-0x8FFF         (32768 bytes)
-// CHECK:   c       : 0x9000-0x901F         (32 bytes)
-// CHECK:   a       : 0x9020-0x902F         (16 bytes)
+// CHECK:   (stack) : 0x0-0x3FF     (1024 bytes)
+// CHECK:   b       : 0x400-0x83FF         (32768 bytes)
+// CHECK:   c       : 0x8400-0x841F         (32 bytes)
+// CHECK:   a       : 0x8420-0x842F         (16 bytes)
 
 module @test {
   %0 = AIE.tile(3, 3)

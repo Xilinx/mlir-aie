@@ -145,7 +145,7 @@ In first generation AI Engines, each tile has 32 kB of local data memory assigne
 5. Change the size of the buffer to the size of our local memory (8192 x i32) and run `make` again. What do you expect to happen and what happens instead? <img src="../images/answer1.jpg" title="You may expect to be able to define a buffer that uses the entirety of local memory. Instead, an error occurs: Allocated buffers exceed local memory. (The next paragraph explains why this happens.)" height=25>
 
 ### <ins>AI Engine Program Memory</ins>
-While we have a separate 16 kB of program memory which stores the AIE program code, the 32 kB of data memory is also used for the program stack. By default, the tool reserves 4096 bytes for the stack so all buffers are then allocated immediately after that. 
+While we have a separate 16 kB of program memory which stores the AIE program code, the 32 kB of data memory is also used for the program stack. By default, the tool reserves 1024 bytes for the stack so all buffers are then allocated immediately after that. 
 
 6. Declare a horizontally adjacent tile (pay attention to which row we're in) so that tile (1,4) can access the neighbor tile's local memory. Declare a buffer in this tile that uses the entire local memory (8192 x i32) and replace the reference %buf in line 34 with the new buffer, then run `make ` again. What do you expect to happen and what happens instead? <img src="../images/answer1.jpg" title="We expect to be able to compile successfully, since we can use our neighbor's full local memory, but the same error shows up. Right now, all tiles that are enabled have a stack space of 4096 bytes reserved, even if that tile is not running any program code. This is an area for future improvement." height=25>
 

@@ -8,18 +8,17 @@
 
 set(INSTALLS
     Makefile
-    genwrapper_for_ps.cpp
-    scsim_config.json)
+    genwrapper_for_ps.cpp)
 
 
 foreach(file ${INSTALLS})
-    add_custom_target(aie-copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
+    add_custom_target(aie-copy-runtime-libs-AIE2-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
                     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
                     ${CMAKE_CURRENT_BINARY_DIR}/${file}
                     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-    add_dependencies(runtime-libs aie-copy-runtime-libs-${file} )
+    add_dependencies(runtime-libs aie-copy-runtime-libs-AIE2-${file} )
 endforeach()
 
-install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/aiesim)
+install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/AIE2/aiesim)
 

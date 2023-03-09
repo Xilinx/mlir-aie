@@ -128,11 +128,12 @@ bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item,
   int userRow = userCoord.second;
   bool IsUserMem = isa<MemOp>(user);
 
+  // TODO - Needs moduleOp to decide which AIE?Utils to call
   if (IsUserMem)
-    return (isInternal(itemCol, itemRow, userCol, userRow));
+    return (AIE1Utils::isInternal(itemCol, itemRow, userCol, userRow));
 
   // user is a Core
-  return isLegalMemAffinity(userCol, userRow, itemCol, itemRow);
+  return AIE1Utils::isLegalMemAffinity(userCol, userRow, itemCol, itemRow);
 }
 
 bool xilinx::AIE::NetlistAnalysis::validateCoreOrMemRegion(

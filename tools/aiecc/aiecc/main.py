@@ -119,7 +119,7 @@ class flow_runner:
         thispath = os.path.dirname(os.path.realpath(__file__))
         # Should be architecture-specific ?
         runtime_lib_path = os.path.join(thispath, '..','..','runtime_lib')
-        chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, 'chess_intrinsic_wrapper.cpp')
+        chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, opts.aie_target,'chess_intrinsic_wrapper.cpp')
 
         self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
         await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
@@ -263,6 +263,10 @@ class flow_runner:
       else:
         cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
 
+      if(opts.aie_target == "AIE2"):
+        cmd += ['-D__AIEARCH__=20']
+
+
 
       if(len(opts.arm_args) > 0):
         await self.do_call(task, cmd + opts.arm_args)
@@ -282,7 +286,10 @@ class flow_runner:
         pass
       thispath = os.path.dirname(os.path.realpath(__file__))
       # Should be architecture-specific
-      runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','aiesim')
+      if(opts.aie_target == "AIE2"):
+        runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','AIE2','aiesim')
+      else:
+        runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','AIE','aiesim')
       sim_scsim_json = os.path.join(runtime_simlib_path,"scsim_config.json")
       sim_makefile   = os.path.join(runtime_simlib_path,"Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path,"genwrapper_for_ps.cpp")
@@ -293,13 +300,16 @@ class flow_runner:
       await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
                                 file_physical,
                                 '-o','./sim/arch/aieshim_solution.aiesol'])
+      await self.do_call(task, ['aie-translate', '--aie-mlir-to-scsim-config',
+                                file_physical,
+                                '-o','./sim/config/scsim_config.json'])
       await self.do_call(task, ['aie-opt', '--aie-find-flows',
                                 file_physical,
                                 '-o', './sim/flows_physical.mlir'])
       await self.do_call(task, ['aie-translate', '--aie-flows-to-json',
                                 './sim/flows_physical.mlir',
                                 '-o','./sim/flows_physical.json'])
-      await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
+      # await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
       await self.do_call(task, ['cp',sim_makefile,'./sim/.'])
       await self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.'])
 

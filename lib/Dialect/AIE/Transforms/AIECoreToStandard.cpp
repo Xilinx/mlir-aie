@@ -453,11 +453,12 @@ struct AIECoreToStandardPass
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns
-        .add<AIEOpRemoval<AIE::TileOp>, AIEOpRemoval<AIE::FlowOp>,
-             AIEOpRemoval<AIE::MemOp>, AIEOpRemoval<AIE::ShimDMAOp>,
-             AIEOpRemoval<AIE::ShimMuxOp>, AIEOpRemoval<AIE::SwitchboxOp>,
-             AIEOpRemoval<AIE::LockOp>, AIEOpRemoval<AIE::BufferOp>,
-             AIEOpRemoval<AIE::ExternalBufferOp>>(m.getContext(), m);
+        .add<AIEOpRemoval<AIE::TargetOp>, AIEOpRemoval<AIE::TileOp>,
+             AIEOpRemoval<AIE::FlowOp>, AIEOpRemoval<AIE::MemOp>,
+             AIEOpRemoval<AIE::ShimDMAOp>, AIEOpRemoval<AIE::ShimMuxOp>,
+             AIEOpRemoval<AIE::SwitchboxOp>, AIEOpRemoval<AIE::LockOp>,
+             AIEOpRemoval<AIE::BufferOp>, AIEOpRemoval<AIE::ExternalBufferOp>>(
+            m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();

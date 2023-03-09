@@ -110,6 +110,12 @@ def Release: I32EnumAttrCase<"Release", 1>;
 def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
 def Blocking: I32EnumAttrCase<"Blocking", 1>;
 
+def AIE1: I32EnumAttrCase<"AIE1", 1>;
+def AIE2: I32EnumAttrCase<"AIE2", 2>;
+
+def xcvc1902: I32EnumAttrCase<"xcvc1902", 1>;
+def xcve2302: I32EnumAttrCase<"xcve2302", 2>;
+
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [Acquire, Release]> {
 
@@ -117,6 +123,17 @@ def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
 }
 def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
   [NonBlocking, Blocking]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+def AIEArch: I32EnumAttr<"AIEArch", "AIE architecture",
+  [AIE1, AIE2]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
+  [xcvc1902, xcve2302]> {
 
   let cppNamespace = "xilinx::AIE";
 }
