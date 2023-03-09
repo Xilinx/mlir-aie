@@ -364,7 +364,7 @@ SECTIONS
                                            ? "0x40000"
                                            : "0x20000";
             output << "_reserved DMb      0x00000 " << initReserved
-                   << "//Don't put data in code memory\n";
+                   << " //Don't put data in code memory\n";
 
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
@@ -380,7 +380,7 @@ SECTIONS
                                                              : "0x8000";
                 output << "_reserved DMb 0x" << llvm::utohexstr(offset) << " "
                        << localMemSize << " "
-                       << "// No tile with memory exists to the " << dir
+                       << " // No tile with memory exists to the " << dir
                        << ".\n";
               }
             };
