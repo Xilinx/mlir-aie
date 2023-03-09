@@ -270,7 +270,7 @@ SECTIONS
                    << llvm::utohexstr(internalMemAddress(srcCoord, module))
                    << ";\n";
             output << "_sp_start_value_DM_stack = .;\n";
-            output << ". += 0x" << llvm::utohexstr(0x1000)
+            output << ". += 0x" << llvm::utohexstr(0x400)
                    << ";\n"; // TODO to match stack size
 
             if (getTargetArch(module) == AIEArch::AIE2) {
@@ -408,7 +408,7 @@ SECTIONS
 
             output << "_stack    DM_stack 0x"
                    << llvm::utohexstr(internalMemAddress(srcCoord, module))
-                   << "  0x1000 //stack for core\n"; // TODO Needs to match
+                   << "  0x400 //stack for core\n"; // TODO Needs to match
                                                      // stack size!!!
             // output << "_reserved DMb 0x40000 0xc0000 // And everything else "
             //           "the core can't see\n";
