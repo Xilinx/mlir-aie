@@ -1306,6 +1306,32 @@ Interfaces: Interconnect, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
+### `AIE.target` (::xilinx::AIE::TargetOp)
+
+Define AIE target such as architecture
+
+
+Syntax:
+
+```
+operation ::= `AIE.target` attr-dict `(` $arch `)`
+```
+
+This operation allows specifications of the target such as the AIE architecture. Currently,
+we support targets for AIE architecture for AIE and AIE2.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `arch` | xilinx::AIE::AIEArchAttr | AIE architecture
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
 ### `AIE.tile` (::xilinx::AIE::TileOp)
 
 Declare an AIE tile
