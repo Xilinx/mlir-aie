@@ -409,7 +409,7 @@ SECTIONS
             output << "_stack    DM_stack 0x"
                    << llvm::utohexstr(internalMemAddress(srcCoord, module))
                    << "  0x400 //stack for core\n"; // TODO Needs to match
-                                                     // stack size!!!
+                                                    // stack size!!!
             // output << "_reserved DMb 0x40000 0xc0000 // And everything else "
             //           "the core can't see\n";
             if (auto coreOp = tile.getCoreOp()) {
