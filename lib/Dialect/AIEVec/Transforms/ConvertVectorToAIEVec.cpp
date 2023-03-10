@@ -148,6 +148,28 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
   }
 };
 
+static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
+                                        aievec::ShiftOp &shiftOp,
+                                        int32_t &idx) {
+  if (!op.getSource().getDefiningOp())
+    return false;
+
+  shiftOp = dyn_cast<aievec::ShiftOp>(op.getSource().getDefiningOp());
+
+  if (!shiftOp)
+    return false;
+
+  VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
+  int32_t elemSize = getElementSizeInBits(vType);
+  idx = shiftOp.getShift() * 8 / elemSize + op.getIdx();
+
+  if (idx <= 0 || idx >= (int32_t)getVectorLaneSize(vType)) {
+    return false;
+  }
+
+  return true;
+}
+
 struct FoldAIEShiftAndBroadcast
     : public OpConversionPattern<aievec::BroadcastOp> {
   using OpConversionPattern<aievec::BroadcastOp>::OpConversionPattern;
@@ -155,21 +177,12 @@ struct FoldAIEShiftAndBroadcast
   LogicalResult
   matchAndRewrite(aievec::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!(bcastOp.getSource().getDefiningOp()))
+    aievec::ShiftOp shiftOp = nullptr;
+    int32_t idx = 0;
+
+    if (!canFoldAIEShiftAndBroadcast(bcastOp, shiftOp, idx)) {
       return failure();
-
-    auto shiftOp =
-        dyn_cast<aievec::ShiftOp>(bcastOp.getSource().getDefiningOp());
-
-    if (!shiftOp)
-      return failure();
-
-    VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
-    int32_t elemSize = getElementSizeInBits(vType);
-    int32_t idx = shiftOp.getShift() * 8 / elemSize + bcastOp.getIdx();
-
-    if (idx <= 0 || idx >= (int32_t)getVectorLaneSize(vType))
-      return failure();
+    }
 
     SmallVector<Value> sources = shiftOp.getSources();
 
@@ -648,24 +661,9 @@ static void
 configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<xilinx::aievec::BroadcastOp>(
       [](xilinx::aievec::BroadcastOp op) {
-        if (!op.getSource().getDefiningOp())
-          return true;
-
-        auto shiftOp =
-            dyn_cast<aievec::ShiftOp>(op.getSource().getDefiningOp());
-
-        if (!shiftOp)
-          return true;
-
-        VectorType vType = shiftOp->getResult(0).getType().cast<VectorType>();
-        int32_t elemSize = getElementSizeInBits(vType);
-        int32_t idx = shiftOp.getShift() * 8 / elemSize + op.getIdx();
-
-        if (idx == 0 || idx >= (int32_t)getVectorLaneSize(vType)) {
-          return true;
-        }
-
-        return false;
+        aievec::ShiftOp shiftOp = nullptr;
+        int32_t idx = 0;
+        return !canFoldAIEShiftAndBroadcast(op, shiftOp, idx);
       });
 }
 
