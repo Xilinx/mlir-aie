@@ -53,6 +53,10 @@ struct ConvertVectorToAIEVecOptions
   CanonicalizeForAIEVecOptions getCanonicalizeForAIEVecOptions() const {
     return CanonicalizeForAIEVecOptions{aieTarget};
   }
+
+  AIEVecTransformationOptions getAIEVecTransformationOptions() const {
+    return AIEVecTransformationOptions{aieTarget};
+  }
 };
 
 //===----------------------------------------------------------------------===//

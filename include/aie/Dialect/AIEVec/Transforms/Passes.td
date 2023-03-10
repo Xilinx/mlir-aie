@@ -73,4 +73,13 @@ def CanonicalizeForAIEVec : Pass<"canonicalize-for-aievec", "func::FuncOp"> {
   ];
 }
 
+def AIEVecTransformation : Pass<"aievec-transformation", "func::FuncOp"> {
+  let summary = "Transform simple aievec ops into more complex aievec ops.";
+  let options = [
+    Option<"aieTarget", "aie-target", "std::string", /*default=*/"\"aie\"",
+     "Select AIE version: \\\"aie\\\" or \\\"aieml\\\". This will determine "
+     "the vector size and available operations.">,
+  ];
+}
+
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES
