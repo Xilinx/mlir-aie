@@ -37,6 +37,7 @@ namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
 #define GEN_PASS_DEF_CANONICALIZEFORAIEVEC
 #define GEN_PASS_DEF_REDUNDANTLOADSTOREOPTIMIZATION
+#define GEN_PASS_DEF_AIEVECTRANSFORMATION
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 } // namespace xilinx::aievec
 
@@ -171,9 +172,6 @@ struct FoldAIEShiftAndBroadcast
       return failure();
 
     SmallVector<Value> sources = shiftOp.getSources();
-
-    if (sources.size() != 1)
-      return failure();
 
     VectorType resultType = bcastOp.getResult().getType().cast<VectorType>();
 
@@ -375,9 +373,10 @@ struct LowerVectorTransferReadToAIEUPD
     // to -
     //
     // %0 = aievec.upd %arg1[0] : vector<32xi8>
-    // %1 = aievec.shift %0 {shift = 16 : i32} : vector<32xi8>
-    // %2 = aievec.upd %arg1[32] : vector<32xi8>
-    // %3 = aievec.shift %2 {shift = 2 : i32} : vector<32xi8>
+    // %1 = aievec.upd %arg1[32] : vector<32xi8>
+    // %2 = aievec.shift %0, %1 {shift = 16 : i32} : vector<32xi8>
+    // %3 = aievec.upd %arg1[64] : vector<32xi8>
+    // %4 = aievec.shift %2, %3 {shift = 2 : i32} : vector<32xi8>
     //
     SmallVector<Value, 4> indices(adaptor.getIndices().begin(),
                                   adaptor.getIndices().end());
@@ -402,8 +401,17 @@ struct LowerVectorTransferReadToAIEUPD
             auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
                 readOp.getLoc(), vType, adaptor.getSource(), indices, 0, 0,
                 TypedValue<VectorType>(nullptr));
+            newIdx = rewriter.create<arith::ConstantOp>(
+                constOp.getLoc(),
+                rewriter.getIntegerAttr(constOp.getType(), idx + lanes));
+            indices[indices.size() - 1] = newIdx;
+            // Load the next vector lanes
+            auto nextUpdOp = rewriter.create<xilinx::aievec::UPDOp>(
+                readOp.getLoc(), vType, adaptor.getSource(), indices, 0, 0,
+                TypedValue<VectorType>(nullptr));
 
-            SmallVector<Value> sources = {updOp->getResult(0)};
+            SmallVector<Value> sources = {updOp->getResult(0),
+                                          nextUpdOp->getResult(0)};
             rewriter.replaceOpWithNewOp<xilinx::aievec::ShiftOp>(
                 readOp, vType, sources, shiftBytes);
           } else {
@@ -569,8 +577,11 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                ConvertMulAddToAIEVecFMAElemOpPattern>(patterns.getContext());
 }
 
-static void populatePostAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
-                                                   AnalysisManager &am) {
+static void
+populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns) {}
+
+static void
+populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
@@ -630,8 +641,11 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   });
 }
 
-static void configurePostAIEVecV2Legalizations(ConversionTarget &target,
-                                               AnalysisManager &am) {
+static void
+configureAIEVecV1TransformationLegalizations(ConversionTarget &target) {}
+
+static void
+configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<xilinx::aievec::BroadcastOp>(
       [](xilinx::aievec::BroadcastOp op) {
         if (!op.getSource().getDefiningOp())
@@ -705,15 +719,6 @@ void LowerVectorToAIEVec::runOnOperation() {
 
   if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
     signalPassFailure();
-  }
-
-  if (aieVersion == AIEArch::AIE_ML) {
-    RewritePatternSet newPatterns(context);
-    populatePostAIEVecV2ConversionPatterns(newPatterns, am);
-    configurePostAIEVecV2Legalizations(target, am);
-    if (failed(applyPartialConversion(func, target, std::move(newPatterns)))) {
-      signalPassFailure();
-    }
   }
 }
 
@@ -810,6 +815,41 @@ std::unique_ptr<::mlir::Pass> createRedundantLoadStoreOptimizationPass() {
   return std::make_unique<RedundantLoadStoreOptimizationPass>();
 }
 
+struct AIEVecTransformationPass
+    : public aievec::impl::AIEVecTransformationBase<AIEVecTransformationPass> {
+  using Base::Base;
+  void runOnOperation() override;
+};
+
+void AIEVecTransformationPass::runOnOperation() {
+  auto func = getOperation();
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
+  ConversionTarget target(*context);
+  AIEArch aieVersion = AIEArch::AIE;
+  if (!aieTarget.empty()) {
+    std::string target = aieTarget;
+    if (target == "aieml") {
+      aieVersion = AIEArch::AIE_ML;
+    } else if (target != "aie") {
+      func.emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
+    }
+  }
+  if (aieVersion == AIEArch::AIE) {
+    populateAIEVecV1TransformationPatterns(patterns);
+    configureAIEVecV1TransformationLegalizations(target);
+  } else {
+    populateAIEVecV2TransformationPatterns(patterns);
+    configureAIEVecV2TransformationLegalizations(target);
+  }
+
+  if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+}
+
 //===---------------------------------------------------------------------------
 // Pipeline implementations
 //===---------------------------------------------------------------------------
@@ -827,6 +867,11 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // Add lowering from `Vector` to `AIEVec`
   pm.addPass(
       createLowerVectorToAIEVec(options.getLowerVectorToAIEVecOptions()));
+
+  // Add AIEVec transformation pass
+  pm.addPass(
+      createAIEVecTransformation(options.getAIEVecTransformationOptions()));
+
   // Add post-lowering canonicalization passes
   pm.addPass(createCSEPass());
   pm.addPass(createLoopInvariantCodeMotionPass());
