@@ -81,6 +81,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_sync_mem_dev(_xaie, 0);
     mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
 
+    sleep(1);
+
     // FIRST sub-block
     printf("Receiving FIRST sub-block\n");
     // acquire output shim
@@ -106,7 +108,7 @@ int main(int argc, char *argv[]) {
     // SECOND sub-block
     printf("Receiving SECOND sub-block\n");
     // acquire output shim
-    if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 1000000) == XAIE_OK)
+    if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
