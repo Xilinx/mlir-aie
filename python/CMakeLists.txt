@@ -89,4 +89,5 @@ add_mlir_python_modules(AiePythonModules
     AieAggregateCAPI
 )
 
-#add_subdirectory(test)
+add_dependencies(AiePythonModules AieCompilerPythonModules)
+add_subdirectory(aie/compiler)

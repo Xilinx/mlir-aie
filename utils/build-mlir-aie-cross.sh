@@ -53,7 +53,6 @@ cmake -GNinja \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DLLVM_USE_LINKER=lld \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
-    -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     -DCMAKE_BUILD_TYPE=Debug \
     -Wno-dev \
     .. |& tee cmake.log

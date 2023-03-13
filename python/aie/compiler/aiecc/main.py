@@ -21,8 +21,8 @@ import shutil
 import timeit
 import asyncio
 
-import aiecc.cl_arguments
-import aiecc.configure
+import aie.compiler.aiecc.cl_arguments
+import aie.compiler.aiecc.configure
 
 import rich.progress as progress
 import re
@@ -140,8 +140,8 @@ class flow_runner:
 
   async def prepare_for_chesshack(self, task):
       if(opts.compile and opts.xchesscc):
-        thispath = os.path.dirname(os.path.realpath(__file__))
-        runtime_lib_path = os.path.join(thispath, '..','..','aie_runtime_lib')
+        install_path = aie.compiler.aiecc.configure.install_path()
+        runtime_lib_path = os.path.join(install_path, 'aie_runtime_lib')
         chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, self.aie_target.upper(),'chess_intrinsic_wrapper.cpp')
 
         self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
@@ -157,8 +157,8 @@ class flow_runner:
       if(self.stopall):
         return
 
-      thispath = os.path.dirname(os.path.realpath(__file__))
-      runtime_lib_path = os.path.join(thispath, '..','..','aie_runtime_lib', self.aie_target.upper())
+      install_path = aie.compiler.aiecc.configure.install_path()
+      runtime_lib_path = os.path.join(install_path, 'aie_runtime_lib', self.aie_target.upper())
       clang_path = os.path.dirname(shutil.which('clang'))
       # The build path for libc can be very different from where it's installed.
       llvmlibc_build_lib_path = os.path.join(clang_path, '..', 'runtimes', 'runtimes-' + self.aie_target.lower() + '-none-unknown-elf-bins', 'libc', 'lib', 'libc.a')
@@ -256,8 +256,8 @@ class flow_runner:
       cmd = ['clang++','-std=c++11']
       if(opts.host_target):
         cmd += ['--target=%s' % opts.host_target]
-        if(opts.aiesim and opts.host_target != aiecc.configure.host_architecture):
-          sys.exit("Host cross-compile from " + aiecc.configure.host_architecture +
+        if(opts.aiesim and opts.host_target != aie.compiler.aiecc.configure.host_architecture):
+          sys.exit("Host cross-compile from " + aie.compiler.aiecc.configure.host_architecture +
                    " to --target=" + opts.host_target + " is not supported with --aiesim")
 
       if(self.opts.sysroot):
@@ -272,11 +272,11 @@ class flow_runner:
         if(opts.host_target == 'aarch64-linux-gnu'):
           cmd += ['--gcc-toolchain=%s/usr' % opts.sysroot]
 
-      thispath = os.path.dirname(os.path.realpath(__file__))
-      runtime_xaiengine_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
+      install_path = aie.compiler.aiecc.configure.install_path()
+      runtime_xaiengine_path = os.path.join(install_path, 'runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
       xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
       xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
-      runtime_testlib_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'lib')
+      runtime_testlib_path = os.path.join(install_path, 'runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'lib')
       memory_allocator = os.path.join(runtime_testlib_path, 'libmemory_allocator_ion.a')
 
       cmd += [memory_allocator]
@@ -299,7 +299,7 @@ class flow_runner:
       # For simulation, we need to additionally parse the 'remaining' options to avoid things
       # which conflict with the options below (e.g. -o)
       print(opts.host_args)
-      host_opts = aiecc.cl_arguments.strip_host_args_for_aiesim(opts.host_args)
+      host_opts = aie.compiler.aiecc.cl_arguments.strip_host_args_for_aiesim(opts.host_args)
 
       sim_dir = os.path.join(self.tmpdirname, 'sim')
       shutil.rmtree(sim_dir, ignore_errors=True)
@@ -314,11 +314,11 @@ class flow_runner:
       except FileExistsError:
         pass
 
-      thispath = os.path.dirname(os.path.realpath(__file__))
+      install_path = aie.compiler.aiecc.configure.install_path()
 
-      runtime_simlib_path = os.path.join(thispath, '..','..','aie_runtime_lib', self.aie_target.upper(),'aiesim')
-      runtime_testlib_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'lib')
-      runtime_testlib_include_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'include')
+      runtime_simlib_path = os.path.join(install_path, 'aie_runtime_lib', self.aie_target.upper(),'aiesim')
+      runtime_testlib_path = os.path.join(install_path, 'runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'lib')
+      runtime_testlib_include_path = os.path.join(install_path, 'runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'include')
       sim_makefile   = os.path.join(runtime_simlib_path, "Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
@@ -342,7 +342,7 @@ class flow_runner:
                  memory_allocator
                  ]
 
-      # runtime_xaiengine_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
+      # runtime_xaiengine_path = os.path.join(install_path,'runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
       # xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
       # '-L%s' % xaiengine_lib_path,
 
@@ -481,14 +481,11 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 
 def main(builtin_params={}):
     global opts
-    opts = aiecc.cl_arguments.parse_args()
+    opts = aie.compiler.aiecc.cl_arguments.parse_args()
 
     is_windows = platform.system() == 'Windows'
 
-    thispath = os.path.dirname(os.path.realpath(__file__))
-
-    # Assume that aie-opt, etc. binaries are relative to this script.
-    aie_path = os.path.join(thispath, '..')
+    aie_path = aie.compiler.aiecc.configure.install_path()
     peano_path = os.path.join(opts.peano_install_dir, 'bin')
 
     if('VITIS' not in os.environ):

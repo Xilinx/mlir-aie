@@ -26,6 +26,8 @@ from lit.llvm.subst import FindTool
 config.name = 'AIE'
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.environment['PYTHONPATH'] \
+    = "{}".format(os.path.join(config.aie_obj_root, "python"))
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.mlir']

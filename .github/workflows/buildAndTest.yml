@@ -179,7 +179,6 @@ jobs:
             -DCMAKE_LINKER=lld \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
-            -DAIE_ENABLE_BINDINGS_PYTHON=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -206,7 +205,6 @@ jobs:
             -DCMAKE_LINKER=lld \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
-            -DAIE_ENABLE_BINDINGS_PYTHON=ON \
             -DCMAKE_COMPILE_WARNING_AS_ERROR=ON \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make -j$(nproc)
