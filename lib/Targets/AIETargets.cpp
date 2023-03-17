@@ -378,7 +378,7 @@ SECTIONS
                 // TODO How to set as reserved if no buffer exists (or reserve
                 // remaining buffer)
               }
-              if(!tile || !tiles.count(*tile) || (buffersSize > 1)) {
+              if (!tile || !tiles.count(*tile) || (buffersSize > 1)) {
                 std::string localMemSize =
                     (getTargetArch(module) == AIEArch::AIE2) ? "0x10000"
                                                              : "0x8000";
