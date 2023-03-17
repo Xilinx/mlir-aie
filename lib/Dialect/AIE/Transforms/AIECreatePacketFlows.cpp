@@ -98,6 +98,7 @@ int getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
 }
 
 void update_coordinates(int &xCur, int &yCur, WireBundle move) {
+  LLVM_DEBUG(llvm::dbgs() << "update_coordinates(" << xCur << ", " << yCur << ")");
   if (move == WireBundle::East) {
     xCur = xCur + 1;
     // yCur = yCur;
@@ -111,6 +112,7 @@ void update_coordinates(int &xCur, int &yCur, WireBundle move) {
     // xCur = xCur;
     yCur = yCur - 1;
   }
+  LLVM_DEBUG(llvm::dbgs() << " --> " << xCur << ", " << yCur << ")\n");
 }
 
 // Build a packet-switched route from the sourse to the destination with the
@@ -134,7 +136,7 @@ void buildPSRoute(
                           << ySrc << " --> " << xDest << " " << yDest << '\n');
   // traverse horizontally, then vertically
   while (!((xCur == xDest) && (yCur == yDest))) {
-    LLVM_DEBUG(llvm::dbgs() << "Tile " << xCur << " " << yCur << " ");
+    LLVM_DEBUG(llvm::dbgs() << "\nTile " << xCur << " " << yCur << " ");
 
     auto curCoord = std::make_pair(xCur, yCur);
     xLast = xCur;
@@ -151,6 +153,10 @@ void buildPSRoute(
     if (yCur > yDest)
       moves.push_back(WireBundle::South);
 
+    //LLVM_DEBUG(llvm::dbgs() << "\nmoves: " << "\n");
+    //for(auto move : moves)
+    //  LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(move) << "\n");
+
     if (std::find(moves.begin(), moves.end(), WireBundle::East) == moves.end())
       moves.push_back(WireBundle::East);
     if (std::find(moves.begin(), moves.end(), WireBundle::West) == moves.end())
@@ -159,6 +165,11 @@ void buildPSRoute(
       moves.push_back(WireBundle::North);
     if (std::find(moves.begin(), moves.end(), WireBundle::South) == moves.end())
       moves.push_back(WireBundle::South);
+
+    //LLVM_DEBUG(llvm::dbgs() << "****" << "\n");
+    //LLVM_DEBUG(llvm::dbgs() << "moves final: " << "\n");
+    //for(auto move : moves)
+    //  LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(move) << "\n");
 
     for (unsigned i = 0; i < moves.size(); i++) {
       WireBundle move = moves[i];
@@ -227,6 +238,8 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
   }
   return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
 }
+
+
 struct AIERoutePacketFlowsPass
     : public AIERoutePacketFlowsBase<AIERoutePacketFlowsPass> {
   // Map from tile coordinates to TileOp
@@ -241,6 +254,45 @@ struct AIERoutePacketFlowsPass
     }
     return tileOp;
   }
+
+  void createWireOps(OpBuilder &builder, SwitchboxOp sw) {
+
+    int col = sw.colIndex();
+    int row = sw.rowIndex();
+
+    TileOp tile = cast<TileOp>(tiles[std::make_pair(col, row)]);
+
+    // add wires between Core and Switchbox
+    builder.create<WireOp>(builder.getUnknownLoc(), 
+          tile, WireBundle::Core,
+          sw,   WireBundle::Core);
+
+    // add wires between DMA and Switchbox
+    builder.create<WireOp>(builder.getUnknownLoc(),
+          tile, WireBundle::DMA,
+          sw,   WireBundle::DMA);
+
+
+    // if the tile to the west exists, add wires
+    if(tiles.count(std::make_pair(col-1, row))) {
+      TileOp west_tile = cast<TileOp>(tiles[std::make_pair(col-1, row)]);
+      SwitchboxOp west_sw = getOrCreateSwitchbox(builder, west_tile);
+      builder.create<WireOp>(builder.getUnknownLoc(), 
+                    west_sw, WireBundle::East,
+                    sw,      WireBundle::West);
+    }
+
+    // if the tile to the south exists, add wires
+    if(tiles.count(std::make_pair(col, row-1))) {
+      TileOp south_tile = cast<TileOp>(tiles[std::make_pair(col, row-1)]);
+      SwitchboxOp south_sw = getOrCreateSwitchbox(builder, south_tile);
+      builder.create<WireOp>(builder.getUnknownLoc(), 
+                    south_sw, WireBundle::North,
+                    sw,       WireBundle::South);
+    }
+    // wires on north and east will be added by other tiles, if they exist
+  }
+
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -774,6 +826,21 @@ struct AIERoutePacketFlowsPass
         }
       }
     }
+
+
+    // add WireOps between all tiles used.
+
+    // builder.setInsertionPointToEnd(m);
+    for (auto map : tiles) {
+      Operation *tileOp = map.second;
+      TileOp tile = dyn_cast<TileOp>(tileOp);
+      SwitchboxOp swbox = getOrCreateSwitchbox(builder, tile);
+      //builder.setInsertionPointAfter(tileOp);
+      //builder.setInsertionPointToEnd(swbox);
+      builder.setInsertionPointAfter(swbox);
+      createWireOps(builder, swbox);
+    }
+
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEOpRemoval<PacketFlowOp>>(m.getContext(), m);
