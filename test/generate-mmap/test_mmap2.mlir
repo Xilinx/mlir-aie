@@ -22,6 +22,7 @@
 // CHECK: _symbol a 0x20000 16
 
 module @test_mmap1 {
+ AIE.device(xcvc1902) {
   %tsame = AIE.tile(3, 3)
   %twest = AIE.tile(2, 3) // Different column
   %teast = AIE.tile(4, 3) // Different column
@@ -29,5 +30,6 @@ module @test_mmap1 {
   %tnorth = AIE.tile(3, 4) // Different row
 
   %bufsame = AIE.buffer(%tsame) { sym_name = "a", address = 0x0 } : memref<4xi32>
+ }
 }
 

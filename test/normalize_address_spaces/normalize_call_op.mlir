@@ -15,6 +15,7 @@
 // CHECK:   call @external_function(%[[VAL_0]]) : (memref<1024xi32>) -> ()
 // CHECK: func.func private @external_function(memref<1024xi32>)
 module @aie attributes {llvm.target_triple = "aie"} {
+ AIE.device(xcvc1902) {
   memref.global "public" @buffer : memref<1024xi32, 2>
   func.func @coreXY() {
     %0 = memref.get_global @buffer : memref<1024xi32, 2>
@@ -27,4 +28,5 @@ module @aie attributes {llvm.target_triple = "aie"} {
     return
   }
   func.func private @external_function(memref<1024xi32, 2>)
+ }
 }

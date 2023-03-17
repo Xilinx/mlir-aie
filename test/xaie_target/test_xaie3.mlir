@@ -17,6 +17,7 @@
 // CHECK: XAieDma_TileSetStartBd((&(ctx->TileDMAInst[3][3])), XAIEDMA_TILE_CHNUM_MM2S0, {{.*}}0);
 
 module @test_xaie3 {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   %t44 = AIE.tile(4, 4)
 
@@ -34,4 +35,5 @@ module @test_xaie3 {
     ^end:
       AIE.end
   }
+ }
 }

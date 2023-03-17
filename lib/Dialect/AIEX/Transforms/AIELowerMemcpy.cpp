@@ -35,10 +35,9 @@ static TileOp dstTileOp(xilinx::AIEX::MemcpyOp op) {
 
 struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   using OpConversionPattern<MemcpyOp>::OpConversionPattern;
-  ModuleOp &module;
 
-  LowerAIEMemcpy(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MemcpyOp>(context, benefit), module(m) {}
+  LowerAIEMemcpy(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MemcpyOp>(context, benefit) {}
 
   void createDMABlocksAndOps(MemOp &mem, StringRef tokenName, int acquireTknVal,
                              int releaseTknVal, Value buf, int offset, int len,
@@ -101,8 +100,8 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
 struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
     // Setup FlowOps
     // Since memcpy moves data from one memory module to another, we use
@@ -112,7 +111,7 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     // Therefore, we will generate error if the number of logical flows
     // (streams) targeting the same destination (S2MM) is more than 2
     DenseMap<Value, int> destChannel;
-    for (auto op : m.getOps<MemcpyOp>()) {
+    for (auto op : device.getOps<MemcpyOp>()) {
       builder.setInsertionPoint(op);
       TileOp srcTile = dyn_cast<TileOp>(op.getSrcTile().getDefiningOp());
       TileOp dstTile = dyn_cast<TileOp>(op.getDstTile().getDefiningOp());
@@ -134,14 +133,14 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
     target.addLegalOp<UseTokenOp>();
     target.addLegalOp<NextBDOp>();
 
-    patterns.insert<LowerAIEMemcpy>(m.getContext(), m);
+    patterns.insert<LowerAIEMemcpy>(&getContext());
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
 xilinx::AIEX::createAIELowerMemcpyPass() {
   return std::make_unique<AIELowerMemcpyPass>();
 }

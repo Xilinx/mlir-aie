@@ -27,6 +27,7 @@
 // Lower UseTokenOp to UseLockOp
 // Tile-Tile
 module @test_lock0 {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   %t23 = AIE.tile(2, 3)
 
@@ -51,4 +52,5 @@ module @test_lock0 {
     AIEX.useToken @token0(Release, 2)
     AIE.end
   }
+ }
 }

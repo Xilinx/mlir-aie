@@ -30,10 +30,9 @@ template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
 
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(MyOp op, OpAdaptor adaptor,
@@ -48,10 +47,10 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
-    for (auto multicast : m.getOps<MulticastOp>()) {
+    for (auto multicast : device.getOps<MulticastOp>()) {
       Region &r = multicast.getPorts();
       Block &b = r.front();
       Port sourcePort = multicast.port();
@@ -71,14 +70,14 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
 
-    patterns.add<AIEOpRemoval<MulticastOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<MulticastOp>>(device.getContext());
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIEX::createAIELowerMulticastPass() {
   return std::make_unique<AIELowerMulticastPass>();
 }

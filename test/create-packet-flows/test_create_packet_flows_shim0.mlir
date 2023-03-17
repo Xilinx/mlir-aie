@@ -35,6 +35,7 @@
 // one-to-one shim DMA destination 
 //
 module @aie_module  {
+ AIE.device(xcvc1902) {
   %t70 = AIE.tile(7, 0)
   %t71 = AIE.tile(7, 1)
 
@@ -42,4 +43,5 @@ module @aie_module  {
     AIE.packet_source<%t71, DMA : 0>
     AIE.packet_dest<%t70, DMA : 1>
   }
+ }
 }

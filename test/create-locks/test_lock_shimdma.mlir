@@ -57,6 +57,7 @@
 // [Core-Mem] ---> [ShimDMA] (non-neighboring tiles)
 // single producer, single consumer
 module @test_lock_shimdma {
+ AIE.device(xcvc1902) {
   AIEX.token(0) {sym_name = "token0"}
   %buf_ext = AIE.external_buffer : memref<256xi32>
 
@@ -98,4 +99,5 @@ module @test_lock_shimdma {
   }
 
   AIE.flow(%t33, DMA : 0, %t60, DMA : 0)
+ }
 }

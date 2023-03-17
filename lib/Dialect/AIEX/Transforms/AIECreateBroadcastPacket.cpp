@@ -20,10 +20,9 @@ template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
 
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(MyOp op, OpAdaptor adaptor,
@@ -39,10 +38,10 @@ struct AIEBroadcastPacketPass
     : public AIEBroadcastPacketBase<AIEBroadcastPacketPass> {
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
-    for (auto broadcastpacket : m.getOps<BroadcastPacketOp>()) {
+    for (auto broadcastpacket : device.getOps<BroadcastPacketOp>()) {
       Region &r = broadcastpacket.getPorts();
       Block &b = r.front();
       Port sourcePort = broadcastpacket.port();
@@ -81,14 +80,14 @@ struct AIEBroadcastPacketPass
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
 
-    patterns.add<AIEOpRemoval<BroadcastPacketOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<BroadcastPacketOp>>(device.getContext());
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIEX::createAIEBroadcastPacketPass() {
   return std::make_unique<AIEBroadcastPacketPass>();
 }

@@ -12,6 +12,7 @@
 // CHECK: used in a DMA block that have multiple locks.
 
 module @test_error_shimdma_multi_lock {
+ AIE.device(xcvc1902) {
   %t30 = AIE.tile(3, 0)
   %l30_0 = AIE.lock(%t30, 0)
   %l30_1 = AIE.lock(%t30, 1)
@@ -27,4 +28,5 @@ module @test_error_shimdma_multi_lock {
   ^end:
     AIE.end
   }
+ }
 }
