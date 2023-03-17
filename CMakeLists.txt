@@ -5,9 +5,17 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-cmake_minimum_required(VERSION 3.10)
+# optional parameters
+#  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
+#  -DVitisSysroot: 
+#     * when not set, x86 compile only, lit compile test for x86; --> not yet fully supported because of many hard coded --host-target=aarch64-linux-gnu in lit tests they will fail
+#     * set to empty string, x86 tools compile, lit cross compile tests with default Vitis sysroot 
+#     * set to valid sysroot path, x86 tools compile, lit cross compile with specified sysroot
+#  -DLibXAIE_DIR: extra search path for libxaiengine.so 
 
-set(CMAKE_TOOLCHAINFILES_PATH ${CMAKE_MODULE_PATH})
+cmake_minimum_required(VERSION 3.21)
+
+set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
@@ -62,11 +70,12 @@ find_package(Vitis COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in ${CMAKE_CURRENT_SOURCE_DIR}/utils/vitisVariables.config @ONLY)
 find_package(Python3 COMPONENTS Interpreter)
 
-if(NOT VitisSysroot AND VITIS_ROOT)
+# NEEDS future improvement: if needed find default sysroot since many lit test hard code --host-target=aarch64-linux-gnu as well as tutorial defaults (in makefile-common)
+if(VitisSysroot STREQUAL "" AND VITIS_ROOT)
 set(VitisSysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
 set(LIBCXX_VERSION "11.2.0")
 set(extraAieCcFlags "-I${VITIS_AIETOOLS_DIR}/include/drivers/aiengine -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
-message (STATUS "No Sysroot specified, using default Vitis Sysroot to enable more unit tests: ${VitisSysroot}")
+message (STATUS "Empty string specified as sysroot, using default Vitis Sysroot to enable more unit tests: ${VitisSysroot}")
 endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to

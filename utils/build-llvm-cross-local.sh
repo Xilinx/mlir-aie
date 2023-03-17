@@ -24,17 +24,19 @@
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 2 ]; then
-    echo "ERROR: Needs at least 2 arguments for <sysroot dir>, <cmakeModules dir>"
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Needs at least 1 arguments for <sysroot dir>"
     exit 1
 fi
 
-SYSROOT_DIR=$1
-CMAKEMODULES_DIR=`realpath $2`
+BASE_DIR=`realpath $(dirname $0)/..`
+CMAKEMODULES_DIR=$BASE_DIR/cmake
 
-LLVM_DIR=${3:-"llvm"}
-BUILD_DIR=${5:-"${LLVM_DIR}/build-aarch64"}
-INSTALL_DIR=${5:-"${LLVM_DIR}/install-aarch64"}
+SYSROOT_DIR=$1
+
+LLVM_DIR=${2:-"llvm"}
+BUILD_DIR=${3:-"${LLVM_DIR}/build-aarch64"}
+INSTALL_DIR=${4:-"${LLVM_DIR}/install-aarch64"}
 
 BUILD_DIR=`realpath ${BUILD_DIR}`
 INSTALL_DIR=`realpath ${INSTALL_DIR}`
@@ -47,8 +49,8 @@ set -o pipefail
 set -e
 cmake ../llvm \
   -GNinja \
-  -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR} \
-  -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchain_clang_crosscomp_arm.cmake \
+  -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
+  -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake \
   -DArch=arm64 \
   -DSysroot=${SYSROOT_DIR} \
   -DPython3_FIND_VIRTUALENV=ONLY \
