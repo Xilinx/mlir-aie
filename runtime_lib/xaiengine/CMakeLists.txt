@@ -10,8 +10,6 @@ cmake_minimum_required(VERSION 3.20.1)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-message(STATUS "NOLF NOLF xaiengine $CMAKE_TOOLCHAIN_FILE: ${CMAKE_TOOLCHAIN_FILE}")
-
 project("xaiengine driver")
 file(COPY ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_2/src DESTINATION ${PROJECT_SOURCE_DIR})
 file(GLOB libsources ${PROJECT_SOURCE_DIR}/src/*/*.c ${PROJECT_SOURCE_DIR}/src/*/*/*.c)
