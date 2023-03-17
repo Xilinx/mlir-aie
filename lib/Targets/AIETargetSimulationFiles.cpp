@@ -36,11 +36,11 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
            << "    \"SimulationConfig\": {\n"
            << "        \"device_json\": {\n"
            << "            \"directory\": \"data/aie_ml/devices\",\n"
-           << "            \"file\": \"VE2302.json\"\n"
+           << "            \"file\": \"VC2802.json\"\n"
            << "        },\n"
-           << "        \"phy_device_file\": \"xcve2302-sfva784-1MP-e-S-es1\",\n"
+           << "        \"phy_device_file\": \"xcve2802-vsvh1760-2LP-e-S-es1\",\n"
            << "        \"aiearch\": \"aie2\",\n"
-           << "        \"aie_freq\": 1150000000.0,\n"
+           << "        \"aie_freq\": 1050000000.0,\n"
            << "        \"use_real_noc\": 1,\n"
            << "        \"evaluate_fifo_depth\": 0,\n"
            << "        \"noc_ip_block\": {\n"
@@ -53,7 +53,7 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
            << "                \"name\": \"ps_ps_main\",\n"
            << "                \"ip\": \"ps\",\n"
            << "                \"lib_path\": \"ps/ps.so\",\n"
-           << "                \"pl_freq\": 312500000.0,\n"
+           << "                \"pl_freq\": 362500000.0,\n"
            << "                \"axi_mm\": [\n"
            << "                    {\n"
            << "                        \"port_name\": \"ps_axi\",\n"
@@ -67,6 +67,42 @@ mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
            << "        ]\n"
            << "    }\n"
            << "}\n";
+       // AIE2 - ve2302
+    // output << "{\n"
+    //        << "    \"SimulationConfig\": {\n"
+    //        << "        \"device_json\": {\n"
+    //        << "            \"directory\": \"data/aie_ml/devices\",\n"
+    //        << "            \"file\": \"VE2302.json\"\n"
+    //        << "        },\n"
+    //        << "        \"phy_device_file\": \"xcve2302-sfva784-1MP-e-S-es1\",\n"
+    //        << "        \"aiearch\": \"aie2\",\n"
+    //        << "        \"aie_freq\": 1150000000.0,\n"
+    //        << "        \"use_real_noc\": 1,\n"
+    //        << "        \"evaluate_fifo_depth\": 0,\n"
+    //        << "        \"noc_ip_block\": {\n"
+    //        << "            \"lib_path\": \"./sim/noc/liblnoc_tlm.so\",\n"
+    //        << "            \"traffic_file\": \"./sim/noc/noc_traffic.nts\",\n"
+    //        << "            \"config_file\": \"./sim/noc/noc_soln.ncr\"\n"
+    //        << "        },\n"
+    //        << "        \"pl_ip_block\": [\n"
+    //        << "            {\n"
+    //        << "                \"name\": \"ps_ps_main\",\n"
+    //        << "                \"ip\": \"ps\",\n"
+    //        << "                \"lib_path\": \"ps/ps.so\",\n"
+    //        << "                \"pl_freq\": 312500000.0,\n"
+    //        << "                \"axi_mm\": [\n"
+    //        << "                    {\n"
+    //        << "                        \"port_name\": \"ps_axi\",\n"
+    //        << "                        \"direction\": \"ps_to_gm\",\n"
+    //        << "                        \"noc_endpoint\": \"NOC_NMU128_X0Y5\",\n"
+    //        << "                        \"bus_width\": 0\n"
+    //        << "                    }\n"
+    //        << "                ],\n"
+    //        << "                \"event_bus\": []\n"
+    //        << "            }\n"
+    //        << "        ]\n"
+    //        << "    }\n"
+    //        << "}\n";
   } else { // AIEArch::AIE1
     output << "{\n"
            << "    \"SimulationConfig\": {\n"
@@ -197,8 +233,12 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
             "design=\"graph\" date=\"2023\">\n";
   if (getTargetArch(module) == AIEArch::AIE2) {
     output
-        << " <DEVICE part=\"xcve2302\" grade=\"extended\" package=\"sfva784\" "
-           "speed=\"-1MP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
+        // AIE2 xcve2802
+        << " <DEVICE part=\"xcve2802\" grade=\"extended\" package=\"vsvh1760\" "
+           "speed=\"-2LP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
+        // AIE2 - xcve2302
+        // << " <DEVICE part=\"xcve2302\" grade=\"extended\" package=\"sfva784\" "
+        //    "speed=\"-1MP\" process=\"typical\" vid=\"No\"></DEVICE>\n";
   } else { // AIEArch::AIE1
     output
         << " <DEVICE part=\"xcvc1902\" grade=\"extended\" package=\"vsva2197\" "
@@ -235,8 +275,12 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 
     if (getTargetArch(module) == AIEArch::AIE2) {
       output << "      <TILE name=\"CR(" <<
-          // CR coordinates ignores shim, hence row-1
-          std::to_string(col) << "," << std::to_string(row - 2) << ")\" "
+          // CR coordinates ignores shim, and 2 mem rows hence row-3
+          // AIE2 - xcve2802
+          std::to_string(col) << "," << std::to_string(row - 3) << ")\" "
+          // CR coordinates ignores shim and 1 mem row, hence row-2
+          // AIE2 - xcve2302
+          // std::to_string(col) << "," << std::to_string(row - 2) << ")\" "
              << "type=\"int16\" int_core_load=\"1.0\" fp_core_load=\"0\" "
              << "mem_banks=\"0\" mem_rw_rate=\"0.2\" stream_util=\"0.0\" "
                 "coordinates=\""
