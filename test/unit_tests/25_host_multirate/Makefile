@@ -1,12 +1,11 @@
+include ../../../utils/vitisVariables.config
+include ../../../tutorials/makefile-common
 
 .PHONY: all clean
 
-SYSROOT = /group/xrlabs/platforms/vck190-pynq-v2.7/sysroot
-AIE_INSTALL = $(dir $(shell which aie-opt))/..
-
-all: test.elf
-test.elf: aie.mlir test.cpp 
-	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./test.cpp -o $@
+all: host_multirate.exe
+host_multirate.exe: test.cpp aie.mlir 
+	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 clean:
-	rm -rf acdc_project *elf *exe core*
+	rm -rf acdc_project *elf *exe core* sim
