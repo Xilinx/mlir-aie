@@ -42,9 +42,12 @@ int main(int argc, char *argv[]) {
   int *mem_ptr_out2 = mlir_aie_mem_alloc(_xaie, 2, 64);
 
 #if defined(__AIESIM__)
-  mlir_aie_external_set_addr_ddr_test_buffer_in((u64)((_xaie->buffers[0])->physicalAddr));
-  mlir_aie_external_set_addr_ddr_test_buffer_out1((u64)((_xaie->buffers[1])->physicalAddr));
-  mlir_aie_external_set_addr_ddr_test_buffer_out2((u64)((_xaie->buffers[2])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_in(
+      (u64)((_xaie->buffers[0])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_out1(
+      (u64)((_xaie->buffers[1])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_out2(
+      (u64)((_xaie->buffers[2])->physicalAddr));
 #else
   mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
   mlir_aie_external_set_addr_ddr_test_buffer_out1((u64)mem_ptr_out1);
@@ -109,7 +112,7 @@ int main(int argc, char *argv[]) {
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
-    
+
     i++;
   }
 
