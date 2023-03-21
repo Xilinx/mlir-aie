@@ -15,44 +15,25 @@
 module @host_multirate {
     %tile34 = AIE.tile(3, 4)
     %tile70 = AIE.tile(7, 0)
-    %tile60 = AIE.tile(6, 0)
-
-    %hostLock = AIE.lock(%tile34, 0) {sym_name="hostLock"}
-
-    func.func @evaluate_condition(%argIn : i32) -> (i1) {
-        %true = arith.constant 1 : i1
-        return %true : i1
-    }
-
-    func.func @payload(%argIn : i32) -> (i32) {
-        %next = arith.constant 1 : i32
-        return %next : i32
-    }
 
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
-    %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<64xi32> 
+    %ext_buf70_out1 = AIE.external_buffer {sym_name = "ddr_test_buffer_out1"}: memref<64xi32> 
+    %ext_buf70_out2 = AIE.external_buffer {sym_name = "ddr_test_buffer_out2"}: memref<64xi32> 
 
     %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<64xi32>>
-    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile60}, 1) : !AIE.objectFifo<memref<64xi32>>
+    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<64xi32>>
 
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
-    AIE.objectFifo.registerExternalBuffers(%tile60, %objFifo_out : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_out}) : (memref<64xi32>)
+    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_out1, %ext_buf70_out2}) : (memref<64xi32>, memref<64xi32>)
  
     %core34 = AIE.core(%tile34) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c4 = arith.constant 4 : index
         %height = arith.constant 64 : index
         %init1 = arith.constant 1 : i32
 
-        %res = scf.while (%arg1 = %init1) : (i32) -> i32 {
-            %condition = func.call @evaluate_condition(%arg1) : (i32) -> i1
-            scf.condition(%condition) %arg1 : i32
-        } do {
-            ^bb0(%arg2: i32):
-            %next = func.call @payload(%arg2) : (i32) -> i32
-
-            AIE.useLock(%hostLock, Acquire, 1)
-
+        scf.for %iter = %c0 to %c4 step %c1 { 
             %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo_in : !AIE.objectFifo<memref<64xi32>>, 1) : !AIE.objectFifoSubview<memref<64xi32>>
             %outputSubview = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1) : !AIE.objectFifoSubview<memref<64xi32>>
             
@@ -66,10 +47,6 @@ module @host_multirate {
             
             AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<64xi32>>, 1)
             AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<64xi32>>, 1)
-
-            AIE.useLock(%hostLock, Release, 0)
-            
-            scf.yield %next : i32
         }
         AIE.end
     } 

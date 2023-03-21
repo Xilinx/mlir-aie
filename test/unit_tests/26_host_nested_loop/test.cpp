@@ -42,22 +42,22 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  mlir_aie_init_mems(_xaie, 2);
+  mlir_aie_init_mems(_xaie, 3);
 
   int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, 0, 256);
-  int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 64);
+  int *mem_ptr_out1 = mlir_aie_mem_alloc(_xaie, 1, 64);
+  int *mem_ptr_out2 = mlir_aie_mem_alloc(_xaie, 2, 64);
 
 // Set virtual pointer used to configure
 #if defined(__AIESIM__)
   mlir_aie_external_set_addr_ddr_test_buffer_in((u64)((_xaie->buffers[0])->physicalAddr));
-  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)((_xaie->buffers[1])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_out1((u64)((_xaie->buffers[1])->physicalAddr));
+  mlir_aie_external_set_addr_ddr_test_buffer_out2((u64)((_xaie->buffers[2])->physicalAddr));
 #else
   mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
-  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
+  mlir_aie_external_set_addr_ddr_test_buffer_out1((u64)mem_ptr_out1);
+  mlir_aie_external_set_addr_ddr_test_buffer_out2((u64)mem_ptr_out2);
 #endif
-
-  //mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
-  //mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
   
   if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
     printf("Pre-Released objFifo 3 lock 0 for write\n");
@@ -93,9 +93,9 @@ int main(int argc, char *argv[]) {
 
     // check output DDR
     mlir_aie_sync_mem_cpu(_xaie, 1);
-    printSublock(mem_ptr_out,64);
+    printSublock(mem_ptr_out1, 64);
     for (int j = 0; j < 64; j++)
-      mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[j],
+      mlir_aie_check("After start cores:", mem_ptr_out1[j], mem_ptr_in[j],
                      errors);
 
     // release output shim
@@ -108,23 +108,22 @@ int main(int argc, char *argv[]) {
     // SECOND sub-block
     printf("Receiving SECOND sub-block\n");
     // acquire output shim
-    if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
+    if (mlir_aie_acquire_of_3_lock_1(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
 
     // check output DDR
-    mlir_aie_sync_mem_cpu(_xaie, 1);
-    printSublock(mem_ptr_out,64);
+    mlir_aie_sync_mem_cpu(_xaie, 2);
+    printSublock(mem_ptr_out2, 64);
     for (int j = 0; j < 64; j++)
-      mlir_aie_check("After start cores:", mem_ptr_out[j], mem_ptr_in[j+64], errors);
+      mlir_aie_check("After start cores:", mem_ptr_out2[j], mem_ptr_in[j+64], errors);
 
     // release output shim
-    if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
+    if (mlir_aie_release_of_3_lock_1(_xaie, 0, 10000) == XAIE_OK)
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
-    
   }
 
   int res = 0;
