@@ -255,23 +255,18 @@ struct AIERoutePacketFlowsPass
     return tileOp;
   }
 
-  void createWireOps(OpBuilder &builder, SwitchboxOp sw) {
+  void createWireOps(OpBuilder &builder, SwitchboxOp sw, ModuleOp &m) {
 
     int col = sw.colIndex();
     int row = sw.rowIndex();
 
-    TileOp tile = cast<TileOp>(tiles[std::make_pair(col, row)]);
+    //TileOp tile = cast<TileOp>(tiles[std::make_pair(col, row)]);
+    TileOp tile = cast<TileOp>(sw.getTileOp());
 
     // add wires between Core and Switchbox
     builder.create<WireOp>(builder.getUnknownLoc(), 
           tile, WireBundle::Core,
           sw,   WireBundle::Core);
-
-    // add wires between DMA and Switchbox
-    builder.create<WireOp>(builder.getUnknownLoc(),
-          tile, WireBundle::DMA,
-          sw,   WireBundle::DMA);
-
 
     // if the tile to the west exists, add wires
     if(tiles.count(std::make_pair(col-1, row))) {
@@ -282,15 +277,37 @@ struct AIERoutePacketFlowsPass
                     sw,      WireBundle::West);
     }
 
-    // if the tile to the south exists, add wires
-    if(tiles.count(std::make_pair(col, row-1))) {
-      TileOp south_tile = cast<TileOp>(tiles[std::make_pair(col, row-1)]);
-      SwitchboxOp south_sw = getOrCreateSwitchbox(builder, south_tile);
-      builder.create<WireOp>(builder.getUnknownLoc(), 
-                    south_sw, WireBundle::North,
-                    sw,       WireBundle::South);
+    if (tile.isShimNOCTile()) {
+      for (auto shimmux : m.getOps<ShimMuxOp>()) {
+        if (shimmux.getTile() == tile) {
+          // add wire from tile DMA to ShimMuxOp
+          builder.create<WireOp>(builder.getUnknownLoc(),
+                tile,     WireBundle::DMA,
+                shimmux,  WireBundle::DMA);
+
+          // add wire from ShimMuxOp to SwitchboxOp
+          builder.create<WireOp>(builder.getUnknownLoc(), 
+                        shimmux, WireBundle::North,
+                        sw,       WireBundle::South);
+        }
+      }
+    } else { // it is normal tile (not in shim)
+
+      // add wires between DMA and Switchbox
+      builder.create<WireOp>(builder.getUnknownLoc(),
+            tile, WireBundle::DMA,
+            sw,   WireBundle::DMA);
+
+      // if the tile to the south exists, add wires
+      if(tiles.count(std::make_pair(col, row-1))) {
+        TileOp south_tile = cast<TileOp>(tiles[std::make_pair(col, row-1)]);
+        SwitchboxOp south_sw = getOrCreateSwitchbox(builder, south_tile);
+        builder.create<WireOp>(builder.getUnknownLoc(), 
+                      south_sw, WireBundle::North,
+                      sw,       WireBundle::South);
+      }
+      // wires on north and east will be added by other tiles, if they exist
     }
-    // wires on north and east will be added by other tiles, if they exist
   }
 
   void runOnOperation() override {
@@ -829,7 +846,6 @@ struct AIERoutePacketFlowsPass
 
 
     // add WireOps between all tiles used.
-
     // builder.setInsertionPointToEnd(m);
     for (auto map : tiles) {
       Operation *tileOp = map.second;
@@ -838,9 +854,8 @@ struct AIERoutePacketFlowsPass
       //builder.setInsertionPointAfter(tileOp);
       //builder.setInsertionPointToEnd(swbox);
       builder.setInsertionPointAfter(swbox);
-      createWireOps(builder, swbox);
+      createWireOps(builder, swbox, m);
     }
-
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEOpRemoval<PacketFlowOp>>(m.getContext(), m);
