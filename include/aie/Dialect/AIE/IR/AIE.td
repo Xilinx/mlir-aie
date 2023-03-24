@@ -1226,6 +1226,17 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let extraClassDeclaration = [{
     int size() { return getElemNumber(); }
     TileOp getProducerTileOp();
+    bool hasName() {
+       return name().has_value();
+     }
+    mlir::Optional<StringAttr> name() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return {attr};
+      } else {
+        return {};
+      }
+      llvm_unreachable("unreachable");
+    }
   }];
 }
 
