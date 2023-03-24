@@ -9,6 +9,7 @@ cmake 3.20.6
 ninja 1.8.2
 Xilinx Vitis 2022.2
 python 3.8.x and pip
+virtualenv
 pip3 install psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 ```
@@ -50,7 +51,10 @@ the tools are largely board and device independent and can be adapted to other e
 
     __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
 
-2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
+2. Run `utils/setup_python_packages.sh` to setup the prerequisite python
+    packages. This script creates and installs the python packages
+    listed in `utils/requirements.txt` in a virtual python environment
+    called 'sandbox', then it enters the sandbox:
     ```
     source utils/setup_python_packages.sh
     ```
