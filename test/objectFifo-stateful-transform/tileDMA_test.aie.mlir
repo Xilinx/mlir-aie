@@ -23,10 +23,10 @@
 // CHECK:   %6 = AIE.buffer(%0) : memref<16xi32>
 // CHECK:   %7 = AIE.lock(%0, 2)
 // CHECK:   AIE.flow(%0, DMA : 1, %1, DMA : 0)
-// CHECK:   %8 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:   %9 = AIE.lock(%0, 3) {sym_name = "of_0_lock_0"}
-// CHECK:   %10 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:   %11 = AIE.lock(%0, 4) {sym_name = "of_0_lock_1"}
+// CHECK:   %8 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_0"} : memref<16xi32>
+// CHECK:   %9 = AIE.lock(%0, 3) {sym_name = "objfifo_prod_lock_0"}
+// CHECK:   %10 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_1"} : memref<16xi32>
+// CHECK:   %11 = AIE.lock(%0, 4) {sym_name = "objfifo_prod_lock_1"}
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:     return
 // CHECK:   }
@@ -92,7 +92,7 @@ module @tileDMA_channels {
     %buff2 = AIE.buffer(%tile12) : memref<16xi32>
     %lock2 = AIE.lock(%tile12, 2)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

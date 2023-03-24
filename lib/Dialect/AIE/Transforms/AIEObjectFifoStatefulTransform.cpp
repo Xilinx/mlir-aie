@@ -227,7 +227,7 @@ struct AIEObjectFifoStatefulTransformPass
                                                  elemType, creation_tile);
         buff.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr(op.name().getValue() + "_buff_" +
+            builder.getStringAttr(op.name()->getValue() + "_buff_" +
                                   std::to_string(of_elem_index)));
         buffers.push_back(buff);
       }
@@ -239,7 +239,7 @@ struct AIEObjectFifoStatefulTransformPass
                                            creation_tile, lockID);
       lock.getOperation()->setAttr(
           SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name().getValue() + "_lock_" +
+          builder.getStringAttr(op.name()->getValue() + "_lock_" +
                                 std::to_string(of_elem_index)));
       locks.push_back(lock);
 
@@ -832,6 +832,8 @@ struct AIEObjectFifoStatefulTransformPass
         objectFifoTiles; // track cores to check for loops during unrolling
 
     for (auto createOp : m.getOps<ObjectFifoCreateOp>()) {
+      assert(createOp.hasName() && "Could not apply objectFifo lowering because objectFifo does not have a sym_name.");
+
       objectFifoTiles.insert(createOp.getProducerTileOp());
       bool shared = false;
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
@@ -865,13 +867,13 @@ struct AIEObjectFifoStatefulTransformPass
         if (createOp.getConsumerTiles().size() > 1) {
             consumerFifo.getOperation()->setAttr(
               SymbolTable::getSymbolAttrName(),
-              builder.getStringAttr(createOp.name().getValue() + "_" +
+              builder.getStringAttr(createOp.name()->getValue() + "_" +
                                     std::to_string(consumerIndex) + "_cons"));
           consumerIndex++;
         } else {
             consumerFifo.getOperation()->setAttr(
               SymbolTable::getSymbolAttrName(),
-              builder.getStringAttr(createOp.name().getValue() + "_cons"));
+              builder.getStringAttr(createOp.name()->getValue() + "_cons"));
         }
 
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
@@ -896,7 +898,7 @@ struct AIEObjectFifoStatefulTransformPass
                           builder.getI32IntegerAttr(prodMaxAcquire));
         createOp.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr(createOp.name().getValue() + "_prod"));
+            builder.getStringAttr(createOp.name()->getValue() + "_prod"));
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
         // register split consumer objectFifos

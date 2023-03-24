@@ -16,18 +16,18 @@
 // CHECK:   %0 = AIE.tile(1, 2)
 // CHECK:   %1 = AIE.tile(3, 3)
 // CHECK:   AIE.flow(%0, DMA : 0, %1, DMA : 0)
-// CHECK:   %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:   %3 = AIE.lock(%0, 0) {sym_name = "of_0_lock_0"}
-// CHECK:   %4 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:   %5 = AIE.lock(%0, 1) {sym_name = "of_0_lock_1"}
-// CHECK:   %6 = AIE.buffer(%1) {sym_name = "of_1_buff_0"} : memref<16xi32>
-// CHECK:   %7 = AIE.lock(%1, 0) {sym_name = "of_1_lock_0"}
-// CHECK:   %8 = AIE.buffer(%1) {sym_name = "of_1_buff_1"} : memref<16xi32>
-// CHECK:   %9 = AIE.lock(%1, 1) {sym_name = "of_1_lock_1"}
-// CHECK:   %10 = AIE.buffer(%1) {sym_name = "of_1_buff_2"} : memref<16xi32>
-// CHECK:   %11 = AIE.lock(%1, 2) {sym_name = "of_1_lock_2"}
-// CHECK:   %12 = AIE.buffer(%1) {sym_name = "of_1_buff_3"} : memref<16xi32>
-// CHECK:   %13 = AIE.lock(%1, 3) {sym_name = "of_1_lock_3"}
+// CHECK:   %2 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_0"} : memref<16xi32>
+// CHECK:   %3 = AIE.lock(%0, 0) {sym_name = "objfifo_prod_lock_0"}
+// CHECK:   %4 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_1"} : memref<16xi32>
+// CHECK:   %5 = AIE.lock(%0, 1) {sym_name = "objfifo_prod_lock_1"}
+// CHECK:   %6 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
+// CHECK:   %7 = AIE.lock(%1, 0) {sym_name = "objfifo_cons_lock_0"}
+// CHECK:   %8 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
+// CHECK:   %9 = AIE.lock(%1, 1) {sym_name = "objfifo_cons_lock_1"}
+// CHECK:   %10 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_2"} : memref<16xi32>
+// CHECK:   %11 = AIE.lock(%1, 2) {sym_name = "objfifo_cons_lock_2"}
+// CHECK:   %12 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_3"} : memref<16xi32>
+// CHECK:   %13 = AIE.lock(%1, 3) {sym_name = "objfifo_cons_lock_3"}
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:     return
 // CHECK:   }
@@ -115,7 +115,7 @@ module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 4) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
