@@ -63,12 +63,20 @@ the tools are largely board and device independent and can be adapted to other e
 enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
 than 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
 so. You may find that other options are also useful. Note that due to changing MLIR APIs, only a
-particular revision is expected to work.  
+particular revision is expected to work.
 
-    To clone llvm, run utils/clone-llvm.sh (see utils/clone-llvm.sh for the correct llvm commithash).
+    To clone `llvm`, run `utils/clone-llvm.sh` (see
+    `utils/clone-llvm.sh` for the correct `llvm` commit hash):
     ```
-    ./utils/clone-llvm.sh
+    source utils/clone-llvm.sh
     ```
+
+    If you have already an LLVM repository, you can instead of cloning
+    just make a new worktree from it by using:
+    ````
+    source utils/clone-llvm.sh --worktree <directory-of-existing-LLVM-repository>
+    ````
+
     To build (compile and install) llvm, run utils/build-llvm-local.sh in the directory that llvm and 
     cmakeModules are cloned in. See build-llvm-local.sh for additional shell script arguments. 
     Note that build-llvm.sh is a variation of the llvm build script used for CI on github.
