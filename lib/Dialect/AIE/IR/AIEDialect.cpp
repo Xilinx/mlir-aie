@@ -568,8 +568,7 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 // ObjectFifoRegisterExternalBuffersOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
   if (!getTile().getDefiningOp<TileOp>().isShimTile())
-    return emitError(
-        "Tile in ObjectFifoRegisterExternalBuffersOp is not a shim tile");
+    return emitOpError("tile is not a shim tile");
 
   return success();
 }
@@ -577,7 +576,7 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
 // ObjectFifoAcquireOp
 LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
-    return emitError("ObjectFifoAcquireOp must acquire at least one element");
+    return emitOpError("must acquire at least one element");
 
   return success();
 }
@@ -585,7 +584,7 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
 // ObjectFifoReleaseOp
 LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   if (relNumber() < 1)
-    return emitError("ObjectFifoReleaseOp must release at least one element");
+    return emitOpError("must release at least one element");
 
   return success();
 }
@@ -593,17 +592,16 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
 // ObjectFifoRegisterProcessOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   if (getProcessLength() < 1)
-    return emitError(
-        "Process length of AIE ObjectFifoRegisterProcessOp must be >= 1");
+    return emitOpError("process length must be >= 1");
 
   if (getAcquirePattern().size() != getReleasePattern().size()) {
     // acquire pattern size = process length (i.e., release pattern will be
     // duplicated by process length times) OR the other way around
     if (!(getAcquirePattern().size() == getProcessLength()) &&
         !(getProcessLength() == getReleasePattern().size()))
-      return emitError(
-          "Acquire and Release patterns of AIE ObjectFifoRegisterProcessOp "
-          "must be of equal length, or longest length of one equal to process "
+      return emitOpError(
+          "Acquire and Release patterns must be of equal length, or "
+          "longest length of one must be equal to process "
           "length of the other");
   }
 
@@ -618,7 +616,7 @@ LogicalResult xilinx::AIE::TargetOp::verify() {
     (void)tOp;
     size++;
     if (size > 1) {
-      return failure();
+      return aie_module.emitOpError("can only have one target architecture");
     }
   }
   // if (aie_module.getOps<TargetOp>().size() > 1)
@@ -632,7 +630,7 @@ LogicalResult xilinx::AIE::TileOp::verify() {
   for (auto user : users) {
     if (llvm::isa<xilinx::AIE::SwitchboxOp>(*user)) {
       if (found)
-        return emitError("Tile can only have one switchbox");
+        return emitOpError("can only have one switchbox");
       found = true;
     }
   }
@@ -644,8 +642,10 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> sourceset;
   DenseSet<xilinx::AIE::Port> destset;
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
       xilinx::AIE::Port source =
@@ -733,8 +733,10 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
 LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> destset;
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
@@ -759,8 +761,10 @@ LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
 LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> destset;
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
 
   auto tileOp = getTileOp();
   if (!tileOp.isShimNOCTile())
@@ -824,8 +828,12 @@ int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
-  assert(getOperation()->getNumRegions() == 1 && "ShimDMAOp has zero region!");
-  assert(!getBody().empty() && "ShimDMAOp should have non-empty body");
+  Region &body = getBody();
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
+
   auto tileOp = getTileOp();
   if (!tileOp.isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
@@ -845,11 +853,24 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
+LogicalResult xilinx::AIE::PacketRulesOp::verify() {
+  Region &body = getRules();
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
+
+  return success();
+}
+
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = getPorts();
   // DenseSet<xilinx::AIE::Port> destset;
-  assert(getOperation()->getNumRegions());
-  assert(!body.empty());
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
+
   for (auto &ops : body.front()) {
     if (auto Op = dyn_cast<xilinx::AIE::PacketSourceOp>(ops)) {
     } else if (auto Op = dyn_cast<xilinx::AIE::PacketDestOp>(ops)) {
@@ -864,10 +885,13 @@ LogicalResult xilinx::AIE::PacketFlowOp::verify() {
 
 // CoreOp
 LogicalResult xilinx::AIE::CoreOp::verify() {
-  assert(getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
-  assert(!getBody().empty() && "CoreOp should have non-empty body");
-  assert(!getTile().getDefiningOp<TileOp>().isShimTile() &&
-         "CoreOp cannot be created on shim tile, i.e. row == 0.");
+  Region &body = getBody();
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
+  if (getTile().getDefiningOp<TileOp>().isShimTile())
+    return emitOpError("cannot be created on shim tile");
 
   return success();
 }
@@ -896,10 +920,12 @@ LogicalResult xilinx::AIE::BufferOp::verify() {
 
 // MemOp
 LogicalResult xilinx::AIE::MemOp::verify() {
+  Region &body = getBody();
   DenseSet<xilinx::AIE::DMAChannel> used_channels;
-
-  assert(getOperation()->getNumRegions() == 1 && "MemOp has zero region!");
-  assert(!getBody().empty() && "MemOp should have non-empty body");
+  if (getOperation()->getNumRegions() != 1)
+    return emitOpError("must have one region");
+  if (body.empty())
+    return emitOpError("cannot have an empty body");
 
   auto result =
       HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
