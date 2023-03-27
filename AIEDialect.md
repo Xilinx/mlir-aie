@@ -334,6 +334,48 @@ Output the given value for debugging.  This is primarily used for simulation.
 | :-----: | ----------- |
 | `arg` | any type
 
+### `AIE.device` (::xilinx::AIE::DeviceOp)
+
+Define an AIE design targetting a complete device
+
+
+Syntax:
+
+```
+operation ::= `AIE.device` `(` $device `)` regions attr-dict
+```
+
+This operation describes a design that executes on a particular AIEngine device.
+It exists at the toplevel of a design; although currently it does not replace the
+default toplevel module in MLIR, the intention is that this could be the case
+in the future.
+
+When using this operation, all resources in a physical device are available and
+the design does not need to be concerned with other potential users of a physical
+device.  In addition, within an "aie.device" operation, tile addresses are absolute
+coordinates and are not intended to describe a relocatable design.  To describe
+a portion of a device which may be relocatable, the intention would be to provide another
+operation, for instance maybe "aie.segment".
+The design itself is described using a region of code contained by the device
+operation.
+
+Example:
+```
+aie.device(xcvc1902) {
+  %tile = aie.tile(1, 1)
+  %CORE = aie.core(%tile) { ... }
+}
+
+Traits: HasParent<ModuleOp>, IsolatedFromAbove, NoTerminator, SingleBlock, SymbolTable
+
+Interfaces: AIETarget
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `device` | xilinx::AIE::AIEDeviceAttr | AIE Device
+
 ### `AIE.end` (::xilinx::AIE::EndOp)
 
 end op
@@ -1299,32 +1341,6 @@ Interfaces: Interconnect, TileElement
 | Operand | Description |
 | :-----: | ----------- |
 | `tile` | index
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-&laquo;unnamed&raquo; | index
-
-### `AIE.target` (::xilinx::AIE::TargetOp)
-
-Define AIE target such as architecture
-
-
-Syntax:
-
-```
-operation ::= `AIE.target` attr-dict `(` $arch `)`
-```
-
-This operation allows specifications of the target such as the AIE architecture. Currently,
-we support targets for AIE architecture for AIE and AIE2.
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `arch` | xilinx::AIE::AIEArchAttr | AIE architecture
 
 #### Results:
 

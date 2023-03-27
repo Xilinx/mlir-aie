@@ -8,6 +8,10 @@ well-defined address.  This enables later passes to have a
 consistent view of the memory map of a system.
 ### `-aie-assign-lock-ids`: Assigns the lockIDs of locks that do not have IDs.
 Assigns the lockIDs of locks that do not have IDs.
+### `-aie-canonicalize-device`: Canonicalize Designs to include a toplevel device
+This pass inserts a toplevel device operation in designs that do not have one.
+This allows us to support backwards compatability for older models targetting the VC1902
+device without explicit device operations. 
 ### `-aie-create-packet-flows`: Route aie.packetflow operations through switchboxes
 Replace each aie.packetflow operation with an equivalent set of aie.switchbox and aie.wire
 operations.  
