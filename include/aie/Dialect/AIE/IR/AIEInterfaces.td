@@ -85,7 +85,7 @@ def TileElement : OpInterface<"TileElement"> {
   ];
 }
 
-def AIEArray : OpInterface<"AIEArray"> {
+def AIETarget : OpInterface<"AIETarget"> {
   let description = [{
     Interface for operations that model an array of AIEngine cores.
   }];

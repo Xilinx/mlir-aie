@@ -75,7 +75,7 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                   "scalar">;
 
 
-def AIE_DeviceOp: AIE_Op<"device", [AIEArray,
+def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
                                     HasParent<"ModuleOp">,
                                     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove]> {
   let summary = "Define an AIE design targetting a complete device";

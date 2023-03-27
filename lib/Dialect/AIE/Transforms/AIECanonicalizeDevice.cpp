@@ -29,7 +29,8 @@ struct AIECanonicalizeDevicePass
 
     ModuleOp moduleOp = getOperation();
 
-    for (auto deviceOp : moduleOp.getOps<AIEArray>()) {
+    for (auto deviceOp : moduleOp.getOps<AIETarget>()) {
+      (void)deviceOp;
       // We have a device..  Nothing to do.
       return;
     }
@@ -39,18 +40,13 @@ struct AIECanonicalizeDevicePass
     OpBuilder builder(moduleOp->getContext());
 
     Location location = builder.getUnknownLoc();
-    // OperationState state(location, DeviceOp::getOperationName());
-    //                         getCheckRegisteredInfo<DeviceOp>(location.getContext()));
     DeviceOp deviceOp = builder.create<DeviceOp>(
         location,
         AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902));
-    // auto *op = builder.create(state);
-    // DeviceOp deviceOp = llvm::cast<DeviceOp>(op);
 
     deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());
     new (&moduleOp->getRegion(0)) Region(moduleOp);
     moduleOp->getRegion(0).emplaceBlock();
-    // setInsertionPointToStart
     OpBuilder builder2 = OpBuilder::atBlockBegin(moduleOp.getBody());
     builder2.insert(deviceOp);
   }

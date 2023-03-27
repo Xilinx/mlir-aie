@@ -70,7 +70,7 @@ static xilinx::AIE::VE2302TargetModel VE2302model;
 static xilinx::AIE::VE2802TargetModel VE2802model;
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
-  if (auto array = op->getParentOfType<xilinx::AIE::AIEArray>()) {
+  if (auto array = op->getParentOfType<xilinx::AIE::AIETarget>()) {
     return array.getTargetModel();
   } else {
     // For backward compatibility, return a basic device model compatible with
@@ -422,8 +422,6 @@ const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
     return VE2302model;
   case AIEDevice::xcve2802:
     return VE2802model;
-  default:
-    assert(false);
   }
   return VC1902model;
 }
