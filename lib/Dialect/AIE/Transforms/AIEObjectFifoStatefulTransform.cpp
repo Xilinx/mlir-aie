@@ -832,8 +832,6 @@ struct AIEObjectFifoStatefulTransformPass
         objectFifoTiles; // track cores to check for loops during unrolling
 
     for (auto createOp : m.getOps<ObjectFifoCreateOp>()) {
-      assert(createOp.hasName() && "Could not apply objectFifo lowering because objectFifo does not have a sym_name.");
-
       objectFifoTiles.insert(createOp.getProducerTileOp());
       bool shared = false;
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;

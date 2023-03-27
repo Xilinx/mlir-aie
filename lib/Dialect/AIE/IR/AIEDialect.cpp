@@ -556,6 +556,12 @@ template <typename... TerminatorOpTypes> struct HasSomeTerminator {
 };
 
 // ObjectFifoCreateOp
+LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
+  if (!hasName())
+    return emitOpError("does not have a sym_name.");
+
+  return success();
+}
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
   return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
 }

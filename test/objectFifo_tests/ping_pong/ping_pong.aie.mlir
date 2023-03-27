@@ -26,7 +26,7 @@ module @ping_pong {
     %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
     %lock_out = AIE.lock(%tile33, 0) { sym_name = "lock_out" }
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     // Fills the given memref with the same input index value.
     func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {

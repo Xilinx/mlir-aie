@@ -1222,6 +1222,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let assemblyFormat = [{
     `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
+  
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     int size() { return getElemNumber(); }
