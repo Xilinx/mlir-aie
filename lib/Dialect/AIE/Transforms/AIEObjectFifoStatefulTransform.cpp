@@ -863,13 +863,13 @@ struct AIEObjectFifoStatefulTransformPass
             builder, datatype, consumerTile, consumerTile, consMaxAcquire);
 
         if (createOp.getConsumerTiles().size() > 1) {
-            consumerFifo.getOperation()->setAttr(
+          consumerFifo.getOperation()->setAttr(
               SymbolTable::getSymbolAttrName(),
               builder.getStringAttr(createOp.name()->getValue() + "_" +
                                     std::to_string(consumerIndex) + "_cons"));
           consumerIndex++;
         } else {
-            consumerFifo.getOperation()->setAttr(
+          consumerFifo.getOperation()->setAttr(
               SymbolTable::getSymbolAttrName(),
               builder.getStringAttr(createOp.name()->getValue() + "_cons"));
         }
