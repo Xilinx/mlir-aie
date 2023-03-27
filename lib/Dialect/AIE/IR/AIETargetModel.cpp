@@ -136,7 +136,7 @@ bool AIE1TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
 AIEArch AIE2TargetModel::getTargetArch() const { return AIEArch::AIE2; }
 
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-ptional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
+Optional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
   Optional<TileID> ret = std::make_pair(src.first - 1, src.second);
   if (!isValidTile(*ret))
     ret.reset();
