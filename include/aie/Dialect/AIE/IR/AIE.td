@@ -1369,6 +1369,8 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$index
   );
 
+  let hasVerifier = 1;
+
   let results = (outs AnyMemRef:$output);
 
   let assemblyFormat = [{
