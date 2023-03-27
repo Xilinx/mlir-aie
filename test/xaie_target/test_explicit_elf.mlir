@@ -16,8 +16,10 @@
 // CHECK: mlir_aie_start_cores
 // CHECK: XAieTile_CoreControl(&(ctx->TileInst[3][3]), XAIE_ENABLE, XAIE_DISABLE);
 module @test_xaie0 {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   AIE.core(%t33) {
     AIE.end
   } { elf_file = "test.elf" } 
+ }
 }

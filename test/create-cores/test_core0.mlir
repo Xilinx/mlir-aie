@@ -35,6 +35,7 @@
 //   - clone function body into core's region; map the function arguments to the
 //     corresponding newly created buffer ops
 module @test_core0 {
+ AIE.device(xcvc1902) {
   %buf = memref.alloc() : memref<256xi32>
 
   func.func @aie_task(%arg0: memref<256xi32>) -> () {
@@ -47,4 +48,5 @@ module @test_core0 {
 
   func.call @aie_task(%buf) { aie.x = 1, aie.y = 1 } : (memref<256xi32>) -> ()
   func.call @host_task() : () -> ()
+ }
 }

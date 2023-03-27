@@ -1,5 +1,4 @@
-//===- AIEObjectFifoStatefulTransform.cpp --------------------------*- MLIR
-//-*-===//
+//===- AIEObjectFifoStatefulTransform.cpp ----------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -41,10 +40,9 @@ template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
 
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(MyOp op, OpAdaptor adaptor,
@@ -59,14 +57,13 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 // Lock Analysis
 //===----------------------------------------------------------------------===//
 class LockAnalysis {
-  ModuleOp &module;
   DenseMap<std::pair<Value, int>, int> locksPerTile;
 
 public:
-  LockAnalysis(ModuleOp &m) : module(m) {
+  LockAnalysis(DeviceOp &device) {
     // go over the locks created for each tile and update the index in
     // locksPerTile
-    for (auto lockOp : module.getOps<LockOp>()) {
+    for (auto lockOp : device.getOps<LockOp>()) {
       auto tile = lockOp.getTile();
       auto lockID = lockOp.getLockIDValue();
 
@@ -91,15 +88,14 @@ public:
 // TileDMA Channel Analysis
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
-  ModuleOp &module;
   DenseMap<Value, int> masterChannelsPerTile;
   DenseMap<Value, int> slaveChannelsPerTile;
 
 public:
-  DMAChannelAnalysis(ModuleOp &m) : module(m) {
+  DMAChannelAnalysis(DeviceOp &device) {
     // go over the channels used for each tile and update the master/slave
     // channel maps
-    for (auto memOp : module.getOps<MemOp>()) {
+    for (auto memOp : device.getOps<MemOp>()) {
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
@@ -174,12 +170,12 @@ struct AIEObjectFifoStatefulTransformPass
       return false;
     }
 
-    // TODO - Needs moduleOp to decide which AIE?Utils to call
-    bool rightShared = AIE1Utils::isLegalMemAffinity(
+    const auto &target_model = getTargetModel(a.getOperation());
+    bool rightShared = target_model.isLegalMemAffinity(
         a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-    bool leftShared = AIE1Utils::isLegalMemAffinity(b.colIndex(), b.rowIndex(),
-                                                    a.colIndex(), a.rowIndex());
+    bool leftShared = target_model.isLegalMemAffinity(
+        b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
     if (leftShared)
       *share_direction = -1;
@@ -310,18 +306,19 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function that either calls createTileDMA() or createShimDMA() based on
   /// op tile row value.
-  void createDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
+  void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode) {
     if (op.getProducerTileOp().isShimTile())
-      createShimDMA(m, builder, op, channelDir, channelIndex, lockMode);
+      createShimDMA(device, builder, op, channelDir, channelIndex, lockMode);
     else
-      createTileDMA(m, builder, op, channelDir, channelIndex, lockMode);
+      createTileDMA(device, builder, op, channelDir, channelIndex, lockMode);
   }
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createTileDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
-                     DMAChannelDir channelDir, int channelIndex, int lockMode) {
+  void createTileDMA(DeviceOp &device, OpBuilder &builder,
+                     ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                     int channelIndex, int lockMode) {
     int numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -330,7 +327,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     // search for MemOp
     MemOp *producerMem = nullptr;
-    for (auto memOp : m.getOps<MemOp>()) {
+    for (auto memOp : device.getOps<MemOp>()) {
       if (memOp.getTile() == op.getProducerTile()) {
         producerMem = &memOp;
         break;
@@ -339,7 +336,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     // if none exists, create one
     if (producerMem == nullptr) {
-      builder.setInsertionPointToEnd(m.getBody());
+      builder.setInsertionPointToEnd(device.getBody());
       MemOp newMemOp = builder.create<MemOp>(builder.getUnknownLoc(),
                                              op.getProducerTileOp());
       producerMem = &newMemOp;
@@ -383,8 +380,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a ShimDMAOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createShimDMA(ModuleOp &m, OpBuilder &builder, ObjectFifoCreateOp op,
-                     DMAChannelDir channelDir, int channelIndex, int lockMode) {
+  void createShimDMA(DeviceOp &device, OpBuilder &builder,
+                     ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                     int channelIndex, int lockMode) {
     int numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
@@ -393,7 +391,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     // search for ShimDMAOp
     ShimDMAOp *producerMem = nullptr;
-    for (auto memOp : m.getOps<ShimDMAOp>()) {
+    for (auto memOp : device.getOps<ShimDMAOp>()) {
       if (memOp.getTile() == op.getProducerTile()) {
         producerMem = &memOp;
         break;
@@ -402,7 +400,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     // if none exists, create one
     if (producerMem == nullptr) {
-      builder.setInsertionPointToEnd(m.getBody());
+      builder.setInsertionPointToEnd(device.getBody());
       ShimDMAOp newMemOp = builder.create<ShimDMAOp>(builder.getUnknownLoc(),
                                                      builder.getIndexType(),
                                                      op.getProducerTile());
@@ -547,9 +545,9 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   // Function that unrolls for-loops that contain objectFifo operations.
-  void unrollForLoops(ModuleOp &m, OpBuilder &builder,
+  void unrollForLoops(DeviceOp &device, OpBuilder &builder,
                       std::set<TileOp> objectFifoTiles) {
-    for (auto coreOp : m.getOps<CoreOp>()) {
+    for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         coreOp.walk([&](mlir::scf::ForOp forLoop) {
           // look for operations on objectFifos
@@ -700,9 +698,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to detect all external buffers associated with parent
   /// objectFifo and tile then map them to child objectFifo.
-  void detectExternalBuffers(ModuleOp &m, ObjectFifoCreateOp parent,
+  void detectExternalBuffers(DeviceOp &device, ObjectFifoCreateOp parent,
                              ObjectFifoCreateOp child, Value tile) {
-    for (auto regOp : m.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
+    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
       if (regOp.getTile() == tile && regOp.getFifo() == parent) {
         for (auto extBuff : regOp.getExternalBuffers())
           addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
@@ -787,20 +785,21 @@ struct AIEObjectFifoStatefulTransformPass
   /// the maximum number of elements (of the original objectFifo) acquired
   /// by a process running on given tile. If no CoreOp exists for this tile
   /// return 0.
-  int findObjectFifoSize(ModuleOp &m, Value tile, ObjectFifoCreateOp objFifo) {
+  int findObjectFifoSize(DeviceOp &device, Value tile,
+                         ObjectFifoCreateOp objFifo) {
     if (objFifo.size() == 0)
       return 0;
 
     // if shimTile size is equal to number of external buffers
     if (tile.getDefiningOp<TileOp>().isShimTile()) {
-      for (auto regOp : m.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
+      for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
         if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
           return regOp.getExternalBuffers().size();
       }
     }
 
     int maxAcquire = 0;
-    for (auto coreOp : m.getOps<CoreOp>()) {
+    for (auto coreOp : device.getOps<CoreOp>()) {
       if (coreOp.getTile() == tile) {
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
           if (acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
@@ -823,10 +822,10 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   void runOnOperation() override {
-    ModuleOp m = getOperation();
-    LockAnalysis lockAnalysis(m);
-    DMAChannelAnalysis dmaAnalysis(m);
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    LockAnalysis lockAnalysis(device);
+    DMAChannelAnalysis dmaAnalysis(device);
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
     //===----------------------------------------------------------------------===//
     // Create objectFifos
@@ -834,7 +833,7 @@ struct AIEObjectFifoStatefulTransformPass
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
-    for (auto createOp : m.getOps<ObjectFifoCreateOp>()) {
+    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       objectFifoTiles.insert(createOp.getProducerTileOp());
       bool shared = false;
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
@@ -856,7 +855,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        int consMaxAcquire = findObjectFifoSize(m, consumerTileOp, createOp);
+        int consMaxAcquire =
+            findObjectFifoSize(device, consumerTileOp, createOp);
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
@@ -865,14 +865,14 @@ struct AIEObjectFifoStatefulTransformPass
             builder, datatype, consumerTile, consumerTile, consMaxAcquire);
 
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
-          detectExternalBuffers(m, createOp, consumerFifo, consumerTile);
+          detectExternalBuffers(device, createOp, consumerFifo, consumerTile);
 
         // record that this objectFifo was split
         splitConsumerFifos.push_back(consumerFifo);
       }
 
       if (createOp.getProducerTileOp().isShimTile())
-        detectExternalBuffers(m, createOp, createOp,
+        detectExternalBuffers(device, createOp, createOp,
                               createOp.getProducerTile());
 
       // if split, the necessary size for producer fifo might change
@@ -881,7 +881,7 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         int prodMaxAcquire =
-            findObjectFifoSize(m, createOp.getProducerTileOp(), createOp);
+            findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
         createOp->setAttr("elemNumber",
                           builder.getI32IntegerAttr(prodMaxAcquire));
         createObjectFifoElements(builder, lockAnalysis, createOp,
@@ -898,15 +898,15 @@ struct AIEObjectFifoStatefulTransformPass
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-      createDMA(m, builder, producer, producerChan.first, producerChan.second,
-                0);
+      createDMA(device, builder, producer, producerChan.first,
+                producerChan.second, 0);
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
         xilinx::AIE::DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
-        createDMA(m, builder, consumer, consumerChan.first, consumerChan.second,
-                  1);
+        createDMA(device, builder, consumer, consumerChan.first,
+                  consumerChan.second, 1);
 
         // create flow
         builder.setInsertionPointAfter(producer);
@@ -920,12 +920,12 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     // Unroll for loops
     //===----------------------------------------------------------------------===//
-    unrollForLoops(m, builder, objectFifoTiles);
+    unrollForLoops(device, builder, objectFifoTiles);
 
     //===----------------------------------------------------------------------===//
     // Replace ops
     //===----------------------------------------------------------------------===//
-    for (auto coreOp : m.getOps<CoreOp>()) {
+    for (auto coreOp : device.getOps<CoreOp>()) {
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
                     // are created by AcquireOps)
@@ -1103,18 +1103,18 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(device.getContext());
     patterns.add<AIEOpRemoval<ObjectFifoRegisterExternalBuffersOp>>(
-        m.getContext(), m);
-    patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(m.getContext(), m);
-    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(m.getContext(), m);
-    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(m.getContext(), m);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+        device.getContext());
+    patterns.add<AIEOpRemoval<ObjectFifoAcquireOp>>(device.getContext());
+    patterns.add<AIEOpRemoval<ObjectFifoSubviewAccessOp>>(device.getContext());
+    patterns.add<AIEOpRemoval<ObjectFifoReleaseOp>>(device.getContext());
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoStatefulTransformPass() {
   return std::make_unique<AIEObjectFifoStatefulTransformPass>();
 }

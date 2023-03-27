@@ -18,6 +18,7 @@
 // Herd "pp" streams data to the first column of Herd "compute"
 // Herd "ifm" streams data to Herd "compute" column-by-column
 module @test_herd_routing2 {
+ AIE.device(xcvc1902) {
   %0 = AIE.herd[4][1] { sym_name = "pp" }        // herd ping-pong
   %1 = AIE.herd[4][1] { sym_name = "ifm" }       // herd input-feature-map
   %2 = AIE.herd[4][4] { sym_name = "compute" }   // herd compute
@@ -43,4 +44,5 @@ module @test_herd_routing2 {
                                 // (0, 2), (1, 2), (2, 2), (3, 2)
                                 // (0, 3), (1, 3), (2, 3), (3, 3)
   AIE.route(<%5, DMA: 0>, <%6, DMA: 1>)
+ }
 }

@@ -12,6 +12,7 @@
 // CHECK: acquires/releases the lock in a DMA block from/to multiple states.
 
 module @test_error_dma_multi_state {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   %l33_0 = AIE.lock(%t33, 0)
   AIE.mem(%t33) {
@@ -26,4 +27,5 @@ module @test_error_dma_multi_state {
   ^end:
     AIE.end
   }
+ }
 }

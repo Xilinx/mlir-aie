@@ -65,224 +65,26 @@ struct AIEDialectFoldInterface : public DialectFoldInterface {
 namespace xilinx {
 namespace AIE {
 
-///
-/// AIE1 Utilities for checking valid tiles
-///
-bool AIE1Utils::isValidTile(TileID src) {
-  // TODO: Should be device specific
-  return src.first >= 0 && src.first <= 49 && src.second >= 0 &&
-         src.second <= 8;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE1Utils::getMemWest(TileID src) {
-  bool isEvenRow = ((src.second % 2) == 0);
-  Optional<TileID> ret;
-  if (isEvenRow)
-    ret = src;
-  else
-    ret = std::make_pair(src.first - 1, src.second);
-  if (!AIE1Utils::isValidTile(*ret))
-    ret.reset();
-  return ret;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE1Utils::getMemEast(TileID src) {
-  bool isEvenRow = ((src.second % 2) == 0);
-  Optional<TileID> ret;
-  if (isEvenRow)
-    ret = std::make_pair(src.first + 1, src.second);
-  else
-    ret = src;
-  if (!AIE1Utils::isValidTile(*ret))
-    ret.reset();
-  return ret;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE1Utils::getMemNorth(TileID src) {
-  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if (!AIE1Utils::isValidTile(*ret))
-    ret.reset();
-  return ret;
-}
-Optional<TileID> AIE1Utils::getMemSouth(TileID src) {
-  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
-  // The first row doesn't have a tile memory south
-  if (!AIE1Utils::isValidTile(*ret) || ret->second == 0)
-    ret.reset();
-  return ret;
-}
+static xilinx::AIE::VC1902TargetModel VC1902model;
+static xilinx::AIE::VE2302TargetModel VE2302model;
+static xilinx::AIE::VE2802TargetModel VE2802model;
 
-bool AIE1Utils::isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow));
-}
-
-bool AIE1Utils::isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
-}
-
-bool AIE1Utils::isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) {
-  bool IsEvenRow = ((srcRow % 2) == 0);
-  return (IsEvenRow && AIE1Utils::isInternal(srcCol, srcRow, dstCol, dstRow)) ||
-         (!IsEvenRow && AIE1Utils::isWest(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE1Utils::isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
-}
-
-bool AIE1Utils::isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
-  bool IsEvenRow = ((srcRow % 2) == 0);
-  return (!IsEvenRow &&
-          AIE1Utils::isInternal(srcCol, srcRow, dstCol, dstRow)) ||
-         (IsEvenRow && AIE1Utils::isEast(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE1Utils::isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
-}
-
-bool AIE1Utils::isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return AIE1Utils::isNorth(srcCol, srcRow, dstCol, dstRow);
-}
-
-bool AIE1Utils::isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
-}
-
-bool AIE1Utils::isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return AIE1Utils::isSouth(srcCol, srcRow, dstCol, dstRow);
-}
-
-bool AIE1Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
-                                   int memRow) {
-  bool IsEvenRow = ((coreRow % 2) == 0);
-
-  bool IsMemWest =
-      (AIE1Utils::isWest(coreCol, coreRow, memCol, memRow) && !IsEvenRow) ||
-      (AIE1Utils::isInternal(coreCol, coreRow, memCol, memRow) && IsEvenRow);
-
-  bool IsMemEast =
-      (AIE1Utils::isEast(coreCol, coreRow, memCol, memRow) && IsEvenRow) ||
-      (AIE1Utils::isInternal(coreCol, coreRow, memCol, memRow) && !IsEvenRow);
-
-  bool IsMemNorth = AIE1Utils::isNorth(coreCol, coreRow, memCol, memRow);
-  bool IsMemSouth = AIE1Utils::isSouth(coreCol, coreRow, memCol, memRow);
-
-  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
-}
-
-///
-/// AIE2 Utilities for checking valid tiles
-///
-bool AIE2Utils::isValidTile(TileID src) {
-  // TODO: Should be device specific (xcve2302)
-  // row 0 - shim, row 1 - mem tile, row 2,3 - regular tile
-  // TODO: Should be device specific (xcve2802)
-  // row 0 - shim, row 1,2 - mem tile, row 3-10 - regular tile
-  // return src.first >= 0 && src.first <= 16 && src.second >= 0 &&
-  //        src.second <= 3;
-  // 2802, 38 x 8
-  return src.first >= 0 && src.first <= 37 && src.second >= 3 &&
-         src.second <= 10;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE2Utils::getMemWest(TileID src) {
-  Optional<TileID> ret;
-  ret = std::make_pair(src.first - 1, src.second);
-  if (!AIE2Utils::isValidTile(*ret))
-    ret.reset();
-  return ret;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE2Utils::getMemEast(TileID src) {
-  Optional<TileID> ret;
-  ret = src;
-  if (!AIE2Utils::isValidTile(*ret)) // TODO - necessary? are we always valid?
-    ret.reset();
-  return ret;
-}
-// Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE2Utils::getMemNorth(TileID src) {
-  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
-  if (!AIE2Utils::isValidTile(*ret))
-    ret.reset();
-  return ret;
-}
-Optional<TileID> AIE2Utils::getMemSouth(TileID src) {
-  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
-  // The first two rows doesn't have a tile memory south
-  if (!AIE2Utils::isValidTile(*ret) ||
-      ret->second < 3) // TODO - Is memtile valid?
-    ret.reset();
-  return ret;
-}
-
-bool AIE2Utils::isInternal(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow));
-}
-
-bool AIE2Utils::isWest(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
-}
-
-bool AIE2Utils::isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return (AIE2Utils::isWest(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE2Utils::isEast(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
-}
-
-bool AIE2Utils::isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return (AIE2Utils::isInternal(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE2Utils::isNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
-}
-
-bool AIE2Utils::isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return (AIE2Utils::isNorth(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE2Utils::isSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
-}
-
-bool AIE2Utils::isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow) {
-  return (AIE2Utils::isSouth(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE2Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
-                                   int memRow) {
-  bool IsMemWest = AIE2Utils::isWest(coreCol, coreRow, memCol, memRow);
-  bool IsMemEast = AIE2Utils::isInternal(coreCol, coreRow, memCol, memRow);
-  bool IsMemNorth = AIE2Utils::isNorth(coreCol, coreRow, memCol, memRow);
-  bool IsMemSouth = AIE2Utils::isSouth(coreCol, coreRow, memCol, memRow);
-
-  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
-}
-
-// Return the target architecture and return a int/enum of the result.
-// TODO - What those enum/int refer to can be changed and the way we find
-// the target arch can also change.
-AIEArch getTargetArch(mlir::ModuleOp module) {
-  TargetOp targetOp;
-  auto tOps = module.getOps<TargetOp>();
-  if (tOps.empty())
-    return AIEArch::AIE1;
-  for (TargetOp tOp : tOps) {
-    targetOp = tOp;
-    break; // Should only have 1 object in iterator
+const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
+  if (auto array = op->getParentOfType<xilinx::AIE::AIETarget>()) {
+    return array.getTargetModel();
+  } else {
+    // For backward compatibility, return a basic device model compatible with
+    // the VCK190
+    return VC1902model;
   }
-  return targetOp.getArch();
 }
 
 // Walk the operation hierarchy until we find a containing TileElement.
 // If no parent is a TileElement, then return null.
 static xilinx::AIE::TileElement getParentTileElement(Operation *op) {
   auto parent = op->getParentOp();
-  while (!llvm::isa_and_nonnull<mlir::ModuleOp>(parent)) {
+  while (
+      !llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(parent)) {
     if (auto element = llvm::dyn_cast<xilinx::AIE::TileElement>(parent))
       return element;
     parent = parent->getParentOp();
@@ -295,16 +97,18 @@ struct UsesAreAccessable {
     auto thisElement = cast<xilinx::AIE::TileElement>(op);
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
+    const auto &target_model = getTargetModel(op);
     for (auto user : users) {
-      // AIE.useLock may be used in a module to set the lock's default value
-      if (llvm::isa_and_nonnull<mlir::ModuleOp>(user->getParentOp()))
+      // AIE.useLock may be used in a device to set the lock's default value
+      // Allow in a toplevel module for backward compatibility
+      if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
+              user->getParentOp()))
         return success();
       if (auto element = getParentTileElement(user)) {
 
         auto tileID = element.getTileID();
-        // TODO - Needs moduleOp to decide which AIE?Utils to call
-        if (!xilinx::AIE::AIE1Utils::isLegalMemAffinity(
-                tileID.first, tileID.second, thisID.first, thisID.second))
+        if (!target_model.isLegalMemAffinity(tileID.first, tileID.second,
+                                             thisID.first, thisID.second))
           return (op->emitOpError("in Column ")
                   << thisID.first << " and Row " << thisID.second
                   << " is accessed from an unreachable tile in Column "
@@ -610,23 +414,42 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIE::TargetOp::verify() {
-  auto aie_module = (*this)->getParentOfType<mlir::ModuleOp>();
-  auto tOps = aie_module.getOps<TargetOp>();
-  int size = 0;
-  for (auto tOp : tOps) {
-    (void)tOp;
-    size++;
-    if (size > 1) {
-      return failure();
-    }
+const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
+  switch (getDevice()) {
+  case AIEDevice::xcvc1902:
+    return VC1902model;
+  case AIEDevice::xcve2302:
+    return VE2302model;
+  case AIEDevice::xcve2802:
+    return VE2802model;
   }
-  // if (aie_module.getOps<TargetOp>().size() > 1)
-  //   return failure();
+  return VC1902model;
+}
+
+LogicalResult xilinx::AIE::DeviceOp::verify() {
+  auto top = cast<mlir::ModuleOp>((*this)->getParentOp());
+  auto ops = top.getOps<DeviceOp>();
+  int num_devices = std::distance(ops.begin(), ops.end());
+  if (num_devices > 1)
+    return emitOpError("expected at most one device operation");
   return success();
 }
 
 LogicalResult xilinx::AIE::TileOp::verify() {
+  const auto &target_model = getTargetModel(*this);
+  int columns = target_model.columns();
+  int rows = target_model.rows();
+  if (colIndex() >= columns)
+    return emitOpError("column index (")
+           << colIndex()
+           << ") must be less than the number of columns in the device ("
+           << columns << ")";
+  if (rowIndex() >= rows)
+    return emitOpError("row index (")
+           << rowIndex()
+           << ") must be less than the number of rows in the device (" << rows
+           << ")";
+
   auto users = getResult().getUsers();
   bool found = false;
   for (auto user : users) {
@@ -993,10 +816,9 @@ struct UsesReachableLock {
         dyn_cast<xilinx::AIE::LockOp>(useLock.getLock().getDefiningOp());
     auto parent = dyn_cast<xilinx::AIE::TileElement>(useLock->getParentOp());
     auto tileID = parent.getTileID();
-
-    // TODO - Needs moduleOp to decide which AIE?Utils to call
-    if (!xilinx::AIE::AIE1Utils::isLegalMemAffinity(
-            tileID.first, tileID.second, lock.colIndex(), lock.rowIndex()))
+    const auto &target_model = xilinx::AIE::getTargetModel(op);
+    if (!target_model.isLegalMemAffinity(tileID.first, tileID.second,
+                                         lock.colIndex(), lock.rowIndex()))
       return failure();
     return success();
   }
@@ -1040,8 +862,9 @@ struct AcquireReleaseOneStateInDMABlock {
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
-  // AIE.useLock may be used in a module to set the lock's default value
-  if (llvm::isa_and_nonnull<mlir::ModuleOp>((*this)->getParentOp()))
+  // AIE.useLock may be used in a device to set the lock's default value
+  if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
+          (*this)->getParentOp()))
     return success();
 
   // Otherwise, AIE.useLock should be inside MemOp, or ShimDMAOp,
@@ -1070,7 +893,7 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
   } else {
     return (*this)->emitOpError()
            << "expects some parent op to be one of "
-           << "AIE::core, func::func, AIE::mem, or AIE::shimDMA";
+           << "AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA";
   }
 }
 
@@ -1185,12 +1008,14 @@ int TileOp::getNumDestConnections(WireBundle bundle) {
     return 0;
   }
 }
-static llvm::SmallDenseSet<unsigned, 16> noc_columns = {
-    2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 bool TileOp::isShimNOCTile() {
-  return isShimTile() && noc_columns.contains(getCol());
+  const auto &target_model = getTargetModel(*this);
+  return target_model.isShimNOCTile(getCol(), getRow());
 }
-bool TileOp::isShimPLTile() { return isShimNOCorPLTile() && !isShimNOCTile(); }
-bool TileOp::isShimNOCorPLTile() { return isShimTile() && (getCol() > 0); }
+bool TileOp::isShimPLTile() {
+  const auto &target_model = getTargetModel(*this);
+  return target_model.isShimPLTile(getCol(), getRow());
+}
+bool TileOp::isShimNOCorPLTile() { return isShimNOCTile() || isShimPLTile(); }
 } // namespace AIE
 } // namespace xilinx

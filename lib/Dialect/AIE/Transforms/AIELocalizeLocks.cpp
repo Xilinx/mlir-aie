@@ -30,10 +30,11 @@ struct AIELocalizeLocksPass
   }
   void runOnOperation() override {
 
-    ModuleOp moduleOp = getOperation();
+    DeviceOp deviceOp = getOperation();
 
-    for (auto coreOp : moduleOp.getOps<CoreOp>()) {
+    for (auto coreOp : deviceOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
+      const auto &target_model = xilinx::AIE::getTargetModel(coreOp);
 
       TileOp thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
@@ -41,17 +42,12 @@ struct AIELocalizeLocksPass
 
       // Find the neighboring tiles
       SmallVector<TileOp, 4> accessibleTiles;
-      for (auto tile : moduleOp.getOps<TileOp>()) {
+      for (auto tile : deviceOp.getOps<TileOp>()) {
         int dstCol = tile.colIndex();
         int dstRow = tile.rowIndex();
 
-        if (getTargetArch(moduleOp) == AIEArch::AIE2) {
-          if (AIE2Utils::isLegalMemAffinity(col, row, dstCol, dstRow))
-            accessibleTiles.push_back(tile);
-        } else {
-          if (AIE1Utils::isLegalMemAffinity(col, row, dstCol, dstRow))
-            accessibleTiles.push_back(tile);
-        }
+        if (target_model.isLegalMemAffinity(col, row, dstCol, dstRow))
+          accessibleTiles.push_back(tile);
       }
 
       for (auto tile : accessibleTiles) {
@@ -59,31 +55,19 @@ struct AIELocalizeLocksPass
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
 
+        const auto &target_model = xilinx::AIE::getTargetModel(tile);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
-            if (getTargetArch(moduleOp) == AIEArch::AIE2) {
-              if (AIE2Utils::isMemSouth(col, row, dstCol, dstRow))
-                cardinalMemOffset = 0;
-              else if (AIE2Utils::isMemWest(col, row, dstCol, dstRow))
-                cardinalMemOffset = 16;
-              else if (AIE2Utils::isMemNorth(col, row, dstCol, dstRow))
-                cardinalMemOffset = 32;
-              else if (AIE2Utils::isMemEast(col, row, dstCol, dstRow))
-                cardinalMemOffset = 48;
-              else
-                llvm_unreachable("Found illegal lock user!");
-            } else { // AIE1
-              if (AIE1Utils::isMemSouth(col, row, dstCol, dstRow))
-                cardinalMemOffset = 0;
-              else if (AIE1Utils::isMemWest(col, row, dstCol, dstRow))
-                cardinalMemOffset = 16;
-              else if (AIE1Utils::isMemNorth(col, row, dstCol, dstRow))
-                cardinalMemOffset = 32;
-              else if (AIE1Utils::isMemEast(col, row, dstCol, dstRow))
-                cardinalMemOffset = 48;
-              else
-                llvm_unreachable("Found illegal lock user!");
-            }
+            if (target_model.isMemSouth(col, row, dstCol, dstRow))
+              cardinalMemOffset = 0;
+            else if (target_model.isMemWest(col, row, dstCol, dstRow))
+              cardinalMemOffset = 16;
+            else if (target_model.isMemNorth(col, row, dstCol, dstRow))
+              cardinalMemOffset = 32;
+            else if (target_model.isMemEast(col, row, dstCol, dstRow))
+              cardinalMemOffset = 48;
+            else
+              llvm_unreachable("Found illegal lock user!");
 
             int localLockIndex = cardinalMemOffset + lock.getLockIDValue();
 
@@ -105,7 +89,7 @@ struct AIELocalizeLocksPass
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIELocalizeLocksPass() {
   return std::make_unique<AIELocalizeLocksPass>();
 }

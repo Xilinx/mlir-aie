@@ -63,6 +63,7 @@
 //   6. Remove the associated DMA operations (or Block Descriptors)
 //   7. Remove the associated routing ConnectOps for the DMA operations
 module @test_buffer_merge0 {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   %t34 = AIE.tile(3, 4)
   %t32 = AIE.tile(3, 2)
@@ -124,4 +125,5 @@ module @test_buffer_merge0 {
   %s32 = AIE.switchbox(%t32) {
     AIE.connect<North: 0, DMA: 0>
   }
+ }
 }

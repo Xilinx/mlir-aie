@@ -12,6 +12,7 @@
 
 // partial multicast
 module @test_create_packet_flows2 {
+ AIE.device(xcvc1902) {
 // CHECK-LABEL: module @test_create_packet_flows2 {
 // CHECK:         %[[VAL_0:.*]] = AIE.tile(1, 1)
 // CHECK:         %[[VAL_1:.*]] = AIE.switchbox(%[[VAL_0]]) {
@@ -39,4 +40,5 @@ module @test_create_packet_flows2 {
     AIE.packet_source<%t11, West : 0>
     AIE.packet_dest<%t11, Core : 1>
   }
+ }
 }

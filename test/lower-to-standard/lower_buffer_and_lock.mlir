@@ -18,6 +18,7 @@
 //   - Buffer: depending on which tile (or memory module) a buffer is instantiated, create an LLVM
 //             static allocation (for now) for each core that can access to the buffer
 module @test_core_llvm1 {
+ AIE.device(xcvc1902) {
 // CHECK11:  memref.global "public" @a : memref<256xi32>
 // CHECK11:  func.func @core_1_1() {
 // CHECK11:    %c56 = arith.constant 56 : index
@@ -72,4 +73,5 @@ module @test_core_llvm1 {
     AIE.useLock(%lock11_8, Release, 0)
     AIE.end
   }
+ }
 }

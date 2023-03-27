@@ -164,6 +164,7 @@
 // t[2][0] broadcasts to s[2][0], s[2][1], s[2][2], s[2][3]
 // t[3][0] broadcasts to s[3][0], s[3][1], s[3][2], s[3][3]
 module @test_herd_routing1 {
+ AIE.device(xcvc1902) {
   %0 = AIE.herd[4][1] { sym_name = "t" } // herd t
   %1 = AIE.herd[4][4] { sym_name = "s" } // herd s
 
@@ -175,4 +176,5 @@ module @test_herd_routing1 {
   %3 = AIE.select(%1, %i1, %i2)
   AIE.place(%0, %1, 0, 1) // herd t[0][0] and herd s[0][0] are spaced by 0-horizontally and 1-vertically
   AIE.route(<%2, DMA: 0>, <%3, DMA: 0>)
+ }
 }

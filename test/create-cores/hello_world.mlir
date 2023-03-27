@@ -57,6 +57,7 @@
 // CHECK:       }
 
 module @hello_world {
+ AIE.device(xcvc1902) {
 
   %tile33 = AIE.tile(3, 3)
   %tile44 = AIE.tile(4, 4)
@@ -87,4 +88,5 @@ module @hello_world {
   func.call @consumer(%buf1) { aie.x = 4, aie.y = 4 } : (memref<512xi32>) -> () // read buf[16]
 
   AIEX.memcpy @token0(1, 2) (%tile33 : <%buf0, 0, 512>, %tile44 : <%buf1, 0, 512>) : (memref<512xi32>, memref<512xi32>)
+ }
 }

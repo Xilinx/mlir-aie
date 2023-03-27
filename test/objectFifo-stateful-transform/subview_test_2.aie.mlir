@@ -77,6 +77,7 @@
 // CHECK:  }
 
 module @multiFifo {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
@@ -141,4 +142,5 @@ module @multiFifo {
 
         AIE.end
     }
+ }
 }

@@ -26,11 +26,12 @@
 // to drop headers when the packet's destination is a DMA.
 //
 module @aie_module  {
+ AIE.device(xcvc1902) {
   %t70 = AIE.tile(7, 0)
   %t71 = AIE.tile(7, 1)
 
   %10 = AIE.lock(%t71, 1)
-  %11 = AIE.buffer(%t71) {sym_name = "buf1"} : memref<16xi32, 2>
+  %11 = AIE.buffer(%t71) {address = 3072 : i32, sym_name = "buf1"} : memref<16xi32, 2>
 
   %12 = AIE.mem(%t71)  {
     %srcDma = AIE.dmaStart("S2MM", 0, ^bb2, ^dma0)
@@ -59,4 +60,5 @@ module @aie_module  {
     AIE.packet_source<%t71, DMA : 0>
     AIE.packet_dest<%t70, South : 0>
   }
+ }
 }

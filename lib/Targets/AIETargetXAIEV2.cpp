@@ -111,7 +111,12 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
   DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-  NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers, switchboxes);
+  if (module.getOps<DeviceOp>().empty()) {
+    module.emitOpError("expected AIE.device operation at toplevel");
+  }
+  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+
+  NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers, switchboxes);
   NL.collectTiles(tiles);
   NL.collectBuffers(buffers);
 
@@ -120,7 +125,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "void mlir_aie_configure_cores(" << ctx_p << ") {\n";
   // Reset each core.  Load the corresponding ELF file, if necessary.
-  for (auto tileOp : module.getOps<TileOp>()) {
+  for (auto tileOp : targetOp.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
     if (tileOp.isShimNOCorPLTile()) {
@@ -164,7 +169,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "void mlir_aie_start_cores(" << ctx_p << ") {\n";
   // Start execution of all the cores.
-  for (auto tileOp : module.getOps<TileOp>()) {
+  for (auto tileOp : targetOp.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
     if (!tileOp.isShimTile()) {
@@ -213,7 +218,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   // XAie_DmaChannelEnable(XAie_DevInst *DevInst, XAie_LocType Loc, u8 ChNum,
   // XAie_DmaDirection Dir); AieRC XAie_DmaChannelDisable(XAie_DevInst *DevInst,
   // XAie_LocType Loc, u8 ChNum, XAie_DmaDirection Dir);
-  for (auto memOp : module.getOps<MemOp>()) {
+  for (auto memOp : targetOp.getOps<MemOp>()) {
     int col = memOp.colIndex();
     int row = memOp.rowIndex();
     // Reset not needed with V2 kernel driver
@@ -365,7 +370,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   }
   output << "} // mlir_aie_configure_dmas\n\n";
 
-  for (auto op : module.getOps<ExternalBufferOp>()) {
+  for (auto op : targetOp.getOps<ExternalBufferOp>()) {
     if (op.hasName()) {
       output << "static u64 _mlir_aie_external_" << op.name().getValue()
              << ";\n";
@@ -384,7 +389,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
   // ShimDMA Config
   //  int index = 0;
-  for (auto op : module.getOps<ShimDMAOp>()) {
+  for (auto op : targetOp.getOps<ShimDMAOp>()) {
     int col = op.colIndex();
     int row = op.rowIndex();
 
@@ -543,7 +548,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
-  for (auto op : module.getOps<UseLockOp>()) {
+  for (auto op : targetOp.getOps<UseLockOp>()) {
     int lockVal = op.getLockValue();
     int timeOut = op.getTimeout();
     LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
@@ -570,7 +575,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   output << "  int x, y;\n";
 
   // StreamSwitch (switchbox) configuration
-  for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
+  for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
     Region &r = switchboxOp.getConnections();
     Block &b = r.front();
     bool isEmpty = b.getOps<ConnectOp>().empty() &&
@@ -682,7 +687,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       output << "}\n";
     }
   }
-  for (auto op : module.getOps<ShimMuxOp>()) {
+  for (auto op : targetOp.getOps<ShimMuxOp>()) {
     Region &r = op.getConnections();
     Block &b = r.front();
     bool isEmpty = b.getOps<ConnectOp>().empty();
@@ -722,7 +727,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
   }
-  for (auto switchboxOp : module.getOps<ShimSwitchboxOp>()) {
+  for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
     Region &r = switchboxOp.getConnections();
     Block &b = r.front();
     bool isEmpty = b.getOps<ConnectOp>().empty();
@@ -833,7 +838,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     output << "}\n";
   };
 
-  for (auto lock : module.getOps<LockOp>())
+  for (auto lock : targetOp.getOps<LockOp>())
     lockAccessor(lock);
 
   return success();

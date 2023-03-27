@@ -18,6 +18,7 @@
 // CHECK: XAieDma_TileBdWrite(&(ctx->TileDMAInst[8][3]),  /* bd */ 1);
 
 module @aie_module  {
+ AIE.device(xcvc1902) {
   %0 = AIE.tile(8, 3)
   %24 = AIE.buffer(%0) {address = 4096 : i32, sym_name = "buf6"} : memref<64xi32, 2>
   %25 = AIE.lock(%0, 0)
@@ -40,4 +41,5 @@ module @aie_module  {
     AIE.useLock(%27, Release, 0)
     AIE.nextBd ^bb4
   }
+ }
 }

@@ -65,6 +65,7 @@
 
 // one-to-many, single arbiter
 module @test_ps0_xaie {
+ AIE.device(xcvc1902) {
   %t11 = AIE.tile(1, 1)
 
   AIE.switchbox(%t11) {
@@ -79,6 +80,7 @@ module @test_ps0_xaie {
       AIE.rule(0x1F, 0x1, %a0_1)
     }
   }
+ }
 }
 
 //module @test_ps0_logical {

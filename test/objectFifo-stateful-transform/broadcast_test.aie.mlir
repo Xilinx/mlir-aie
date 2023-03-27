@@ -262,6 +262,7 @@
 // CHECK: }
 
 module @broadcast {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
     %tile14 = AIE.tile(1, 4)
@@ -356,4 +357,5 @@ module @broadcast {
         
         AIE.end
     }
+ }
 }

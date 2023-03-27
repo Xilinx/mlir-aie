@@ -61,6 +61,7 @@
 //      Tile
 // single producer (tile(3, 3)), multiple consumers
 module @test_lock2 {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   %t23 = AIE.tile(2, 3)
   %t34 = AIE.tile(3, 4)
@@ -127,4 +128,5 @@ module @test_lock2 {
     AIEX.useToken @token3(Release, 2)
     AIE.end
   }
+ }
 }

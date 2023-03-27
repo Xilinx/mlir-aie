@@ -85,6 +85,20 @@ def TileElement : OpInterface<"TileElement"> {
   ];
 }
 
+def AIETarget : OpInterface<"AIETarget"> {
+  let description = [{
+    Interface for operations that model an array of AIEngine cores.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [
+    InterfaceMethod<[{
+        Return the target model describing the characteristics of how this operation will be implemented.
+      }],
+      "const ::xilinx::AIE::AIETargetModel&", "getTargetModel", (ins )
+    >
+  ];
+}
+
 def Core: I32EnumAttrCase<"Core", 0>;
 def DMA: I32EnumAttrCase<"DMA", 1>;
 def FIFO: I32EnumAttrCase<"FIFO", 2>;
@@ -110,11 +124,9 @@ def Release: I32EnumAttrCase<"Release", 1>;
 def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
 def Blocking: I32EnumAttrCase<"Blocking", 1>;
 
-def AIE1: I32EnumAttrCase<"AIE1", 1>;
-def AIE2: I32EnumAttrCase<"AIE2", 2>;
-
 def xcvc1902: I32EnumAttrCase<"xcvc1902", 1>;
 def xcve2302: I32EnumAttrCase<"xcve2302", 2>;
+def xcve2802: I32EnumAttrCase<"xcve2802", 3>;
 
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [Acquire, Release]> {
@@ -126,14 +138,9 @@ def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
 
   let cppNamespace = "xilinx::AIE";
 }
-def AIEArch: I32EnumAttr<"AIEArch", "AIE architecture",
-  [AIE1, AIE2]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
 
 def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
-  [xcvc1902, xcve2302]> {
+  [xcvc1902, xcve2302, xcve2802]> {
 
   let cppNamespace = "xilinx::AIE";
 }

@@ -36,8 +36,8 @@ struct AIEAssignLockIDsPass
   }
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder rewriter = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder rewriter = OpBuilder::atBlockEnd(device.getBody());
 
     std::map<Operation *, std::pair<int, std::set<int>>> tileToLastID;
 
@@ -45,7 +45,7 @@ struct AIEAssignLockIDsPass
     // stored in a map with the lock’s tile operation as the key, while the
     // value to the key is a pair with the current potential lockID and a set
     // that stores the currently assigned lockIDs.
-    for (auto lock : m.getOps<LockOp>()) {
+    for (auto lock : device.getOps<LockOp>()) {
       if (lock.getLockID().has_value()) {
         Operation *lock_tile = lock.getTile().getDefiningOp();
         tileToLastID[lock_tile].first = 0;
@@ -54,7 +54,7 @@ struct AIEAssignLockIDsPass
     }
 
     // The second pass scans for locks with no lockIDs and assigns locks.
-    for (auto lock : m.getOps<LockOp>()) {
+    for (auto lock : device.getOps<LockOp>()) {
       Operation *lock_tile = lock.getTile().getDefiningOp();
       if (!lock.getLockID().has_value()) {
         if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
@@ -88,7 +88,7 @@ struct AIEAssignLockIDsPass
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEAssignLockIDsPass() {
   return std::make_unique<AIEAssignLockIDsPass>();
 }

@@ -58,12 +58,12 @@ namespace AIEX {
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
-std::unique_ptr<OperationPass<ModuleOp>> createAIECreateCoresPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIECreateLocksPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEHerdRoutingPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMemcpyPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIELowerMulticastPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEBroadcastPacketPass();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIECreateLocksPass();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIEHerdRoutingPass();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIELowerMemcpyPass();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIELowerMulticastPass();
+std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIEBroadcastPacketPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
