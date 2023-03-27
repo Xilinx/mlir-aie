@@ -368,13 +368,17 @@ SECTIONS
 
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
+              int buffersSize = 0;
               if (tile) {
                 if (tiles.count(*tile))
-                  for (auto buf : buffers[tiles[*tile]])
+                  for (auto buf : buffers[tiles[*tile]]) {
                     writeBCFMap(output, buf, offset, NL);
+                    buffersSize++;
+                  }
                 // TODO How to set as reserved if no buffer exists (or reserve
                 // remaining buffer)
-              } else {
+              }
+              if (!tile || !tiles.count(*tile) || (buffersSize > 1)) {
                 std::string localMemSize =
                     (getTargetArch(module) == AIEArch::AIE2) ? "0x10000"
                                                              : "0x8000";

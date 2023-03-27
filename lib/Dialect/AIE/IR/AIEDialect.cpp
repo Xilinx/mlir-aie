@@ -177,8 +177,13 @@ bool AIE1Utils::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
 bool AIE2Utils::isValidTile(TileID src) {
   // TODO: Should be device specific (xcve2302)
   // row 0 - shim, row 1 - mem tile, row 2,3 - regular tile
-  return src.first >= 0 && src.first <= 16 && src.second >= 0 &&
-         src.second <= 3;
+  // TODO: Should be device specific (xcve2802)
+  // row 0 - shim, row 1,2 - mem tile, row 3-10 - regular tile
+  // return src.first >= 0 && src.first <= 16 && src.second >= 0 &&
+  //        src.second <= 3;
+  // 2802, 38 x 8
+  return src.first >= 0 && src.first <= 37 && src.second >= 3 &&
+         src.second <= 10;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 Optional<TileID> AIE2Utils::getMemWest(TileID src) {
@@ -207,7 +212,7 @@ Optional<TileID> AIE2Utils::getMemSouth(TileID src) {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first two rows doesn't have a tile memory south
   if (!AIE2Utils::isValidTile(*ret) ||
-      ret->second < 2) // TODO - Is memtile valid?
+      ret->second < 3) // TODO - Is memtile valid?
     ret.reset();
   return ret;
 }
