@@ -27,10 +27,9 @@ template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
 
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(MyOp op, OpAdaptor operands,
@@ -204,8 +203,8 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
 struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder(m.getBody()->getTerminator());
+    DeviceOp device = getOperation();
+    OpBuilder builder(device.getBody()->getTerminator());
 
     SmallVector<HerdOp, 4> herds;
     SmallVector<Operation *, 4> placeOps;
@@ -217,11 +216,11 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
              SmallVector<Connect, 8>>
         switchboxes;
 
-    for (auto herd : m.getOps<HerdOp>()) {
+    for (auto herd : device.getOps<HerdOp>()) {
       herds.push_back(herd);
     }
 
-    for (auto placeOp : m.getOps<PlaceOp>()) {
+    for (auto placeOp : device.getOps<PlaceOp>()) {
       placeOps.push_back(placeOp);
       Operation *sourceHerd = placeOp.getSourceHerd().getDefiningOp();
       Operation *destHerd = placeOp.getDestHerd().getDefiningOp();
@@ -233,7 +232,7 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
     // FIXME: multiple route ops with different sourceHerds does not seem to be
     // aware of the routes done before
-    for (auto routeOp : m.getOps<RouteOp>()) {
+    for (auto routeOp : device.getOps<RouteOp>()) {
       routeOps.push_back(routeOp);
 
       AIEX::SelectOp sourceHerds =
@@ -322,7 +321,7 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       auto connects = swboxCfg.second;
       HerdOp herd = dyn_cast<HerdOp>(herdOp);
 
-      builder.setInsertionPoint(m.getBody()->getTerminator());
+      builder.setInsertionPoint(device.getBody()->getTerminator());
 
       IterOp iterx =
           builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
@@ -354,14 +353,14 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<AIEOpRemoval<PlaceOp>, AIEOpRemoval<RouteOp>>(
-        m.getContext(), m);
+        device.getContext());
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIEX::createAIEHerdRoutingPass() {
   return std::make_unique<AIEHerdRoutingPass>();
 }

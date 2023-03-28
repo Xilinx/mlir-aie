@@ -28,14 +28,12 @@ using namespace xilinx::AIEX;
 
 struct RemoveAIEFuncs : public OpConversionPattern<func::FuncOp> {
   using OpConversionPattern<func::FuncOp>::OpConversionPattern;
-  ModuleOp &module;
   DenseMap<func::FuncOp, std::pair<int, int>> &funcs;
 
-  RemoveAIEFuncs(MLIRContext *context, ModuleOp &m,
+  RemoveAIEFuncs(MLIRContext *context,
                  DenseMap<func::FuncOp, std::pair<int, int>> &funcs,
                  PatternBenefit benefit = 1)
-      : OpConversionPattern<func::FuncOp>(context, benefit), module(m),
-        funcs(funcs) {}
+      : OpConversionPattern<func::FuncOp>(context, benefit), funcs(funcs) {}
 
   LogicalResult
   matchAndRewrite(func::FuncOp op, OpAdaptor adaptor,
@@ -51,10 +49,9 @@ struct RemoveAIEFuncs : public OpConversionPattern<func::FuncOp> {
 
 struct RemoveAIECalls : public OpConversionPattern<func::CallOp> {
   using OpConversionPattern<func::CallOp>::OpConversionPattern;
-  ModuleOp &module;
 
-  RemoveAIECalls(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<func::CallOp>(context, benefit), module(m) {}
+  RemoveAIECalls(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<func::CallOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(func::CallOp op, OpAdaptor adaptor,
@@ -71,8 +68,8 @@ struct RemoveAIECalls : public OpConversionPattern<func::CallOp> {
 struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
     DenseMap<std::pair<int, int>, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;
@@ -81,7 +78,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     DenseMap<func::FuncOp, std::pair<int, int>> funcs;
 
     // Collect existing TileOps
-    for (auto tile : m.getOps<TileOp>()) {
+    for (auto tile : device.getOps<TileOp>()) {
       int colIndex = tile.colIndex();
       int rowIndex = tile.rowIndex();
       tiles[std::make_pair(colIndex, rowIndex)] = tile;
@@ -90,7 +87,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     // Bind FuncOp to an AIE core based on attributes of the CallOp
     // A CoreOp will be created for the core, and the FuncOp body is cloned
     // to the CoreOp region
-    for (auto callOp : m.getOps<func::CallOp>()) {
+    for (auto callOp : device.getOps<func::CallOp>()) {
       if (!callOp->getAttr("aie.x") || !callOp->getAttr("aie.y"))
         continue;
 
@@ -102,7 +99,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
       // get or create TileOp
       if (!tiles[std::make_pair(colIndex, rowIndex)]) {
-        builder.setInsertionPointToStart(m.getBody());
+        builder.setInsertionPointToStart(device.getBody());
         TileOp tile =
             builder.create<TileOp>(builder.getUnknownLoc(), colIndex, rowIndex);
         tiles[std::make_pair(colIndex, rowIndex)] = tile;
@@ -221,7 +218,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     // Therefore, we will generate error if the number of logical flows
     // (streams) targeting the same destination (S2MM) is more than 2
     // DenseMap<Value, int> destChannel;
-    // for (auto op : m.getOps<MemcpyOp>()) {
+    // for (auto op : device.getOps<MemcpyOp>()) {
     //   builder.setInsertionPoint(op);
     //   TileOp srcTile = dyn_cast<TileOp>(op.srcTile().getDefiningOp());
     //   TileOp dstTile = dyn_cast<TileOp>(op.dstTile().getDefiningOp());
@@ -244,15 +241,15 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     target.addLegalOp<NextBDOp>();
 
     // Remove standard CallOps and FuncOps that are bound to AIE CoreOps
-    patterns.insert<RemoveAIECalls>(m.getContext(), m);
-    patterns.insert<RemoveAIEFuncs>(m.getContext(), m, funcs);
+    patterns.insert<RemoveAIECalls>(device.getContext());
+    patterns.insert<RemoveAIEFuncs>(device.getContext(), funcs);
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIEX::createAIECreateCoresPass() {
   return std::make_unique<AIECreateCoresPass>();
 }

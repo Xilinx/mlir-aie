@@ -26,7 +26,7 @@ using namespace xilinx::AIEX;
 void xilinx::AIEX::TokenAnalysis::runAnalysis() {
 
   // Collecting token symbols
-  for (auto op : module.getOps<TokenOp>()) {
+  for (auto op : device.getOps<TokenOp>()) {
     StringRef tokenName =
         op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
             .getValue();
@@ -36,7 +36,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
 
   // collect all the UseTokenOps and MemcpyOps
   std::map<StringRef, SmallVector<UseTokenOp, 4>> visitors;
-  module.getBodyRegion().walk([&](Operation *Op) {
+  device.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseTokenOp>(Op)) {
       StringRef tokenName = op.getTokenName();
       assert(tokenSymbols.find(tokenName) != tokenSymbols.end() &&
@@ -121,7 +121,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
     }
   }
 
-  for (auto tile : module.getOps<TileOp>()) {
+  for (auto tile : device.getOps<TileOp>()) {
     int colIndex = tile.colIndex();
     int rowIndex = tile.rowIndex();
     tiles[std::make_pair(colIndex, rowIndex)] = tile;
@@ -175,11 +175,12 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
   int col2 = coord2.first;
   int row2 = coord2.second;
 
-  // TODO - Needs moduleOp to decide which AIE?Utils to call
+  const auto &target_model = xilinx::AIE::getTargetModel(Op1);
+
   bool IsOp1ShareableMem =
-      IsOp1Mem && AIE1Utils::isLegalMemAffinity(col2, row2, col1, row1);
+      IsOp1Mem && target_model.isLegalMemAffinity(col2, row2, col1, row1);
   bool IsOp2ShareableMem =
-      IsOp2Mem && AIE1Utils::isLegalMemAffinity(col1, row1, col2, row2);
+      IsOp2Mem && target_model.isLegalMemAffinity(col1, row1, col2, row2);
 
   if (IsOp1ShareableMem)
     return tiles[coord1];
@@ -187,15 +188,15 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
     return tiles[coord2];
 
   // both Op1 and Op2 are core ops
-  // TODO - Needs moduleOp to decide which AIE?Utils to call. EvenRow!!
   if (!IsOp1Mem && !IsOp2Mem) {
-    bool IsS = AIE1Utils::isSouth(col1, row1, col2, row2);
-    bool IsW = AIE1Utils::isWest(col1, row1, col2, row2);
-    bool IsN = AIE1Utils::isNorth(col1, row1, col2, row2);
-    bool IsE = AIE1Utils::isEast(col1, row1, col2, row2);
-    bool IsInternal = AIE1Utils::isInternal(col1, row1, col2, row2);
+    bool IsS = target_model.isSouth(col1, row1, col2, row2);
+    bool IsW = target_model.isWest(col1, row1, col2, row2);
+    bool IsN = target_model.isNorth(col1, row1, col2, row2);
+    bool IsE = target_model.isEast(col1, row1, col2, row2);
+    bool IsInternal = target_model.isInternal(col1, row1, col2, row2);
     bool IsEvenRow = ((row1 % 2) == 0);
 
+    // FIXME: This logic appears AIE1 specific.
     if (IsS || IsN || (IsW && !IsEvenRow) || (IsE && IsEvenRow))
       return tiles[coord2];
     if ((IsW && IsEvenRow) || (IsE && !IsEvenRow) || IsInternal)

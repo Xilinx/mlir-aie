@@ -92,6 +92,7 @@
 
 // many-to-many, 3 streams, 1 arbiters
 module @test_ps6_xaie {
+ AIE.device(xcvc1902) {
   %t01 = AIE.tile(0, 1)
   %t11 = AIE.tile(1, 1)
 
@@ -116,6 +117,7 @@ module @test_ps6_xaie {
       AIE.rule(0x1F, 0x0, %a0_1)
     }
   }
+ }
 }
 
 //module @test_ps6_logical {

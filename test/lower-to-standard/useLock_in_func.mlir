@@ -15,6 +15,7 @@
 // CHECK: }
 
 module @test {
+ AIE.device(xcvc1902) {
   %tile13 = AIE.tile(1, 3)
   %lock13_3 = AIE.lock(%tile13, 0)
 
@@ -27,4 +28,5 @@ module @test {
     func.call @kernel(%lock13_3) : (index) -> ()
     AIE.end
   }
+ }
 }

@@ -16,10 +16,12 @@
 // CHECK:   a       : 0x8420-0x842F         (16 bytes)
 
 module @test {
+ AIE.device(xcvc1902) {
   %0 = AIE.tile(3, 3)
   %b1 = AIE.buffer(%0) { sym_name = "a" } : memref<16xi8>
   %1 = AIE.buffer(%0) { sym_name = "b" } : memref<8192xi32>
   %b2 = AIE.buffer(%0) { sym_name = "c" } : memref<16xi16>
   %3 = AIE.tile(4, 4)
   %4 = AIE.buffer(%3) : memref<500xi32>
+ }
 }

@@ -12,6 +12,7 @@
 // CHECK: error: 'AIE.dmaStart' op Duplicate DMA channel MM2S0 detected in MemOp!
 
 module @duplicate_dma  {
+ AIE.device(xcvc1902) {
   %0 = AIE.tile(1, 1)
   %1 = AIE.buffer(%0) : memref<256xi32>
   %2 = AIE.mem(%0)  {
@@ -31,4 +32,5 @@ module @duplicate_dma  {
   ^bb4:  // 4 preds: ^bb0, ^bb1, ^bb2, ^bb3
     AIE.end
   }
+ }
 }

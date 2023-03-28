@@ -37,76 +37,77 @@
 // CHECK: _symbol b 0x38010 64
 // CHECK: _symbol c 0x38050 1024
 
-// BCF44: _entry_point _main_init
-// BCF44: _symbol core_4_4 _after _main_init
-// BCF44: _symbol _main_init 0
-// BCF44: _reserved DMb      0x00000 0x20000 //Don't put data in code memory
-// BCF44: _symbol z 0x20000 0x20
-// BCF44: _extern z
-// BCF44: _symbol a 0x28000 0x10
-// BCF44: _extern a
-// BCF44: _symbol b 0x28010 0x40
-// BCF44: _extern b
-// BCF44: _symbol c 0x28050 0x400
-// BCF44: _extern c
-// BCF44: _symbol t 0x30000 0x20
-// BCF44: _extern t
-// BCF44: _symbol y 0x38000 0x20
-// BCF44: _extern y
-// BCF44: _stack    DM_stack 0x28000  0x400 //stack for core
-// BCF44: _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
+// BCF44:      _entry_point _main_init
+// BCF44-NEXT: _symbol core_4_4 _after _main_init
+// BCF44-NEXT: _symbol _main_init 0
+// BCF44-NEXT: _reserved DMb      0x00000 0x20000 //Don't put data in code memory
+// BCF44-NEXT: _symbol z 0x20000 0x20
+// BCF44-NEXT: _extern z
+// BCF44-NEXT: _symbol a 0x28000 0x10
+// BCF44-NEXT: _extern a
+// BCF44-NEXT: _symbol b 0x28010 0x40
+// BCF44-NEXT: _extern b
+// BCF44-NEXT: _symbol c 0x28050 0x400
+// BCF44-NEXT: _extern c
+// BCF44-NEXT: _symbol t 0x30000 0x20
+// BCF44-NEXT: _extern t
+// BCF44-NEXT: _symbol y 0x38000 0x20
+// BCF44-NEXT: _extern y
+// BCF44-NEXT: _stack    DM_stack 0x28000  0x400 //stack for core
+// BCF44-NEXT: _reserved DMb 0x40000 0xc0000 // And everything else the core can't see
 
 
 
 // LD44: MEMORY
-// LD44: {
-// LD44:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
-// LD44:    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
-// LD44: }
-// LD44: ENTRY(_main_init)
-// LD44: SECTIONS
-// LD44: {
-// LD44:   . = 0x0;
-// LD44:  .text : {
-// LD44:     /* the _main_init symbol from me_basic.o has to come at address zero. */
-// LD44:     *me_basic.o(.text)
-// LD44:     . = 0x200;
-// LD44:     _ctors_start = .;
-// LD44:     _init_array_start = .;
-// LD44:     KEEP(SORT(*.init_array))
-// LD44:     _ctors_end = .;
-// LD44:     _init_array_end = .;
-// LD44:     _dtors_start = .;
-// LD44:     _dtors_end = .;
-// LD44:     *(.text)
-// LD44:  } > program
-// LD44:  .data : {
-// LD44:     *(.data*);
-// LD44:     *(.rodata*)
-// LD44:  } > data
-// LD44:   . = 0x28000;
-// LD44:   _sp_start_value_DM_stack = .;
-// LD44:   . += 0x400;
-// LD44: . = 0x20000
-// LD44: z = .;
-// LD44: . += 0x20
-// LD44: . = 0x28000
-// LD44: a = .;
-// LD44: . += 0x10
-// LD44: . = 0x28010
-// LD44: b = .;
-// LD44: . += 0x40
-// LD44: . = 0x28050
-// LD44: c = .;
-// LD44: . += 0x400
-// LD44: . = 0x30000
-// LD44: t = .;
-// LD44: . += 0x20
-// LD44: . = 0x38000
-// LD44: y = .;
-// LD44: . += 0x20
+// LD44-NEXT: {
+// LD44-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+// LD44-NEXT:    data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+// LD44-NEXT: }
+// LD44-NEXT: ENTRY(_main_init)
+// LD44-NEXT: SECTIONS
+// LD44-NEXT: {
+// LD44-NEXT:   . = 0x0;
+// LD44-NEXT:  .text : {
+// LD44-NEXT:     /* the _main_init symbol from me_basic.o has to come at address zero. */
+// LD44-NEXT:     *me_basic.o(.text)
+// LD44-NEXT:     . = 0x200;
+// LD44-NEXT:     _ctors_start = .;
+// LD44-NEXT:     _init_array_start = .;
+// LD44-NEXT:     KEEP(SORT(*.init_array))
+// LD44-NEXT:     _ctors_end = .;
+// LD44-NEXT:     _init_array_end = .;
+// LD44-NEXT:     _dtors_start = .;
+// LD44-NEXT:     _dtors_end = .;
+// LD44-NEXT:     *(.text)
+// LD44-NEXT:  } > program
+// LD44-NEXT:  .data : {
+// LD44-NEXT:     *(.data*);
+// LD44-NEXT:     *(.rodata*)
+// LD44-NEXT:  } > data
+// LD44-NEXT:   . = 0x28000;
+// LD44-NEXT:   _sp_start_value_DM_stack = .;
+// LD44-NEXT:   . += 0x400;
+// LD44-NEXT: . = 0x20000
+// LD44-NEXT: z = .;
+// LD44-NEXT: . += 0x20
+// LD44-NEXT: . = 0x28000
+// LD44-NEXT: a = .;
+// LD44-NEXT: . += 0x10
+// LD44-NEXT: . = 0x28010
+// LD44-NEXT: b = .;
+// LD44-NEXT: . += 0x40
+// LD44-NEXT: . = 0x28050
+// LD44-NEXT: c = .;
+// LD44-NEXT: . += 0x400
+// LD44-NEXT: . = 0x30000
+// LD44-NEXT: t = .;
+// LD44-NEXT: . += 0x20
+// LD44-NEXT: . = 0x38000
+// LD44-NEXT: y = .;
+// LD44-NEXT: . += 0x20
 
 module @test_mmap0 {
+ AIE.device(xcvc1902) {
   %t44 = AIE.tile(4, 4)
   %t34 = AIE.tile(3, 4)
   %t54 = AIE.tile(5, 4)
@@ -121,5 +122,6 @@ module @test_mmap0 {
   %buf43_0 = AIE.buffer(%t43) { sym_name = "z", address = 0x0 } : memref<8xi32>
   %buf45_0 = AIE.buffer(%t45) { sym_name = "t", address = 0x0 } : memref<8xi32>
 
+ }
 }
 

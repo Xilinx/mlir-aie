@@ -11,6 +11,7 @@
 #ifndef AIEX_TOKENANALYSIS_H
 #define AIEX_TOKENANALYSIS_H
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -30,7 +31,7 @@ namespace xilinx {
 namespace AIEX {
 
 class TokenAnalysis {
-  ModuleOp &module;
+  AIE::DeviceOp &device;
   DenseMap<StringRef, int> tokenSymbols;
   DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap;
   DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap;
@@ -39,7 +40,7 @@ class TokenAnalysis {
   DenseMap<std::pair<int, int>, Operation *> tiles;
 
 public:
-  TokenAnalysis(ModuleOp &m) : module(m) {}
+  TokenAnalysis(AIE::DeviceOp &d) : device(d) {}
 
   void runAnalysis();
 

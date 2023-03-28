@@ -46,6 +46,7 @@
 // CHECK:        XAIETILE_SHIM_STRM_DEM_DMA);
 
 module {
+ AIE.device(xcvc1902) {
   %buffer = AIE.external_buffer : memref<16 x f32>
   %t21 = AIE.tile(2, 1)
   %t20 = AIE.tile(2, 0)
@@ -87,4 +88,5 @@ module {
   AIE.wire(%mux : South, %t20 : DMA)
   AIE.wire(%s21 : Core, %c21 : Core)
   AIE.wire(%s21 : Core, %t21 : Core)
+ }
 }

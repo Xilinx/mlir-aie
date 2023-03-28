@@ -17,6 +17,7 @@
 // CHECK:    call @llvm.aie.lock.release.reg({{.*}}, %c1_i32) : (i32, i32) -> ()
 
 module @example0 {
+ AIE.device(xcvc1902) {
 
   // Odd  AIE rows: DMem on the East
   // Even AIE rows: DMem on the West
@@ -87,4 +88,5 @@ module @example0 {
     AIE.useLock(%l43_0, Release, 0)
     AIE.end
   }
+ }
 }

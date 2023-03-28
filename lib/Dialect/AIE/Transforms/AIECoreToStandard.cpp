@@ -196,7 +196,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
   LogicalResult
   matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!isa<ModuleOp>(useLock->getParentOp())) {
+    if (!isa<DeviceOp>(useLock->getParentOp())) {
       std::string funcName = "llvm.aie.lock.";
       if (useLock.acquire())
         funcName += "acquire.reg";
@@ -226,13 +226,14 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
 
 struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
   using OpConversionPattern<BufferOp>::OpConversionPattern;
+  ModuleOp &module;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m, IRMapping &mapper,
                       PatternBenefit benefit = 1)
-      : OpConversionPattern<BufferOp>(context, benefit) {}
+      : OpConversionPattern<BufferOp>(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.setInsertionPoint(buffer);
+    rewriter.setInsertionPointToStart(module.getBody());
     MemRefType t = buffer.getType().cast<MemRefType>();
     auto symName = buffer.name().getValue();
     rewriter.create<memref::GlobalOp>(
@@ -287,6 +288,9 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       return success();
     }
 
+    // The parent should be an AIE.device op.
+    rewriter.setInsertionPointAfter(op->getParentOp());
+
     std::string coreName("core_" + std::to_string(col) + "_" +
                          std::to_string(row));
     auto coreFunc = rewriter.create<func::FuncOp>(
@@ -296,6 +300,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
     rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
 
+    // Rewrite the AIE.end() op
     coreFunc.getBody().walk([&](Operation *childOp) {
       rewriter.setInsertionPointAfter(childOp);
 
@@ -335,7 +340,13 @@ struct AIECoreToStandardPass
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
     DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-    NetlistAnalysis NL(m, tiles, cores, mems, locks, tileToBuffers,
+    if (m.getOps<DeviceOp>().empty()) {
+      m.emitOpError("expected AIE.device operation at toplevel");
+      signalPassFailure();
+    }
+    DeviceOp device = *(m.getOps<DeviceOp>().begin());
+
+    NetlistAnalysis NL(device, tiles, cores, mems, locks, tileToBuffers,
                        switchboxes);
     NL.collectTiles(tiles);
     NL.collectCores(cores);
@@ -451,15 +462,23 @@ struct AIECoreToStandardPass
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering>(
         m.getContext(), m);
 
-    patterns.add<AIEBufferToStandard>(m.getContext());
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, mapper);
     patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                         tileToBuffers, 1, tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
 
+    // Move all the func.func ops from the device to the module
+    SmallVector<func::FuncOp, 16> funcs;
+    for (const auto &op : device.getOps<func::FuncOp>())
+      funcs.push_back(op);
+
+    for (const auto &op : funcs)
+      op->moveBefore(device);
+
     RewritePatternSet removepatterns(&getContext());
     removepatterns
-        .add<AIEOpRemoval<AIE::TargetOp>, AIEOpRemoval<AIE::TileOp>,
+        .add<AIEOpRemoval<AIE::DeviceOp>, AIEOpRemoval<AIE::TileOp>,
              AIEOpRemoval<AIE::FlowOp>, AIEOpRemoval<AIE::MemOp>,
              AIEOpRemoval<AIE::ShimDMAOp>, AIEOpRemoval<AIE::ShimMuxOp>,
              AIEOpRemoval<AIE::SwitchboxOp>, AIEOpRemoval<AIE::LockOp>,

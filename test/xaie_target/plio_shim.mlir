@@ -27,6 +27,7 @@
 // CHECK:   XAIE_ENABLE);
 
 module {
+ AIE.device(xcvc1902) {
   %t40 = AIE.tile(4, 0)
   %t41 = AIE.tile(4, 1)
   %4 = AIE.switchbox(%t40)  {
@@ -37,4 +38,5 @@ module {
     AIE.connect<South : 0, North : 0>
     AIE.connect<North : 0, South : 0>
   }
+ }
 }

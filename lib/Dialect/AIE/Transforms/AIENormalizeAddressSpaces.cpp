@@ -38,7 +38,7 @@ struct AIENormalizeAddressSpacesPass
     registry.insert<func::FuncDialect>();
   }
   void runOnOperation() override {
-    ModuleOp m = getOperation();
+    DeviceOp device = getOperation();
 
     TypeConverter converter;
     converter.addConversion([&](Type type) -> Optional<Type> {
@@ -58,18 +58,18 @@ struct AIENormalizeAddressSpacesPass
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                    converter);
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
 
     // Convert any output types to have the default address space
-    m.walk([&](mlir::Operation *op) {
+    device.walk([&](mlir::Operation *op) {
       for (Value r : op->getResults())
         r.setType(memRefToDefaultAddressSpace(r.getType()));
     });
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIENormalizeAddressSpacesPass() {
   return std::make_unique<AIENormalizeAddressSpacesPass>();
 }

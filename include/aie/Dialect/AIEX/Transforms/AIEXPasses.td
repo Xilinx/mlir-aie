@@ -13,7 +13,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AIECreateCores : Pass<"aie-create-cores", "ModuleOp"> {
+def AIECreateCores : Pass<"aie-create-cores", "AIE::DeviceOp"> {
   let summary = "Create CoreOp, MemOp, and FlowOp of AIE dialect";
   let description = [{
     Lower toplevel 'call' operations with implicit data movement into
@@ -51,7 +51,7 @@ def AIECreateCores : Pass<"aie-create-cores", "ModuleOp"> {
   ];
 }
 
-def AIECreateLocks : Pass<"aie-create-locks", "ModuleOp"> {
+def AIECreateLocks : Pass<"aie-create-locks", "AIE::DeviceOp"> {
   let summary = "Generate physical lock ops from logical lock (token) ops";
   let description = [{
     Tokens represent high-level buffer synchronization through a sequence of
@@ -62,7 +62,7 @@ def AIECreateLocks : Pass<"aie-create-locks", "ModuleOp"> {
   let constructor = "xilinx::AIEX::createAIECreateLocksPass()";
 }
 
-def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
+def AIEHerdRouting : Pass<"aie-herd-routing", "AIE::DeviceOp"> {
   let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
   let description = [{
     An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
@@ -72,7 +72,7 @@ def AIEHerdRouting : Pass<"aie-herd-routing", "ModuleOp"> {
   let constructor = "xilinx::AIEX::createAIEHerdRoutingPass()";
 }
 
-def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "ModuleOp"> {
+def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "AIE::DeviceOp"> {
   let summary = "Replace combination of broadcast and packet-switch by packet-flow";
   let description = [{
     Replace combination of broadcast and packet-switch by packet-flow
@@ -85,7 +85,7 @@ def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "ModuleOp"> {
   ];
 }
 
-def AIEMulticast : Pass<"aie-lower-multicast", "ModuleOp"> {
+def AIEMulticast : Pass<"aie-lower-multicast", "AIE::DeviceOp"> {
   let summary = "Lower AIE.multicast operation to AIE.flow operations";
   let description = [{
     This pass replaces AIE.multicast operation with the equivalent number of AIE.flow
@@ -100,7 +100,7 @@ def AIEMulticast : Pass<"aie-lower-multicast", "ModuleOp"> {
   ];
 }
 
-def AIELowerMemcpy : Pass<"aie-lower-memcpy", "ModuleOp"> {
+def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
   let summary = "Lower aie.memcpy operations to Flows and DMA programs";
   let description = [{
     aie.memcpy operations are an experimental high-level abstraction which

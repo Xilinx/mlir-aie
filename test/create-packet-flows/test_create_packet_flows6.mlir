@@ -14,6 +14,7 @@
 // Fixme: may fail non-deterministically
 
 module @test_create_packet_flows6 {
+ AIE.device(xcvc1902) {
 // CHECK-LABEL: module @test_create_packet_flows6 {
 // CHECK:         %[[VAL_0:.*]] = AIE.tile(2, 2)
 // CHECK:         %[[VAL_1:.*]] = AIE.switchbox(%[[VAL_0]]) {
@@ -96,4 +97,5 @@ module @test_create_packet_flows6 {
     AIE.packet_source<%tile22, DMA : 0>
     AIE.packet_dest<%tile62, DMA : 0>
   }
+ }
 }

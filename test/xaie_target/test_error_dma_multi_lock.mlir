@@ -12,6 +12,7 @@
 // CHECK: used in a DMA block that have multiple locks.
 
 module @test_error_dma_multi_lock {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
   %l33_0 = AIE.lock(%t33, 0)
   %l33_1 = AIE.lock(%t33, 1)
@@ -27,4 +28,5 @@ module @test_error_dma_multi_lock {
   ^end:
     AIE.end
   }
+ }
 }

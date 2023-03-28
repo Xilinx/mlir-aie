@@ -11,6 +11,7 @@
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
 
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -42,12 +43,6 @@ template <typename ConcreteType>
 class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {};
 } // namespace OpTrait
 } // namespace mlir
-
-namespace xilinx {
-namespace AIE {
-typedef std::pair<int, int> TileID;
-}
-} // namespace xilinx
 
 /// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
@@ -169,70 +164,6 @@ typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
 typedef std::pair<DMAChannelDir, int> DMAChannel;
 
-class AIE1Utils {
-public:
-  static bool isValidTile(TileID src);
-
-  // Return the tile ID of the memory to the west of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemWest(TileID src);
-  // Return the tile ID of the memory to the east of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemEast(TileID src);
-  // Return the tile ID of the memory to the north of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemNorth(TileID src);
-  // Return the tile ID of the memory to the south of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemSouth(TileID src);
-
-  static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow);
-
-  static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
-
-  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
-                                 int memRow);
-};
-
-class AIE2Utils {
-public:
-  static bool isValidTile(TileID src);
-
-  // Return the tile ID of the memory to the west of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemWest(TileID src);
-  // Return the tile ID of the memory to the east of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemEast(TileID src);
-  // Return the tile ID of the memory to the north of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemNorth(TileID src);
-  // Return the tile ID of the memory to the south of the given tile, if it
-  // exists.
-  static mlir::Optional<TileID> getMemSouth(TileID src);
-
-  static bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isWest(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isEast(int srcCol, int srcRow, int dstCol, int dstRow);
-
-  static bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isMemNorth(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow);
-  static bool isMemSouth(int srcCol, int srcRow, int dstCol, int dstRow);
-
-  static bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
-                                 int memRow);
-};
-
 struct AIEArchDesc {
   bool checkerboard;
 };
@@ -244,7 +175,7 @@ struct AIEDevDesc {
   AIEArchDesc arch;
 };
 
-AIEArch getTargetArch(mlir::ModuleOp module);
+const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op);
 
 } // namespace AIE
 } // namespace xilinx
@@ -259,20 +190,21 @@ namespace AIE {
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
-std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignBufferAddressesPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEAssignLockIDsPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignBufferAddressesPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
+std::unique_ptr<OperationPass<ModuleOp>> createAIECanonicalizeDevicePass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIELocalizeLocksPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIENormalizeAddressSpacesPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIERoutePacketFlowsPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEObjectFifoLoopUnrollPass();
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>> createAIEObjectFifoLoopUnrollPass();
+std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoRegisterProcessPass();
 
 /// Generate the code for registering passes.

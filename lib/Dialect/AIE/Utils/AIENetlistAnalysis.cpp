@@ -34,7 +34,7 @@ void xilinx::AIE::NetlistAnalysis::runAnalysis() {
 
 void xilinx::AIE::NetlistAnalysis::collectTiles(
     DenseMap<std::pair<int, int>, Operation *> &tiles) {
-  for (auto tile : module.getOps<TileOp>()) {
+  for (auto tile : device.getOps<TileOp>()) {
     int colIndex = tile.colIndex();
     int rowIndex = tile.rowIndex();
     tiles[std::make_pair(colIndex, rowIndex)] = tile;
@@ -43,7 +43,7 @@ void xilinx::AIE::NetlistAnalysis::collectTiles(
 
 void xilinx::AIE::NetlistAnalysis::collectCores(
     DenseMap<Operation *, CoreOp> &cores) {
-  for (auto core : module.getOps<CoreOp>()) {
+  for (auto core : device.getOps<CoreOp>()) {
     Operation *tileOp = core.getTile().getDefiningOp();
     assert(cores.count(tileOp) == 0 &&
            "Invalid netlist! Expected 1-1 mapping of tile and core");
@@ -53,7 +53,7 @@ void xilinx::AIE::NetlistAnalysis::collectCores(
 
 void xilinx::AIE::NetlistAnalysis::collectMems(
     DenseMap<Operation *, MemOp> &mems) {
-  for (auto mem : module.getOps<MemOp>()) {
+  for (auto mem : device.getOps<MemOp>()) {
     Operation *tileOp = mem.getTile().getDefiningOp();
     assert(mems.count(tileOp) == 0 &&
            "Invalid netlist! Expected 1-1 mapping of tile and mem");
@@ -63,7 +63,7 @@ void xilinx::AIE::NetlistAnalysis::collectMems(
 
 void xilinx::AIE::NetlistAnalysis::collectLocks(
     DenseMap<std::pair<Operation *, int>, LockOp> &locks) {
-  for (auto lock : module.getOps<LockOp>()) {
+  for (auto lock : device.getOps<LockOp>()) {
     Operation *tileOp = lock.getTile().getDefiningOp();
     int lockID = lock.getLockIDValue();
     assert(locks.count(std::make_pair(tileOp, lockID)) == 0 &&
@@ -75,7 +75,7 @@ void xilinx::AIE::NetlistAnalysis::collectLocks(
 void xilinx::AIE::NetlistAnalysis::collectBuffers(
     DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers) {
 
-  for (auto buffer : module.getOps<BufferOp>()) {
+  for (auto buffer : device.getOps<BufferOp>()) {
     Operation *tileOp = buffer.getTile().getDefiningOp();
     buffers[tileOp].push_back(buffer);
   }
@@ -84,7 +84,7 @@ void xilinx::AIE::NetlistAnalysis::collectBuffers(
 void xilinx::AIE::NetlistAnalysis::collectSwitchboxes(
     DenseMap<Operation *, SwitchboxOp> &switchboxes) {
 
-  for (auto switchbox : module.getOps<SwitchboxOp>()) {
+  for (auto switchbox : device.getOps<SwitchboxOp>()) {
     Operation *tileOp = switchbox.getTile().getDefiningOp();
     assert(switchboxes.count(tileOp) == 0 &&
            "Invalid netlist! Expected 1-1 mapping of tile and switchbox");
@@ -128,12 +128,13 @@ bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item,
   int userRow = userCoord.second;
   bool IsUserMem = isa<MemOp>(user);
 
-  // TODO - Needs moduleOp to decide which AIE?Utils to call
+  const auto &target_model = getTargetModel(item);
+
   if (IsUserMem)
-    return (AIE1Utils::isInternal(itemCol, itemRow, userCol, userRow));
+    return (target_model.isInternal(itemCol, itemRow, userCol, userRow));
 
   // user is a Core
-  return AIE1Utils::isLegalMemAffinity(userCol, userRow, itemCol, itemRow);
+  return target_model.isLegalMemAffinity(userCol, userRow, itemCol, itemRow);
 }
 
 bool xilinx::AIE::NetlistAnalysis::validateCoreOrMemRegion(
@@ -409,7 +410,7 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
 
   DenseMap<Value, SmallVector<Operation *, 4>> visitors;
 
-  module.getBodyRegion().walk([&](Operation *Op) {
+  device.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseLockOp>(Op)) {
       Value lock = op.getLock();
       if (op.acquire()) {

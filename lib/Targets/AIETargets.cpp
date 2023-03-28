@@ -91,21 +91,6 @@ void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset,
   output << ". += 0x" << llvm::utohexstr(numBytes) << ";\n";
 }
 
-// Return the base address of the memory associated with this tile.
-static int internalMemAddress(TileID src, ModuleOp module) {
-  if (getTargetArch(module) == AIEArch::AIE2) {
-    return 0x70000; // Always east
-  } else {          // AIE1
-    bool IsEvenRow = ((src.second % 2) == 0);
-    if (IsEvenRow)
-      // Internal is West
-      return 0x28000;
-    else
-      // Internal is East
-      return 0x38000;
-  }
-}
-
 void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -117,7 +102,12 @@ void registerAIETranslations() {
         DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
         DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-        NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers,
+        if (module.getOps<DeviceOp>().empty()) {
+          module.emitOpError("expected AIE.device operation at toplevel");
+        }
+        DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+
+        NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers,
                            switchboxes);
         NL.collectTiles(tiles);
         NL.collectBuffers(buffers);
@@ -137,25 +127,16 @@ void registerAIETranslations() {
                 writeBufferMap(output, buf, offset, NL);
           };
 
-          if (getTargetArch(module) == AIEArch::AIE2) {
-            if (auto tile = AIE2Utils::getMemSouth(srcCoord))
-              doBuffer(tile, 0x00040000);
-            if (auto tile = AIE2Utils::getMemWest(srcCoord))
-              doBuffer(tile, 0x00050000);
-            if (auto tile = AIE2Utils::getMemNorth(srcCoord))
-              doBuffer(tile, 0x00060000);
-            if (auto tile = AIE2Utils::getMemEast(srcCoord))
-              doBuffer(tile, 0x00070000);
-          } else { // AIE1
-            if (auto tile = AIE1Utils::getMemSouth(srcCoord))
-              doBuffer(tile, 0x00020000);
-            if (auto tile = AIE1Utils::getMemWest(srcCoord))
-              doBuffer(tile, 0x00028000);
-            if (auto tile = AIE1Utils::getMemNorth(srcCoord))
-              doBuffer(tile, 0x00030000);
-            if (auto tile = AIE1Utils::getMemEast(srcCoord))
-              doBuffer(tile, 0x00038000);
-          }
+          const auto &target_model = xilinx::AIE::getTargetModel(srcTileOp);
+
+          if (auto tile = target_model.getMemSouth(srcCoord))
+            doBuffer(tile, target_model.getMemSouthBaseAddress());
+          if (auto tile = target_model.getMemWest(srcCoord))
+            doBuffer(tile, target_model.getMemWestBaseAddress());
+          if (auto tile = target_model.getMemNorth(srcCoord))
+            doBuffer(tile, target_model.getMemNorthBaseAddress());
+          if (auto tile = target_model.getMemEast(srcCoord))
+            doBuffer(tile, target_model.getMemEastBaseAddress());
         }
         return success();
       },
@@ -214,13 +195,19 @@ void registerAIETranslations() {
         DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
         DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-        NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers,
+        if (module.getOps<DeviceOp>().empty()) {
+          module.emitOpError("expected AIE.device operation at toplevel");
+        }
+        DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+
+        NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers,
                            switchboxes);
         NL.collectTiles(tiles);
         NL.collectBuffers(buffers);
 
-        for (auto tile : module.getOps<TileOp>())
+        for (auto tile : targetOp.getOps<TileOp>())
           if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+            const auto &target_model = getTargetModel(tile);
             // output << "// Tile(" << tileCol << ", " << tileRow << ")\n";
             // output << "// Memory map: name base_address num_bytes\n";
             output << R"THESCRIPT(
@@ -257,41 +244,38 @@ SECTIONS
                 if (tiles.count(*tile))
                   for (auto buf : buffers[tiles[*tile]])
                     writeLDScriptMap(output, buf, offset, NL);
-              } else
-                output << "/* No tile with memoy exists to the " << dir
+              } else {
+                output << "/* No tile with memory exists to the " << dir
                        << ". */\n";
-              output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
-              output << ". += 0x" << llvm::utohexstr(0x8000) << ";\n";
+                output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
+                uint32_t localMemSize = target_model.getLocalMemorySize();
+                output << ". += 0x" << llvm::utohexstr(localMemSize) << ";\n";
+              }
             };
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
             // Stack
             output << ". = 0x"
-                   << llvm::utohexstr(internalMemAddress(srcCoord, module))
+                   << llvm::utohexstr(
+                          target_model.getMemInternalBaseAddress(srcCoord))
                    << ";\n";
             output << "_sp_start_value_DM_stack = .;\n";
             output << ". += 0x" << llvm::utohexstr(0x400)
                    << ";\n"; // TODO to match stack size
 
-            if (getTargetArch(module) == AIEArch::AIE2) {
-              doBuffer(AIE2Utils::getMemSouth(srcCoord), 0x00040000,
+            if (auto tile = target_model.getMemSouth(srcCoord))
+              doBuffer(tile, target_model.getMemSouthBaseAddress(),
                        std::string("south"));
-              doBuffer(AIE2Utils::getMemWest(srcCoord), 0x00050000,
+            if (auto tile = target_model.getMemWest(srcCoord))
+              doBuffer(tile, target_model.getMemWestBaseAddress(),
                        std::string("west"));
-              doBuffer(AIE2Utils::getMemNorth(srcCoord), 0x00060000,
+            if (auto tile = target_model.getMemNorth(srcCoord))
+              doBuffer(tile, target_model.getMemNorthBaseAddress(),
                        std::string("north"));
-              doBuffer(AIE2Utils::getMemEast(srcCoord), 0x00070000,
+            if (auto tile = target_model.getMemEast(srcCoord))
+              doBuffer(tile, target_model.getMemEastBaseAddress(),
                        std::string("east"));
-            } else {
-              doBuffer(AIE1Utils::getMemSouth(srcCoord), 0x00020000,
-                       std::string("south"));
-              doBuffer(AIE1Utils::getMemWest(srcCoord), 0x00028000,
-                       std::string("west"));
-              doBuffer(AIE1Utils::getMemNorth(srcCoord), 0x00030000,
-                       std::string("north"));
-              doBuffer(AIE1Utils::getMemEast(srcCoord), 0x00038000,
-                       std::string("east"));
-            }
+
             output << "  .bss : { *(.bss) } > data\n";
             output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
             output << "}\n";
@@ -337,10 +321,16 @@ SECTIONS
         DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
         DenseMap<Operation *, SwitchboxOp> switchboxes;
 
-        NetlistAnalysis NL(module, tiles, cores, mems, locks, buffers,
+        if (module.getOps<DeviceOp>().empty()) {
+          module.emitOpError("expected AIE.device operation at toplevel");
+        }
+        DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+
+        NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers,
                            switchboxes);
         NL.collectTiles(tiles);
         NL.collectBuffers(buffers);
+
         // _entry_point _main_init
         // _symbol      _main _after _main_init
         // _symbol      _main_init 0
@@ -352,69 +342,59 @@ SECTIONS
         // see
         // // Include all symbols from rom.c
         // _include _file rom.o
-        for (auto tile : module.getOps<TileOp>())
+        for (auto tile : targetOp.getOps<TileOp>())
           if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+            const auto &target_model = getTargetModel(tile);
+
             std::string corefunc = std::string("core_") +
                                    std::to_string(tile.getCol()) + "_" +
                                    std::to_string(tile.getRow());
             output << "_entry_point _main_init\n";
             output << "_symbol " << corefunc << " _after _main_init\n";
             output << "_symbol      _main_init 0\n";
-            std::string initReserved = (getTargetArch(module) == AIEArch::AIE2)
-                                           ? "0x40000"
-                                           : "0x20000";
+            std::string initReserved =
+                (target_model.getTargetArch() == AIEArch::AIE2) ? "0x40000"
+                                                                : "0x20000";
             output << "_reserved DMb      0x00000 " << initReserved
                    << " //Don't put data in code memory\n";
 
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
-              int buffersSize = 0;
               if (tile) {
                 if (tiles.count(*tile))
-                  for (auto buf : buffers[tiles[*tile]]) {
+                  for (auto buf : buffers[tiles[*tile]])
                     writeBCFMap(output, buf, offset, NL);
-                    buffersSize++;
-                  }
                 // TODO How to set as reserved if no buffer exists (or reserve
                 // remaining buffer)
-              }
-              if (!tile || !tiles.count(*tile) || (buffersSize > 1)) {
-                std::string localMemSize =
-                    (getTargetArch(module) == AIEArch::AIE2) ? "0x10000"
-                                                             : "0x8000";
+              } else {
+                uint32_t localMemSize = target_model.getLocalMemorySize();
                 output << "_reserved DMb 0x" << llvm::utohexstr(offset) << " "
-                       << localMemSize << " "
+                       << "0x" << llvm::utohexstr(localMemSize) << " "
                        << " // No tile with memory exists to the " << dir
                        << ".\n";
               }
             };
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
-            if (getTargetArch(module) == AIEArch::AIE2) {
-              doBuffer(AIE2Utils::getMemSouth(srcCoord), 0x00040000,
+            if (auto tile = target_model.getMemSouth(srcCoord))
+              doBuffer(tile, target_model.getMemSouthBaseAddress(),
                        std::string("south"));
-              doBuffer(AIE2Utils::getMemWest(srcCoord), 0x00050000,
+            if (auto tile = target_model.getMemWest(srcCoord))
+              doBuffer(tile, target_model.getMemWestBaseAddress(),
                        std::string("west"));
-              doBuffer(AIE2Utils::getMemNorth(srcCoord), 0x00060000,
+            if (auto tile = target_model.getMemNorth(srcCoord))
+              doBuffer(tile, target_model.getMemNorthBaseAddress(),
                        std::string("north"));
-              doBuffer(AIE2Utils::getMemEast(srcCoord), 0x00070000,
+            if (auto tile = target_model.getMemEast(srcCoord))
+              doBuffer(tile, target_model.getMemEastBaseAddress(),
                        std::string("east"));
-            } else {
-              doBuffer(AIE1Utils::getMemSouth(srcCoord), 0x00020000,
-                       std::string("south"));
-              doBuffer(AIE1Utils::getMemWest(srcCoord), 0x00028000,
-                       std::string("west"));
-              doBuffer(AIE1Utils::getMemNorth(srcCoord), 0x00030000,
-                       std::string("north"));
-              doBuffer(AIE1Utils::getMemEast(srcCoord), 0x00038000,
-                       std::string("east"));
-            }
 
             output << "_stack    DM_stack 0x"
-                   << llvm::utohexstr(internalMemAddress(srcCoord, module))
+                   << llvm::utohexstr(
+                          target_model.getMemInternalBaseAddress(srcCoord))
                    << "  0x400 //stack for core\n"; // TODO Needs to match
                                                     // stack size!!!
-            if (getTargetArch(module) == AIEArch::AIE2) {
+            if (target_model.getTargetArch() == AIEArch::AIE2) {
               output << "_reserved DMb 0x80000 0x80000 // And everything else "
                         "the core can't see\n";
             } else {
@@ -447,8 +427,13 @@ SECTIONS
   TranslateFromMLIRRegistration registrationCoreList(
       "aie-generate-corelist", "Generate python list of cores",
       [](ModuleOp module, raw_ostream &output) {
+        if (module.getOps<DeviceOp>().empty()) {
+          module.emitOpError("expected AIE.device operation at toplevel");
+        }
+        DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+
         output << "[";
-        for (auto tileOp : module.getOps<TileOp>()) {
+        for (auto tileOp : targetOp.getOps<TileOp>()) {
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
           if (auto coreOp = tileOp.getCoreOp()) {

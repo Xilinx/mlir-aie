@@ -15,10 +15,12 @@
 // CHECK:   {{.*}} AIE.buffer({{.*}}) {address = 1024 : i32, sym_name = "_anonymous0"} : memref<500xi32>
 
 module @test {
+ AIE.device(xcvc1902) {
   %0 = AIE.tile(3, 3)
   %b1 = AIE.buffer(%0) { sym_name = "a" } : memref<16xi8>
   %1 = AIE.buffer(%0) { sym_name = "b" } : memref<512xi32>
   %b2 = AIE.buffer(%0) { sym_name = "c" } : memref<16xi16>
   %3 = AIE.tile(4, 4)
   %4 = AIE.buffer(%3) : memref<500xi32>
+ }
 }
