@@ -69,6 +69,7 @@
 //
 // t[0][0] copies to s[0][0]
 module @test_herd_routing0 {
+ AIE.device(xcvc1902) {
   %0 = AIE.herd[1][1] { sym_name = "t" } // herd t
   %1 = AIE.herd[1][1] { sym_name = "s" } // herd s
 
@@ -78,4 +79,5 @@ module @test_herd_routing0 {
   %3 = AIE.select(%1, %i0, %i0)
   AIE.place(%0, %1, 3, 3) // herd t[0][0] and herd s[0][0] are spaced by 3-horizontally and 3-vertically
   AIE.route(<%2, DMA: 0>, <%3, DMA: 0>)
+ }
 }

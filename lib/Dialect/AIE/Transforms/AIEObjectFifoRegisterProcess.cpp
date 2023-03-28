@@ -1,5 +1,4 @@
-//===- AIEObjectFifoRegisterProcess.cpp --------------------------*- MLIR
-//-*-===//
+//===- AIEObjectFifoRegisterProcess.cpp ------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -38,12 +37,9 @@ using namespace xilinx::AIE;
 struct RemoveAIERegisterProcess
     : public OpConversionPattern<ObjectFifoRegisterProcessOp> {
   using OpConversionPattern<ObjectFifoRegisterProcessOp>::OpConversionPattern;
-  ModuleOp &module;
 
-  RemoveAIERegisterProcess(MLIRContext *context, ModuleOp &m,
-                           PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoRegisterProcessOp>(context, benefit),
-        module(m) {}
+  RemoveAIERegisterProcess(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<ObjectFifoRegisterProcessOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(ObjectFifoRegisterProcessOp op, OpAdaptor adaptor,
@@ -76,7 +72,7 @@ struct AIEObjectFifoRegisterProcessPass
     return forLoop;
   }
 
-  void createPattern(OpBuilder &builder, ModuleOp &m,
+  void createPattern(OpBuilder &builder, DeviceOp &device,
                      ObjectFifoRegisterProcessOp regOp, mlir::Type elementType,
                      IntegerAttr acqNumber, IntegerAttr relNumber, int length) {
     // create for loop
@@ -104,7 +100,7 @@ struct AIEObjectFifoRegisterProcessPass
 
       // apply kernel
       func::FuncOp func;
-      for (auto funcOp : m.getOps<func::FuncOp>()) {
+      for (auto funcOp : device.getOps<func::FuncOp>()) {
         if (funcOp.getSymName() == regOp.getCallee()) {
           func = funcOp;
           break;
@@ -127,14 +123,14 @@ struct AIEObjectFifoRegisterProcessPass
   }
 
   void runOnOperation() override {
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     DenseMap<ObjectFifoCreateOp, std::queue<Value>> consumersPerFifo;
     //===----------------------------------------------------------------------===//
     // Generate access patterns
     //===----------------------------------------------------------------------===//
-    for (auto registerOp : m.getOps<ObjectFifoRegisterProcessOp>()) {
-      builder.setInsertionPointToEnd(m.getBody());
+    for (auto registerOp : device.getOps<ObjectFifoRegisterProcessOp>()) {
+      builder.setInsertionPointToEnd(device.getBody());
       ObjectFifoCreateOp objFifo =
           registerOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
       auto elementType =
@@ -161,7 +157,7 @@ struct AIEObjectFifoRegisterProcessPass
 
       // retrieve core associated to above tile or create new one
       CoreOp *core = nullptr;
-      for (auto coreOp : m.getOps<CoreOp>()) {
+      for (auto coreOp : device.getOps<CoreOp>()) {
         if (coreOp.getTile() == tile) {
           core = &coreOp;
           break;
@@ -190,8 +186,8 @@ struct AIEObjectFifoRegisterProcessPass
             registerOp.getAcquirePattern().getValues<IntegerAttr>()[0];
         IntegerAttr relNumber =
             registerOp.getReleasePattern().getValues<IntegerAttr>()[0];
-        createPattern(builder, m, registerOp, elementType, acqNumber, relNumber,
-                      registerOp.getProcessLength());
+        createPattern(builder, device, registerOp, elementType, acqNumber,
+                      relNumber, registerOp.getProcessLength());
 
       } else {
         auto acqPattern =
@@ -241,8 +237,8 @@ struct AIEObjectFifoRegisterProcessPass
               continue;
             }
           }
-          createPattern(builder, m, registerOp, elementType, currAcq, currRel,
-                        length);
+          createPattern(builder, device, registerOp, elementType, currAcq,
+                        currRel, length);
           length = 1;
         }
       }
@@ -253,13 +249,13 @@ struct AIEObjectFifoRegisterProcessPass
     //===----------------------------------------------------------------------===//
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
-    patterns.insert<RemoveAIERegisterProcess>(m.getContext(), m);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    patterns.insert<RemoveAIERegisterProcess>(device.getContext());
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoRegisterProcessPass() {
   return std::make_unique<AIEObjectFifoRegisterProcessPass>();
 }

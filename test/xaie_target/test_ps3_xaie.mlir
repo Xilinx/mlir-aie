@@ -73,6 +73,7 @@
 
 // partial multicast
 module @test_ps3_xaie {
+ AIE.device(xcvc1902) {
   %t01 = AIE.tile(0, 1)
   %t11 = AIE.tile(1, 1)
 
@@ -92,6 +93,7 @@ module @test_ps3_xaie {
       AIE.rule(0x1F, 0x1, %a0_1)
     }
   }
+ }
 }
 
 //module @test_ps3_logical {

@@ -28,6 +28,7 @@
 // CHECK: }
 
 module @elementGeneration {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
     %tile33 = AIE.tile(3, 3)
@@ -38,4 +39,5 @@ module @elementGeneration {
     // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
     // the processes running on each core (here nothing is specified so it cannot be derived).
     %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+ }
 }

@@ -75,22 +75,44 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                   "scalar">;
 
 
-def AIE_TargetOp: AIE_Op<"target", []>, Results<(outs Index)> {
-  let summary = "Define AIE target such as architecture";
+def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
+                                    HasParent<"ModuleOp">,
+                                    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove]> {
+  let summary = "Define an AIE design targetting a complete device";
   let description = [{
-    This operation allows specifications of the target such as the AIE architecture. Currently,
-    we support targets for AIE architecture for AIE and AIE2.
+    This operation describes a design that executes on a particular AIEngine device.
+    It exists at the toplevel of a design; although currently it does not replace the
+    default toplevel module in MLIR, the intention is that this could be the case
+    in the future.
+
+    When using this operation, all resources in a physical device are available and
+    the design does not need to be concerned with other potential users of a physical
+    device.  In addition, within an "aie.device" operation, tile addresses are absolute
+    coordinates and are not intended to describe a relocatable design.  To describe
+    a portion of a device which may be relocatable, the intention would be to provide another
+    operation, for instance maybe "aie.segment".
+    The design itself is described using a region of code contained by the device
+    operation.
+
+    Example:
+    ```
+    aie.device(xcvc1902) {
+      %tile = aie.tile(1, 1)
+      %CORE = aie.core(%tile) { ... }
+    }
   }];
   let arguments = (
-    ins AIEArch:$arch
+    ins AIEDevice:$device
   );
+  let regions = (region AnyRegion:$bodyRegion);
   let assemblyFormat = [{
-    attr-dict `(` $arch `)` 
+    `(` $device `)` regions attr-dict
+  }];
+  let extraClassDeclaration = [{
+    const xilinx::AIE::AIETargetModel &getTargetModel();
   }];
   let hasVerifier = 1;
 }
-
-// `(` $arch `)` attr-dict
 
 def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let arguments = (

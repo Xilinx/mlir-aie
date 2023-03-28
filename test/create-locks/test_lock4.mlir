@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // CHECK-LABEL: module @test_lock4 {
-// CHECK-NEXT:  %0 = AIE.tile(5, 5)
+// CHECK:       %0 = AIE.tile(5, 5)
 // CHECK-NEXT:  %1 = AIE.lock(%0, 0)
 // CHECK-NEXT:  %2 = AIE.tile(4, 4)
 // CHECK-NEXT:  %3 = AIE.lock(%2, 1)
@@ -84,6 +84,7 @@
 // Lower UseTokenOp to UseLockOp
 // [Core-Mem] ---> [Core-Mem] ---> [Core-Mem] (non-neighboring tiles)
 module @test_lock4 {
+ AIE.device(xcvc1902) {
   %t55 = AIE.tile(5, 5)
   %t44 = AIE.tile(4, 4)
   %t33 = AIE.tile(3, 3)
@@ -153,4 +154,5 @@ module @test_lock4 {
 
   AIE.flow(%t33, DMA : 0, %t44, DMA : 0)
   AIE.flow(%t44, DMA : 0, %t55, DMA : 0)
+ }
 }

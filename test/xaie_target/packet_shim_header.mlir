@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-packet-flows --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
+// RUN: aie-opt --aie-create-packet-flows %s | aie-translate --aie-generate-xaie | FileCheck %s
 
 // CHECK: void mlir_aie_configure_dmas(aie_libxaie_ctx_t* ctx) {
 // CHECK: XAieDma_ShimBdSetNext(&ShimDMAInst_7_0,  /* bd */ 0,  /* nextbd */ 0);
@@ -19,11 +19,12 @@
 // to insert packet headers for shim DMA BDs.
 //
 module @aie_module  {
+ AIE.device(xcvc1902) {
   %t70 = AIE.tile(7, 0)
   %t71 = AIE.tile(7, 1)
 
   %10 = AIE.lock(%t71, 1)
-  %11 = AIE.buffer(%t71) {sym_name = "buf1"} : memref<32xi32, 2>
+  %11 = AIE.buffer(%t71) {address = 3072 : i32, sym_name = "buf1"} : memref<32xi32, 2>
   %buffer = AIE.external_buffer : memref<32xi32>
 
   %12 = AIE.mem(%t71)  {
@@ -54,4 +55,5 @@ module @aie_module  {
     AIE.packet_source<%t70, DMA : 0>
     AIE.packet_dest<%t71,   DMA : 0>
   }
+ }
 }

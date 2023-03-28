@@ -26,21 +26,20 @@ using namespace xilinx::AIEX;
 
 struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
   using OpConversionPattern<UseTokenOp>::OpConversionPattern;
-  ModuleOp &module;
   DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks;
   DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks;
   DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
       &lockChains;
 
   Token2LockLowering(
-      MLIRContext *context, ModuleOp &m,
+      MLIRContext *context,
       DenseMap<Operation *, std::vector<std::pair<Value, int>>> &acqLocks,
       DenseMap<Operation *, std::vector<std::pair<Value, int>>> &relLocks,
       DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
           &lockChains,
       PatternBenefit benefit = 1)
-      : OpConversionPattern<UseTokenOp>(context, benefit), module(m),
-        acqLocks(acqLocks), relLocks(relLocks), lockChains(lockChains) {}
+      : OpConversionPattern<UseTokenOp>(context, benefit), acqLocks(acqLocks),
+        relLocks(relLocks), lockChains(lockChains) {}
 
   LogicalResult
   matchAndRewrite(UseTokenOp op, OpAdaptor adaptor,
@@ -131,10 +130,10 @@ static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
 struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
-    TokenAnalysis TA(m);
+    TokenAnalysis TA(device);
     TA.runAnalysis();
     LLVM_DEBUG(TA.print(llvm::dbgs()));
     DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap(
@@ -218,15 +217,15 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
     target.addLegalOp<UseLockOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<Token2LockLowering>(m.getContext(), m, acqLocks, relLocks,
+    patterns.insert<Token2LockLowering>(device.getContext(), acqLocks, relLocks,
                                         lockChains);
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIEX::createAIECreateLocksPass() {
   return std::make_unique<AIECreateLocksPass>();
 }

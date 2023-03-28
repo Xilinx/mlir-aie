@@ -22,6 +22,7 @@
 // CHECK33:  }
 
 module @local_locks {
+ AIE.device(xcvc1902) {
   %3 = AIE.tile(3, 3)
   %11 = AIE.core(%3)  {
     %c56 = arith.constant 56 : index
@@ -29,5 +30,6 @@ module @local_locks {
     AIE.useLock(%c56, Release, 1)
     AIE.end
   }
+ }
 }
 

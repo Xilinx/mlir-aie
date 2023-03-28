@@ -36,6 +36,7 @@
 // Test LLVM lowering to some AIE scalar intrinsic functions (streams, cascades)
 // Each core's region is lowered to LLVM Dialect
 module @test_core_llvm0 {
+ AIE.device(xcvc1902) {
   %tile11 = AIE.tile(1, 1)
   %tile21 = AIE.tile(2, 1)
 
@@ -62,4 +63,5 @@ module @test_core_llvm0 {
     AIE.end
   }
 
+ }
 }

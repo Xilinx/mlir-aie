@@ -16,8 +16,10 @@
 // CHECK:        XAIETILE_SHIM_STRM_MUX_DMA);
 
 module {
+ AIE.device(xcvc1902) {
   %t20 = AIE.tile(2, 0)
   %mux = AIE.shimmux(%t20)  {
     AIE.connect<DMA : 0, North : 3>
   }
+ }
 }

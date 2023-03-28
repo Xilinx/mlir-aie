@@ -28,10 +28,9 @@ template <typename MyOp>
 struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
-  ModuleOp &module;
 
-  AIEOpRemoval(MLIRContext *context, ModuleOp &m, PatternBenefit benefit = 1)
-      : OpConversionPattern<MyOp>(context, benefit), module(m) {}
+  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern<MyOp>(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(MyOp op, OpAdaptor adaptor,
@@ -243,8 +242,8 @@ struct AIERoutePacketFlowsPass
   }
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
     ConversionTarget target(getContext());
 
@@ -270,7 +269,7 @@ struct AIERoutePacketFlowsPass
     SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
     DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
 
-    for (auto tileOp : m.getOps<TileOp>()) {
+    for (auto tileOp : device.getOps<TileOp>()) {
       int col = tileOp.colIndex();
       int row = tileOp.rowIndex();
       tiles[std::make_pair(col, row)] = tileOp;
@@ -279,7 +278,7 @@ struct AIERoutePacketFlowsPass
     // The logical model of all the switchboxes.
     DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
         switchboxes;
-    for (auto pktflow : m.getOps<PacketFlowOp>()) {
+    for (auto pktflow : device.getOps<PacketFlowOp>()) {
       Region &r = pktflow.getPorts();
       Block &b = r.front();
       int flowID = pktflow.IDInt();
@@ -657,7 +656,8 @@ struct AIERoutePacketFlowsPass
     // From BLI to shimDMA: 1) North   2 --> shimDMA 0
     //                      2) North   3 --> shimDMA 1
 
-    for (auto switchbox : llvm::make_early_inc_range(m.getOps<SwitchboxOp>())) {
+    for (auto switchbox :
+         llvm::make_early_inc_range(device.getOps<SwitchboxOp>())) {
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
 
@@ -675,7 +675,7 @@ struct AIERoutePacketFlowsPass
       // Find if the corresponding shimmux exsists or not
       int shim_exist = 0;
       ShimMuxOp shimOp;
-      for (auto shimmux : m.getOps<ShimMuxOp>()) {
+      for (auto shimmux : device.getOps<ShimMuxOp>()) {
         if (shimmux.getTile() == tileOp) {
           shim_exist = 1;
           shimOp = shimmux;
@@ -776,14 +776,14 @@ struct AIERoutePacketFlowsPass
     }
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<AIEOpRemoval<PacketFlowOp>>(m.getContext(), m);
+    patterns.add<AIEOpRemoval<PacketFlowOp>>(device.getContext());
 
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIERoutePacketFlowsPass() {
   return std::make_unique<AIERoutePacketFlowsPass>();
 }

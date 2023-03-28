@@ -112,6 +112,7 @@
 // CHECK: }
 
 module @non_adjacency {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
@@ -152,4 +153,5 @@ module @non_adjacency {
         
         AIE.end
     }
+ }
 }

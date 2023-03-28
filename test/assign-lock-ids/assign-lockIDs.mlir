@@ -44,6 +44,7 @@
 // CHECK:    %32 = AIE.lock(%31, 0)
 
 module @test_assign_lockIDs {
+ AIE.device(xcvc1902) {
   %t22 = AIE.tile(2, 2)
   %t23 = AIE.tile(2, 3)
   %t33 = AIE.tile(3, 3)
@@ -82,4 +83,5 @@ module @test_assign_lockIDs {
 
   %t60 = AIE.tile(6, 0)
   %l60 = AIE.lock(%t60)
+ }
 }

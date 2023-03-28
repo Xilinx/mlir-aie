@@ -71,6 +71,7 @@
 // CHECK: }
 
 module @shimRow_mem {
+ AIE.device(xcvc1902) {
     %tile71 = AIE.tile(7, 1)
     %tile70 = AIE.tile(7, 0)
 
@@ -96,4 +97,5 @@ module @shimRow_mem {
         
         AIE.end
     }
+ }
 }

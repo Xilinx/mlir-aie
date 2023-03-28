@@ -67,10 +67,12 @@
 // Using Blocks also allows us to inject lock/token Ops more naturally (instead of having to create
 // a new op with locking mechanism -- which is clunky and makes it harder to do locking analysis ...)
 module @test_dma0 {
+ AIE.device(xcvc1902) {
   %t11 = AIE.tile(1, 1)
   %t22 = AIE.tile(2, 2)
 
   %buf0 = memref.alloc() : memref<256xi32>
+  
   %buf1 = memref.alloc() : memref<256xi32>
 
   AIEX.token(0) { sym_name="token0" }
@@ -92,4 +94,5 @@ module @test_dma0 {
   func.call @task0(%buf0) { aie.x = 1, aie.y = 1 } : (memref<256xi32>) -> ()
   AIEX.memcpy @token0(1, 2) (%t11 : <%buf0, 0, 256>, %t22 : <%buf1, 0, 256>) : (memref<256xi32>, memref<256xi32>)
   func.call @task1(%buf1) { aie.x = 2, aie.y = 2 } : (memref<256xi32>) -> ()
+ }
 }

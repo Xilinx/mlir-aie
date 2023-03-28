@@ -23,6 +23,7 @@
 // CHECK:        XAIETILE_SHIM_STRM_DEM_PL);
 
 module {
+ AIE.device(xcvc1902) {
   %t20 = AIE.tile(2, 0)
   %t21 = AIE.tile(2, 1)
   %4 = AIE.switchbox(%t20)  {
@@ -34,4 +35,5 @@ module {
   %6 = AIE.shimmux(%t20)  {
     AIE.connect<North : 2, PLIO : 2>
   }
+ }
 }

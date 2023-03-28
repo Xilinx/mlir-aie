@@ -68,6 +68,7 @@
 
 // many-to-one, 3 streams, 1 arbiters
 module @test_ps7_xaie {
+ AIE.device(xcvc1902) {
   %t01 = AIE.tile(0, 1)
   %t11 = AIE.tile(1, 1)
 
@@ -89,6 +90,7 @@ module @test_ps7_xaie {
       AIE.rule(0x1F, 0x2, %a0_0)
     }
   }
+ }
 }
 
 //module @test_ps7_logical {

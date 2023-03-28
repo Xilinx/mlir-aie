@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
 // CHECK-LABEL: module @test_lock3 {
-// CHECK-NEXT:  %0 = AIE.tile(4, 4)
+// CHECK:       %0 = AIE.tile(4, 4)
 // CHECK-NEXT:  %1 = AIE.lock(%0, 0)
 // CHECK-NEXT:  %2 = AIE.tile(3, 3)
 // CHECK-NEXT:  %3 = AIE.lock(%2, 0)
@@ -56,6 +56,7 @@
 // [Core-Mem] ---> [Core-Mem] (non-neighboring tiles)
 // single producer, single consumer
 module @test_lock3 {
+ AIE.device(xcvc1902) {
   %t44 = AIE.tile(4, 4)
   %t33 = AIE.tile(3, 3)
   %buf33 = AIE.buffer(%t33) : memref<256xi32>
@@ -98,4 +99,5 @@ module @test_lock3 {
   }
 
   AIE.flow(%t33, DMA : 0, %t44, DMA : 0)
+ }
 }
