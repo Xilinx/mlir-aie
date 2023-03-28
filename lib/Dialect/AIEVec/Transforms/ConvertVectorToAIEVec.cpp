@@ -40,6 +40,8 @@ namespace xilinx::aievec {
 #define GEN_PASS_DEF_CANONICALIZEFORAIEVEC
 #define GEN_PASS_DEF_REDUNDANTLOADSTOREOPTIMIZATION
 #define GEN_PASS_DEF_AIEVECTRANSFORMATION
+#define GEN_PASS_DEF_AIEVECCONVOPTRANSFORMATION
+
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 } // namespace xilinx::aievec
 
@@ -55,6 +57,10 @@ using namespace arith;
 using namespace vector;
 using namespace xilinx;
 using namespace xilinx::aievec;
+
+typedef std::tuple<int8_t, aievec::UPDOp, arith::MulIOp> MulDefTupleTy;
+using MulDefTupleVecTy = SmallVector<MulDefTupleTy, 8>;
+using MulDefMapTy = DenseMap<Value, MulDefTupleVecTy>;
 
 #define DEBUG_TYPE "aievec-lowering"
 
@@ -562,6 +568,532 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
 using SetInboundsToReadOp = SetInboundsToReadStoreOpPattern<TransferReadOp>;
 using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
 
+// Linearize the exprVec as a strided access, but do not simplify
+static AffineExpr makeFlattenedStridedExpr(ArrayRef<int64_t> sizes,
+                                           ArrayRef<AffineExpr> exprs,
+                                           MLIRContext *context) {
+  assert(!sizes.empty() && !exprs.empty() &&
+         "expected non-empty sizes and exprs");
+  if (llvm::is_contained(sizes, 0))
+    return getAffineConstantExpr(0, context);
+
+  auto maps = AffineMap::inferFromExprList(exprs);
+  assert(!maps.empty() && "Expected one non-empty map");
+  unsigned nSymbols = maps[0].getNumSymbols();
+
+  AffineExpr expr;
+  bool dynamicPoisonBit = false;
+  int64_t runningSize = 1;
+  for (auto en : llvm::zip(llvm::reverse(exprs), llvm::reverse(sizes))) {
+    int64_t size = std::get<1>(en);
+
+    if (size == 0)
+      continue;
+    AffineExpr dimExpr = std::get<0>(en);
+    AffineExpr stride = dynamicPoisonBit
+                            ? getAffineSymbolExpr(nSymbols++, context)
+                            : getAffineConstantExpr(runningSize, context);
+    expr = expr ? expr + dimExpr * stride : dimExpr * stride;
+    if (size > 0) {
+      runningSize *= size;
+      assert(runningSize > 0 && "integer overflow in size computation");
+    } else {
+      dynamicPoisonBit = true;
+    }
+  }
+  return expr;
+}
+
+// Construct a linearized affine expression for the transfer_read op.
+static AffineExpr constructLinearizedAffineExpr(aievec::UPDOp updOp) {
+  SmallVector<Value, 4> indices(updOp.getIndices().begin(),
+                                updOp.getIndices().end());
+  MemRefType memRefType = updOp.getSource().getType().cast<MemRefType>();
+  MLIRContext *context = memRefType.getContext();
+
+  SmallVector<AffineExpr, 8> exprVec;
+  DenseMap<Value, AffineExpr> indexToExprDimMap;
+  for (auto idxAndValue : llvm::enumerate(indices)) {
+    auto value = idxAndValue.value();
+    if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
+      AffineMap map = apOf.getAffineMap();
+      assert(map.getNumResults() == 1 &&
+             "Failed to create linearized affineExpr for complicated index");
+      SmallVector<AffineExpr, 4> indexExprs;
+
+      for (auto index : apOf.getMapOperands()) {
+        if (auto cIdx = index.getDefiningOp<arith::ConstantOp>()) {
+          auto idxVal = cIdx.getValue().cast<IntegerAttr>().getValue();
+          unsigned idx = idxVal.getSExtValue();
+          indexExprs.push_back(getAffineConstantExpr(idx, context));
+        } else {
+          if (!indexToExprDimMap.count(index))
+            indexToExprDimMap[index] =
+                getAffineDimExpr(indexToExprDimMap.size(), context);
+          indexExprs.push_back(indexToExprDimMap[index]);
+        }
+      }
+
+      exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
+    } else if (auto cOp = value.getDefiningOp<arith::ConstantOp>()) {
+      auto idxVal = cOp.getValue().cast<IntegerAttr>().getValue();
+      unsigned idx = idxVal.getSExtValue();
+      exprVec.push_back(getAffineConstantExpr(idx, context));
+    } else {
+      if (!indexToExprDimMap.count(value))
+        indexToExprDimMap[value] =
+            getAffineDimExpr(indexToExprDimMap.size(), context);
+      exprVec.push_back(indexToExprDimMap[value]);
+    }
+  }
+
+  assert(!exprVec.empty() && "Could not construct linearized affineExpr");
+
+  auto ret = makeFlattenedStridedExpr(memRefType.getShape(), exprVec,
+                                      memRefType.getContext());
+
+  return ret;
+}
+
+// From a linearized affine expression, compute the base and the constant
+// offset. If the access is A[i][j+2] for an N*N array A, the linearized
+// expression will be A[i*N+j+2]. The base in this case will be (i*N+j), and the
+// offset will be 2.
+static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
+  AffineExpr base = expr;
+  int32_t offset = 0;
+
+  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+    base = nullptr;
+    offset += constExpr.getValue();
+  } else if (auto binopExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+    if (binopExpr.getKind() == AffineExprKind::Add) {
+      AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
+      if (auto constExpr = lhs.dyn_cast<AffineConstantExpr>()) {
+        base = rhs;
+        offset += constExpr.getValue();
+      }
+      if (auto constExpr = rhs.dyn_cast<AffineConstantExpr>()) {
+        base = base == rhs ? nullptr : lhs;
+        offset += constExpr.getValue();
+      }
+    }
+  }
+  return std::make_pair(base, offset);
+}
+
+static arith::MulIOp getDefMulOp(arith::AddIOp addOp) {
+  arith::MulIOp defLhs =
+      dyn_cast<arith::MulIOp>(addOp->getOperand(0).getDefiningOp());
+  arith::MulIOp defRhs =
+      dyn_cast<arith::MulIOp>(addOp->getOperand(1).getDefiningOp());
+  if (!defLhs && !defRhs) {
+    return nullptr;
+  }
+  if (defLhs && defRhs) {
+    return defLhs->isBeforeInBlock(defRhs) ? defRhs : defLhs;
+  }
+  return defLhs ? defLhs : defRhs;
+}
+
+static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
+  arith::AddIOp defLhs =
+      dyn_cast<arith::AddIOp>(addOp->getOperand(0).getDefiningOp());
+  arith::AddIOp defRhs =
+      dyn_cast<arith::AddIOp>(addOp->getOperand(1).getDefiningOp());
+  if ((!defLhs && !defRhs) || (defLhs && defRhs)) {
+    return nullptr;
+  }
+  return defLhs ? defLhs : defRhs;
+}
+
+static bool checkLegalityForChain(arith::MulIOp mulOp,
+                                  MulDefMapTy &macChainMap) {
+  // Get the mul op's lhs and rhs defining ops. We keep splat op at
+  // rhs.
+  if (isa<aievec::BroadcastOp>(mulOp.getOperand(0).getDefiningOp())) {
+    Value left = mulOp->getOperand(0);
+    Value right = mulOp->getOperand(1);
+    mulOp->setOperand(0, right);
+    mulOp->setOperand(1, left);
+  }
+
+  if (!isa<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp())) {
+    return false;
+  }
+
+  aievec::BroadcastOp bcastOp =
+      dyn_cast<aievec::BroadcastOp>(mulOp->getOperand(1).getDefiningOp());
+
+  if (!isa<aievec::UPDOp>(bcastOp.getSource().getDefiningOp())) {
+    return false;
+  }
+
+  aievec::UPDOp updOp =
+      cast<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp());
+
+  if (!macChainMap.count(bcastOp.getSource())) {
+    MulDefTupleVecTy tupleVec;
+    tupleVec.push_back(std::make_tuple(bcastOp.getIdx(), updOp, mulOp));
+    macChainMap.insert(std::make_pair(bcastOp.getSource(), tupleVec));
+  } else {
+    macChainMap[bcastOp.getSource()].push_back(
+        std::make_tuple(bcastOp.getIdx(), updOp, mulOp));
+  }
+  return true;
+}
+
+static bool canFoldMulAddChainToConvOp(
+    arith::AddIOp addOp, MulDefMapTy &macChainMap,
+    SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
+    unsigned &dupFactor) {
+  if (!isa<VectorType>(addOp.getType())) {
+    return false;
+  }
+
+  VectorType resultType = addOp.getResult().getType().cast<VectorType>();
+
+  if (!resultType.getElementType().isa<IntegerType>()) {
+    return false;
+  }
+
+  IntegerType resultElType = resultType.getElementType().cast<IntegerType>();
+  unsigned resultElWidth = resultElType.getWidth();
+  unsigned laneSize = getVectorLaneSize(resultType);
+
+  if ((laneSize != 32 || resultElWidth != 8) &&
+      (laneSize != 16 || resultElWidth != 16)) {
+    return false;
+  }
+
+  if (!addOp->hasOneUse()) {
+    return false;
+  }
+
+  // Search for the last add op in the block.
+  auto usrOp = *addOp->getUsers().begin();
+  if (!usrOp || isa<arith::AddIOp>(usrOp) || isa<arith::MulIOp>(usrOp)) {
+    return false;
+  }
+
+  arith::AddIOp curAddOp = addOp;
+  // Build a mul add Chain map by recording the def of mul ops.
+  // Identify the chain by checking the legality of their ops.
+  while (true) {
+    arith::MulIOp defLhs =
+        dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
+    arith::MulIOp defRhs =
+        dyn_cast<arith::MulIOp>(curAddOp->getOperand(1).getDefiningOp());
+
+    if (!defLhs && !defRhs) {
+      break;
+      // If both ops of add op are mul ops, this will reach the top of the
+      // chain. Check the legality for both mul op and add them to the chain
+      // map.
+    } else if (defLhs && defRhs) {
+      if (!checkLegalityForChain(defLhs, macChainMap) ||
+          !checkLegalityForChain(defRhs, macChainMap)) {
+        break;
+      }
+    } else {
+      arith::MulIOp curMulOp = defLhs ? defLhs : defRhs;
+      if (!checkLegalityForChain(curMulOp, macChainMap)) {
+        break;
+      }
+    }
+
+    // Get the def add op the curOp operands
+    arith::AddIOp defAddOp = getDefAddOp(curAddOp);
+
+    // The user/consumer user operation must be an add op, belonging to
+    // the same basic block as curOp.
+    if (!defAddOp || !defAddOp->hasOneUse() ||
+        curAddOp->getBlock() != defAddOp->getBlock()) {
+      break;
+    }
+    curAddOp = defAddOp;
+  }
+
+  if (macChainMap.empty()) {
+    return false;
+  }
+
+  if (std::any_of(macChainMap.begin(), macChainMap.end(),
+                  [](const auto &p) { return p.second.size() < 2; }))
+    return false;
+
+  for (auto item : macChainMap) {
+    auto macChain = item.second;
+    std::sort(macChain.begin(), macChain.end());
+    int8_t curIdx = 0;
+    aievec::UPDOp curUpdOp = nullptr;
+    arith::MulIOp curMulOp = nullptr;
+    std::tie(curIdx, curUpdOp, curMulOp) = *macChain.begin();
+    int xDist = -1, zDist = -1;
+    SmallVector<int32_t, 2> dists;
+    SmallVector<arith::MulIOp, 8> fusedOps;
+    fusedOps.push_back(curMulOp);
+
+    for (auto it = std::next(macChain.begin()); it != macChain.end(); ++it) {
+      int8_t nextIdx = 0;
+      aievec::UPDOp nextUpdOp = nullptr;
+      arith::MulIOp nextMulOp = nullptr;
+      std::tie(nextIdx, nextUpdOp, nextMulOp) = *it;
+
+      int32_t dist = nextIdx - curIdx;
+
+      // Target AIE-ML intrinsic mac_conv_32x8 for v32int8 type and
+      // mac_conv_16x4 for v16int16 type. Thus, the distance of broadcast op
+      // source between two mul add ops cannot be larger than 32/8 or 16/4,
+      // which is 4. If dist is larger than 1, we need to shuffle the load to
+      // get the elements with the interval of dist.
+      if (dist > 4) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+
+      dists.push_back(dist);
+      if (curUpdOp.getSource() != nextUpdOp.getSource()) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+
+      MemRefType curMemRefType =
+          curUpdOp.getSource().getType().cast<MemRefType>();
+      MemRefType nextMemRefType =
+          nextUpdOp.getSource().getType().cast<MemRefType>();
+
+      ArrayRef<int64_t> curSizes = curMemRefType.getShape();
+      ArrayRef<int64_t> nextSizes = nextMemRefType.getShape();
+      if (curSizes.size() != nextSizes.size()) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+
+      AffineExpr curLinearAccess = constructLinearizedAffineExpr(curUpdOp);
+      AffineExpr nextLinearAccess = constructLinearizedAffineExpr(nextUpdOp);
+      AffineExpr curBase, nextBase;
+      int32_t curOffset, nextOffset;
+
+      // Get the base and offset from linear access expr
+      std::tie(curBase, curOffset) = getBaseAndOffset(curLinearAccess);
+      std::tie(nextBase, nextOffset) = getBaseAndOffset(nextLinearAccess);
+      if (curBase != nextBase) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+
+      dist = nextOffset - curOffset;
+      if (dist != 1) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+      dists.push_back(dist);
+
+      if ((xDist != -1 && xDist != dists[0]) ||
+          (zDist != -1 && zDist != dists[1])) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+
+      xDist = dists[0];
+      zDist = dists[1];
+      dupFactor = dists[0];
+
+      fusedOps.push_back(nextMulOp);
+
+      if (fusedOps.size() > (resultElWidth == 16 ? 4 : 8)) {
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+      std::tie(curIdx, curUpdOp, curMulOp) = *it;
+    }
+    groupFusedOps.push_back(fusedOps);
+  }
+
+  for (auto fusedOps : groupFusedOps) {
+    unsigned numFusedOps = fusedOps.size();
+    if (numFusedOps < 2) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+struct FoldMulAddChainToConvOpPattern
+    : public OpConversionPattern<arith::AddIOp> {
+  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
+
+  FoldMulAddChainToConvOpPattern(MLIRContext *context, AnalysisManager &am)
+      : OpConversionPattern<arith::AddIOp>(context), am(am) {}
+
+  LogicalResult
+  matchAndRewrite(arith::AddIOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
+    MulDefMapTy macChainMap;
+    unsigned dupFactor = 1;
+
+    if (!canFoldMulAddChainToConvOp(srcOp, macChainMap, groupFusedOps,
+                                    dupFactor)) {
+      return failure();
+    }
+
+    arith::MulIOp mOp = rewriter.replaceOpWithNewOp<arith::MulIOp>(
+        srcOp, adaptor.getLhs(), adaptor.getLhs());
+
+    //  arith::AddIOp aOp= rewriter.replaceOpWithNewOp<arith::AddIOp>(
+    //        srcOp, mOp->getOperand(0), mOp->getOperand(0));
+
+    /*
+        for (auto fusedOps : groupFusedOps) {
+          arith::MulIOp curMulOp = (*fusedOps.begin());
+          arith::AddIOp curAddOp =
+              cast<arith::AddIOp>(*curMulOp->getUsers().begin());
+          Operation *addLhs =
+              dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
+          Operation *addRhs =
+              dyn_cast<arith::MulIOp>(curAddOp->getOperand(1).getDefiningOp());
+          bool isMulConv = false;
+          Value acc = nullptr;
+
+          if (addLhs && addRhs) {
+            isMulConv = true;
+          } else {
+            acc = addLhs ? curAddOp->getOperand(1) : curAddOp->getOperand(0);
+          }
+
+          Value lhs = curMulOp->getOperand(0);
+          Value rhs = curMulOp->getOperand(1);
+          VectorType vType = curMulOp.getResult().getType().cast<VectorType>();
+          Type sType = vType.getElementType();
+          IntegerType iType = sType.cast<IntegerType>();
+          unsigned width = iType.getWidth() <= 8 ? 32 : 64;
+          int32_t M = iType.getWidth() == 8 ? 32 : 16;
+          int32_t N = iType.getWidth() == 8 ? 8 : 4;
+
+          Type ctype = mlir::IntegerType::get(iType.getContext(), width);
+          Type opType = VectorType::get(vType.getShape(), ctype);
+
+          aievec::BroadcastOp bcastOp =
+       cast<aievec::BroadcastOp>(rhs.getDefiningOp()); aievec::UPDOp bcastUPDOp
+       = cast<aievec::UPDOp>(bcastOp.getSource().getDefiningOp());
+          SmallVector<Value, 4> indices(bcastUPDOp.getIndices().begin(),
+                                        bcastUPDOp.getIndices().end());
+          unsigned lanes = 512 / getElementSizeInBits(vType);
+          VectorType resType = createVectorType(lanes, sType);
+          Value innerMostIdx = indices[indices.size() - 1];
+          Value newIdx = innerMostIdx;
+          int64_t val = -1;
+          int64_t defIdx = -1;
+          if (auto idxDefOp = innerMostIdx.getDefiningOp()) {
+            if (auto constOp = dyn_cast<arith::ConstantOp>(idxDefOp)) {
+              val = constOp.getValue().cast<IntegerAttr>().getInt();
+              if (val) {
+                defIdx = val / lanes * lanes;
+                val %= lanes;
+                newIdx = rewriter.create<arith::ConstantOp>(
+                    constOp.getLoc(),
+                    rewriter.getIntegerAttr(constOp.getType(), defIdx));
+                indices[indices.size() - 1] = newIdx;
+              }
+            }
+          }
+
+          aievec::UPDOp newBcastOp = bcastUPDOp;
+
+          if (vType != resType) {
+            newBcastOp = rewriter.replaceOpWithNewOp<aievec::UPDOp>(
+                bcastUPDOp, resType, bcastUPDOp.getSource(), indices, 0, 0,
+                TypedValue<VectorType>(nullptr));
+          }
+
+          Operation *shuffleOp = newBcastOp;
+          if (dupFactor != 1) {
+            shuffleOp = rewriter.create<aievec::ShuffleOp>(
+                newBcastOp.getLoc(), resType, newBcastOp.getResult(), 0);
+          }
+
+          int32_t shiftBytes = (bcastOp.getIdx() + val) *
+                               getElementSizeInBits(vType) / 8 / dupFactor;
+
+          rhs = shuffleOp->getResult(0);
+
+          if (shiftBytes) {
+            SmallVector<Value> sources = {shuffleOp->getResult(0)};
+
+            rhs = rewriter.create<aievec::ShiftOp>(
+                shuffleOp->getLoc(),
+       sources.back().getType().cast<VectorType>(), sources, shiftBytes);
+          }
+
+          aievec::UPDOp lUPDOp = cast<aievec::UPDOp>(lhs.getDefiningOp());
+          SmallVector<Value, 8> lIndices;
+          lIndices.append(lUPDOp.getIndices().begin(),
+       lUPDOp.getIndices().end());
+
+          lhs = rewriter.replaceOpWithNewOp<aievec::UPDOp>(
+              lUPDOp, resType, lUPDOp.getSource(), lIndices, 0, 0,
+              TypedValue<VectorType>(nullptr));
+
+          auto notMulOrAddOp = [&](Operation *op) {
+            return !isa<arith::MulIOp, arith::AddIOp>(op);
+          };
+
+          arith::AddIOp lastAddOp =
+              cast<arith::AddIOp>(*(fusedOps.back()->getUsers().begin()));
+
+          aievec::MulConvOp convOp =
+       rewriter.create<aievec::MulConvOp>(srcOp.getLoc(), opType, lhs, rhs, M,
+       N); rewriter.replaceOpWithNewOp<aievec::SRSOp>( srcOp, vType,
+       convOp.getResult());
+        }*/
+
+    return success();
+  }
+  AnalysisManager &am;
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -598,6 +1130,12 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
+static void
+populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
+                                           AnalysisManager &am) {
+  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am);
+}
+
 //===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
@@ -609,8 +1147,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
   target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
   target.addIllegalOp<vector::TransferReadOp>();
-  target.addDynamicallyLegalOp<arith::AddIOp>(
-      [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
+  // target.addDynamicallyLegalOp<arith::AddIOp>(
+  //    [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubIOp>(
@@ -667,6 +1205,17 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
       });
 }
 
+static void
+configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
+                                                 AnalysisManager &am) {
+  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
+    SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
+    MulDefMapTy macChainMap;
+    unsigned dupFactor = 1;
+    return !canFoldMulAddChainToConvOp(op, macChainMap, groupFusedOps,
+                                       dupFactor);
+  });
+}
 //===----------------------------------------------------------------------===//
 // Lowering passes
 //===----------------------------------------------------------------------===//
@@ -848,6 +1397,40 @@ void AIEVecTransformationPass::runOnOperation() {
   }
 }
 
+struct AIEVecConvOpTransformationPass
+    : public aievec::impl::AIEVecConvOpTransformationBase<
+          AIEVecConvOpTransformationPass> {
+  using Base::Base;
+  void runOnOperation() override;
+};
+
+void AIEVecConvOpTransformationPass::runOnOperation() {
+  auto func = getOperation();
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
+  ConversionTarget target(*context);
+  AIEArch aieVersion = AIEArch::AIE;
+  if (!aieTarget.empty()) {
+    std::string target = aieTarget;
+    if (target == "aieml") {
+      aieVersion = AIEArch::AIE_ML;
+    } else if (target != "aie") {
+      func.emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
+    }
+  }
+
+  AnalysisManager am = getAnalysisManager();
+  if (aieVersion == AIEArch::AIE_ML) {
+    populateAIEVecConvOpTransformationPatterns(patterns, am);
+    configureAIEVecConvOpTransformationLegalizations(target, am);
+  }
+
+  if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+}
 //===---------------------------------------------------------------------------
 // Pipeline implementations
 //===---------------------------------------------------------------------------
@@ -869,6 +1452,12 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // Add AIEVec transformation pass
   pm.addPass(
       createAIEVecTransformation(options.getAIEVecTransformationOptions()));
+
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+
+  pm.addPass(createAIEVecConvOpTransformation(
+      options.getAIEVecConvOpTransformationOptions()));
 
   // Add post-lowering canonicalization passes
   pm.addPass(createCSEPass());
