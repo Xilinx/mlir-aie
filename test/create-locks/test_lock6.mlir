@@ -73,6 +73,7 @@
 // [Core-Mem] ---/
 // multiple producers, single consumer
 module @test_lock6 {
+ AIE.device(xcvc1902) {
   %t55 = AIE.tile(5, 5)
   %t44 = AIE.tile(4, 4)
   %t33 = AIE.tile(3, 3)
@@ -147,4 +148,5 @@ module @test_lock6 {
 
   AIE.flow(%t33, DMA : 0, %t55, DMA : 0)
   AIE.flow(%t44, DMA : 0, %t55, DMA : 1)
+ }
 }

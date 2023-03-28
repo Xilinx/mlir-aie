@@ -55,6 +55,7 @@
 // CHECK:  }
 
 module @test_xaie0 {
+ AIE.device(xcvc1902) {
   %t11 = AIE.tile(1, 1)
   %t34 = AIE.tile(3, 4)
   %t32 = AIE.tile(3, 2)
@@ -92,4 +93,5 @@ module @test_xaie0 {
     AIE.useLock(%l43_8, Release, 1)
     AIE.end
   }
+ }
 }

@@ -83,6 +83,7 @@
 // Lowering AIE::memcpy to AIE::DMAStartOp and AIE::DMABDOp
 // producer --> consumer/producer --> consumer
 module @test_dma3 {
+ AIE.device(xcvc1902) {
   %t11 = AIE.tile(1, 1) // producer
   %t22 = AIE.tile(2, 2) // consumer/producer
   %t33 = AIE.tile(3, 3) // consumer
@@ -119,4 +120,5 @@ module @test_dma3 {
   func.call @task1(%buf1) { aie.x = 2, aie.y = 2 } : (memref<256xi32>) -> ()
   AIEX.memcpy @token0(3, 4) (%t22 : <%buf1, 0, 256>, %t33 : <%buf2, 0, 256>) : (memref<256xi32>, memref<256xi32>)
   func.call @task2(%buf2) { aie.x = 3, aie.y = 3 } : (memref<256xi32>) -> ()
+ }
 }

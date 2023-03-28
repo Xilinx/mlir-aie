@@ -38,6 +38,7 @@
 // We promote the scalar argument to memref kind (single-element)
 // For now, we only support scalar type of int type or float type
 module @test_core1 {
+ AIE.device(xcvc1902) {
   %buf = memref.alloc() : memref<256xi32>
 
   func.func @aie_task(%arg0: memref<256xi32>, %arg1: i32) -> () {
@@ -53,4 +54,5 @@ module @test_core1 {
   %a = arith.constant 0 : i32
   func.call @aie_task(%buf, %a) { aie.x = 1, aie.y = 1 } : (memref<256xi32>, i32) -> ()
   func.call @host_task() : () -> ()
+ }
 }

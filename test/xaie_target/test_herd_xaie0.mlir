@@ -189,6 +189,7 @@
 //   Row Y+1: ifm[0][0-3]
 //   Row Y:   pp[0][0-3]
 module @test_herd_xaie0 {
+ AIE.device(xcvc1902) {
   %0 = AIE.herd[4][1] { sym_name = "pp" }      // herd ping-pong
   %1 = AIE.herd[4][1] { sym_name = "ifm" }     // herd input-feature-map
   %2 = AIE.herd[4][4] { sym_name = "compute" } // herd compute
@@ -302,4 +303,5 @@ module @test_herd_xaie0 {
   AIE.switchbox(%sel10) {
     AIE.connect<South : 1, DMA: 1>
   }
+ }
 }

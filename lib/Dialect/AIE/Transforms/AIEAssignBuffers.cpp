@@ -41,11 +41,11 @@ struct AIEAssignBufferAddressesPass
     registry.insert<xilinx::AIE::AIEDialect>();
   }
   void runOnOperation() override {
-    ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp device = getOperation();
+    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     // Make sure all the buffers have a name
     int counter = 0;
-    for (auto buffer : m.getOps<BufferOp>()) {
+    for (auto buffer : device.getOps<BufferOp>()) {
       if (!buffer.hasName()) {
         std::string name = "_anonymous";
         name += std::to_string(counter++);
@@ -54,13 +54,12 @@ struct AIEAssignBufferAddressesPass
       }
     }
 
-    int max_data_memory_size =
-        (getTargetArch(m) == AIEArch::AIE2) ? 0x10000 : 0x8000;
-
-    for (auto tile : m.getOps<TileOp>()) {
+    for (auto tile : device.getOps<TileOp>()) {
+      const auto &target_model = getTargetModel(tile);
+      int max_data_memory_size = target_model.getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
-      for (auto buffer : m.getOps<BufferOp>())
+      for (auto buffer : device.getOps<BufferOp>())
         if (buffer.getTileOp() == tile)
           buffers.push_back(buffer);
       // Sort by allocation size.
@@ -94,7 +93,7 @@ struct AIEAssignBufferAddressesPass
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEAssignBufferAddressesPass() {
   return std::make_unique<AIEAssignBufferAddressesPass>();
 }

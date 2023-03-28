@@ -71,6 +71,7 @@
 // CHECK: }
 
 module @register_external_buffers {
+ AIE.device(xcvc1902) {
     %tile71 = AIE.tile(7, 1)
     %tile70 = AIE.tile(7, 0)
 
@@ -96,4 +97,5 @@ module @register_external_buffers {
         
         AIE.end
     }
+ }
 }

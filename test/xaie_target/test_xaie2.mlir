@@ -27,6 +27,7 @@
 // CHECK: XAieDma_TileChControl(&(ctx->TileDMAInst[3][3]), XAIEDMA_TILE_CHNUM_S2MM0, XAIE_RESETDISABLE, XAIE_ENABLE);
 
 module @test_xaie2 {
+ AIE.device(xcvc1902) {
   %t33 = AIE.tile(3, 3)
 
   %buf33_0 = AIE.buffer(%t33) { address = 0x1000, sym_name = "buff33_0" }: memref<256xi32>
@@ -50,4 +51,5 @@ module @test_xaie2 {
     ^end:
       AIE.end
   }
+ }
 }

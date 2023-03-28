@@ -75,6 +75,7 @@
 
 
 module @registerPatterns  {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
     %tile33 = AIE.tile(3, 3)
@@ -105,4 +106,5 @@ module @registerPatterns  {
     AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength) 
     AIE.objectFifo.registerProcess<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %consAcqPattern1 : tensor<1xi32>, %consRelPattern1 : tensor<1xi32>, @consumer_work1, %consLength1) 
     AIE.objectFifo.registerProcess<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %consAcqPattern2 : tensor<1xi32>, %consRelPattern2 : tensor<1xi32>, @consumer_work2, %consLength2) 
+ }
 }

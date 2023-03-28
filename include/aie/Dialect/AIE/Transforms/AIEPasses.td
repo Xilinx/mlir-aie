@@ -13,7 +13,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "ModuleOp"> {
+def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
     Buffers in a tile generally have an address that does not significantly
@@ -27,13 +27,24 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
 }
 
-def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "ModuleOp"> {
+def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "DeviceOp"> {
   let summary = "Assigns the lockIDs of locks that do not have IDs.";
   let description = [{
     Assigns the lockIDs of locks that do not have IDs.
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignLockIDsPass()";
+}
+
+def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "ModuleOp"> {
+  let summary = "Canonicalize Designs to include a toplevel device";
+  let description = [{
+    This pass inserts a toplevel device operation in designs that do not have one.
+    This allows us to support backwards compatability for older models targetting the VC1902
+    device without explicit device operations. 
+  }];
+
+  let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
 }
 
 def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
@@ -63,7 +74,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
     "xilinx::AIE::AIEDialect",
   ];
 }
-def AIELocalizeLocks : Pass<"aie-localize-locks", "ModuleOp"> {
+def AIELocalizeLocks : Pass<"aie-localize-locks", "DeviceOp"> {
   let summary = "Convert global locks to a core-relative index";
   let description = [{
     An individual lock can be referenced by 4 different AIE cores.  However, each individual core
@@ -86,7 +97,7 @@ def AIELocalizeLocks : Pass<"aie-localize-locks", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIELocalizeLocksPass()";
 }
-def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "ModuleOp"> {
+def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp"> {
   let summary = "Remove non-default address spaces";
   let description = [{
     Early in the flow, it is convenient to represent multiple memories using different
@@ -117,7 +128,7 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
   ];
 }
 
-def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "ModuleOp"> {
+def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "DeviceOp"> {
   let summary = "Route aie.packetflow operations through switchboxes";
   let description = [{
     Replace each aie.packetflow operation with an equivalent set of aie.switchbox and aie.wire
@@ -159,7 +170,7 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
   ];
 }
 
-def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "ModuleOp"> {
+def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
   let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
   let description = [{
     Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
@@ -184,7 +195,7 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 }
 
-def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "ModuleOp"> {
+def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {
   let summary = "Generate acquire/release patterns for producer/consumer processes registered to an objectFifo";
   let description = [{
     Generate acquire/release patterns in the CoreOps of associated cores for each 

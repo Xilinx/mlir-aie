@@ -31,7 +31,17 @@ namespace AIE {
 
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
                                             llvm::raw_ostream &output) {
-  if (getTargetArch(module) == AIEArch::AIE2) {
+  DeviceOp targetOp;
+  for (auto tOp : module.getOps<DeviceOp>()) {
+    targetOp = tOp;
+    break; // Should only have 1 object in iterator
+  }
+  AIEArch arch = AIEArch::AIE1;
+  if (targetOp) {
+    arch = targetOp.getTargetModel().getTargetArch();
+  }
+
+  if (arch == AIEArch::AIE2) {
     output
         << "{\n"
         << "    \"SimulationConfig\": {\n"
@@ -159,6 +169,12 @@ must be called first. So, a more practical invocation: aie-opt
 */
 mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &output) {
+  DeviceOp targetOp;
+  for (auto tOp : module.getOps<DeviceOp>()) {
+    targetOp = tOp;
+    break; // Should only have 1 object in iterator
+  }
+
   // Generate boilerplate header
   output << "{\n";
   output << "  \"Placement\": [\n";
@@ -166,7 +182,7 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
   int shim_MM2S_count = 0;
 
   // For each DMAStartOp in shims, generate a "LogicalInstance" section
-  auto all_shim_ops = module.getOps<ShimDMAOp>();
+  auto all_shim_ops = targetOp.getOps<ShimDMAOp>();
   for (ShimDMAOp shimOp : all_shim_ops) {
     for (DMAStartOp startOp : shimOp.getOps<DMAStartOp>()) {
       // For aiesimulator to run, PortName must start at 00 and increase
@@ -223,10 +239,14 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   ./Work/reports/graph.xpe
   */
 
-  TargetOp targetOp;
-  for (TargetOp tOp : module.getOps<TargetOp>()) {
+  DeviceOp targetOp;
+  for (auto tOp : module.getOps<DeviceOp>()) {
     targetOp = tOp;
     break; // Should only have 1 object in iterator
+  }
+  AIEArch arch = AIEArch::AIE1;
+  if (targetOp) {
+    arch = targetOp.getTargetModel().getTargetArch();
   }
 
   // Generate boilerplate header
@@ -235,7 +255,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
          << "\n";
   output << "<POWERDATA data=\"AI-Engine Compiler\" dataVersion=\"2022.2\" "
             "design=\"graph\" date=\"2023\">\n";
-  if (getTargetArch(module) == AIEArch::AIE2) {
+  if (arch == AIEArch::AIE2) {
     output
         // AIE2 xcve2802
         << " <DEVICE part=\"xcve2802\" grade=\"extended\" package=\"vsvh1760\" "
@@ -251,10 +271,10 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   output << "  <AIE status=\"COMPILER_OUTPUT\">\n";
 
   // Generate design specific info on tiles within the mlir module
-  auto module_tile_ops = module.getOps<TileOp>();
+  auto module_tile_ops = targetOp.getOps<TileOp>();
   int num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());
   // TODO: clk_freq only 1150 for AIE2
-  if (getTargetArch(module) == AIEArch::AIE2) {
+  if (arch == AIEArch::AIE2) {
     output << "    <AIE_MODULE name=\"graph\" num_tiles=\""
            << std::to_string(num_tiles) << "\" clk_freq=\"1150\">\n";
   } else {
@@ -265,7 +285,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   // Get all CoreOps into a convenient map which can then be referenced by
   // coordinates
   std::map<std::pair<int, int>, std::vector<CoreOp>> coreMap;
-  for (CoreOp coreOp : module.getOps<CoreOp>())
+  for (CoreOp coreOp : targetOp.getOps<CoreOp>())
     coreMap[std::make_pair(coreOp.colIndex(), coreOp.rowIndex())].push_back(
         coreOp);
 
@@ -277,7 +297,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     if (row == 0)
       continue; // Skip shim tiles (handled below)
 
-    if (getTargetArch(module) == AIEArch::AIE2) {
+    if (arch == AIEArch::AIE2) {
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, and 2 mem rows hence row-3
           // AIE2 - xcve2802
@@ -323,7 +343,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   }
 
   // For each ShimOp in the module, generate a <SHIM> section
-  for (ShimDMAOp shimOp : module.getOps<ShimDMAOp>()) {
+  for (ShimDMAOp shimOp : targetOp.getOps<ShimDMAOp>()) {
     output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
            << ", " << std::to_string(shimOp.rowIndex()) << ")\" " <<
         // TODO: stream_util can be 0 for aiesim purposes?

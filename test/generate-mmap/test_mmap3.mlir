@@ -18,6 +18,7 @@
 // CHECK-NEXT: _symbol east 0x38000 16
 
 module @test_mmap1 {
+ AIE.device(xcvc1902) {
   %tsame = AIE.tile(3, 4)
   %twest = AIE.tile(2, 4) // Different column
   %teast = AIE.tile(4, 4) // Different column
@@ -29,4 +30,5 @@ module @test_mmap1 {
   %bufwest = AIE.buffer(%twest) { sym_name = "west", address = 0x0 } : memref<4xi32>
   %bufsouth = AIE.buffer(%tsouth) { sym_name = "south", address = 0x0 } : memref<4xi32>
   %bufnorth = AIE.buffer(%tnorth) { sym_name = "north", address = 0x0 } : memref<4xi32>
+ }
 }

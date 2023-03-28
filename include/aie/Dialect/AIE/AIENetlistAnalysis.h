@@ -32,7 +32,7 @@ namespace xilinx {
 namespace AIE {
 
 class NetlistAnalysis {
-  ModuleOp &module;
+  DeviceOp &device;
   DenseMap<std::pair<int, int>, Operation *> &tiles;
   DenseMap<Operation *, CoreOp> &cores;
   DenseMap<Operation *, MemOp> &mems;
@@ -49,14 +49,14 @@ class NetlistAnalysis {
   DenseMap<Operation *, SmallVector<Operation *, 4>> bufAcqLocks;
 
 public:
-  NetlistAnalysis(ModuleOp &m,
+  NetlistAnalysis(DeviceOp &d,
                   DenseMap<std::pair<int, int>, Operation *> &tiles,
                   DenseMap<Operation *, CoreOp> &cores,
                   DenseMap<Operation *, MemOp> &mems,
                   DenseMap<std::pair<Operation *, int>, LockOp> &locks,
                   DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers,
                   DenseMap<Operation *, SwitchboxOp> &switchboxes)
-      : module(m), tiles(tiles), cores(cores), mems(mems), locks(locks),
+      : device(d), tiles(tiles), cores(cores), mems(mems), locks(locks),
         buffers(buffers), switchboxes(switchboxes) {}
 
   void runAnalysis();

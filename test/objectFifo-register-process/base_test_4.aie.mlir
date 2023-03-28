@@ -50,6 +50,7 @@
 // CHECK:  }
 
 module @registerPatterns  {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
@@ -63,4 +64,5 @@ module @registerPatterns  {
     }
 
     AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<5xi32>, %releasePattern : tensor<5xi32>, @producer_work, %length) 
+ }
 }

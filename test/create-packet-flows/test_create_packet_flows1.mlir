@@ -26,6 +26,7 @@
 
 // many-to-one, single arbiter
 module @test_create_packet_flows1 {
+ AIE.device(xcvc1902) {
   %t11 = AIE.tile(1, 1)
 
   AIE.packet_flow(0x0) {
@@ -37,4 +38,5 @@ module @test_create_packet_flows1 {
     AIE.packet_source<%t11, West : 1>
     AIE.packet_dest<%t11, Core : 0>
   }
+ }
 }

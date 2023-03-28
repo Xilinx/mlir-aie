@@ -82,6 +82,7 @@
 // CHECK: }
 
 module @tileDMA_channels {
+ AIE.device(xcvc1902) {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
@@ -135,4 +136,5 @@ module @tileDMA_channels {
     ^bb5:
         AIE.end
     }
+ }
 }

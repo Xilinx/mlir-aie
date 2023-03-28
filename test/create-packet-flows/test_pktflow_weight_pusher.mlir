@@ -21,6 +21,7 @@
 // herd. What is missing here is the DMA configuration to set up the DMA in PacketSwitch mode.
 // Here we just concern with generating the packet-switched configuration automatically.
 module @test_pktflow_weight_pusher {
+ AIE.device(xcvc1902) {
   // Herd "compute"
 // CHECK:       module @test_pktflow_weight_pusher {
 
@@ -353,4 +354,5 @@ module @test_pktflow_weight_pusher {
     AIE.packet_dest<%tile55, DMA : 1>
   }
 
+ }
 }
