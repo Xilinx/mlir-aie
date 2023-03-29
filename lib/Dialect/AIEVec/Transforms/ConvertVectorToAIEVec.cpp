@@ -682,20 +682,6 @@ static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
   return std::make_pair(base, offset);
 }
 
-static arith::MulIOp getDefMulOp(arith::AddIOp addOp) {
-  arith::MulIOp defLhs =
-      dyn_cast<arith::MulIOp>(addOp->getOperand(0).getDefiningOp());
-  arith::MulIOp defRhs =
-      dyn_cast<arith::MulIOp>(addOp->getOperand(1).getDefiningOp());
-  if (!defLhs && !defRhs) {
-    return nullptr;
-  }
-  if (defLhs && defRhs) {
-    return defLhs->isBeforeInBlock(defRhs) ? defRhs : defLhs;
-  }
-  return defLhs ? defLhs : defRhs;
-}
-
 static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
   arith::AddIOp defLhs =
       dyn_cast<arith::AddIOp>(addOp->getOperand(0).getDefiningOp());
@@ -772,7 +758,7 @@ static bool canFoldMulAddChainToConvOp(
 
   // Search for the last add op in the block.
   auto usrOp = *addOp->getUsers().begin();
-  if (!usrOp || isa<arith::AddIOp>(usrOp) || isa<arith::MulIOp>(usrOp)) {
+  if (!usrOp || isa<arith::AddIOp>(usrOp)) {
     return false;
   }
 
@@ -822,8 +808,8 @@ static bool canFoldMulAddChainToConvOp(
                   [](const auto &p) { return p.second.size() < 2; }))
     return false;
 
-  for (auto item : macChainMap) {
-    auto macChain = item.second;
+  for (auto item = macChainMap.begin(); item != macChainMap.end(); ++item) {
+    auto macChain = (*item).second;
     std::sort(macChain.begin(), macChain.end());
     int8_t curIdx = 0;
     aievec::UPDOp curUpdOp = nullptr;
@@ -964,9 +950,6 @@ struct FoldMulAddChainToConvOpPattern
     : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
-  FoldMulAddChainToConvOpPattern(MLIRContext *context, AnalysisManager &am)
-      : OpConversionPattern<arith::AddIOp>(context), am(am) {}
-
   LogicalResult
   matchAndRewrite(arith::AddIOp srcOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -979,119 +962,129 @@ struct FoldMulAddChainToConvOpPattern
       return failure();
     }
 
-    arith::MulIOp mOp = rewriter.replaceOpWithNewOp<arith::MulIOp>(
-        srcOp, adaptor.getLhs(), adaptor.getLhs());
+    Value acc = nullptr;
+    for (auto fusedOps : groupFusedOps) {
+      arith::MulIOp curMulOp = (*fusedOps.begin());
+      arith::AddIOp curAddOp =
+          cast<arith::AddIOp>(*curMulOp->getUsers().begin());
+      Operation *addLhs =
+          dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
+      Operation *addRhs =
+          dyn_cast<arith::MulIOp>(curAddOp->getOperand(1).getDefiningOp());
+      bool isMulConv = false;
 
-    //  arith::AddIOp aOp= rewriter.replaceOpWithNewOp<arith::AddIOp>(
-    //        srcOp, mOp->getOperand(0), mOp->getOperand(0));
+      if (addLhs && addRhs) {
+        isMulConv = true;
+      } else {
+        acc = addLhs ? curAddOp->getOperand(1) : curAddOp->getOperand(0);
+      }
 
-    /*
-        for (auto fusedOps : groupFusedOps) {
-          arith::MulIOp curMulOp = (*fusedOps.begin());
-          arith::AddIOp curAddOp =
-              cast<arith::AddIOp>(*curMulOp->getUsers().begin());
-          Operation *addLhs =
-              dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
-          Operation *addRhs =
-              dyn_cast<arith::MulIOp>(curAddOp->getOperand(1).getDefiningOp());
-          bool isMulConv = false;
-          Value acc = nullptr;
+      Value lhs = curMulOp->getOperand(0);
+      Value rhs = curMulOp->getOperand(1);
+      VectorType vType = curMulOp.getResult().getType().cast<VectorType>();
+      Type sType = vType.getElementType();
+      IntegerType iType = sType.cast<IntegerType>();
+      unsigned width = iType.getWidth() <= 8 ? 32 : 64;
+      int32_t M = iType.getWidth() == 8 ? 32 : 16;
+      int32_t N = iType.getWidth() == 8 ? 8 : 4;
 
-          if (addLhs && addRhs) {
-            isMulConv = true;
-          } else {
-            acc = addLhs ? curAddOp->getOperand(1) : curAddOp->getOperand(0);
+      Type ctype = mlir::IntegerType::get(iType.getContext(), width);
+      Type opType = VectorType::get(vType.getShape(), ctype);
+
+      aievec::BroadcastOp bcastOp =
+          cast<aievec::BroadcastOp>(rhs.getDefiningOp());
+      aievec::UPDOp bcastUPDOp =
+          cast<aievec::UPDOp>(bcastOp.getSource().getDefiningOp());
+      SmallVector<Value, 4> indices(bcastUPDOp.getIndices().begin(),
+                                    bcastUPDOp.getIndices().end());
+      unsigned lanes = 512 / getElementSizeInBits(vType);
+      VectorType resType = createVectorType(lanes, sType);
+      Value innerMostIdx = indices[indices.size() - 1];
+      Value newIdx = innerMostIdx;
+      int64_t val = -1;
+      int64_t defIdx = -1;
+      if (auto idxDefOp = innerMostIdx.getDefiningOp()) {
+        if (auto constOp = dyn_cast<arith::ConstantOp>(idxDefOp)) {
+          val = constOp.getValue().cast<IntegerAttr>().getInt();
+          if (val) {
+            defIdx = val / lanes * lanes;
+            val %= lanes;
+            newIdx = rewriter.create<arith::ConstantOp>(
+                constOp.getLoc(),
+                rewriter.getIntegerAttr(constOp.getType(), defIdx));
+            indices[indices.size() - 1] = newIdx;
           }
+        }
+      }
 
-          Value lhs = curMulOp->getOperand(0);
-          Value rhs = curMulOp->getOperand(1);
-          VectorType vType = curMulOp.getResult().getType().cast<VectorType>();
-          Type sType = vType.getElementType();
-          IntegerType iType = sType.cast<IntegerType>();
-          unsigned width = iType.getWidth() <= 8 ? 32 : 64;
-          int32_t M = iType.getWidth() == 8 ? 32 : 16;
-          int32_t N = iType.getWidth() == 8 ? 8 : 4;
+      aievec::UPDOp newBcastOp = bcastUPDOp;
 
-          Type ctype = mlir::IntegerType::get(iType.getContext(), width);
-          Type opType = VectorType::get(vType.getShape(), ctype);
+      if (vType != resType) {
+        newBcastOp = rewriter.create<aievec::UPDOp>(
+            bcastUPDOp->getLoc(), resType, bcastUPDOp.getSource(), indices, 0,
+            0, TypedValue<VectorType>(nullptr));
+      }
 
-          aievec::BroadcastOp bcastOp =
-       cast<aievec::BroadcastOp>(rhs.getDefiningOp()); aievec::UPDOp bcastUPDOp
-       = cast<aievec::UPDOp>(bcastOp.getSource().getDefiningOp());
-          SmallVector<Value, 4> indices(bcastUPDOp.getIndices().begin(),
-                                        bcastUPDOp.getIndices().end());
-          unsigned lanes = 512 / getElementSizeInBits(vType);
-          VectorType resType = createVectorType(lanes, sType);
-          Value innerMostIdx = indices[indices.size() - 1];
-          Value newIdx = innerMostIdx;
-          int64_t val = -1;
-          int64_t defIdx = -1;
-          if (auto idxDefOp = innerMostIdx.getDefiningOp()) {
-            if (auto constOp = dyn_cast<arith::ConstantOp>(idxDefOp)) {
-              val = constOp.getValue().cast<IntegerAttr>().getInt();
-              if (val) {
-                defIdx = val / lanes * lanes;
-                val %= lanes;
-                newIdx = rewriter.create<arith::ConstantOp>(
-                    constOp.getLoc(),
-                    rewriter.getIntegerAttr(constOp.getType(), defIdx));
-                indices[indices.size() - 1] = newIdx;
-              }
-            }
-          }
+      Operation *shuffleOp = newBcastOp;
+      if (dupFactor != 1) {
+        shuffleOp = rewriter.create<aievec::ShuffleOp>(
+            newBcastOp.getLoc(), resType, newBcastOp.getResult(), 0);
+      }
 
-          aievec::UPDOp newBcastOp = bcastUPDOp;
+      int32_t shiftBytes = (bcastOp.getIdx() + val) *
+                           getElementSizeInBits(vType) / 8 / dupFactor;
 
-          if (vType != resType) {
-            newBcastOp = rewriter.replaceOpWithNewOp<aievec::UPDOp>(
-                bcastUPDOp, resType, bcastUPDOp.getSource(), indices, 0, 0,
-                TypedValue<VectorType>(nullptr));
-          }
+      rhs = shuffleOp->getResult(0);
 
-          Operation *shuffleOp = newBcastOp;
-          if (dupFactor != 1) {
-            shuffleOp = rewriter.create<aievec::ShuffleOp>(
-                newBcastOp.getLoc(), resType, newBcastOp.getResult(), 0);
-          }
+      if (shiftBytes) {
+        SmallVector<Value> sources = {shuffleOp->getResult(0)};
 
-          int32_t shiftBytes = (bcastOp.getIdx() + val) *
-                               getElementSizeInBits(vType) / 8 / dupFactor;
+        rhs = rewriter.create<aievec::ShiftOp>(
+            shuffleOp->getLoc(), sources.back().getType().cast<VectorType>(),
+            sources, shiftBytes);
+      }
 
-          rhs = shuffleOp->getResult(0);
+      aievec::UPDOp lUPDOp = cast<aievec::UPDOp>(lhs.getDefiningOp());
+      SmallVector<Value, 8> lIndices;
+      lIndices.append(lUPDOp.getIndices().begin(), lUPDOp.getIndices().end());
 
-          if (shiftBytes) {
-            SmallVector<Value> sources = {shuffleOp->getResult(0)};
+      lhs = rewriter.create<aievec::UPDOp>(lUPDOp->getLoc(), resType,
+                                           lUPDOp.getSource(), lIndices, 0, 0,
+                                           TypedValue<VectorType>(nullptr));
 
-            rhs = rewriter.create<aievec::ShiftOp>(
-                shuffleOp->getLoc(),
-       sources.back().getType().cast<VectorType>(), sources, shiftBytes);
-          }
+      auto notMulOrAddOp = [&](Operation *op) {
+        return !isa<arith::MulIOp, arith::AddIOp>(op);
+      };
 
-          aievec::UPDOp lUPDOp = cast<aievec::UPDOp>(lhs.getDefiningOp());
-          SmallVector<Value, 8> lIndices;
-          lIndices.append(lUPDOp.getIndices().begin(),
-       lUPDOp.getIndices().end());
+      Operation *convOp = nullptr;
+      arith::AddIOp lastAddOp =
+          cast<arith::AddIOp>(*(fusedOps.back()->getUsers().begin()));
 
-          lhs = rewriter.replaceOpWithNewOp<aievec::UPDOp>(
-              lUPDOp, resType, lUPDOp.getSource(), lIndices, 0, 0,
-              TypedValue<VectorType>(nullptr));
+      if (llvm::any_of(lastAddOp->getUsers(), notMulOrAddOp)) {
+        if (isMulConv) {
+          convOp = rewriter.create<aievec::MulConvOp>(srcOp->getLoc(), opType,
+                                                      lhs, rhs, M, N);
+        } else {
+          convOp = rewriter.create<aievec::FMAConvOp>(
+              srcOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
+        }
+        rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, vType,
+                                                   convOp->getResult(0));
+        return success();
+      } else {
+        if (isMulConv) {
+          convOp = rewriter.create<aievec::MulConvOp>(lastAddOp->getLoc(),
+                                                      opType, lhs, rhs, M, N);
+        } else {
+          convOp = rewriter.create<aievec::FMAConvOp>(
+              lastAddOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
+        }
+      }
+      acc = convOp->getResult(0);
+    }
 
-          auto notMulOrAddOp = [&](Operation *op) {
-            return !isa<arith::MulIOp, arith::AddIOp>(op);
-          };
-
-          arith::AddIOp lastAddOp =
-              cast<arith::AddIOp>(*(fusedOps.back()->getUsers().begin()));
-
-          aievec::MulConvOp convOp =
-       rewriter.create<aievec::MulConvOp>(srcOp.getLoc(), opType, lhs, rhs, M,
-       N); rewriter.replaceOpWithNewOp<aievec::SRSOp>( srcOp, vType,
-       convOp.getResult());
-        }*/
-
-    return success();
+    return failure();
   }
-  AnalysisManager &am;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1131,9 +1124,8 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
 }
 
 static void
-populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
-                                           AnalysisManager &am) {
-  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am);
+populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns) {
+  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1206,8 +1198,9 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
 }
 
 static void
-configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
-                                                 AnalysisManager &am) {
+configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target) {
+  target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
   target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
     SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
     MulDefMapTy macChainMap;
@@ -1421,10 +1414,9 @@ void AIEVecConvOpTransformationPass::runOnOperation() {
     }
   }
 
-  AnalysisManager am = getAnalysisManager();
   if (aieVersion == AIEArch::AIE_ML) {
-    populateAIEVecConvOpTransformationPatterns(patterns, am);
-    configureAIEVecConvOpTransformationLegalizations(target, am);
+    populateAIEVecConvOpTransformationPatterns(patterns);
+    configureAIEVecConvOpTransformationLegalizations(target);
   }
 
   if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
