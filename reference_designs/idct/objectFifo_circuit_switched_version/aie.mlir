@@ -22,10 +22,10 @@ module @idct {
   %t71 = AIE.tile(7, 1)
   %t70 = AIE.tile(7, 0)
 
-  %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, {%t73}, 2) : !AIE.objectFifo<memref<64xi16>>
-  %of_t73_t74 = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 2) : !AIE.objectFifo<memref<64xi16>>
-  %of_t74_t75 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 2) : !AIE.objectFifo<memref<64xi16>>
-  %of_t75_t70 = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2) : !AIE.objectFifo<memref<64xi16>>
+  %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, {%t73}, 2) {sym_name = "of_in"} : !AIE.objectFifo<memref<64xi16>>
+  %of_t73_t74 = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 2) {sym_name = "of_dequant_horizontal"} : !AIE.objectFifo<memref<64xi16>>
+  %of_t74_t75 = AIE.objectFifo.createObjectFifo(%t74, {%t75}, 2) {sym_name = "of_horizontal_vertical"} : !AIE.objectFifo<memref<64xi16>>
+  %of_t75_t70 = AIE.objectFifo.createObjectFifo(%t75, {%t70}, 2) {sym_name = "of_out"} : !AIE.objectFifo<memref<64xi16>>
 
   // DDR buffer
   %buffer_in  = AIE.external_buffer { sym_name = "buffer_in" }  : memref<512xi16>
