@@ -171,22 +171,22 @@ bool AIE2TargetModel::isInternal(int srcCol, int srcRow, int dstCol,
 
 bool AIE2TargetModel::isWest(int srcCol, int srcRow, int dstCol,
                              int dstRow) const {
-  return isInternal(srcCol, srcRow, dstCol, dstRow);
+  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
 }
 
 bool AIE2TargetModel::isMemWest(int srcCol, int srcRow, int dstCol,
                                 int dstRow) const {
-  return isInternal(srcCol, srcRow, dstCol, dstRow);
+  return isWest(srcCol, srcRow, dstCol, dstRow);
 }
 
 bool AIE2TargetModel::isEast(int srcCol, int srcRow, int dstCol,
                              int dstRow) const {
-  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
+  return isInternal(srcCol, srcRow, dstCol, dstRow);
 }
 
 bool AIE2TargetModel::isMemEast(int srcCol, int srcRow, int dstCol,
                                 int dstRow) const {
-  return isEast(srcCol, srcRow, dstCol, dstRow);
+  return isInternal(srcCol, srcRow, dstCol, dstRow);
 }
 
 bool AIE2TargetModel::isNorth(int srcCol, int srcRow, int dstCol,
@@ -211,8 +211,8 @@ bool AIE2TargetModel::isMemSouth(int srcCol, int srcRow, int dstCol,
 
 bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                          int memRow) const {
-  bool IsMemWest = isInternal(coreCol, coreRow, memCol, memRow);
-  bool IsMemEast = isEast(coreCol, coreRow, memCol, memRow);
+  bool IsMemWest = isWest(coreCol, coreRow, memCol, memRow);
+  bool IsMemEast = isInternal(coreCol, coreRow, memCol, memRow);
   bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
   bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);
 
