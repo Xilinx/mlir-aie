@@ -604,7 +604,7 @@ static AffineExpr makeFlattenedStridedExpr(ArrayRef<int64_t> sizes,
   return expr;
 }
 
-// Construct a linearized affine expression for the transfer_read op.
+// Construct a linearized affine expression for the upd op.
 static AffineExpr constructLinearizedAffineExpr(aievec::UPDOp updOp) {
   SmallVector<Value, 4> indices(updOp.getIndices().begin(),
                                 updOp.getIndices().end());
@@ -682,6 +682,8 @@ static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
   return std::make_pair(base, offset);
 }
 
+// If the defining op of one of add operands is an add op, return this defining
+// add op.
 static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
   arith::AddIOp defLhs =
       dyn_cast<arith::AddIOp>(addOp->getOperand(0).getDefiningOp());
@@ -693,8 +695,8 @@ static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
   return defLhs ? defLhs : defRhs;
 }
 
-// The mul add chain pattern is valid if defs of a mul op are a broadcast op and
-// an upd op.
+// The mul add chain pattern is valid if the defining ops of a mul op consist of
+// a broadcast op and an upd op.
 static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
                               SmallVectorImpl<Value> &bcastOpSourceVec) {
   // Get the mul op's lhs and rhs defining ops. We keep splat op at
@@ -732,6 +734,12 @@ static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
   return true;
 }
 
+// The defs of mul ops consist of an upd op and a broadcast op.
+// The chain map looks like below:
+// | BroadcastOp source | vector<tuple<broadcastOp idx, UPDOp, MulIOp>> |
+// The mul add op chain can be grouped by broadcast op's source.
+// For each group, broadcastOp idx can be sorted to find the start of the
+// memrefs used by broadcast op and upd op.
 static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
                           SmallVectorImpl<Value> &bcastOpSourceVec) {
   while (true) {
@@ -744,7 +752,7 @@ static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
       break;
     }
     // If both ops of add op are mul ops, this will reach the top of the
-    // chain. Check the legality for both mul op and add them to the chain
+    // chain. Check the legality for both mul op and insert them to the chain
     // map.
     else if (defLhs && defRhs) {
       if (!checkChainPattern(defLhs, macChainMap, bcastOpSourceVec) ||
@@ -772,6 +780,8 @@ static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
   return;
 }
 
+// Check whether mul add chain is valid for the transformation and classify the
+// fused ops into different groups with valid constant memref distances.
 static bool
 collectFusedOps(unsigned groupSize, unsigned &dupFactor,
                 SmallVectorImpl<Value> &bcastOpSourceVec,
@@ -941,12 +951,12 @@ static bool canFoldMulAddChainToConvOp(
   }
 
   arith::AddIOp curAddOp = addOp;
-  // Trace the order of broadcast ops' source, which is also tracing the order
+  // bcastOpSourceVec is a container to trace the order of broadcast ops' source
   // in the chain.
   SmallVector<Value, 8> bcastOpSourceVec;
 
-  // Build a mul add Chain map by recording the def of mul ops.
-  // Identify the chain by checking their ops.
+  // Identify the chain and build a mul add Chain map by recording the def of
+  // mul ops.
   buildChainMap(curAddOp, macChainMap, bcastOpSourceVec);
 
   if (macChainMap.empty() ||
@@ -960,7 +970,8 @@ static bool canFoldMulAddChainToConvOp(
 
   unsigned groupSize = resultElWidth == 16 ? 4 : 8;
 
-  // Collect the ops that can be transformed to mul_conv and mul_conv
+  // Legality check for the mul add chain, and collect the ops that can be
+  // transformed to mul_conv and mul_conv.
   if (!collectFusedOps(groupSize, dupFactor, bcastOpSourceVec, groupFusedOps,
                        macChainMap)) {
     return false;
@@ -973,9 +984,9 @@ static bool canFoldMulAddChainToConvOp(
   return true;
 }
 
-// This conversion pattern fold a mul and add chain into mul_conv and mac_conv
+// This conversion pattern folds a mul add chain into mul_conv and mac_conv
 // ops. Currently, we are handling the mul add chain with a sorted order so that
-// the load memories have increasing distances.
+// the memrefs are sorted by increasing constant distances.
 // TODO: handle the mul add chain with a random order.
 struct FoldMulAddChainToConvOpPattern
     : public OpConversionPattern<arith::AddIOp> {
