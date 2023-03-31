@@ -310,6 +310,16 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
   }
 };
 
+// Move all the ops with OpTy inside device, to just before the device.
+template <typename OpTy> void outlineOps(AIE::DeviceOp device) {
+  SmallVector<OpTy, 16> ops;
+  for (const auto &op : device.getOps<OpTy>())
+    ops.push_back(op);
+
+  for (const auto &op : ops)
+    op->moveBefore(device);
+}
+
 struct AIECoreToStandardPass
     : public AIECoreToStandardBase<AIECoreToStandardPass> {
   void runOnOperation() override {
@@ -462,13 +472,10 @@ struct AIECoreToStandardPass
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
 
-    // Move all the func.func ops from the device to the module
-    SmallVector<func::FuncOp, 16> funcs;
-    for (const auto &op : device.getOps<func::FuncOp>())
-      funcs.push_back(op);
-
-    for (const auto &op : funcs)
-      op->moveBefore(device);
+    // Move all the func.func ops and memref.globals from the device to the
+    // module
+    outlineOps<memref::GlobalOp>(device);
+    outlineOps<func::FuncOp>(device);
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns

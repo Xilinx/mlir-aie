@@ -69,8 +69,12 @@ struct AIEAssignBufferAddressesPass
 
       // Address range owned by the tile is 0x8000,
       // but we need room at the bottom for stack.
-      int stacksize = 0x400; // TODO match stack size
-      int address = stacksize;
+      int stacksize = 0;
+      int address = 0;
+      if (auto core = tile.getCoreOp()) {
+        stacksize = core.getStackSize();
+        address += stacksize;
+      }
       for (auto buffer : buffers)
         address = assignAddress(buffer, address, builder);
       if (address > max_data_memory_size) {
@@ -83,7 +87,11 @@ struct AIEAssignBufferAddressesPass
                << llvm::utohexstr(address + size - 1) << " \t(" << size
                << " bytes)\n";
         };
-        printbuffer("(stack)", 0, 0x400); // TODO match stack size
+        if (stacksize > 0)
+          printbuffer("(stack)", 0, stacksize);
+        else
+          error << "(no stack allocated)\n";
+
         for (auto buffer : buffers)
           printbuffer(buffer.name(), buffer.address(),
                       buffer.getAllocationSize());

@@ -23,5 +23,11 @@ module @test {
   %b2 = AIE.buffer(%0) { sym_name = "c" } : memref<16xi16>
   %3 = AIE.tile(4, 4)
   %4 = AIE.buffer(%3) : memref<500xi32>
+  AIE.core(%0) {
+    AIE.end
+  }
+  AIE.core(%3) {
+    AIE.end
+  }
  }
 }
