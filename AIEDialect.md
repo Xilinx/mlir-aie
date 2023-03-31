@@ -145,6 +145,11 @@ typically be outlined into the LLVM dialect, eventually resulting in a binary fi
 for each core.  The name of this file can be be specified using the 'elf_file'
 attribute.
 
+This op has an optional 'stackSize' attribute, to control the amount of memory (in bytes)
+reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
+are always stored in the local core memory, to avoid conflicts with static data allocations
+in other cores.
+
 Examples:
 ```
 %tile = aie.tile(1, 1)
@@ -159,10 +164,16 @@ aie.core(%tile) {
 %tile = AIE.tile(3, 3)
 AIE.core(%tile) {
   AIE.end
-} { elf_file = "core_33.elf" }
+} { stackSize = 2048 : i32, elf_file = "core_33.elf" }
 ```
 
 Interfaces: FlowEndPoint, TileElement
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `stackSize` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
