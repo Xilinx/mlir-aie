@@ -77,6 +77,9 @@ void writeBCFMap(raw_ostream &output, BufferOp buf, int offset,
          << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " "
          << "0x" << llvm::utohexstr(numBytes) << '\n';
   output << "_extern " << bufName << "\n";
+  output << "_reserved DMb "
+         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " "
+         << "0x" << llvm::utohexstr(numBytes) << '\n';
 }
 // Output the memorymap in gnu linker format for the given buffer operations,
 // with the given offset. The offset is different depending on where the buffers
@@ -207,14 +210,29 @@ void registerAIETranslations() {
 
         for (auto tile : targetOp.getOps<TileOp>())
           if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
             const auto &target_model = getTargetModel(tile);
+
+            // Figure out how much memory we have left for random allocations
+            auto core = tile.getCoreOp();
+            int max = core.getStackSize();
+            for (auto buf : buffers[tiles[srcCoord]]) {
+              int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+              int numBytes = buf.getAllocationSize();
+              max = std::max(max, bufferBaseAddr + numBytes);
+            }
+            int origin = target_model.getMemInternalBaseAddress(srcCoord) + max;
+            int length = target_model.getLocalMemorySize() - max;
             // output << "// Tile(" << tileCol << ", " << tileRow << ")\n";
             // output << "// Memory map: name base_address num_bytes\n";
             output << R"THESCRIPT(
 MEMORY
 {
    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
-   data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+)THESCRIPT";
+            output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
+                   << ", LENGTH = 0x" << llvm::utohexstr(length);
+            output << R"THESCRIPT(
 }
 ENTRY(_main_init)
 SECTIONS
@@ -252,7 +270,6 @@ SECTIONS
                 output << ". += 0x" << llvm::utohexstr(localMemSize) << ";\n";
               }
             };
-            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
             // Stack
             output << ". = 0x"
@@ -260,8 +277,12 @@ SECTIONS
                           target_model.getMemInternalBaseAddress(srcCoord))
                    << ";\n";
             output << "_sp_start_value_DM_stack = .;\n";
-            output << ". += 0x" << llvm::utohexstr(0x400)
-                   << ";\n"; // TODO to match stack size
+
+            if (auto core = tile.getCoreOp())
+              output << ". += 0x" << llvm::utohexstr(core.getStackSize())
+                     << "; /* stack */\n";
+            else
+              output << "/* no stack allocated */\n";
 
             if (auto tile = target_model.getMemSouth(srcCoord))
               doBuffer(tile, target_model.getMemSouthBaseAddress(),
@@ -358,12 +379,19 @@ SECTIONS
             output << "_reserved DMb      0x00000 " << initReserved
                    << " //Don't put data in code memory\n";
 
+            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
               if (tile) {
                 if (tiles.count(*tile))
                   for (auto buf : buffers[tiles[*tile]])
                     writeBCFMap(output, buf, offset, NL);
+                uint32_t localMemSize = target_model.getLocalMemorySize();
+                if (tile != srcCoord)
+                  output << "_reserved DMb 0x" << llvm::utohexstr(offset) << " "
+                         << "0x" << llvm::utohexstr(localMemSize) << " "
+                         << " // Don't allocate variables outside of local "
+                            "memory.\n";
                 // TODO How to set as reserved if no buffer exists (or reserve
                 // remaining buffer)
               } else {
@@ -374,7 +402,6 @@ SECTIONS
                        << ".\n";
               }
             };
-            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
             if (auto tile = target_model.getMemSouth(srcCoord))
               doBuffer(tile, target_model.getMemSouthBaseAddress(),
@@ -389,11 +416,15 @@ SECTIONS
               doBuffer(tile, target_model.getMemEastBaseAddress(),
                        std::string("east"));
 
+            int stacksize = 0;
+            if (auto core = tile.getCoreOp())
+              stacksize = core.getStackSize();
             output << "_stack    DM_stack 0x"
                    << llvm::utohexstr(
                           target_model.getMemInternalBaseAddress(srcCoord))
-                   << "  0x400 //stack for core\n"; // TODO Needs to match
-                                                    // stack size!!!
+                   << "  0x" << llvm::utohexstr(stacksize)
+                   << " //stack for core\n";
+
             if (target_model.getTargetArch() == AIEArch::AIE2) {
               output << "_reserved DMb 0x80000 0x80000 // And everything else "
                         "the core can't see\n";

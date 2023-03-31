@@ -103,6 +103,7 @@ if(config.enable_chess_tests):
 
     if result != None:
         print("Chess found: " + result)
+        config.available_features.add('chess')
         config.available_features.add('valid_xchess_license')
         lm_license_file = os.getenv('LM_LICENSE_FILE')
         if(lm_license_file != None):
