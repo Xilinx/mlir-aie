@@ -693,8 +693,10 @@ static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
   return defLhs ? defLhs : defRhs;
 }
 
-static bool checkLegalityForChain(arith::MulIOp mulOp,
-                                  MulDefMapTy &macChainMap) {
+// The mul add chain pattern is valid if defs of a mul op are a broadcast op and
+// an upd op.
+static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
+                              SmallVectorImpl<Value> &bcastOpSourceVec) {
   // Get the mul op's lhs and rhs defining ops. We keep splat op at
   // rhs.
   if (isa<aievec::BroadcastOp>(mulOp.getOperand(0).getDefiningOp())) {
@@ -719,6 +721,7 @@ static bool checkLegalityForChain(arith::MulIOp mulOp,
       cast<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp());
 
   if (!macChainMap.count(bcastOp.getSource())) {
+    bcastOpSourceVec.push_back(bcastOp.getSource());
     MulDefTupleVecTy tupleVec;
     tupleVec.push_back(std::make_tuple(bcastOp.getIdx(), updOp, mulOp));
     macChainMap.insert(std::make_pair(bcastOp.getSource(), tupleVec));
@@ -729,42 +732,8 @@ static bool checkLegalityForChain(arith::MulIOp mulOp,
   return true;
 }
 
-static bool canFoldMulAddChainToConvOp(
-    arith::AddIOp addOp, MulDefMapTy &macChainMap,
-    SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
-    unsigned &dupFactor) {
-  if (!isa<VectorType>(addOp.getType())) {
-    return false;
-  }
-
-  VectorType resultType = addOp.getResult().getType().cast<VectorType>();
-
-  if (!resultType.getElementType().isa<IntegerType>()) {
-    return false;
-  }
-
-  IntegerType resultElType = resultType.getElementType().cast<IntegerType>();
-  unsigned resultElWidth = resultElType.getWidth();
-  unsigned laneSize = getVectorLaneSize(resultType);
-
-  if ((laneSize != 32 || resultElWidth != 8) &&
-      (laneSize != 16 || resultElWidth != 16)) {
-    return false;
-  }
-
-  if (!addOp->hasOneUse()) {
-    return false;
-  }
-
-  // Search for the last add op in the block.
-  auto usrOp = *addOp->getUsers().begin();
-  if (!usrOp || isa<arith::AddIOp>(usrOp)) {
-    return false;
-  }
-
-  arith::AddIOp curAddOp = addOp;
-  // Build a mul add Chain map by recording the def of mul ops.
-  // Identify the chain by checking the legality of their ops.
+static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
+                          SmallVectorImpl<Value> &bcastOpSourceVec) {
   while (true) {
     arith::MulIOp defLhs =
         dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
@@ -773,17 +742,18 @@ static bool canFoldMulAddChainToConvOp(
 
     if (!defLhs && !defRhs) {
       break;
-      // If both ops of add op are mul ops, this will reach the top of the
-      // chain. Check the legality for both mul op and add them to the chain
-      // map.
-    } else if (defLhs && defRhs) {
-      if (!checkLegalityForChain(defLhs, macChainMap) ||
-          !checkLegalityForChain(defRhs, macChainMap)) {
+    }
+    // If both ops of add op are mul ops, this will reach the top of the
+    // chain. Check the legality for both mul op and add them to the chain
+    // map.
+    else if (defLhs && defRhs) {
+      if (!checkChainPattern(defLhs, macChainMap, bcastOpSourceVec) ||
+          !checkChainPattern(defRhs, macChainMap, bcastOpSourceVec)) {
         break;
       }
     } else {
       arith::MulIOp curMulOp = defLhs ? defLhs : defRhs;
-      if (!checkLegalityForChain(curMulOp, macChainMap)) {
+      if (!checkChainPattern(curMulOp, macChainMap, bcastOpSourceVec)) {
         break;
       }
     }
@@ -799,17 +769,16 @@ static bool canFoldMulAddChainToConvOp(
     }
     curAddOp = defAddOp;
   }
+  return;
+}
 
-  if (macChainMap.empty()) {
-    return false;
-  }
-
-  if (std::any_of(macChainMap.begin(), macChainMap.end(),
-                  [](const auto &p) { return p.second.size() < 2; }))
-    return false;
-
-  for (auto item = macChainMap.begin(); item != macChainMap.end(); ++item) {
-    auto macChain = (*item).second;
+static bool
+collectFusedOps(unsigned groupSize, unsigned &dupFactor,
+                SmallVectorImpl<Value> &bcastOpSourceVec,
+                SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
+                MulDefMapTy &macChainMap) {
+  for (auto item : bcastOpSourceVec) {
+    auto macChain = macChainMap[item];
     std::sort(macChain.begin(), macChain.end());
     int8_t curIdx = 0;
     aievec::UPDOp curUpdOp = nullptr;
@@ -923,32 +892,97 @@ static bool canFoldMulAddChainToConvOp(
       dupFactor = dists[0];
 
       fusedOps.push_back(nextMulOp);
+      std::tie(curIdx, curUpdOp, curMulOp) = *it;
 
-      if (fusedOps.size() > (resultElWidth == 16 ? 4 : 8)) {
+      if (fusedOps.size() > groupSize) {
+        fusedOps.pop_back();
         groupFusedOps.push_back(fusedOps);
         fusedOps.clear();
         fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
         continue;
       }
-      std::tie(curIdx, curUpdOp, curMulOp) = *it;
     }
     groupFusedOps.push_back(fusedOps);
   }
+  return true;
+}
 
-  for (auto fusedOps : groupFusedOps) {
-    unsigned numFusedOps = fusedOps.size();
-    if (numFusedOps < 2) {
-      return false;
-    }
+static bool canFoldMulAddChainToConvOp(
+    arith::AddIOp addOp, MulDefMapTy &macChainMap,
+    SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
+    unsigned &dupFactor) {
+  if (!isa<VectorType>(addOp.getType())) {
+    return false;
   }
+
+  VectorType resultType = addOp.getResult().getType().cast<VectorType>();
+
+  if (!resultType.getElementType().isa<IntegerType>()) {
+    return false;
+  }
+
+  IntegerType resultElType = resultType.getElementType().cast<IntegerType>();
+  unsigned resultElWidth = resultElType.getWidth();
+  unsigned laneSize = getVectorLaneSize(resultType);
+
+  if ((laneSize != 32 || resultElWidth != 8) &&
+      (laneSize != 16 || resultElWidth != 16)) {
+    return false;
+  }
+
+  if (!addOp->hasOneUse()) {
+    return false;
+  }
+
+  // Search for the last add op in the block.
+  auto usrOp = *addOp->getUsers().begin();
+  if (!usrOp || isa<arith::AddIOp>(usrOp)) {
+    return false;
+  }
+
+  arith::AddIOp curAddOp = addOp;
+  // Trace the order of broadcast ops' source, which is also tracing the order
+  // in the chain.
+  SmallVector<Value, 8> bcastOpSourceVec;
+
+  // Build a mul add Chain map by recording the def of mul ops.
+  // Identify the chain by checking their ops.
+  buildChainMap(curAddOp, macChainMap, bcastOpSourceVec);
+
+  if (macChainMap.empty() ||
+      std::any_of(macChainMap.begin(), macChainMap.end(),
+                  [](const auto &p) { return p.second.size() < 2; })) {
+    return false;
+  }
+
+  // Since we trace the order forwards, now reverse the vector.
+  std::reverse(bcastOpSourceVec.begin(), bcastOpSourceVec.end());
+
+  unsigned groupSize = resultElWidth == 16 ? 4 : 8;
+
+  // Collect the ops that can be transformed to mul_conv and mul_conv
+  if (!collectFusedOps(groupSize, dupFactor, bcastOpSourceVec, groupFusedOps,
+                       macChainMap)) {
+    return false;
+  }
+
+  if (std::any_of(groupFusedOps.begin(), groupFusedOps.end(),
+                  [](const auto &ops) { return ops.size() < 2; }))
+    return false;
 
   return true;
 }
 
+// This conversion pattern fold a mul and add chain into mul_conv and mac_conv
+// ops. Currently, we are handling the mul add chain with a sorted order so that
+// the load memories have increasing distances.
+// TODO: handle the mul add chain with a random order.
 struct FoldMulAddChainToConvOpPattern
     : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
+
+  FoldMulAddChainToConvOpPattern(MLIRContext *context, unsigned shiftParam = 0)
+      : OpConversionPattern<arith::AddIOp>(context), shiftParam(shiftParam) {}
 
   LogicalResult
   matchAndRewrite(arith::AddIOp srcOp, OpAdaptor adaptor,
@@ -964,24 +998,24 @@ struct FoldMulAddChainToConvOpPattern
 
     Value acc = nullptr;
     for (auto fusedOps : groupFusedOps) {
-      arith::MulIOp curMulOp = (*fusedOps.begin());
-      arith::AddIOp curAddOp =
-          cast<arith::AddIOp>(*curMulOp->getUsers().begin());
+      arith::MulIOp mulOp = (*fusedOps.begin());
+      arith::AddIOp addOp = cast<arith::AddIOp>(*mulOp->getUsers().begin());
       Operation *addLhs =
-          dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
+          dyn_cast<arith::MulIOp>(addOp->getOperand(0).getDefiningOp());
       Operation *addRhs =
-          dyn_cast<arith::MulIOp>(curAddOp->getOperand(1).getDefiningOp());
+          dyn_cast<arith::MulIOp>(addOp->getOperand(1).getDefiningOp());
       bool isMulConv = false;
 
       if (addLhs && addRhs) {
         isMulConv = true;
       } else {
-        acc = addLhs ? curAddOp->getOperand(1) : curAddOp->getOperand(0);
+        if (!acc)
+          acc = addLhs ? addOp->getOperand(1) : addOp->getOperand(0);
       }
 
-      Value lhs = curMulOp->getOperand(0);
-      Value rhs = curMulOp->getOperand(1);
-      VectorType vType = curMulOp.getResult().getType().cast<VectorType>();
+      Value lhs = mulOp->getOperand(0);
+      Value rhs = mulOp->getOperand(1);
+      VectorType vType = mulOp.getResult().getType().cast<VectorType>();
       Type sType = vType.getElementType();
       IntegerType iType = sType.cast<IntegerType>();
       unsigned width = iType.getWidth() <= 8 ? 32 : 64;
@@ -1003,6 +1037,14 @@ struct FoldMulAddChainToConvOpPattern
       Value newIdx = innerMostIdx;
       int64_t val = -1;
       int64_t defIdx = -1;
+      // Transfer
+      // %c32 = arith.constant 32 : index
+      // %1 = aievec.upd %arg1[%c32] {index = 0 : i8} : vector<32xi8>
+      // %2 = aievec.broadcast %1 {idx = 0 : i8} : vector<32xi8>
+      // to -
+      // %c0 = arith.constant 0 : index
+      // %1 = aievec.upd %arg1[%c0] {index = 0 : i8} : vector<64xi8>
+      // %2 = aievec.broadcast %1 {idx = 32 : i8} : vector<32xi8>
       if (auto idxDefOp = innerMostIdx.getDefiningOp()) {
         if (auto constOp = dyn_cast<arith::ConstantOp>(idxDefOp)) {
           val = constOp.getValue().cast<IntegerAttr>().getInt();
@@ -1019,12 +1061,16 @@ struct FoldMulAddChainToConvOpPattern
 
       aievec::UPDOp newBcastOp = bcastUPDOp;
 
+      // Rewrite the upd op with maximum vector lanes
       if (vType != resType) {
         newBcastOp = rewriter.create<aievec::UPDOp>(
             bcastUPDOp->getLoc(), resType, bcastUPDOp.getSource(), indices, 0,
             0, TypedValue<VectorType>(nullptr));
       }
 
+      // Since we do not need to use duplicated data like in AIE1, if a
+      // dup-factor exists, we extract the identical data by shuffle op. We use
+      // mode 0 to extract the elements with even indices for i8 type data.
       Operation *shuffleOp = newBcastOp;
       if (dupFactor != 1) {
         shuffleOp = rewriter.create<aievec::ShuffleOp>(
@@ -1036,6 +1082,8 @@ struct FoldMulAddChainToConvOpPattern
 
       rhs = shuffleOp->getResult(0);
 
+      // Generate a shift_bytes operation for rhs if the start position is not
+      // 0.
       if (shiftBytes) {
         SmallVector<Value> sources = {shuffleOp->getResult(0)};
 
@@ -1068,8 +1116,8 @@ struct FoldMulAddChainToConvOpPattern
           convOp = rewriter.create<aievec::FMAConvOp>(
               srcOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
         }
-        rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, vType,
-                                                   convOp->getResult(0));
+        rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+            srcOp, vType, convOp->getResult(0), shiftParam);
         return success();
       } else {
         if (isMulConv) {
@@ -1085,6 +1133,8 @@ struct FoldMulAddChainToConvOpPattern
 
     return failure();
   }
+
+  unsigned shiftParam;
 };
 
 //===----------------------------------------------------------------------===//
@@ -1124,8 +1174,10 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
 }
 
 static void
-populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns) {
-  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext());
+populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
+                                           unsigned shiftParam) {
+  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(),
+                                               shiftParam);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1139,8 +1191,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
   target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
   target.addIllegalOp<vector::TransferReadOp>();
-  // target.addDynamicallyLegalOp<arith::AddIOp>(
-  //    [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
+  target.addDynamicallyLegalOp<arith::AddIOp>(
+      [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::AddFOp>(
       [](arith::AddFOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::SubIOp>(
@@ -1181,6 +1233,16 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   target.addDynamicallyLegalOp<aievec::UPDOp>([&am](aievec::UPDOp op) {
     return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
                .effectiveSize <= 1024;
+  });
+
+  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
+    VectorType resultType = dyn_cast<VectorType>(op.getType());
+    IntegerType resultElType = cast<IntegerType>(resultType.getElementType());
+    unsigned resultElWidth = resultElType.getWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return ((laneSize != 32 || resultElWidth != 16) &&
+            (laneSize != 16 || resultElWidth != 32));
   });
 }
 
@@ -1415,7 +1477,7 @@ void AIEVecConvOpTransformationPass::runOnOperation() {
   }
 
   if (aieVersion == AIEArch::AIE_ML) {
-    populateAIEVecConvOpTransformationPatterns(patterns);
+    populateAIEVecConvOpTransformationPatterns(patterns, shiftParam);
     configureAIEVecConvOpTransformationLegalizations(target);
   }
 
@@ -1448,6 +1510,7 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 
+  // Add generating aievec convolution ops pass
   pm.addPass(createAIEVecConvOpTransformation(
       options.getAIEVecConvOpTransformationOptions()));
 
