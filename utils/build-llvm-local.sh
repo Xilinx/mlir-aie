@@ -43,6 +43,7 @@ cmake ../llvm \
   -DLLVM_ENABLE_PROJECTS="clang;lld;mlir" \
   -DLLVM_TARGETS_TO_BUILD:STRING="X86;ARM;AArch64;" \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
   |& tee cmake.log
 
 ninja |& tee ninja.log
