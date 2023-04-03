@@ -568,127 +568,11 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
 using SetInboundsToReadOp = SetInboundsToReadStoreOpPattern<TransferReadOp>;
 using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
 
-// Linearize the exprVec as a strided access, but do not simplify
-static AffineExpr makeFlattenedStridedExpr(ArrayRef<int64_t> sizes,
-                                           ArrayRef<AffineExpr> exprs,
-                                           MLIRContext *context) {
-  assert(!sizes.empty() && !exprs.empty() &&
-         "expected non-empty sizes and exprs");
-  if (llvm::is_contained(sizes, 0))
-    return getAffineConstantExpr(0, context);
-
-  auto maps = AffineMap::inferFromExprList(exprs);
-  assert(!maps.empty() && "Expected one non-empty map");
-  unsigned nSymbols = maps[0].getNumSymbols();
-
-  AffineExpr expr;
-  bool dynamicPoisonBit = false;
-  int64_t runningSize = 1;
-  for (auto en : llvm::zip(llvm::reverse(exprs), llvm::reverse(sizes))) {
-    int64_t size = std::get<1>(en);
-
-    if (size == 0)
-      continue;
-    AffineExpr dimExpr = std::get<0>(en);
-    AffineExpr stride = dynamicPoisonBit
-                            ? getAffineSymbolExpr(nSymbols++, context)
-                            : getAffineConstantExpr(runningSize, context);
-    expr = expr ? expr + dimExpr * stride : dimExpr * stride;
-    if (size > 0) {
-      runningSize *= size;
-      assert(runningSize > 0 && "integer overflow in size computation");
-    } else {
-      dynamicPoisonBit = true;
-    }
-  }
-  return expr;
-}
-
-// Construct a linearized affine expression for the upd op.
-static AffineExpr constructLinearizedAffineExpr(aievec::UPDOp updOp) {
-  SmallVector<Value, 4> indices(updOp.getIndices().begin(),
-                                updOp.getIndices().end());
-  MemRefType memRefType = updOp.getSource().getType().cast<MemRefType>();
-  MLIRContext *context = memRefType.getContext();
-
-  SmallVector<AffineExpr, 8> exprVec;
-  DenseMap<Value, AffineExpr> indexToExprDimMap;
-  for (auto idxAndValue : llvm::enumerate(indices)) {
-    auto value = idxAndValue.value();
-    if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
-      AffineMap map = apOf.getAffineMap();
-      assert(map.getNumResults() == 1 &&
-             "Failed to create linearized affineExpr for complicated index");
-      SmallVector<AffineExpr, 4> indexExprs;
-
-      for (auto index : apOf.getMapOperands()) {
-        if (auto cIdx = index.getDefiningOp<arith::ConstantOp>()) {
-          auto idxVal = cIdx.getValue().cast<IntegerAttr>().getValue();
-          unsigned idx = idxVal.getSExtValue();
-          indexExprs.push_back(getAffineConstantExpr(idx, context));
-        } else {
-          if (!indexToExprDimMap.count(index))
-            indexToExprDimMap[index] =
-                getAffineDimExpr(indexToExprDimMap.size(), context);
-          indexExprs.push_back(indexToExprDimMap[index]);
-        }
-      }
-
-      exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
-    } else if (auto cOp = value.getDefiningOp<arith::ConstantOp>()) {
-      auto idxVal = cOp.getValue().cast<IntegerAttr>().getValue();
-      unsigned idx = idxVal.getSExtValue();
-      exprVec.push_back(getAffineConstantExpr(idx, context));
-    } else {
-      if (!indexToExprDimMap.count(value))
-        indexToExprDimMap[value] =
-            getAffineDimExpr(indexToExprDimMap.size(), context);
-      exprVec.push_back(indexToExprDimMap[value]);
-    }
-  }
-
-  assert(!exprVec.empty() && "Could not construct linearized affineExpr");
-
-  auto ret = makeFlattenedStridedExpr(memRefType.getShape(), exprVec,
-                                      memRefType.getContext());
-
-  return ret;
-}
-
-// From a linearized affine expression, compute the base and the constant
-// offset. If the access is A[i][j+2] for an N*N array A, the linearized
-// expression will be A[i*N+j+2]. The base in this case will be (i*N+j), and the
-// offset will be 2.
-static std::pair<AffineExpr, int32_t> getBaseAndOffset(AffineExpr expr) {
-  AffineExpr base = expr;
-  int32_t offset = 0;
-
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
-    base = nullptr;
-    offset += constExpr.getValue();
-  } else if (auto binopExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
-    if (binopExpr.getKind() == AffineExprKind::Add) {
-      AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
-      if (auto constExpr = lhs.dyn_cast<AffineConstantExpr>()) {
-        base = rhs;
-        offset += constExpr.getValue();
-      }
-      if (auto constExpr = rhs.dyn_cast<AffineConstantExpr>()) {
-        base = base == rhs ? nullptr : lhs;
-        offset += constExpr.getValue();
-      }
-    }
-  }
-  return std::make_pair(base, offset);
-}
-
-// If the defining op of one of add operands is an add op, return this defining
-// add op.
+// If only one of the operands of given add is an add, return that operand's def
+// op; otherwise return null.
 static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
-  arith::AddIOp defLhs =
-      dyn_cast<arith::AddIOp>(addOp->getOperand(0).getDefiningOp());
-  arith::AddIOp defRhs =
-      dyn_cast<arith::AddIOp>(addOp->getOperand(1).getDefiningOp());
+  auto defLhs = dyn_cast<arith::AddIOp>(addOp->getOperand(0).getDefiningOp());
+  auto defRhs = dyn_cast<arith::AddIOp>(addOp->getOperand(1).getDefiningOp());
   if ((!defLhs && !defRhs) || (defLhs && defRhs)) {
     return nullptr;
   }
@@ -699,28 +583,28 @@ static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
 // a broadcast op and an upd op.
 static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
                               SmallVectorImpl<Value> &bcastOpSourceVec) {
-  // Get the mul op's lhs and rhs defining ops. We keep splat op at
-  // rhs.
-  if (isa<aievec::BroadcastOp>(mulOp.getOperand(0).getDefiningOp())) {
-    Value left = mulOp->getOperand(0);
-    Value right = mulOp->getOperand(1);
-    mulOp->setOperand(0, right);
-    mulOp->setOperand(1, left);
-  }
+  aievec::BroadcastOp bcastOp = nullptr;
+  aievec::UPDOp updOp = nullptr;
 
-  if (!isa<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp())) {
+  if (isa<aievec::BroadcastOp>(mulOp.getOperand(0).getDefiningOp())) {
+    bcastOp = cast<aievec::BroadcastOp>(mulOp->getOperand(0).getDefiningOp());
+    if (!isa<aievec::UPDOp>(mulOp->getOperand(1).getDefiningOp())) {
+      return false;
+    }
+    updOp = cast<aievec::UPDOp>(mulOp->getOperand(1).getDefiningOp());
+  } else if (isa<aievec::BroadcastOp>(mulOp.getOperand(1).getDefiningOp())) {
+    bcastOp = cast<aievec::BroadcastOp>(mulOp->getOperand(1).getDefiningOp());
+    if (!isa<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp())) {
+      return false;
+    }
+    updOp = cast<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp());
+  } else {
     return false;
   }
-
-  aievec::BroadcastOp bcastOp =
-      dyn_cast<aievec::BroadcastOp>(mulOp->getOperand(1).getDefiningOp());
 
   if (!isa<aievec::UPDOp>(bcastOp.getSource().getDefiningOp())) {
     return false;
   }
-
-  aievec::UPDOp updOp =
-      cast<aievec::UPDOp>(mulOp->getOperand(0).getDefiningOp());
 
   if (!macChainMap.count(bcastOp.getSource())) {
     bcastOpSourceVec.push_back(bcastOp.getSource());
@@ -743,9 +627,9 @@ static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
 static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
                           SmallVectorImpl<Value> &bcastOpSourceVec) {
   while (true) {
-    arith::MulIOp defLhs =
+    auto defLhs =
         dyn_cast<arith::MulIOp>(curAddOp->getOperand(0).getDefiningOp());
-    arith::MulIOp defRhs =
+    auto defRhs =
         dyn_cast<arith::MulIOp>(curAddOp->getOperand(1).getDefiningOp());
 
     if (!defLhs && !defRhs) {
@@ -777,7 +661,6 @@ static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
     }
     curAddOp = defAddOp;
   }
-  return;
 }
 
 // Check whether mul add chain is valid for the transformation and classify the
@@ -853,14 +736,27 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         continue;
       }
 
-      AffineExpr curLinearAccess = constructLinearizedAffineExpr(curUpdOp);
-      AffineExpr nextLinearAccess = constructLinearizedAffineExpr(nextUpdOp);
+      AffineExpr curLinearAccess =
+          constructLinearizedAffineExprForUPDOp(curUpdOp);
+      AffineExpr nextLinearAccess =
+          constructLinearizedAffineExprForUPDOp(nextUpdOp);
+      if (!curLinearAccess || !nextLinearAccess) {
+        if (fusedOps.size() < 2) {
+          return false;
+        }
+        groupFusedOps.push_back(fusedOps);
+        fusedOps.clear();
+        fusedOps.push_back(nextMulOp);
+        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        continue;
+      }
+
       AffineExpr curBase, nextBase;
       int32_t curOffset, nextOffset;
 
       // Get the base and offset from linear access expr
-      std::tie(curBase, curOffset) = getBaseAndOffset(curLinearAccess);
-      std::tie(nextBase, nextOffset) = getBaseAndOffset(nextLinearAccess);
+      std::tie(curBase, curOffset) = extractBaseAndOffset(curLinearAccess);
+      std::tie(nextBase, nextOffset) = extractBaseAndOffset(nextLinearAccess);
       if (curBase != nextBase) {
         if (fusedOps.size() < 2) {
           return false;
@@ -1011,9 +907,9 @@ struct FoldMulAddChainToConvOpPattern
     for (auto fusedOps : groupFusedOps) {
       arith::MulIOp mulOp = (*fusedOps.begin());
       arith::AddIOp addOp = cast<arith::AddIOp>(*mulOp->getUsers().begin());
-      Operation *addLhs =
+      auto addLhs =
           dyn_cast<arith::MulIOp>(addOp->getOperand(0).getDefiningOp());
-      Operation *addRhs =
+      auto addRhs =
           dyn_cast<arith::MulIOp>(addOp->getOperand(1).getDefiningOp());
       bool isMulConv = false;
 
@@ -1024,8 +920,17 @@ struct FoldMulAddChainToConvOpPattern
           acc = addLhs ? addOp->getOperand(1) : addOp->getOperand(0);
       }
 
+      // Get the mul op's lhs and rhs defining ops. We keep splat op at rhs.
+      if (isa<aievec::BroadcastOp>(mulOp->getOperand(0).getDefiningOp())) {
+        Value left = mulOp->getOperand(0);
+        Value right = mulOp->getOperand(1);
+        mulOp->setOperand(0, right);
+        mulOp->setOperand(1, left);
+      }
+
       Value lhs = mulOp->getOperand(0);
       Value rhs = mulOp->getOperand(1);
+
       VectorType vType = mulOp.getResult().getType().cast<VectorType>();
       Type sType = vType.getElementType();
       IntegerType iType = sType.cast<IntegerType>();
@@ -1132,11 +1037,11 @@ struct FoldMulAddChainToConvOpPattern
         return success();
       } else {
         if (isMulConv) {
-          convOp = rewriter.create<aievec::MulConvOp>(lastAddOp->getLoc(),
-                                                      opType, lhs, rhs, M, N);
+          convOp = rewriter.create<aievec::MulConvOp>(srcOp->getLoc(), opType,
+                                                      lhs, rhs, M, N);
         } else {
           convOp = rewriter.create<aievec::FMAConvOp>(
-              lastAddOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
+              srcOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
         }
       }
       acc = convOp->getResult(0);
@@ -1247,8 +1152,14 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   });
 
   target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
-    VectorType resultType = dyn_cast<VectorType>(op.getType());
-    IntegerType resultElType = cast<IntegerType>(resultType.getElementType());
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElType = dyn_cast<IntegerType>(resultType.getElementType());
+    if (!resultElType) {
+      return true;
+    }
     unsigned resultElWidth = resultElType.getWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 

@@ -1,7 +1,10 @@
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" -aieml=true --aie-vectorize="shift=10 zero-offset=4" | aie-translate -aieml=true --aievec-to-cpp -o gen_aie-ml.cc
-// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --convert-vector-to-aievec="aie-target=aieml shift=10" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o gen_aie-ml.c
 // RUN: xchesscc -f -g +s -p me -P %aietools/data/aie_ml/lib/ +w work +o work -I%S -I. %S/testbench.cc %S/kernel.cc
+// RUN: cp -r %S/data . && xme_ca_udm_dbg -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out"
+
+// RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --convert-vector-to-aievec="aie-target=aieml shift=10" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o convert_aie-ml.cc
+// RUN: xchesscc -f -g +s -p me -P %aietools/data/aie_ml/lib/ +w work +o work -I%S -I. %S/testbench.cc %S/convert_kernel.cc
 // RUN: cp -r %S/data . && xme_ca_udm_dbg -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out"
 
 func.func @conv2d (%A: memref<18x288xi16>, %B: memref<9xi16>, %C: memref<16x256xi16>) {
