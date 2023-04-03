@@ -1,3 +1,6 @@
 [submodule "platforms/boards"]
 	path = platforms/boards
 	url = https://github.com/Xilinx/XilinxBoardStore.git
+[submodule "cmake/modulesXilinx"]
+	path = cmake/modulesXilinx
+	url = https://github.com/Xilinx/cmakeModules.git

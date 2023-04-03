@@ -19,13 +19,15 @@
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 2 ]; then
-    echo "ERROR: Needs at least 2 arguments for <llvm dir> and <cmakeModules dir>."
+if [ "$#" -lt 1 ]; then
+    echo "ERROR: Needs at least 1 arguments for <llvm build dir>."
     exit 1
 fi
 
+BASE_DIR=`realpath $(dirname $0)/..`
+CMAKEMODULES_DIR=$BASE_DIR/cmake
+
 LLVM_BUILD_DIR=`realpath $1`
-CMAKEMODULES_DIR=`realpath $2`
 
 BUILD_DIR=${3:-"build"}
 INSTALL_DIR=${4:-"install"}
@@ -40,11 +42,12 @@ cmake -GNinja \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
-    -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/ \
+    -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
+    -DVitisSysroot="" \
     .. |& tee cmake.log
 
 ninja |& tee ninja.log
