@@ -560,7 +560,8 @@ struct AIEObjectFifoStatefulTransformPass
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
-              checkSplitFifo<ObjectFifoAcquireOp>(acqOp, coreOp.getTile().getDefiningOp<TileOp>());
+              checkSplitFifo<ObjectFifoAcquireOp>(
+                  acqOp, coreOp.getTile().getDefiningOp<TileOp>());
               found = true;
               ObjectFifoCreateOp op =
                   acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
@@ -710,9 +711,9 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to check whether objectFifo accessed by op has been split.
   /// If yes, it replaces the parent objectFifo with the correct consumer
   /// child based on the tile it is on.
-  template <typename MyOp>
-  void checkSplitFifo(MyOp op, TileOp tile) {
-    ObjectFifoCreateOp parentFifo = op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
+  template <typename MyOp> void checkSplitFifo(MyOp op, TileOp tile) {
+    ObjectFifoCreateOp parentFifo =
+        op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
     if (splitFifos.find(parentFifo) != splitFifos.end()) {
       if (op.getPort() == ObjectFifoPort::Consume) {
         for (auto splitFifo : splitFifos[parentFifo]) {
@@ -890,7 +891,8 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         // if objectFifo was split, replace with correct child
-        checkSplitFifo<ObjectFifoReleaseOp>(releaseOp, coreOp.getTile().getDefiningOp<TileOp>());
+        checkSplitFifo<ObjectFifoReleaseOp>(
+            releaseOp, coreOp.getTile().getDefiningOp<TileOp>());
 
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op =
@@ -920,7 +922,8 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         // if objectFifo was split, replace with correct child
-        checkSplitFifo<ObjectFifoAcquireOp>(acquireOp, coreOp.getTile().getDefiningOp<TileOp>());
+        checkSplitFifo<ObjectFifoAcquireOp>(
+            acquireOp, coreOp.getTile().getDefiningOp<TileOp>());
 
         builder.setInsertionPointAfter(acquireOp);
         auto port = acquireOp.getPort();

@@ -391,8 +391,9 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   auto objFifo = getAIEObjectFifo().getDefiningOp<ObjectFifoCreateOp>();
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
-      return parent.emitOpError("producer port of objectFifo accessed by core running "
-                                "on non-producer tile");
+      return parent.emitOpError(
+          "producer port of objectFifo accessed by core running "
+          "on non-producer tile");
   } else if (getPort() == ObjectFifoPort::Consume) {
     bool found = false;
     for (auto consumerTile : objFifo.getConsumerTiles()) {
@@ -402,8 +403,9 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
       }
     }
     if (!found)
-      return parent.emitOpError("consumer port of objectFifo accessed by core running "
-                                "on non-consumer tile");
+      return parent.emitOpError(
+          "consumer port of objectFifo accessed by core running "
+          "on non-consumer tile");
   }
 
   return success();
@@ -422,8 +424,9 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   auto objFifo = getAIEObjectFifo().getDefiningOp<ObjectFifoCreateOp>();
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
-      return parent.emitOpError("producer port of objectFifo accessed by core running "
-                                "on non-producer tile");
+      return parent.emitOpError(
+          "producer port of objectFifo accessed by core running "
+          "on non-producer tile");
   } else if (getPort() == ObjectFifoPort::Consume) {
     bool found = false;
     for (auto consumerTile : objFifo.getConsumerTiles()) {
@@ -433,8 +436,9 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
       }
     }
     if (!found)
-      return parent.emitOpError("consumer port of objectFifo accessed by core running "
-                                "on non-consumer tile");
+      return parent.emitOpError(
+          "consumer port of objectFifo accessed by core running "
+          "on non-consumer tile");
   }
 
   return success();
