@@ -122,6 +122,17 @@ static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
   }
 }
 
+static void refreshFusedGroups(
+    MulDefTupleTy defTuple, arith::MulIOp nextMulOp,
+    SmallVector<arith::MulIOp, 8> &fusedOps,
+    SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
+    int8_t &curIdx, aievec::UPDOp &curUpdOp, arith::MulIOp &curMulOp) {
+  groupFusedOps.push_back(fusedOps);
+  fusedOps.clear();
+  fusedOps.push_back(nextMulOp);
+  std::tie(curIdx, curUpdOp, curMulOp) = defTuple;
+}
+
 // Check whether mul add chain is valid for the transformation and classify the
 // fused ops into different groups with valid constant memref distances.
 static bool
@@ -145,7 +156,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
       int8_t nextIdx = 0;
       aievec::UPDOp nextUpdOp = nullptr;
       arith::MulIOp nextMulOp = nullptr;
-      std::tie(nextIdx, nextUpdOp, nextMulOp) = *it;
+      MulDefTupleTy defTuple = *it;
+      std::tie(nextIdx, nextUpdOp, nextMulOp) = defTuple;
 
       int32_t dist = nextIdx - curIdx;
 
@@ -158,10 +170,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
 
@@ -170,10 +180,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
 
@@ -188,10 +196,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
 
@@ -203,10 +209,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
 
@@ -220,10 +224,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
 
@@ -232,10 +234,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
       dists.push_back(dist);
@@ -245,10 +245,8 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
         if (fusedOps.size() < 2) {
           return false;
         }
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
-        std::tie(curIdx, curUpdOp, curMulOp) = *it;
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
 
@@ -257,7 +255,7 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
       dupFactor = dists[0];
 
       fusedOps.push_back(nextMulOp);
-      std::tie(curIdx, curUpdOp, curMulOp) = *it;
+      std::tie(curIdx, curUpdOp, curMulOp) = defTuple;
 
       if (fusedOps.size() > groupSize) {
         fusedOps.pop_back();
