@@ -465,9 +465,9 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> sourceset;
   DenseSet<xilinx::AIE::Port> destset;
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
-  if (body.empty())
+  auto ops = body.getOps();
+  int num_ops = std::distance(ops.begin(), ops.end());
+  if (num_ops <= 1) // the terminator is added implicitly
     return emitOpError("cannot have an empty body");
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
@@ -556,9 +556,9 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
 LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> destset;
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
-  if (body.empty())
+  auto ops = body.getOps();
+  int num_ops = std::distance(ops.begin(), ops.end());
+  if (num_ops <= 1) // the terminator is added implicitly
     return emitOpError("cannot have an empty body");
 
   for (auto &ops : body.front()) {
@@ -584,9 +584,9 @@ LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
 LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> destset;
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
-  if (body.empty())
+  auto ops = body.getOps();
+  int num_ops = std::distance(ops.begin(), ops.end());
+  if (num_ops <= 1) // the terminator is added implicitly
     return emitOpError("cannot have an empty body");
 
   auto tileOp = getTileOp();
@@ -652,8 +652,6 @@ int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
   Region &body = getBody();
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
   if (body.empty())
     return emitOpError("cannot have an empty body");
 
@@ -678,9 +676,9 @@ int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::PacketRulesOp::verify() {
   Region &body = getRules();
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
-  if (body.empty())
+  auto ops = body.getOps();
+  int num_ops = std::distance(ops.begin(), ops.end());
+  if (num_ops <= 1) // the terminator is added implicitly
     return emitOpError("cannot have an empty body");
 
   return success();
@@ -689,9 +687,9 @@ LogicalResult xilinx::AIE::PacketRulesOp::verify() {
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = getPorts();
   // DenseSet<xilinx::AIE::Port> destset;
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
-  if (body.empty())
+  auto ops = body.getOps();
+  int num_ops = std::distance(ops.begin(), ops.end());
+  if (num_ops <= 1) // the terminator is added implicitly
     return emitOpError("cannot have an empty body");
 
   for (auto &ops : body.front()) {
@@ -709,8 +707,6 @@ LogicalResult xilinx::AIE::PacketFlowOp::verify() {
 // CoreOp
 LogicalResult xilinx::AIE::CoreOp::verify() {
   Region &body = getBody();
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
   if (body.empty())
     return emitOpError("cannot have an empty body");
   if (getTile().getDefiningOp<TileOp>().isShimTile())
@@ -745,8 +741,6 @@ LogicalResult xilinx::AIE::BufferOp::verify() {
 LogicalResult xilinx::AIE::MemOp::verify() {
   Region &body = getBody();
   DenseSet<xilinx::AIE::DMAChannel> used_channels;
-  if (getOperation()->getNumRegions() != 1)
-    return emitOpError("must have one region");
   if (body.empty())
     return emitOpError("cannot have an empty body");
 
