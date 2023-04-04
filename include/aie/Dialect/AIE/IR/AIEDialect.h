@@ -200,7 +200,7 @@ std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIEObjectFifoLoopUnrollPass();
