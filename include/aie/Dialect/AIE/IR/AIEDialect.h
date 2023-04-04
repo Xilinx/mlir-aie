@@ -194,7 +194,7 @@ std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignBufferAddressesPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECanonicalizeDevicePass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();

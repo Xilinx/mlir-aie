@@ -141,7 +141,7 @@ def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "DeviceOp"> {
   ];
 }
 
-def AIEFindFlows : Pass<"aie-find-flows", "ModuleOp"> {
+def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   let summary = "Recover flows from switchbox configuration";
   let description = [{
     Under normal circumstances, every configured aie.switchbox operation
