@@ -29,9 +29,11 @@
 // Tile 7,0 is a shim NoC tile that has a ShimMux.
 // The ShimMux must be configured for streams to PLIO 2,3,4,5
 module {
-  %t70 = AIE.tile(7, 0)
-  %t71 = AIE.tile(7, 1)
-  AIE.flow(%t71, North : 0, %t70, PLIO : 2)
+  AIE.device(xcvc1902) {
+    %t70 = AIE.tile(7, 0)
+    %t71 = AIE.tile(7, 1)
+    AIE.flow(%t71, North : 0, %t70, PLIO : 2)
+  }
 }
 
 // -----
@@ -52,9 +54,11 @@ module {
 // Tile 6,0 is a shim NoC tile that has a ShimMux.
 // The ShimMux must be configured for streams from PLIO 2,3,6,7
 module {
-  %t60 = AIE.tile(6, 0)
-  %t61 = AIE.tile(6, 1)
-  AIE.flow(%t60, PLIO : 6, %t61, DMA : 1)
+  AIE.device(xcvc1902) {
+    %t60 = AIE.tile(6, 0)
+    %t61 = AIE.tile(6, 1)
+    AIE.flow(%t60, PLIO : 6, %t61, DMA : 1)
+  }
 }
 
 // -----
@@ -73,10 +77,12 @@ module {
 
 // Tile 4,0 is a shim PL tile and does not contain a ShimMux.
 module {
-  %t40 = AIE.tile(4, 0)
-  %t41 = AIE.tile(4, 1)
-  AIE.flow(%t41, North : 0, %t40, PLIO : 3)
-  AIE.flow(%t40, PLIO : 4, %t41, North : 0)
+  AIE.device(xcvc1902) {
+    %t40 = AIE.tile(4, 0)
+    %t41 = AIE.tile(4, 1)
+    AIE.flow(%t41, North : 0, %t40, PLIO : 3)
+    AIE.flow(%t40, PLIO : 4, %t41, North : 0)
+  }
 }
 
 // -----
@@ -97,8 +103,10 @@ module {
 // Tile 10,0 is a shim NoC tile that has a ShimMux.
 // The ShimMux must be configured for streams to NOC 0,1,2,3
 module {
-  %t100 = AIE.tile(10, 0)
-  %t101 = AIE.tile(10, 1)
-  AIE.flow(%t101, North : 0, %t100, NOC : 2)
+  AIE.device(xcvc1902) {
+    %t100 = AIE.tile(10, 0)
+    %t101 = AIE.tile(10, 1)
+    AIE.flow(%t101, North : 0, %t100, NOC : 2)
+  }
 }
 
