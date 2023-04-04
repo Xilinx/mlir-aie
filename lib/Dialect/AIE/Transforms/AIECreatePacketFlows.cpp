@@ -17,6 +17,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/Twine.h"
+#include <aie/Dialect/AIE/Transforms/AIEPathfinder.h>
 
 #define DEBUG_TYPE "aie-create-packet-flows"
 
@@ -98,7 +99,6 @@ int getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
 }
 
 void update_coordinates(int &xCur, int &yCur, WireBundle move) {
-  LLVM_DEBUG(llvm::dbgs() << "update_coordinates(" << xCur << ", " << yCur << ")");
   if (move == WireBundle::East) {
     xCur = xCur + 1;
     // yCur = yCur;
@@ -112,7 +112,6 @@ void update_coordinates(int &xCur, int &yCur, WireBundle move) {
     // xCur = xCur;
     yCur = yCur - 1;
   }
-  LLVM_DEBUG(llvm::dbgs() << " --> " << xCur << ", " << yCur << ")\n");
 }
 
 // Build a packet-switched route from the sourse to the destination with the
@@ -153,10 +152,6 @@ void buildPSRoute(
     if (yCur > yDest)
       moves.push_back(WireBundle::South);
 
-    //LLVM_DEBUG(llvm::dbgs() << "\nmoves: " << "\n");
-    //for(auto move : moves)
-    //  LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(move) << "\n");
-
     if (std::find(moves.begin(), moves.end(), WireBundle::East) == moves.end())
       moves.push_back(WireBundle::East);
     if (std::find(moves.begin(), moves.end(), WireBundle::West) == moves.end())
@@ -165,11 +160,6 @@ void buildPSRoute(
       moves.push_back(WireBundle::North);
     if (std::find(moves.begin(), moves.end(), WireBundle::South) == moves.end())
       moves.push_back(WireBundle::South);
-
-    //LLVM_DEBUG(llvm::dbgs() << "****" << "\n");
-    //LLVM_DEBUG(llvm::dbgs() << "moves final: " << "\n");
-    //for(auto move : moves)
-    //  LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(move) << "\n");
 
     for (unsigned i = 0; i < moves.size(); i++) {
       WireBundle move = moves[i];
@@ -339,15 +329,47 @@ struct AIERoutePacketFlowsPass
     SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
     DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
 
+    int maxcol = 0, maxrow = 0;
     for (auto tileOp : m.getOps<TileOp>()) {
       int col = tileOp.colIndex();
       int row = tileOp.rowIndex();
+      maxcol = std::max(maxcol, col);
+      maxrow = std::max(maxrow, row);
       tiles[std::make_pair(col, row)] = tileOp;
     }
 
+    Pathfinder pathfinder = Pathfinder(maxcol, maxrow);
+
+    // Add all PacketRoutes to Pathfinder object
+    // each source can map to multiple different destinations (fanout)
+    for (PacketFlowOp flowOp : module.getOps<PacketFlowOp>()) {
+      TileOp srcTile = cast<TileOp>(pktFlowOp.getSource().getDefiningOp());
+      TileOp dstTile = cast<TileOp>(pktFlowOp.getDest().getDefiningOp());
+      Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
+      Coord dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+      Port srcPort =
+          std::make_pair(pktFlowOp.getSourceBundle(), pktFlowOp.getSourceChannel());
+      Port dstPort =
+          std::make_pair(pktFlowOp.getDestBundle(), pktFlowOp.getDestChannel());
+      LLVM_DEBUG(llvm::dbgs()
+                 << "\tAdding Flow: (" << srcCoords.first << ", "
+                 << srcCoords.second << ")"
+                 << stringifyWireBundle(srcPort.first) << (int)srcPort.second
+                 << " -> (" << dstCoords.first << ", " << dstCoords.second
+                 << ")" << stringifyWireBundle(dstPort.first)
+                 << (int)dstPort.second << "\n");
+      pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
+    }
+
     // The logical model of all the switchboxes.
+    // Each "Connect" is a Port-to-Port switchbox setting.
+    // The SmallVector of Connects defines a Packet Route
     DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
         switchboxes;
+
+    // Call Pathfinder to fill routes into this DenseMap
+
+    // For each PacketFlowOp, build a Packet Switched route from src to dest
     for (auto pktflow : m.getOps<PacketFlowOp>()) {
       Region &r = pktflow.getPorts();
       Block &b = r.front();
