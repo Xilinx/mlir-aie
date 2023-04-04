@@ -9,13 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/../test.cpp -o tutorial-1.exe
-// RUN: %run_on_board ./tutorial-1.exe
+// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test_perf.cpp -o tutorial-2c_empty_perf.exe
+// RUN: %run_on_board ./tutorial-2c_empty_perf.exe
 
 
 // Declare this MLIR module. A block encapsulates all 
 // AIE tiles, buffers, and communication in an AI Engine design
-module @tutorial_1 {
+module @tutorial_2c {
 
     // Declare tile object of the AIE class located at position col 1, row 4
     %tile14 = AIE.tile(1, 4)
