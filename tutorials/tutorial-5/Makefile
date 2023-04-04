@@ -1,7 +1,7 @@
-include ../../utils/vitisVariables.config
 include ../makefile-common
 
 .PHONY: all clean
+ 
 
 all: tutorial-5.exe
 	@mkdir -p elf

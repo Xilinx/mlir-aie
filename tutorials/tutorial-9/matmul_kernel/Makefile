@@ -1,5 +1,4 @@
 
-include ../../../utils/vitisVariables.config
 include ../../makefile-common
 
 .PHONY: build gui sim
