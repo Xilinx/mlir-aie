@@ -11,33 +11,33 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project("xaiengine driver")
-file(COPY ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_2/src DESTINATION ${PROJECT_SOURCE_DIR})
-file(GLOB libsources ${PROJECT_SOURCE_DIR}/src/*/*.c ${PROJECT_SOURCE_DIR}/src/*/*/*.c)
+set(XAIE_SOURCE ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_2/src)
+file(GLOB libsources ${XAIE_SOURCE}/*/*.c ${XAIE_SOURCE}/*/*/*.c)
 
 include_directories(
-    ${PROJECT_SOURCE_DIR}/src
-    ${PROJECT_SOURCE_DIR}/src/common
-    ${PROJECT_SOURCE_DIR}/src/core
-    ${PROJECT_SOURCE_DIR}/src/device
-    ${PROJECT_SOURCE_DIR}/src/dma
-    ${PROJECT_SOURCE_DIR}/src/events
-    ${PROJECT_SOURCE_DIR}/src/global
-    ${PROJECT_SOURCE_DIR}/src/interrupt
-    ${PROJECT_SOURCE_DIR}/src/io_backend
-    ${PROJECT_SOURCE_DIR}/src/io_backend/ext
-    ${PROJECT_SOURCE_DIR}/src/io_backend/privilege
-    ${PROJECT_SOURCE_DIR}/src/lite
-    ${PROJECT_SOURCE_DIR}/src/locks
-    ${PROJECT_SOURCE_DIR}/src/memory
-    ${PROJECT_SOURCE_DIR}/src/npi
-    ${PROJECT_SOURCE_DIR}/src/perfcnt
-    ${PROJECT_SOURCE_DIR}/src/pl
-    ${PROJECT_SOURCE_DIR}/src/pm
-    ${PROJECT_SOURCE_DIR}/src/rsc
-    ${PROJECT_SOURCE_DIR}/src/stream_switch
-    ${PROJECT_SOURCE_DIR}/src/timer
-    ${PROJECT_SOURCE_DIR}/src/trace
-    ${PROJECT_SOURCE_DIR}/src/util
+    ${XAIE_SOURCE}
+    ${XAIE_SOURCE}/common
+    ${XAIE_SOURCE}/core
+    ${XAIE_SOURCE}/device
+    ${XAIE_SOURCE}/dma
+    ${XAIE_SOURCE}/events
+    ${XAIE_SOURCE}/global
+    ${XAIE_SOURCE}/interrupt
+    ${XAIE_SOURCE}/io_backend
+    ${XAIE_SOURCE}/io_backend/ext
+    ${XAIE_SOURCE}/io_backend/privilege
+    ${XAIE_SOURCE}/lite
+    ${XAIE_SOURCE}/locks
+    ${XAIE_SOURCE}/memory
+    ${XAIE_SOURCE}/npi
+    ${XAIE_SOURCE}/perfcnt
+    ${XAIE_SOURCE}/pl
+    ${XAIE_SOURCE}/pm
+    ${XAIE_SOURCE}/rsc
+    ${XAIE_SOURCE}/stream_switch
+    ${XAIE_SOURCE}/timer
+    ${XAIE_SOURCE}/trace
+    ${XAIE_SOURCE}/util
 )
 
 add_library(xaiengine SHARED ${libsources})
