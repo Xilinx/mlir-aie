@@ -203,7 +203,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEObjectFifoLoopUnrollPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoRegisterProcessPass();
 

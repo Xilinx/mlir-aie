@@ -383,6 +383,31 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
     return emitError("ObjectFifoAcquireOp must acquire at least one element");
 
+  auto parent = getOperation()->getParentOfType<CoreOp>();
+  if (parent == nullptr)
+    return emitOpError("must be called from inside a CoreOp");
+
+  auto coreTile = parent.getTile();
+  auto objFifo = getAIEObjectFifo().getDefiningOp<ObjectFifoCreateOp>();
+  if (getPort() == ObjectFifoPort::Produce) {
+    if (coreTile != objFifo.getProducerTile())
+      return parent.emitOpError(
+          "producer port of objectFifo accessed by core running "
+          "on non-producer tile");
+  } else if (getPort() == ObjectFifoPort::Consume) {
+    bool found = false;
+    for (auto consumerTile : objFifo.getConsumerTiles()) {
+      if (coreTile == consumerTile) {
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+      return parent.emitOpError(
+          "consumer port of objectFifo accessed by core running "
+          "on non-consumer tile");
+  }
+
   return success();
 }
 
@@ -390,6 +415,45 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
 LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   if (relNumber() < 1)
     return emitError("ObjectFifoReleaseOp must release at least one element");
+
+  auto parent = getOperation()->getParentOfType<CoreOp>();
+  if (parent == nullptr)
+    return emitOpError("must be called from inside a CoreOp");
+
+  auto coreTile = parent.getTile();
+  auto objFifo = getAIEObjectFifo().getDefiningOp<ObjectFifoCreateOp>();
+  if (getPort() == ObjectFifoPort::Produce) {
+    if (coreTile != objFifo.getProducerTile())
+      return parent.emitOpError(
+          "producer port of objectFifo accessed by core running "
+          "on non-producer tile");
+  } else if (getPort() == ObjectFifoPort::Consume) {
+    bool found = false;
+    for (auto consumerTile : objFifo.getConsumerTiles()) {
+      if (coreTile == consumerTile) {
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+      return parent.emitOpError(
+          "consumer port of objectFifo accessed by core running "
+          "on non-consumer tile");
+  }
+
+  return success();
+}
+
+// ObjectFifoSubviewAccessOp
+LogicalResult xilinx::AIE::ObjectFifoSubviewAccessOp::verify() {
+  auto parent = getOperation()->getParentOfType<CoreOp>();
+  if (parent == nullptr)
+    return emitOpError("must be called from inside a CoreOp");
+
+  ObjectFifoAcquireOp acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+  if ((int)getIndex() >= acqOp.acqNumber())
+    return emitOpError("accessed farther than number of acquired elements "
+                       "(index out of bounds).");
 
   return success();
 }

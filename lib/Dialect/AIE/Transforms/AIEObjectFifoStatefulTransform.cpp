@@ -560,8 +560,8 @@ struct AIEObjectFifoStatefulTransformPass
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
-              checkSplitFifo(acqOp.getOperation(),
-                             coreOp.getTile().getDefiningOp<TileOp>());
+              checkSplitFifo<ObjectFifoAcquireOp>(
+                  acqOp, coreOp.getTile().getDefiningOp<TileOp>());
               found = true;
               ObjectFifoCreateOp op =
                   acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
@@ -711,73 +711,16 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to check whether objectFifo accessed by op has been split.
   /// If yes, it replaces the parent objectFifo with the correct consumer
   /// child based on the tile it is on.
-  void checkSplitFifo(Operation *op, TileOp tile) {
-    ObjectFifoCreateOp parentFifo;
-    ObjectFifoPort port;
-    if (isa<ObjectFifoAcquireOp>(op)) {
-      ObjectFifoAcquireOp acqOp = dyn_cast<ObjectFifoAcquireOp>(op);
-      parentFifo = acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = acqOp.getPort();
-    } else if (isa<ObjectFifoReleaseOp>(op)) {
-      ObjectFifoReleaseOp relOp = dyn_cast<ObjectFifoReleaseOp>(op);
-      parentFifo = relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = relOp.getPort();
-    } else {
-      assert(false && "checkSplitFifo() must be called on either "
-                      "ObjectFifoAcquireOp or ObjectFifoReleaseOp");
-    }
-
+  template <typename MyOp> void checkSplitFifo(MyOp op, TileOp tile) {
+    ObjectFifoCreateOp parentFifo =
+        op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
     if (splitFifos.find(parentFifo) != splitFifos.end()) {
-      if (port == ObjectFifoPort::Consume) {
+      if (op.getPort() == ObjectFifoPort::Consume) {
         for (auto splitFifo : splitFifos[parentFifo]) {
           if (splitFifo.getProducerTile() == tile.getResult())
             op->replaceUsesOfWith(parentFifo, splitFifo);
         }
       }
-    }
-  }
-
-  /// Function used to check whether the process that is accessing the
-  /// objectFifo is running on a tile matching the port of that
-  /// objectFifo.
-  void checkCorrectPort(Operation *op) {
-    ObjectFifoCreateOp objFifo;
-    ObjectFifoPort port;
-    if (isa<ObjectFifoAcquireOp>(op)) {
-      ObjectFifoAcquireOp acqOp = dyn_cast<ObjectFifoAcquireOp>(op);
-      objFifo = acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = acqOp.getPort();
-    } else if (isa<ObjectFifoReleaseOp>(op)) {
-      ObjectFifoReleaseOp relOp = dyn_cast<ObjectFifoReleaseOp>(op);
-      objFifo = relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
-      port = relOp.getPort();
-    } else {
-      assert(false && "checkCorrectPort() must be called on either "
-                      "ObjectFifoAcquireOp or ObjectFifoReleaseOp");
-    }
-
-    Operation *coreOp = op;
-    while (!isa<CoreOp>(coreOp)) {
-      coreOp = coreOp->getParentOp();
-      if (coreOp == nullptr)
-        assert(false && "ObjectFifoAcquireOp or ObjectFifoReleaseOp must be "
-                        "used inside a CoreOp");
-    }
-    auto coreTile = dyn_cast<CoreOp>(coreOp).getTile();
-    if (port == ObjectFifoPort::Produce) {
-      if (coreTile != objFifo.getProducerTile())
-        assert(false && "Producer port of objectFifo accessed by core running "
-                        "on non-producer tile");
-    } else if (port == ObjectFifoPort::Consume) {
-      bool found = false;
-      for (auto consumerTile : objFifo.getConsumerTiles()) {
-        if (coreTile == consumerTile) {
-          found = true;
-          break;
-        }
-      }
-      assert(found && "Consumer port of objectFifo accessed by core running "
-                      "on non-consumer tile");
     }
   }
 
@@ -948,9 +891,8 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         // if objectFifo was split, replace with correct child
-        checkSplitFifo(releaseOp.getOperation(),
-                       coreOp.getTile().getDefiningOp<TileOp>());
-        checkCorrectPort(releaseOp.getOperation());
+        checkSplitFifo<ObjectFifoReleaseOp>(
+            releaseOp, coreOp.getTile().getDefiningOp<TileOp>());
 
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op =
@@ -980,9 +922,8 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         // if objectFifo was split, replace with correct child
-        checkSplitFifo(acquireOp.getOperation(),
-                       coreOp.getTile().getDefiningOp<TileOp>());
-        checkCorrectPort(acquireOp.getOperation());
+        checkSplitFifo<ObjectFifoAcquireOp>(
+            acquireOp, coreOp.getTile().getDefiningOp<TileOp>());
 
         builder.setInsertionPointAfter(acquireOp);
         auto port = acquireOp.getPort();
@@ -1090,9 +1031,6 @@ struct AIEObjectFifoStatefulTransformPass
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         ObjectFifoAcquireOp acqOp =
             accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        assert((size_t)accessOp.getIndex() < subviews[acqOp].size() &&
-               "Index out of bounds for subview: accessed farther than number "
-               "of acquired elements.");
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
