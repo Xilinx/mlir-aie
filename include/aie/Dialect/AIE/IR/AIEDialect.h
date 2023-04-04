@@ -194,13 +194,13 @@ std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignBufferAddressesPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECanonicalizeDevicePass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIEObjectFifoLoopUnrollPass();

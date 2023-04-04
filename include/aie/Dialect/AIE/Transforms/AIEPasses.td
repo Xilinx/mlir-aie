@@ -115,7 +115,7 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp">
   ];
 }
 
-def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "ModuleOp"> {
+def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
   let summary = "Route aie.flow operations through switchboxes with Pathfinder algorithm";
   let description = [{
     Replace each aie.flow operation with an equivalent set of aie.switchbox and aie.wire
@@ -141,7 +141,7 @@ def AIERoutePacketFlows : Pass<"aie-create-packet-flows", "DeviceOp"> {
   ];
 }
 
-def AIEFindFlows : Pass<"aie-find-flows", "ModuleOp"> {
+def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   let summary = "Recover flows from switchbox configuration";
   let description = [{
     Under normal circumstances, every configured aie.switchbox operation

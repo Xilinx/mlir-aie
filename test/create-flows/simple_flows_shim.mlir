@@ -19,9 +19,11 @@
 // CHECK:    AIE.connect<North : 0, South : 0>
 // CHECK:  }
 module {
-  %t23 = AIE.tile(2, 1)
-  %t22 = AIE.tile(2, 0)
-  AIE.flow(%t23, North : 0, %t22, PLIO : 0)
+  AIE.device(xcvc1902) {
+    %t23 = AIE.tile(2, 1)
+    %t22 = AIE.tile(2, 0)
+    AIE.flow(%t23, North : 0, %t22, PLIO : 0)
+  }
 }
 
 // -----
@@ -39,9 +41,11 @@ module {
 // CHECK:    AIE.connect<Core : 0, South : 0>
 // CHECK:  }
 module {
-  %t20 = AIE.tile(2, 0)
-  %t21 = AIE.tile(2, 1)
-  AIE.flow(%t21, Core : 0, %t20, DMA : 1)
+  AIE.device(xcvc1902) {
+    %t20 = AIE.tile(2, 0)
+    %t21 = AIE.tile(2, 1)
+    AIE.flow(%t21, Core : 0, %t20, DMA : 1)
+  }
 }
 
 // -----
@@ -62,7 +66,9 @@ module {
 // CHECK:    AIE.connect<North : 3, DMA : 1>
 // CHECK:  }
 module {
-  %t20 = AIE.tile(2, 0)
-  %t30 = AIE.tile(3, 0)
-  AIE.flow(%t20, DMA : 0, %t30, DMA : 1)
+  AIE.device(xcvc1902) {
+    %t20 = AIE.tile(2, 0)
+    %t30 = AIE.tile(3, 0)
+    AIE.flow(%t20, DMA : 0, %t30, DMA : 1)
+  }
 }
