@@ -24,6 +24,19 @@ import aiecc.cl_arguments
 
 from rich.progress import *
 
+aie_opt_passes = ['--aie-normalize-address-spaces',
+                  '--canonicalize',
+                  '--cse',
+                  '--convert-vector-to-llvm',
+                  '--expand-strided-metadata',
+                  '--lower-affine',
+                  '--convert-math-to-llvm',
+                  '--convert-arith-to-llvm',
+                  '--convert-memref-to-llvm',
+                  '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
+                  '--convert-cf-to-llvm',
+                  '--canonicalize',
+                  '--cse']
 
 class flow_runner:
   def __init__(self, opts, tmpdirname):
@@ -137,13 +150,20 @@ class flow_runner:
       thispath = os.path.dirname(os.path.realpath(__file__))
       # Should be architecture-specific
       runtime_lib_path = os.path.join(thispath, '..','..','runtime_lib', opts.aie_target.upper())
+      clang_path = os.path.dirname(shutil.which('clang'))
+      # The build path for libc can be very different from where it's installed.
+      llvmlibc_build_lib_path = os.path.join(clang_path, '..', 'runtimes', 'runtimes-' + opts.aie_target.lower() + '-none-unknown-elf-bins', 'libc', 'lib', 'libc.a')
+      llvmlibc_install_lib_path = os.path.join(clang_path, '..', 'lib', opts.aie_target.lower() + '-none-unknown-elf', 'libc.a')
       me_basic_o = os.path.join(runtime_lib_path, 'me_basic.o')
       libc = os.path.join(runtime_lib_path, 'libc.a')
       libm = os.path.join(runtime_lib_path, 'libm.a')
       libsoftfloat = os.path.join(runtime_lib_path, 'libsoftfloat.a')
-      chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, 'chess_intrinsic_wrapper.cpp')
+      if(os.path.isfile(llvmlibc_build_lib_path)):
+        libc = llvmlibc_build_lib_path
+      else:
+        libc = llvmlibc_install_lib_path
 
-      clang_link_args = [me_basic_o, libc, libm, libsoftfloat, '-Wl,--gc-sections']
+      clang_link_args = [me_basic_o, libc, '-Wl,--gc-sections']
 
       if(opts.progress):
         task = self.progress_bar.add_task("[yellow] Core (%d, %d)" % core[0:2], total=self.maxtasks, command="starting")
@@ -157,17 +177,7 @@ class flow_runner:
                             '--aie-standard-lowering=tilecol=%d tilerow=%d' % core[0:2],
                             self.file_with_addresses, '-o', file_core])
         file_opt_core = self.tmpcorefile(core, "opt.mlir")
-        await self.do_call(task, ['aie-opt', '--aie-normalize-address-spaces',
-                            '--canonicalize',
-                            '--cse',
-                            '--convert-vector-to-llvm',
-                            '--expand-strided-metadata',
-                            '--lower-affine',
-                            '--convert-arith-to-llvm',
-                            '--convert-memref-to-llvm',
-                            '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
-                            '--convert-cf-to-llvm',
-                            '--canonicalize', '--cse', file_core, '-o', file_opt_core])
+        await self.do_call(task, ['aie-opt', *aie_opt_passes, file_core, '-o', file_opt_core])
       if(self.opts.xbridge):
         file_core_bcf = self.tmpcorefile(core, "bcf")
         await self.do_call(task, ['aie-translate', self.file_with_addresses, '--aie-generate-bcf', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_bcf])
@@ -348,17 +358,8 @@ class flow_runner:
           self.file_opt_with_addresses = os.path.join(self.tmpdirname, 'input_opt_with_addresses.mlir')
           await self.do_call(progress.task, ['aie-opt', '--aie-localize-locks',
                               '--aie-standard-lowering',
-                              '--aie-normalize-address-spaces',
-                              '--canonicalize',
-                              '--cse',
-                              '--convert-vector-to-llvm',
-                              '--expand-strided-metadata',
-                              '--lower-affine',
-                              '--convert-arith-to-llvm',
-                              '--convert-memref-to-llvm',
-                              '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
-                              '--convert-cf-to-llvm',
-                              '--canonicalize', '--cse', self.file_with_addresses, '-o', self.file_opt_with_addresses])
+                              *aie_opt_passes,
+                              self.file_with_addresses, '-o', self.file_opt_with_addresses])
 
           self.file_llvmir = os.path.join(self.tmpdirname, 'input.ll')
           await self.do_call(progress.task, ['aie-translate', '--opaque-pointers=0', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
