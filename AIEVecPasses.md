@@ -7,6 +7,13 @@
 -zero-offset : Zero offset for indicating the location of zeroes in convolution filter (useful for 16x16 scheme)
 -dup-factor  : Duplication factor for each value in convolution filter (useful for 8x8 scheme)
 ```
+### `-aievec-convop-transformation`: Transform simple aievec ops into aievec mul_conv or mac_conv ops.
+
+#### Options
+```
+-shift      : Shift parameter for rounding and saturation
+-aie-target : Select AIE version: \"aie\" or \"aieml\". This will determine the vector size and available operations.
+```
 ### `-aievec-transformation`: Transform simple aievec ops into more complex aievec ops.
 
 #### Options
