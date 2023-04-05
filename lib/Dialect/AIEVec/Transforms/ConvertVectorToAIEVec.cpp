@@ -18,6 +18,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.h"
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -40,6 +41,8 @@ namespace xilinx::aievec {
 #define GEN_PASS_DEF_CANONICALIZEFORAIEVEC
 #define GEN_PASS_DEF_REDUNDANTLOADSTOREOPTIMIZATION
 #define GEN_PASS_DEF_AIEVECTRANSFORMATION
+#define GEN_PASS_DEF_AIEVECCONVOPTRANSFORMATION
+
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 } // namespace xilinx::aievec
 
@@ -598,6 +601,13 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
+static void
+populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
+                                           unsigned shiftParam) {
+  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(),
+                                               shiftParam);
+}
+
 //===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
@@ -652,6 +662,22 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
                .effectiveSize <= 1024;
   });
+
+  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElType = dyn_cast<IntegerType>(resultType.getElementType());
+    if (!resultElType) {
+      return true;
+    }
+    unsigned resultElWidth = resultElType.getWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return ((laneSize != 32 || resultElWidth != 16) &&
+            (laneSize != 16 || resultElWidth != 32));
+  });
 }
 
 static void
@@ -667,6 +693,18 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
       });
 }
 
+static void
+configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target) {
+  target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
+    SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
+    MulDefMapTy macChainMap;
+    unsigned dupFactor = 1;
+    return !canFoldMulAddChainToConvOp(op, macChainMap, groupFusedOps,
+                                       dupFactor);
+  });
+}
 //===----------------------------------------------------------------------===//
 // Lowering passes
 //===----------------------------------------------------------------------===//
@@ -848,6 +886,39 @@ void AIEVecTransformationPass::runOnOperation() {
   }
 }
 
+struct AIEVecConvOpTransformationPass
+    : public aievec::impl::AIEVecConvOpTransformationBase<
+          AIEVecConvOpTransformationPass> {
+  using Base::Base;
+  void runOnOperation() override;
+};
+
+void AIEVecConvOpTransformationPass::runOnOperation() {
+  auto func = getOperation();
+  MLIRContext *context = &getContext();
+  RewritePatternSet patterns(context);
+  ConversionTarget target(*context);
+  AIEArch aieVersion = AIEArch::AIE;
+  if (!aieTarget.empty()) {
+    std::string target = aieTarget;
+    if (target == "aieml") {
+      aieVersion = AIEArch::AIE_ML;
+    } else if (target != "aie") {
+      func.emitError() << "unknown AIE target '" << aieTarget << "'";
+      signalPassFailure();
+      return;
+    }
+  }
+
+  if (aieVersion == AIEArch::AIE_ML) {
+    populateAIEVecConvOpTransformationPatterns(patterns, shiftParam);
+    configureAIEVecConvOpTransformationLegalizations(target);
+  }
+
+  if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+}
 //===---------------------------------------------------------------------------
 // Pipeline implementations
 //===---------------------------------------------------------------------------
@@ -869,6 +940,13 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // Add AIEVec transformation pass
   pm.addPass(
       createAIEVecTransformation(options.getAIEVecTransformationOptions()));
+
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+
+  // Add generating aievec convolution ops pass
+  pm.addPass(createAIEVecConvOpTransformation(
+      options.getAIEVecConvOpTransformationOptions()));
 
   // Add post-lowering canonicalization passes
   pm.addPass(createCSEPass());
