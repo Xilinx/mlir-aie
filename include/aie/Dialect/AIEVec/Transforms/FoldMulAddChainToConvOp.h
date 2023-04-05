@@ -38,8 +38,9 @@ static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
   return defLhs ? defLhs : defRhs;
 }
 
-// The mul add chain pattern is valid if the defining ops of a mul op consist of
-// a broadcast op and an upd op.
+// Return true if one of the operands of given mul Op is a broadcast of a upd op
+// and another operand of the mul op is a upd op. In this case, argument book
+// keeps arguments. Otherwise, return false and leave book keeping unchanged.
 static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
                               SmallVectorImpl<Value> &bcastOpSourceVec) {
   aievec::BroadcastOp bcastOp = nullptr;
@@ -136,10 +137,11 @@ static void refreshFusedGroups(
 // Check whether mul add chain is valid for the transformation and classify the
 // fused ops into different groups with valid constant memref distances.
 static bool
-collectFusedOps(unsigned groupSize, unsigned &dupFactor,
+collectFusedOps(unsigned maxGroupSize, unsigned &dupFactor,
                 SmallVectorImpl<Value> &bcastOpSourceVec,
                 SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
                 MulDefMapTy &macChainMap) {
+  int xDist = -1, zDist = -1;
   for (auto item : bcastOpSourceVec) {
     auto macChain = macChainMap[item];
     std::sort(macChain.begin(), macChain.end());
@@ -147,7 +149,6 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
     aievec::UPDOp curUpdOp = nullptr;
     arith::MulIOp curMulOp = nullptr;
     std::tie(curIdx, curUpdOp, curMulOp) = *macChain.begin();
-    int xDist = -1, zDist = -1;
     SmallVector<int32_t, 2> dists;
     SmallVector<arith::MulIOp, 8> fusedOps;
     fusedOps.push_back(curMulOp);
@@ -257,11 +258,10 @@ collectFusedOps(unsigned groupSize, unsigned &dupFactor,
       fusedOps.push_back(nextMulOp);
       std::tie(curIdx, curUpdOp, curMulOp) = defTuple;
 
-      if (fusedOps.size() > groupSize) {
+      if (fusedOps.size() > maxGroupSize) {
         fusedOps.pop_back();
-        groupFusedOps.push_back(fusedOps);
-        fusedOps.clear();
-        fusedOps.push_back(nextMulOp);
+        refreshFusedGroups(defTuple, nextMulOp, fusedOps, groupFusedOps, curIdx,
+                           curUpdOp, curMulOp);
         continue;
       }
     }
@@ -321,11 +321,11 @@ static bool canFoldMulAddChainToConvOp(
   // Since we trace the order forwards, now reverse the vector.
   std::reverse(bcastOpSourceVec.begin(), bcastOpSourceVec.end());
 
-  unsigned groupSize = resultElWidth == 16 ? 4 : 8;
+  unsigned maxGroupSize = resultElWidth == 16 ? 4 : 8;
 
   // Legality check for the mul add chain, and collect the ops that can be
   // transformed to mul_conv and mul_conv.
-  if (!collectFusedOps(groupSize, dupFactor, bcastOpSourceVec, groupFusedOps,
+  if (!collectFusedOps(maxGroupSize, dupFactor, bcastOpSourceVec, groupFusedOps,
                        macChainMap)) {
     return false;
   }
@@ -473,15 +473,13 @@ struct FoldMulAddChainToConvOpPattern
                                            lUPDOp.getSource(), lIndices, 0, 0,
                                            TypedValue<VectorType>(nullptr));
 
-      auto notMulOrAddOp = [&](Operation *op) {
-        return !isa<arith::MulIOp, arith::AddIOp>(op);
-      };
+      auto notAddOp = [&](Operation *op) { return !isa<arith::AddIOp>(op); };
 
       Operation *convOp = nullptr;
       arith::AddIOp lastAddOp =
           cast<arith::AddIOp>(*(fusedOps.back()->getUsers().begin()));
 
-      if (llvm::any_of(lastAddOp->getUsers(), notMulOrAddOp)) {
+      if (llvm::any_of(lastAddOp->getUsers(), notAddOp)) {
         if (isMulConv) {
           convOp = rewriter.create<aievec::MulConvOp>(srcOp->getLoc(), opType,
                                                       lhs, rhs, M, N);
@@ -504,7 +502,7 @@ struct FoldMulAddChainToConvOpPattern
       acc = convOp->getResult(0);
     }
 
-    return failure();
+    llvm_unreachable("the conversion should end with srs op.");
   }
 
   unsigned shiftParam;
