@@ -38,7 +38,7 @@ static arith::AddIOp getDefAddOp(arith::AddIOp addOp) {
   return defLhs ? defLhs : defRhs;
 }
 
-// Return true if one of the operands of given mul Op is a broadcast of a upd op
+// Return true if one of the operands of given mul op is a broadcast of a upd op
 // and another operand of the mul op is a upd op. In this case, argument book
 // keeps arguments. Otherwise, return false and leave book keeping unchanged.
 static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
