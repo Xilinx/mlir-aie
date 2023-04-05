@@ -159,7 +159,7 @@ Optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
 Optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
-  if (!isValidTile(*ret) || ret->second == 0)
+  if (!isValidTile(*ret) || ret->second == 0 || ret->second == 1)
     ret.reset();
   return ret;
 }

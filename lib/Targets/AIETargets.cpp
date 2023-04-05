@@ -288,18 +288,16 @@ SECTIONS
             else
               output << "/* no stack allocated */\n";
 
-            if (auto tile = target_model.getMemSouth(srcCoord))
-              doBuffer(tile, target_model.getMemSouthBaseAddress(),
-                       std::string("south"));
-            if (auto tile = target_model.getMemWest(srcCoord))
-              doBuffer(tile, target_model.getMemWestBaseAddress(),
-                       std::string("west"));
-            if (auto tile = target_model.getMemNorth(srcCoord))
-              doBuffer(tile, target_model.getMemNorthBaseAddress(),
-                       std::string("north"));
-            if (auto tile = target_model.getMemEast(srcCoord))
-              doBuffer(tile, target_model.getMemEastBaseAddress(),
-                       std::string("east"));
+            doBuffer(target_model.getMemSouth(srcCoord),
+                     target_model.getMemSouthBaseAddress(),
+                     std::string("south"));
+            doBuffer(target_model.getMemWest(srcCoord),
+                     target_model.getMemWestBaseAddress(), std::string("west"));
+            doBuffer(target_model.getMemNorth(srcCoord),
+                     target_model.getMemNorthBaseAddress(),
+                     std::string("north"));
+            doBuffer(target_model.getMemEast(srcCoord),
+                     target_model.getMemEastBaseAddress(), std::string("east"));
 
             output << "  .bss : { *(.bss) } > data\n";
             output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
@@ -398,18 +396,16 @@ SECTIONS
               }
             };
 
-            if (auto tile = target_model.getMemSouth(srcCoord))
-              doBuffer(tile, target_model.getMemSouthBaseAddress(),
-                       std::string("south"));
-            if (auto tile = target_model.getMemWest(srcCoord))
-              doBuffer(tile, target_model.getMemWestBaseAddress(),
-                       std::string("west"));
-            if (auto tile = target_model.getMemNorth(srcCoord))
-              doBuffer(tile, target_model.getMemNorthBaseAddress(),
-                       std::string("north"));
-            if (auto tile = target_model.getMemEast(srcCoord))
-              doBuffer(tile, target_model.getMemEastBaseAddress(),
-                       std::string("east"));
+            doBuffer(target_model.getMemSouth(srcCoord),
+                     target_model.getMemSouthBaseAddress(),
+                     std::string("south"));
+            doBuffer(target_model.getMemWest(srcCoord),
+                     target_model.getMemWestBaseAddress(), std::string("west"));
+            doBuffer(target_model.getMemNorth(srcCoord),
+                     target_model.getMemNorthBaseAddress(),
+                     std::string("north"));
+            doBuffer(target_model.getMemEast(srcCoord),
+                     target_model.getMemEastBaseAddress(), std::string("east"));
 
             int stacksize = 0;
             if (auto core = tile.getCoreOp())
