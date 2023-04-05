@@ -398,14 +398,16 @@ SECTIONS
               }
             };
 
-            doBuffer(target_model.getMemSouth(srcCoord), target_model.getMemSouthBaseAddress(),
-                       std::string("south"));
-            doBuffer(target_model.getMemWest(srcCoord), target_model.getMemWestBaseAddress(),
-                       std::string("west"));
-            doBuffer(target_model.getMemNorth(srcCoord), target_model.getMemNorthBaseAddress(),
-                       std::string("north"));
-            doBuffer(target_model.getMemEast(srcCoord), target_model.getMemEastBaseAddress(),
-                       std::string("east"));
+            doBuffer(target_model.getMemSouth(srcCoord),
+                     target_model.getMemSouthBaseAddress(),
+                     std::string("south"));
+            doBuffer(target_model.getMemWest(srcCoord),
+                     target_model.getMemWestBaseAddress(), std::string("west"));
+            doBuffer(target_model.getMemNorth(srcCoord),
+                     target_model.getMemNorthBaseAddress(),
+                     std::string("north"));
+            doBuffer(target_model.getMemEast(srcCoord),
+                     target_model.getMemEastBaseAddress(), std::string("east"));
 
             int stacksize = 0;
             if (auto core = tile.getCoreOp())
