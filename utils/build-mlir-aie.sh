@@ -7,12 +7,12 @@
 # 
 ##===----------------------------------------------------------------------===##
 #
-# This script builds mlir-aie given the <llvm dir> and <cmakeModules dir>.
+# This script builds mlir-aie given <llvm dir>.
 # Assuming they are all in the same subfolder, it would look like:
 #
-# build-mlir-aie.sh <llvm dir> <cmakeModules dir> <build dir> <install dir>
+# build-mlir-aie.sh <llvm dir> <build dir> <install dir>
 #
-# e.g. build-mlir-aie.sh /scratch/llvm /scratch/cmakeModules/cmakeModulesXilinx
+# e.g. build-mlir-aie.sh /scratch/llvm
 #
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
