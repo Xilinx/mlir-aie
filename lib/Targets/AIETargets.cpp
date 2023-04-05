@@ -398,17 +398,13 @@ SECTIONS
               }
             };
 
-            if (auto tile = target_model.getMemSouth(srcCoord))
-              doBuffer(tile, target_model.getMemSouthBaseAddress(),
+            doBuffer(target_model.getMemSouth(srcCoord), target_model.getMemSouthBaseAddress(),
                        std::string("south"));
-            if (auto tile = target_model.getMemWest(srcCoord))
-              doBuffer(tile, target_model.getMemWestBaseAddress(),
+            doBuffer(target_model.getMemWest(srcCoord), target_model.getMemWestBaseAddress(),
                        std::string("west"));
-            if (auto tile = target_model.getMemNorth(srcCoord))
-              doBuffer(tile, target_model.getMemNorthBaseAddress(),
+            doBuffer(target_model.getMemNorth(srcCoord), target_model.getMemNorthBaseAddress(),
                        std::string("north"));
-            if (auto tile = target_model.getMemEast(srcCoord))
-              doBuffer(tile, target_model.getMemEastBaseAddress(),
+            doBuffer(target_model.getMemEast(srcCoord), target_model.getMemEastBaseAddress(),
                        std::string("east"));
 
             int stacksize = 0;
