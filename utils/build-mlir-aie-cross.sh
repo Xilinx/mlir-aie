@@ -7,25 +7,22 @@
 # 
 ##===----------------------------------------------------------------------===##
 #
-# This script build mlir-aie given the <sysroot dir>, <llvm dir> and 
-# <cmakeModules dir>. Assuming they are all in the same subfolder, it would
-# look like:
+# This script build mlir-aie given the <sysroot dir>, <llvm dir>
+# Assuming they are all in the same subfolder, it would look like:
 #
-# build-mlir-aie.sh <sysroot dir> <gcc version> <llvm dir> <cmakeModules dir> 
-#     <build dir> <install dir>
+# build-mlir-aie.sh <sysroot dir> <llvm dir> <build dir> <install dir>
 #
 # e.g. build-mlir-aie.sh /scratch/vck190_bare_prod_sysroot 10.2.0 /scratch/llvm 
 #          /scratch/cmakeModules/cmakeModulesXilinx
 #
 # <sysroot dir>  - sysroot, absolute directory 
-# <gcc version>  - gcc version in sysroot (needed in many petalinux sysroots to find imporant libs)
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
 #
 ##===----------------------------------------------------------------------===##
 
 if [ "$#" -lt 2 ]; then
-    echo "ERROR: Needs at least 3 arguments for <sysroot dir>, <llvm build dir>"
+    echo "ERROR: Needs at least 2 arguments for <sysroot dir>, <llvm build dir>"
     exit 1
 fi
 
