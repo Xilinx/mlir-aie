@@ -20,7 +20,7 @@ void conv2d(int8_t *restrict v1, int8_t *restrict v2, int8_t *restrict v3) {
         chess_prepare_for_pipelining chess_loop_range(8, 8) {
           v32int8 v21 = *(v32int8 *)(v3 + 256 * v12 + v20);
           v64int8 v22 = *(v64int8 *)(v1 + 288 * v12 + v20);
-          v32acc32 v23 = ups_to_v32acc32(v21, 10);
+          v32acc32 v23 = ups_to_v32acc32(v21, 0);
           v23 = mac_conv_32x8(v22, v6, v23);
           v64int8 v24 = *(v64int8 *)(v1 + 288 * v14 + v20);
           v23 = mac_conv_32x8(v24, v7, v23);
