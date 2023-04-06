@@ -701,8 +701,10 @@ configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target) {
     SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
     MulDefMapTy macChainMap;
     unsigned dupFactor = 1;
+    bool hasMulConv = false;
+    Value acc = nullptr;
     return !canFoldMulAddChainToConvOp(op, macChainMap, groupFusedOps,
-                                       dupFactor);
+                                       dupFactor, hasMulConv, acc);
   });
 }
 //===----------------------------------------------------------------------===//
