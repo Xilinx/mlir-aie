@@ -8,10 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license
 // aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.exe
 
-// RUN: make -C %S tutorial-8_q3.exe
+// REQUIRES: valid_xchess_license
+// RUN: make -C %S 
 // RUN: %run_on_board ./tutorial-8_q3.exe
 // RUN: make -C %S clean
 
