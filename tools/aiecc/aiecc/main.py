@@ -305,23 +305,25 @@ class flow_runner:
       sim_genwrapper = os.path.join(runtime_simlib_path,"genwrapper_for_ps.cpp")
 
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
-      await self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
-                                file_physical, '-o', './sim/reports/graph.xpe'])
-      await self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
+      processes = []
+      processes.append(self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
+                                file_physical, '-o', './sim/reports/graph.xpe']))
+      processes.append(self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
                                 file_physical,
-                                '-o','./sim/arch/aieshim_solution.aiesol'])
-      await self.do_call(task, ['aie-translate', '--aie-mlir-to-scsim-config',
+                                '-o','./sim/arch/aieshim_solution.aiesol']))
+      processes.append(self.do_call(task, ['aie-translate', '--aie-mlir-to-scsim-config',
                                 file_physical,
-                                '-o','./sim/config/scsim_config.json'])
-      await self.do_call(task, ['aie-opt', '--aie-find-flows',
+                                '-o','./sim/config/scsim_config.json']))
+      processes.append(self.do_call(task, ['aie-opt', '--aie-find-flows',
                                 file_physical,
-                                '-o', './sim/flows_physical.mlir'])
+                                '-o', './sim/flows_physical.mlir']))
+      # await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
+      processes.append(self.do_call(task, ['cp',sim_makefile,'./sim/.']))
+      processes.append(self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.']))
+      await asyncio.gather(*processes)
       await self.do_call(task, ['aie-translate', '--aie-flows-to-json',
                                 './sim/flows_physical.mlir',
                                 '-o','./sim/flows_physical.json'])
-      # await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
-      await self.do_call(task, ['cp',sim_makefile,'./sim/.'])
-      await self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.'])
 
   async def run_flow(self):
       nworkers = int(opts.nthreads)
