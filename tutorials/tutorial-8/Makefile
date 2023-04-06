@@ -23,5 +23,5 @@ clean:
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
-tutorial-8_q3.exe: test.cpp ./answers/aie.mlir
+tutorial-8_q3.exe: test.cpp answer_aie.mlir kernel1.o kernel2.o
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@

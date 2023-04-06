@@ -25,7 +25,7 @@ LIBCXX_VERSION ?= 11.2.0
 # aiecc.py invocations.
 AIECC_FLAGS += --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu
 
-CHESSCC_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR}
+CHESSCC_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}
 
 # The following additional flags are only applied for host code. We add the
