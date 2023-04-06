@@ -228,13 +228,13 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
-  async def process_arm_cgen(self):
+  async def process_host_cgen(self):
     async with self.limit:
       if(self.stopall):
         return
 
       if(opts.progress):
-        task = self.progress_bar.add_task("[yellow] ARM Core ", total=10, command="starting")
+        task = self.progress_bar.add_task("[yellow] Host compilation ", total=10, command="starting")
       else:
         task = None
 
@@ -268,18 +268,15 @@ class flow_runner:
         cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
         cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
       cmd += ['-I%s' % self.tmpdirname]
+      cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
       if(opts.xaie == 1):
-        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-lmetal','-lopen_amp','-ldl']
-      else:
-        cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
+        cmd += ['-lmetal','-lopen_amp']
 
       if(opts.aie_target == "AIE2"):
         cmd += ['-D__AIEARCH__=20']
 
-
-
-      if(len(opts.arm_args) > 0):
-        await self.do_call(task, cmd + opts.arm_args)
+      if(len(opts.host_args) > 0):
+        await self.do_call(task, cmd + opts.host_args)
 
       self.progress_bar.update(self.progress_bar.task_completed,advance=1)
       if(task):
@@ -300,7 +297,6 @@ class flow_runner:
         runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','AIE2','aiesim')
       else:
         runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','AIE','aiesim')
-      sim_scsim_json = os.path.join(runtime_simlib_path,"scsim_config.json")
       sim_makefile   = os.path.join(runtime_simlib_path,"Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path,"genwrapper_for_ps.cpp")
 
@@ -379,8 +375,8 @@ class flow_runner:
         progress.update(progress.task,advance=0,visible=False)
         progress.task_completed = progress.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
 
-        processes = [self.process_arm_cgen()]
-        await asyncio.gather(*processes) # ensure that process_arm_cgen finishes before running gen_sim
+        processes = [self.process_host_cgen()]
+        await asyncio.gather(*processes) # ensure that process_host_cgen finishes before running gen_sim
         processes = []
         if(opts.aiesim):
           processes.append(self.gen_sim(progress.task))
