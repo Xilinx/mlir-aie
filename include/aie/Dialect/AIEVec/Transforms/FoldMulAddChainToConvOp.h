@@ -84,7 +84,8 @@ static bool checkChainPattern(arith::MulIOp mulOp, MulDefMapTy &macChainMap,
 // The mul add op chain can be grouped by broadcast op's source.
 // For each group, broadcastOp idx can be sorted to find the start of the
 // memrefs used by broadcast op and upd op.
-static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
+static void buildChainMap(arith::AddIOp curAddOp, bool &hasMulConv, Value &acc,
+                          MulDefMapTy &macChainMap,
                           SmallVectorImpl<Value> &bcastOpSourceVec) {
   while (true) {
     auto defLhs =
@@ -103,11 +104,13 @@ static void buildChainMap(arith::AddIOp curAddOp, MulDefMapTy &macChainMap,
           !checkChainPattern(defRhs, macChainMap, bcastOpSourceVec)) {
         break;
       }
+      hasMulConv = true;
     } else {
       arith::MulIOp curMulOp = defLhs ? defLhs : defRhs;
       if (!checkChainPattern(curMulOp, macChainMap, bcastOpSourceVec)) {
         break;
       }
+      acc = defLhs ? curAddOp->getOperand(1) : curAddOp->getOperand(0);
     }
 
     // Get the def add op the curOp operands
@@ -273,7 +276,7 @@ collectFusedOps(unsigned maxGroupSize, unsigned &dupFactor,
 static bool canFoldMulAddChainToConvOp(
     arith::AddIOp addOp, MulDefMapTy &macChainMap,
     SmallVectorImpl<SmallVector<arith::MulIOp, 8>> &groupFusedOps,
-    unsigned &dupFactor) {
+    unsigned &dupFactor, bool &hasMulConv, Value &acc) {
   if (!isa<VectorType>(addOp.getType())) {
     return false;
   }
@@ -310,7 +313,7 @@ static bool canFoldMulAddChainToConvOp(
 
   // Identify the chain and build a mul add Chain map by recording the def of
   // mul ops.
-  buildChainMap(curAddOp, macChainMap, bcastOpSourceVec);
+  buildChainMap(curAddOp, hasMulConv, acc, macChainMap, bcastOpSourceVec);
 
   if (macChainMap.empty() ||
       std::any_of(macChainMap.begin(), macChainMap.end(),
@@ -320,6 +323,34 @@ static bool canFoldMulAddChainToConvOp(
 
   // Since we trace the order forwards, now reverse the vector.
   std::reverse(bcastOpSourceVec.begin(), bcastOpSourceVec.end());
+
+  auto getConstantIdx = [](Value v) {
+    aievec::UPDOp bcastUPDOp = cast<aievec::UPDOp>(v.getDefiningOp());
+    SmallVector<Value, 4> indices(bcastUPDOp.getIndices().begin(),
+                                  bcastUPDOp.getIndices().end());
+    Value innerMostIdx = indices[indices.size() - 1];
+    int64_t val = -1;
+    if (auto idxDefOp = innerMostIdx.getDefiningOp()) {
+      if (auto constOp = dyn_cast<arith::ConstantOp>(idxDefOp)) {
+        val = constOp.getValue().cast<IntegerAttr>().getInt();
+      }
+    }
+    return val;
+  };
+
+  // If broadcast ops' sources are from the same memref, sort the broadcast
+  // ops by an increasing order of memrefs' constant indices.
+  std::sort(bcastOpSourceVec.begin(), bcastOpSourceVec.end(),
+            [&](const Value &a, const Value &b) {
+              aievec::UPDOp bcastUPDOpA =
+                  cast<aievec::UPDOp>(a.getDefiningOp());
+              aievec::UPDOp bcastUPDOpB =
+                  cast<aievec::UPDOp>(b.getDefiningOp());
+              if (bcastUPDOpA.getSource() == bcastUPDOpB.getSource()) {
+                return getConstantIdx(a) <= getConstantIdx(b);
+              }
+              return true;
+            });
 
   unsigned maxGroupSize = resultElWidth == 16 ? 4 : 8;
 
@@ -354,28 +385,16 @@ struct FoldMulAddChainToConvOpPattern
     SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
     MulDefMapTy macChainMap;
     unsigned dupFactor = 1;
+    bool hasMulConv = false;
+    Value acc = nullptr;
 
     if (!canFoldMulAddChainToConvOp(srcOp, macChainMap, groupFusedOps,
-                                    dupFactor)) {
+                                    dupFactor, hasMulConv, acc)) {
       return failure();
     }
 
-    Value acc = nullptr;
     for (auto fusedOps : groupFusedOps) {
       arith::MulIOp mulOp = (*fusedOps.begin());
-      arith::AddIOp addOp = cast<arith::AddIOp>(*mulOp->getUsers().begin());
-      auto addLhs =
-          dyn_cast<arith::MulIOp>(addOp->getOperand(0).getDefiningOp());
-      auto addRhs =
-          dyn_cast<arith::MulIOp>(addOp->getOperand(1).getDefiningOp());
-      bool isMulConv = false;
-
-      if (addLhs && addRhs) {
-        isMulConv = true;
-      } else {
-        if (!acc)
-          acc = addLhs ? addOp->getOperand(1) : addOp->getOperand(0);
-      }
 
       // Get the mul op's lhs and rhs defining ops. We keep splat op at rhs.
       if (isa<aievec::BroadcastOp>(mulOp->getOperand(0).getDefiningOp())) {
@@ -473,16 +492,18 @@ struct FoldMulAddChainToConvOpPattern
                                            lUPDOp.getSource(), lIndices, 0, 0,
                                            TypedValue<VectorType>(nullptr));
 
-      auto notAddOp = [&](Operation *op) { return !isa<arith::AddIOp>(op); };
+      if (!hasMulConv && acc.getType() != opType) {
+        auto upsOp = rewriter.create<aievec::UPSOp>(
+            acc.getDefiningOp()->getLoc(), opType, acc, shiftParam);
+        acc = upsOp->getResult(0);
+      }
 
       Operation *convOp = nullptr;
-      arith::AddIOp lastAddOp =
-          cast<arith::AddIOp>(*(fusedOps.back()->getUsers().begin()));
-
-      if (llvm::any_of(lastAddOp->getUsers(), notAddOp)) {
-        if (isMulConv) {
+      if (fusedOps == groupFusedOps.back()) {
+        if (hasMulConv) {
           convOp = rewriter.create<aievec::MulConvOp>(srcOp->getLoc(), opType,
                                                       lhs, rhs, M, N);
+          hasMulConv = false;
         } else {
           convOp = rewriter.create<aievec::FMAConvOp>(
               srcOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
@@ -491,9 +512,10 @@ struct FoldMulAddChainToConvOpPattern
             srcOp, vType, convOp->getResult(0), shiftParam);
         return success();
       } else {
-        if (isMulConv) {
+        if (hasMulConv) {
           convOp = rewriter.create<aievec::MulConvOp>(srcOp->getLoc(), opType,
                                                       lhs, rhs, M, N);
+          hasMulConv = false;
         } else {
           convOp = rewriter.create<aievec::FMAConvOp>(
               srcOp->getLoc(), opType, lhs, rhs, acc, M, N, false);
