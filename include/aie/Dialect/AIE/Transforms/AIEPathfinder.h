@@ -63,15 +63,17 @@ typedef graph_traits<SwitchboxGraph>::in_edge_iterator in_edge_iterator;
 
 typedef std::pair<int, int> Coord;
 // A SwitchSetting defines the required settings for a Switchbox for a flow
-// SwitchSetting.first is the incoming signal
-// SwitchSetting.second is the fanout
-typedef std::pair<Port, std::set<Port>> SwitchSetting;
+// Trying out a std::tuple!
+// std::get<0>(SwitchSetting) is the incoming signal
+// std::get<1>(SwitchSetting) is the fanout
+// std::get<2>(SwitchSetting) is the packet ID (set to -1 for circuit switched) 
+typedef std::tuple<Port, std::set<Port>, int> SwitchSetting;
 typedef std::map<Switchbox *, SwitchSetting> SwitchSettings;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
 typedef std::pair<Switchbox *, Port> PathEndPoint;
-typedef std::pair<PathEndPoint, std::vector<PathEndPoint>> Flow;
+typedef std::tuple<PathEndPoint, std::vector<PathEndPoint>, int> Flow;
 
 class Pathfinder {
 private:
@@ -83,11 +85,17 @@ public:
   Pathfinder();
   Pathfinder(int maxcol, int maxrow);
   void initializeGraph(int maxcol, int maxrow);
-  void addFlow(Coord srcCoords, Port srcPort, Coord dstCoords, Port dstPort);
+  void addFlow(Coord srcCoords, Port srcPort, 
+                Coord dstCoords, Port dstPort, int flow_id=-1);
   void addFixedConnection(Coord coord, Port port);
   bool isLegal();
-  std::map<PathEndPoint, SwitchSettings>
-  findPaths(const int MAX_ITERATIONS = 1000);
+  std::map<Flow, SwitchSettings>
+        findPaths(const int MAX_ITERATIONS = 1000);
+
+  static void convertFlowSolutionsToDenseMap(
+        std::map<Flow, SwitchSettings> flow_solutions,
+        DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
+                &switchboxes);
 
   Switchbox *getSwitchbox(TileID coords) {
     auto vpair = vertices(graph);

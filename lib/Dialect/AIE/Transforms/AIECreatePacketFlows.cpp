@@ -338,28 +338,6 @@ struct AIERoutePacketFlowsPass
       tiles[std::make_pair(col, row)] = tileOp;
     }
 
-    Pathfinder pathfinder = Pathfinder(maxcol, maxrow);
-
-    // Add all PacketRoutes to Pathfinder object
-    // each source can map to multiple different destinations (fanout)
-    for (PacketFlowOp flowOp : module.getOps<PacketFlowOp>()) {
-      TileOp srcTile = cast<TileOp>(pktFlowOp.getSource().getDefiningOp());
-      TileOp dstTile = cast<TileOp>(pktFlowOp.getDest().getDefiningOp());
-      Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-      Coord dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
-      Port srcPort =
-          std::make_pair(pktFlowOp.getSourceBundle(), pktFlowOp.getSourceChannel());
-      Port dstPort =
-          std::make_pair(pktFlowOp.getDestBundle(), pktFlowOp.getDestChannel());
-      LLVM_DEBUG(llvm::dbgs()
-                 << "\tAdding Flow: (" << srcCoords.first << ", "
-                 << srcCoords.second << ")"
-                 << stringifyWireBundle(srcPort.first) << (int)srcPort.second
-                 << " -> (" << dstCoords.first << ", " << dstCoords.second
-                 << ")" << stringifyWireBundle(dstPort.first)
-                 << (int)dstPort.second << "\n");
-      pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
-    }
 
     // The logical model of all the switchboxes.
     // Each "Connect" is a Port-to-Port switchbox setting.
@@ -367,8 +345,9 @@ struct AIERoutePacketFlowsPass
     DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
         switchboxes;
 
-    // Call Pathfinder to fill routes into this DenseMap
-
+    Pathfinder pathfinder = Pathfinder(maxcol, maxrow);
+    // Add all PacketRoutes to Pathfinder object
+    // each source can map to multiple different destinations (fanout)
     // For each PacketFlowOp, build a Packet Switched route from src to dest
     for (auto pktflow : m.getOps<PacketFlowOp>()) {
       Region &r = pktflow.getPorts();
@@ -390,11 +369,27 @@ struct AIERoutePacketFlowsPass
           int yDest = destTile.rowIndex();
           Port destPort = pktDest.port();
 
-          buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID,
-                       switchboxes);
+          pathfinder.addFlow( std::make_pair(xSrc, ySrc), sourcePort, 
+                              std::make_pair(xDest, yDest), destPort, flowID);
+
+          //buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID,
+          //             switchboxes);
         }
       }
     }
+
+    // all flows are populated, call the congestion-aware pathfinder algorithm
+    // Call Pathfinder to fill routes into this DenseMap
+    //switchboxes = pathfinder.findPacketPaths(MAX_ITERATIONS);
+    std::map<Flow, SwitchSettings> flow_solutions;
+
+    // Run the pathfinder algorithm
+    flow_solutions = pathfinder.findPaths(1000);
+    Pathfinder::convertFlowSolutionsToDenseMap(flow_solutions, switchboxes);
+
+    // check whether the pathfinder algorithm creates a legal routing
+    //if (!pathfinder.isLegal())
+    //  m.emitError("Unable to find a legal routing");
 
     LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 

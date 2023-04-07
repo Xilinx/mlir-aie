@@ -80,8 +80,8 @@ std::string stringifySwitchSettings(SwitchSettings settings) {
   for (auto iter = settings.begin(); iter != settings.end(); iter++) {
     out += (std::string) "(" + std::to_string((*iter).first->col) + ", " +
            std::to_string((*iter).first->row) + ") " +
-           stringifyDir((*iter).second.first) + " -> " +
-           stringifyDirs((*iter).second.second) + " | ";
+           stringifyDir(std::get<0>((*iter).second)) + " -> " +
+           stringifyDirs(std::get<1>((*iter).second)) + " | ";
   }
   return out + "\n";
 }
@@ -95,8 +95,8 @@ public:
   ModuleOp &module;
   int maxcol, maxrow;
   Pathfinder pathfinder;
-  std::map<PathEndPoint, SwitchSettings> flow_solutions;
-  std::map<PathEndPoint, bool> processed_flows;
+  std::map<Flow, SwitchSettings> flow_solutions;
+  //std::map<PathEndPoint, bool> processed_flows;
 
   DenseMap<Coord, TileOp> coordToTile;
   DenseMap<Coord, SwitchboxOp> coordToSwitchbox;
@@ -131,10 +131,10 @@ public:
           std::make_pair(flowOp.getDestBundle(), flowOp.getDestChannel());
       LLVM_DEBUG(llvm::dbgs()
                  << "\tAdding Flow: (" << srcCoords.first << ", "
-                 << srcCoords.second << ")"
+                 << srcCoords.second << ") : "
                  << stringifyWireBundle(srcPort.first) << (int)srcPort.second
                  << " -> (" << dstCoords.first << ", " << dstCoords.second
-                 << ")" << stringifyWireBundle(dstPort.first)
+                 << ") : " << stringifyWireBundle(dstPort.first)
                  << (int)dstPort.second << "\n");
       pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
     }
@@ -151,22 +151,21 @@ public:
       }
     }
 
-    // all flows are now populated, call the congestion-aware pathfinder
-    // algorithm
+    // all flows are populated, call the congestion-aware pathfinder algorithm
     // check whether the pathfinder algorithm creates a legal routing
     flow_solutions = pathfinder.findPaths(MAX_ITERATIONS);
     if (!pathfinder.isLegal())
       m.emitError("Unable to find a legal routing");
 
     // initialize all flows as unprocessed to prep for rewrite
-    for (auto iter = flow_solutions.begin(); iter != flow_solutions.end();
-         iter++) {
-      processed_flows[(*iter).first] = false;
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Flow starting at (" << (*iter).first.first->col << ","
-                 << (*iter).first.first->row << "):\t");
-      LLVM_DEBUG(llvm::dbgs() << stringifySwitchSettings((*iter).second));
-    }
+    //for (auto iter = flow_solutions.begin();
+    //      iter != flow_solutions.end(); iter++) {
+    //  processed_flows[(*iter).first] = false;
+     // LLVM_DEBUG(llvm::dbgs()
+     //            << "Flow starting at (" << (*iter).first->first.first->col << ","
+     //            << (*iter).first->first.first->row << "):\t");
+     // LLVM_DEBUG(llvm::dbgs() << stringifySwitchSettings((*iter).second));
+    //}
 
     // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
     for (auto tileOp : module.getOps<TileOp>()) {
@@ -310,114 +309,127 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     // Port dstPort = std::make_pair(dstBundle, dstChannel);
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.first
-               << ", " << srcCoords.second << ")"
+               << ", " << srcCoords.second << ") : "
                << stringifyWireBundle(srcBundle) << (int)srcChannel << " -> ("
-               << dstCoords.first << ", " << dstCoords.second << ")"
+               << dstCoords.first << ", " << dstCoords.second << ") : "
                << stringifyWireBundle(dstBundle) << (int)dstChannel << "\n\t");
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
     Switchbox *srcSB = analyzer.pathfinder.getSwitchbox(srcCoords);
     PathEndPoint srcPoint = std::make_pair(srcSB, srcPort);
-    if (analyzer.processed_flows[srcPoint] == false) {
-      SwitchSettings settings = analyzer.flow_solutions[srcPoint];
-      // add connections for all of the Switchboxes in SwitchSettings
-      for (auto map_iter = settings.begin(); map_iter != settings.end();
-           map_iter++) {
-        Switchbox *curr = (*map_iter).first;
-        SwitchSetting s = (*map_iter).second;
-        SwitchboxOp swOp =
-            analyzer.getSwitchbox(rewriter, curr->col, curr->row);
-        int shim_ch = srcChannel;
-        // TODO: must reserve N3, N7, S2, S3 for DMA connections
-        if (curr == srcSB && srcSB->row == 0 &&
-            analyzer.getTile(rewriter, srcSB->col, 0).isShimNOCTile()) {
-          // shim DMAs at start of flows
-          if (srcBundle == WireBundle::DMA) {
-            shim_ch = (srcChannel == 0
-                           ? 3
-                           : 7); // must be either DMA0 -> N3 or DMA1 -> N7
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, WireBundle::North, shim_ch);
-          } else if (srcBundle ==
-                     WireBundle::NOC) { // must be NOC0/NOC1 -> N2/N3 or
-                                        // NOC2/NOC3 -> N6/N7
-            shim_ch = (srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2);
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
-            addConnection(rewriter,
-                          cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
-                          srcBundle, srcChannel, WireBundle::North, shim_ch);
-          } else if (srcBundle ==
-                     WireBundle::PLIO) { // PLIO at start of flows with mux
-            if ((srcChannel == 2) || (srcChannel == 3) || (srcChannel == 6) ||
-                (srcChannel == 7)) { // Only some PLIO requrie mux
+
+    LLVM_DEBUG(llvm::dbgs() << "flow_solutions.size(): " << analyzer.flow_solutions.size() << "\n");
+    // Search all flow_solutions for the source point
+    for (auto flow_iter = analyzer.flow_solutions.begin();
+          flow_iter != analyzer.flow_solutions.end(); flow_iter++) {
+            
+      Flow flow = ((*flow_iter).first);
+      PathEndPoint flow_src = std::get<0>(flow);
+      if (flow_src != srcPoint){
+        continue;
+        LLVM_DEBUG(llvm::dbgs() << "flow_src != srcPoint!\n");
+      }
+      else {
+        LLVM_DEBUG(llvm::dbgs() << "###flow_src == srcPoint!\n");
+        SwitchSettings settings = (*flow_iter).second;
+        LLVM_DEBUG(llvm::dbgs() << "settings.size(): " << settings.size() << "\n");
+        // add connections for all of the Switchboxes in SwitchSettings
+        for (auto map_iter = settings.begin(); map_iter != settings.end();
+            map_iter++) {
+          Switchbox *curr = (*map_iter).first;
+          SwitchSetting s = (*map_iter).second;
+          SwitchboxOp swOp =
+              analyzer.getSwitchbox(rewriter, curr->col, curr->row);
+          int shim_ch = srcChannel;
+          // TODO: must reserve N3, N7, S2, S3 for DMA connections
+          if (curr == srcSB && srcSB->row == 0 &&
+              analyzer.getTile(rewriter, srcSB->col, 0).isShimNOCTile()) {
+            // shim DMAs at start of flows
+            if (srcBundle == WireBundle::DMA) {
+              shim_ch = (srcChannel == 0
+                            ? 3
+                            : 7); // must be either DMA0 -> N3 or DMA1 -> N7
               ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
-              addConnection(
-                  rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                  flowOp, srcBundle, srcChannel, WireBundle::North, shim_ch);
-            }
-          }
-        }
-        for (auto it = s.second.begin(); it != s.second.end(); it++) {
-          WireBundle bundle = (*it).first;
-          int channel = (*it).second;
-          // handle special shim connectivity
-          if (curr == srcSB && srcSB->row == 0) {
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, WireBundle::South, shim_ch, bundle, channel);
-          } else if (curr->row == 0 &&
-                     (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
-                      bundle == WireBundle::NOC)) {
-            shim_ch = channel;
-            if (analyzer.getTile(rewriter, curr->col, 0).isShimNOCTile()) {
-              // shim DMAs at end of flows
-              if (bundle == WireBundle::DMA) {
-                shim_ch = (channel == 0
-                               ? 2
-                               : 3); // must be either N2 -> DMA0 or N3 -> DMA1
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+              addConnection(rewriter,
+                            cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
+                            srcBundle, srcChannel, WireBundle::North, shim_ch);
+            } else if (srcBundle ==
+                      WireBundle::NOC) { // must be NOC0/NOC1 -> N2/N3 or
+                                          // NOC2/NOC3 -> N6/N7
+              shim_ch = (srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2);
+              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+              addConnection(rewriter,
+                            cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
+                            srcBundle, srcChannel, WireBundle::North, shim_ch);
+            } else if (srcBundle ==
+                      WireBundle::PLIO) { // PLIO at start of flows with mux
+              if ((srcChannel == 2) || (srcChannel == 3) || (srcChannel == 6) ||
+                  (srcChannel == 7)) { // Only some PLIO requrie mux
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shim_ch, bundle, channel);
-              } else if (bundle == WireBundle::NOC) {
-                shim_ch =
-                    (channel + 2); // must be either N2/3/4/5 -> NOC0/1/2/3
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shim_ch, bundle, channel);
-              } else if (channel >=
-                         2) { // must be PLIO...only PLIO >= 2 require mux
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
-                addConnection(
-                    rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
-                    flowOp, WireBundle::North, shim_ch, bundle, channel);
+                    flowOp, srcBundle, srcChannel, WireBundle::North, shim_ch);
               }
             }
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, s.first.first, s.first.second,
-                          WireBundle::South, shim_ch);
-          } else {
-            // otherwise, regular switchbox connection
-            addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, s.first.first, s.first.second, bundle,
-                          channel);
           }
+          for (auto it = std::get<1>(s).begin(); it != std::get<1>(s).end(); it++) {
+            WireBundle bundle = (*it).first;
+            int channel = (*it).second;
+            // handle special shim connectivity
+            if (curr == srcSB && srcSB->row == 0) {
+              addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
+                            flowOp, WireBundle::South, shim_ch, bundle, channel);
+            } else if (curr->row == 0 &&
+                      (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
+                        bundle == WireBundle::NOC)) {
+              shim_ch = channel;
+              if (analyzer.getTile(rewriter, curr->col, 0).isShimNOCTile()) {
+                // shim DMAs at end of flows
+                if (bundle == WireBundle::DMA) {
+                  shim_ch = (channel == 0
+                                ? 2
+                                : 3); // must be either N2 -> DMA0 or N3 -> DMA1
+                  ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                  addConnection(
+                      rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                      flowOp, WireBundle::North, shim_ch, bundle, channel);
+                } else if (bundle == WireBundle::NOC) {
+                  shim_ch =
+                      (channel + 2); // must be either N2/3/4/5 -> NOC0/1/2/3
+                  ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                  addConnection(
+                      rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                      flowOp, WireBundle::North, shim_ch, bundle, channel);
+                } else if (channel >=
+                          2) { // must be PLIO...only PLIO >= 2 require mux
+                  ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                  addConnection(
+                      rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
+                      flowOp, WireBundle::North, shim_ch, bundle, channel);
+                }
+              }
+              addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
+                            flowOp, std::get<0>(s).first, std::get<0>(s).second,
+                            WireBundle::South, shim_ch);
+            } else {
+              // otherwise, regular switchbox connection
+              addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
+                            flowOp, std::get<0>(s).first, std::get<0>(s).second,
+                            bundle, channel);
+            }
+          }
+
+          LLVM_DEBUG(llvm::dbgs() << " (" << curr->col << "," << curr->row << ") "
+                                  << stringifyDir(std::get<0>(s)) << " -> "
+                                  << stringifyDirs(std::get<1>(s)) << " | ");
         }
-
-        LLVM_DEBUG(llvm::dbgs() << " (" << curr->col << "," << curr->row << ") "
-                                << stringifyDir(s.first) << " -> "
-                                << stringifyDirs(s.second) << " | ");
+        break;      
       }
+    }
 
-      LLVM_DEBUG(llvm::dbgs()
-                 << "\n\t\tFinished adding ConnectOps to implement flowOp.\n");
-      analyzer.processed_flows[srcPoint] = true;
-    } else
-      LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
-
+    LLVM_DEBUG(llvm::dbgs() << "\n\tDone adding ConnectOps to impl flowOp.\n");
+    
     rewriter.eraseOp(Op);
   }
 };
