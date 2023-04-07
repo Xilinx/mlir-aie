@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
     if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
       printf("Released objFifo 3 lock 0 for write\n");
     else
-      printf("ERROR: timed out on objFifo 3 lock 0 for write\n");    
+      printf("ERROR: timed out on objFifo 3 lock 0 for write\n");
   }
 
   int res = 0;
