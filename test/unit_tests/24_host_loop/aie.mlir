@@ -9,22 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
+// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o host_loop.exe
+// RUN: %run_on_board ./host_loop.exe
 
 module @host_loop {
     %tile34 = AIE.tile(3, 4)
     %tile70 = AIE.tile(7, 0)
-
-    func.func @evaluate_condition(%argIn : i32) -> (i1) {
-        %true = arith.constant 1 : i1
-        return %true : i1
-    }
-
-    func.func @payload(%argIn : i32) -> (i32) {
-        %next = arith.constant 1 : i32
-        return %next : i32
-    }
 
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32> 
@@ -38,16 +28,10 @@ module @host_loop {
     %core34 = AIE.core(%tile34) {
         %c0 = arith.constant 0 : index
         %c1 = arith.constant 1 : index
+        %c25 = arith.constant 25 : index
         %height = arith.constant 256 : index
-        %init1 = arith.constant 1 : i32
-
-        %res = scf.while (%arg1 = %init1) : (i32) -> i32 {
-            %condition = func.call @evaluate_condition(%arg1) : (i32) -> i1
-            scf.condition(%condition) %arg1 : i32
-        } do {
-            ^bb0(%arg2: i32):
-            %next = func.call @payload(%arg2) : (i32) -> i32
-
+        
+        scf.for %iter = %c0 to %c25 step %c1 { 
             %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
             %outputSubview = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
             
@@ -61,9 +45,8 @@ module @host_loop {
             
             AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1)
             AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1)
-            
-            scf.yield %next : i32
         }
+            
         AIE.end
     } 
 }
