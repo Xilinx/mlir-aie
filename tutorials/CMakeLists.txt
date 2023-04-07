@@ -52,6 +52,8 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
 
+message(STATUS "NOLF NOLF TUTORIALS LibXAIE Stuff")
+
 # Look for LibXAIE
 if(NOT extraAieCcFlags)
   set(LibXAIE_ROOT ${LibXAIE_DIR} ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2)
@@ -63,6 +65,7 @@ if(NOT extraAieCcFlags)
   endif()
 else()
   set(LibXAIE_ROOT ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
+  # too early to call find_package(LibXAIE) since it needs to be cross compiled as part of this build
   message(STATUS "Defaulted to Vitis included sysroot, libxaie will be cross compiled and picked up from the install folder")
   set(LibXAIE_FOUND TRUE)
 endif()
