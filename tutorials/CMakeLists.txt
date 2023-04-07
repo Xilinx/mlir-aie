@@ -52,8 +52,6 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
 
-message(STATUS "NOLF NOLF TUTORIALS LibXAIE Stuff")
-
 # Look for LibXAIE
 if(NOT extraAieCcFlags)
   set(LibXAIE_ROOT ${LibXAIE_DIR} ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2)
