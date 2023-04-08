@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ##===- utils/build-llvm-local.sh - Build LLVM on local machine --*- Script -*-===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
 # This script build LLVM with custom options intended to be called on your
@@ -24,6 +24,8 @@ INSTALL_DIR=${3:-"install"}
 
 mkdir -p $LLVM_DIR/$BUILD_DIR
 mkdir -p $LLVM_DIR/$INSTALL_DIR
+# Enter a sub-shell to avoid messing up with current directory in case of error
+(
 cd $LLVM_DIR/$BUILD_DIR
 set -o pipefail
 set -e
@@ -48,4 +50,4 @@ cmake ../llvm \
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
-cd ../..
+)
