@@ -68,24 +68,27 @@ particular revision is expected to work.
     To clone `llvm`, run `utils/clone-llvm.sh` (see
     `utils/clone-llvm.sh` for the correct `llvm` commit hash):
     ```
-    source utils/clone-llvm.sh
+    ./utils/clone-llvm.sh
     ```
 
     If you have already an LLVM repository, you can instead of cloning
     just make a new worktree from it by using:
     ````
-    source utils/clone-llvm.sh --worktree <directory-of-existing-LLVM-repository>
+    ./utils/clone-llvm.sh --worktree <directory-of-existing-LLVM-repository>
     ````
 
-    To build (compile and install) llvm, run utils/build-llvm-local.sh in the directory that llvm and 
-    cmakeModules are cloned in. See build-llvm-local.sh for additional shell script arguments. 
-    Note that build-llvm.sh is a variation of the llvm build script used for CI on github.
+    To build (compile and install) LLVM, run `utils/build-llvm-local.sh`` in the directory that `llvm` and
+    `cmakeModules` are cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
+    Note that `build-llvm.sh` is a variation of the LLVM build script used for CI on GitHub.
     ```
-    ./utils/build-llvm-local.sh 
+    ./utils/build-llvm-local.sh
     ```
-    This will build llvm in llvm/build and install the llvm binaries under llvm/install.
+    This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
-4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` with the path to `llvm/build`. The Vitis enviroment will have to be set up for this to succeed. 
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` with
+    the path to the `llvm/build` directory. The Vitis enviroment will
+    have to be set up for this to succeed.
+
     ```
     source <Vitis Install Path>/settings64.sh
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
@@ -94,8 +97,8 @@ particular revision is expected to work.
 
     The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
 
-5. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
-done by calling the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
+5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
+done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
 and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
