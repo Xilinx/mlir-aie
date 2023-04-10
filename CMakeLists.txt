@@ -132,8 +132,74 @@ endif()
 
 add_subdirectory(include)
 add_subdirectory(lib)
+
+add_custom_target(runtime-libs ALL)
+
+# FIXME: don't ship as source... compile them instead.
+set(INSTALLS
+    test_library.cpp
+    test_library.h)
+
+foreach(file ${INSTALLS})
+    add_custom_target(aie-copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/runtime_lib/${file})
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/runtime_lib/${file}
+                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/runtime_lib/${file}
+                    ${CMAKE_CURRENT_BINARY_DIR}/runtime_lib/${file}
+                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/runtime_lib/${file})
+    # add_dependencies(runtime-libs aie-copy-runtime-libs-${file} )
+endforeach()
+
+# Install too
+list(TRANSFORM INSTALLS PREPEND "runtime_lib/")
+install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
+
+set(AIE_RUNTIME_TARGETS "" CACHE STRING "Architectures to compile the runtime libraries for.")
+set(AIE_RUNTIME_TEST_TARGET "" CACHE STRING "Runtime architecture to test with.")
+set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
+
+foreach(target ${AIE_RUNTIME_TARGETS})
+  # By default, we test the first architecture in AIE_RUNTIME_TARGETS.
+  # Alternatively, this can be defined to force testing with a particular architecture.
+  if (NOT AIE_RUNTIME_TEST_TARGET_VAL)
+    set(AIE_RUNTIME_TEST_TARGET_VAL ${target})
+    message("Testing with AIE runtime target: ${AIE_RUNTIME_TEST_TARGET_VAL}")
+  endif()
+
+  if (NOT EXISTS ${${target}_TOOLCHAIN_FILE})
+    message(FATAL_ERROR "Toolchain file ${${target}_TOOLCHAIN_FILE} not found! Cannot build target ${target}.")
+  endif()
+  message("Building AIE runtime for ${target} with TOOLCHAIN=${${target}_TOOLCHAIN_FILE}")
+  ExternalProject_Add(aie_runtime_lib_${target}
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/runtime_libTmp/${target}
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/runtime_lib
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/runtime_lib/${target}
+    CMAKE_CACHE_ARGS
+            -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+    CMAKE_ARGS
+            -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
+            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+            -DAIE_RUNTIME_TARGET=${target}
+            -DLibXAIE_ROOT=${LibXAIE_ROOT}
+            -DVITIS_ROOT=${VITIS_ROOT}
+            -DAIE_DIR=${AIE_DIR}
+    BUILD_ALWAYS true
+    STEP_TARGETS clean build install test
+    USES_TERMINAL_CONFIGURE true
+    USES_TERMINAL_BUILD true
+    USES_TERMINAL_TEST true
+    USES_TERMINAL_INSTALL true
+    TEST_BEFORE_INSTALL true
+    TEST_EXCLUDE_FROM_MAIN true
+  )
+endforeach()
+
+add_subdirectory(aie_runtime_lib)
+
 add_subdirectory(reference_designs)
-add_subdirectory(runtime_lib)
 add_subdirectory(test)
 add_subdirectory(tutorials)
 add_subdirectory(tools)

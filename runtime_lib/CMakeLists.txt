@@ -5,81 +5,34 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-include(ExternalProject)
+# cmake needs this line
+cmake_minimum_required(VERSION 3.20.1)
 
-# copy libc and libm from Vitis
-function(add_aie_runtime_libs arch) 
-  # Extract me_basic.o from libme.a, which is shipped with Vitis.
-  add_custom_target(${arch}_me_basic ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o)
-  if(DEFINED VITIS_ROOT)
-      # Compile me_basic.o
-      add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
-                      COMMAND ${VITIS_XCHESSCC} -p me -P ${VITIS_${arch}_INCLUDE_DIR}
-                      -I ${VITIS_${arch}_INCLUDE_DIR}/runtime/include/
-                      -d -c ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.c
-                      -o ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
-                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.c)
-  else()
-      # Exists in the source tree.. just copy it.
-      add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
-                      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o
-                      ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
-                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.o)
-  endif()
-  add_dependencies(runtime-libs ${arch}_me_basic)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${arch})
+project("aie runtime libs")
 
+find_package(Vitis COMPONENTS AIE AIE2)
 
-  set(INSTALLS
-      chess_intrinsic_wrapper.cpp)
+# include(ExternalProject)
 
-  foreach(file ${INSTALLS})
-      add_custom_target(aie-copy-${arch}-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
-      add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}//${file}
-                      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
-                      ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-      add_dependencies(runtime-libs aie-copy-${arch}-runtime-libs-${file} )
-  endforeach()
+# set(INSTALLS
+#     test_library.cpp
+#     test_library.h)
 
-  install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${arch})
+# foreach(file ${INSTALLS})
+#     add_custom_target(aie-copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
+#     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
+#                     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
+#                     ${CMAKE_CURRENT_BINARY_DIR}/${file}
+#                     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+#     # add_dependencies(runtime-libs aie-copy-runtime-libs-${file} )
+# endforeach()
 
-  add_subdirectory(aiesim)
-
-endfunction()
-
-set(INSTALLS
-    test_library.cpp
-    test_library.h)
-
-# Stuff into the build area:
-add_custom_target(runtime-libs ALL)
-
-foreach(file ${INSTALLS})
-    add_custom_target(aie-copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
-                    ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-    add_dependencies(runtime-libs aie-copy-runtime-libs-${file} )
-endforeach()
-
-# Install too
-install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
-
-add_subdirectory(AIE)
-add_subdirectory(AIE2)
+# # Install too
+# install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 
 if(DEFINED VITIS_ROOT)
-ExternalProject_Add(xaiengine
-  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp
-  SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/xaiengine
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/xaiengine
-  CMAKE_ARGS
-    -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
-  CMAKE_CACHE_DEFAULT_ARGS
-    -DCMAKE_TOOLCHAIN_FILE:STRING=${TOOLCHAINFILES_PATH}/toolchain_vitis_crosscomp_arm.cmake
-    -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
-  )
+add_subdirectory(xaiengine)
 endif()
