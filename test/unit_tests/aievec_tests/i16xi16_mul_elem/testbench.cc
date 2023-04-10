@@ -26,47 +26,32 @@ int main() {
     mat_b_data[i] = (i + 11) % 100;
   }
 
+  // Compute the reference result
   for (i = 0; i < MAT_SIZE; i++) {
     ref_c_data[i] = mat_a_data[i] * mat_b_data[i];
   }
 
-  // Compute matrix multiplication
-  // reference(mat_a_data, mat_b_data, mat_c_data);
-  printf("Running MATMUL...\n\n");
+  printf("Running MUL_ELEM...\n\n");
   auto cyclesBegin = chess_cycle_count();
   mul_elem(mat_a_data, mat_b_data, mat_c_data);
   auto cyclesEnd = chess_cycle_count();
   printf("Cycle count: %d\n", (int)(cyclesEnd - cyclesBegin));
 
-  printf("Finish MATMUL!\n\n");
+  printf("Finish MUL_ELEM!\n\n");
 
-  // Compare results with reference result
-  // NOTE: There will be some rounding errors in results so we accept absolute
-  // value differences < 5
-
-  printf("Compare the results\n\n");
   int errors = 0;
-  int max_error = 0;
-  int absErrorDiff = 0;
+  // Compare results with reference result
+  printf("Compare the results\n\n");
   for (int i = 0; i < MAT_SIZE; i++) {
     if (mat_c_data[i] != ref_c_data[i]) {
-      printf("%d got %d expected %d\n", i, mat_c_data[i], ref_c_data[i]);
-      absErrorDiff = fabs(mat_c_data[i] - ref_c_data[i]);
-      if (absErrorDiff >= 5)
-        printf("Delta found: Index %d is %d and should be %d\n", i,
-               mat_c_data[i], ref_c_data[i]);
-      if (absErrorDiff > max_error)
-        printf("max found in index: %d\n", i);
-      max_error = max_error < absErrorDiff ? absErrorDiff : max_error;
       errors++;
     }
   }
 
-  if (errors == 0 || max_error < 5) {
-    printf("PASSED, Max delta: %d, pixel intensity\n\n", max_error);
+  if (errors == 0) {
+    printf("PASSED.\n\n");
   } else {
-    printf("FAIL. Number of deltas = %d, Max delta: %d, pixel intensity\n\n",
-           errors, max_error);
+    printf("FAIL. Number of erros = %d\n\n", errors);
   }
 
   return 0;
