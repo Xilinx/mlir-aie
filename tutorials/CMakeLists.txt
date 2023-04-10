@@ -60,6 +60,7 @@ if(NOT extraAieCcFlags)
   endif()
 else()
   set(LibXAIE_ROOT ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
+  # too early to call find_package(LibXAIE) since it needs to be cross compiled as part of this build
   message(STATUS "Defaulted to Vitis included sysroot, libxaie will be cross compiled and picked up from the install folder")
   set(LibXAIE_FOUND TRUE)
 endif()
