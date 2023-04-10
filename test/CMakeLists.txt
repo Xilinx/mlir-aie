@@ -69,6 +69,7 @@ endif()
 
 if(NOT AIE_BINARY_DIR)
 find_package(AIE REQUIRED CONFIG)
+message(STATUS "Using AIEConfig.cmake in: ${AIE_DIR}")
 endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to

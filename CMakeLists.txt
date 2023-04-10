@@ -74,7 +74,7 @@ find_package(Python3 COMPONENTS Interpreter)
 if(VitisSysroot STREQUAL "" AND VITIS_ROOT)
 set(VitisSysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
 set(LIBCXX_VERSION "11.2.0")
-set(extraAieCcFlags "-I${VITIS_AIETOOLS_DIR}/include/drivers/aiengine -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
+set(extraAieCcFlags "-I${VITIS_AIETOOLS_DIR}/include/drivers/aiengine/include -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine/lib -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
 message (STATUS "Empty string specified as sysroot, using default Vitis Sysroot to enable more unit tests: ${VitisSysroot}")
 endif()
 

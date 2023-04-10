@@ -13,6 +13,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project("xaiengine driver")
 set(XAIE_SOURCE ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_2/src)
 file(GLOB libsources ${XAIE_SOURCE}/*/*.c ${XAIE_SOURCE}/*/*/*.c)
+file(GLOB libincludes ${XAIE_SOURCE}/*.h ${XAIE_SOURCE}/*/*.h ${XAIE_SOURCE}/*/*/*.h)
 
 include_directories(
     ${XAIE_SOURCE}
@@ -42,4 +43,5 @@ include_directories(
 
 add_library(xaiengine SHARED ${libsources})
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxaiengine.so DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
+install(FILES ${libincludes} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine/include/xaiengine)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxaiengine.so DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine/lib)
