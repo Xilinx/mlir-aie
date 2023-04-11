@@ -51,7 +51,7 @@ int main() {
   if (errors == 0) {
     printf("PASSED.\n\n");
   } else {
-    printf("FAIL. Number of erros = %d\n\n", errors);
+    printf("FAIL. Number of errors = %d\n\n", errors);
   }
 
   return 0;
