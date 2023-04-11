@@ -320,8 +320,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
       if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
         if (applyOp.getAffineMap().getNumDims() == 1) {
           newIdx = applyOp.getMapOperands()[0];
-          //          offset = applyOp.getAffineMap().compose({0}[0];
-          offset = applyOp.getAffineMap().compose(llvm::ArrayRef<int64_t>{0})[0];
+          offset = applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0];
         }
     indices[indices.size() - 1] = newIdx;
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
