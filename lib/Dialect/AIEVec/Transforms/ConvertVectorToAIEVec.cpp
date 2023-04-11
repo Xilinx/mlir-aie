@@ -204,6 +204,10 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
     : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
+  ConvertMulAddToAIEVecFMAElemOpPattern(MLIRContext *context,
+                                        unsigned shiftParam = 0)
+      : OpConversionPattern<arith::AddIOp>(context), shiftParam(shiftParam) {}
+
   LogicalResult
   matchAndRewrite(arith::AddIOp addOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -220,8 +224,8 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
     auto [lhs, rhs, acc] = *res;
 
     // Verify the vector type is supported by AIEML
-    IntegerType resultElType = cast<IntegerType>(resultType.getElementType());
-    unsigned resultElWidth = resultElType.getWidth();
+    unsigned resultElWidth =
+        resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
     if ((laneSize != 32 || resultElWidth != 16) &&
@@ -234,11 +238,59 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
         addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(addOp, resultType,
-                                               fmaElemOp.getResult());
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        addOp, resultType, fmaElemOp.getResult(), shiftParam);
 
     return success();
   }
+
+  unsigned shiftParam;
+};
+
+// This pattern replaces `arith.muli` on vectors with
+// `aievec.mul_elem`. This pattern works for aie-ml.
+struct ConvertMulToAIEVecMulElemOpPattern
+    : public OpConversionPattern<arith::MulIOp> {
+  using OpConversionPattern<arith::MulIOp>::OpConversionPattern;
+
+  ConvertMulToAIEVecMulElemOpPattern(MLIRContext *context,
+                                     unsigned shiftParam = 0)
+      : OpConversionPattern<arith::MulIOp>(context), shiftParam(shiftParam) {}
+
+  LogicalResult
+  matchAndRewrite(arith::MulIOp mulOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Verify it's a vector operation
+    VectorType resultType = dyn_cast<VectorType>(mulOp.getType());
+    if (!resultType)
+      return failure();
+
+    auto isAddOp = [&](Operation *op) { return isa<arith::AddIOp>(op); };
+    // Verify it is not a part of MAC
+    if (llvm::any_of(mulOp->getUsers(), isAddOp))
+      return failure();
+
+    // Verify the vector type is supported by AIEML
+    unsigned resultElWidth =
+        resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if ((laneSize != 32 || resultElWidth != 16) &&
+        (laneSize != 16 || resultElWidth != 32))
+      return failure();
+
+    Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
+                                       /*AIEML =*/true);
+
+    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
+        mulOp.getLoc(), accType, adaptor.getLhs(), adaptor.getRhs());
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        mulOp, resultType, mulElemOp.getResult(), shiftParam);
+
+    return success();
+  }
+
+  unsigned shiftParam;
 };
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
@@ -590,7 +642,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 
   patterns.add<LowerVectorAddIOpToAIEVecAddOp,
                FoldVectorExtractAndBroadcastToAIEBroadcast,
-               ConvertMulAddToAIEVecFMAElemOpPattern>(patterns.getContext());
+               ConvertMulAddToAIEVecFMAElemOpPattern,
+               ConvertMulToAIEVecMulElemOpPattern>(patterns.getContext());
 }
 
 static void
@@ -668,15 +721,28 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!resultType) {
       return true;
     }
-    auto resultElType = dyn_cast<IntegerType>(resultType.getElementType());
-    if (!resultElType) {
-      return true;
-    }
-    unsigned resultElWidth = resultElType.getWidth();
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    return ((laneSize != 32 || resultElWidth != 16) &&
-            (laneSize != 16 || resultElWidth != 32));
+    return (laneSize != 32 || resultElWidth != 16) &&
+           (laneSize != 16 || resultElWidth != 32);
+  });
+
+  target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto isAddOp = [&](Operation *op) { return isa<arith::AddIOp>(op); };
+    // Verify it is not a part of MAC
+    if (llvm::any_of(op->getUsers(), isAddOp))
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return (laneSize != 32 || resultElWidth != 16) &&
+           (laneSize != 16 || resultElWidth != 32);
   });
 }
 
