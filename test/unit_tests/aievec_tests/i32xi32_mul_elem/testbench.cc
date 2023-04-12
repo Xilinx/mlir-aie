@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "defines.h"
-#include "testbench.h"
+#include "../common/testbench.h"
 #include <algorithm>
 void dut(int32_t * restrict in0, int32_t * restrict in1, int32_t * restrict out0);
 void dut_ref(int32_t *in0, int32_t *in1, int32_t *out0);
