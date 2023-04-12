@@ -11,9 +11,7 @@ template <typename T> struct Format;
 template <> struct Format<double> {
   static constexpr const char *value = "%la";
 };
-template <> struct Format<float> {
-  static constexpr const char *value = "%a";
-};
+template <> struct Format<float> { static constexpr const char *value = "%a"; };
 template <> struct Format<uint64_t> {
   static constexpr const char *value = "%llu";
 };
