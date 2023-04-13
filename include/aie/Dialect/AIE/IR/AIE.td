@@ -1047,7 +1047,8 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   }];
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID,
+        OptionalAttr<I32Attr>:$init
   );
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
@@ -1076,11 +1077,12 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
     TileOp getTileOp();
   }];
   let builders = [
-    OpBuilder<(ins "Value":$tile, "int":$lockID), [{
+    OpBuilder<(ins "Value":$tile, "int":$lockID, "int":$init), [{
       build($_builder, $_state,
         $_builder.getIndexType(),
         tile,
-        $_builder.getI32IntegerAttr(lockID));
+        $_builder.getI32IntegerAttr(lockID),
+        $_builder.getI32IntegerAttr(init));
       }]>
   ];
   let hasVerifier = 1;

@@ -197,7 +197,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
       builder.setInsertionPointAfter(tileOp);
       LockOp lock =
-          builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID);
+          builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID, 0);
 
       lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);
 

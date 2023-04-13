@@ -235,7 +235,7 @@ struct AIEObjectFifoStatefulTransformPass
       int lockID = lockAnalysis.getLockID(creation_tile);
       assert(lockID >= 0 && "No more locks to allocate!");
       LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                           creation_tile, lockID);
+                                           creation_tile, lockID, 0);
       lock.getOperation()->setAttr(
           "sym_name",
           builder.getStringAttr("of_" + std::to_string(of_index) + "_lock_" +
