@@ -18,11 +18,7 @@ module @test27_simple_shim_dma_single_lock {
 
   %core72 = AIE.core(%tile72) {
     %c0 = arith.constant 0 : index
-    %c1 = arith.constant 1 : index
-    %c4 = arith.constant 4 : index
-    %c5 = arith.constant 5 : index
-    %c16 = arith.constant 16 : index
-
+    
     %constant0 = arith.constant 0 : i32
     %constant7 = arith.constant 7 : i32
     %constant13 = arith.constant 13 : i32
