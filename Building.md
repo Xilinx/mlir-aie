@@ -11,7 +11,6 @@ Xilinx Vitis 2022.2
 python 3.8.x and pip
 pip3 install psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
-Xilinx cmakeModules from https://github.com/Xilinx/cmakeModules
 ```
 
 Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
@@ -62,7 +61,7 @@ than 'ld' (which tends to be quite slow on large link jobs) and to link against 
 so. You may find that other options are also useful. Note that due to changing MLIR APIs, only a
 particular revision is expected to work.  
 
-    To clone llvm and cmakeModules, run utils/clone-llvm.sh (see utils/clone-llvm.sh for the correct llvm commithash).
+    To clone llvm, run utils/clone-llvm.sh (see utils/clone-llvm.sh for the correct llvm commithash).
     ```
     ./utils/clone-llvm.sh
     ```
@@ -74,11 +73,10 @@ particular revision is expected to work.
     ```
     This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` with paths to the `llvm/build` and `cmakeModules` repos (note that `clone-llvm.sh` puts the cmakeModules repo under 
-`cmakeModules/cmakeModulesXilinx`). The Vitis enviroment will have to be set up for this to succeed. 
+4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` with the path to `llvm/build`. The Vitis enviroment will have to be set up for this to succeed. 
     ```
     source <Vitis Install Path>/settings64.sh
-    ./utils/build-mlir-aie.sh <llvm dir>/<build dir> <cmakeModules dir>/cmakeModulesXilinx
+    ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
     ```
     This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
