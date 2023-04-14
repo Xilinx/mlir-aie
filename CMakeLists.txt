@@ -11,7 +11,8 @@
 #     * when not set, x86 compile only, lit compile test for x86; --> not yet fully supported because of many hard coded --host-target=aarch64-linux-gnu in lit tests they will fail
 #     * set to empty string, x86 tools compile, lit cross compile tests with default Vitis sysroot 
 #     * set to valid sysroot path, x86 tools compile, lit cross compile with specified sysroot
-#  -DLibXAIE_DIR: extra search path for libxaiengine.so 
+#  -DLibXAIE_DIR: extra search path for libxaiengine.so
+#  -DAIE_RUNTIME_TARGETS: list of targets (x86,aarch64) to build runtime libs for, default: x86
 
 cmake_minimum_required(VERSION 3.21)
 
@@ -153,7 +154,7 @@ endforeach()
 list(TRANSFORM INSTALLS PREPEND "runtime_lib/")
 install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 
-set(AIE_RUNTIME_TARGETS "" CACHE STRING "Architectures to compile the runtime libraries for.")
+set(AIE_RUNTIME_TARGETS "x86" CACHE STRING "Architectures to compile the runtime libraries for.")
 set(AIE_RUNTIME_TEST_TARGET "" CACHE STRING "Runtime architecture to test with.")
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 
