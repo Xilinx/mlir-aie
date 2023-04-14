@@ -276,17 +276,58 @@ struct ConvertMulToAIEVecMulElemOpPattern
     unsigned laneSize = getVectorLaneSize(resultType);
 
     if ((laneSize != 32 || resultElWidth != 16) &&
-        (laneSize != 16 || resultElWidth != 32))
+        ((laneSize != 16 && laneSize != 32) || resultElWidth != 32))
       return failure();
 
-    Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
-                                       /*AIEML =*/true);
+    if (laneSize == 32 && resultElWidth == 32) {
+      auto lhs = dyn_cast<arith::ExtSIOp>(mulOp->getOperand(0).getDefiningOp());
+      auto rhs = dyn_cast<arith::ExtSIOp>(mulOp->getOperand(1).getDefiningOp());
 
-    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, adaptor.getLhs(), adaptor.getRhs());
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-        mulOp, resultType, mulElemOp.getResult(), shiftParam);
+      if (!lhs || !rhs)
+        return failure();
 
+      auto lval = lhs->getOperand(0);
+      auto rval = rhs->getOperand(0);
+
+      VectorType lSrcType = cast<VectorType>(lval.getType());
+      VectorType rSrcType = cast<VectorType>(rval.getType());
+
+      unsigned lBitWidth = lSrcType.getElementType().getIntOrFloatBitWidth();
+      unsigned rBitWidth = rSrcType.getElementType().getIntOrFloatBitWidth();
+
+      if (lBitWidth != 8 || rBitWidth != 8)
+        return failure();
+
+      Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
+      VectorType vecType =
+          createVectorType(512 / lBitWidth, lSrcType.getElementType());
+
+      auto broadcastZeroOp =
+          rewriter.create<aievec::BroadcastScalarOp>(lhs.getLoc(), vecType, 0);
+      auto extOp = rewriter.create<aievec::ExtOp>(
+          lhs.getLoc(), lSrcType, broadcastZeroOp.getResult(), 0);
+
+      SmallVector<Value> lSources = {lval, extOp->getResult(0)};
+      SmallVector<Value> rSources = {rval, extOp->getResult(0)};
+      auto lConcatOp =
+          rewriter.create<aievec::ConcatOp>(lhs.getLoc(), vecType, lSources);
+      auto rConcatOp =
+          rewriter.create<aievec::ConcatOp>(rhs.getLoc(), vecType, rSources);
+
+      auto mulElemOp = rewriter.create<aievec::MulElemOp>(
+          mulOp.getLoc(), accType, lConcatOp->getResult(0),
+          rConcatOp->getResult(0));
+      rewriter.replaceOpWithNewOp<aievec::CastOp>(
+          mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
+    } else {
+      Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
+                                         /*AIEML =*/true);
+
+      auto mulElemOp = rewriter.create<aievec::MulElemOp>(
+          mulOp.getLoc(), accType, adaptor.getLhs(), adaptor.getRhs());
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          mulOp, resultType, mulElemOp.getResult(), shiftParam);
+    }
     return success();
   }
 
@@ -742,7 +783,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(resultType);
 
     return (laneSize != 32 || resultElWidth != 16) &&
-           (laneSize != 16 || resultElWidth != 32);
+           ((laneSize != 16 && laneSize != 32) || resultElWidth != 32);
   });
 }
 

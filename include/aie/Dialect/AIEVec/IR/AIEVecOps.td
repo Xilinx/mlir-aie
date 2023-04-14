@@ -312,6 +312,19 @@ def AIEVec_BroadcastOp:
   ];
 }
 
+def AIEVec_BroadcastScalarOp:
+  AIEVec_Op<"broadcast_scalar", [
+    Pure
+  ]>,
+  Arguments<(ins DefaultValuedAttr<ConfinedAttr<I32Attr, [IntNonNegative]>, "0">:$scalar)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE-ML broadcast scalar";
+  let description = [{
+    Xilinx-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
+    `$result = broadcast_scalar($scalar)`
+  }];
+}
+
 def AIEVec_UPSOp:
   AIEVec_Op<"ups", [
     Pure
@@ -405,7 +418,7 @@ def AIEVec_ConcatOp:
   let description = [{
     Xilinx-specific concat intrinsic. Concatenates two or more smaller
     vectors into a bigger vector. The verifier confirms that all the
-    input vectors have the same number of lanes.
+    input vectors have the same number of lanes. If the size of sources is 1, the source automatically concatenates an undefined vector with the same vector type of the source.
     `$result = concat($sources[0], $sources[1], ...)`
   }];
 }

@@ -479,6 +479,57 @@ ParseResult BroadcastOp::parse(OpAsmParser &parser, OperationState &result) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastScalarOp
+//===----------------------------------------------------------------------===//
+
+// Print out BroadcastScalar op.
+void BroadcastScalarOp::print(OpAsmPrinter &p) {
+
+  // Print the attributes
+  p.printOptionalAttrDict((*this)->getAttrs());
+
+  // And now print the types
+  p << " : " << getResult().getType();
+}
+
+// Verify BroadcastScalar op.
+LogicalResult BroadcastScalarOp::verify() {
+  // Verify the types
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+
+  if (!resultType)
+    return emitError("requires vector type");
+
+  return success();
+}
+
+// Parse BroadcastScalar op.
+ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+
+  // Parse all the attributes and types
+  if (parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "requires one attribute");
+
+  // Assert that there is one type (result vector)
+  if (types.size() != 1)
+    return parser.emitError(typesLoc, "requires one type");
+
+  // Some verification
+  VectorType vecType = types[0].dyn_cast<VectorType>();
+  if (!vecType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  return parser.addTypeToList(vecType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
 // MulOp and FMAOp
 //===----------------------------------------------------------------------===//
 
@@ -765,14 +816,13 @@ template <typename T> LogicalResult verifyMulFMAElemOp(T op) {
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
-  unsigned accLanes = getVectorLaneSize(resultType);
   unsigned rhsLanes = getVectorLaneSize(rhsType);
   unsigned lhsLanes = getVectorLaneSize(lhsType);
 
   // lane size must match
-  if (accLanes != rhsLanes || accLanes != lhsLanes) {
-    return op.emitError("The number of lanes in accumulator "
-                        "must be the same as lhs and rhs operand");
+  if (lhsLanes != rhsLanes) {
+    return op.emitError("The number of lanes in lhs operand "
+                        "must be the same as rhs operand");
   }
 
   // lhs and rhs vector's element type must match
@@ -999,7 +1049,7 @@ void ConcatOp::print(OpAsmPrinter &p) {
 // Verify Concat op.
 LogicalResult ConcatOp::verify() {
   // Must be concatenating at least two sources
-  if (getSources().size() < 2)
+  if (getSources().size() < 1)
     return emitError("Must concatenate at least two vectors");
 
   // Verify the types
@@ -1021,11 +1071,14 @@ LogicalResult ConcatOp::verify() {
 
   // The lanes in concatenated type must be the sum of lanes of source vector
   unsigned totalLanes = 0;
+
   for (auto source : srcs) {
     VectorType type = source.getType().dyn_cast<VectorType>();
     totalLanes += getVectorLaneSize(type);
   }
-  if (totalLanes != getVectorLaneSize(resultType))
+
+  if (totalLanes != getVectorLaneSize(resultType) ||
+      (totalLanes != getVectorLaneSize(resultType) / 2 && srcs.size() == 1))
     return emitError("mismatch between vector lanes "
                      "and sum of source lanes");
 
