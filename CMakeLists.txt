@@ -8,11 +8,12 @@
 # optional parameters
 #  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
 #  -DVitisSysroot: 
-#     * when not set, x86 compile only, lit compile test for x86; --> not yet fully supported because of many hard coded --host-target=aarch64-linux-gnu in lit tests they will fail
-#     * set to empty string, x86 tools compile, lit cross compile tests with default Vitis sysroot 
-#     * set to valid sysroot path, x86 tools compile, lit cross compile with specified sysroot
+#     * when not set, x86_64 compile only, lit compile test for x86_64; --> not yet fully supported because of many hard coded --host-target=aarch64-linux-gnu in lit tests they will fail
+#     * set to empty string, x86_64 tools compile, lit cross compile tests with default Vitis sysroot 
+#     * set to valid sysroot path, x86_64 tools compile, lit cross compile with specified sysroot
 #  -DLibXAIE_DIR: extra search path for libxaiengine.so
-#  -DAIE_RUNTIME_TARGETS: list of targets (x86,aarch64) to build runtime libs for, default: x86
+#  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64
+#  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
 cmake_minimum_required(VERSION 3.21)
 
@@ -154,9 +155,11 @@ endforeach()
 list(TRANSFORM INSTALLS PREPEND "runtime_lib/")
 install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 
-set(AIE_RUNTIME_TARGETS "x86" CACHE STRING "Architectures to compile the runtime libraries for.")
-set(AIE_RUNTIME_TEST_TARGET "" CACHE STRING "Runtime architecture to test with.")
+set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
+set(AIE_RUNTIME_TEST_TARGET "x86_64" CACHE STRING "Runtime architecture to test with.")
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
+set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchainFiles/toolchain_x86_64.cmake")
+set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modulesXilinx/toolchain_vitis_crosscomp_arm.cmake")
 
 foreach(target ${AIE_RUNTIME_TARGETS})
   # By default, we test the first architecture in AIE_RUNTIME_TARGETS.
@@ -184,9 +187,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
             -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
             -DAIE_RUNTIME_TARGET=${target}
-            -DLibXAIE_ROOT=${LibXAIE_ROOT}
             -DVITIS_ROOT=${VITIS_ROOT}
-            -DAIE_DIR=${AIE_DIR}
     BUILD_ALWAYS true
     STEP_TARGETS clean build install test
     USES_TERMINAL_CONFIGURE true

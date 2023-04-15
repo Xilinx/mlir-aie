@@ -48,6 +48,7 @@ cmake -GNinja \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     -DVitisSysroot="" \
+    "-DAIE_RUNTIME_TARGETS=aarch64;x86_64" \
     .. |& tee cmake.log
 
 ninja |& tee ninja.log
