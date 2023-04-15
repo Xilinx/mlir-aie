@@ -870,12 +870,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
     os << emitter.getOrCreateName(source);
     first = false;
   }
-
-  if (sources.size() == 1) {
-    VectorType sourceType = sources[0].getType().cast<VectorType>();
-    os << ", " << getUndefVector(sourceType);
-  }
-
   os << ")";
   return success();
 }
