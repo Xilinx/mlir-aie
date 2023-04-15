@@ -772,6 +772,7 @@ printOperation(CppEmitter &emitter,
   VectorType resType =
       broadcastScalarOp.getResult().getType().cast<VectorType>();
   unsigned width = getElementSizeInBits(resType);
+  unsigned lanes = getVectorLaneSize(resType);
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the vector
@@ -780,14 +781,15 @@ printOperation(CppEmitter &emitter,
 
   switch (scalar) {
   case 0:
-    os << "broadcast_zero_s";
+    os << "broadcast_zero_to_v";
     break;
   case 1:
-    os << "broadcast_one_s";
+    os << "broadcast_one_to_v";
     break;
   default:
-    os << "broadcast_s";
+    os << "broadcast_to_v";
   }
+  os << lanes << "int";
   os << width;
   os << "()";
   return success();

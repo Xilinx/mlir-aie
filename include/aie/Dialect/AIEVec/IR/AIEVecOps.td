@@ -418,7 +418,7 @@ def AIEVec_ConcatOp:
   let description = [{
     Xilinx-specific concat intrinsic. Concatenates two or more smaller
     vectors into a bigger vector. The verifier confirms that all the
-    input vectors have the same number of lanes. If the size of sources is 1, the source automatically concatenates an undefined vector with the same vector type of the source.
+    input vectors have the same number of lanes.
     `$result = concat($sources[0], $sources[1], ...)`
   }];
 }

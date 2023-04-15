@@ -1049,7 +1049,7 @@ void ConcatOp::print(OpAsmPrinter &p) {
 // Verify Concat op.
 LogicalResult ConcatOp::verify() {
   // Must be concatenating at least two sources
-  if (getSources().size() < 1)
+  if (getSources().size() < 2)
     return emitError("Must concatenate at least two vectors");
 
   // Verify the types
@@ -1071,14 +1071,12 @@ LogicalResult ConcatOp::verify() {
 
   // The lanes in concatenated type must be the sum of lanes of source vector
   unsigned totalLanes = 0;
-
   for (auto source : srcs) {
     VectorType type = source.getType().dyn_cast<VectorType>();
     totalLanes += getVectorLaneSize(type);
   }
 
-  if (totalLanes != getVectorLaneSize(resultType) ||
-      (totalLanes != getVectorLaneSize(resultType) / 2 && srcs.size() == 1))
+  if (totalLanes != getVectorLaneSize(resultType))
     return emitError("mismatch between vector lanes "
                      "and sum of source lanes");
 

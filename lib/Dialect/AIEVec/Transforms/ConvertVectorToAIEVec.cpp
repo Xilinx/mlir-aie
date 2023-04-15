@@ -279,6 +279,13 @@ struct ConvertMulToAIEVecMulElemOpPattern
         ((laneSize != 16 && laneSize != 32) || resultElWidth != 32))
       return failure();
 
+    // Deal with the case:
+    // Transfer -
+    // %1 = arith.extsi %a : vector<32xi8> to vector<32xi32>
+    // %2 = arith.extsi %b : vector<32xi8> to vector<32xi32>
+    // %3 = arith.muli %1, %2 : vector<32xi32>
+    // to -
+    // aievec.mul_elem(%a, %b) : vector<64xi8>, vector<64xi8>, vector<32xi32>
     if (laneSize == 32 && resultElWidth == 32) {
       auto lhs = dyn_cast<arith::ExtSIOp>(mulOp->getOperand(0).getDefiningOp());
       auto rhs = dyn_cast<arith::ExtSIOp>(mulOp->getOperand(1).getDefiningOp());
