@@ -13,8 +13,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project("aie runtime libs")
 
-find_package(Vitis COMPONENTS AIE AIE2)
-
 # include(ExternalProject)
 
 # set(INSTALLS
@@ -33,6 +31,4 @@ find_package(Vitis COMPONENTS AIE AIE2)
 # # Install too
 # install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
 
-if(DEFINED VITIS_ROOT)
 add_subdirectory(xaiengine)
-endif()

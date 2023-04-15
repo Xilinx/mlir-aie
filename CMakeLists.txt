@@ -161,6 +161,7 @@ set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchainFiles/toolchain_x86_64.cmake")
 set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/modulesXilinx/toolchain_vitis_crosscomp_arm.cmake")
 
+if (DEFINED VITIS_ROOT)
 foreach(target ${AIE_RUNTIME_TARGETS})
   # By default, we test the first architecture in AIE_RUNTIME_TARGETS.
   # Alternatively, this can be defined to force testing with a particular architecture.
@@ -198,6 +199,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     TEST_EXCLUDE_FROM_MAIN true
   )
 endforeach()
+endif()
 
 add_subdirectory(aie_runtime_lib)
 
