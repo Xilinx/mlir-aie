@@ -70,6 +70,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
             -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
             -DAIE_RUNTIME_TARGET=${target}
             -DVITIS_ROOT=${VITIS_ROOT}
+            -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
     BUILD_ALWAYS true
     STEP_TARGETS clean build install test
     USES_TERMINAL_CONFIGURE true
