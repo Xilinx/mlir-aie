@@ -292,12 +292,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
-        if (op.acquire()) {
+        if (op.acquire_eq() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
+        } else {
+          op.emitOpError("unsupported lock action");
         }
       }
 
@@ -438,12 +440,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
         hasLock = true;
-        if (op.acquire()) {
+        if (op.acquire_eq() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
+        } else {
+          op.emitOpError("unsupported lock action");
         }
       }
 
@@ -532,12 +536,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
     int col = tile.colIndex();
     int row = tile.rowIndex();
     int lockID = lock.getLockIDValue();
-    if (op.acquire()) {
+    if (op.acquire_eq() || op.acquire_ge()) {
       output << "XAieTile_LockAcquire(" << tileInstStr(col, row) << ", "
              << lockID << ", " << lockVal << ", " << timeOut << ");\n";
     } else if (op.release()) {
       output << "XAieTile_LockRelease(" << tileInstStr(col, row) << ", "
              << lockID << ", " << lockVal << ", " << timeOut << ");\n";
+    } else {
+      op.emitOpError("unsupported lock action");
     }
   }
   output << "} // mlir_aie_initialize_locks\n";

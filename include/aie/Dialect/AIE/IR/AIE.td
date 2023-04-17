@@ -1117,7 +1117,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   ];
 
   let extraClassDeclaration = [{
-    bool acquire() { return (getAction() == LockAction::Acquire); }
+    bool acquire_eq() { return (getAction() == LockAction::Acquire); }
     bool acquire_ge() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
     int getLockValue() { return getValue(); }
