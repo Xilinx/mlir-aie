@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  mlir_aie_init_mems(_xaie, 3);
+  mlir_aie_init_mems(_xaie, 2);
 
   int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, 0, 256);
   int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, 1, 64);
