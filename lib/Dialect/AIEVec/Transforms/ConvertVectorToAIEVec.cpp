@@ -267,7 +267,7 @@ struct ConvertMulToAIEVecMulElemOpPattern
 
     auto isAddOp = [&](Operation *op) { return isa<arith::AddIOp>(op); };
     // Verify it is not a part of MAC
-    if (llvm::any_of(mulOp->getUsers(), isAddOp))
+    if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
       return failure();
 
     // Verify the vector type is supported by AIEML
