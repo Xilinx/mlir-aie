@@ -53,7 +53,7 @@ find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE in the sysroot.  Depending on the sysroot, this might live in multiple locations.
-if(NOT extraAieCcFlags)
+if(NOT DEFINED extraAieCcFlags AND ${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64")
   set(LibXAIE_ROOT ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2)
   find_package(LibXAIE)
   if(LibXAIE_FOUND)
@@ -61,9 +61,13 @@ if(NOT extraAieCcFlags)
   else()
     message(STATUS "LibXAIE NOT FOUND in ${VitisSysroot}: Skipping some tests")
   endif()
+elseif(NOT DEFINED extraAieCcFlags AND AIE_RUNTIME_TEST_TARGET STREQUAL "x86_64")
+  set(LibXAIE_ROOT ${CMAKE_INSTALL_PREFIX}/runtime_lib/x86_64/xaiengine)
+  message(STATUS "x86_64 host runtime target, libxaie will be compiled and picked up from the install folder")
+  set(LibXAIE_FOUND TRUE)
 else()
   set(LibXAIE_ROOT ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
-  message(STATUS "Defaulted to Vitis included sysroot, libxaie will be cross compiled and picked up from the install folder")
+  message(STATUS "aarch64 host runtime target, defaulted to Vitis included sysroot, libxaie will be cross compiled and picked up from the install folder")
   set(LibXAIE_FOUND TRUE)
 endif()
 
@@ -126,8 +130,8 @@ set(TEST_DEPENDS
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 300 --time-tests"
+  ARGS "-a --timeout 300 --time-tests"
   )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 
-add_lit_testsuites(AIE ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TEST_DEPENDS} ARGS "-sv --timeout 300 --time-tests")
+add_lit_testsuites(AIE ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TEST_DEPENDS} ARGS "-a --timeout 300 --time-tests")

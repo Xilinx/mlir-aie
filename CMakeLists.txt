@@ -73,10 +73,10 @@ configure_file(./utils/vitisVariables.config.in ${CMAKE_BINARY_DIR}/utils/vitisV
 find_package(Python3 COMPONENTS Interpreter)
 
 # NEEDS future improvement: if needed find default sysroot since many lit test hard code --host-target=aarch64-linux-gnu as well as tutorial defaults (in makefile-common)
-if(VitisSysroot STREQUAL "" AND VITIS_ROOT)
+if(${VitisSysroot} STREQUAL "" AND ${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64" AND DEFINED VITIS_ROOT)
 set(VitisSysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
 set(LIBCXX_VERSION "11.2.0")
-set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine/include -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine/lib -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
+set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
 message (STATUS "Empty string specified as sysroot, using default Vitis Sysroot to enable more unit tests: ${VitisSysroot}")
 endif()
 

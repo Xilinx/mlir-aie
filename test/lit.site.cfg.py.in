@@ -52,6 +52,8 @@ config.vitis_sysroot = "@VitisSysroot@"
 config.libxaie_dir = "@XILINX_XAIE_LIBS@"
 config.has_libxaie = @CONFIG_HAS_LIBXAIE@
 config.extraAieCcFlags = "@extraAieCcFlags@"
+config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
+config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.
