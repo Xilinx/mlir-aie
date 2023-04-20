@@ -55,10 +55,10 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     message(FATAL_ERROR "Toolchain file ${${target}_TOOLCHAIN_FILE} not found! Cannot build target ${target}.")
   endif()
   message("Building AIE runtime for ${target} with TOOLCHAIN=${${target}_TOOLCHAIN_FILE}")
-  ExternalProject_Add(aie_runtime_lib_${target}
+  ExternalProject_Add(runtime_lib_${target}
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/xaiengine
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine
     CMAKE_CACHE_ARGS
             -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
     CMAKE_ARGS

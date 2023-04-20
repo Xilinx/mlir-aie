@@ -11,7 +11,7 @@
 #     * when not set, x86_64 compile only, lit compile test for x86_64; --> not yet fully supported because of many hard coded --host-target=aarch64-linux-gnu in lit tests they will fail
 #     * set to empty string, x86_64 tools compile, lit cross compile tests with default Vitis sysroot 
 #     * set to valid sysroot path, x86_64 tools compile, lit cross compile with specified sysroot
-#  -DLibXAIE_DIR: extra search path for libxaiengine.so
+#  -DLibXAIE_DIR: extra search path for libxaiengine
 #  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64
 #  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
@@ -73,7 +73,7 @@ configure_file(./utils/vitisVariables.config.in ${CMAKE_BINARY_DIR}/utils/vitisV
 find_package(Python3 COMPONENTS Interpreter)
 
 # NEEDS future improvement: if needed find default sysroot since many lit test hard code --host-target=aarch64-linux-gnu as well as tutorial defaults (in makefile-common)
-if(${VitisSysroot} STREQUAL "" AND ${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64" AND DEFINED VITIS_ROOT)
+if(VitisSysroot STREQUAL "" AND ${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64" AND DEFINED VITIS_ROOT)
 set(VitisSysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
 set(LIBCXX_VERSION "11.2.0")
 set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")

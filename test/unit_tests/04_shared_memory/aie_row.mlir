@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --tmpdir=%t --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py --tmpdir=%t %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib% %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
 
 module @test4_row_shared_memory {
   %tile13 = AIE.tile(1, 3)

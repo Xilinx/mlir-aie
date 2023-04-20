@@ -33,7 +33,7 @@ include_directories(
     ${XAIE_SOURCE}/util
 )
 
-add_library(xaiengine SHARED ${libsources})
-target_compile_options(xaiengine PRIVATE "-Wno-gnu-designator")
+add_library(xaiengine STATIC ${libsources})
+target_compile_options(xaiengine PRIVATE -fPIC -Wno-gnu-designator)
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxaiengine.so DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
+install(TARGETS xaiengine DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
