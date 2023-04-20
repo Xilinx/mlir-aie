@@ -782,16 +782,22 @@ printOperation(CppEmitter &emitter,
   switch (scalar) {
   case 0:
     os << "broadcast_zero_to_v";
+    os << lanes << "int";
+    os << width;
+    os << "()";
     break;
   case 1:
     os << "broadcast_one_to_v";
+    os << lanes << "int";
+    os << width;
+    os << "()";
     break;
   default:
     os << "broadcast_to_v";
+    os << lanes << "int";
+    os << width;
+    os << "(" << scalar << ")";
   }
-  os << lanes << "int";
-  os << width;
-  os << "()";
   return success();
 }
 
