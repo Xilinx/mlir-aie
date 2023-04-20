@@ -283,43 +283,44 @@ class flow_runner:
         self.progress_bar.update(task,advance=0,visible=False)
 
   async def gen_sim(self, task):
-      shutil.rmtree('sim', ignore_errors=True)
+      sim_dir = os.path.join(self.tmpdirname, 'sim')
+      shutil.rmtree(sim_dir, ignore_errors=True)
+      subdirs = ['arch', 'reports', 'config', 'ps']
+      def make_sim_dir(x):
+        dir = os.path.join(sim_dir, x)
+        os.makedirs(dir, exist_ok=True)
+        return dir
+
       try:
-        os.makedirs('sim/arch', exist_ok=True)
-        os.makedirs('sim/reports', exist_ok=True)
-        os.makedirs('sim/config', exist_ok=True)
-        os.makedirs('sim/ps', exist_ok=True)
+        [sim_arch_dir, sim_reports_dir, sim_config_dir, sim_ps_dir] = map(make_sim_dir, subdirs)
       except FileExistsError:
         pass
+
       thispath = os.path.dirname(os.path.realpath(__file__))
-      # Should be architecture-specific
-      if(opts.aie_target == "AIE2"):
-        runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','AIE2','aiesim')
-      else:
-        runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib','AIE','aiesim')
+      runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib',opts.aie_target.upper(),'aiesim')
       sim_makefile   = os.path.join(runtime_simlib_path,"Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path,"genwrapper_for_ps.cpp")
 
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
       processes = []
       processes.append(self.do_call(task, ['aie-translate', '--aie-mlir-to-xpe',
-                                file_physical, '-o', './sim/reports/graph.xpe']))
+                                file_physical, '-o', os.path.join(sim_reports_dir, 'graph.xpe')]))
       processes.append(self.do_call(task, ['aie-translate', '--aie-mlir-to-shim-solution',
                                 file_physical,
-                                '-o','./sim/arch/aieshim_solution.aiesol']))
+                                '-o', os.path.join(sim_arch_dir, 'aieshim_solution.aiesol')]))
       processes.append(self.do_call(task, ['aie-translate', '--aie-mlir-to-scsim-config',
                                 file_physical,
-                                '-o','./sim/config/scsim_config.json']))
+                                '-o', os.path.join(sim_config_dir, 'scsim_config.json')]))
       processes.append(self.do_call(task, ['aie-opt', '--aie-find-flows',
                                 file_physical,
-                                '-o', './sim/flows_physical.mlir']))
+                                '-o', os.path.join(sim_dir, 'flows_physical.mlir')]))
       # await self.do_call(task, ['cp',sim_scsim_json,'./sim/config/.'])
-      processes.append(self.do_call(task, ['cp',sim_makefile,'./sim/.']))
-      processes.append(self.do_call(task, ['cp',sim_genwrapper,'./sim/ps/.']))
+      processes.append(self.do_call(task, ['cp', sim_makefile, sim_dir]))
+      processes.append(self.do_call(task, ['cp', sim_genwrapper, sim_ps_dir]))
       await asyncio.gather(*processes)
       await self.do_call(task, ['aie-translate', '--aie-flows-to-json',
-                                './sim/flows_physical.mlir',
-                                '-o','./sim/flows_physical.json'])
+                                os.path.join(sim_dir, 'flows_physical.mlir'),
+                                '-o', os.path.join(sim_dir, 'flows_physical.json')])
 
   async def run_flow(self):
       nworkers = int(opts.nthreads)
@@ -439,19 +440,18 @@ def main(builtin_params={}):
 
     if(opts.tmpdir):
       tmpdirname = opts.tmpdir
-      try:
-        os.mkdir(tmpdirname)
-      except FileExistsError:
-        pass
-      if(opts.verbose):
-        print('created temporary directory', tmpdirname)
-
-      runner = flow_runner(opts, tmpdirname)
-      asyncio.run(runner.run_flow())
     else:
-      with tempfile.TemporaryDirectory() as tmpdirname:
-        runner = flow_runner(opts, tmpdirname)
-        asyncio.run(runner.run_flow())
+      tmpdirname = os.path.basename(opts.filename) + ".prj"
+
+    try:
+      os.mkdir(tmpdirname)
+    except FileExistsError:
+      pass
+    if(opts.verbose):
+      print('created temporary directory', tmpdirname)
+
+    runner = flow_runner(opts, tmpdirname)
+    asyncio.run(runner.run_flow())
 
     if(opts.profiling):
       runner.dumpprofile()
