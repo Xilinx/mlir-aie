@@ -135,7 +135,7 @@ class flow_runner:
         chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, opts.aie_target,'chess_intrinsic_wrapper.cpp')
 
         self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
-        await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
+        await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
         await self.do_call(task, ['sed', '-i', 's/^target.*//', self.chess_intrinsic_wrapper])
 
         await self.do_call(task, ['sed', '-i', 's/noalias_sidechannel[^,]*,//', self.chess_intrinsic_wrapper])
@@ -196,16 +196,16 @@ class flow_runner:
           file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir)
           if(self.opts.link and self.opts.xbridge):
             link_with_obj = self.extract_input_files(file_core_bcf)
-            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           elif(self.opts.link):
-            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
+            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
             await self.do_call(task, ['clang', '-O2', '--target=' + opts.aie_peano_target, file_core_obj, *clang_link_args,
                                       '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
           file_core_obj = self.file_obj
           if(opts.link and opts.xbridge):
             link_with_obj = self.extract_input_files(file_core_bcf)
-            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           elif(opts.link):
             await self.do_call(task, ['clang', '-O2', '--target=' + opts.aie_peano_target, file_core_obj, *clang_link_args,
                                       '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
@@ -219,7 +219,7 @@ class flow_runner:
           file_core_obj = self.file_obj
         if(opts.link and opts.xbridge):
           link_with_obj = self.extract_input_files(file_core_bcf)
-          await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+          await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
         elif(opts.link):
           await self.do_call(task, ['clang', '-O2', '--target=' + opts.aie_peano_target, file_core_obj, *clang_link_args,
                                     '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
@@ -366,7 +366,7 @@ class flow_runner:
           self.file_obj = os.path.join(self.tmpdirname, 'input.o')
           if(opts.compile and opts.xchesscc):
             file_llvmir_hacked = await self.chesshack(progress.task, self.file_llvmir)
-            await self.do_call(progress.task, ['xchesscc_wrapper', opts.aie_target.lower(), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
+            await self.do_call(progress.task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
           elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
             await self.do_call(progress.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
