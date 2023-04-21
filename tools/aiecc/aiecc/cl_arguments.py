@@ -24,7 +24,7 @@ def parse_args():
             help='sysroot for cross-compilation')
     parser.add_argument('--tmpdir',
             metavar="tmpdir",
-            default="acdc_project",
+            default=None,
             help='directory used for temporary file storage')
     parser.add_argument('-v',
             dest="verbose",
