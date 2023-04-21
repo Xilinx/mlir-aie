@@ -309,8 +309,11 @@ struct ConvertMulToAIEVecMulElemOpPattern
       VectorType vecType =
           createVectorType(512 / lBitWidth, lSrcType.getElementType());
 
-      auto broadcastZeroOp =
-          rewriter.create<aievec::BroadcastScalarOp>(lhs.getLoc(), vecType, 0);
+      auto zeroConstOp = rewriter.create<arith::ConstantOp>(
+          lhs.getLoc(), rewriter.getIntegerAttr(lSrcType.getElementType(), 0));
+
+      auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
+          lhs.getLoc(), vecType, zeroConstOp->getResult(0));
       auto extOp = rewriter.create<aievec::ExtOp>(
           lhs.getLoc(), lSrcType, broadcastZeroOp.getResult(), 0);
 

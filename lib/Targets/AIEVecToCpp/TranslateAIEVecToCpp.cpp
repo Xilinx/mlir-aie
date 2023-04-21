@@ -768,7 +768,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 static LogicalResult
 printOperation(CppEmitter &emitter,
                aievec::BroadcastScalarOp broadcastScalarOp) {
-  int scalar = broadcastScalarOp.getScalar();
+  auto source = broadcastScalarOp.getSource();
   VectorType resType =
       broadcastScalarOp.getResult().getType().cast<VectorType>();
   unsigned width = getElementSizeInBits(resType);
@@ -779,25 +779,10 @@ printOperation(CppEmitter &emitter,
   if (failed(emitter.emitAssignPrefix(*broadcastScalarOp)))
     return failure();
 
-  switch (scalar) {
-  case 0:
-    os << "broadcast_zero_to_v";
-    os << lanes << "int";
-    os << width;
-    os << "()";
-    break;
-  case 1:
-    os << "broadcast_one_to_v";
-    os << lanes << "int";
-    os << width;
-    os << "()";
-    break;
-  default:
-    os << "broadcast_to_v";
-    os << lanes << "int";
-    os << width;
-    os << "(" << scalar << ")";
-  }
+  os << "broadcast_to_v";
+  os << lanes << "int";
+  os << width;
+  os << "(" << emitter.getOrCreateName(source) << ")";
   return success();
 }
 
@@ -2462,6 +2447,7 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
   }
   if (auto iType = type.dyn_cast<IndexType>())
     return (os << "size_t"), success();
+
   if (auto tType = type.dyn_cast<TensorType>()) {
     if (!tType.hasRank())
       return emitError(loc, "cannot emit unranked tensor type");

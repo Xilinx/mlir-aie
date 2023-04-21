@@ -484,21 +484,24 @@ ParseResult BroadcastOp::parse(OpAsmParser &parser, OperationState &result) {
 
 // Print out BroadcastScalar op.
 void BroadcastScalarOp::print(OpAsmPrinter &p) {
-
-  // Print the attributes
-  p.printOptionalAttrDict((*this)->getAttrs());
+  // Print the source vector
+  p << " " << getSource();
 
   // And now print the types
-  p << " : " << getResult().getType();
+  p << " : " << getSource().getType() << ", " << getResult().getType();
 }
 
 // Verify BroadcastScalar op.
 LogicalResult BroadcastScalarOp::verify() {
   // Verify the types
+  Type sourceType = getSource().getType();
   VectorType resultType = getResult().getType().dyn_cast<VectorType>();
 
   if (!resultType)
     return emitError("requires vector type");
+
+  if (!sourceType)
+    return emitError("requires source type");
 
   return success();
 }
@@ -508,25 +511,32 @@ ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
                                      OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source;
 
-  // Parse all the attributes and types
-  if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+  // Parse the source vector
+  if (parser.parseOperand(source))
     return failure();
 
-  if (result.attributes.getAttrs().size() != 1)
-    return parser.emitError(typesLoc, "requires one attribute");
+  // Parse all the attributes and types
+  if (parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
 
-  // Assert that there is one type (result vector)
-  if (types.size() != 1)
-    return parser.emitError(typesLoc, "requires one type");
+  if (result.attributes.getAttrs().size() != 0)
+    return parser.emitError(typesLoc, "do not require attributes");
+
+  // Assert that there is two type (source and result vector)
+  if (types.size() != 2)
+    return parser.emitError(typesLoc, "requires two types");
 
   // Some verification
-  VectorType vecType = types[0].dyn_cast<VectorType>();
-  if (!vecType)
+  VectorType resType = types[1].dyn_cast<VectorType>();
+  if (!resType)
     return parser.emitError(typesLoc, "requires vector type");
 
-  return parser.addTypeToList(vecType, result.types);
+  if (parser.resolveOperand(source, types[0], result.operands))
+    return failure();
+
+  return parser.addTypeToList(resType, result.types);
 }
 
 //===----------------------------------------------------------------------===//

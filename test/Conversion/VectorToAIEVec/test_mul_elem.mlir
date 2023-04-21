@@ -26,7 +26,8 @@ func.func @test_mul_elem_i8(%a : vector<32xi8>,
                          %b : vector<32xi8>) -> vector<32xi32> {
   %1 = arith.extsi %a : vector<32xi8> to vector<32xi32>
   %2 = arith.extsi %b : vector<32xi8> to vector<32xi32>
-  // CHECK:  %[[BCS:.*]] = aievec.broadcast_scalar {scalar = 0 : i32} : vector<64xi8>
+  // CHECK:  %[[C0:.*]] = arith.constant 0 : i8
+  // CHECK:  %[[BCS:.*]] = aievec.broadcast_scalar %[[C0:.*]] : i8, vector<64xi8>
   // CHECK:  %[[EXT:.*]] = aievec.ext %[[BCS:.*]] {index = 0 : i8} : vector<64xi8>, vector<32xi8>
   // CHECK:  %[[CC1:.*]] = aievec.concat %[[A]], %[[EXT:.*]] : vector<32xi8>, vector<64xi8>
   // CHECK:  %[[CC2:.*]] = aievec.concat %[[B]], %[[EXT:.*]] : vector<32xi8>, vector<64xi8>

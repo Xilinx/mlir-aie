@@ -316,13 +316,17 @@ def AIEVec_BroadcastScalarOp:
   AIEVec_Op<"broadcast_scalar", [
     Pure
   ]>,
-  Arguments<(ins DefaultValuedAttr<ConfinedAttr<I32Attr, [IntNonNegative]>, "0">:$scalar)>,
+  Arguments<(ins AnyType:$source)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML broadcast scalar";
   let description = [{
     Xilinx-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
-    `$result = broadcast_scalar($scalar)`
+    `$result = broadcast_scalar($source)`
   }];
+  let builders = [
+    OpBuilder<(ins "Value":$source),
+    [{build($_builder, $_state, source.getType(), source);}]>
+  ];
 }
 
 def AIEVec_UPSOp:
