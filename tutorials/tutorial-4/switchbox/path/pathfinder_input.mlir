@@ -8,6 +8,41 @@
 //
 //===----------------------------------------------------------------------===//
 
+// RUN: aie-opt --aie-canonicalize-device %s | aie-opt --aie-create-pathfinder-flows | FileCheck %s
+// CHECK: %15 = AIE.switchbox(%3) {
+// CHECK:      AIE.connect<DMA : 0, North : 0>
+// CHECK:      AIE.connect<East : 0, DMA : 0>
+// CHECK:    }
+// CHECK:    %16 = AIE.switchbox(%4) {
+// CHECK:      AIE.connect<South : 0, East : 0>
+// CHECK:    }
+// CHECK:    %17 = AIE.switchbox(%7) {
+// CHECK:      AIE.connect<West : 0, East : 0>
+// CHECK:      AIE.connect<East : 0, South : 0>
+// CHECK:    }
+// CHECK:    %18 = AIE.switchbox(%10) {
+// CHECK:      AIE.connect<West : 0, East : 0>
+// CHECK:      AIE.connect<East : 0, West : 0>
+// CHECK:      AIE.connect<South : 0, East : 1>
+// CHECK:      AIE.connect<East : 1, South : 0>
+// CHECK:    }
+// CHECK:    %19 = AIE.switchbox(%13) {
+// CHECK:      AIE.connect<West : 0, DMA : 0>
+// CHECK:      AIE.connect<DMA : 0, West : 0>
+// CHECK:      AIE.connect<West : 1, North : 0>
+// CHECK:      AIE.connect<North : 0, West : 1>
+// CHECK:    }
+// CHECK:    %20 = AIE.switchbox(%6) {
+// CHECK:      AIE.connect<North : 0, West : 0>
+// CHECK:    }
+// CHECK:    %21 = AIE.switchbox(%9) {
+// CHECK:      AIE.connect<DMA : 0, North : 0>
+// CHECK:      AIE.connect<North : 0, DMA : 0>
+// CHECK:    }
+// CHECK:    %22 = AIE.switchbox(%14) {
+// CHECK:      AIE.connect<South : 0, DMA : 0>
+// CHECK:      AIE.connect<DMA : 0, South : 0>
+// CHECK:    }
 
 module @pathfinder{
 %t01 = AIE.tile(0, 1)

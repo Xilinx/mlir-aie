@@ -11,14 +11,14 @@
 
 From the previous introduction in [tutorial-2](..), the first step is to initialize and configure our design (whether it be for simulation or hardware implementaion). Our build utility `aiecc.py` had actually already done part of this for us since `aie.mlir` specifies a design for the entire AI Engine array. As a result, `aiecc.py` has already generated a directory with the host API libraries necessary to initialize, configure and interact with our design. These can be found in the `acdc_project` folder after you run `aiecc.py`. 
 
-Of particular interest is the `acdc_project/aie_inc.cpp` file which contains many of the configuration API functions for our design. These functions can be invoked from host code to initialize, configure and control our AI Engine design. Additional common host code API functions for testing can also be found in the [runtime_lib/test_library.cpp](../../../runtime_lib/test_library.cpp).
+Of particular interest is the `aie.mlir.prj/aie_inc.cpp` file which contains many of the configuration API functions for our design. These functions can be invoked from host code to initialize, configure and control our AI Engine design. Additional common host code API functions for testing can also be found in the [runtime_lib/test_library.cpp](../../../runtime_lib/test_library.cpp).
 
 ## <ins>Tutorial 2a Lab</ins>
 
-1. Run `make` in this directory. Then take a look at the file under `acdc_project/aie_inc.cpp`. You will see a number of helpful API functions for initializing and configuring our design from the host. We've built a host program that does this named [test.cpp](./test.cpp). Take a look at this file to see the common set of init/config functions which will be describing in more detail below:
+1. Run `make` in this directory. Then take a look at the file under `aie.mlir.prj/aie_inc.cpp`. You will see a number of helpful API functions for initializing and configuring our design from the host. We've built a host program that does this named [test.cpp](./test.cpp). Take a look at this file to see the common set of init/config functions which will be describing in more detail below:
 
 ### <ins>Host Code Configuration API</ins>
-The set of functions described below are often called as a group to configure the AI Engine array and program the elf files for each individual tile. Detailed descriptions of these functions can be found in the common `test_library.cpp` and design specific `acdc_project/aie_inc.cpp`.
+The set of functions described below are often called as a group to configure the AI Engine array and program the elf files for each individual tile. Detailed descriptions of these functions can be found in the common `test_library.cpp` and design specific `aie.mlir.prj/aie_inc.cpp`.
 
 | Host Config API | Description |
 |----------|-------------|
