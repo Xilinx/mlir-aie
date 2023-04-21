@@ -11,30 +11,10 @@ cmake_minimum_required(VERSION 3.20.1)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project("aie runtime libs")
-
 include(ExternalProject)
 
-# test_library
-# FIXME: don't ship as source... compile them instead.
-add_custom_target(runtime-libs ALL)
-set(INSTALLS
-    test_library.cpp
-    test_library.h)
-
-foreach(file ${INSTALLS})
-    add_custom_target(aie-copy-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
-    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${file}
-                     ${CMAKE_CURRENT_BINARY_DIR}/${file}
-                     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-    # add_dependencies(runtime-libs aie-copy-runtime-libs-${file} )
-endforeach()
-
-# Install too
-install(FILES ${INSTALLS} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib)
-
-# xaiengine
+project("runtime-libs")
+#add_custom_target(runtime-libs ALL)
 
 set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
 set(AIE_RUNTIME_TEST_TARGET "x86_64" CACHE STRING "Runtime architecture to test with.")
@@ -55,7 +35,9 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     message(FATAL_ERROR "Toolchain file ${${target}_TOOLCHAIN_FILE} not found! Cannot build target ${target}.")
   endif()
   message("Building AIE runtime for ${target} with TOOLCHAIN=${${target}_TOOLCHAIN_FILE}")
-  ExternalProject_Add(runtime_lib_${target}
+  
+  # xaiengine
+  ExternalProject_Add(xaiengine_${target}
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/xaiengine
     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine
@@ -80,5 +62,31 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     TEST_BEFORE_INSTALL true
     TEST_EXCLUDE_FROM_MAIN true
   )
+
+  # test_lib
+  ExternalProject_Add(test_lib_${target}
+  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/test_libTmp/${target}
+  SOURCE_DIR ${PROJECT_SOURCE_DIR}/test_lib
+  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/test_lib/lib
+  CMAKE_CACHE_ARGS
+          -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+  CMAKE_ARGS
+          -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
+          -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+          -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+          -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+          -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+          -DAIE_RUNTIME_TARGET=${target}
+  #DEPENDS xaiengine_${target}
+  BUILD_ALWAYS true
+  STEP_TARGETS clean build install test
+  USES_TERMINAL_CONFIGURE true
+  USES_TERMINAL_BUILD true
+  USES_TERMINAL_TEST true
+  USES_TERMINAL_INSTALL true
+  TEST_BEFORE_INSTALL true
+  TEST_EXCLUDE_FROM_MAIN true
+)
 endforeach()
 endif()

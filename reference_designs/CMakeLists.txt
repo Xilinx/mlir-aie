@@ -114,7 +114,6 @@ set(TEST_DEPENDS
   aiecc.py
   aie-opt
   aie-translate
-  runtime-libs
   )
 
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"

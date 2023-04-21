@@ -6,7 +6,7 @@
 
 cmake_minimum_required(VERSION 3.20.1)
 
-project("xaiengine driver ${AIE_RUNTIME_TARGET}")
+project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 
 set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
 file(GLOB libheaders ${xaienginePath}/*.h)
@@ -16,7 +16,6 @@ file(GLOB libheadersSub ${xaienginePath}/xaiengine/*.h)
 foreach(file ${libheaders})
     file(RELATIVE_PATH basefile ${xaienginePath} ${file})
     message("basefile: ${basefile}")
-file(GLOB libheadersSub ${xaienginePath}/xaiengine/*.h)
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/include/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
     add_custom_command(OUTPUT ${dest}

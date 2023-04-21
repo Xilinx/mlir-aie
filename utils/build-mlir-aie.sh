@@ -47,11 +47,9 @@ cmake -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
-    -DVitisSysroot="" \
     "-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
-    -DAIE_RUNTIME_TEST_TARGET=aarch64 \
+    -DAIE_RUNTIME_TEST_TARGET=x86_64 \
     .. |& tee cmake.log
-
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
