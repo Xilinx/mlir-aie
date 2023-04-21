@@ -78,6 +78,31 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.broadcast_scalar` (::xilinx::aievec::BroadcastScalarOp)
+
+AIE-ML broadcast scalar
+
+Xilinx-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
+`$result = broadcast_scalar($source)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | any type
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.cast` (::xilinx::aievec::CastOp)
 
 AIE cast
