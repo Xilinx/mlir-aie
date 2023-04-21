@@ -26,6 +26,9 @@ endif()
 
 project(aie-test LANGUAGES CXX C)
 
+# default to host system architecture for runtime target
+set(AIE_RUNTIME_TEST_TARGET ${CMAKE_HOST_SYSTEM_PROCESSOR} CACHE STRING "Runtime architecture to test with.")
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
