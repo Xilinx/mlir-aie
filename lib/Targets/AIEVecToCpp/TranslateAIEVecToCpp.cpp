@@ -764,6 +764,28 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate the broadcast_scalar intrinsic
+static LogicalResult
+printOperation(CppEmitter &emitter,
+               aievec::BroadcastScalarOp broadcastScalarOp) {
+  auto source = broadcastScalarOp.getSource();
+  VectorType resType =
+      broadcastScalarOp.getResult().getType().cast<VectorType>();
+  unsigned width = getElementSizeInBits(resType);
+  unsigned lanes = getVectorLaneSize(resType);
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*broadcastScalarOp)))
+    return failure();
+
+  os << "broadcast_to_v";
+  os << lanes << "int";
+  os << width;
+  os << "(" << emitter.getOrCreateName(source) << ")";
+  return success();
+}
+
 // Generate the ext intrinsic
 static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   Value source = extOp.getSource();
@@ -774,22 +796,46 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   // Generate the initialization for the result
   if (failed(emitter.emitAssignPrefix(*extOp)))
     return failure();
-  // Print the version of ext
-  VectorType resultType = extOp.getResult().getType().cast<VectorType>();
-  int32_t vecSizeInBits = getVectorSizeInBits(resultType);
-  assert(vecSizeInBits == 128 || vecSizeInBits == 256 || vecSizeInBits == 512);
-  os << (vecSizeInBits == 128   ? "ext_v"
-         : vecSizeInBits == 256 ? "ext_w"
-                                : "ext_x");
-  os << "(";
-  // The source accumulator should have already been emitted
+
   if (!emitter.hasValueInScope(source))
     return failure();
+
+  VectorType resType = extOp.getResult().getType().cast<VectorType>();
+  unsigned lanes = getVectorLaneSize(resType);
+  unsigned resWidth = getElementSizeInBits(resType);
+
+  // Print the version of ext for aie-ml
+  if (AIEML) {
+    os << "extract_v" << std::to_string(lanes) << "int"
+       << std::to_string(resWidth);
+  } else {
+    // Print the version of ext for aie1
+    int32_t vecSizeInBits = getVectorSizeInBits(resType);
+    assert(vecSizeInBits == 128 || vecSizeInBits == 256 ||
+           vecSizeInBits == 512);
+    os << (vecSizeInBits == 128   ? "ext_v"
+           : vecSizeInBits == 256 ? "ext_w"
+                                  : "ext_x");
+  }
+  os << "(";
+  // The source accumulator should have already been emitted
   os << emitter.getOrCreateName(source);
   os << ", ";
   os << std::to_string(index);
   os << ")";
+
   return success();
+}
+
+// Generate undefined vector strings based on the vector lanes, source type and
+// element size of a vector
+static std::string getUndefVector(VectorType sourceType) {
+  unsigned lanes = getVectorLaneSize(sourceType);
+  Type eltType = sourceType.getElementType();
+  int32_t eltSize = getElementSizeInBits(sourceType);
+  return "undef_v" + std::to_string(lanes) +
+         (eltType.isa<FloatType>() ? "float" : "int") +
+         std::to_string(eltSize) + "()";
 }
 
 // Generate the concat intrinsic
@@ -818,17 +864,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
   }
   os << ")";
   return success();
-}
-
-// Generate undefined vector strings based on the vector lanes, source type and
-// element size of a vector
-static std::string getUndefVector(VectorType sourceType) {
-  unsigned lanes = getVectorLaneSize(sourceType);
-  Type eltType = sourceType.getElementType();
-  int32_t eltSize = getElementSizeInBits(sourceType);
-  return "undef_v" + std::to_string(lanes) +
-         (eltType.isa<FloatType>() ? "float" : "int") +
-         std::to_string(eltSize) + "()";
 }
 
 // Generate the shift intrinsic
@@ -2381,9 +2416,9 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<aievec::AddOp, aievec::ConcatOp, aievec::ExtOp, aievec::FMAOp,
                 aievec::MulOp, aievec::PackOp, aievec::SelectOp, aievec::SRSOp,
                 aievec::SubOp, aievec::UPDOp, aievec::UPSOp, aievec::FMAElemOp,
-                aievec::MulElemOp, aievec::BroadcastOp, aievec::MulConvOp,
-                aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp,
-                aievec::CastOp>(
+                aievec::MulElemOp, aievec::BroadcastOp,
+                aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
+                aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -2432,6 +2467,7 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
   }
   if (auto iType = type.dyn_cast<IndexType>())
     return (os << "size_t"), success();
+
   if (auto tType = type.dyn_cast<TensorType>()) {
     if (!tType.hasRank())
       return emitError(loc, "cannot emit unranked tensor type");
