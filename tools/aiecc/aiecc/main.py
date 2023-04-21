@@ -299,7 +299,7 @@ class flow_runner:
 
       thispath = os.path.dirname(os.path.realpath(__file__))
 
-      runtime_simlib_path = os.path.join(thispath, '..','..','runtime_lib',opts.aie_target.upper(),'aiesim')
+      runtime_simlib_path = os.path.join(thispath, '..','..','aie_runtime_lib',opts.aie_target.upper(),'aiesim')
       sim_makefile   = os.path.join(runtime_simlib_path,"Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path,"genwrapper_for_ps.cpp")
 
