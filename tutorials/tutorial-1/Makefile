@@ -14,7 +14,7 @@ core_1_4.elf : aie.mlir
 	aiecc.py -j4 $<
 
 clean:
-	rm -rf acdc_project sim aiesimulator_output *elf core* *log *vcd pl_sample_counts .AIE_SIM_CMD_LINE_OPTIONS tutorial-1.exe
+	rm -rf aie.mlir.prj aiesimulator_output *elf core* *log *vcd pl_sample_counts .AIE_SIM_CMD_LINE_OPTIONS tutorial-1.exe
 
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises

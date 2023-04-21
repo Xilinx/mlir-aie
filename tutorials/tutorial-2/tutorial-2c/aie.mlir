@@ -30,7 +30,7 @@ module @tutorial_1 {
 
     // Declare a lock 0 associated with tile(1,4) with a 
     // symbolic name "lock14_0" which can be used by access functions
-    // in the generated API (acdc_project/aie_inc.cpp)
+    // in the generated API (aie.mlir.prj/aie_inc.cpp)
     %lock14_0 = AIE.lock(%tile14, 0) { sym_name = "lock14_0" }
 
     // Define the algorithm for the core of tile(1, 4)
