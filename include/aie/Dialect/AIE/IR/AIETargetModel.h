@@ -39,6 +39,10 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
+  /// Return true if the given tile is an AIE2 'Memory' tile.  These tiles
+  /// include a TileDMA and stream connections, but no core.
+  virtual bool isMemTile(int col, int row) const = 0;
+
   /// Return true if the given tile is a Shim NOC tile.  These tiles include a
   /// ShimDMA and a connection to the memory-mapped NOC.
   virtual bool isShimNOCTile(int col, int row) const = 0;
@@ -110,6 +114,8 @@ public:
 class AIE1TargetModel : public AIETargetModel {
 public:
   AIE1TargetModel() {}
+
+  bool isMemTile(int col, int row) const override { return false; }
 
   AIEArch getTargetArch() const override;
 
@@ -215,6 +221,7 @@ public:
     return 4; /* One Shim row, 1 memtile rows, and 2 Core rows. */
   }
 
+  bool isMemTile(int col, int row) const override { return row == 1; }
   bool isShimNOCTile(int col, int row) const override {
     return row == 0 && noc_columns.contains(col);
   }
@@ -233,6 +240,9 @@ public:
     return 11; /* One Shim row, 2 memtile rows, and 8 Core rows. */
   }
 
+  bool isMemTile(int col, int row) const override {
+    return (row == 1) || (row == 2);
+  }
   bool isShimNOCTile(int col, int row) const override {
     return row == 0 && noc_columns.contains(col);
   }

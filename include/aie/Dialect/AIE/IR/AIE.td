@@ -140,6 +140,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     int rowIndex() { return getRow(); }
     TileID getTileID() { return std::make_pair(getCol(), getRow()); }
     bool isShimTile() { return getRow() == 0; }
+    bool isMemTile();
     bool isShimNOCTile();
     bool isShimPLTile();
     bool isShimNOCorPLTile();
