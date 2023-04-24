@@ -871,6 +871,14 @@ LogicalResult xilinx::AIE::LockOp::verify() {
   auto result = UsesAreAccessable::verifyTrait(*this);
   if (result.failed())
     return result;
+
+  if (getLockID().has_value()) {
+    const auto &target_model = xilinx::AIE::getTargetModel(getTileOp());
+    if (getLockID().value() >= target_model.getNumLocks())
+      return emitOpError("lock assigned invalid id (maximum is ")
+             << target_model.getNumLocks() - 1 << ")";
+  }
+
   return success();
 }
 

@@ -18,6 +18,7 @@ module {
     %01 = AIE.tile(0, 1)
     %12 = AIE.tile(1, 2)
     %02 = AIE.tile(0, 2)
+    %lock = AIE.lock(%12, 63) { sym_name = "lock1" }
     AIE.flow(%01, DMA : 0, %12, Core : 1)
   }
 }
