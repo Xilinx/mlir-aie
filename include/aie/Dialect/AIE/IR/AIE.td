@@ -994,7 +994,7 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   }];
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID
   );
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{

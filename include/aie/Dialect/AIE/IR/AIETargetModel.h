@@ -109,6 +109,9 @@ public:
 
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
+
+  /// Return the number of lock objects
+  virtual uint32_t getNumLocks() const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -154,6 +157,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getNumLocks() const override { return 16; }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -191,6 +195,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+  uint32_t getNumLocks() const override { return 64; }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
