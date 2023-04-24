@@ -13,7 +13,6 @@ alignas(32) int8_t g_out0[OUT0_SIZE];
 alignas(32) int8_t g_out0Ref[OUT0_SIZE];
 
 int main(int argc, char *argv[]) {
-  // XXX Figure out how to use argv with xme_ca_udm_dbg -A
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
   std::generate(g_in0, g_in0 + IN0_SIZE,
@@ -49,7 +48,6 @@ int main(int argc, char *argv[]) {
   return ok ? 0 : 1;
 }
 
-// in0, in1, out0 are in C4 layout.
 void dut_ref(int8_t *in0, int8_t *in1, int8_t *out0) {
   for (unsigned k = 0; k < OUT0_SIZE; k += 1) {
     out0[k] = in0[k] * in1[k];
