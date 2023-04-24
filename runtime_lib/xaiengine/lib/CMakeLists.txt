@@ -33,7 +33,12 @@ include_directories(
     ${XAIE_SOURCE}/util
 )
 
-add_library(xaiengine STATIC ${libsources})
+#add_library(xaiengine STATIC ${libsources})
+add_library(xaiengine SHARED ${libsources})
 target_compile_options(xaiengine PRIVATE -fPIC -Wno-gnu-designator)
+
+if (${AIE_RUNTIME_TARGET} STREQUAL "aarch64")
+target_compile_definitions(xaiengine PRIVATE __AIELINUX__)
+endif()
 
 install(TARGETS xaiengine DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)

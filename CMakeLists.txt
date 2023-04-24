@@ -7,7 +7,8 @@
 
 # optional parameters
 #  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
-#  -DLibXAIE_DIR: extra search path for libxaiengine
+#  -DLibXAIE_DIR: extra search path for libxaiengine 
+#  -DSysrootAarch64: sysroot for aarch crosscompile, if not specified and aarch64 in AIE_RUNTIME_TARGETS then default to  Vitis aarch64 sysroot
 #  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64; cross compilation for aarch64 against default Vitis Sysroot
 #  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
@@ -72,12 +73,28 @@ configure_file(./utils/vitisVariables.config.in ${CMAKE_BINARY_DIR}/utils/vitisV
 find_package(Python3 COMPONENTS Interpreter)
 
 # Set up default Vitis Sysroot as sysroot when testing on aarch64
-if(${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64" AND DEFINED VITIS_ROOT)
-set(VitisSysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
+list(FIND AIE_RUNTIME_TARGETS "aarch64" indexAarch64)
+if(NOT DEFINED SysrootAarch64 AND DEFINED VITIS_ROOT AND ${indexAarch64} GREATER -1)
+set(Sysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
+if(AIE_RUNTIME_TEST_TARGET STREQUAL "aarch64")
 set(LIBCXX_VERSION "11.2.0")
-set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
-message (STATUS "Empty string specified as sysroot, using default Vitis Sysroot to enable more unit tests: ${VitisSysroot}")
+set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${Sysroot}/usr/include -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION} -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
 endif()
+message (STATUS "aarch64 specified as runtime target but no sysroot set, using default Vitis Sysroot for cross compilation: ${Sysroot}")
+elseif(SysrootAarch64 AND ${indexAarch64} GREATER -1)
+set(Sysroot ${SysrootAarch64})
+message(STATUS "NOLF NOLF using specified SysrootAarch64: ${SysrootAarch64}")
+endif()
+
+message(STATUS "NOLF NOLF FINAL Sysroot: ${Sysroot}")
+
+
+# if(${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64" AND DEFINED VITIS_ROOT)
+# set(Sysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
+# set(LIBCXX_VERSION "11.2.0")
+# set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${Sysroot}/usr/include -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION} -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
+# message (STATUS "Empty string specified as sysroot, using default Vitis Sysroot to enable more unit tests: ${Sysroot}")
+# endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to
 # override.

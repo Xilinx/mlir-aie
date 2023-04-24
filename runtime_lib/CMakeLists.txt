@@ -16,9 +16,15 @@ include(ExternalProject)
 project("runtime-libs")
 #add_custom_target(runtime-libs ALL)
 
+message(STATUS "NOLF NOLF runtime libs sysroot: ${Sysroot}")
+
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
+if(SysrootAarch64)
+set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake")
+else()
 set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/modulesXilinx/toolchain_vitis_crosscomp_arm.cmake")
+endif()
 
 if (DEFINED VITIS_ROOT)
 foreach(target ${AIE_RUNTIME_TARGETS})
@@ -43,14 +49,12 @@ foreach(target ${AIE_RUNTIME_TARGETS})
             -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
     CMAKE_ARGS
             -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
-            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-            -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
             -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
             -DAIE_RUNTIME_TARGET=${target}
             -DVITIS_ROOT=${VITIS_ROOT}
             -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
+            -DSysroot=${Sysroot}
     BUILD_ALWAYS true
     STEP_TARGETS clean build install test
     USES_TERMINAL_CONFIGURE true
@@ -70,13 +74,11 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
   CMAKE_ARGS
           -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
-          -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-          -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-          -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
-  #DEPENDS xaiengine_${target}
+          -DSysroot=${Sysroot}
+  DEPENDS xaiengine_${target}-build
   BUILD_ALWAYS true
   STEP_TARGETS clean build install test
   USES_TERMINAL_CONFIGURE true

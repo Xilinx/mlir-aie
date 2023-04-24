@@ -10,7 +10,8 @@ project("test lib for ${AIE_RUNTIME_TARGET}")
 
 add_library(test_lib STATIC test_library.cpp)
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "test_library.h")
-target_compile_options(test_lib PRIVATE -fPIC)
+#target_compile_options(test_lib PRIVATE -fPIC)
+target_compile_definitions(test_lib PRIVATE LIBXAIENGINEV2)
 
 target_include_directories(test_lib PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/../../xaiengine/include
@@ -29,3 +30,5 @@ install(TARGETS test_lib
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/test_library.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test_library.h DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib)
