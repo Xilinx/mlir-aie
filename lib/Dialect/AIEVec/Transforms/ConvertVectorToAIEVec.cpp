@@ -305,15 +305,22 @@ struct ConvertMulToAIEVecMulElemOpPattern
         ((laneSize != 16 && laneSize != 32) || resultElWidth != 32))
       return failure();
 
-    // Deal with the case:
+    // Deal with the case with sext op for i8 and i16:
+    // Case 1:
     // Transfer -
     // %1 = arith.extsi %a : vector<32xi8> to vector<32xi32>
     // %2 = arith.extsi %b : vector<32xi8> to vector<32xi32>
     // %3 = arith.muli %1, %2 : vector<32xi32>
-    // or
-    // %1 = arith muli %a, %b : vector<32xi8>
     // to -
     // aievec.mul_elem(%a, %b) : vector<64xi8>, vector<64xi8>, vector<32xi32>
+    //
+    // Case 2:
+    // Transfer -
+    // %1 = arith.extsi %a : vector<32xi16> to vector<32xi32>
+    // %2 = arith.extsi %b : vector<32xi16> to vector<32xi32>
+    // %3 = arith.muli %1, %2 : vector<32xi32>
+    // to -
+    // aievec.mul_elem(%a, %b) : vector<32xi16>, vector<32xi16>, vector<32xi32>
     if (laneSize == 32 && (resultElWidth == 32 || resultElWidth == 8)) {
       if (resultElWidth == 32) {
         auto lhs = dyn_cast<arith::ExtSIOp>(adaptor.getLhs().getDefiningOp());
@@ -346,6 +353,12 @@ struct ConvertMulToAIEVecMulElemOpPattern
         }
         rewriter.replaceOpWithNewOp<aievec::CastOp>(
             mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
+        // Case 3:
+        // Transfer -
+        // %1 = arith muli %a, %b : vector<32xi8>
+        // to -
+        // aievec.mul_elem(%a, %b) : vector<64xi8>, vector<64xi8>,
+        // vector<32xi32>
       } else {
         auto lval = adaptor.getLhs();
         auto rval = adaptor.getRhs();
