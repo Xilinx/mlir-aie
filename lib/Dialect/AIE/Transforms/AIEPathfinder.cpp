@@ -93,10 +93,10 @@ void Pathfinder::addFlow(Coord srcCoords, Port srcPort,
                         Coord dstCoords, Port dstPort, int flow_id) {
   // check if a flow with this source already exists
   for (unsigned int i = 0; i < flows.size(); i++) {
-    Switchbox *otherSrc = std::get<0>(flows[i]).first;
-    Port otherPort = std::get<0>(flows[i]).second;
+    Switchbox *otherSrc = std::get<0>(*flows[i]).first;
+    Port otherPort = std::get<0>(*flows[i]).second;
     if (otherSrc->col == srcCoords.first && otherSrc->row == srcCoords.second &&
-        otherPort == srcPort && std::get<2>(flows[i]) == flow_id) {
+        otherPort == srcPort && std::get<2>(*flows[i]) == flow_id) {
       // find the vertex corresponding to the destination
       PathEndPoint dst;
       auto vpair = vertices(graph);
@@ -108,29 +108,28 @@ void Pathfinder::addFlow(Coord srcCoords, Port srcPort,
         }
       }
       // add the destination to this existing flow, and finish
-      std::get<1>(flows[i]).push_back(dst);
+      std::get<1>(*flows[i]).push_back(dst);
       return;
     }
   }
 
   // if no existing flow was found with this source, create a new flow
-  Flow flow;
+  Flow* flow = new Flow(); // new is important to generate a unique pointer!
+  //std::unique_ptr<Flow> flow (new Flow);
   auto vpair = vertices(graph);
   for (vertex_iterator v = vpair.first; v != vpair.second; v++) {
     Switchbox *sb = &graph[*v];
     // check if this vertex matches the source
     if (sb->col == srcCoords.first && sb->row == srcCoords.second)
-      std::get<0>(flow) = std::make_pair(sb, srcPort);
+      std::get<0>(*flow) = std::make_pair(sb, srcPort);
 
     // check if this vertex matches the destination
     if (sb->col == dstCoords.first && sb->row == dstCoords.second)
-      std::get<1>(flow).push_back(std::make_pair(sb, dstPort));
+      std::get<1>(*flow).push_back(std::make_pair(sb, dstPort));
   }
 
-  std::get<2>(flow) = flow_id;
-  LLVM_DEBUG(llvm::dbgs() << "Flow ID: " << std::get<2>(flow) << "\n");
+  std::get<2>(*flow) = flow_id;
   flows.push_back(flow);
-  LLVM_DEBUG(llvm::dbgs() << "flows.size(): " << flows.size() << "\n");
   return;
 }
 
@@ -159,14 +158,14 @@ void Pathfinder::addFixedConnection(Coord coords, Port port) {
 //
 // returns a map specifying switchbox settings for all flows
 // if no legal routing can be found after MAX_ITERATIONS, returns empty vector
-std::map<Flow, SwitchSettings>
-Pathfinder::findPaths(const int MAX_ITERATIONS) {
+void Pathfinder::findPaths(
+        DenseMap<Flow*, SwitchSettings*> & flow_solutions,
+        const int MAX_ITERATIONS) {
+
   LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths()\n");
   int iteration_count = 0;
   // Each flow has a set of SwitchSettings which implements that flow
   // The implementations for all flows constitutes a routing solution.
-  std::map<Flow, SwitchSettings> routing_solution;
-  //std::map<PathEndPoint, SwitchSettings> routing_solution;
 
   // initialize all Channel histories to 0
   auto edge_pair = edges(graph);
@@ -200,18 +199,18 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
     // if reach MAX_ITERATIONS, throw an error since no routing can be found
     // TODO: add error throwing mechanism
     if (++iteration_count > MAX_ITERATIONS) {
+      //assert(...)
       LLVM_DEBUG(llvm::dbgs()
                  << "Pathfinder: MAX_ITERATIONS has been exceeded ("
                  << MAX_ITERATIONS
                  << " iterations)...unable to find routing for flows.\n");
-      // return {};
-      //  return the invalid solution for debugging purposes
+      // exit with the invalid solution for debugging purposes
       maxIterReached = true;
-      return routing_solution;
+      return;
     }
 
     // "rip up" all routes, i.e. set used capacity in each Channel to 0
-    routing_solution = {};
+    flow_solutions.clear();
     auto edge_pair = edges(graph);
     for (edge_iterator e = edge_pair.first; e != edge_pair.second; e++) {
       graph[*e].used_capacity = 0;
@@ -219,16 +218,21 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
-    for (auto flow : flows) {
-      auto vpair = vertices(graph);
-
-      vertex_descriptor src;
+    //for (auto iter = flows.begin(); iter != flows.end(); iter++) {
+    //  Flow* flow = *iter;
+    
+    auto vpair = vertices(graph);
+    for (Flow* flow : flows) {
+      PathEndPoint start_point = std::get<0>(*flow);
+      // Find the source vertex (switchbox)
+      vertex_descriptor* src = nullptr;
       for (vertex_iterator v = vpair.first; v != vpair.second; v++) {
         Switchbox *sb = &graph[*v];
         sb->processed = false;
-        if (sb->col == std::get<0>(flow).first->col &&
-            sb->row == std::get<0>(flow).first->row)
-          src = *v;
+        if (sb->col == start_point.first->col &&
+            sb->row == start_point.first->row) {
+          src = new vertex_descriptor(*v);
+        }
       }
 
       // use dijkstra to find path given current demand
@@ -236,35 +240,43 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
       // output is in the predecessor map, which must then be processed to get
       // individual switchbox settings
       dijkstra_shortest_paths(
-          graph, src,
+          graph, *src,
           weight_map(get(&Channel::demand, graph))
               .predecessor_map(get(&Switchbox::pred, graph)));
 
-      // Print the flow ID
-      LLVM_DEBUG(llvm::dbgs() << "Routing flow ID: " << std::get<2>(flow) << "\n");
+      SwitchSettings* switchSettings = new SwitchSettings();
+      int flow_ID = std::get<2>(*flow);
+      LLVM_DEBUG(llvm::dbgs() << "Creating SwitchSettings for Flow " << flow_ID << "\n"); 
+
+      // set the input bundle for the source endpoint
+      std::get<0>((*switchSettings)[&graph[*src]]) = start_point.second;
+      // set the packet ID for this flow
+      std::get<2>((*switchSettings)[&graph[*src]]) = flow_ID;
+      graph[*src].processed = true;
 
       // trace the path of the flow backwards via predecessors
-      // increment used_capacity for the associated channels
-      SwitchSettings switchSettings = SwitchSettings();
-      // set the input bundle for the source endpoint
-      std::get<0>(switchSettings[&graph[src]]) = std::get<0>(flow).second;
-      // set the packet ID for this flow
-      std::get<2>(switchSettings[&graph[src]]) = std::get<2>(flow);
-      graph[src].processed = true;
-      for (unsigned int i = 0; i < std::get<1>(flow).size(); i++) {
-        vertex_descriptor curr;
+      SmallVector<PathEndPoint> flow_endpoints = std::get<1>(*flow);
+      for (unsigned int i = 0; i < flow_endpoints.size(); i++) {
+        LLVM_DEBUG(llvm::dbgs() << "\tProcessing Endpoint (" 
+                                <<  flow_endpoints[i].first->col << ", "
+                                <<  flow_endpoints[i].first->row << ")\n");
+        vertex_descriptor curr = 0;
         for (vertex_iterator v = vpair.first; v != vpair.second; v++)
-          if (graph[*v].col == std::get<1>(flow)[i].first->col &&
-              graph[*v].row == std::get<1>(flow)[i].first->row)
+          if (graph[*v].col == flow_endpoints[i].first->col &&
+              graph[*v].row == flow_endpoints[i].first->row) {
             curr = *v;
-        Switchbox *sb = &graph[curr];
+            break;
+          }
 
+        Switchbox *sb = &graph[curr];
         // set the output bundle for this destination endpoint
-        std::get<1>(switchSettings[sb]).insert(std::get<1>(flow)[i].second);
-        std::get<2>(switchSettings[sb]) = std::get<2>(flow);
+        std::get<1>((*switchSettings)[sb]).insert(flow_endpoints[i].second);
+        std::get<2>((*switchSettings)[sb]) = flow_ID;
 
         // trace backwards until a vertex already processed is reached
         while (sb->processed == false) {
+          LLVM_DEBUG(llvm::dbgs() << "\t\tProcessing Switchbox (" 
+                                  << sb->col << ", " << sb->row << ")\n");
           // find the edge from the pred to curr by searching incident edges
           auto inedges = in_edges(curr, graph);
           Channel *ch = nullptr;
@@ -281,17 +293,21 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
           // don't use fixed channels
           while (ch->fixed_capacity.count(ch->used_capacity))
             ch->used_capacity++;
+          
 
           // add the entrance port for this Switchbox
-          std::get<0>(switchSettings[sb]) = std::make_pair(
+          std::get<0>((*switchSettings)[sb]) = std::make_pair(
               getConnectingBundle(ch->bundle), ch->used_capacity);
           // add the current Switchbox to the map of the predecessor
-          std::get<1>(switchSettings[&graph[sb->pred]]).insert(
+          std::get<1>((*switchSettings)[&graph[sb->pred]]).insert(
               std::make_pair(ch->bundle, ch->used_capacity));
-          // add flow id for packets
-          std::get<2>(switchSettings[sb]) = std::get<2>(flow);
+          // add flow id for this connection
+          std::get<2>((*switchSettings)[sb]) = flow_ID;
 
-          ch->used_capacity++;
+          // increment used_capacity for the associated channel
+          if (flow_ID == -1) // allow packet flows to use the same channels
+            ch->used_capacity++;
+
           // if at capacity, bump demand to discourage using this Channel
           if (ch->used_capacity >= ch->max_capacity) {
             // this means the order matters!
@@ -303,43 +319,16 @@ Pathfinder::findPaths(const int MAX_ITERATIONS) {
           sb = &graph[curr];
         }
       }
-      // add this flow to the proposed solution
-      routing_solution[flow] = switchSettings;
-      LLVM_DEBUG(llvm::dbgs() << "flow: " << &flow << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "routing_solution.size(): " << routing_solution.size() << "\n");
+      // Add this flow to the proposed solution
+      flow_solutions[flow] = switchSettings;
+
+      // Print debugging info
+      printFlow(flow);
+      printSwitchSettings(switchSettings);
+      LLVM_DEBUG(llvm::dbgs() << "flow_solutions.size(): " << flow_solutions.size() << "\n\n");
     }
   } while (!isLegal()); // continue iterations until a legal routing is found
   LLVM_DEBUG(llvm::dbgs() << "End Pathfinder::findPaths()\n");
-  return routing_solution;
-}
-
-// This function stitches the output format of findPaths() to
-// the DenseMap format used in AIECreatePacketFlows.
-// Using this enables packetflows to be routed using Pathfinder.
-void Pathfinder::convertFlowSolutionsToDenseMap(
-      std::map<Flow, SwitchSettings> flow_solutions,
-      DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
-              &switchboxes) {
-  LLVM_DEBUG(llvm::dbgs() << "Begin convertFlowSolutionsToDenseMap()\n");
-  LLVM_DEBUG(llvm::dbgs() << "flow_solutions has " << flow_solutions.size() << " elements.\n");
-
-  LLVM_DEBUG(llvm::dbgs() << "switchboxes has " << switchboxes.size() << " elements.\n");
-  for(auto flow_map_item : flow_solutions) {
-    SwitchSettings settings = flow_map_item.second;
-    for(auto settings_map_item : settings) {
-      Switchbox * sb = settings_map_item.first;
-      Coord c = std::make_pair(sb->col, sb->row);
-      SwitchSetting setting = settings_map_item.second;
-      Port srcPort = std::get<0>(setting);
-
-      for(Port destPort : std::get<1>(setting)) {
-        std::pair<Port, Port> connect = std::make_pair(srcPort, destPort);
-        switchboxes[c].push_back(std::make_pair(connect, std::get<2>(setting))); 
-        LLVM_DEBUG(llvm::dbgs() << "SwitchSetting ID: " << std::get<2>(setting) << "\n");
-      }
-    }
-  }
-    LLVM_DEBUG(llvm::dbgs() << "switchboxes has " << switchboxes.size() << " elements.\n");
 }
 
 // check that every channel does not exceed max capacity
@@ -366,3 +355,45 @@ bool Pathfinder::isLegal() {
   }
   return legal;
 }
+
+void Pathfinder::printFlows() {
+  for (Flow* f : flows)
+    printFlow(f);
+}
+
+void Pathfinder::printFlow(Flow* f) {
+  PathEndPoint flow_start = std::get<0>(*f);
+  Switchbox* flow_start_sb = flow_start.first;
+  SmallVector<PathEndPoint> flow_end = std::get<1>(*f);
+
+  LLVM_DEBUG(llvm::dbgs() << "Printing Flow ID " << std::get<2>(*f)<< "\n");
+  LLVM_DEBUG(llvm::dbgs() << "\tstarting at: (" 
+        << flow_start_sb->col << ", " << flow_start_sb->row << ") : "
+        << stringifyWireBundle(flow_start.second.first) << flow_start.second.second << "\n");
+
+  for (PathEndPoint p : flow_end) {
+    Switchbox* flow_end_sb = p.first;
+    LLVM_DEBUG(llvm::dbgs() << "\tending at: (" 
+        << flow_end_sb->col << ", " << flow_end_sb->row << ") : "
+        << stringifyWireBundle(p.second.first) << p.second.second << "\n");
+  }
+}
+
+void Pathfinder::printSwitchSettings(SwitchSettings* settings) {
+  for(auto settings_iter = settings->begin(); settings_iter != settings->end(); settings_iter++) {
+    Switchbox* sb = settings_iter->first;
+    SwitchConnection connection = settings_iter->second;
+    LLVM_DEBUG(llvm::dbgs() << "SwitchConnection: Flow ID " << std::get<2>(connection) << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "\tSwitchbox (" << sb->col << ", " << sb->row << ")\n");
+    Port srcPort = std::get<0>(connection);
+    LLVM_DEBUG(llvm::dbgs() << "\tSource Port "
+        << stringifyWireBundle(srcPort.first) << srcPort.second << "\n");
+    std::set<Port> destPorts = std::get<1>(connection);
+    for(Port p : destPorts) {
+      LLVM_DEBUG(llvm::dbgs() << "\tDest Port "
+        << stringifyWireBundle(p.first) << p.second << "\n");
+    }
+  }
+    LLVM_DEBUG(llvm::dbgs() << "\n");
+}
+

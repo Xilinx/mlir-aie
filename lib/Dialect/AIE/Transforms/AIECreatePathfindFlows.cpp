@@ -95,7 +95,7 @@ public:
   ModuleOp &module;
   int maxcol, maxrow;
   Pathfinder pathfinder;
-  std::map<Flow, SwitchSettings> flow_solutions;
+  DenseMap<Flow*, SwitchSettings*> flow_solutions;
   //std::map<PathEndPoint, bool> processed_flows;
 
   DenseMap<Coord, TileOp> coordToTile;
@@ -153,7 +153,7 @@ public:
 
     // all flows are populated, call the congestion-aware pathfinder algorithm
     // check whether the pathfinder algorithm creates a legal routing
-    flow_solutions = pathfinder.findPaths(MAX_ITERATIONS);
+    pathfinder.findPaths(flow_solutions, MAX_ITERATIONS);
     if (!pathfinder.isLegal())
       m.emitError("Unable to find a legal routing");
 
@@ -324,7 +324,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     for (auto flow_iter = analyzer.flow_solutions.begin();
           flow_iter != analyzer.flow_solutions.end(); flow_iter++) {
             
-      Flow flow = ((*flow_iter).first);
+      Flow flow = *((*flow_iter).first);
       PathEndPoint flow_src = std::get<0>(flow);
       if (flow_src != srcPoint){
         continue;
@@ -332,7 +332,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
       }
       else {
         LLVM_DEBUG(llvm::dbgs() << "###flow_src == srcPoint!\n");
-        SwitchSettings settings = (*flow_iter).second;
+        SwitchSettings settings = *(*flow_iter).second;
         LLVM_DEBUG(llvm::dbgs() << "settings.size(): " << settings.size() << "\n");
         // add connections for all of the Switchboxes in SwitchSettings
         for (auto map_iter = settings.begin(); map_iter != settings.end();

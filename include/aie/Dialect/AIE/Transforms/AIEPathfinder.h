@@ -15,6 +15,7 @@
 #include <limits>
 #include <utility> //for std::pair
 #include <vector>
+#include <memory>
 
 // builds against at least boost graph 1.7.1
 #pragma GCC diagnostic push
@@ -67,18 +68,21 @@ typedef std::pair<int, int> Coord;
 // std::get<0>(SwitchSetting) is the incoming signal
 // std::get<1>(SwitchSetting) is the fanout
 // std::get<2>(SwitchSetting) is the packet ID (set to -1 for circuit switched) 
-typedef std::tuple<Port, std::set<Port>, int> SwitchSetting;
-typedef std::map<Switchbox *, SwitchSetting> SwitchSettings;
+
+typedef std::tuple<Port, std::set<Port>, int> SwitchConnection;
+//typedef std::tuple<Port, SmallVector<Port>, int> SwitchConnection;
+typedef std::tuple<Port, std::set<Port>, int> SwitchSetting; // TODO: change to SwitchConnection
+typedef DenseMap<Switchbox *, SwitchConnection> SwitchSettings;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
 typedef std::pair<Switchbox *, Port> PathEndPoint;
-typedef std::tuple<PathEndPoint, std::vector<PathEndPoint>, int> Flow;
+typedef std::tuple<PathEndPoint, SmallVector<PathEndPoint>, int> Flow;
 
 class Pathfinder {
 private:
   SwitchboxGraph graph;
-  std::vector<Flow> flows;
+  std::vector<Flow*> flows;
   bool maxIterReached;
 
 public:
@@ -89,13 +93,10 @@ public:
                 Coord dstCoords, Port dstPort, int flow_id=-1);
   void addFixedConnection(Coord coord, Port port);
   bool isLegal();
-  std::map<Flow, SwitchSettings>
-        findPaths(const int MAX_ITERATIONS = 1000);
 
-  static void convertFlowSolutionsToDenseMap(
-        std::map<Flow, SwitchSettings> flow_solutions,
-        DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
-                &switchboxes);
+  void findPaths(
+          DenseMap<Flow*, SwitchSettings*> & flow_solutions,
+         const int MAX_ITERATIONS = 1000);
 
   Switchbox *getSwitchbox(TileID coords) {
     auto vpair = vertices(graph);
@@ -107,6 +108,11 @@ public:
     }
     return nullptr;
   }
+
+  // Printing functions for debugging
+  void printFlows();
+  static void printFlow(Flow*);
+  static void printSwitchSettings(SwitchSettings*);
 };
 
 } // namespace AIE

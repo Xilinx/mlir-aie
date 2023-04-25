@@ -348,7 +348,6 @@ struct AIERoutePacketFlowsPass
     Pathfinder pathfinder = Pathfinder(maxcol, maxrow);
     // Add all PacketRoutes to Pathfinder object
     // each source can map to multiple different destinations (fanout)
-    // For each PacketFlowOp, build a Packet Switched route from src to dest
     for (auto pktflow : m.getOps<PacketFlowOp>()) {
       Region &r = pktflow.getPorts();
       Block &b = r.front();
@@ -372,20 +371,30 @@ struct AIERoutePacketFlowsPass
           pathfinder.addFlow( std::make_pair(xSrc, ySrc), sourcePort, 
                               std::make_pair(xDest, yDest), destPort, flowID);
 
-          //buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID,
-          //             switchboxes);
+          //buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID, switchboxes);
         }
       }
     }
 
-    // all flows are populated, call the congestion-aware pathfinder algorithm
-    // Call Pathfinder to fill routes into this DenseMap
-    //switchboxes = pathfinder.findPacketPaths(MAX_ITERATIONS);
-    std::map<Flow, SwitchSettings> flow_solutions;
+    pathfinder.printFlows();
+    // all flows are populated, call the congestion-aware Pathfinder algorithm
+    DenseMap<Flow*, SwitchSettings*> flow_solutions;
+    pathfinder.findPaths(flow_solutions, 1000);
 
-    // Run the pathfinder algorithm
-    flow_solutions = pathfinder.findPaths(1000);
-    Pathfinder::convertFlowSolutionsToDenseMap(flow_solutions, switchboxes);
+    // Print out flow_solutions for debugging
+    LLVM_DEBUG(llvm::dbgs() << "###Pathfinder packet routing results###" <<"\n");
+    LLVM_DEBUG(llvm::dbgs() << "flow_solutions.size(): " << flow_solutions.size() << "\n");
+    for (auto iter = flow_solutions.begin(); iter != flow_solutions.end(); iter++) {
+      // Print info about the flow
+      Flow* f = iter->first;
+      Pathfinder::printFlow(f);
+
+      // Print info about the SwitchSettings which implement this flow
+      SwitchSettings* settings = iter->second;
+      Pathfinder::printSwitchSettings(settings);
+    }
+
+    //Pathfinder::convertFlowSolutionsToDenseMap(flow_solutions, switchboxes);
 
     // check whether the pathfinder algorithm creates a legal routing
     //if (!pathfinder.isLegal())
@@ -393,33 +402,54 @@ struct AIERoutePacketFlowsPass
 
     LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 
-    for (auto swbox : switchboxes) {
-      int col = swbox.first.first;
-      int row = swbox.first.second;
-      Operation *tileOp = getOrCreateTile(builder, col, row);
+    //DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
+    //for (auto swbox : switchboxes) {
+    for (auto sol : flow_solutions) {
+      Flow* flow = sol.first;
+      PathEndPoint flow_start = std::get<0>(*flow);
+      Switchbox* flow_start_sb = flow_start.first;
+      SmallVector<PathEndPoint> flow_end = std::get<1>(*flow);
+      //int flowID = std::get<2>(*flow);
 
-      LLVM_DEBUG(llvm::dbgs()
-                 << "***switchbox*** " << col << " " << row << '\n');
-      SmallVector<std::pair<Connect, int>, 8> connects(swbox.second);
-      for (auto connect : connects) {
-        Port sourcePort = connect.first.first;
-        Port destPort = connect.first.second;
-        int flowID = connect.second;
+      int col = flow_start_sb->col; //swbox.first.first;
+      int row = flow_start_sb->row; //swbox.first.second;
 
-        int nextCol = col, nextRow = row;
-        update_coordinates(nextCol, nextRow, sourcePort.first);
-        LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
+      LLVM_DEBUG(llvm::dbgs() << "Flow starting at: (" 
+                              << col << ", " << row << ") flowID: "
+                              << std::get<2>(*flow) << "\nConnections:\n");
+
+      SwitchSettings* settings = sol.second;
+      //SmallVector<std::pair<Connect, int>, 8> connects(swbox.second);
+      for (auto item : *settings) {
+        Switchbox* sb = item.first;
+        SwitchConnection connect = item.second;
+        Port sourcePort = std::get<0>(connect); //connect.first.first;
+        std::set<Port> destPorts = std::get<1>(connect); //connect.first.second;
+        //Port destPort = *destPorts.begin(); //*std::next(destPorts.begin(), 0);
+        int flowID = std::get<2>(connect); //connect.second;
+
+        //int nextCol = sb->col, nextRow = sb->row;
+        //update_coordinates(nextCol, nextRow, sourcePort.first);
+
+        //update tile of interest
+        Operation *tileOp = getOrCreateTile(builder, sb->col, sb->row);
+
+        auto sourceFlow = std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
+        LLVM_DEBUG(llvm::dbgs() << "\tsourceFlow(" << tileOp << ", " 
+                << stringifyWireBundle(sourcePort.first) << ":" << sourcePort.second 
+                << ") ID: " << flowID << "\n");
+
+        for (Port destPort : destPorts) {
+          packetFlows[sourceFlow].push_back(std::make_pair(tileOp, destPort));
+          LLVM_DEBUG(llvm::dbgs() << "\ttile (" << sb->col << ", " << sb->row << "): "
                                 << stringifyWireBundle(sourcePort.first) << " "
                                 << sourcePort.second << " -> "
                                 << stringifyWireBundle(destPort.first) << " "
-                                << destPort.second << " tile " << nextCol << " "
-                                << nextRow << "\n");
-
-        auto sourceFlow =
-            std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
-        packetFlows[sourceFlow].push_back(std::make_pair(tileOp, destPort));
+                                << destPort.second << "\n");
+        }
         slavePorts.push_back(sourceFlow);
       }
+      LLVM_DEBUG(llvm::dbgs() << "\n");
     }
 
     // amsel()
