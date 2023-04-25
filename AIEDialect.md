@@ -553,7 +553,7 @@ Interfaces: TileElement
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-| `lockID` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 15
+| `lockID` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
 
