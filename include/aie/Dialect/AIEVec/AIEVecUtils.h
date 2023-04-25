@@ -18,6 +18,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "llvm/IR/DerivedTypes.h"
 #include <assert.h>
 
 namespace xilinx {
@@ -85,11 +86,17 @@ inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
 
     Type ctype = mlir::IntegerType::get(itype.getContext(), width);
     return VectorType::get(type.getShape(), ctype);
-  } else if (stype.isa<FloatType>())
-    // Floating point vector types are returned as is since the floating point
-    // operations write back to registers and not accumulators
+  } else if (FloatType ftype = stype.dyn_cast<FloatType>()) {
+    if (AIEML && ftype.getWidth() == 16) {
+      SmallVector<int64_t, 1> vectorShape;
+      vectorShape.push_back(16);
+      return VectorType::get(vectorShape, ftype.getF32(ftype.getContext()));
+    }
+
+    // Floating point vector types for aie1 are returned as is since the
+    // floating point operations write back to registers and not accumulators
     return type;
-  else
+  } else
     llvm_unreachable("Unsupported destination type");
 }
 

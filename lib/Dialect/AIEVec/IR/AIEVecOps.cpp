@@ -158,8 +158,10 @@ LogicalResult CastOp::verify() {
   if (!resultType)
     return emitError("requires result vector type");
 
-  if (sourceType.getElementType().getIntOrFloatBitWidth() !=
-      resultType.getElementType().getIntOrFloatBitWidth()) {
+  Type stype = sourceType.getElementType();
+  if (stype.isa<IntegerType>() &&
+      sourceType.getElementType().getIntOrFloatBitWidth() !=
+          resultType.getElementType().getIntOrFloatBitWidth()) {
     return emitError("the bitwidth of resource and result should be equal");
   }
 
@@ -245,7 +247,8 @@ LogicalResult SRSOp::verify() {
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "wider than that of the result vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
+  else if (atype.isa<FloatType>() && stypeWidth != 16 &&
+           stypeWidth != atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "same as the result vector");
 
