@@ -75,6 +75,7 @@ jobs:
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DAIE_ENABLE_BINDINGS_PYTHON=ON \
+            -DAIE_INCLUDE_DOCS=ON \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make docs
           popd

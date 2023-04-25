@@ -173,6 +173,32 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   return true;
 }
 
+static aievec::MulElemOp
+createMulElemOpForI8(ConversionPatternRewriter &rewriter, Value lval,
+                     Value rval, VectorType srcType, unsigned bitWidth,
+                     Location loc) {
+  Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
+  VectorType vecType =
+      createVectorType(512 / bitWidth, srcType.getElementType());
+
+  auto zeroConstOp = rewriter.create<arith::ConstantOp>(
+      loc, rewriter.getIntegerAttr(srcType.getElementType(), 0));
+
+  auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
+      loc, vecType, zeroConstOp->getResult(0));
+  auto extOp = rewriter.create<aievec::ExtOp>(loc, srcType,
+                                              broadcastZeroOp.getResult(), 0);
+
+  SmallVector<Value> lSources = {lval, extOp->getResult(0)};
+  SmallVector<Value> rSources = {rval, extOp->getResult(0)};
+  auto lConcatOp = rewriter.create<aievec::ConcatOp>(loc, vecType, lSources);
+  auto rConcatOp = rewriter.create<aievec::ConcatOp>(loc, vecType, rSources);
+
+  auto mulElemOp = rewriter.create<aievec::MulElemOp>(
+      loc, accType, lConcatOp->getResult(0), rConcatOp->getResult(0));
+  return mulElemOp;
+}
+
 struct FoldAIEShiftAndBroadcast
     : public OpConversionPattern<aievec::BroadcastOp> {
   using OpConversionPattern<aievec::BroadcastOp>::OpConversionPattern;
@@ -267,7 +293,7 @@ struct ConvertMulToAIEVecMulElemOpPattern
 
     auto isAddOp = [&](Operation *op) { return isa<arith::AddIOp>(op); };
     // Verify it is not a part of MAC
-    if (llvm::any_of(mulOp->getUsers(), isAddOp))
+    if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
       return failure();
 
     // Verify the vector type is supported by AIEML
@@ -275,18 +301,83 @@ struct ConvertMulToAIEVecMulElemOpPattern
         resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    if ((laneSize != 32 || resultElWidth != 16) &&
-        (laneSize != 16 || resultElWidth != 32))
+    if ((laneSize != 32 || (resultElWidth != 16 && resultElWidth != 8)) &&
+        ((laneSize != 16 && laneSize != 32) || resultElWidth != 32))
       return failure();
 
-    Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
-                                       /*AIEML =*/true);
+    // Deal with the case with sext op for i8 and i16:
+    // Case 1:
+    // Transfer -
+    // %1 = arith.extsi %a : vector<32xi8> to vector<32xi32>
+    // %2 = arith.extsi %b : vector<32xi8> to vector<32xi32>
+    // %3 = arith.muli %1, %2 : vector<32xi32>
+    // to -
+    // aievec.mul_elem(%a, %b) : vector<64xi8>, vector<64xi8>, vector<32xi32>
+    //
+    // Case 2:
+    // Transfer -
+    // %1 = arith.extsi %a : vector<32xi16> to vector<32xi32>
+    // %2 = arith.extsi %b : vector<32xi16> to vector<32xi32>
+    // %3 = arith.muli %1, %2 : vector<32xi32>
+    // to -
+    // aievec.mul_elem(%a, %b) : vector<32xi16>, vector<32xi16>, vector<32xi32>
+    if (laneSize == 32 && (resultElWidth == 32 || resultElWidth == 8)) {
+      if (resultElWidth == 32) {
+        auto lhs = dyn_cast<arith::ExtSIOp>(adaptor.getLhs().getDefiningOp());
+        auto rhs = dyn_cast<arith::ExtSIOp>(adaptor.getRhs().getDefiningOp());
 
-    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, adaptor.getLhs(), adaptor.getRhs());
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-        mulOp, resultType, mulElemOp.getResult(), shiftParam);
+        if (!lhs || !rhs)
+          return failure();
 
+        auto lval = lhs->getOperand(0);
+        auto rval = rhs->getOperand(0);
+
+        VectorType lSrcType = cast<VectorType>(lval.getType());
+        VectorType rSrcType = cast<VectorType>(rval.getType());
+
+        unsigned lBitWidth = lSrcType.getElementType().getIntOrFloatBitWidth();
+        unsigned rBitWidth = rSrcType.getElementType().getIntOrFloatBitWidth();
+
+        if ((lBitWidth != 8 || rBitWidth != 8) &&
+            (lBitWidth != 16 || rBitWidth != 16))
+          return failure();
+
+        aievec::MulElemOp mulElemOp = nullptr;
+        if (lBitWidth == 8) {
+          mulElemOp = createMulElemOpForI8(rewriter, lval, rval, lSrcType,
+                                           lBitWidth, mulOp.getLoc());
+        } else {
+          Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
+          mulElemOp = rewriter.create<aievec::MulElemOp>(mulOp.getLoc(),
+                                                         accType, lval, rval);
+        }
+        rewriter.replaceOpWithNewOp<aievec::CastOp>(
+            mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
+        // Case 3:
+        // Transfer -
+        // %1 = arith muli %a, %b : vector<32xi8>
+        // to -
+        // aievec.mul_elem(%a, %b) : vector<64xi8>, vector<64xi8>,
+        // vector<32xi32>
+      } else {
+        auto lval = adaptor.getLhs();
+        auto rval = adaptor.getRhs();
+        VectorType srcType = cast<VectorType>(lval.getType());
+        unsigned bitWidth = srcType.getElementType().getIntOrFloatBitWidth();
+        auto mulElemOp = createMulElemOpForI8(rewriter, lval, rval, srcType,
+                                              bitWidth, mulOp.getLoc());
+        rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+            mulOp, srcType, mulElemOp.getResult(), shiftParam);
+      }
+    } else {
+      Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
+                                         /*AIEML =*/true);
+
+      auto mulElemOp = rewriter.create<aievec::MulElemOp>(
+          mulOp.getLoc(), accType, adaptor.getLhs(), adaptor.getRhs());
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          mulOp, resultType, mulElemOp.getResult(), shiftParam);
+    }
     return success();
   }
 
@@ -921,14 +1012,14 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     }
     auto isAddOp = [&](Operation *op) { return isa<arith::AddIOp>(op); };
     // Verify it is not a part of MAC
-    if (llvm::any_of(op->getUsers(), isAddOp))
+    if (op->hasOneUse() && llvm::any_of(op->getUsers(), isAddOp))
       return true;
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    return (laneSize != 32 || resultElWidth != 16) &&
-           (laneSize != 16 || resultElWidth != 32);
+    return (laneSize != 32 || (resultElWidth != 16 && resultElWidth != 8)) &&
+           ((laneSize != 16 && laneSize != 32) || resultElWidth != 32);
   });
 }
 
