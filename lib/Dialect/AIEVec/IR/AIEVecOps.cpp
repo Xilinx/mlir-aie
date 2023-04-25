@@ -158,10 +158,8 @@ LogicalResult CastOp::verify() {
   if (!resultType)
     return emitError("requires result vector type");
 
-  Type stype = sourceType.getElementType();
-  if (stype.isa<IntegerType>() &&
-      sourceType.getElementType().getIntOrFloatBitWidth() !=
-          resultType.getElementType().getIntOrFloatBitWidth()) {
+  if (sourceType.getElementType().getIntOrFloatBitWidth() !=
+      resultType.getElementType().getIntOrFloatBitWidth()) {
     return emitError("the bitwidth of resource and result should be equal");
   }
 

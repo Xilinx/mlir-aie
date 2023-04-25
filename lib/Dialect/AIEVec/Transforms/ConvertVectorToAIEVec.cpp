@@ -301,6 +301,7 @@ struct ConvertMulFToAIEVecMulElemOpPattern
 
     unsigned laneSize = getVectorLaneSize(resultType);
 
+    // bfloat16 type
     if (laneSize != 16 || resultElWidth != 16)
       return failure();
 
