@@ -355,7 +355,8 @@ int main(int argc, char *argv[]) {
   printf("Release lock for accessing DDR.\n");
 
   mlir_aie_release_obj_in_1_prod_lock_0(_xaie, 1, 0);
-  mlir_aie_release_obj_out_1_2_cons_lock_0(_xaie, 0, 0); // (_xaie,release_value,time_out)
+  mlir_aie_release_obj_out_1_2_cons_lock_0(_xaie, 0,
+                                           0); // (_xaie,release_value,time_out)
   mlir_aie_release_obj_in_0_prod_lock_0(_xaie, 1, 0);
   mlir_aie_release_obj_out_0_2_cons_lock_0(_xaie, 0, 0);
 

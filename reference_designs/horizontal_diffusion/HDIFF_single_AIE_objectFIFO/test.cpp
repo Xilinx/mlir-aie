@@ -80,7 +80,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_print_tile_status(_xaie, 7, 1);
 
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_obj_in_prod_lock_0(_xaie, 1, 0); // (_xaie,release_value,time_out)
+  mlir_aie_release_obj_in_prod_lock_0(_xaie, 1,
+                                      0); // (_xaie,release_value,time_out)
   mlir_aie_release_obj_out_cons_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
@@ -99,7 +100,7 @@ int main(int argc, char *argv[]) {
   usleep(sleep_u);
 
   mlir_aie_acquire_obj_out_cons_lock_0(_xaie, 1, 0);
- 
+
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2 //sync up with output
   ///// --- end counter-----
   for (int i =0; i < 256; i ++ ){
