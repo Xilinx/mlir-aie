@@ -259,12 +259,6 @@ class flow_runner:
         
         if(opts.host_target == 'aarch64-linux-gnu'):
           cmd += ['--gcc-toolchain=%s/usr' % opts.sysroot]
-        if(opts.xaie == 2):
-          cmd += ['-I%s/opt/xaienginev2/include' % opts.sysroot]
-          cmd += ['-L%s/opt/xaienginev2/lib' % opts.sysroot]
-        else:
-          cmd += ['-I%s/opt/xaiengine/include' % opts.sysroot]
-          cmd += ['-L%s/opt/xaiengine/lib' % opts.sysroot]
 
       thispath = os.path.dirname(os.path.realpath(__file__))
       runtime_xaiengine_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
