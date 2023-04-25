@@ -63,15 +63,14 @@ typedef graph_traits<SwitchboxGraph>::edge_iterator edge_iterator;
 typedef graph_traits<SwitchboxGraph>::in_edge_iterator in_edge_iterator;
 
 typedef std::pair<int, int> Coord;
-// A SwitchSetting defines the required settings for a Switchbox for a flow
-// Trying out a std::tuple!
-// std::get<0>(SwitchSetting) is the incoming signal
-// std::get<1>(SwitchSetting) is the fanout
-// std::get<2>(SwitchSetting) is the packet ID (set to -1 for circuit switched) 
 
-typedef std::tuple<Port, std::set<Port>, int> SwitchConnection;
-//typedef std::tuple<Port, SmallVector<Port>, int> SwitchConnection;
-typedef std::tuple<Port, std::set<Port>, int> SwitchSetting; // TODO: change to SwitchConnection
+// A SwitchConnection defines the required settings for a Switchbox for a flow
+// Trying out a std::tuple!
+// std::get<0>(SwitchConnection) is the incoming signal
+// std::get<1>(SwitchConnection) is the fanout
+// std::get<2>(SwitchConnection) is the packet ID (set to -1 for circuit switched) 
+typedef std::tuple<Port, SmallVector<Port>, int> SwitchConnection;
+//typedef std::tuple<Port, std::set<Port>, int> SwitchSetting; // TODO: change to SwitchConnection
 typedef DenseMap<Switchbox *, SwitchConnection> SwitchSettings;
 
 // A Flow defines source and destination vertices

@@ -424,7 +424,7 @@ struct AIERoutePacketFlowsPass
         Switchbox* sb = item.first;
         SwitchConnection connect = item.second;
         Port sourcePort = std::get<0>(connect); //connect.first.first;
-        std::set<Port> destPorts = std::get<1>(connect); //connect.first.second;
+        SmallVector<Port> destPorts = std::get<1>(connect); //connect.first.second;
         //Port destPort = *destPorts.begin(); //*std::next(destPorts.begin(), 0);
         int flowID = std::get<2>(connect); //connect.second;
 

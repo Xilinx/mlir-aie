@@ -270,7 +270,7 @@ void Pathfinder::findPaths(
 
         Switchbox *sb = &graph[curr];
         // set the output bundle for this destination endpoint
-        std::get<1>((*switchSettings)[sb]).insert(flow_endpoints[i].second);
+        std::get<1>((*switchSettings)[sb]).push_back(flow_endpoints[i].second);
         std::get<2>((*switchSettings)[sb]) = flow_ID;
 
         // trace backwards until a vertex already processed is reached
@@ -299,7 +299,7 @@ void Pathfinder::findPaths(
           std::get<0>((*switchSettings)[sb]) = std::make_pair(
               getConnectingBundle(ch->bundle), ch->used_capacity);
           // add the current Switchbox to the map of the predecessor
-          std::get<1>((*switchSettings)[&graph[sb->pred]]).insert(
+          std::get<1>((*switchSettings)[&graph[sb->pred]]).push_back(
               std::make_pair(ch->bundle, ch->used_capacity));
           // add flow id for this connection
           std::get<2>((*switchSettings)[sb]) = flow_ID;
@@ -388,7 +388,7 @@ void Pathfinder::printSwitchSettings(SwitchSettings* settings) {
     Port srcPort = std::get<0>(connection);
     LLVM_DEBUG(llvm::dbgs() << "\tSource Port "
         << stringifyWireBundle(srcPort.first) << srcPort.second << "\n");
-    std::set<Port> destPorts = std::get<1>(connection);
+    SmallVector<Port> destPorts = std::get<1>(connection);
     for(Port p : destPorts) {
       LLVM_DEBUG(llvm::dbgs() << "\tDest Port "
         << stringifyWireBundle(p.first) << p.second << "\n");

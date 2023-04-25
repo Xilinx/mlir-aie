@@ -38,7 +38,7 @@ void boost::throw_exception(std::exception const &e) {
   assert(false);
 }
 
-std::string stringifyDirs(std::set<Port> dirs) {
+std::string stringifyDirs(SmallVector<Port> dirs) {
   unsigned int count = 0;
   std::string out = "{";
   for (Port dir : dirs) {
@@ -73,7 +73,7 @@ std::string stringifyDirs(std::set<Port> dirs) {
 }
 
 std::string stringifyDir(Port dir) {
-  return stringifyDirs(std::set<Port>({dir}));
+  return stringifyDirs(SmallVector<Port>({dir}));
 }
 std::string stringifySwitchSettings(SwitchSettings settings) {
   std::string out = "\tSwitchSettings: ";
@@ -338,7 +338,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
         for (auto map_iter = settings.begin(); map_iter != settings.end();
             map_iter++) {
           Switchbox *curr = (*map_iter).first;
-          SwitchSetting s = (*map_iter).second;
+          SwitchConnection s = (*map_iter).second;
           SwitchboxOp swOp =
               analyzer.getSwitchbox(rewriter, curr->col, curr->row);
           int shim_ch = srcChannel;
