@@ -256,7 +256,7 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
 static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
                                     VectState *state) {
   // Assert that the input operations are of expected type
-  bool expectedTypes =
+  [[maybe_unused]] bool expectedTypes =
       isa<vector::FMAOp>(Op2) && isa<MulIOp, MulFOp, vector::FMAOp>(Op1);
   assert(expectedTypes && "incorrect operation types");
 
@@ -591,7 +591,7 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
   VectorType vecType = sources.back().getType().cast<VectorType>();
 
   for (auto source : sources) {
-    VectorType type = source.getType().cast<VectorType>();
+    [[maybe_unused]] VectorType type = source.getType().cast<VectorType>();
     assert(type == vecType && "sources of concat op not of same type");
   }
 
@@ -714,7 +714,7 @@ static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
   VectorType vecType = sources.back().getType().cast<VectorType>();
 
   for (auto source : sources) {
-    VectorType type = source.getType().cast<VectorType>();
+    [[maybe_unused]] VectorType type = source.getType().cast<VectorType>();
     assert(type == vecType && "sources of concat op not of same type");
   }
 

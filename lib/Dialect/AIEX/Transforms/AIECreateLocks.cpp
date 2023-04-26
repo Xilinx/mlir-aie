@@ -160,8 +160,8 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       Operation *acqUser = TA.getTokenUserOp(acquire);
       bool IsRelUserCore = isa<CoreOp>(relUser);
       bool IsAcqUserCore = isa<CoreOp>(acqUser);
-      std::pair<int, int> relUserCoord = TA.getCoord(relUser);
-      std::pair<int, int> acqUserCoord = TA.getCoord(acqUser);
+      [[maybe_unused]] std::pair<int, int> relUserCoord = TA.getCoord(relUser);
+      [[maybe_unused]] std::pair<int, int> acqUserCoord = TA.getCoord(acqUser);
 
       Operation *tileOp = TA.getShareableTileOp(relUser, acqUser);
 

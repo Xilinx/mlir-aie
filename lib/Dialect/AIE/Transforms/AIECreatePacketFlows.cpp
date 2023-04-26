@@ -447,14 +447,14 @@ struct AIERoutePacketFlowsPass
     LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
     for (auto map : mastersets) {
       Operation *tileOp = map.first.first;
-      WireBundle bundle = map.first.second.first;
-      int channel = map.first.second.second;
+      [[maybe_unused]] WireBundle bundle = map.first.second.first;
+      [[maybe_unused]] int channel = map.first.second.second;
       assert(tileOp);
-      TileOp tile = dyn_cast<TileOp>(tileOp);
+      [[maybe_unused]] TileOp tile = dyn_cast<TileOp>(tileOp);
       LLVM_DEBUG(llvm::dbgs()
                  << "master " << tile << " " << stringifyWireBundle(bundle)
                  << " : " << channel << '\n');
-      for (auto value : map.second)
+      for ([[maybe_unused]] auto value : map.second)
         LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
     }
 
@@ -533,9 +533,9 @@ struct AIERoutePacketFlowsPass
     LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
     for (auto map : slaveMasks) {
       auto port = map.first.first;
-      TileOp tile = dyn_cast<TileOp>(port.first);
-      WireBundle bundle = port.second.first;
-      int channel = port.second.second;
+      [[maybe_unused]] TileOp tile = dyn_cast<TileOp>(port.first);
+      [[maybe_unused]] WireBundle bundle = port.second.first;
+      [[maybe_unused]] int channel = port.second.second;
       int ID = map.first.second;
       int mask = map.second;
 
@@ -629,7 +629,7 @@ struct AIERoutePacketFlowsPass
         int ID = group.front().second & mask;
 
         // Verify that we actually map all the ID's correctly.
-        for (auto slave : group) {
+        for ([[maybe_unused]] auto slave : group) {
           assert((slave.second & mask) == ID);
         }
         Value amsel = amselOps[slaveAMSels[group.front()]];

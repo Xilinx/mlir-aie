@@ -33,8 +33,8 @@ bool IntervalReuse::sameEnclosingLoops(
   // reference.
   Operation *ref = extentMap.begin()->first;
 
-  Block *opBlock = op->getBlock();
-  Block *refBlock = ref->getBlock();
+  [[maybe_unused]] Block *opBlock = op->getBlock();
+  [[maybe_unused]] Block *refBlock = ref->getBlock();
   // Assert that we have computed the enclosing loops for the reference and
   // current read op.
   assert(blockToEnclosingLoops.count(opBlock) &&
@@ -221,13 +221,13 @@ void IntervalReuse::insertInterval(
 
   // Verify that each interval is within the AIE vector size limit
   for (auto iv : intervals) {
-    int32_t width = iv.second - iv.first;
+    [[maybe_unused]] int32_t width = iv.second - iv.first;
     assert(width <= 1024 && "Vector width > 1024 currently not supported");
   }
 
   // Print out the merged intervals
   LLVM_DEBUG(llvm::dbgs() << "\n\tAfter inserting access extent, intervals: ");
-  for (auto iv : intervals)
+  for ([[maybe_unused]] auto iv : intervals)
     LLVM_DEBUG(llvm::dbgs() << "[" << iv.first << "," << iv.second << "] ");
 }
 
@@ -282,6 +282,6 @@ void IntervalReuse::coalesceIntervals() {
   // Print out coalesced intervals
   LLVM_DEBUG(llvm::dbgs() << "\n\nAfter coalescing for "
                           << "i8xi8 scheme, intervals: ");
-  for (auto iv : intervals)
+  for ([[maybe_unused]] auto iv : intervals)
     LLVM_DEBUG(llvm::dbgs() << "[" << iv.first << "," << iv.second << "] ");
 }

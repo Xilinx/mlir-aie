@@ -173,7 +173,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           // the function argument's type is a scalar, we promote it to a
           // one-element memref, and do a load to the buffer at index 0
           for (auto pair : coreBufTypes) {
-            MemRefType t = pair.first;
+            [[maybe_unused]] MemRefType t = pair.first;
             int operandID = pair.second;
             Value arg = func.getArgument(operandID);
             Value buf = buffers[callOperands[operandID]];
