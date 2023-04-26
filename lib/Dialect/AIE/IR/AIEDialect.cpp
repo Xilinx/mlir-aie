@@ -753,9 +753,10 @@ LogicalResult xilinx::AIE::PacketFlowOp::verify() {
 LogicalResult xilinx::AIE::CoreOp::verify() {
   assert(getOperation()->getNumRegions() == 1 && "CoreOp has zero region!");
   assert(!getBody().empty() && "CoreOp should have non-empty body");
-  assert(!getTile().getDefiningOp<TileOp>().isShimTile() &&
-         "CoreOp cannot be created on shim tile, i.e. row == 0.");
-
+  if (getTileOp().isShimTile())
+    return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
+  if (getTileOp().isMemTile())
+    return emitOpError("CoreOp cannot be created on mem tile");
   return success();
 }
 
@@ -870,6 +871,14 @@ LogicalResult xilinx::AIE::LockOp::verify() {
   auto result = UsesAreAccessable::verifyTrait(*this);
   if (result.failed())
     return result;
+
+  if (getLockID().has_value()) {
+    const auto &target_model = xilinx::AIE::getTargetModel(getTileOp());
+    if (getLockID().value() >= target_model.getNumLocks())
+      return emitOpError("lock assigned invalid id (maximum is ")
+             << target_model.getNumLocks() - 1 << ")";
+  }
+
   return success();
 }
 
@@ -1071,6 +1080,10 @@ int TileOp::getNumDestConnections(WireBundle bundle) {
   default:
     return 0;
   }
+}
+bool TileOp::isMemTile() {
+  const auto &target_model = getTargetModel(*this);
+  return target_model.isMemTile(getCol(), getRow());
 }
 bool TileOp::isShimNOCTile() {
   const auto &target_model = getTargetModel(*this);

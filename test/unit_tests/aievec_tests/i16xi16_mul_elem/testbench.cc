@@ -1,4 +1,4 @@
-#include "../common/testbench.h"
+#include "testbench.h"
 #include <math.h>
 
 using namespace std;
