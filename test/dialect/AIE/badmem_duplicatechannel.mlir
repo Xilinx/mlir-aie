@@ -9,16 +9,16 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --canonicalize %s |& FileCheck %s
-// CHECK: 'cf.br' op is not an allowed terminator
+// CHECK: 'AIE.dmaStart' op duplicate DMA channel MM2S0 in MemOp
 
 module @test {
   %t1 = AIE.tile(1, 1)
 
   %mem13 = AIE.mem(%t1) {
-    %dma0 = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
+    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    ^dma1:
+    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
     ^bd0:
-      cf.br ^end
-    ^end:
       AIE.end
   }
 }
