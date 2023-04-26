@@ -37,12 +37,20 @@ using namespace mlir;
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h.inc"
 
-namespace mlir {
-namespace OpTrait {
+namespace xilinx {
+namespace AIE {
+// template <typename ConcreteType>
+// class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint>
+// {};
+
+// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
+// has valid BDs.
 template <typename ConcreteType>
-class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {};
-} // namespace OpTrait
-} // namespace mlir
+struct HasValidBDs : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static LogicalResult verifyTrait(Operation *op);
+};
+} // namespace AIE
+} // namespace xilinx
 
 /// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"

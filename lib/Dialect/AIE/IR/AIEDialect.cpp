@@ -352,17 +352,41 @@ template <typename... TerminatorOpTypes> struct HasSomeTerminator {
       for (auto &block : region) {
         if (!block.empty()) {
           Operation *operation = &block.back();
-          if (!llvm::isa_and_nonnull<TerminatorOpTypes...>(operation)) {
-            operation->emitOpError()
-                << "Is an illegal terminator inside " << *op;
-            return failure();
-          }
+          if (!llvm::isa_and_nonnull<TerminatorOpTypes...>(operation))
+            return operation->emitOpError("is not an allowed terminator")
+                .attachNote(op->getLoc())
+                .append("in this context: ");
         }
       }
     }
     return success();
   }
 };
+
+// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
+// has valid BDs.
+template <typename ConcreteType>
+LogicalResult
+xilinx::AIE::HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
+  auto element = cast<ConcreteType>(op);
+  const auto &target_model = xilinx::AIE::getTargetModel(op);
+  int bdMax = target_model.getNumBDs(element.getTileID().first,
+                                     element.getTileID().second);
+
+  int bdNum = 0;
+  for (auto &block : element.getBody()) {
+    if (!block.template getOps<xilinx::AIE::DMABDOp>().empty()) {
+      if (bdNum >= bdMax) {
+        auto bd = *(block.template getOps<xilinx::AIE::DMABDOp>().begin());
+        return (op->emitOpError("has more than ") << bdMax << " blocks")
+            .attachNote(bd.getLoc())
+            .append("no space for this bd: ");
+      }
+      bdNum++;
+    }
+  }
+  return success();
+}
 
 // ObjectFifoCreateOp
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
@@ -802,19 +826,18 @@ LogicalResult xilinx::AIE::MemOp::verify() {
       xilinx::AIE::DMAChannel dmaChan = std::make_pair(
           DMA_start.getChannelDir(), DMA_start.getChannelIndex());
       if (used_channels.count(dmaChan))
-        DMA_start.emitOpError()
-            << "Duplicate DMA channel " << stringifyDMAChannelDir(dmaChan.first)
-            << dmaChan.second << " detected in MemOp!";
+        return DMA_start.emitOpError() << "duplicate DMA channel "
+                                       << stringifyDMAChannelDir(dmaChan.first)
+                                       << dmaChan.second << " in MemOp";
       used_channels.insert(dmaChan);
     }
 
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {
       if (!allocOp->getAttr("id"))
-        emitOpError()
-            << "allocOp in MemOp region should have an id attribute\n";
+        return allocOp.emitOpError()
+               << "allocOp in MemOp region should have an id attribute";
     }
   }
-
   return success();
 }
 

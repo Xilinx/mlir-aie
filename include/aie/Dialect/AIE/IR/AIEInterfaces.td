@@ -15,6 +15,11 @@ include "mlir/IR/OpBase.td"
 
 include "mlir/IR/EnumAttr.td"
 
+// Op is a DMA-like operation with BD contraints
+def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
+  string cppNamespace = "::xilinx::AIE";
+}
+
 def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   let description = [{
     Interface for operations that have interconnect-like properties,

@@ -290,7 +290,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs
                                       /*, CallableOpInterface*/]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -900,7 +900,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
+def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, HasValidBDs]>,
                      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{

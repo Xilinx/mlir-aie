@@ -112,6 +112,10 @@ public:
 
   /// Return the number of lock objects
   virtual uint32_t getNumLocks() const = 0;
+
+  /// Return the number of buffer descriptors supported by the DMA in the given
+  /// tile.
+  virtual uint32_t getNumBDs(int col, int row) const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -158,6 +162,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getNumLocks() const override { return 16; }
+  uint32_t getNumBDs(int col, int row) const override { return 16; }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -196,6 +201,9 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getNumLocks() const override { return 64; }
+  uint32_t getNumBDs(int col, int row) const override {
+    return isMemTile(col, row) ? 48 : 16;
+  }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
