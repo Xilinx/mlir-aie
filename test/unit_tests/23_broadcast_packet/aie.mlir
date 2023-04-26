@@ -40,9 +40,9 @@ module @test23_broadcast_packet {
     }
   }
 
+  %lock72_4 = AIE.lock(%t72, 4) {sym_name = "lock72_4"}
+  %lock72_5 = AIE.lock(%t72, 5) {sym_name = "lock72_5"}
   %m72 = AIE.mem(%t72) {
-    %lock72_4 = AIE.lock(%t72, 4)
-    %lock72_5 = AIE.lock(%t72, 5)
     AIE.dmaStart("MM2S", 0, ^bd4, ^end)
     ^bd4:
       AIE.useLock(%lock72_4, "Acquire", 1)
@@ -60,7 +60,7 @@ module @test23_broadcast_packet {
       AIE.end
   }
 
-  %lock63_0 = AIE.lock(%t63, 0)
+  %lock63_0 = AIE.lock(%t63, 0) {sym_name = "lock63_0"}
   %m63 = AIE.mem(%t63)  {
   AIE.dmaStart("S2MM", 0, ^bd0, ^end)
   ^bd0: 
@@ -73,7 +73,7 @@ module @test23_broadcast_packet {
   }
 
 
-  %lock64_0 = AIE.lock(%t64, 0)
+  %lock64_0 = AIE.lock(%t64, 0) {sym_name = "lock64_0"}
   %m64 = AIE.mem(%t64)  {
   AIE.dmaStart("S2MM", 0, ^bd0, ^end)
   ^bd0: 
@@ -86,7 +86,7 @@ module @test23_broadcast_packet {
   }
 
  
-  %lock73_0 = AIE.lock(%t73, 0)
+  %lock73_0 = AIE.lock(%t73, 0) {sym_name = "lock73_0"}
   %m73 = AIE.mem(%t73)  {
   AIE.dmaStart("S2MM", 0, ^bd0, ^end)
   ^bd0: 
@@ -98,7 +98,7 @@ module @test23_broadcast_packet {
     AIE.end
   }
 
-  %lock74_0 = AIE.lock(%t74, 0)
+  %lock74_0 = AIE.lock(%t74, 0) {sym_name = "lock74_0"}
   %m74 = AIE.mem(%t74)  {
   
   AIE.dmaStart("S2MM", 0, ^bd0, ^end)

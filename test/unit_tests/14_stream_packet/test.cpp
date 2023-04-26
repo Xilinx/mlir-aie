@@ -42,8 +42,6 @@ main(int argc, char *argv[])
   mlir_aie_initialize_locks(_xaie);
   mlir_aie_configure_dmas(_xaie);
 
-  usleep(10000);
-
   uint32_t bd_ctrl, bd_pckt;
   bd_ctrl =
       mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 1) + 0x0001D018);
@@ -66,10 +64,18 @@ main(int argc, char *argv[])
     mlir_aie_write_buffer_buf62(_xaie, i + count, 1);
   }
 
-  usleep(10000);
+  printf("Start cores\n");
+  mlir_aie_start_cores(_xaie);
 
   mlir_aie_release_lock73(_xaie, 0, 0); // Release lock
   mlir_aie_release_lock71(_xaie, 0, 0); // Release lock
+
+  if (mlir_aie_acquire_lock62(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock62 (1) in tile (6,2). Done.\n");
+  else {
+    errors++;
+    printf("Timed out while trying to acquire lock62.\n");
+  }
 
   int errors = 0;
   for (int i=0; i<count; i++) {

@@ -41,9 +41,11 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Waiting for the result ...\n");
-    if (mlir_aie_acquire_output_lock(_xaie, 1, 100)) {
+    if (mlir_aie_acquire_output_lock(_xaie, 1, 100) == XAIE_OK)
+      printf("Acquired output_lock (1) in tile (1,6). Done.\n");
+    else {
       errors++;
-      printf("ERROR: timeout hit!\n");
+      printf("Timed out while trying to acquire output_lock.\n");
     }
 
     mlir_aie_dump_tile_memory(_xaie, 1, 6);

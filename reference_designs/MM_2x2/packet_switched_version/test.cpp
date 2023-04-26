@@ -26,8 +26,6 @@ int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
-  u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before configure cores.\n");
 
   mlir_aie_clear_tile_memory(_xaie, 7, 3);
@@ -36,7 +34,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 6, 4);
   mlir_aie_configure_cores(_xaie);
 
-  usleep(sleep_u);
   printf("before configure switchboxes.\n");
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
@@ -48,7 +45,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_RHS_tile2_lock(_xaie, 0, 0);
   mlir_aie_release_RHS_tile3_lock(_xaie, 0, 0);
 
-  usleep(sleep_u);
   printf("before configure DMA\n");
 
   mlir_aie_configure_dmas(_xaie);
@@ -111,42 +107,56 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_RHS_tile1_lock(_xaie, 1, 0);
   mlir_aie_release_RHS_tile2_lock(_xaie, 1, 0);
   mlir_aie_release_RHS_tile3_lock(_xaie, 1, 0);
+  mlir_aie_release_Out_tile0_lock(_xaie, 1, 0);
+  mlir_aie_release_Out_tile1_lock(_xaie, 1, 0);
 
   mlir_aie_start_cores(_xaie);
 
-  usleep(sleep_u);
+  usleep(100);
   // Check if the local buffer contain the correct data
   for (int bd = 0; bd < 4; bd++) {
-    mlir_aie_check("Before release lock LHS:",
+    mlir_aie_check("After release lock LHS:",
                    mlir_aie_read_buffer_buf63_0(_xaie, bd), 1, errors);
-    mlir_aie_check("Before release lock RHS:",
+    mlir_aie_check("After release lock RHS:",
                    mlir_aie_read_buffer_buf63_1(_xaie, bd), 3, errors);
-    mlir_aie_check("Before release lock ACC:",
+    mlir_aie_check("After release lock ACC:",
                    mlir_aie_read_buffer_buf63_3(_xaie, bd), 96, // Sub_sum0
                    errors);
-    mlir_aie_check("Before release lock LHS:",
+    mlir_aie_check("After release lock LHS:",
                    mlir_aie_read_buffer_buf64_0(_xaie, bd), 2, errors);
-    mlir_aie_check("Before release lock RHS:",
+    mlir_aie_check("After release lock RHS:",
                    mlir_aie_read_buffer_buf64_1(_xaie, bd), 4, errors);
-    mlir_aie_check("Before release lock Out:",
+    mlir_aie_check("After release lock Out:",
                    mlir_aie_read_buffer_buf64_2(_xaie, bd), 352, // Out_tile0
                    errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("After release lock:",
                    mlir_aie_read_buffer_buf73_0(_xaie, bd), 1, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("After release lock:",
                    mlir_aie_read_buffer_buf73_1(_xaie, bd), 5, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("After release lock:",
                    mlir_aie_read_buffer_buf73_3(_xaie, bd), 160, // Sub_sum1
                    errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("After release lock:",
                    mlir_aie_read_buffer_buf74_0(_xaie, bd), 2, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("After release lock:",
                    mlir_aie_read_buffer_buf74_1(_xaie, bd), 6, errors);
-    mlir_aie_check("Before release lock:",
+    mlir_aie_check("After release lock:",
                    mlir_aie_read_buffer_buf74_2(_xaie, bd), 544, // Out_tile1
                    errors);
   }
 
+  if (mlir_aie_acquire_Out_tile0_lock(_xaie, 0, 1000) == XAIE_OK)
+    printf("Acquired Out_tile0_lock (0) in tile (7,0). Done.\n");
+  else {
+    errors++;
+    printf("Timed out while trying to acquire Out_tile0_lock.\n");
+  }
+  if (mlir_aie_acquire_Out_tile1_lock(_xaie, 0, 1000) == XAIE_OK)
+    printf("Acquired Out_tile1_lock (0) in tile (7,0). Done.\n");
+  else {
+    errors++;
+    printf("Timed out while trying to acquire Out_tile1_lock.\n");
+  }
   mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 

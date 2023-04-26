@@ -36,6 +36,8 @@ module @MM_2x2 {
   %lock60_3 = AIE.lock(%t60, 3) {sym_name = "RHS_tile1_lock"}
   %lock70_0 = AIE.lock(%t70, 0) {sym_name = "RHS_tile2_lock"}
   %lock70_1 = AIE.lock(%t70, 1) {sym_name = "RHS_tile3_lock"}
+  %lock100_0 = AIE.lock(%t100, 0) {sym_name = "Out_tile0_lock"}
+  %lock100_1 = AIE.lock(%t100, 1) {sym_name = "Out_tile1_lock"}
 
   %buffer6 = AIE.external_buffer {sym_name = "Out_tile0"} : memref<1025 x i32>     //Out_tile0
   %buffer7 = AIE.external_buffer {sym_name = "Out_tile1"} : memref<1025 x i32>     //Out_tile1
@@ -147,10 +149,14 @@ module @MM_2x2 {
       AIE.useLock(%lock70_1, "Release", 0)
       AIE.nextBd ^bd4
     ^bd6:
+      AIE.useLock(%lock100_0, "Acquire", 1)
       AIE.dmaBd(<%buffer6 : memref<1025xi32>, 0, 1025>, 0)    //send Out_tile0 with Pack_ID=6
+      AIE.useLock(%lock100_0, "Release", 0)
       AIE.nextBd ^bd7
     ^bd7:
+      AIE.useLock(%lock100_1, "Acquire", 1)
       AIE.dmaBd(<%buffer7 : memref<1025xi32>, 0, 1025>, 0)    //send Out_tile1 with Pack_ID=7
+      AIE.useLock(%lock100_1, "Release", 0)
       AIE.nextBd ^bd6
     ^end:
       AIE.end

@@ -32,8 +32,6 @@ int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
-  u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before configure cores.\n");
 
   for (int i = 0; i < AIE_COL; i++) {
@@ -43,7 +41,6 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_configure_cores(_xaie);
 
-  usleep(sleep_u);
   printf("before configure switchboxes.\n");
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
@@ -54,7 +51,6 @@ int main(int argc, char *argv[]) {
                    XAIE_MEM_MOD);
   pc0.set();
 
-  usleep(sleep_u);
   printf("before configure DMA\n");
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_init_mems(_xaie, 64);
@@ -446,16 +442,16 @@ int main(int argc, char *argv[]) {
 
   printf("It took %ld clicks (%f seconds).\n", t, ((float)t) / CLOCKS_PER_SEC);
 
-  usleep(sleep_u);
   printf("after core start\n");
   // mlir_aie_print_tile_status(_xaie, 7, 3);
 
-  usleep(sleep_u);
   // /mnt/scratch/gagsingh/mlir-aie/install/bin/aie-opt
   // --aie-objectFifo-stateful-transform aie.mlir
 
   //   mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
   //   mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
+  
+  usleep(100000);
 
   mlir_aie_sync_mem_cpu(_xaie,
                         32); //// only used in libaiev2 //sync up with output

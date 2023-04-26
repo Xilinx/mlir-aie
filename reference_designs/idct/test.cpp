@@ -46,17 +46,13 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before DMA config\n");
   mlir_aie_configure_dmas(_xaie);
 
-  usleep(sleep_u);
   printf("after DMA config\n");
-
   int errors = 0;
 
-#define DMA_COUNT 512
+  #define DMA_COUNT 512
 
   // Load IDCT Data
   FILE *file = fopen("image.txt", "r");
@@ -142,14 +138,12 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  usleep(sleep_u);
   printf("after core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
   // u32 locks70;
   // locks70 = XAieGbl_Read32(TileInst[7][0].TileAddr + 0x00014F00);
   // printf("Locks70 = %08X\n", locks70);
 
-  usleep(1000);
   // pc0_times[0] = pc0.diff();
   // pc1_times[0] = pc1.diff();
   // pc2_times[0] = pc2.diff();
@@ -158,7 +152,6 @@ int main(int argc, char *argv[]) {
   // pc5_times[0] = pc5.diff();
   // pc6_times[0] = pc6.diff();
   // pc7_times[0] = pc7.diff();
-  // usleep(sleep_u);
 
   // mlir_aie_check("After", mlir_read_buffer_a_ping(0), 384, errors);
   // mlir_aie_check("After", mlir_read_buffer_a_pong(0), 448, errors);
@@ -220,7 +213,12 @@ int main(int argc, char *argv[]) {
   //         printf("buffer out b pong 75 [%d] = %d\n", i, d);
   //     }
 
-  mlir_aie_acquire_buffer_out_lock(_xaie, 0, 0);
+  if (mlir_aie_acquire_buffer_out_lock(_xaie, 0, 1000) == XAIE_OK)
+    printf("Acquired buffer_out_lock (0) in tile (7,0). Done.\n");
+  else {
+    errors++;
+    printf("Timed out while trying to acquire buffer_out_lock.\n");
+  }
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
 
   for (int i = 0; i < DMA_COUNT; i++)

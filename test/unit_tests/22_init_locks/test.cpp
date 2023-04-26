@@ -43,19 +43,19 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  sleep(1);
-
   mlir_aie_check("Before release lock:", mlir_aie_read_buffer_b(_xaie, 5), 0,
                  errors);
 
   printf("Release input buffer lock.\n");
   mlir_aie_release_lock_a(_xaie, 1, 0);
 
-  printf("Waiting to acquire output lock for read ...\n");
-  if (mlir_aie_acquire_lock_b(_xaie, 1, LOCK_TIMEOUT)) {
+  if (mlir_aie_acquire_lock_b(_xaie, 1, LOCK_TIMEOUT) == XAIE_OK)
+    printf("Acquired lock_b (1) in tile (1,3). Done.\n");
+  else {
     errors++;
-    printf("ERROR: timeout hit!\n");
+    printf("Timed out while trying to acquire lock_b.\n");
   }
+  printf("Waiting to acquire output lock for read ...\n");
   mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b(_xaie, 5), 35,
                  errors);
 

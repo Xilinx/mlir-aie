@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   printf("Acquire lock first.\n");
-  mlir_aie_acquire_inout_lock(_xaie, 0, 0); // Should this part of setup???
+  mlir_aie_acquire_inout_lock(_xaie, 0, 0);
   for (int i = 0; i < 256; i++) {
     mlir_aie_write_buffer_a(_xaie, i, .1f * i);
   }
@@ -54,9 +54,11 @@ int main(int argc, char *argv[]) {
   mlir_aie_release_inout_lock(_xaie, 1, 0);
 
   printf("Waiting to acquire lock ...\n");
-  if (mlir_aie_acquire_inout_lock(_xaie, 0, 1000)) {
+  if (mlir_aie_acquire_inout_lock(_xaie, 0, 1000) == XAIE_OK)
+    printf("Acquired inout_lock (0) in tile (1,3). Done.\n");
+  else {
     errors++;
-    printf("ERROR: Failed to acquire output lock!\n");
+    printf("Timed out while trying to acquire inout_lock.\n");
   }
 
   for (int i = 0; i < 256; i++) {

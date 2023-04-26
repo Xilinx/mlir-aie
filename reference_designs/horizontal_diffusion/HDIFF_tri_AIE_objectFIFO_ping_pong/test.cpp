@@ -29,8 +29,6 @@ int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
-  u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before configure cores.\n");
   mlir_aie_clear_tile_memory(_xaie, 7, 5);
   mlir_aie_clear_tile_memory(_xaie, 7, 4);
@@ -39,7 +37,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 7, 1);
   mlir_aie_configure_cores(_xaie);
 
-  usleep(sleep_u);
   printf("before configure switchboxes.\n");
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
@@ -55,7 +52,6 @@ int main(int argc, char *argv[]) {
                    XAIE_MEM_MOD);
   pc0.set();
 
-  usleep(sleep_u);
   printf("before configure DMA\n");
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_init_mems(_xaie, 2);
@@ -98,12 +94,10 @@ int main(int argc, char *argv[]) {
 
   printf("It took %ld clicks (%f seconds).\n", t, ((float)t) / CLOCKS_PER_SEC);
 
-  usleep(sleep_u);
   printf("after core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 1);
 
-  usleep(sleep_u);
-
+  usleep(100000);
   mlir_aie_sync_mem_cpu(_xaie,
                         1); // only used in libaiev2 //sync up with output
   ///// --- end counter-----

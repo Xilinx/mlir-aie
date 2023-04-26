@@ -28,8 +28,6 @@ int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
-  u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before configure cores.\n");
 
   mlir_aie_clear_tile_memory(_xaie, 7, 3);
@@ -38,12 +36,10 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 6, 4);
   mlir_aie_configure_cores(_xaie);
 
-  usleep(sleep_u);
   printf("before configure switchboxes.\n");
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  usleep(sleep_u);
   printf("before configure DMA\n");
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_init_mems(_xaie, 8);
@@ -106,10 +102,18 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_start_cores(_xaie);
 
-  usleep(sleep_u);
-
-  mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
-  mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
+  if (mlir_aie_acquire_of_17_lock_0(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired of_17_lock_0 (1) in tile (6,0). Done.\n");
+  else {
+    errors++;
+    printf("Timed out while trying to acquire of_17_lock_0.\n");
+  }
+  if (mlir_aie_acquire_of_15_lock_0(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired of_15_lock_0 (1) in tile (6,0). Done.\n");
+  else {
+    errors++;
+    printf("Timed out while trying to acquire of_15_lock_0.\n");
+  }
   mlir_aie_sync_mem_cpu(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_cpu(_xaie, 7); // only used in libaiev2
 

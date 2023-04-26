@@ -43,20 +43,29 @@ main(int argc, char *argv[])
       errors++;
     }
 
-    mlir_aie_acquire_lock1(_xaie, 0, 0);
-    usleep(1000);
+    if (mlir_aie_acquire_lock1(_xaie, 0, 1000) == XAIE_OK)
+        printf("Acquired lock1 (0) in tile (1,3). Done.\n");
+    else
+        printf("Timed out (1000) while trying to acquire lock1.\n");
+
     u32 l = mlir_aie_read32(_xaie,
                             mlir_aie_get_tile_addr(_xaie, 1, 3) + 0x0001EF00);
     u32 s = (l >> 6) & 0x3;
     printf("Lock acquire 3: 0 is %x\n",s);
-    mlir_aie_acquire_lock2(_xaie, 0, 0);
-    usleep(1000);
+
+    if (mlir_aie_acquire_lock2(_xaie, 0, 1000) == XAIE_OK)
+        printf("Acquired lock2 (0) in tile (1,3). Done.\n");
+    else
+        printf("Timed out (1000) while trying to acquire lock2.\n");
     l = mlir_aie_read32(_xaie,
                         mlir_aie_get_tile_addr(_xaie, 1, 3) + 0x0001EF00);
     s = (l >> 10) & 0x3;
     printf("Lock acquire 5: 0 is %x\n",s);
-    mlir_aie_release_lock2(_xaie, 1, 0);
-    usleep(1000);
+
+    if (mlir_aie_acquire_lock2(_xaie, 1, 1000) == XAIE_OK)
+        printf("Acquired lock2 (1) in tile (1,3). Done.\n");
+    else
+        printf("Expected: timed out (1000) while trying to acquire lock2.\n");
     l = mlir_aie_read32(_xaie,
                         mlir_aie_get_tile_addr(_xaie, 1, 3) + 0x0001EF00);
     s = (l >> 10) & 0x3;

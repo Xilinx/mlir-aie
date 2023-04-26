@@ -77,7 +77,7 @@ module @test14_stream_packet {
   //%l62_0 = AIE.lock(%t62, 0)
   //%l62_1 = AIE.lock(%t62, 1)
   %buf62 = AIE.buffer(%t62) {sym_name = "buf62" } : memref<512xi32>
-  %l62 = AIE.lock(%t62, 0)
+  %l62 = AIE.lock(%t62, 0) {sym_name = "lock62" }
 
   %m62 = AIE.mem(%t62) {
       %srcDma0 = AIE.dmaStart("S2MM", 0, ^bd0, ^end)

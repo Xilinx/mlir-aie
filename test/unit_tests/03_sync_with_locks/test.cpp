@@ -42,9 +42,11 @@ main(int argc, char *argv[])
     int errors = 0;
 
     printf("Acquire input buffer lock first.\n");
-    if (mlir_aie_acquire_lock1(_xaie, 0, 0)) {
+    if (mlir_aie_acquire_lock1(_xaie, 0, LOCK_TIMEOUT) == XAIE_OK)
+      printf("Acquired lock1 (0) in tile (1,3). Done.\n");
+    else {
       errors++;
-      printf("ERROR: timeout hit!\n");
+      printf("Timed out while trying to acquire lock1.\n");
     }
     mlir_aie_write_buffer_a(_xaie, 3, 7);
 
@@ -58,9 +60,11 @@ main(int argc, char *argv[])
     mlir_aie_release_lock1(_xaie, 1, 0);
 
     printf("Waiting to acquire output lock for read ...\n");
-    if (mlir_aie_acquire_lock2(_xaie, 1, LOCK_TIMEOUT)) {
+    if (mlir_aie_acquire_lock2(_xaie, 1, LOCK_TIMEOUT) == XAIE_OK)
+      printf("Acquired lock2 (1) in tile (1,3). Done.\n");
+    else {
       errors++;
-      printf("ERROR: timeout hit!\n");
+      printf("Timed out while trying to acquire lock2.\n");
     }
     mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_b(_xaie, 5), 35,
                    errors);
