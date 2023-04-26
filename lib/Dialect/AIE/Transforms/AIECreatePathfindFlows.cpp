@@ -301,7 +301,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-    [[maybe_unused]] TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+    [[maybe_unused]] TileID dstCoords =
+        std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
     [[maybe_unused]] auto dstBundle = flowOp.getDestBundle();
