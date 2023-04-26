@@ -650,6 +650,8 @@ Example:
 ```
 Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
 
+Traits: HasValidBDs
+
 Interfaces: CallableOpInterface, FlowEndPoint, TileElement
 
 #### Operands:
@@ -1230,6 +1232,8 @@ Example:
   }
 ```
 Create the shimDMA for tile %t70 and setup one DMA channel and one Buffer Descriptor.
+
+Traits: HasValidBDs
 
 Interfaces: FlowEndPoint, TileElement
 
