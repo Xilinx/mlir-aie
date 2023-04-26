@@ -2541,8 +2541,14 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
         if (isAcc) {
           return (os << "v16accfloat"), success();
         } else {
-          return (os << "v" << std::to_string(dimSize) << "bfloat16"),
-                 success();
+          auto fType = eltType.cast<FloatType>();
+          unsigned width = fType.getWidth();
+          if (width == 16) {
+            return (os << "v" << std::to_string(dimSize) << "bfloat16"),
+                   success();
+          } else {
+            return (os << "v" << std::to_string(dimSize) << "float"), success();
+          }
         }
       } else {
         os << "v" << std::to_string(dimSize);
