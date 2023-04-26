@@ -47,14 +47,9 @@ cmake -GNinja\
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
-    "-DAIE_RUNTIME_TARGETS=aarch64" \
+    "-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
     -DAIE_RUNTIME_TEST_TARGET=aarch64 \
-    -DSysrootAarch64=/group/xrlabs/platforms/vck190-pynq-v2.7/sysroot \
     .. |& tee cmake.log
-
-#    
-#"-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
-#-GNinja
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log

@@ -54,7 +54,7 @@ find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE
 if(NOT extraAieCcFlags)
-  set(LibXAIE_ROOT ${LibXAIE_DIR} ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2)
+  set(LibXAIE_ROOT ${LibXAIE_DIR} ${Sysroot}/usr ${Sysroot}/opt/xaiengine ${Sysroot}/opt/xaienginev2)
   find_package(LibXAIE)
   if(LibXAIE_FOUND)
     message(STATUS "Using LibXAIE: ${XILINX_XAIE_DIR}")

@@ -16,8 +16,6 @@ include(ExternalProject)
 project("runtime-libs")
 #add_custom_target(runtime-libs ALL)
 
-message(STATUS "NOLF NOLF runtime libs sysroot: ${Sysroot}")
-
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
 if(SysrootAarch64)

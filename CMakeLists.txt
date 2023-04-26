@@ -83,18 +83,7 @@ endif()
 message (STATUS "aarch64 specified as runtime target but no sysroot set, using default Vitis Sysroot for cross compilation: ${Sysroot}")
 elseif(SysrootAarch64 AND ${indexAarch64} GREATER -1)
 set(Sysroot ${SysrootAarch64})
-message(STATUS "NOLF NOLF using specified SysrootAarch64: ${SysrootAarch64}")
 endif()
-
-message(STATUS "NOLF NOLF FINAL Sysroot: ${Sysroot}")
-
-
-# if(${AIE_RUNTIME_TEST_TARGET} STREQUAL "aarch64" AND DEFINED VITIS_ROOT)
-# set(Sysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
-# set(LIBCXX_VERSION "11.2.0")
-# set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${Sysroot}/usr/include -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION} -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
-# message (STATUS "Empty string specified as sysroot, using default Vitis Sysroot to enable more unit tests: ${Sysroot}")
-# endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to
 # override.

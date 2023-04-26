@@ -53,7 +53,7 @@ find_package(Vitis)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE in the sysroot.  Depending on the sysroot, this might live in multiple locations.
-set(LibXAIE_ROOT ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2 STRING "Default libxaie location.")
+set(LibXAIE_ROOT ${Sysroot}/usr ${Sysroot}/opt/xaiengine ${Sysroot}/opt/xaienginev2 STRING "Default libxaie location.")
 find_package(LibXAIE)
 
 if(LibXAIE_FOUND)
