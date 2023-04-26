@@ -10,7 +10,7 @@ project("test lib for ${AIE_RUNTIME_TARGET}")
 
 add_library(test_lib STATIC test_library.cpp)
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "test_library.h")
-#target_compile_options(test_lib PRIVATE -fPIC)
+target_compile_options(test_lib PRIVATE -fPIC)
 target_compile_definitions(test_lib PRIVATE LIBXAIENGINEV2)
 
 target_include_directories(test_lib PRIVATE
