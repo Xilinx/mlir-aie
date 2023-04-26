@@ -245,7 +245,8 @@ LogicalResult SRSOp::verify() {
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "wider than that of the result vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
+  else if (atype.isa<FloatType>() && stypeWidth != 16 &&
+           stypeWidth != atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "same as the result vector");
 

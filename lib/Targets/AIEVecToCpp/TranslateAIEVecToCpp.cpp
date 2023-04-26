@@ -657,7 +657,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
   } else {
     if (eltType.isa<FloatType>()) {
       width = eltType.cast<FloatType>().getWidth();
-      os << "v" << lanes << "float";
+      os << "v" << lanes;
+      if (width == 16) {
+        os << "bfloat16";
+      } else {
+        os << "float";
+      }
     } else {
       width = getElementSizeInBits(resType);
       os << "v" << lanes << "int" << width;
@@ -694,7 +699,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   // srs op. We can simply generate an assignment
   if (eltType.isa<FloatType>()) {
     if (AIEML) {
-      unsigned width = eltType.cast<FloatType>().getWidth();
+      unsigned width = getElementSizeInBits(resType);
       if (width == 32) {
         os << "srs";
       } else if (width == 16) {
@@ -779,9 +784,16 @@ printOperation(CppEmitter &emitter,
   if (failed(emitter.emitAssignPrefix(*broadcastScalarOp)))
     return failure();
 
+  Type eltType = resType.getElementType();
   os << "broadcast_to_v";
-  os << lanes << "int";
-  os << width;
+  if (eltType.isa<IntegerType>()) {
+    os << lanes << "int";
+    os << width;
+  } else if (width == 16) {
+    os << lanes << "bfloat16";
+  } else {
+    os << lanes << "float";
+  }
   os << "(" << emitter.getOrCreateName(source) << ")";
   return success();
 }
@@ -801,13 +813,20 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
     return failure();
 
   VectorType resType = extOp.getResult().getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
   unsigned lanes = getVectorLaneSize(resType);
   unsigned resWidth = getElementSizeInBits(resType);
 
   // Print the version of ext for aie-ml
   if (AIEML) {
-    os << "extract_v" << std::to_string(lanes) << "int"
-       << std::to_string(resWidth);
+    os << "extract_v" << std::to_string(lanes);
+    if (eltType.isa<IntegerType>()) {
+      os << "int" << std::to_string(resWidth);
+    } else if (resWidth == 16) {
+      os << "bfloat16";
+    } else {
+      os << "float";
+    }
   } else {
     // Print the version of ext for aie1
     int32_t vecSizeInBits = getVectorSizeInBits(resType);

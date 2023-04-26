@@ -273,14 +273,76 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
+// This pattern replaces `arith.mulf` on vectors with
+// `aievec.mul_elem`. This pattern works for aie-ml.
+struct ConvertMulFToAIEVecMulElemOpPattern
+    : public OpConversionPattern<arith::MulFOp> {
+  using OpConversionPattern<arith::MulFOp>::OpConversionPattern;
+
+  ConvertMulFToAIEVecMulElemOpPattern(MLIRContext *context,
+                                      unsigned shiftParam = 0)
+      : OpConversionPattern<arith::MulFOp>(context), shiftParam(shiftParam) {}
+
+  LogicalResult
+  matchAndRewrite(arith::MulFOp mulOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Verify it's a vector operation
+    VectorType resultType = dyn_cast<VectorType>(mulOp.getType());
+    if (!resultType)
+      return failure();
+
+    auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
+    // Verify it is not a part of FMA
+    if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
+      return failure();
+
+    unsigned resultElWidth =
+        resultType.getElementType().getIntOrFloatBitWidth();
+
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    // bfloat16 type
+    if (laneSize != 16 || resultElWidth != 16)
+      return failure();
+
+    Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
+                                       /*AIEML =*/true);
+    VectorType vecType =
+        createVectorType(512 / resultElWidth, resultType.getElementType());
+
+    auto zeroConstOp = rewriter.create<arith::ConstantOp>(
+        mulOp.getLoc(), rewriter.getF16FloatAttr(0));
+
+    auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
+        mulOp.getLoc(), vecType, zeroConstOp->getResult(0));
+    auto extOp = rewriter.create<aievec::ExtOp>(mulOp.getLoc(), resultType,
+                                                broadcastZeroOp.getResult(), 0);
+
+    SmallVector<Value> lSources = {adaptor.getLhs(), extOp->getResult(0)};
+    SmallVector<Value> rSources = {adaptor.getRhs(), extOp->getResult(0)};
+    auto lConcatOp =
+        rewriter.create<aievec::ConcatOp>(mulOp.getLoc(), vecType, lSources);
+    auto rConcatOp =
+        rewriter.create<aievec::ConcatOp>(mulOp.getLoc(), vecType, rSources);
+
+    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
+        mulOp.getLoc(), accType, lConcatOp->getResult(0),
+        rConcatOp->getResult(0));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        mulOp, resultType, mulElemOp.getResult(), shiftParam);
+    return success();
+  }
+  unsigned shiftParam;
+};
+
 // This pattern replaces `arith.muli` on vectors with
 // `aievec.mul_elem`. This pattern works for aie-ml.
-struct ConvertMulToAIEVecMulElemOpPattern
+struct ConvertMulIToAIEVecMulElemOpPattern
     : public OpConversionPattern<arith::MulIOp> {
   using OpConversionPattern<arith::MulIOp>::OpConversionPattern;
 
-  ConvertMulToAIEVecMulElemOpPattern(MLIRContext *context,
-                                     unsigned shiftParam = 0)
+  ConvertMulIToAIEVecMulElemOpPattern(MLIRContext *context,
+                                      unsigned shiftParam = 0)
       : OpConversionPattern<arith::MulIOp>(context), shiftParam(shiftParam) {}
 
   LogicalResult
@@ -913,7 +975,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   patterns.add<LowerVectorAddIOpToAIEVecAddOp,
                FoldVectorExtractAndBroadcastToAIEBroadcast,
                ConvertMulAddToAIEVecFMAElemOpPattern,
-               ConvertMulToAIEVecMulElemOpPattern>(patterns.getContext());
+               ConvertMulIToAIEVecMulElemOpPattern,
+               ConvertMulFToAIEVecMulElemOpPattern>(patterns.getContext());
 }
 
 static void
@@ -1020,6 +1083,22 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     return (laneSize != 32 || (resultElWidth != 16 && resultElWidth != 8)) &&
            ((laneSize != 16 && laneSize != 32) || resultElWidth != 32);
+  });
+
+  target.addDynamicallyLegalOp<arith::MulFOp>([](arith::MulFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
+    // Verify it is not a part of FMA
+    if (op->hasOneUse() && llvm::any_of(op->getUsers(), isAddOp))
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return (laneSize != 16 || resultElWidth != 16);
   });
 }
 

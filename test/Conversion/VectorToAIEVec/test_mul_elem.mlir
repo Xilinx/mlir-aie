@@ -63,3 +63,19 @@ func.func @test_mul_elem_i8_i8(%a : vector<32xi8>,
   %1 = arith.muli %a, %b : vector<32xi8>
   return %1 : vector<32xi8>
 }
+
+// CHECK-LABEL: func @test_mul_elem_bf16
+// CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<16xbf16>
+// CHECK-SAME: %[[B:[A-Za-z0-9]+]]: vector<16xbf16>
+func.func @test_mul_elem_bf16(%a : vector<16xbf16>,
+                         %b : vector<16xbf16>) -> vector<16xbf16> {
+  // CHECK:  %[[C0:.*]] = arith.constant 0.000000e+00 : f16
+  // CHECK:  %[[BCS:.*]] = aievec.broadcast_scalar %[[C0]] : f16, vector<32xbf16>
+  // CHECK:  %[[EXT:.*]] = aievec.ext %[[BCS]] {index = 0 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK:  %[[CC1:.*]] = aievec.concat %arg0, %[[EXT]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK:  %[[CC2:.*]] = aievec.concat %arg1, %[[EXT]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK:  %[[ME:.*]] = aievec.mul_elem %[[CC1]], %[[CC2]] : vector<32xbf16>, vector<32xbf16>, vector<16xf32>
+  // CHECK:  %[[SRS:.*]] = aievec.srs %[[ME]] {shift = 0 : i8} : vector<16xf32>, vector<16xbf16>
+  %1 = arith.mulf %a, %b : vector<16xbf16>
+  return %1 : vector<16xbf16>
+}
