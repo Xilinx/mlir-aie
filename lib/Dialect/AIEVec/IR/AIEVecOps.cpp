@@ -245,7 +245,8 @@ LogicalResult SRSOp::verify() {
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "wider than that of the result vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
+  else if (atype.isa<FloatType>() && stypeWidth != 16 &&
+           stypeWidth != atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "same as the result vector");
 
@@ -473,6 +474,67 @@ ParseResult BroadcastOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Populate the source in result
   if (parser.resolveOperand(source, vecType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resType, result.types);
+}
+
+//===----------------------------------------------------------------------===//
+// BroadcastScalarOp
+//===----------------------------------------------------------------------===//
+
+// Print out BroadcastScalar op.
+void BroadcastScalarOp::print(OpAsmPrinter &p) {
+  // Print the source vector
+  p << " " << getSource();
+
+  // And now print the types
+  p << " : " << getSource().getType() << ", " << getResult().getType();
+}
+
+// Verify BroadcastScalar op.
+LogicalResult BroadcastScalarOp::verify() {
+  // Verify the types
+  Type sourceType = getSource().getType();
+  VectorType resultType = getResult().getType().dyn_cast<VectorType>();
+
+  if (!resultType)
+    return emitError("requires vector type");
+
+  if (!sourceType)
+    return emitError("requires source type");
+
+  return success();
+}
+
+// Parse BroadcastScalar op.
+ParseResult BroadcastScalarOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 2> types;
+  OpAsmParser::UnresolvedOperand source;
+
+  // Parse the source vector
+  if (parser.parseOperand(source))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  if (result.attributes.getAttrs().size() != 0)
+    return parser.emitError(typesLoc, "do not require attributes");
+
+  // Assert that there is two type (source and result vector)
+  if (types.size() != 2)
+    return parser.emitError(typesLoc, "requires two types");
+
+  // Some verification
+  VectorType resType = types[1].dyn_cast<VectorType>();
+  if (!resType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  if (parser.resolveOperand(source, types[0], result.operands))
     return failure();
 
   return parser.addTypeToList(resType, result.types);
@@ -765,14 +827,13 @@ template <typename T> LogicalResult verifyMulFMAElemOp(T op) {
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
   // Checks on the number of lanes
-  unsigned accLanes = getVectorLaneSize(resultType);
   unsigned rhsLanes = getVectorLaneSize(rhsType);
   unsigned lhsLanes = getVectorLaneSize(lhsType);
 
   // lane size must match
-  if (accLanes != rhsLanes || accLanes != lhsLanes) {
-    return op.emitError("The number of lanes in accumulator "
-                        "must be the same as lhs and rhs operand");
+  if (lhsLanes != rhsLanes) {
+    return op.emitError("The number of lanes in lhs operand "
+                        "must be the same as rhs operand");
   }
 
   // lhs and rhs vector's element type must match
@@ -1025,6 +1086,7 @@ LogicalResult ConcatOp::verify() {
     VectorType type = source.getType().dyn_cast<VectorType>();
     totalLanes += getVectorLaneSize(type);
   }
+
   if (totalLanes != getVectorLaneSize(resultType))
     return emitError("mismatch between vector lanes "
                      "and sum of source lanes");

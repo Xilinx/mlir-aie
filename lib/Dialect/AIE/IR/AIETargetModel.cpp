@@ -159,7 +159,9 @@ Optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
 Optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
   Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
-  if (!isValidTile(*ret) || ret->second == 0 || ret->second == 1)
+  // Memtiles don't have memory adjacency to neighboring core tiles.
+  if (!isValidTile(*ret) || ret->second == 0 ||
+      isMemTile(ret->first, ret->second))
     ret.reset();
   return ret;
 }
@@ -211,12 +213,18 @@ bool AIE2TargetModel::isMemSouth(int srcCol, int srcRow, int dstCol,
 
 bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                          int memRow) const {
-  bool IsMemWest = isWest(coreCol, coreRow, memCol, memRow);
-  bool IsMemEast = isInternal(coreCol, coreRow, memCol, memRow);
-  bool IsMemNorth = isNorth(coreCol, coreRow, memCol, memRow);
-  bool IsMemSouth = isSouth(coreCol, coreRow, memCol, memRow);
 
-  return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
+  bool IsMemWest = isMemWest(coreCol, coreRow, memCol, memRow);
+  bool IsMemEast = isMemEast(coreCol, coreRow, memCol, memRow);
+  bool IsMemNorth = isMemNorth(coreCol, coreRow, memCol, memRow);
+  bool IsMemSouth = isMemSouth(coreCol, coreRow, memCol, memRow);
+
+  if (isMemTile(coreCol, coreRow))
+    return IsMemSouth || (IsMemNorth && isMemTile(memCol, memRow)) ||
+           IsMemWest || IsMemEast;
+  else
+    return (IsMemSouth && !isMemTile(memCol, memRow)) || IsMemNorth ||
+           IsMemWest || IsMemEast;
 }
 
 } // namespace AIE
