@@ -257,8 +257,7 @@ static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
                                     VectState *state) {
   // Assert that the input operations are of expected type
   assert([&] {
-    bool expectedTypes =
-      isa<vector::FMAOp>(Op2) && isa<MulIOp, MulFOp, vector::FMAOp>(Op1);
+    bool expectedTypes = (isa<vector::FMAOp>(Op2) && isa<MulIOp, MulFOp, vector::FMAOp>(Op1));
     return expectedTypes;
   }("incorrect operation types"));
 

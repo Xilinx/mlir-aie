@@ -457,8 +457,8 @@ struct AIERoutePacketFlowsPass
                  << " : " << channel << '\n');
       for (auto value : map.second)
         LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
-      #endif
     }
+    #endif
 
     // Compute mask values
     // Merging as many stream flows as possible

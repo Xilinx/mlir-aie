@@ -32,11 +32,13 @@ static llvm::cl::opt<bool>
                llvm::cl::init(false));
 
 #define BOOST_NO_EXCEPTIONS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-noreturn"
 #include <boost/throw_exception.hpp>
 void boost::throw_exception(std::exception const &e) {
   // boost expects this exception to be defined.
-  assert(false);
 }
+#pragma clang diagnostic pop
 
 std::string stringifyDirs(std::set<Port> dirs) {
   unsigned int count = 0;
@@ -299,7 +301,6 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     Operation *Op = flowOp.getOperation();
 
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
@@ -308,6 +309,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
 
     #ifndef NDEBUG
     TileID dstCoords =  std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     auto dstBundle = flowOp.getDestBundle();
     auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
