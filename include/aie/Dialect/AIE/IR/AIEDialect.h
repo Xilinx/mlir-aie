@@ -49,6 +49,16 @@ template <typename ConcreteType>
 struct HasValidBDs : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
   static LogicalResult verifyTrait(Operation *op);
 };
+
+// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
+// has valid channels.
+template <typename ConcreteType>
+struct HasValidDMAChannels
+    : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static LogicalResult verifyTrait(Operation *op);
+};
+
+class TileOp;
 } // namespace AIE
 } // namespace xilinx
 

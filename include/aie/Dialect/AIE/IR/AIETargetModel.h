@@ -39,16 +39,22 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
+  /// Return true if the given tile is a 'Core' tile.  These tiles
+  /// include a Core, TileDMA, tile memory, and stream connections.
+  virtual bool isCoreTile(int col, int row) const = 0;
+
   /// Return true if the given tile is an AIE2 'Memory' tile.  These tiles
-  /// include a TileDMA and stream connections, but no core.
+  /// include a TileDMA, tile memory, and stream connections, but no core.
   virtual bool isMemTile(int col, int row) const = 0;
 
   /// Return true if the given tile is a Shim NOC tile.  These tiles include a
-  /// ShimDMA and a connection to the memory-mapped NOC.
+  /// ShimDMA and a connection to the memory-mapped NOC.  They do not contain
+  /// any memory.
   virtual bool isShimNOCTile(int col, int row) const = 0;
 
   /// Return true if the given tile is a Shim PL interface tile.  These tiles do
-  /// not include a ShimDMA and instead include connections to the PL.
+  /// not include a ShimDMA and instead include connections to the PL.  They do
+  /// not contain any memory.
   virtual bool isShimPLTile(int col, int row) const = 0;
 
   /// Return true if the given tile ID is valid.
@@ -122,6 +128,7 @@ class AIE1TargetModel : public AIETargetModel {
 public:
   AIE1TargetModel() {}
 
+  bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
 
   AIEArch getTargetArch() const override;
@@ -236,6 +243,7 @@ public:
     return 4; /* One Shim row, 1 memtile rows, and 2 Core rows. */
   }
 
+  bool isCoreTile(int col, int row) const override { return row > 1; }
   bool isMemTile(int col, int row) const override { return row == 1; }
   bool isShimNOCTile(int col, int row) const override {
     return row == 0 && noc_columns.contains(col);
@@ -255,6 +263,7 @@ public:
     return 11; /* One Shim row, 2 memtile rows, and 8 Core rows. */
   }
 
+  bool isCoreTile(int col, int row) const override { return row > 2; }
   bool isMemTile(int col, int row) const override {
     return (row == 1) || (row == 2);
   }
