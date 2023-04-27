@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-5.exe
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o tutorial-5.exe
 // RUN: %run_on_board ./tutorial-5.exe
 
 

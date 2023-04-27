@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# (c) Copyright 2021 Xilinx Inc.
 
 @LIT_SITE_CFG_IN_HEADER@
 
@@ -48,9 +48,12 @@ config.enable_chess_tests = @CONFIG_ENABLE_CHESS_TESTS@
 config.enable_board_tests = @CONFIG_ENABLE_BOARD_TESTS@
 config.vitis_root = "@VITIS_ROOT@"
 config.vitis_aietools_dir = "@VITIS_AIETOOLS_DIR@"
-config.vitis_sysroot = "@VitisSysroot@"
+config.vitis_sysroot = "@Sysroot@"
 config.libxaie_dir = "@XILINX_XAIE_LIBS@"
 config.has_libxaie = @CONFIG_HAS_LIBXAIE@
+config.extraAieCcFlags = "@extraAieCcFlags@"
+config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
+config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.
