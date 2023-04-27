@@ -1,4 +1,4 @@
-//===- badcore2.mlir -------------------------------------------*- MLIR -*-===//
+//===- badshim_duplicatechannel.mlir ---------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,14 +8,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.core' op failed to verify that op exists in a core tile
+// RUN: not aie-opt --canonicalize %s |& FileCheck %s
+// CHECK: 'AIE.dmaStart' op duplicate DMA channel MM2S0 not allowed
 
 module @test {
-  AIE.device(xcve2802) {
-    %t1 = AIE.tile(4, 1)
-    %core = AIE.core(%t1) {
+  %t1 = AIE.tile(2, 0)
+
+  %mem13 = AIE.shimDMA(%t1) {
+    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    ^dma1:
+    AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
+    ^bd0:
       AIE.end
-    }
   }
 }
