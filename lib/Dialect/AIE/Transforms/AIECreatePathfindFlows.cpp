@@ -309,8 +309,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     // Port dstPort = std::make_pair(dstBundle, dstChannel);
 
 #ifndef NDEBUG
-    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     auto dstBundle = flowOp.getDestBundle();
     auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
