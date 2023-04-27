@@ -68,7 +68,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 
-find_package(Vitis COMPONENTS AIE AIE2)
+find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(Python3 COMPONENTS Interpreter)
 
