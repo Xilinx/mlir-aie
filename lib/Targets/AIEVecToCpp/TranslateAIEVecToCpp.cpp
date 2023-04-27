@@ -2122,9 +2122,11 @@ StringRef CppEmitter::getMemRefDimParam(Value memref, unsigned index) {
 /// Return true if the specified dim of memref has a parameter
 /// associated with it
 bool CppEmitter::isMemRefDimParam(Value memref, unsigned index) {
-  [[maybe_unused]] MemRefType type = memref.getType().dyn_cast<MemRefType>();
-  assert(type && type.isDynamicDim(index) &&
-         "the dimension size at index is not dynamic");
+  assert([&] {
+    MemRefType type = memref.getType().dyn_cast<MemRefType>();
+    return type && type.isDynamicDim(index);
+  }("the dimension size at index is not dynamic"));
+
   auto p = std::make_pair(memref, index);
   return paramIndexMapper.count(p);
 }

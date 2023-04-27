@@ -445,17 +445,19 @@ struct AIERoutePacketFlowsPass
     }
 
     LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
+    #ifndef NDEBUG
     for (auto map : mastersets) {
       Operation *tileOp = map.first.first;
-      [[maybe_unused]] WireBundle bundle = map.first.second.first;
-      [[maybe_unused]] int channel = map.first.second.second;
+      WireBundle bundle = map.first.second.first;
+      int channel = map.first.second.second;
       assert(tileOp);
-      [[maybe_unused]] TileOp tile = dyn_cast<TileOp>(tileOp);
+      TileOp tile = dyn_cast<TileOp>(tileOp);
       LLVM_DEBUG(llvm::dbgs()
                  << "master " << tile << " " << stringifyWireBundle(bundle)
                  << " : " << channel << '\n');
-      for ([[maybe_unused]] auto value : map.second)
+      for (auto value : map.second)
         LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
+      #endif
     }
 
     // Compute mask values
@@ -530,12 +532,13 @@ struct AIERoutePacketFlowsPass
         slaveMasks[port] = maskValue;
     }
 
+    #ifndef NDEBUG
     LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
     for (auto map : slaveMasks) {
       auto port = map.first.first;
-      [[maybe_unused]] TileOp tile = dyn_cast<TileOp>(port.first);
-      [[maybe_unused]] WireBundle bundle = port.second.first;
-      [[maybe_unused]] int channel = port.second.second;
+      TileOp tile = dyn_cast<TileOp>(port.first);
+      WireBundle bundle = port.second.first;
+      int channel = port.second.second;
       int ID = map.first.second;
       int mask = map.second;
 
@@ -552,6 +555,7 @@ struct AIERoutePacketFlowsPass
                                   << "0x" << llvm::Twine::utohexstr(i) << '\n');
       }
     }
+    #endif
 
     // Realize the routes in MLIR
     for (auto map : tiles) {
@@ -629,9 +633,10 @@ struct AIERoutePacketFlowsPass
         int ID = group.front().second & mask;
 
         // Verify that we actually map all the ID's correctly.
-        for ([[maybe_unused]] auto slave : group) {
+        #ifndef NDEBUG
+        for (auto slave : group)
           assert((slave.second & mask) == ID);
-        }
+        #endif
         Value amsel = amselOps[slaveAMSels[group.front()]];
 
         PacketRulesOp packetrules;

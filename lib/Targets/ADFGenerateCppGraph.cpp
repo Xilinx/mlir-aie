@@ -69,6 +69,7 @@ struct GraphWriter {
     if (const auto &t = type.dyn_cast<floatType>())
       return t.getMnemonic();
     assert(false);
+    return {};
   }
   std::string getKernelTypeString(std::string direction, Type type) {
     if (auto window = type.dyn_cast<WindowType>()) {
@@ -79,9 +80,9 @@ struct GraphWriter {
           .str();
     } else if (auto stream = type.dyn_cast<ParameterType>()) {
       return std::string(getCTypeString(stream.getType()));
-    } else {
-      assert(false);
-    }
+    }  
+    assert(false);
+    return {};
   }
 
   std::string getConnectionTypeString(Type type) {
@@ -92,8 +93,8 @@ struct GraphWriter {
       return "stream";
     else if (auto windowType = type.dyn_cast<ParameterType>())
       return "parameter";
-    else
-      assert(false);
+    assert(false);
+    return {};
   }
 
   std::string getTempNetName() {

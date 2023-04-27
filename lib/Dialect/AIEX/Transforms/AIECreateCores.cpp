@@ -173,14 +173,13 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           // the function argument's type is a scalar, we promote it to a
           // one-element memref, and do a load to the buffer at index 0
           for (auto pair : coreBufTypes) {
-            [[maybe_unused]] MemRefType t = pair.first;
             int operandID = pair.second;
             Value arg = func.getArgument(operandID);
             Value buf = buffers[callOperands[operandID]];
             if (arg.getType().isIntOrFloat()) {
-              assert(t.getShape().size() == 1 &&
+              assert(pair.first.getShape().size() == 1 &&
                      "Expected MemRefType of shape 1");
-              assert(t.getShape()[0] == 1 &&
+              assert(pair.first.getShape()[0] == 1 &&
                      "Expected MemRefType of single element");
 
               Value zero = builder.create<arith::ConstantIndexOp>(
