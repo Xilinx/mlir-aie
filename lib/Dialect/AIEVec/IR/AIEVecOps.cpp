@@ -207,6 +207,17 @@ ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
 // SRSOp
 //===----------------------------------------------------------------------===//
 
+// SRS fold method. It will fold with a preceding UPS operation.
+OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
+  auto srcDefOp = getSource().getDefiningOp();
+  if (!srcDefOp)
+    return nullptr;
+  auto upsOp = dyn_cast<UPSOp>(srcDefOp);
+  if (!upsOp)
+    return nullptr;
+  return upsOp.getSource();
+}
+
 // Print out SRS op.
 void SRSOp::print(OpAsmPrinter &p) {
   // Print the source accumulator
