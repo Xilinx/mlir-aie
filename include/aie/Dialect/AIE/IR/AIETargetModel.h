@@ -111,7 +111,7 @@ public:
   virtual uint32_t getLocalMemorySize() const = 0;
 
   /// Return the number of lock objects
-  virtual uint32_t getNumLocks() const = 0;
+  virtual uint32_t getNumLocks(int col, int row) const = 0;
 
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
@@ -161,7 +161,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
-  uint32_t getNumLocks() const override { return 16; }
+  uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
 };
 
@@ -200,7 +200,9 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
-  uint32_t getNumLocks() const override { return 64; }
+  uint32_t getNumLocks(int col, int row) const override {
+    return isMemTile(col, row) ? 64 : 16;
+  }
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
   }

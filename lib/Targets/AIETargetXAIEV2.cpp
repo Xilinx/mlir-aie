@@ -116,7 +116,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   }
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
   const auto &target_model = targetOp.getTargetModel();
-  int numLocks = target_model.getNumLocks();
 
   NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers, switchboxes);
   NL.collectTiles(tiles);
@@ -139,7 +138,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       output << "XAie_CoreDisable(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ");\n";
       // Release locks
-      output << "for (int l=0; l<" << numLocks << "; l++)\n"
+      int numLocks = target_model.getNumLocks(col, row);
+      output << "for (int l = 0; l < " << numLocks << "; ++l)\n"
              << "  XAie_LockRelease(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0);\n";
       if (auto coreOp = tileOp.getCoreOp()) {

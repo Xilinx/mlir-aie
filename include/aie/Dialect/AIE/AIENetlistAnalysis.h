@@ -99,7 +99,6 @@ public:
                                          Operation *destConnectOp) const;
   void dmaAnalysis();
   void lockAnalysis();
-  int getAvailableLockID(Operation *tileOp);
 
   void print(raw_ostream &os);
 };

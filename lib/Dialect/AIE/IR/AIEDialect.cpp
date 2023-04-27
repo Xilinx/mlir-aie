@@ -905,9 +905,12 @@ LogicalResult xilinx::AIE::LockOp::verify() {
 
   if (getLockID().has_value()) {
     const auto &target_model = xilinx::AIE::getTargetModel(getTileOp());
-    if (getLockID().value() >= target_model.getNumLocks())
+    auto tileOp = getTileOp();
+    unsigned int numLocks =
+        target_model.getNumLocks(tileOp.getCol(), tileOp.getRow());
+    if (getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
-             << target_model.getNumLocks() - 1 << ")";
+             << numLocks - 1 << ")";
   }
 
   return success();
