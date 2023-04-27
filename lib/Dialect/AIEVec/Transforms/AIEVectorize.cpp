@@ -597,11 +597,12 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
   VectorType vecType = sources.back().getType().cast<VectorType>();
 
   assert([&] {
-    for (auto source : sources)
+    for (auto source : sources) {
       VectorType type = source.getType().cast<VectorType>();
-    if (type != vecType) {
-      printf("sources of concat op not of same type\n");
-      return false;
+      if (type != vecType) {
+        printf("sources of concat op not of same type\n");
+        return false;
+      }
     }
     return true;
   }());
@@ -725,11 +726,12 @@ static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
   VectorType vecType = sources.back().getType().cast<VectorType>();
 
   assert([&] {
-    for (auto source : sources)
+    for (auto source : sources) {
       VectorType type = source.getType().cast<VectorType>();
-    if (type != vecType) {
-      printf("sources of concat op not of same type\n");
-      return false;
+      if (type != vecType) {
+        printf("sources of concat op not of same type\n");
+        return false;
+      }
     }
     return true;
   }());
