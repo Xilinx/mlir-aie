@@ -56,7 +56,7 @@ struct AIELocalizeLocksPass
         int cardinalMemOffset = 0;
 
         const auto &target_model = xilinx::AIE::getTargetModel(tile);
-        int numLocks = target_model.getNumLocks();
+        int numLocks = target_model.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
             if (target_model.isMemSouth(col, row, dstCol, dstRow))
