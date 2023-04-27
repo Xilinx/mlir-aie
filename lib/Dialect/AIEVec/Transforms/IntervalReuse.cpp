@@ -219,12 +219,15 @@ void IntervalReuse::insertInterval(
 
   // Verify that each interval is within the AIE vector size limit
   assert([&] {
-    for (auto iv : intervals)
+    for (auto iv : intervals) {
       int32_t width = iv.second - iv.first;
-    if (width > 1024)
-      return false;
+      if (width > 1024) {
+        printf("Vector width > 1024 currently not supported");
+        return false;
+      }
+    }
     return true;
-  }("Vector width > 1024 currently not supported"));
+  }());
 
   // Print out the merged intervals
   LLVM_DEBUG(llvm::dbgs() << "\n\tAfter inserting access extent, intervals: ");

@@ -259,8 +259,12 @@ static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
   assert([&] {
     bool expectedTypes =
         (isa<vector::FMAOp>(Op2) && isa<MulIOp, MulFOp, vector::FMAOp>(Op1));
-    return expectedTypes;
-  }("incorrect operation types"));
+    if (!expectedTypes) {
+      printf("incorrect operation types\n");
+      return false;
+    }
+    return true;
+  }());
 
   // Iterate over the even and odd operands for both the operations
   for (int idx = 0; idx < 2; ++idx) {
@@ -595,10 +599,12 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
   assert([&] {
     for (auto source : sources)
       VectorType type = source.getType().cast<VectorType>();
-    if (type != vecType)
+    if (type != vecType) {
+      printf("sources of concat op not of same type\n");
       return false;
+    }
     return true;
-  }("sources of concat op not of same type"));
+  }());
 
   if (!concatType) {
     // Get the number of lanes and scalar type to create the concat result type
@@ -721,10 +727,12 @@ static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
   assert([&] {
     for (auto source : sources)
       VectorType type = source.getType().cast<VectorType>();
-    if (type != vecType)
+    if (type != vecType) {
+      printf("sources of concat op not of same type\n");
       return false;
+    }
     return true;
-  }("sources of concat op not of same type"));
+  }());
 
   if (!resType) {
     unsigned lanes = getVectorLaneSize(vecType);

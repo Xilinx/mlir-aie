@@ -37,6 +37,7 @@ static llvm::cl::opt<bool>
 #include <boost/throw_exception.hpp>
 void boost::throw_exception(std::exception const &e) {
   // boost expects this exception to be defined.
+  assert(false);
 }
 #pragma clang diagnostic pop
 
