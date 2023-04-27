@@ -1096,6 +1096,27 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
     default:
       return 0;
     }
+  if (getTileOp().isMemTile())
+    switch (bundle) {
+    //case WireBundle::Core:
+    //  return 2;
+    case WireBundle::DMA:
+      return 6;
+    //case WireBundle::FIFO:
+    //  return 2;
+    case WireBundle::North:
+      return 4;
+    //case WireBundle::West:
+    //  return 4;
+    case WireBundle::South:
+      return 6;
+    //case WireBundle::East:
+    //  return 4;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
   else
     switch (bundle) {
     case WireBundle::Core:
@@ -1137,6 +1158,27 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
     default:
       return 0;
     }
+  if (getTileOp().isMemTile())
+    switch (bundle) {
+    //case WireBundle::Core:
+    //  return 2;
+    case WireBundle::DMA:
+      return 6;
+    //case WireBundle::FIFO:
+    //  return 2;
+    case WireBundle::North:
+      return 6;
+    //case WireBundle::West:
+    //  return 4;
+    case WireBundle::South:
+      return 4;
+    //case WireBundle::East:
+    //  return 4;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
   else
     switch (bundle) {
     case WireBundle::Core:
@@ -1158,24 +1200,44 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
     }
 }
 int TileOp::getNumSourceConnections(WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::Core:
-    return 2;
-  case WireBundle::DMA:
-    return 2;
-  default:
-    return 0;
-  }
+  if (isMemTile())
+    switch (bundle) {
+    //case WireBundle::Core:
+    //  return 2;
+    case WireBundle::DMA:
+      return 6;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 2;
+    case WireBundle::DMA:
+      return 2;
+    default:
+      return 0;
+    }
 }
 int TileOp::getNumDestConnections(WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::Core:
-    return 2;
-  case WireBundle::DMA:
-    return 2;
-  default:
-    return 0;
-  }
+  if (isMemTile())
+    switch (bundle) {
+    //case WireBundle::Core:
+    //  return 2;
+    case WireBundle::DMA:
+      return 6;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 2;
+    case WireBundle::DMA:
+      return 2;
+    default:
+      return 0;
+    }
 }
 bool TileOp::isMemTile() {
   const auto &target_model = getTargetModel(*this);
