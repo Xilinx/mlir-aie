@@ -15,7 +15,7 @@
 MLIR_AIE_INSTALL = $(dir $(shell which aie-opt))/..
 
 ifeq ($(host),) 
-host:=../test.cpp
+host:=../../test.cpp
 endif
 ifeq ($(MLIR_AIE_SRC_DIR),) 
 MLIR_AIE_SRC_DIR:=. 
@@ -29,15 +29,15 @@ all: sim
 
 CC_ENV := (export LD_LIBRARY_PATH=${XILINX_VITIS_AIETOOLS}/lib/lnx64.o:$(LD_LIBRARY_PATH))
 CC := "${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++" 
-CC_ARGS := -fPIC -fpermissive -c -std=c++17 -D__AIEARCH__=20 -DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR -DAIE2_FP32_EMULATION_ACCURACY_FAST -Wno-deprecated-declarations -DSC_INCLUDE_DYNAMIC_PROCESSES -D__AIESIM__ -D__PS_INIT_AIE__ -DXAIE_DEBUG -Og -flto -D main\(...\)=ps_main\(...\) -I${XILINX_VITIS_AIETOOLS}/include -I${XILINX_VITIS_AIETOOLS}/include/drivers/aiengine -I${XILINX_HLS}/include -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0 -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/backward -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/x86_64-pc-linux-gnu -I${XILINX_VITIS_AIETOOLS}/data/osci_systemc/include -I${XILINX_VITIS_AIETOOLS}/tps/boost_1_72_0 -I. -I$(MLIR_AIE_SRC_DIR) -I${XILINX_VITIS_AIETOOLS}/include/xtlm/include -I${XILINX_VITIS_AIETOOLS}/include/common_cpp/common_cpp_v1_0/include -I${MLIR_AIE_INSTALL}/runtime_lib  -I ../. -I ../acdc_project 
+CC_ARGS := -fPIC -fpermissive -c -std=c++17 -D__AIEARCH__=10 -DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR -Wno-deprecated-declarations -DSC_INCLUDE_DYNAMIC_PROCESSES -D__AIESIM__ -D__PS_INIT_AIE__ -DXAIE_DEBUG -Og -flto -D main\(...\)=ps_main\(...\) -I${XILINX_VITIS_AIETOOLS}/include -I${XILINX_VITIS_AIETOOLS}/include/drivers/aiengine -I${XILINX_HLS}/include -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0 -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/backward -I${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/include/c++/8.3.0/x86_64-pc-linux-gnu -I${XILINX_VITIS_AIETOOLS}/data/osci_systemc/include -I${XILINX_VITIS_AIETOOLS}/tps/boost_1_72_0 -I. -I$(MLIR_AIE_SRC_DIR) -I${XILINX_VITIS_AIETOOLS}/include/xtlm/include -I${XILINX_VITIS_AIETOOLS}/include/common_cpp/common_cpp_v1_0/include -I${MLIR_AIE_INSTALL}/runtime_lib/x86_64/test_lib/include  -I../../ -I../
 
-ps/test_library.o: ${MLIR_AIE_INSTALL}/runtime_lib/test_library.cpp
+ps/test_library.o: ${MLIR_AIE_INSTALL}/runtime_lib/x86_64/test_lib/test_library.cpp
 	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<
 	
 ps/test.o: $(host)
 	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<
 
-ps/genwrapper_for_ps.o: ps/genwrapper_for_ps.cpp $(host) ../acdc_project/aie_inc.cpp ${MLIR_AIE_INSTALL}/runtime_lib/test_library.cpp
+ps/genwrapper_for_ps.o: ps/genwrapper_for_ps.cpp
 	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<
 
 ps/ps.so: ps/genwrapper_for_ps.o ps/test.o ps/test_library.o $(eval PATH:=$(XILINX_VITIS_AIETOOLS)/tps/lnx64/gcc/bin/:$(PATH))
@@ -46,7 +46,7 @@ ps/ps.so: ps/genwrapper_for_ps.o ps/test.o ps/test_library.o $(eval PATH:=$(XILI
 link: ps/ps.so
 
 sim: ps/ps.so
-	cd ..; aiesimulator --pkg-dir=./sim --dump-vcd foo
+	cd ../..; aiesimulator --pkg-dir=./aie.mlir.prj/sim --dump-vcd foo
 
 clean:
 	(rm -rf ps/*.o ps/*.so *.log aiesimulator_output *vcd)

@@ -49,22 +49,12 @@ set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
-find_package(Vitis)
+find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 
-# Look for LibXAIE
-if(NOT extraAieCcFlags)
-  set(LibXAIE_ROOT ${LibXAIE_DIR} ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2)
-  find_package(LibXAIE)
-  if(LibXAIE_FOUND)
-    message(STATUS "Using LibXAIE: ${XILINX_XAIE_DIR}")
-  else()
-    message(STATUS "LibXAIE NOT FOUND: Skipping some tests")
-  endif()
-else()
-  set(LibXAIE_ROOT ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
-  # too early to call find_package(LibXAIE) since it needs to be cross compiled as part of this build
-  message(STATUS "Defaulted to Vitis included sysroot, libxaie will be cross compiled and picked up from the install folder")
+# Look for LibXAIE: only depend on locally build xaiengine for now
+if(DEFINED VITIS_ROOT)
+  message(STATUS "Vitis available, libxaie will be compiled and picked up locally")
   set(LibXAIE_FOUND TRUE)
 endif()
 
@@ -121,7 +111,6 @@ set(TEST_DEPENDS
   aiecc.py
   aie-opt
   aie-translate
-  runtime-libs
   )
 
 add_lit_testsuite(check-tutorials "Running the aie tutorials tests"

@@ -456,7 +456,8 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
 }
 
 int xilinx::AIE::NetlistAnalysis::getAvailableLockID(Operation *tileOp) {
-  for (unsigned i = 0; i < 16; i++) {
+  const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
+  for (unsigned i = 0; i < target_model.getNumLocks(); i++) {
     if (locks.count(std::make_pair(tileOp, i)) == 0)
       return i;
   }

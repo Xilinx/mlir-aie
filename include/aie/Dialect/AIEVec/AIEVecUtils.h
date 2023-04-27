@@ -85,11 +85,15 @@ inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
 
     Type ctype = mlir::IntegerType::get(itype.getContext(), width);
     return VectorType::get(type.getShape(), ctype);
-  } else if (stype.isa<FloatType>())
-    // Floating point vector types are returned as is since the floating point
-    // operations write back to registers and not accumulators
+  } else if (FloatType ftype = stype.dyn_cast<FloatType>()) {
+    if (AIEML && ftype.getWidth() == 16) {
+      return VectorType::get(type.getShape(), ftype.getF32(ftype.getContext()));
+    }
+
+    // Floating point vector types for aie1 are returned as is since the
+    // floating point operations write back to registers and not accumulators
     return type;
-  else
+  } else
     llvm_unreachable("Unsupported destination type");
 }
 

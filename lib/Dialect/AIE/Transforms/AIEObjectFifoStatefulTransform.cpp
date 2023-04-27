@@ -72,8 +72,9 @@ public:
   }
 
   /// Given a tile, returns next usable lockID for that tile.
-  int getLockID(Value tileOp) {
-    for (unsigned i = 0; i < 16; i++) {
+  int getLockID(TileOp &tileOp) {
+    const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
+    for (unsigned i = 0; i < target_model.getNumLocks(); i++) {
       int usageCnt = locksPerTile[std::make_pair(tileOp, i)];
       if (usageCnt == 0) {
         locksPerTile[std::make_pair(tileOp, i)] = 1;
