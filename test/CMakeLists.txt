@@ -52,7 +52,7 @@ set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
-find_package(Vitis COMPONENTS AIE AIE2)
+find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE: only depend on locally build xaiengine for now
