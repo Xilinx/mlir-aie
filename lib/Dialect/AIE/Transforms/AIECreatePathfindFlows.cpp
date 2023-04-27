@@ -307,8 +307,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     Port srcPort = std::make_pair(srcBundle, srcChannel);
     // Port dstPort = std::make_pair(dstBundle, dstChannel);
 
-    #ifndef NDEBUG
-    TileID dstCoords =  std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+#ifndef NDEBUG
+    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     auto dstBundle = flowOp.getDestBundle();
     auto dstChannel = flowOp.getDestChannel();
@@ -318,7 +318,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
                << stringifyWireBundle(srcBundle) << (int)srcChannel << " -> ("
                << dstCoords.first << ", " << dstCoords.second << ")"
                << stringifyWireBundle(dstBundle) << (int)dstChannel << "\n\t");
-    #endif
+#endif
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow

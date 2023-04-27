@@ -262,7 +262,7 @@ xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
     return buf.address();
   } else if (auto buf = dyn_cast<ExternalBufferOp>(bufOp)) {
     assert(false && "External buffer addresses are assigned at runtime.");
-  } 
+  }
   llvm_unreachable("unknown buffer type");
   return 0;
 }

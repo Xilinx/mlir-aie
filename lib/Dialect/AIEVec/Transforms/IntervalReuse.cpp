@@ -221,16 +221,17 @@ void IntervalReuse::insertInterval(
   assert([&] {
     for (auto iv : intervals)
       int32_t width = iv.second - iv.first;
-      if (width > 1024) return false;
+    if (width > 1024)
+      return false;
     return true;
   }("Vector width > 1024 currently not supported"));
 
   // Print out the merged intervals
   LLVM_DEBUG(llvm::dbgs() << "\n\tAfter inserting access extent, intervals: ");
-  #ifndef NDEBUG
+#ifndef NDEBUG
   for (auto iv : intervals)
     LLVM_DEBUG(llvm::dbgs() << "[" << iv.first << "," << iv.second << "] ");
-  #endif
+#endif
 }
 
 // If a vector corresponding to any interval was tagged as exclusively being
@@ -284,8 +285,8 @@ void IntervalReuse::coalesceIntervals() {
   // Print out coalesced intervals
   LLVM_DEBUG(llvm::dbgs() << "\n\nAfter coalescing for "
                           << "i8xi8 scheme, intervals: ");
-  #ifndef NDEBUG
+#ifndef NDEBUG
   for (auto iv : intervals)
     LLVM_DEBUG(llvm::dbgs() << "[" << iv.first << "," << iv.second << "] ");
-  #endif
+#endif
 }

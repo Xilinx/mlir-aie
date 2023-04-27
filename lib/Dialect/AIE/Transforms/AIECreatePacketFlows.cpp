@@ -445,7 +445,7 @@ struct AIERoutePacketFlowsPass
     }
 
     LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
-    #ifndef NDEBUG
+#ifndef NDEBUG
     for (auto map : mastersets) {
       Operation *tileOp = map.first.first;
       WireBundle bundle = map.first.second.first;
@@ -458,7 +458,7 @@ struct AIERoutePacketFlowsPass
       for (auto value : map.second)
         LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
     }
-    #endif
+#endif
 
     // Compute mask values
     // Merging as many stream flows as possible
@@ -532,7 +532,7 @@ struct AIERoutePacketFlowsPass
         slaveMasks[port] = maskValue;
     }
 
-    #ifndef NDEBUG
+#ifndef NDEBUG
     LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
     for (auto map : slaveMasks) {
       auto port = map.first.first;
@@ -555,7 +555,7 @@ struct AIERoutePacketFlowsPass
                                   << "0x" << llvm::Twine::utohexstr(i) << '\n');
       }
     }
-    #endif
+#endif
 
     // Realize the routes in MLIR
     for (auto map : tiles) {
@@ -633,10 +633,10 @@ struct AIERoutePacketFlowsPass
         int ID = group.front().second & mask;
 
         // Verify that we actually map all the ID's correctly.
-        #ifndef NDEBUG
+#ifndef NDEBUG
         for (auto slave : group)
           assert((slave.second & mask) == ID);
-        #endif
+#endif
         Value amsel = amselOps[slaveAMSels[group.front()]];
 
         PacketRulesOp packetrules;

@@ -80,7 +80,7 @@ struct GraphWriter {
           .str();
     } else if (auto stream = type.dyn_cast<ParameterType>()) {
       return std::string(getCTypeString(stream.getType()));
-    }  
+    }
     assert(false);
     return {};
   }
