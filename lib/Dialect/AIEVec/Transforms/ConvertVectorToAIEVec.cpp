@@ -173,10 +173,13 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   return true;
 }
 
-static aievec::MulElemOp
-createMulElemOpForI8OrBf16(ConversionPatternRewriter &rewriter, Value lval,
-                           Value rval, VectorType srcType, unsigned bitWidth,
-                           Location loc) {
+// Create MulElemOp for i8 and bf16 types in aie-ml. The corresponding intrinsic
+// is mul_elem_16_2, which indicates that we need to concatenate zero vectors
+// for both mul operands before creating MulElemOp.
+static aievec::MulElemOp createMulElemAieML(ConversionPatternRewriter &rewriter,
+                                            Value lval, Value rval,
+                                            VectorType srcType,
+                                            unsigned bitWidth, Location loc) {
   Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
   VectorType vecType =
       createVectorType(512 / bitWidth, srcType.getElementType());
@@ -313,9 +316,9 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     aievec::MulElemOp mulElemOp = nullptr;
 
     if (resultElWidth == 16) {
-      mulElemOp = createMulElemOpForI8OrBf16(rewriter, adaptor.getLhs(),
-                                             adaptor.getRhs(), resultType,
-                                             resultElWidth, mulOp.getLoc());
+      mulElemOp =
+          createMulElemAieML(rewriter, adaptor.getLhs(), adaptor.getRhs(),
+                             resultType, resultElWidth, mulOp.getLoc());
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           mulOp, resultType, mulElemOp.getResult(), shiftParam);
     }
@@ -339,8 +342,8 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       if (lBitWidth != 16 || rBitWidth != 16)
         return failure();
 
-      mulElemOp = createMulElemOpForI8OrBf16(rewriter, lval, rval, lSrcType,
-                                             lBitWidth, mulOp.getLoc());
+      mulElemOp = createMulElemAieML(rewriter, lval, rval, lSrcType, lBitWidth,
+                                     mulOp.getLoc());
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
     }
@@ -420,8 +423,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
 
         aievec::MulElemOp mulElemOp = nullptr;
         if (lBitWidth == 8) {
-          mulElemOp = createMulElemOpForI8OrBf16(rewriter, lval, rval, lSrcType,
-                                                 lBitWidth, mulOp.getLoc());
+          mulElemOp = createMulElemAieML(rewriter, lval, rval, lSrcType,
+                                         lBitWidth, mulOp.getLoc());
         } else {
           Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
           mulElemOp = rewriter.create<aievec::MulElemOp>(mulOp.getLoc(),
@@ -440,8 +443,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
         auto rval = adaptor.getRhs();
         VectorType srcType = cast<VectorType>(lval.getType());
         unsigned bitWidth = srcType.getElementType().getIntOrFloatBitWidth();
-        auto mulElemOp = createMulElemOpForI8OrBf16(
-            rewriter, lval, rval, srcType, bitWidth, mulOp.getLoc());
+        auto mulElemOp = createMulElemAieML(rewriter, lval, rval, srcType,
+                                            bitWidth, mulOp.getLoc());
         rewriter.replaceOpWithNewOp<aievec::SRSOp>(
             mulOp, srcType, mulElemOp.getResult(), shiftParam);
       }
