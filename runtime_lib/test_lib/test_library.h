@@ -213,21 +213,23 @@ struct aie_libxaie_ctx_t {
 #endif
 };
 
-
 // class for using events and PF cpounters
 class EventMonitor {
 public:
-  EventMonitor(aie_libxaie_ctx_t *_xaie, u32 _col, u32 _row, u32 _pfc, XAie_Events _startE, XAie_Events _endE,
-           XAie_Events _resetE, XAie_ModuleType _module) {
-//  EventMonitor(struct XAieGbl_Tile *_tilePtr, u32 _pfc, u32 _startE, u32 _endE,
-//           u32 _resetE, XAie_ModuleType _module) {
-    //tilePtr = _tilePtr;
+  EventMonitor(aie_libxaie_ctx_t *_xaie, u32 _col, u32 _row, u32 _pfc,
+               XAie_Events _startE, XAie_Events _endE, XAie_Events _resetE,
+               XAie_ModuleType _module) {
+    //  EventMonitor(struct XAieGbl_Tile *_tilePtr, u32 _pfc, u32 _startE, u32
+    //  _endE,
+    //           u32 _resetE, XAie_ModuleType _module) {
+    // tilePtr = _tilePtr;
     devInst = &(_xaie->DevInst);
     row = _row;
     col = _col;
     pfc = _pfc;
     mode = _module;
-    XAie_PerfCounterControlSet(devInst, XAie_TileLoc(col,row), mode, pfc, _startE, _endE);
+    XAie_PerfCounterControlSet(devInst, XAie_TileLoc(col, row), mode, pfc,
+                               _startE, _endE);
 
     // mode = _mode; // 0: Core, 1: PL, 2, Mem
     // if (mode == MODE_CORE) {
@@ -239,8 +241,8 @@ public:
     // }
   }
   void set() {
-    //XAie_PerfCounterSet(devInst, XAie_TileLoc(col,row), mode, pfc, val);
-    XAie_PerfCounterGet(devInst, XAie_TileLoc(col,row), mode, pfc, &start);
+    // XAie_PerfCounterSet(devInst, XAie_TileLoc(col,row), mode, pfc, val);
+    XAie_PerfCounterGet(devInst, XAie_TileLoc(col, row), mode, pfc, &start);
     // if (mode == MODE_CORE) {
     //   start = XAieTileCore_PerfCounterGet(tilePtr, pfc);
     // } else if (mode == MODE_PL) {
@@ -251,7 +253,7 @@ public:
   }
   u32 read() {
     u32 val;
-    XAie_PerfCounterGet(devInst, XAie_TileLoc(col,row), mode, pfc, &val);
+    XAie_PerfCounterGet(devInst, XAie_TileLoc(col, row), mode, pfc, &val);
     return val;
     // if (mode == MODE_CORE) {
     //   return XAieTileCore_PerfCounterGet(tilePtr, pfc);
@@ -263,7 +265,7 @@ public:
   }
   u32 diff() {
     u32 end;
-    XAie_PerfCounterGet(devInst, XAie_TileLoc(col,row), mode, pfc, &end);
+    XAie_PerfCounterGet(devInst, XAie_TileLoc(col, row), mode, pfc, &end);
     // if (mode == MODE_CORE) {
     //   end = XAieTileCore_PerfCounterGet(tilePtr, pfc);
     // } else if (mode == MODE_PL) {
@@ -344,4 +346,3 @@ void computeStats(u32 performance_counter[], int n);
 } // extern "C"
 
 #endif
-

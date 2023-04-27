@@ -9,4 +9,4 @@ test.elf: aie.mlir test.cpp
 	aiecc.py -j4 --sysroot=${SYSROOT} --host-target=aarch64-linux-gnu ./aie.mlir -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp ./test.cpp -o $@
 
 clean:
-	rm -rf acdc_project *elf *exe core*
+	rm -rf aie.mlir.prj *elf *exe core*

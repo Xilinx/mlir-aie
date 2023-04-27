@@ -26,6 +26,9 @@ endif()
 
 project(aie-test LANGUAGES CXX C)
 
+# default to host system architecture for runtime target
+set(AIE_RUNTIME_TEST_TARGET ${CMAKE_HOST_SYSTEM_PROCESSOR} CACHE STRING "Runtime architecture to test with.")
+
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -49,18 +52,12 @@ set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
-# Look for LibXAIE in the sysroot.  Depending on the sysroot, this might live in multiple locations.
-if(NOT extraAieCcFlags)
-  set(LibXAIE_ROOT ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2)
-  find_package(LibXAIE)
-  if(LibXAIE_FOUND)
-    message(STATUS "Using LibXAIE in sysroot: ${XILINX_XAIE_DIR}")
-  else()
-    message(STATUS "LibXAIE NOT FOUND in ${VitisSysroot}: Skipping some tests")
-  endif()
-else()
-  set(LibXAIE_ROOT ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
-  message(STATUS "Defaulted to Vitis included sysroot, libxaie will be cross compiled and picked up from the install folder")
+find_package(Vitis COMPONENTS AIE AIE2)
+find_package(Python3 COMPONENTS Interpreter)
+
+# Look for LibXAIE: only depend on locally build xaiengine for now
+if(DEFINED VITIS_ROOT)
+  message(STATUS "Vitis available, libxaie will be compiled and picked up locally")
   set(LibXAIE_FOUND TRUE)
 endif()
 
@@ -117,14 +114,13 @@ set(TEST_DEPENDS
   aiecc.py
   aie-opt
   aie-translate
-  runtime-libs
   )
 
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 300 --time-tests"
+  ARGS "-a --timeout 300 --time-tests"
   )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 
-add_lit_testsuites(AIE ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TEST_DEPENDS} ARGS "-sv --timeout 300 --time-tests")
+add_lit_testsuites(AIE ${CMAKE_CURRENT_BINARY_DIR} DEPENDS ${TEST_DEPENDS} ARGS "-a --timeout 300 --time-tests")

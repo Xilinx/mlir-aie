@@ -76,7 +76,8 @@ int mlir_aie_release_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
 // Return a 2-bit lock status.
 // The low-order bit is 1 if the lock has been acquired.
 // The higher-order bit has the lock value.
-int mlir_aie_get_lock_status(aie_libxaie_ctx_t *ctx, int col, int row, int lockid) {
+int mlir_aie_get_lock_status(aie_libxaie_ctx_t *ctx, int col, int row,
+                             int lockid) {
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
   u32 locks;
   XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);

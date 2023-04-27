@@ -2,7 +2,7 @@
 
 # MLIR-AIE install directory. If you have sourced utils/env_setup.sh before
 # running make, the following should work to find the AIE install directory.
-AIE_INSTALL ?= $(shell realpath $(dir $(shell which aie-opt))/..)
+AIE_INSTALL ?= $(shell realpath $(dir $(shell which aie-opt))/../runtime_lib/aarch64)
 
 # VITIS related variables
 VITIS_ROOT ?= $(shell realpath $(dir $(shell which vitis))/../)
@@ -25,10 +25,10 @@ LIBCXX_VERSION ?= 11.2.0
 # aiecc.py invocations.
 AIECC_FLAGS += --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu
 
-CHESSCC_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR}
+CHESSCC_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}
 
 # The following additional flags are only applied for host code. We add the
 # necessary search paths for the sysroot so clang++ can find the aarch64
 # includes and libraries.
-AIECC_HOST_FLAGS += -I$(AIE_INSTALL)/runtime_lib $(AIE_INSTALL)/runtime_lib/test_library.cpp -I${AIE_INSTALL}/runtime_lib/xaiengine/include -I${MLIR_AIE_SYSROOT}/usr/include -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION} -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L$(AIE_INSTALL)/runtime_lib/xaiengine/lib -B${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}
+AIECC_HOST_FLAGS += -I$(AIE_INSTALL)/test_lib/include -I${AIE_INSTALL}/xaiengine/include -I${MLIR_AIE_SYSROOT}/usr/include -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION} -I${MLIR_AIE_SYSROOT}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L$(AIE_INSTALL)/test_lib/lib -ltest_lib -B${MLIR_AIE_SYSROOT}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}

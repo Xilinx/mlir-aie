@@ -50,7 +50,7 @@ set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 # Look for LibXAIE in the sysroot.  Depending on the sysroot, this might live in multiple locations.
-set(LibXAIE_ROOT ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2 STRING "Default libxaie location.")
+set(LibXAIE_ROOT ${Sysroot}/usr ${Sysroot}/opt/xaiengine ${Sysroot}/opt/xaienginev2 STRING "Default libxaie location.")
 find_package(LibXAIE)
 
 if(LibXAIE_FOUND)
@@ -111,7 +111,6 @@ set(TEST_DEPENDS
   aiecc.py
   aie-opt
   aie-translate
-  runtime-libs
   )
 
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"

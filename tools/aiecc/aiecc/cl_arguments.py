@@ -24,7 +24,7 @@ def parse_args():
             help='sysroot for cross-compilation')
     parser.add_argument('--tmpdir',
             metavar="tmpdir",
-            default="acdc_project",
+            default=None,
             help='directory used for temporary file storage')
     parser.add_argument('-v',
             dest="verbose",
@@ -82,7 +82,7 @@ def parse_args():
             help='Disable compiling of AIE code')
     parser.add_argument('--host-target',
             dest="host_target",
-            default="",
+            default="x86_64-unknown-linux-gnu",
             help='Target architecture of the host program')
     parser.add_argument('--aie-target',
             dest="aie_target",

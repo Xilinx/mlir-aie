@@ -37,7 +37,7 @@ mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
 set -o pipefail
 set -e
-cmake -GNinja \
+cmake -GNinja\
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
@@ -47,7 +47,8 @@ cmake -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
-    -DVitisSysroot="" \
+    "-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
+    -DAIE_RUNTIME_TEST_TARGET=aarch64 \
     .. |& tee cmake.log
 
 ninja |& tee ninja.log
