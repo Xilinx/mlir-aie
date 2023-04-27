@@ -173,17 +173,25 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   return true;
 }
 
-static aievec::MulElemOp
-createMulElemOpForI8(ConversionPatternRewriter &rewriter, Value lval,
-                     Value rval, VectorType srcType, unsigned bitWidth,
-                     Location loc) {
+// Create MulElemOp for i8 and bf16 types in aie-ml. The corresponding intrinsic
+// is mul_elem_16_2, which indicates that we need to concatenate zero vectors
+// for both mul operands before creating MulElemOp.
+static aievec::MulElemOp createMulElemAieML(ConversionPatternRewriter &rewriter,
+                                            Value lval, Value rval,
+                                            VectorType srcType,
+                                            unsigned bitWidth, Location loc) {
   Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
   VectorType vecType =
       createVectorType(512 / bitWidth, srcType.getElementType());
 
-  auto zeroConstOp = rewriter.create<arith::ConstantOp>(
-      loc, rewriter.getIntegerAttr(srcType.getElementType(), 0));
-
+  arith::ConstantOp zeroConstOp = nullptr;
+  if (bitWidth == 8) {
+    zeroConstOp = rewriter.create<arith::ConstantOp>(
+        loc, rewriter.getIntegerAttr(srcType.getElementType(), 0));
+  } else {
+    zeroConstOp =
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getF16FloatAttr(0));
+  }
   auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
       loc, vecType, zeroConstOp->getResult(0));
   auto extOp = rewriter.create<aievec::ExtOp>(loc, srcType,
@@ -302,34 +310,43 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     unsigned laneSize = getVectorLaneSize(resultType);
 
     // bfloat16 type
-    if (laneSize != 16 || resultElWidth != 16)
+    if (laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32))
       return failure();
 
-    Type accType = getVectorOpDestType(cast<VectorType>(mulOp.getType()),
-                                       /*AIEML =*/true);
-    VectorType vecType =
-        createVectorType(512 / resultElWidth, resultType.getElementType());
+    aievec::MulElemOp mulElemOp = nullptr;
 
-    auto zeroConstOp = rewriter.create<arith::ConstantOp>(
-        mulOp.getLoc(), rewriter.getF16FloatAttr(0));
+    if (resultElWidth == 16) {
+      mulElemOp =
+          createMulElemAieML(rewriter, adaptor.getLhs(), adaptor.getRhs(),
+                             resultType, resultElWidth, mulOp.getLoc());
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          mulOp, resultType, mulElemOp.getResult(), shiftParam);
+    }
+    // float type
+    else {
+      auto lhs = dyn_cast<arith::ExtFOp>(adaptor.getLhs().getDefiningOp());
+      auto rhs = dyn_cast<arith::ExtFOp>(adaptor.getRhs().getDefiningOp());
 
-    auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
-        mulOp.getLoc(), vecType, zeroConstOp->getResult(0));
-    auto extOp = rewriter.create<aievec::ExtOp>(mulOp.getLoc(), resultType,
-                                                broadcastZeroOp.getResult(), 0);
+      if (!lhs || !rhs)
+        return failure();
 
-    SmallVector<Value> lSources = {adaptor.getLhs(), extOp->getResult(0)};
-    SmallVector<Value> rSources = {adaptor.getRhs(), extOp->getResult(0)};
-    auto lConcatOp =
-        rewriter.create<aievec::ConcatOp>(mulOp.getLoc(), vecType, lSources);
-    auto rConcatOp =
-        rewriter.create<aievec::ConcatOp>(mulOp.getLoc(), vecType, rSources);
+      auto lval = lhs->getOperand(0);
+      auto rval = rhs->getOperand(0);
 
-    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
-        mulOp.getLoc(), accType, lConcatOp->getResult(0),
-        rConcatOp->getResult(0));
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-        mulOp, resultType, mulElemOp.getResult(), shiftParam);
+      VectorType lSrcType = cast<VectorType>(lval.getType());
+      VectorType rSrcType = cast<VectorType>(rval.getType());
+
+      unsigned lBitWidth = lSrcType.getElementType().getIntOrFloatBitWidth();
+      unsigned rBitWidth = rSrcType.getElementType().getIntOrFloatBitWidth();
+
+      if (lBitWidth != 16 || rBitWidth != 16)
+        return failure();
+
+      mulElemOp = createMulElemAieML(rewriter, lval, rval, lSrcType, lBitWidth,
+                                     mulOp.getLoc());
+      rewriter.replaceOpWithNewOp<aievec::CastOp>(
+          mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
+    }
     return success();
   }
   unsigned shiftParam;
@@ -406,8 +423,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
 
         aievec::MulElemOp mulElemOp = nullptr;
         if (lBitWidth == 8) {
-          mulElemOp = createMulElemOpForI8(rewriter, lval, rval, lSrcType,
-                                           lBitWidth, mulOp.getLoc());
+          mulElemOp = createMulElemAieML(rewriter, lval, rval, lSrcType,
+                                         lBitWidth, mulOp.getLoc());
         } else {
           Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
           mulElemOp = rewriter.create<aievec::MulElemOp>(mulOp.getLoc(),
@@ -426,8 +443,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
         auto rval = adaptor.getRhs();
         VectorType srcType = cast<VectorType>(lval.getType());
         unsigned bitWidth = srcType.getElementType().getIntOrFloatBitWidth();
-        auto mulElemOp = createMulElemOpForI8(rewriter, lval, rval, srcType,
-                                              bitWidth, mulOp.getLoc());
+        auto mulElemOp = createMulElemAieML(rewriter, lval, rval, srcType,
+                                            bitWidth, mulOp.getLoc());
         rewriter.replaceOpWithNewOp<aievec::SRSOp>(
             mulOp, srcType, mulElemOp.getResult(), shiftParam);
       }
@@ -1098,7 +1115,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    return (laneSize != 16 || resultElWidth != 16);
+    return (laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32));
   });
 }
 
