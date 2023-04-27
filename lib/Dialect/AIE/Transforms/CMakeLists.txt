@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
+
+add_compile_options(-Wno-unknown-warning-option)
 add_mlir_dialect_library(AIETransforms
   AIEAssignBuffers.cpp
   AIEAssignLockIDs.cpp
