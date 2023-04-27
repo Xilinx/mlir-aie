@@ -256,9 +256,15 @@ static inline std::pair<int32_t, int32_t> getNumRowsAndCols(Operation *op,
 static inline void fuseAccessExtent(Operation *Op1, Operation *Op2,
                                     VectState *state) {
   // Assert that the input operations are of expected type
-  bool expectedTypes =
-      isa<vector::FMAOp>(Op2) && isa<MulIOp, MulFOp, vector::FMAOp>(Op1);
-  assert(expectedTypes && "incorrect operation types");
+  assert([&] {
+    bool expectedTypes =
+        (isa<vector::FMAOp>(Op2) && isa<MulIOp, MulFOp, vector::FMAOp>(Op1));
+    if (!expectedTypes) {
+      printf("incorrect operation types\n");
+      return false;
+    }
+    return true;
+  }());
 
   // Iterate over the even and odd operands for both the operations
   for (int idx = 0; idx < 2; ++idx) {
@@ -590,10 +596,16 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
 
   VectorType vecType = sources.back().getType().cast<VectorType>();
 
-  for (auto source : sources) {
-    VectorType type = source.getType().cast<VectorType>();
-    assert(type == vecType && "sources of concat op not of same type");
-  }
+  assert([&] {
+    for (auto source : sources) {
+      VectorType type = source.getType().cast<VectorType>();
+      if (type != vecType) {
+        printf("sources of concat op not of same type\n");
+        return false;
+      }
+    }
+    return true;
+  }());
 
   if (!concatType) {
     // Get the number of lanes and scalar type to create the concat result type
@@ -713,10 +725,16 @@ static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
 
   VectorType vecType = sources.back().getType().cast<VectorType>();
 
-  for (auto source : sources) {
-    VectorType type = source.getType().cast<VectorType>();
-    assert(type == vecType && "sources of concat op not of same type");
-  }
+  assert([&] {
+    for (auto source : sources) {
+      VectorType type = source.getType().cast<VectorType>();
+      if (type != vecType) {
+        printf("sources of concat op not of same type\n");
+        return false;
+      }
+    }
+    return true;
+  }());
 
   if (!resType) {
     unsigned lanes = getVectorLaneSize(vecType);

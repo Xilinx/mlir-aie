@@ -32,11 +32,14 @@ static llvm::cl::opt<bool>
                llvm::cl::init(false));
 
 #define BOOST_NO_EXCEPTIONS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-noreturn"
 #include <boost/throw_exception.hpp>
 void boost::throw_exception(std::exception const &e) {
   // boost expects this exception to be defined.
   assert(false);
 }
+#pragma clang diagnostic pop
 
 std::string stringifyDirs(std::set<Port> dirs) {
   unsigned int count = 0;
@@ -299,21 +302,24 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     Operation *Op = flowOp.getOperation();
 
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
     Port srcPort = std::make_pair(srcBundle, srcChannel);
     // Port dstPort = std::make_pair(dstBundle, dstChannel);
+
+#ifndef NDEBUG
+    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+    auto dstBundle = flowOp.getDestBundle();
+    auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.first
                << ", " << srcCoords.second << ")"
                << stringifyWireBundle(srcBundle) << (int)srcChannel << " -> ("
                << dstCoords.first << ", " << dstCoords.second << ")"
                << stringifyWireBundle(dstBundle) << (int)dstChannel << "\n\t");
+#endif
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
