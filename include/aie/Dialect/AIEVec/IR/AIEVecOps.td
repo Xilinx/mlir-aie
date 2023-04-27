@@ -381,6 +381,7 @@ def AIEVec_SRSOp:
     precision is controlled by the shift parameter.
     `$result = srs($source, $shift)`
   }];
+  let hasFolder = 1;
 }
 
 def AIEVec_UPDOp:
