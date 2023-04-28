@@ -1116,7 +1116,6 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
     return 1;
 
   int32_t step = 0;
-  bool found = false;
   VectorType vectorType = readOp.getResult().getType().cast<VectorType>();
   SmallVector<Value, 4> indices(readOp.getIndices().begin(),
                                 readOp.getIndices().end());
@@ -1137,6 +1136,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
     auto index = indices[dimExpr.getPosition()];
     // Iterate over all enclosing loops, and find the one that is variant in
     // index.
+    [[maybe_unused]] bool found = false;
     for (auto loop : enclosingLoops) {
       auto iv = cast<AffineForOp>(loop).getInductionVar();
       auto invariants = getInvariantAccesses(iv, indices);
@@ -2623,8 +2623,8 @@ static void redundantLoadStoreOptimization(ModuleOp module) {
 static void preCanonicalizeIR(ModuleOp module) {
   PassManager pm(module.getContext());
   pm.addPass(createCanonicalizerPass());
-  auto f = failed(pm.run(module));
-  assert(!f);
+  [[maybe_unused]] bool success = pm.run(module).succeeded();
+  assert(success);
   redundantLoadStoreOptimization(module);
 }
 
@@ -2637,8 +2637,8 @@ static void postCanonicalizeIR(ModuleOp module) {
   pm.addPass(createCSEPass());
   pm.addPass(createLoopInvariantCodeMotionPass());
   pm.addPass(createLowerAffinePass());
-  auto f = failed(pm.run(module));
-  assert(!f);
+  [[maybe_unused]] bool success = pm.run(module).succeeded();
+  assert(success);
 }
 
 // Iterate over the loop nestings to form loop nesting bands. Then for each
