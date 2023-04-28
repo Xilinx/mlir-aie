@@ -2623,7 +2623,8 @@ static void redundantLoadStoreOptimization(ModuleOp module) {
 static void preCanonicalizeIR(ModuleOp module) {
   PassManager pm(module.getContext());
   pm.addPass(createCanonicalizerPass());
-  assert(!failed(pm.run(module)));
+  auto f = failed(pm.run(module));
+  assert(!f);
   redundantLoadStoreOptimization(module);
 }
 
@@ -2636,7 +2637,8 @@ static void postCanonicalizeIR(ModuleOp module) {
   pm.addPass(createCSEPass());
   pm.addPass(createLoopInvariantCodeMotionPass());
   pm.addPass(createLowerAffinePass());
-  assert(!failed(pm.run(module)));
+  auto f = failed(pm.run(module));
+  assert(!f);
 }
 
 // Iterate over the loop nestings to form loop nesting bands. Then for each
