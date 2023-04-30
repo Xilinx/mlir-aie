@@ -35,7 +35,7 @@
 
 using namespace mlir;
 
-#include "aie/Dialect/AIE/IR/AIEEnums.h.inc"
+#include "AIEEnums.h"
 
 namespace xilinx {
 namespace AIE {
