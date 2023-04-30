@@ -15,15 +15,12 @@
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallSet.h"
 
+#include "aie/Dialect/AIE/IR/AIEEnums.h"
+
 namespace xilinx {
 namespace AIE {
 
 typedef std::pair<int, int> TileID;
-
-enum AIEArch {
-  AIE1 = 1,
-  AIE2 = 2,
-};
 
 class AIETargetModel {
 public:
