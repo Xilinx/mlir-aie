@@ -32,11 +32,14 @@ static llvm::cl::opt<bool>
                llvm::cl::init(false));
 
 #define BOOST_NO_EXCEPTIONS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-noreturn"
 #include <boost/throw_exception.hpp>
 void boost::throw_exception(std::exception const &e) {
   // boost expects this exception to be defined.
   assert(false);
 }
+#pragma clang diagnostic pop
 
 std::string stringifyDirs(std::set<Port> dirs) {
   unsigned int count = 0;
@@ -92,7 +95,7 @@ std::string stringifySwitchSettings(SwitchSettings settings) {
 // It then converts these settings to MLIR operations
 class DynamicTileAnalysis {
 public:
-  ModuleOp &module;
+  DeviceOp &device;
   int maxcol, maxrow;
   Pathfinder pathfinder;
   std::map<PathEndPoint, SwitchSettings> flow_solutions;
@@ -105,22 +108,22 @@ public:
 
   const int MAX_ITERATIONS = 1000; // how long until declared unroutable
 
-  DynamicTileAnalysis(ModuleOp &m) : module(m) {
+  DynamicTileAnalysis(DeviceOp &d) : device(d) {
     LLVM_DEBUG(llvm::dbgs()
                << "\t---Begin DynamicTileAnalysis Constructor---\n");
     // find the maxcol and maxrow
     maxcol = 0;
     maxrow = 0;
-    for (TileOp tileOp : m.getOps<TileOp>()) {
+    for (TileOp tileOp : d.getOps<TileOp>()) {
       maxcol = std::max(maxcol, tileOp.colIndex());
       maxrow = std::max(maxrow, tileOp.rowIndex());
     }
 
     pathfinder = Pathfinder(maxcol, maxrow);
 
-    // for each flow in the module, add it to pathfinder
+    // for each flow in the device, add it to pathfinder
     // each source can map to multiple different destinations (fanout)
-    for (FlowOp flowOp : module.getOps<FlowOp>()) {
+    for (FlowOp flowOp : device.getOps<FlowOp>()) {
       TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
       TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
       Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
@@ -141,7 +144,7 @@ public:
 
     // add existing connections so Pathfinder knows which resources are
     // available search all existing SwitchBoxOps for exising connections
-    for (SwitchboxOp switchboxOp : module.getOps<SwitchboxOp>()) {
+    for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
       for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
         Coord existing_coord =
             std::make_pair(switchboxOp.colIndex(), switchboxOp.rowIndex());
@@ -156,7 +159,7 @@ public:
     // check whether the pathfinder algorithm creates a legal routing
     flow_solutions = pathfinder.findPaths(MAX_ITERATIONS);
     if (!pathfinder.isLegal())
-      m.emitError("Unable to find a legal routing");
+      d.emitError("Unable to find a legal routing");
 
     // initialize all flows as unprocessed to prep for rewrite
     for (auto iter = flow_solutions.begin(); iter != flow_solutions.end();
@@ -169,7 +172,7 @@ public:
     }
 
     // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
-    for (auto tileOp : module.getOps<TileOp>()) {
+    for (auto tileOp : device.getOps<TileOp>()) {
       int col, row;
       col = tileOp.colIndex();
       row = tileOp.rowIndex();
@@ -178,14 +181,14 @@ public:
       assert(coordToTile.count(std::make_pair(col, row)) == 0);
       coordToTile[std::make_pair(col, row)] = tileOp;
     }
-    for (auto switchboxOp : module.getOps<SwitchboxOp>()) {
+    for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
       int col, row;
       col = switchboxOp.colIndex();
       row = switchboxOp.rowIndex();
       assert(coordToSwitchbox.count(std::make_pair(col, row)) == 0);
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
     }
-    for (auto shimmuxOp : module.getOps<ShimMuxOp>()) {
+    for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
       int col, row;
       col = shimmuxOp.colIndex();
       row = shimmuxOp.rowIndex();
@@ -263,11 +266,11 @@ public:
 // instantiates shim-muxes AND allocates channels ( no need to rip these up in )
 struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
   using OpConversionPattern<AIE::FlowOp>::OpConversionPattern;
-  ModuleOp &module;
+  DeviceOp &device;
   DynamicTileAnalysis &analyzer;
-  ConvertFlowsToInterconnect(MLIRContext *context, ModuleOp &m,
+  ConvertFlowsToInterconnect(MLIRContext *context, DeviceOp &d,
                              DynamicTileAnalysis &a, PatternBenefit benefit = 1)
-      : OpConversionPattern<AIE::FlowOp>(context, benefit), module(m),
+      : OpConversionPattern<AIE::FlowOp>(context, benefit), device(d),
         analyzer(a) {}
 
   LogicalResult match(AIE::FlowOp op) const override { return success(); }
@@ -299,21 +302,24 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     Operation *Op = flowOp.getOperation();
 
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
-    auto dstBundle = flowOp.getDestBundle();
-    auto dstChannel = flowOp.getDestChannel();
     Port srcPort = std::make_pair(srcBundle, srcChannel);
     // Port dstPort = std::make_pair(dstBundle, dstChannel);
+
+#ifndef NDEBUG
+    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+    auto dstBundle = flowOp.getDestBundle();
+    auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
                << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.first
                << ", " << srcCoords.second << ")"
                << stringifyWireBundle(srcBundle) << (int)srcChannel << " -> ("
                << dstCoords.first << ", " << dstCoords.second << ")"
                << stringifyWireBundle(dstBundle) << (int)dstChannel << "\n\t");
+#endif
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
@@ -429,7 +435,7 @@ struct AIEPathfinderPass
    rewrite switchboxes to assign unassigned connections, ensure this can be done
    concurrently ( by different threads)
 
-   // Goal is to rewrite all flows in the module into switchboxes + shim-mux
+   // Goal is to rewrite all flows in the device into switchboxes + shim-mux
 
    // multiple passes of the rewrite pattern rewriting streamswitch
    configurations to routes
@@ -445,9 +451,9 @@ struct AIEPathfinderPass
     // create analysis pass with routing graph for entire device
     LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
-    ModuleOp m = getOperation();
-    DynamicTileAnalysis analyzer(m);
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
+    DeviceOp d = getOperation();
+    DynamicTileAnalysis analyzer(d);
+    OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
 
     // Apply rewrite rule to switchboxes to add assignments to every 'connect'
     // operation inside
@@ -459,8 +465,8 @@ struct AIEPathfinderPass
     target.addLegalOp<EndOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.insert<ConvertFlowsToInterconnect>(m.getContext(), m, analyzer);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
+    if (failed(applyPartialConversion(d, target, std::move(patterns))))
       signalPassFailure();
 
     // Populate wires between switchboxes and tiles.
@@ -537,7 +543,7 @@ struct AIEPathfinderPass
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEPathfinderPass() {
   return std::make_unique<AIEPathfinderPass>();
 }

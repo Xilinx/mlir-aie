@@ -27,10 +27,10 @@ typedef std::pair<Port, MaskValue> PortMaskValue;
 typedef std::pair<PortConnection, MaskValue> PacketConnection;
 
 class ConnectivityAnalysis {
-  ModuleOp &module;
+  DeviceOp &device;
 
 public:
-  ConnectivityAnalysis(ModuleOp &m) : module(m) {}
+  ConnectivityAnalysis(DeviceOp &d) : device(d) {}
 
 private:
   llvm::Optional<PortConnection>
@@ -38,7 +38,7 @@ private:
     LLVM_DEBUG(llvm::dbgs()
                << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first)
                << " " << masterPort.second << "\n");
-    for (auto wireOp : module.getOps<WireOp>()) {
+    for (auto wireOp : device.getOps<WireOp>()) {
       if (wireOp.getSource().getDefiningOp() == op &&
           wireOp.getSourceBundle() == masterPort.first) {
         Operation *other = wireOp.getDest().getDefiningOp();
@@ -257,16 +257,16 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   }
   void runOnOperation() override {
 
-    ModuleOp m = getOperation();
-    ConnectivityAnalysis analysis(m);
+    DeviceOp d = getOperation();
+    ConnectivityAnalysis analysis(d);
 
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
-    for (auto tile : m.getOps<TileOp>()) {
+    OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
+    for (auto tile : d.getOps<TileOp>()) {
       findFlowsFrom(tile, analysis, builder);
     }
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>> xilinx::AIE::createAIEFindFlowsPass() {
+std::unique_ptr<OperationPass<DeviceOp>> xilinx::AIE::createAIEFindFlowsPass() {
   return std::make_unique<AIEFindFlowsPass>();
 }

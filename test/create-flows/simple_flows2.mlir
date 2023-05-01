@@ -16,9 +16,11 @@
 // CHECK: AIE.flow(%[[T22]], Core : 0, %[[T11]], Core : 0)
 
 module {
-  %t23 = AIE.tile(2, 3)
-  %t22 = AIE.tile(2, 2)
-  %t11 = AIE.tile(1, 1)
-  AIE.flow(%t23, Core : 0, %t22, Core : 1)
-  AIE.flow(%t22, Core : 0, %t11, Core : 0)
+  AIE.device(xcvc1902) {
+    %t23 = AIE.tile(2, 3)
+    %t22 = AIE.tile(2, 2)
+    %t11 = AIE.tile(1, 1)
+    AIE.flow(%t23, Core : 0, %t22, Core : 1)
+    AIE.flow(%t22, Core : 0, %t11, Core : 0)
+  }
 }

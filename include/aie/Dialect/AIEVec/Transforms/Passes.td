@@ -82,4 +82,15 @@ def AIEVecTransformation : Pass<"aievec-transformation", "func::FuncOp"> {
   ];
 }
 
+def AIEVecConvOpTransformation : Pass<"aievec-convop-transformation", "func::FuncOp"> {
+  let summary = "Transform simple aievec ops into aievec mul_conv or mac_conv ops.";
+  let options = [
+    Option<"shiftParam", "shift", "unsigned", /*default=*/"0",
+      "Shift parameter for rounding and saturation">,
+    Option<"aieTarget", "aie-target", "std::string", /*default=*/"\"aie\"",
+     "Select AIE version: \\\"aie\\\" or \\\"aieml\\\". This will determine "
+     "the vector size and available operations.">,
+  ];
+}
+
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

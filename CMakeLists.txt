@@ -5,9 +5,19 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-cmake_minimum_required(VERSION 3.10)
+# optional parameters
+#  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
+#  -DLibXAIE_DIR: extra search path for libxaiengine 
+#  -DSysrootAarch64: sysroot for aarch crosscompile, if not specified and aarch64 in AIE_RUNTIME_TARGETS then default to  Vitis aarch64 sysroot
+#  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64; cross compilation for aarch64 against default Vitis Sysroot
+#  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
-set(CMAKE_TOOLCHAINFILES_PATH ${CMAKE_MODULE_PATH})
+cmake_minimum_required(VERSION 3.21)
+
+set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
+
+set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
+set(AIE_RUNTIME_TEST_TARGET "x86_64" CACHE STRING "Runtime architecture to test with.")
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
@@ -58,15 +68,21 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 
-find_package(Vitis COMPONENTS AIE AIE2)
-configure_file(./utils/vitisVariables.config.in ${CMAKE_CURRENT_SOURCE_DIR}/utils/vitisVariables.config @ONLY)
+find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
+configure_file(./utils/vitisVariables.config.in ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(Python3 COMPONENTS Interpreter)
 
-if(NOT VitisSysroot AND VITIS_ROOT)
-set(VitisSysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
+# Set up default Vitis Sysroot as sysroot when testing on aarch64
+list(FIND AIE_RUNTIME_TARGETS "aarch64" indexAarch64)
+if(NOT DEFINED SysrootAarch64 AND DEFINED VITIS_ROOT AND ${indexAarch64} GREATER -1)
+set(Sysroot ${VITIS_ROOT}/gnu/aarch64/lin/aarch64-linux/aarch64-xilinx-linux/)
+if(AIE_RUNTIME_TEST_TARGET STREQUAL "aarch64")
 set(LIBCXX_VERSION "11.2.0")
-set(extraAieCcFlags "-I${VITIS_AIETOOLS_DIR}/include/drivers/aiengine -I${VitisSysroot}/usr/include -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION} -I${VitisSysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine -B${VitisSysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
-message (STATUS "No Sysroot specified, using default Vitis Sysroot to enable more unit tests: ${VitisSysroot}")
+set(extraAieCcFlags "-I${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/include -I${Sysroot}/usr/include -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION} -I${Sysroot}/usr/include/c++/${LIBCXX_VERSION}/aarch64-xilinx-linux -L${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION} -L${CMAKE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine/lib -B${Sysroot}/usr/lib/aarch64-xilinx-linux/${LIBCXX_VERSION}")
+endif()
+message (STATUS "aarch64 specified as runtime target but no sysroot set, using default Vitis Sysroot for cross compilation: ${Sysroot}")
+elseif(SysrootAarch64 AND ${indexAarch64} GREATER -1)
+set(Sysroot ${SysrootAarch64})
 endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to
@@ -96,10 +112,14 @@ add_definitions(${LLVM_DEFINITIONS})
 add_custom_target(aie-headers)
 set_target_properties(aie-headers PROPERTIES FOLDER "Misc")
 add_dependencies(aie-headers mlir-headers)
-# Make sure we build the docs
-add_custom_target(docs ALL)
-add_subdirectory(docs)
-add_dependencies(docs mlir-doc)
+
+option(AIE_INCLUDE_DOCS "Generate build targets for the MLIR AIE docs." OFF)
+if (AIE_INCLUDE_DOCS)
+    # Make sure we build the docs
+    add_custom_target(docs ALL)
+    add_subdirectory(docs)
+    add_dependencies(docs mlir-doc)
+endif()
 
 # python install directory
 if (AIE_ENABLE_BINDINGS_PYTHON)
@@ -123,8 +143,10 @@ endif()
 
 add_subdirectory(include)
 add_subdirectory(lib)
-add_subdirectory(reference_designs)
+
 add_subdirectory(runtime_lib)
+add_subdirectory(aie_runtime_lib)
+add_subdirectory(reference_designs)
 add_subdirectory(test)
 add_subdirectory(tutorials)
 add_subdirectory(tools)

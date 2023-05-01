@@ -37,12 +37,20 @@ using namespace mlir;
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h.inc"
 
-namespace mlir {
-namespace OpTrait {
+namespace xilinx {
+namespace AIE {
+// template <typename ConcreteType>
+// class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint>
+// {};
+
+// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
+// has valid BDs.
 template <typename ConcreteType>
-class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint> {};
-} // namespace OpTrait
-} // namespace mlir
+struct HasValidBDs : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static LogicalResult verifyTrait(Operation *op);
+};
+} // namespace AIE
+} // namespace xilinx
 
 /// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
@@ -194,16 +202,15 @@ std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignBufferAddressesPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECanonicalizeDevicePass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEFindFlowsPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEFindFlowsPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
 std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIEPathfinderPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEObjectFifoLoopUnrollPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoRegisterProcessPass();
 

@@ -56,16 +56,17 @@ struct AIELocalizeLocksPass
         int cardinalMemOffset = 0;
 
         const auto &target_model = xilinx::AIE::getTargetModel(tile);
+        int numLocks = target_model.getNumLocks();
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
             if (target_model.isMemSouth(col, row, dstCol, dstRow))
               cardinalMemOffset = 0;
             else if (target_model.isMemWest(col, row, dstCol, dstRow))
-              cardinalMemOffset = 16;
+              cardinalMemOffset = numLocks;
             else if (target_model.isMemNorth(col, row, dstCol, dstRow))
-              cardinalMemOffset = 32;
+              cardinalMemOffset = 2 * numLocks;
             else if (target_model.isMemEast(col, row, dstCol, dstRow))
-              cardinalMemOffset = 48;
+              cardinalMemOffset = 3 * numLocks;
             else
               llvm_unreachable("Found illegal lock user!");
 

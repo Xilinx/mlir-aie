@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/../test.cpp -o tutorial-8.exe
+// aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-8.exe
 
 // REQUIRES: valid_xchess_license
 // RUN: make -C %S
@@ -19,8 +19,8 @@
 // AIE tiles, buffers, and data movement
 module @tutorial_8 {
 
-    // 2 tiles in row 4 (col 1 and col 2)
-    // even rows have local memory to its left
+    // 2 tiles in row 3 (col 1 and col 2)
+    // odd rows have local memory to its right
     %tile13 = AIE.tile(1, 3) 
     %tile23 = AIE.tile(2, 3)
 

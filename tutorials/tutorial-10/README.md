@@ -17,7 +17,7 @@ The basic way that we use `aiecc.py` to compile our MLIR-AIE written code (e.g. 
 ```
 aiecc.py -j4 --sysroot=<platform sysroot> -host-target=aarch64-linux-gnu aie.mlir -I<runtime_lib> <runtime lib>/test_library.cpp ./test.cpp -o test.exe
 ```
-This command compiles an MLIR-AIE dialect source file (e.g. `aie.mlir`) into AI Engine program elfs and generates the host API `acdc_project/aie_inc.cpp` which can be used to configure the AI Engine design. In addition, if provided with a host source file (e.g. `test.cpp`), `aiecc.py` will compile it to build a host executable (e.g. `tutorial-1.exe`). The AIE tile elfs are generated automatically for each AIE tile that needs to be programmed. Additionally, we usually pass a reference to`<runtime lib>/test_library.cpp` as it contains commonly used test functions.
+This command compiles an MLIR-AIE dialect source file (e.g. `aie.mlir`) into AI Engine program elfs and generates the host API `aie.mlir.prj/aie_inc.cpp` which can be used to configure the AI Engine design. In addition, if provided with a host source file (e.g. `test.cpp`), `aiecc.py` will compile it to build a host executable (e.g. `tutorial-1.exe`). The AIE tile elfs are generated automatically for each AIE tile that needs to be programmed. Additionally, we usually pass a reference to`<runtime lib>/test_library.cpp` as it contains commonly used test functions.
 
 You can see what arguments are supported with `aiecc.py` by calling it with the -h argument. Some useful arguments are listed below:
 
@@ -119,7 +119,7 @@ xchesscc_wrapper -c -d -f +P 4 file_llvmir_hacked -o input.o
 ```
 
 ### <ins>6. Process ARM cross-compilation of host code</ins>
-This section does cross-compilation which includes calling clang with a specific target. However, `aie-opt` and `aie-translate` is called here to generate the `acdc_project/aie_inc.cpp` file.
+This section does cross-compilation which includes calling clang with a specific target. However, `aie-opt` and `aie-translate` is called here to generate the `aie.mlir.prj/aie_inc.cpp` file.
 ```
 aie-opt
 --aie-create-pathfinder-flows

@@ -57,6 +57,11 @@ struct ConvertVectorToAIEVecOptions
   AIEVecTransformationOptions getAIEVecTransformationOptions() const {
     return AIEVecTransformationOptions{aieTarget};
   }
+
+  AIEVecConvOpTransformationOptions
+  getAIEVecConvOpTransformationOptions() const {
+    return AIEVecConvOpTransformationOptions{shiftParam, aieTarget};
+  }
 };
 
 //===----------------------------------------------------------------------===//

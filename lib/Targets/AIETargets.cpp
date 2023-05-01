@@ -13,6 +13,7 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
@@ -54,6 +55,18 @@ static llvm::cl::opt<std::string>
 namespace xilinx {
 namespace AIE {
 
+static void registerDialects(DialectRegistry &registry) {
+  registry.insert<xilinx::AIE::AIEDialect>();
+  registry.insert<func::FuncDialect>();
+  registry.insert<cf::ControlFlowDialect>();
+  registry.insert<DLTIDialect>();
+  registry.insert<arith::ArithDialect>();
+  registry.insert<math::MathDialect>();
+  registry.insert<memref::MemRefDialect>();
+  registry.insert<VectorDialect>();
+  registry.insert<LLVM::LLVMDialect>();
+}
+
 // Output the buffer map for the given buffer operations, with the given offset.
 // The offset is different depending on where the buffers are accessed from.
 void writeBufferMap(raw_ostream &output, BufferOp buf, int offset,
@@ -77,6 +90,9 @@ void writeBCFMap(raw_ostream &output, BufferOp buf, int offset,
          << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " "
          << "0x" << llvm::utohexstr(numBytes) << '\n';
   output << "_extern " << bufName << "\n";
+  output << "_reserved DMb "
+         << "0x" << llvm::utohexstr(offset + bufferBaseAddr) << " "
+         << "0x" << llvm::utohexstr(numBytes) << '\n';
 }
 // Output the memorymap in gnu linker format for the given buffer operations,
 // with the given offset. The offset is different depending on where the buffers
@@ -140,16 +156,7 @@ void registerAIETranslations() {
         }
         return success();
       },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      registerDialects);
 
   ///// ld.script format:
   //
@@ -207,14 +214,29 @@ void registerAIETranslations() {
 
         for (auto tile : targetOp.getOps<TileOp>())
           if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
+            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
             const auto &target_model = getTargetModel(tile);
+
+            // Figure out how much memory we have left for random allocations
+            auto core = tile.getCoreOp();
+            int max = core.getStackSize();
+            for (auto buf : buffers[tiles[srcCoord]]) {
+              int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+              int numBytes = buf.getAllocationSize();
+              max = std::max(max, bufferBaseAddr + numBytes);
+            }
+            int origin = target_model.getMemInternalBaseAddress(srcCoord) + max;
+            int length = target_model.getLocalMemorySize() - max;
             // output << "// Tile(" << tileCol << ", " << tileRow << ")\n";
             // output << "// Memory map: name base_address num_bytes\n";
             output << R"THESCRIPT(
 MEMORY
 {
    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
-   data (!RX) : ORIGIN = 0x20000, LENGTH = 0x0020000
+)THESCRIPT";
+            output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
+                   << ", LENGTH = 0x" << llvm::utohexstr(length);
+            output << R"THESCRIPT(
 }
 ENTRY(_main_init)
 SECTIONS
@@ -252,7 +274,6 @@ SECTIONS
                 output << ". += 0x" << llvm::utohexstr(localMemSize) << ";\n";
               }
             };
-            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
             // Stack
             output << ". = 0x"
@@ -260,21 +281,23 @@ SECTIONS
                           target_model.getMemInternalBaseAddress(srcCoord))
                    << ";\n";
             output << "_sp_start_value_DM_stack = .;\n";
-            output << ". += 0x" << llvm::utohexstr(0x400)
-                   << ";\n"; // TODO to match stack size
 
-            if (auto tile = target_model.getMemSouth(srcCoord))
-              doBuffer(tile, target_model.getMemSouthBaseAddress(),
-                       std::string("south"));
-            if (auto tile = target_model.getMemWest(srcCoord))
-              doBuffer(tile, target_model.getMemWestBaseAddress(),
-                       std::string("west"));
-            if (auto tile = target_model.getMemNorth(srcCoord))
-              doBuffer(tile, target_model.getMemNorthBaseAddress(),
-                       std::string("north"));
-            if (auto tile = target_model.getMemEast(srcCoord))
-              doBuffer(tile, target_model.getMemEastBaseAddress(),
-                       std::string("east"));
+            if (auto core = tile.getCoreOp())
+              output << ". += 0x" << llvm::utohexstr(core.getStackSize())
+                     << "; /* stack */\n";
+            else
+              output << "/* no stack allocated */\n";
+
+            doBuffer(target_model.getMemSouth(srcCoord),
+                     target_model.getMemSouthBaseAddress(),
+                     std::string("south"));
+            doBuffer(target_model.getMemWest(srcCoord),
+                     target_model.getMemWestBaseAddress(), std::string("west"));
+            doBuffer(target_model.getMemNorth(srcCoord),
+                     target_model.getMemNorthBaseAddress(),
+                     std::string("north"));
+            doBuffer(target_model.getMemEast(srcCoord),
+                     target_model.getMemEastBaseAddress(), std::string("east"));
 
             output << "  .bss : { *(.bss) } > data\n";
             output << "  .bss.DMb.4 : { *(.bss.DMb.4) } > data\n";
@@ -291,16 +314,7 @@ SECTIONS
           }
         return success();
       },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      registerDialects);
 
   //   _entry_point _main_init
   // _symbol      _main _after _main_init
@@ -358,12 +372,19 @@ SECTIONS
             output << "_reserved DMb      0x00000 " << initReserved
                    << " //Don't put data in code memory\n";
 
+            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
             auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
               if (tile) {
                 if (tiles.count(*tile))
                   for (auto buf : buffers[tiles[*tile]])
                     writeBCFMap(output, buf, offset, NL);
+                uint32_t localMemSize = target_model.getLocalMemorySize();
+                if (tile != srcCoord)
+                  output << "_reserved DMb 0x" << llvm::utohexstr(offset) << " "
+                         << "0x" << llvm::utohexstr(localMemSize) << " "
+                         << " // Don't allocate variables outside of local "
+                            "memory.\n";
                 // TODO How to set as reserved if no buffer exists (or reserve
                 // remaining buffer)
               } else {
@@ -374,26 +395,27 @@ SECTIONS
                        << ".\n";
               }
             };
-            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
 
-            if (auto tile = target_model.getMemSouth(srcCoord))
-              doBuffer(tile, target_model.getMemSouthBaseAddress(),
-                       std::string("south"));
-            if (auto tile = target_model.getMemWest(srcCoord))
-              doBuffer(tile, target_model.getMemWestBaseAddress(),
-                       std::string("west"));
-            if (auto tile = target_model.getMemNorth(srcCoord))
-              doBuffer(tile, target_model.getMemNorthBaseAddress(),
-                       std::string("north"));
-            if (auto tile = target_model.getMemEast(srcCoord))
-              doBuffer(tile, target_model.getMemEastBaseAddress(),
-                       std::string("east"));
+            doBuffer(target_model.getMemSouth(srcCoord),
+                     target_model.getMemSouthBaseAddress(),
+                     std::string("south"));
+            doBuffer(target_model.getMemWest(srcCoord),
+                     target_model.getMemWestBaseAddress(), std::string("west"));
+            doBuffer(target_model.getMemNorth(srcCoord),
+                     target_model.getMemNorthBaseAddress(),
+                     std::string("north"));
+            doBuffer(target_model.getMemEast(srcCoord),
+                     target_model.getMemEastBaseAddress(), std::string("east"));
 
+            int stacksize = 0;
+            if (auto core = tile.getCoreOp())
+              stacksize = core.getStackSize();
             output << "_stack    DM_stack 0x"
                    << llvm::utohexstr(
                           target_model.getMemInternalBaseAddress(srcCoord))
-                   << "  0x400 //stack for core\n"; // TODO Needs to match
-                                                    // stack size!!!
+                   << "  0x" << llvm::utohexstr(stacksize)
+                   << " //stack for core\n";
+
             if (target_model.getTargetArch() == AIEArch::AIE2) {
               output << "_reserved DMb 0x80000 0x80000 // And everything else "
                         "the core can't see\n";
@@ -413,16 +435,7 @@ SECTIONS
           }
         return success();
       },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      registerDialects);
 
   TranslateFromMLIRRegistration registrationCoreList(
       "aie-generate-corelist", "Generate python list of cores",
@@ -447,31 +460,13 @@ SECTIONS
         output << "]\n";
         return success();
       },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      registerDialects);
+
   TranslateFromMLIRRegistration registrationXADF(
       "adf-generate-cpp-graph", "Translate ADFDialect to C++ graph",
-      [](ModuleOp module, raw_ostream &output) {
-        return ADFGenerateCPPGraph(module, output);
-      },
-      [](DialectRegistry &registry) {
+      ADFGenerateCPPGraph, [](DialectRegistry &registry) {
         registry.insert<xilinx::ADF::ADFDialect>();
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
+        registerDialects(registry);
       });
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
@@ -481,78 +476,21 @@ SECTIONS
         else
           return AIETranslateToXAIEV1(module, output);
       },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      registerDialects);
   TranslateFromMLIRRegistration registrationXJSON(
-      "aie-flows-to-json", "Translate AIE flows to JSON",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIEFlowsToJSON(module, output);
-      },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      "aie-flows-to-json", "Translate AIE flows to JSON", AIEFlowsToJSON,
+      registerDialects);
   TranslateFromMLIRRegistration registrationXPE(
       "aie-mlir-to-xpe", "Translate AIE design to XPE file for simulation",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateGraphXPE(module, output);
-      },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      AIETranslateGraphXPE, registerDialects);
   TranslateFromMLIRRegistration registrationSCSimConfig(
       "aie-mlir-to-scsim-config",
       "Translate AIE design to SCSimConfig file for simulation",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateSCSimConfig(module, output);
-      },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      AIETranslateSCSimConfig, registerDialects);
   TranslateFromMLIRRegistration registrationShimSolution(
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
-      [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateShimSolution(module, output);
-      },
-      [](DialectRegistry &registry) {
-        registry.insert<xilinx::AIE::AIEDialect>();
-        registry.insert<func::FuncDialect>();
-        registry.insert<cf::ControlFlowDialect>();
-        registry.insert<DLTIDialect>();
-        registry.insert<arith::ArithDialect>();
-        registry.insert<memref::MemRefDialect>();
-        registry.insert<VectorDialect>();
-        registry.insert<LLVM::LLVMDialect>();
-      });
+      AIETranslateShimSolution, registerDialects);
 }
 } // namespace AIE
 } // namespace xilinx

@@ -115,6 +115,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     module.emitOpError("expected AIE.device operation at toplevel");
   }
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+  const auto &target_model = targetOp.getTargetModel();
+  int numLocks = target_model.getNumLocks();
 
   NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers, switchboxes);
   NL.collectTiles(tiles);
@@ -137,7 +139,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       output << "XAie_CoreDisable(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ");\n";
       // Release locks
-      output << "for (int l=0; l<16; l++)\n"
+      output << "for (int l=0; l<" << numLocks << "; l++)\n"
              << "  XAie_LockRelease(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0);\n";
       if (auto coreOp = tileOp.getCoreOp()) {
@@ -325,12 +327,16 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         if (block.getNumSuccessors() > 0) {
           Block *nextBlock = block.getSuccessors()[0]; // should have only one
                                                        // successor block
+
+          int enableNextBd = 1;
+          if (!nextBlock->getOps<EndOp>().empty())
+            enableNextBd = 0;
+
           int nextBdNum = blockMap[nextBlock];
           output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
                  << ", "
                  << " /* nextbd */ " << nextBdNum << ", "
-                 << " /* enableNextBd */ 1);\n"; // TODO Check if br ^end: to
-                                                 // disable this?
+                 << " /* enableNextBd */ " << enableNextBd << ");\n";
         }
         if (foundBdPacket) {
           output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
