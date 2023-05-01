@@ -124,6 +124,8 @@ public:
   virtual uint32_t getNumBDs(int col, int row) const = 0;
 
   virtual uint32_t getNumMemTileRows() const = 0;
+  /// Return the size (in bytes) of a MemTile.
+  virtual uint32_t getMemTileSize() const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -217,6 +219,7 @@ public:
     return isMemTile(col, row) ? 48 : 16;
   }
   // uint32_t getNumMemTileRows() const override;
+  uint32_t getMemTileSize() const override { return 0x00080000; }
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
