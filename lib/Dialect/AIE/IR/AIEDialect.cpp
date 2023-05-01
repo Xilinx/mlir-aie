@@ -555,8 +555,8 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   DenseSet<xilinx::AIE::Port> destset;
   auto ops = body.getOps();
   int num_ops = std::distance(ops.begin(), ops.end());
-  if (num_ops <= 1) // account for terminator op which is added implicitly
-    return emitOpError("cannot have an empty body");
+  if (body.empty())
+    return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
       xilinx::AIE::Port source =
@@ -646,8 +646,8 @@ LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
   DenseSet<xilinx::AIE::Port> destset;
   auto ops = body.getOps();
   int num_ops = std::distance(ops.begin(), ops.end());
-  if (num_ops <= 1) // account for terminator op which is added implicitly
-    return emitOpError("cannot have an empty body");
+  if (body.empty())
+    return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
@@ -674,8 +674,8 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   DenseSet<xilinx::AIE::Port> destset;
   auto ops = body.getOps();
   int num_ops = std::distance(ops.begin(), ops.end());
-  if (num_ops <= 1) // account for terminator op which is added implicitly
-    return emitOpError("cannot have an empty body");
+  if (body.empty())
+    return emitOpError("should have non-empty body");
 
   auto tileOp = getTileOp();
   if (!tileOp.isShimNOCTile())
@@ -766,8 +766,8 @@ LogicalResult xilinx::AIE::PacketRulesOp::verify() {
   Region &body = getRules();
   auto ops = body.getOps();
   int num_ops = std::distance(ops.begin(), ops.end());
-  if (num_ops <= 1) // account for terminator op which is added implicitly
-    return emitOpError("cannot have an empty body");
+  if (body.empty())
+    return emitOpError("should have non-empty body");
 
   return success();
 }
@@ -777,8 +777,8 @@ LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   // DenseSet<xilinx::AIE::Port> destset;
   auto ops = body.getOps();
   int num_ops = std::distance(ops.begin(), ops.end());
-  if (num_ops <= 1) // account for terminator op which is added implicitly
-    return emitOpError("cannot have an empty body");
+  if (body.empty())
+    return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
     if (auto Op = dyn_cast<xilinx::AIE::PacketSourceOp>(ops)) {
