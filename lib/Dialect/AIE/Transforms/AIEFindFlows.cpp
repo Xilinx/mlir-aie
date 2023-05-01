@@ -126,7 +126,7 @@ private:
                            << "\tMask: " << maskValue.first << "\tMatch Value: " << maskValue.second << "\n");
                 LLVM_DEBUG(llvm::dbgs() << "\tMatching IDs: ");
                 for( unsigned int ID = 0; ID < 32; ID++){
-                  if((maskValue.first & ID) == maskValue.second)
+                  if((maskValue.first & ID) == (unsigned)maskValue.second)
                     LLVM_DEBUG(llvm::dbgs() << ID << ", ");
                 }
                 LLVM_DEBUG(llvm::dbgs() << "\n");
