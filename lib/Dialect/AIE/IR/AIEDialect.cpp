@@ -553,8 +553,6 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> sourceset;
   DenseSet<xilinx::AIE::Port> destset;
-  auto ops = body.getOps();
-  int num_ops = std::distance(ops.begin(), ops.end());
   if (body.empty())
     return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
@@ -644,8 +642,6 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
 LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> destset;
-  auto ops = body.getOps();
-  int num_ops = std::distance(ops.begin(), ops.end());
   if (body.empty())
     return emitOpError("should have non-empty body");
 
@@ -672,8 +668,6 @@ LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
 LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> destset;
-  auto ops = body.getOps();
-  int num_ops = std::distance(ops.begin(), ops.end());
   if (body.empty())
     return emitOpError("should have non-empty body");
 
@@ -764,8 +758,6 @@ int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::PacketRulesOp::verify() {
   Region &body = getRules();
-  auto ops = body.getOps();
-  int num_ops = std::distance(ops.begin(), ops.end());
   if (body.empty())
     return emitOpError("should have non-empty body");
 
@@ -774,9 +766,6 @@ LogicalResult xilinx::AIE::PacketRulesOp::verify() {
 
 LogicalResult xilinx::AIE::PacketFlowOp::verify() {
   Region &body = getPorts();
-  // DenseSet<xilinx::AIE::Port> destset;
-  auto ops = body.getOps();
-  int num_ops = std::distance(ops.begin(), ops.end());
   if (body.empty())
     return emitOpError("should have non-empty body");
 
