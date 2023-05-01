@@ -733,8 +733,7 @@ int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
-  Region &body = getBody();
-  if (body.empty())
+  if (getBody().empty())
     return emitOpError("cannot have an empty body");
 
   auto tileOp = getTileOp();
@@ -783,14 +782,12 @@ LogicalResult xilinx::AIE::PacketFlowOp::verify() {
 
 // CoreOp
 LogicalResult xilinx::AIE::CoreOp::verify() {
-  Region &body = getBody();
-  if (body.empty())
+  if (getBody().empty())
     return emitOpError("should have non-empty body");
   if (getTileOp().isShimTile())
     return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
   if (getTileOp().isMemTile())
     return emitOpError("CoreOp cannot be created on mem tile");
-
   return success();
 }
 
@@ -830,7 +827,7 @@ LogicalResult xilinx::AIE::MemOp::verify() {
     return result;
   }
 
-  for (auto &bodyOp : getBody().getOps()) {
+  for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same MemOp
     if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
       xilinx::AIE::DMAChannel dmaChan = std::make_pair(
