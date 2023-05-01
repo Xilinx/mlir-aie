@@ -65,7 +65,8 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
 
     std::string funcName = "debug_i32";
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(func && "Could not find the intrinsic function!");
+    if (!func)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 1> args;
     args.push_back(op.getArg());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
@@ -97,7 +98,8 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
 
     llvm::dbgs() << "FINDING: " << funcName << "\n";
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(putMSFunc && "Could not find the intrinsic function!");
+    if (!putMSFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.getChannel());
     args.push_back(op.getStreamValue());
@@ -127,7 +129,8 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
       funcName += "ss";
 
     auto getSSFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(getSSFunc && "Could not find the intrinsic function!");
+    if (!getSSFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.getChannel());
     auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
@@ -152,7 +155,8 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
 
     std::string funcName = "llvm.aie.put.mcd";
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(putMCDFunc && "Could not find the intrinsic function!");
+    if (!putMCDFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
@@ -174,7 +178,8 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
                   ConversionPatternRewriter &rewriter) const override {
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(getSCDFunc && "Could not find the intrinsic function!");
+    if (!getSCDFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, ValueRange({}));
     rewriter.replaceOp(op, getSCDCall.getResult(0));
@@ -200,7 +205,8 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
         funcName += "release.reg";
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
-      assert(useLockFunc && "Could not find the intrinsic function!");
+      if (!useLockFunc)
+        return module.emitOpError("Could not find the intrinsic function!");
 
       SmallVector<Value, 2> args;
 

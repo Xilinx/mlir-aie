@@ -613,6 +613,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
     See [AIE.rule](#aierule-aiepacketruleop) for an example.
   }];
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
     Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
