@@ -34,12 +34,9 @@ install(TARGETS test_lib
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/test_library.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test_library.h DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib)
 
 
-# create extra libs supporting simulation if target is x86_64
-if(${AIE_RUNTIME_TARGET} STREQUAL "x86_64")
-
+# create extra libs supporting simulation
 # AIE1 test_lib for aiesimulator
 add_library(test_lib_sim_aie STATIC test_library.cpp)
-#set_target_properties(test_lib_sim_aie PROPERTIES PUBLIC_HEADER "test_library.h")
 target_compile_options(test_lib_sim_aie PRIVATE -fPIC)
 target_compile_definitions(test_lib_sim_aie PRIVATE LIBXAIENGINEV2 __AIESIM__)
 
@@ -53,7 +50,6 @@ install(TARGETS test_lib_sim_aie
 
 # AIE2 test_lib for aiesimulator
 add_library(test_lib_sim_aie2 STATIC test_library.cpp)
-#set_target_properties(test_lib_sim_aie2 PROPERTIES PUBLIC_HEADER "test_library.h")
 target_compile_options(test_lib_sim_aie2 PRIVATE -fPIC)
 target_compile_definitions(test_lib_sim_aie2 PRIVATE LIBXAIENGINEV2 __AIESIM__ __AIEARCH__=20)
 
@@ -64,4 +60,3 @@ target_include_directories(test_lib_sim_aie2 PRIVATE
 install(TARGETS test_lib_sim_aie2 
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
 )
-endif()
