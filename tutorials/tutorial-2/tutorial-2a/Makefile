@@ -1,4 +1,3 @@
-include ../../../utils/vitisVariables.config
 include ../../makefile-common
 
 .PHONY: all clean
@@ -15,6 +14,6 @@ tutorial-2a.exe : test.cpp aie.mlir
 	aiecc.py -j4 ${AIECC_FLAGS} $(word 2,$^) ${AIECC_HOST_FLAGS} ./$< -o $@
 
 clean:
-	rm -rf acdc_project *elf core* *log pl_sample_counts foo.vcd *exe aiesimulator_output sim .AIE_SIM_CMD_LINE_OPTIONS
+	rm -rf aie.mlir.prj *elf core* *log pl_sample_counts foo.vcd *exe aiesimulator_output sim .AIE_SIM_CMD_LINE_OPTIONS
 
 

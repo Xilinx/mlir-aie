@@ -87,9 +87,11 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   DenseMap<Operation *, SwitchboxOp> switchboxes;
 
   if (module.getOps<DeviceOp>().empty()) {
-    module.emitOpError("expected AIE.device operation at toplevel");
+    return module.emitOpError("expected AIE.device operation at toplevel");
   }
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+  const auto &target_model = targetOp.getTargetModel();
+  int numLocks = target_model.getNumLocks();
 
   NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers, switchboxes);
   NL.collectTiles(tiles);
@@ -151,7 +153,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       output << clear_range(col, row, 0x3F200, 0x3F3AC);
 
       // Release locks
-      output << "for (int l=0; l<16; l++)\n"
+      output << "for (int l=0; l<" << numLocks << "; l++)\n"
              << "  XAieTile_LockRelease(" << tileInstStr(col, row)
              << ", l, 0x0, 0);\n";
 

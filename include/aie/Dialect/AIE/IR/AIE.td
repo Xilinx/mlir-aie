@@ -140,6 +140,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     int rowIndex() { return getRow(); }
     TileID getTileID() { return std::make_pair(getCol(), getRow()); }
     bool isShimTile() { return getRow() == 0; }
+    bool isMemTile();
     bool isShimNOCTile();
     bool isShimPLTile();
     bool isShimNOCorPLTile();
@@ -289,7 +290,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs
                                       /*, CallableOpInterface*/]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -331,7 +332,8 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
 
 def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index)> {
   let arguments = (
-    ins Index:$tile
+    ins Index:$tile,
+    DefaultValuedAttr<I32Attr, "0x400">:$stackSize
   );
   let summary = "Declare a core module";
   let description = [{
@@ -340,6 +342,11 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index
     typically be outlined into the LLVM dialect, eventually resulting in a binary file
     for each core.  The name of this file can be be specified using the 'elf_file'
     attribute.
+
+    This op has an optional 'stackSize' attribute, to control the amount of memory (in bytes)
+    reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
+    are always stored in the local core memory, to avoid conflicts with static data allocations
+    in other cores.
 
     Examples:
     ```
@@ -355,7 +362,7 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index
     %tile = AIE.tile(3, 3)
     AIE.core(%tile) {
       AIE.end
-    } { elf_file = "core_33.elf" }
+    } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
     ```
   }];
   let regions = (region AnyRegion:$body);
@@ -606,6 +613,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
     See [AIE.rule](#aierule-aiepacketruleop) for an example.
   }];
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
     Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
@@ -893,7 +901,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
+def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, HasValidBDs]>,
                      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
@@ -987,7 +995,7 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   }];
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$lockID
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID
   );
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
@@ -1403,6 +1411,8 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
     ins AIE_ObjectFifoSubviewType:$subview, 
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$index
   );
+
+  let hasVerifier = 1;
 
   let results = (outs AnyMemRef:$output);
 

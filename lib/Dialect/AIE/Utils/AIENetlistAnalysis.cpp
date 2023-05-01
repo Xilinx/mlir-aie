@@ -262,9 +262,9 @@ xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
     return buf.address();
   } else if (auto buf = dyn_cast<ExternalBufferOp>(bufOp)) {
     assert(false && "External buffer addresses are assigned at runtime.");
-  } else {
-    llvm_unreachable("unknown buffer type");
   }
+  llvm_unreachable("unknown buffer type");
+  return 0;
 }
 
 SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
@@ -456,7 +456,8 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
 }
 
 int xilinx::AIE::NetlistAnalysis::getAvailableLockID(Operation *tileOp) {
-  for (unsigned i = 0; i < 16; i++) {
+  const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
+  for (unsigned i = 0; i < target_model.getNumLocks(); i++) {
     if (locks.count(std::make_pair(tileOp, i)) == 0)
       return i;
   }

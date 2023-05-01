@@ -2,44 +2,39 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD
+# (c) Copyright 2023 Advanced Micro Devices, Inc.
 
-# cmake needs this line
 cmake_minimum_required(VERSION 3.20.1)
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 
-project("xaiengine driver")
-file(COPY ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_2/src DESTINATION ${PROJECT_SOURCE_DIR})
-file(GLOB libsources ${PROJECT_SOURCE_DIR}/src/*/*.c ${PROJECT_SOURCE_DIR}/src/*/*/*.c)
+set(xaienginePath ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
+#set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
+file(GLOB libheaders ${xaienginePath}/*.h)
+file(GLOB libheadersSub ${xaienginePath}/*/*.h)
 
-include_directories(
-    ${PROJECT_SOURCE_DIR}/src
-    ${PROJECT_SOURCE_DIR}/src/common
-    ${PROJECT_SOURCE_DIR}/src/core
-    ${PROJECT_SOURCE_DIR}/src/device
-    ${PROJECT_SOURCE_DIR}/src/dma
-    ${PROJECT_SOURCE_DIR}/src/events
-    ${PROJECT_SOURCE_DIR}/src/global
-    ${PROJECT_SOURCE_DIR}/src/interrupt
-    ${PROJECT_SOURCE_DIR}/src/io_backend
-    ${PROJECT_SOURCE_DIR}/src/io_backend/ext
-    ${PROJECT_SOURCE_DIR}/src/io_backend/privilege
-    ${PROJECT_SOURCE_DIR}/src/lite
-    ${PROJECT_SOURCE_DIR}/src/locks
-    ${PROJECT_SOURCE_DIR}/src/memory
-    ${PROJECT_SOURCE_DIR}/src/npi
-    ${PROJECT_SOURCE_DIR}/src/perfcnt
-    ${PROJECT_SOURCE_DIR}/src/pl
-    ${PROJECT_SOURCE_DIR}/src/pm
-    ${PROJECT_SOURCE_DIR}/src/rsc
-    ${PROJECT_SOURCE_DIR}/src/stream_switch
-    ${PROJECT_SOURCE_DIR}/src/timer
-    ${PROJECT_SOURCE_DIR}/src/trace
-    ${PROJECT_SOURCE_DIR}/src/util
-)
+# copy header files into build area
+foreach(file ${libheaders})
+    cmake_path(GET file FILENAME basefile)
+    message("basefile: ${basefile}")
+    set(dest ${CMAKE_CURRENT_BINARY_DIR}/include/${basefile})
+    add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
+    add_custom_command(OUTPUT ${dest}
+                    COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
+                    DEPENDS ${file})
+endforeach()
+foreach(file ${libheadersSub})
+    cmake_path(GET file FILENAME basefile)
+    message("basefile: ${basefile}")
+    set(dest ${CMAKE_CURRENT_BINARY_DIR}/include/xaiengine/${basefile})
+    add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
+    add_custom_command(OUTPUT ${dest}
+                    COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
+                    DEPENDS ${file})
+endforeach()
 
-add_library(xaiengine SHARED ${libsources})
+# Install too
+install(FILES ${libheaders} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
+install(FILES ${libheadersSub} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include/xaiengine)
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libxaiengine.so DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/xaiengine)
+add_subdirectory(lib)

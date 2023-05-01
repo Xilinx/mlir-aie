@@ -15,6 +15,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
@@ -64,7 +65,8 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
 
     std::string funcName = "debug_i32";
     auto func = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(func && "Could not find the intrinsic function!");
+    if (!func)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 1> args;
     args.push_back(op.getArg());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
@@ -96,7 +98,8 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
 
     llvm::dbgs() << "FINDING: " << funcName << "\n";
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(putMSFunc && "Could not find the intrinsic function!");
+    if (!putMSFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.getChannel());
     args.push_back(op.getStreamValue());
@@ -126,7 +129,8 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
       funcName += "ss";
 
     auto getSSFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(getSSFunc && "Could not find the intrinsic function!");
+    if (!getSSFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.getChannel());
     auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
@@ -151,7 +155,8 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
 
     std::string funcName = "llvm.aie.put.mcd";
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(putMCDFunc && "Could not find the intrinsic function!");
+    if (!putMCDFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
     rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
@@ -173,7 +178,8 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
                   ConversionPatternRewriter &rewriter) const override {
     std::string funcName = "llvm.aie.get.scd";
     auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
-    assert(getSCDFunc && "Could not find the intrinsic function!");
+    if (!getSCDFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, ValueRange({}));
     rewriter.replaceOp(op, getSCDCall.getResult(0));
@@ -199,7 +205,8 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
         funcName += "release.reg";
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
-      assert(useLockFunc && "Could not find the intrinsic function!");
+      if (!useLockFunc)
+        return module.emitOpError("Could not find the intrinsic function!");
 
       SmallVector<Value, 2> args;
 
@@ -309,6 +316,16 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
     return success();
   }
 };
+
+// Move all the ops with OpTy inside device, to just before the device.
+template <typename OpTy> void outlineOps(AIE::DeviceOp device) {
+  SmallVector<OpTy, 16> ops;
+  for (const auto &op : device.getOps<OpTy>())
+    ops.push_back(op);
+
+  for (const auto &op : ops)
+    op->moveBefore(device);
+}
 
 struct AIECoreToStandardPass
     : public AIECoreToStandardBase<AIECoreToStandardPass> {
@@ -448,6 +465,7 @@ struct AIECoreToStandardPass
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalDialect<math::MathDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();
 
     RewritePatternSet patterns(&getContext());
@@ -462,13 +480,10 @@ struct AIECoreToStandardPass
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
       signalPassFailure();
 
-    // Move all the func.func ops from the device to the module
-    SmallVector<func::FuncOp, 16> funcs;
-    for (const auto &op : device.getOps<func::FuncOp>())
-      funcs.push_back(op);
-
-    for (const auto &op : funcs)
-      op->moveBefore(device);
+    // Move all the func.func ops and memref.globals from the device to the
+    // module
+    outlineOps<memref::GlobalOp>(device);
+    outlineOps<func::FuncOp>(device);
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns

@@ -14,7 +14,9 @@
 #define AIE_DIALECT_AIEVEC_AIEVECUTILS_H
 
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include <assert.h>
 
@@ -83,12 +85,141 @@ inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
 
     Type ctype = mlir::IntegerType::get(itype.getContext(), width);
     return VectorType::get(type.getShape(), ctype);
-  } else if (stype.isa<FloatType>())
-    // Floating point vector types are returned as is since the floating point
-    // operations write back to registers and not accumulators
+  } else if (FloatType ftype = stype.dyn_cast<FloatType>()) {
+    if (AIEML && ftype.getWidth() == 16) {
+      return VectorType::get(type.getShape(), ftype.getF32(ftype.getContext()));
+    }
+
+    // Floating point vector types for aie1 are returned as is since the
+    // floating point operations write back to registers and not accumulators
     return type;
-  else
+  } else
     llvm_unreachable("Unsupported destination type");
+}
+
+// Linearize the exprVec as a strided access, but do not simplify
+inline AffineExpr flattenedStridedExpr(ArrayRef<int64_t> sizes,
+                                       ArrayRef<AffineExpr> exprs,
+                                       MLIRContext *context) {
+  // Expect non-empty sizes and exprs
+  if (sizes.empty() || exprs.empty())
+    return nullptr;
+
+  if (llvm::is_contained(sizes, 0))
+    return getAffineConstantExpr(0, context);
+
+  auto maps = AffineMap::inferFromExprList(exprs);
+  if (maps.empty()) {
+    return nullptr;
+  }
+
+  unsigned nSymbols = maps[0].getNumSymbols();
+
+  AffineExpr expr;
+  bool dynamicPoisonBit = false;
+  int64_t runningSize = 1;
+  for (auto en : llvm::zip(llvm::reverse(exprs), llvm::reverse(sizes))) {
+    int64_t size = std::get<1>(en);
+
+    if (size == 0)
+      continue;
+    AffineExpr dimExpr = std::get<0>(en);
+    AffineExpr stride = dynamicPoisonBit
+                            ? getAffineSymbolExpr(nSymbols++, context)
+                            : getAffineConstantExpr(runningSize, context);
+    expr = expr ? expr + dimExpr * stride : dimExpr * stride;
+    if (size > 0) {
+      runningSize *= size;
+      if (runningSize <= 0) {
+        return nullptr;
+      }
+    } else {
+      dynamicPoisonBit = true;
+    }
+  }
+  return expr;
+}
+
+// Construct a linearized affine expression for the upd op.
+inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
+  SmallVector<Value, 4> indices(updOp.getIndices().begin(),
+                                updOp.getIndices().end());
+  MemRefType memRefType = updOp.getSource().getType().cast<MemRefType>();
+  MLIRContext *context = memRefType.getContext();
+
+  SmallVector<AffineExpr, 8> exprVec;
+  DenseMap<Value, AffineExpr> indexToExprDimMap;
+  for (auto idxAndValue : llvm::enumerate(indices)) {
+    auto value = idxAndValue.value();
+    if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
+      AffineMap map = apOf.getAffineMap();
+      // Cannot create linearized affineExpr for complicated index.
+      if (map.getNumResults() != 1) {
+        return nullptr;
+      }
+      SmallVector<AffineExpr, 4> indexExprs;
+
+      for (auto index : apOf.getMapOperands()) {
+        if (auto cIdx = index.getDefiningOp<arith::ConstantOp>()) {
+          auto idxVal = cIdx.getValue().cast<IntegerAttr>().getValue();
+          unsigned idx = idxVal.getSExtValue();
+          indexExprs.push_back(getAffineConstantExpr(idx, context));
+        } else {
+          if (!indexToExprDimMap.count(index))
+            indexToExprDimMap[index] =
+                getAffineDimExpr(indexToExprDimMap.size(), context);
+          indexExprs.push_back(indexToExprDimMap[index]);
+        }
+      }
+
+      exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
+    } else if (auto cOp = value.getDefiningOp<arith::ConstantOp>()) {
+      auto idxVal = cOp.getValue().cast<IntegerAttr>().getValue();
+      unsigned idx = idxVal.getSExtValue();
+      exprVec.push_back(getAffineConstantExpr(idx, context));
+    } else {
+      if (!indexToExprDimMap.count(value))
+        indexToExprDimMap[value] =
+            getAffineDimExpr(indexToExprDimMap.size(), context);
+      exprVec.push_back(indexToExprDimMap[value]);
+    }
+  }
+
+  if (exprVec.empty()) {
+    return nullptr;
+  }
+
+  auto ret = flattenedStridedExpr(memRefType.getShape(), exprVec,
+                                  memRefType.getContext());
+
+  return ret;
+}
+
+// From a linearized affine expression, compute the base and the constant
+// offset. If the access is A[i][j+2] for an N*N array A, the linearized
+// expression will be A[i*N+j+2]. The base in this case will be (i*N+j), and the
+// offset will be 2.
+inline std::pair<AffineExpr, int32_t> extractBaseAndOffset(AffineExpr expr) {
+  AffineExpr base = expr;
+  int32_t offset = 0;
+
+  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+    base = nullptr;
+    offset += constExpr.getValue();
+  } else if (auto binopExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
+    if (binopExpr.getKind() == AffineExprKind::Add) {
+      AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
+      if (auto constExpr = lhs.dyn_cast<AffineConstantExpr>()) {
+        base = rhs;
+        offset += constExpr.getValue();
+      }
+      if (auto constExpr = rhs.dyn_cast<AffineConstantExpr>()) {
+        base = base == rhs ? nullptr : lhs;
+        offset += constExpr.getValue();
+      }
+    }
+  }
+  return std::make_pair(base, offset);
 }
 
 } // end namespace aievec
