@@ -734,7 +734,7 @@ int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
   if (getBody().empty())
-    return emitOpError("cannot have an empty body");
+    return emitOpError("should have non-empty body");
 
   auto tileOp = getTileOp();
   if (!tileOp.isShimNOCTile())
@@ -818,7 +818,7 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   Region &body = getBody();
   DenseSet<xilinx::AIE::DMAChannel> used_channels;
   if (body.empty())
-    return emitOpError("cannot have an empty body");
+    return emitOpError("should have non-empty body");
 
   auto result =
       HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
