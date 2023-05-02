@@ -1096,7 +1096,7 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
     default:
       return 0;
     }
-  if (getTileOp().isMemTile())
+  else if (getTileOp().isMemTile())
     switch (bundle) {
     //case WireBundle::Core:
     //  return 2;
@@ -1158,7 +1158,7 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
     default:
       return 0;
     }
-  if (getTileOp().isMemTile())
+  else if (getTileOp().isMemTile())
     switch (bundle) {
     //case WireBundle::Core:
     //  return 2;
