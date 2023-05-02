@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_initialize_locks(_xaie);
 
   // Clear buffer data memory
-  for(int i=0; i<256; i++) {
-  	mlir_aie_write_buffer_a14(_xaie, i, 0);
+  for (int i = 0; i < 256; i++) {
+    mlir_aie_write_buffer_a14(_xaie, i, 0);
   }
 
   // Check the buffer value at index 3 to ensure it is zeroed out
