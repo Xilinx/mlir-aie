@@ -410,9 +410,9 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
 def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel,
         WireBundle:$destBundle,
-        I32Attr:$destChannel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$destChannel
   );
   let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
@@ -446,10 +446,10 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   let arguments = (
     ins Index:$source,
         WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel,
         Index:$dest,
         WireBundle:$destBundle,
-        I32Attr:$destChannel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$destChannel
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
@@ -534,7 +534,7 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
 def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
   let arguments = (
     ins WireBundle:$destBundle,
-        I32Attr:$destChannel,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$destChannel,
         Variadic<Index>:$amsels
   );
   let summary = "Packet switched input connection";
@@ -601,7 +601,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
                                               SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel
   );
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched routing rules";
@@ -707,7 +707,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A sourceport";
   let description = [{
@@ -729,7 +729,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A destination port";
   let description = [{
