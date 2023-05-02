@@ -70,13 +70,14 @@ static xilinx::AIE::VE2302TargetModel VE2302model;
 static xilinx::AIE::VE2802TargetModel VE2802model;
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
-  if (auto array = op->getParentOfType<xilinx::AIE::AIETarget>()) {
-    return array.getTargetModel();
-  } else {
-    // For backward compatibility, return a basic device model compatible with
-    // the VCK190
-    return VC1902model;
-  }
+  if (auto t = dyn_cast<xilinx::AIE::AIETarget>(op))
+    return t.getTargetModel();
+  if (auto t = op->getParentOfType<xilinx::AIE::AIETarget>())
+    return t.getTargetModel();
+
+  // For backward compatibility, return a basic device model compatible with
+  // the VCK190
+  return VC1902model;
 }
 
 // Walk the operation hierarchy until we find a containing TileElement.
