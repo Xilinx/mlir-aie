@@ -1030,10 +1030,11 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
-    // TODO: Ignore for AIE2 where this is valid
-    // if (UsesOneLockInDMABlock::verifyTrait(*this).failed())
-    //   return (*this)->emitOpError(
-    //       "used in a DMA block that have multiple locks.");
+    const auto &target_model = getTargetModel(*this);
+    if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+        UsesOneLockInDMABlock::verifyTrait(*this).failed())
+      return (*this)->emitOpError(
+          "used in a DMA block that have multiple locks.");
 
     if (AcquireReleaseOneStateInDMABlock::verifyTrait(*this).failed())
       return (*this)->emitOpError(
