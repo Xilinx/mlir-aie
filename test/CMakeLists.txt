@@ -26,8 +26,15 @@ endif()
 
 project(aie-test LANGUAGES CXX C)
 
+# find package AIE if running tests from AIE installation
+if(NOT AIE_BINARY_DIR)
+find_package(AIE REQUIRED CONFIG)
+endif()
+
 # default to host system architecture for runtime target
 set(AIE_RUNTIME_TEST_TARGET ${CMAKE_HOST_SYSTEM_PROCESSOR} CACHE STRING "Runtime architecture to test with.")
+list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
+set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -61,9 +68,6 @@ if(DEFINED VITIS_ROOT)
   set(LibXAIE_FOUND TRUE)
 endif()
 
-if(NOT AIE_BINARY_DIR)
-find_package(AIE REQUIRED CONFIG)
-endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to
 # override.
