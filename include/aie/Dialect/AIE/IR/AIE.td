@@ -879,8 +879,8 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "f
   }];
 
   let arguments = (
-    ins DMAChannelDir:$channelDir, 
-        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channelIndex
+    ins DMAChannelDir:$channelDir,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$channelIndex
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
@@ -1089,19 +1089,20 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   // let hasCanonicalizer = 1;
 }
 
-
 def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    This operation uses a lock. A lock can be acquired with a value, or release with a value.
-    This should be understood as a "blocking" operation.  This lock must appear in a parent op
-    where the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).  If the useLock
-    operation appears in a module directly, an initialization to the lock will be generated in
-    the host implementation.
+    This operation uses a lock. In AIE1, a lock can be acquired with a value,
+    or released with a value. This should be understood as a "blocking"
+    operation. In AIE2, locks are counting semaphores without inherent
+    acquired/release characteristic. This lock must appear in a parent op where
+    the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
+    MemTileDMAOp). If the useLock operation appears in a module directly, an
+    initialization to the lock will be generated in the host implementation.
   }];
   let arguments = (
     ins Index:$lock,
-        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
+        I32Attr:$value,
         LockAction:$action,
         OptionalAttr<LockBlocking>:$blocking
   );
@@ -1110,7 +1111,9 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::Value":$lock, "uint32_t":$value, "xilinx::AIE::LockAction":$action),
+    OpBuilder<(ins "::mlir::Value":$lock,
+                   "uint32_t":$value,
+                   "xilinx::AIE::LockAction":$action),
     [{
       build($_builder, $_state, lock, value, action, nullptr);
     }]>
