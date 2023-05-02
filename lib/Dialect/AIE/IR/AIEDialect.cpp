@@ -1021,7 +1021,8 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
   // AIE.useLock may be used in a device to set the lock's default value
   if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
           (*this)->getParentOp()))
-    return success();
+    return (*this)->emitOpError(
+          "must be used in a core or memory operation.");
 
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
   if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::MemTileDMAOp,

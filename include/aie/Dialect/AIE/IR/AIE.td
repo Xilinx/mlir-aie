@@ -1097,8 +1097,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     operation. In AIE2, locks are counting semaphores without inherent
     acquired/release characteristic. This lock must appear in a parent op where
     the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
-    MemTileDMAOp). If the useLock operation appears in a module directly, an
-    initialization to the lock will be generated in the host implementation.
+    MemTileDMAOp).
   }];
   let arguments = (
     ins Index:$lock,

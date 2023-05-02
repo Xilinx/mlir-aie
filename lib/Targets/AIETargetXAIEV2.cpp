@@ -558,24 +558,17 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
-  for (auto op : targetOp.getOps<UseLockOp>()) {
-    int lockVal = op.getLockValue();
-    int timeOut = op.getTimeout();
-    LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-    TileOp tile = dyn_cast<TileOp>(lock.getTile().getDefiningOp());
+  for (auto lock : targetOp.getOps<LockOp>()) {
+    TileOp tile = lock.getTile().getDefiningOp<TileOp>();
     int col = tile.colIndex();
     int row = tile.rowIndex();
     int lockID = lock.getLockIDValue();
-    if (op.acquire_eq() || op.acquire_ge()) {
-      output << "XAie_LockAcquire(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", " << tileLockStr(lockID, lockVal)
-             << ", " << timeOut << ");\n";
-    } else if (op.release()) {
-      output << "XAie_LockRelease(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", " << tileLockStr(lockID, lockVal)
-             << ", " << timeOut << ");\n";
-    } else {
-      op.emitOpError("unsupported lock action");
+    auto init = lock.getInit();
+    if (init) {
+      output << "XAie_LockSetValue(" << deviceInstRef << ", "
+             << tileLocStr(col, row) << ", "
+             << "XAie_LockInit(" << lockID << ", "
+             << *init << "));\n";
     }
   }
   output << "} // mlir_aie_initialize_locks\n";
