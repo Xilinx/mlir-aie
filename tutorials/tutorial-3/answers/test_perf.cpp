@@ -45,8 +45,10 @@ int main(int argc, char *argv[]) {
   int num_iter = 1;
   u32 pc0_times[num_iter]; // track timer values
 
-  // Helper function to clear tile data memory
-  mlir_aie_clear_tile_memory(_xaie, 2, 4);
+  // Clear buffer data memory
+  for(int i=0; i<256; i++) {
+    mlir_aie_write_buffer_a24(_xaie, i, 0); 
+  }
 
   // Check the buffer value at index 3 to ensure it is zeroed out
   // prior to running our simple kernel.
