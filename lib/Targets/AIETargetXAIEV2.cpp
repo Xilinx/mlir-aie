@@ -567,8 +567,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     if (init) {
       output << "XAie_LockSetValue(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", "
-             << "XAie_LockInit(" << lockID << ", "
-             << *init << "));\n";
+             << "XAie_LockInit(" << lockID << ", " << *init << "));\n";
     }
   }
   output << "} // mlir_aie_initialize_locks\n";
