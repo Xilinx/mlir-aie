@@ -589,6 +589,22 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   if (body.empty())
     return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
+    // Would be simpler if this could be templatized.
+    auto checkBound = [&ops](StringRef dir, WireBundle bundle, int index,
+                             int bound) -> LogicalResult {
+      if (index >= bound) {
+        if (bound > 0)
+          return ops.emitOpError("index ")
+                 << index << " for " << dir << " bundle "
+                 << stringifyWireBundle(bundle) << " must be less than "
+                 << bound;
+        else
+          return ops.emitOpError()
+                 << dir << " bundle " << stringifyWireBundle(bundle)
+                 << " not supported";
+      }
+      return success();
+    };
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
       xilinx::AIE::Port source =
           std::make_pair(connectOp.getSourceBundle(), connectOp.sourceIndex());
@@ -603,25 +619,27 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
       } else {
         destset.insert(dest);
       }
-      if (connectOp.sourceIndex() < 0) {
-        connectOp.emitOpError("source index cannot be less than zero");
+
+      if (connectOp.sourceIndex() < 0)
+        return connectOp.emitOpError("source index cannot be less than zero");
+
+      {
+        auto boundsCheck = checkBound(
+            "source", connectOp.getSourceBundle(), connectOp.sourceIndex(),
+            getNumSourceConnections(connectOp.getSourceBundle()));
+        if (boundsCheck.failed())
+          return boundsCheck;
       }
-      if (connectOp.sourceIndex() >=
-          getNumSourceConnections(connectOp.getSourceBundle())) {
-        connectOp.emitOpError("source index for source bundle ")
-            << stringifyWireBundle(connectOp.getSourceBundle())
-            << " must be less than "
-            << getNumSourceConnections(connectOp.getSourceBundle());
-      }
-      if (connectOp.destIndex() < 0) {
-        connectOp.emitOpError("dest index cannot be less than zero");
-      }
-      if (connectOp.destIndex() >=
-          getNumDestConnections(connectOp.getDestBundle())) {
-        connectOp.emitOpError("dest index for dest bundle ")
-            << stringifyWireBundle(connectOp.getDestBundle())
-            << " must be less than "
-            << getNumDestConnections(connectOp.getDestBundle());
+
+      if (connectOp.destIndex() < 0)
+        return connectOp.emitOpError("dest index cannot be less than zero");
+
+      {
+        auto boundsCheck =
+            checkBound("dest", connectOp.getDestBundle(), connectOp.destIndex(),
+                       getNumDestConnections(connectOp.getDestBundle()));
+        if (boundsCheck.failed())
+          return boundsCheck;
       }
     } else if (auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
       xilinx::AIE::Port dest =
@@ -633,22 +651,22 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
       } else {
         destset.insert(dest);
       }
-      if (connectOp.destIndex() < 0) {
-        connectOp.emitOpError("dest index cannot be less than zero");
-      }
-      if (connectOp.destIndex() >=
-          getNumDestConnections(connectOp.getDestBundle())) {
-        connectOp.emitOpError("dest index for dest bundle ")
-            << stringifyWireBundle(connectOp.getDestBundle())
-            << " must be less than "
-            << getNumDestConnections(connectOp.getDestBundle());
+      if (connectOp.destIndex() < 0)
+        return connectOp.emitOpError("dest index cannot be less than zero");
+
+      {
+        auto boundsCheck =
+            checkBound("dest", connectOp.getDestBundle(), connectOp.destIndex(),
+                       getNumDestConnections(connectOp.getDestBundle()));
+        if (boundsCheck.failed())
+          return boundsCheck;
       }
 
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
         auto amsel = dyn_cast<xilinx::AIE::AMSelOp>(val.getDefiningOp());
         if ((arbiter != -1) && (arbiter != amsel.arbiterIndex()))
-          connectOp.emitOpError(
+          return connectOp.emitOpError(
               "a master port can only be tied to one arbiter");
         arbiter = amsel.arbiterIndex();
       }
@@ -724,32 +742,16 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
 }
 
 int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::DMA:
-    return 2;
-  case WireBundle::NOC:
-    return 4;
-  case WireBundle::PLIO:
-    return 6;
-  case WireBundle::South:
-    return 6;
-  default:
-    return 0;
-  }
+  auto tile = getTileOp();
+  const auto &target_model = getTargetModel(*this);
+  return target_model.getNumSourceShimMuxConnections(tile.getCol(),
+                                                     tile.getRow(), bundle);
 }
 int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::DMA:
-    return 2;
-  case WireBundle::NOC:
-    return 4;
-  case WireBundle::PLIO:
-    return 6;
-  case WireBundle::South:
-    return 8;
-  default:
-    return 0;
-  }
+  auto tile = getTileOp();
+  const auto &target_model = getTargetModel(*this);
+  return target_model.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
+                                                   bundle);
 }
 xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
@@ -1076,156 +1078,44 @@ namespace xilinx {
 namespace AIE {
 
 int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
-  if (getTileOp().isShimTile())
-    switch (bundle) {
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::North:
-      return 4;
-    case WireBundle::West:
-      return 4;
-    case WireBundle::South:
-      return 8;
-    case WireBundle::East:
-      return 4;
-    case WireBundle::Trace:
-      return 1;
-    default:
-      return 0;
-    }
-  else if (getTileOp().isMemTile())
-    switch (bundle) {
-    case WireBundle::DMA:
-      return 6;
-    case WireBundle::North:
-      return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::Trace:
-      return 1;
-    default:
-      return 0;
-    }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 2;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::North:
-      return 4;
-    case WireBundle::West:
-      return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::East:
-      return 4;
-    case WireBundle::Trace:
-      return 2;
-    default:
-      return 0;
-    }
+  auto tile = getTileOp();
+  const auto &target_model = getTargetModel(*this);
+  return target_model.getNumSourceSwitchboxConnections(tile.getCol(),
+                                                       tile.getRow(), bundle);
 }
 int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
-  if (getTileOp().isShimTile())
-    switch (bundle) {
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::North:
-      return 6;
-    case WireBundle::West:
-      return 4;
-    case WireBundle::South:
-      return 6;
-    case WireBundle::East:
-      return 4;
-    default:
-      return 0;
-    }
-  else if (getTileOp().isMemTile())
-    switch (bundle) {
-    case WireBundle::DMA:
-      return 6;
-    case WireBundle::North:
-      return 6;
-    case WireBundle::South:
-      return 4;
-    case WireBundle::Trace:
-      return 1;
-    default:
-      return 0;
-    }
-  else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 2;
-    case WireBundle::DMA:
-      return 2;
-    case WireBundle::FIFO:
-      return 2;
-    case WireBundle::North:
-      return 6;
-    case WireBundle::West:
-      return 4;
-    case WireBundle::South:
-      return 4;
-    case WireBundle::East:
-      return 4;
-    default:
-      return 0;
-    }
+  auto tile = getTileOp();
+  const auto &target_model = getTargetModel(*this);
+  return target_model.getNumDestSwitchboxConnections(tile.getCol(),
+                                                     tile.getRow(), bundle);
 }
 int TileOp::getNumSourceConnections(WireBundle bundle) {
-  if (isMemTile())
-    switch (bundle) {
-    case WireBundle::DMA:
-      return 6;
-    default:
-      return 0;
-    }
-  else if (isShimTile())
-    switch (bundle) {
-    case WireBundle::DMA:
-      return 2;
-    default:
-      return 0;
-    }
+  const auto &target_model = getTargetModel(*this);
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
+    // Note dest is correct here, since direction is reversed.
+    if (target_model.isShimNOCTile(getCol(), getRow()) ||
+        target_model.isShimPLTile(getCol(), getRow()))
+      return target_model.getNumDestShimMuxConnections(getCol(), getRow(),
+                                                       bundle);
+    else
+      return target_model.getNumDestSwitchboxConnections(getCol(), getRow(),
+                                                         bundle);
   else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 2;
-    case WireBundle::DMA:
-      return 2;
-    default:
-      return 0;
-    }
+    return 0;
 }
 int TileOp::getNumDestConnections(WireBundle bundle) {
-  if (isMemTile())
-    switch (bundle) {
-    case WireBundle::DMA:
-      return 6;
-    default:
-      return 0;
-    }
-  else if (isShimTile())
-    switch (bundle) {
-    case WireBundle::DMA:
-      return 2;
-    default:
-      return 0;
-    }
+  const auto &target_model = getTargetModel(*this);
+  if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
+    // Note source is correct here, since direction is reversed.
+    if (target_model.isShimNOCTile(getCol(), getRow()) ||
+        target_model.isShimPLTile(getCol(), getRow()))
+      return target_model.getNumDestShimMuxConnections(getCol(), getRow(),
+                                                       bundle);
+    else
+      return target_model.getNumSourceSwitchboxConnections(getCol(), getRow(),
+                                                           bundle);
   else
-    switch (bundle) {
-    case WireBundle::Core:
-      return 2;
-    case WireBundle::DMA:
-      return 2;
-    default:
-      return 0;
-    }
+    return 0;
 }
 bool TileOp::isMemTile() {
   const auto &target_model = getTargetModel(*this);

@@ -123,6 +123,23 @@ public:
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
+  /// Return the number of destinations of connections inside a switchbox. These
+  /// are the targets of connect operations in the switchbox.
+  virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
+                                                  WireBundle bundle) const = 0;
+  /// Return the number of sources of connections inside a switchbox.  These are
+  /// the origins of connect operations in the switchbox.
+  virtual uint32_t
+  getNumSourceSwitchboxConnections(int col, int row,
+                                   WireBundle bundle) const = 0;
+  /// Return the number of destinations of connections inside a shimmux.  These
+  /// are the targets of connect operations in the switchbox.
+  virtual uint32_t getNumDestShimMuxConnections(int col, int row,
+                                                WireBundle bundle) const = 0;
+  /// Return the number of sources of connections inside a shimmux.  These are
+  /// the origins of connect operations in the switchbox.
+  virtual uint32_t getNumSourceShimMuxConnections(int col, int row,
+                                                  WireBundle bundle) const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -173,6 +190,15 @@ public:
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
+
+  uint32_t getNumDestSwitchboxConnections(int col, int row,
+                                          WireBundle bundle) const override;
+  uint32_t getNumSourceSwitchboxConnections(int col, int row,
+                                            WireBundle bundle) const override;
+  uint32_t getNumDestShimMuxConnections(int col, int row,
+                                        WireBundle bundle) const override;
+  uint32_t getNumSourceShimMuxConnections(int col, int row,
+                                          WireBundle bundle) const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -216,8 +242,16 @@ public:
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
   }
-  // uint32_t getNumMemTileRows() const override;
   uint32_t getMemTileSize() const override { return 0x00080000; }
+
+  uint32_t getNumDestSwitchboxConnections(int col, int row,
+                                          WireBundle bundle) const override;
+  uint32_t getNumSourceSwitchboxConnections(int col, int row,
+                                            WireBundle bundle) const override;
+  uint32_t getNumDestShimMuxConnections(int col, int row,
+                                        WireBundle bundle) const override;
+  uint32_t getNumSourceShimMuxConnections(int col, int row,
+                                          WireBundle bundle) const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
