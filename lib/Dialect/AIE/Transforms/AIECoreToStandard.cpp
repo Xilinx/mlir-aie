@@ -212,7 +212,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
       auto lockValue = useLock.getLockValue();
       // if (auto dev = useLock->getParentOfType<xilinx::AIE::DeviceOp>()) {
       //   auto &target = dev.getTargetModel();
-      //   if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE2 && 
+      //   if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE2 &&
       if (useLock.acquire_ge()) {
         lockValue = -lockValue;
       }
