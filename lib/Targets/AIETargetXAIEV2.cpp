@@ -82,9 +82,6 @@ static std::string tileLockStr(StringRef id, StringRef val) {
   rss << "XAie_LockInit(" << id << "," << val << ")";
   return str;
 }
-static std::string tileLockStr(int id, int val) {
-  return tileLockStr(std::to_string(id), std::to_string(val));
-}
 static std::string packetStr(StringRef id, StringRef type) {
   std::string str;
   llvm::raw_string_ostream rss(str);
