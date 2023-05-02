@@ -27,11 +27,11 @@ module @dmaChannels {
     %buff_out = AIE.buffer(%tile33) { sym_name = "out" } :  memref<10x16xi32>
     %lock_out = AIE.lock(%tile33, 0) { sym_name = "lock_out" }
 
-    %objFifoIn0 = AIE.objectFifo.createObjectFifo(%tile33, {%tile12}, 2) : !AIE.objectFifo<memref<16xi32>>
-    %objFifoIn1 = AIE.objectFifo.createObjectFifo(%tile33, {%tile12}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifoIn0 = AIE.objectFifo.createObjectFifo(%tile33, {%tile12}, 2) {sym_name = "of_in0"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifoIn1 = AIE.objectFifo.createObjectFifo(%tile33, {%tile12}, 2) {sym_name = "of_in1"} : !AIE.objectFifo<memref<16xi32>>
 
-    %objFifoOut0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
-    %objFifoOut1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifoOut0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "of_out0"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifoOut1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "of_out1"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @copy(%lineIn : memref<16xi32>, %lineOut : memref<16xi32>) -> () {
         %c0 = arith.constant 0 : index
