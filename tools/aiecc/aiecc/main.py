@@ -270,7 +270,7 @@ class flow_runner:
         cmd += ['-DLIBXAIENGINEV2']
 
       cmd += ['-I%s' % self.tmpdirname]
-      cmd += ['-fuse-ld=lld','-lm','-rdynamic','-lxaiengine','-ldl']
+      cmd += ['-fuse-ld=lld','-lm','-lxaiengine']
       if(opts.xaie == 1):
         cmd += ['-lmetal','-lopen_amp']
 
