@@ -43,3 +43,15 @@ AIE.device(xcvc1902) {
     AIE.end
   }
 }
+
+// -----
+
+AIE.device(xcvc1902) {
+  %t = AIE.tile(3, 3)
+  %l = AIE.lock(%t, 0)
+  AIE.core(%t) {
+    // expected-error@+1 {{'AIE.useLock' op AcquireGreaterEqual is not supported in AIE1.}}
+    AIE.useLock(%l, AcquireGreaterEqual, 1)
+    AIE.end
+  }
+}

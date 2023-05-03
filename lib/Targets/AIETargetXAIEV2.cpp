@@ -292,7 +292,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           relEnable = enable;
           relValue = op.getLockValue();
         } else {
-          op.emitOpError("unsupported lock action");
+          // unreachable for current targets
+          return op.emitOpError("unsupported lock action");
         }
       }
 
@@ -462,7 +463,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
           relEnable = enable;
           relValue = op.getLockValue();
         } else {
-          op.emitOpError("unsupported lock action");
+          // unreachable for current targets
+          return op.emitOpError("unsupported lock action");
         }
       }
 
@@ -556,7 +558,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
   for (auto lock : targetOp.getOps<LockOp>()) {
-    TileOp tile = lock.getTile().getDefiningOp<TileOp>();
+    TileOp tile = lock.getTileOp();
     int col = tile.colIndex();
     int row = tile.rowIndex();
     int lockID = lock.getLockIDValue();

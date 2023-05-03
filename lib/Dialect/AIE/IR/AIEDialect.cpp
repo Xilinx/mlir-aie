@@ -1023,6 +1023,12 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
           (*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
 
+  const auto &target_model = getTargetModel(*this);
+  if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+      acquire_ge())
+    return (*this)->emitOpError(
+        "AcquireGreaterEqual is not supported in AIE1.");
+
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
   if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::MemTileDMAOp,
                     xilinx::AIE::ShimDMAOp>::verifyTrait(*this)
@@ -1030,7 +1036,6 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
-    const auto &target_model = getTargetModel(*this);
     if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
         UsesOneLockInDMABlock::verifyTrait(*this).failed())
       return (*this)->emitOpError(

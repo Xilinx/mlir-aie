@@ -529,7 +529,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   // u32 TimeOut); u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8 LockId,
   // u8 LockVal, u32 TimeOut);
   for (auto lock : targetOp.getOps<LockOp>()) {
-    TileOp tile = lock.getTile().getDefiningOp<TileOp>();
+    TileOp tile = lock.getTileOp();
     int col = tile.colIndex();
     int row = tile.rowIndex();
     int lockID = lock.getLockIDValue();
