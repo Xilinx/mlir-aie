@@ -6,6 +6,32 @@ Types and operations for AIE vector dialect
 
 ## Operation definition
 
+### `aievec.add_elem` (::xilinx::aievec::AddElemOp)
+
+AIE vector add elem
+
+Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
+on all types of vectors.`$result = `$lhs + $rhs`.
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.add` (::xilinx::aievec::AddOp)
 
 AIE vector add
@@ -580,6 +606,32 @@ Effects: MemoryEffects::Effect{}
 | Operand | Description |
 | :-----: | ----------- |
 | `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.sub_elem` (::xilinx::aievec::SubElemOp)
+
+AIE vector sub elem
+
+Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
+on all types of vectors.`$result = `$lhs - $rhs`.
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
 
 #### Results:
 
