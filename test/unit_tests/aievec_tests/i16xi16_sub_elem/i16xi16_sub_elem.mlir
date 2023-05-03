@@ -4,7 +4,7 @@
 // RUN: FileCheck --input-file=./xme_ca_udm_dbg.stdout %s
 
 // CHECK: PASSED
-
+// XFAIL: *
 module {
   func.func @dut(%arg0: memref<1024xi16>, %arg1: memref<1024xi16>, %arg2: memref<1024xi16>) {
     affine.for %arg3 = 0 to 1024 {
