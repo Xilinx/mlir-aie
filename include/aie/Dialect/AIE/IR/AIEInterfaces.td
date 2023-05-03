@@ -20,6 +20,27 @@ def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
+// Op is a DMA-like operation with valid channels
+def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
+  string cppNamespace = "::xilinx::AIE";
+}
+
+def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+
+def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
+def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
+def IsTileWithMemory : PredOpTrait<"op exists in a tile with local memory", Or<[PredIsCoreTile, PredIsMemTile]>>;
+def IsShimTile : PredOpTrait<"op exists in a shim tile", Or<[PredIsShimNOCTile, PredIsShimPLTile]>>;
+def IsShimNOCTile : PredOpTrait<"op exists in a shim tile with NOC connection", PredIsShimNOCTile>;
+def IsShimPLTile : PredOpTrait<"op exists in a shim tile with PL interface", PredIsShimPLTile>;
+
 def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   let description = [{
     Interface for operations that have interconnect-like properties,

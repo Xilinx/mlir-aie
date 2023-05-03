@@ -18,7 +18,7 @@
 AIE.device(xcve2802) {
   %t1 = AIE.tile(1, 1)
   %buf = AIE.buffer(%t1) : memref<256xi32>
-  %mem = AIE.mem(%t1) {
+  %mem = AIE.memTileDMA(%t1) {
     AIE.dmaStart("MM2S", 0, ^bd0, ^dma1)
     ^dma1:
     AIE.dmaStart("MM2S", 1, ^bd15, ^dma1)

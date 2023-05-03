@@ -114,9 +114,11 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
 };
 
 static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
-                     Operation *tileOp) {
-  const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
-  for (unsigned i = 0; i < target_model.getNumLocks(); i++) {
+                     Operation *op) {
+  auto tileOp = cast<TileOp>(op);
+  const auto &target_model = xilinx::AIE::getTargetModel(op);
+  for (unsigned i = 0;
+       i < target_model.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
     int usageCnt = locks[std::make_pair(tileOp, i)];
     if (usageCnt == 0) {
       locks[std::make_pair(tileOp, i)] = 1;

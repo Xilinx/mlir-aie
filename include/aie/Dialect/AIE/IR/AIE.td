@@ -253,7 +253,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   ];
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
                                       SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -290,7 +290,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs, HasValidDMAChannels, IsShimNOCTile
                                       /*, CallableOpInterface*/]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -330,7 +330,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs
   }];
 }
 
-def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, IsCoreTile, TileElement]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<I32Attr, "0x400">:$stackSize
@@ -613,6 +613,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
     See [AIE.rule](#aierule-aiepacketruleop) for an example.
   }];
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
     Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
@@ -850,13 +851,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   // ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
                      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
   let description = [{
     This operation declares a DMA channel to be used for data transfer. It usually exists inside
-    either a MemOp (representing a TileDMA), or in a ShimDMAOp (representing a ShimDMA).
+    either a MemOp (representing a TileDMA), a MemTileDMAOp (representing a DMA in a MemTile),
+    or in a ShimDMAOp (representing a ShimDMA).
     A channel is defined by a direction (i.e., MM2S or S2MM) and an index.
 
     Example:
@@ -900,7 +902,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, HasValidBDs]>,
+def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, IsCoreTile, HasValidBDs, HasValidDMAChannels]>,
                      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
@@ -946,7 +948,58 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, Ha
   ];
 }
 
-def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "func::FuncOp", "ShimDMAOp"]>]> {
+// This op is not actually Callable, but we want to inline code into them, so we have to
+// implement CallableOpInterface
+def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableOpInterface, IsMemTile, HasValidBDs, HasValidDMAChannels]>,
+                     Results<(outs Index)> {
+  let summary = "Declare a memTileDMA op";
+  let description = [{
+    This operation describes a DMA inside an AIE2 MemTile.
+    The region of the op is used to setup the DMAs and Block Descriptors.
+    See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.
+
+    This operation is restricted to certain compatible tiles in AIE2 devices:
+    xcve2302: row 1
+    xcve2802: row 1 and 2
+
+    Example:
+    ```
+      m73 = AIE.memTileDMA(%t71) {
+          %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+        ^bd0:
+          AIE.useLock(%lock, "Acquire", 0)
+          AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.useLock(%lock, "Release", 1)
+          AIE.nextBd ^bd0
+        ^end:
+          AIE.end
+      }
+    ```
+    Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+  }];
+  let arguments = (
+    ins Index:$tile
+  );
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int colIndex();
+    int rowIndex();
+    TileOp getTileOp();
+    // CallableOpInterface
+    Region *getCallableRegion();
+    ArrayRef<Type> getCallableResults();
+    static StringRef getDefaultDialect() { return "AIE"; }
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$tile), [{
+      build($_builder, $_state, $_builder.getIndexType(), tile);
+    }]>
+  ];
+}
+
+def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside
@@ -1040,7 +1093,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let description = [{
     This operation uses a lock. A lock can be acquired with a value, or release with a value.
     This should be understood as a "blocking" operation.  This lock must appear in a parent op
-    where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).  If the useLock
+    where the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).  If the useLock
     operation appears in a module directly, an initialization to the lock will be generated in
     the host implementation.
   }];
@@ -1069,7 +1122,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", [TileElement]>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1258,7 +1311,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", []> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The "aie.objectFifo.registerExternalBuffers" operation is used to register one or multiple external buffers 
@@ -1279,8 +1332,8 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 
   let arguments = (
     ins Index:$tile,
-        AIE_ObjectFifoType:$fifo,
-        Variadic<AnyMemRef>:$externalBuffers
+    AIE_ObjectFifoType:$fifo,
+    Variadic<AnyMemRef>:$externalBuffers
   );
 
   let assemblyFormat = [{
@@ -1290,6 +1343,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    TileOp getTileOp();
     AIEObjectFifoType getFifoType() {
       return getFifo().getType().cast<AIEObjectFifoType>();
     }

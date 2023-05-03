@@ -13,7 +13,7 @@
 // CHECK: mlir_aie_configure_cores
 // CHECK: XAieTile_CoreControl(&(ctx->TileInst[2][1]), XAIE_DISABLE, XAIE_ENABLE);
 // CHECK-NOT: XAieTile_CoreControl(&(ctx->TileInst[2][0])
-// CHECK: for (int l=0; l<16; l++)
+// CHECK: for (int l = 0; l < 16; ++l)
 // CHECK:   XAieTile_LockRelease(&(ctx->TileInst[2][1]), l, 0x0, 0);
 // CHECK: XAieTile_ShimColumnReset(&(ctx->TileInst[2][0]), XAIE_RESETENABLE);
 // CHECK: XAieTile_ShimColumnReset(&(ctx->TileInst[2][0]), XAIE_RESETDISABLE);
