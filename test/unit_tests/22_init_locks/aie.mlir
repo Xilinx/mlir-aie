@@ -19,7 +19,6 @@ module @test22_init_locks {
 
   %lock13_3 = AIE.lock(%tile13, 3) { init = 1 : i32, sym_name = "lock_a" }
   %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "lock_b" }
-  //AIE.useLock(%lock13_3, "Acquire", 1)
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
