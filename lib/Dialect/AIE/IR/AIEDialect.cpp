@@ -1018,7 +1018,7 @@ struct AcquireReleaseOneStateInDMABlock {
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
-  // AIE.useLock may be used in a device to set the lock's default value
+  // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
           (*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
