@@ -23,6 +23,9 @@ endif
 ifeq ($(XILINX_VITIS_AIETOOLS),)
 XILINX_VITIS_AIETOOLS = $(dir $(shell which aiesimulator))/..
 endif
+
+MLIR_AIE_PROJ = $(notdir $(patsubst %/,%,$(dir $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST))))))))
+
 .PHONY: all link sim clean
 .NOTPARALLEL:
 all: sim
@@ -43,7 +46,7 @@ ps/ps.so: ps/genwrapper_for_ps.o ps/test.o $(eval PATH:=$(XILINX_VITIS_AIETOOLS)
 link: ps/ps.so
 
 sim: ps/ps.so
-	cd ../..; aiesimulator --pkg-dir=./aie.mlir.prj/sim --dump-vcd foo
+	cd ../..; aiesimulator --pkg-dir=./$(MLIR_AIE_PROJ)/sim --dump-vcd foo
 
 clean:
 	(rm -rf ps/*.o ps/*.so *.log aiesimulator_output *vcd)
