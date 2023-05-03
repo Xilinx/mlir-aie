@@ -292,7 +292,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
-        if (op.acquire_eq() || op.acquire_ge()) {
+        if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
@@ -440,7 +440,7 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
         hasLock = true;
-        if (op.acquire_eq() || op.acquire_ge()) {
+        if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {

@@ -199,7 +199,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (!isa<DeviceOp>(useLock->getParentOp())) {
       std::string funcName = "llvm.aie.lock.";
-      if (useLock.acquire_eq() || useLock.acquire_ge())
+      if (useLock.acquire() || useLock.acquire_ge())
         funcName += "acquire.reg";
       else if (useLock.release())
         funcName += "release.reg";

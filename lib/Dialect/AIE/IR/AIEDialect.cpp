@@ -1001,7 +1001,7 @@ struct AcquireReleaseOneStateInDMABlock {
     auto block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
-      if (op.acquire_eq() || op.acquire_ge()) {
+      if (op.acquire() || op.acquire_ge()) {
         if (acqValue != -1 && acqValue != op.getLockValue()) {
           return failure();
         }
