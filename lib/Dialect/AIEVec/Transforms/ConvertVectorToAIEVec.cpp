@@ -268,7 +268,8 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
 
     Type accType = getVectorOpDestType(cast<VectorType>(acc.getType()),
                                        /*AIEML =*/true);
-    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc);
+    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc,
+                                                shiftParam);
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
         addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
@@ -862,6 +863,154 @@ using LowerVectorSubIOpToAIEVecSubOp =
 using LowerVectorSubFOpToAIEVecSubOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::SubFOp, aievec::SubOp>;
 
+template <typename SrcOpTy, typename AIEv2ElemOp>
+static void genAddElemAieML(ConversionPatternRewriter &rewriter, Value lval,
+                            Value rval, VectorType srcType, SrcOpTy srcOp) {
+  auto lCastOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), srcType, lval,
+                                                 /*isResAcc*/ true);
+  auto rCastOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), srcType, rval,
+                                                 /*isResAcc*/ true);
+  auto elemOp = rewriter.create<AIEv2ElemOp>(
+      srcOp.getLoc(), lCastOp->getResult(0).getType(), lCastOp->getResult(0),
+      rCastOp->getResult(0));
+  rewriter.replaceOpWithNewOp<aievec::CastOp>(
+      srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
+}
+
+template <typename SrcOpTy, typename DstOpTy>
+struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
+    : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp(MLIRContext *context,
+                                                  unsigned shiftParam = 0)
+      : OpConversionPattern<SrcOpTy>(context), shiftParam(shiftParam) {}
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
+    if (!resultType)
+      return failure();
+
+    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+    laneSizeElWidthPairSet.insert({64, 8});
+    laneSizeElWidthPairSet.insert({32, 16});
+    laneSizeElWidthPairSet.insert({16, 32});
+    laneSizeElWidthPairSet.insert({32, 32});
+
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto lhsDefOp = lhs.getDefiningOp();
+    auto rhsDefOp = rhs.getDefiningOp();
+    if ((lhsDefOp && isa<arith::MulIOp>(lhsDefOp)) ||
+        (rhsDefOp && isa<arith::MulIOp>(rhsDefOp)) ||
+        (lhsDefOp && isa<arith::MulFOp>(lhsDefOp)) ||
+        (rhsDefOp && isa<arith::MulFOp>(rhsDefOp)))
+      return failure();
+
+    Type scalarType = resultType.getElementType();
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (scalarType.isa<IntegerType>()) {
+      if (!laneSizeElWidthPairSet.count(
+              std::make_pair(laneSize, resultElWidth)))
+        return failure();
+
+      if (laneSize == 32 && resultElWidth == 32) {
+        if (!lhsDefOp || !rhsDefOp) {
+          genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
+                                            srcOp);
+          return success();
+        }
+        auto lhsExt = dyn_cast<arith::ExtSIOp>(lhsDefOp);
+        auto rhsExt = dyn_cast<arith::ExtSIOp>(rhsDefOp);
+        if (!lhsExt || !rhsExt) {
+          genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
+                                            srcOp);
+          return success();
+        } else {
+          auto lval = lhsExt->getOperand(0);
+          auto rval = rhsExt->getOperand(0);
+
+          VectorType lSrcType = cast<VectorType>(lval.getType());
+          VectorType rSrcType = cast<VectorType>(rval.getType());
+
+          unsigned lBitWidth =
+              lSrcType.getElementType().getIntOrFloatBitWidth();
+          unsigned rBitWidth =
+              rSrcType.getElementType().getIntOrFloatBitWidth();
+
+          if ((lBitWidth != 8 || rBitWidth != 8) &&
+              (lBitWidth != 16 || rBitWidth != 16)) {
+            genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
+                                              srcOp);
+            return success();
+          }
+
+          Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
+          auto lUpsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
+                                                       lval, shiftParam);
+          auto rUpsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
+                                                       rval, shiftParam);
+          auto elemOp = rewriter.create<DstOpTy>(
+              srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+              lUpsOp->getResult(0), rUpsOp->getResult(0));
+          rewriter.replaceOpWithNewOp<aievec::CastOp>(
+              srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
+          return success();
+        }
+      } else {
+        rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs, rhs);
+        return success();
+      }
+    } // Float types
+    else {
+      if (laneSize != 16)
+        return failure();
+
+      // v16float
+      if (resultElWidth == 32) {
+        genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
+                                          srcOp);
+        return success();
+      }
+      // v16bfloat16
+      else {
+        Type accType = getVectorOpDestType(resultType, /*AIEML =*/true);
+        auto lUpsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
+                                                     lhs, shiftParam);
+        auto rUpsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
+                                                     rhs, shiftParam);
+        auto elemOp = rewriter.create<DstOpTy>(
+            srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+            lUpsOp->getResult(0), rUpsOp->getResult(0));
+        rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+            srcOp, srcOp.getType(), elemOp.getResult(), shiftParam);
+        return success();
+      }
+    }
+    return failure();
+  }
+
+  unsigned shiftParam;
+};
+
+using LowerVectorAddIOpToAIEVecAddElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::AddIOp,
+                                                    aievec::AddElemOp>;
+using LowerVectorSubIOpToAIEVecSubElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubIOp,
+                                                    aievec::SubElemOp>;
+using LowerVectorAddFOpToAIEVecAddElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::AddFOp,
+                                                    aievec::AddElemOp>;
+using LowerVectorSubFOpToAIEVecSubElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubFOp,
+                                                    aievec::SubElemOp>;
+
 // If a UPD op is loading a vector twice the size of the architecture
 // vector size, split it into a high and low load into the accumulator.
 // TODO: This is a process we may want to include as part of the
@@ -970,30 +1119,30 @@ struct MergeSingleColumnI16FMAOpPattern
 // Pattern collection
 //===----------------------------------------------------------------------===//
 
-static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns,
-                                                   AnalysisManager &am) {
-  patterns.add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
-               LowerVectorSubFOpToAIEVecSubOp>(patterns.getContext());
-}
-
 static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 256);
-  patterns.add<ConvertMulAddToAIEVecFMAOpPattern, FoldBroadcastToFMAOp,
-               LowerVectorAddIOpToAIEVecAddOp>(patterns.getContext());
+  patterns
+      .add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
+           LowerVectorSubFOpToAIEVecSubOp, ConvertMulAddToAIEVecFMAOpPattern,
+           FoldBroadcastToFMAOp, LowerVectorAddIOpToAIEVecAddOp>(
+          patterns.getContext());
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
-                                               AnalysisManager &am) {
+                                               AnalysisManager &am,
+                                               unsigned shiftParam) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 512);
 
-  patterns.add<LowerVectorAddIOpToAIEVecAddOp,
-               FoldVectorExtractAndBroadcastToAIEBroadcast,
-               ConvertMulAddToAIEVecFMAElemOpPattern,
-               ConvertMulIToAIEVecMulElemOpPattern,
-               ConvertMulFToAIEVecMulElemOpPattern>(patterns.getContext());
+  patterns.add<
+      LowerVectorAddIOpToAIEVecAddElemOp, LowerVectorAddFOpToAIEVecAddElemOp,
+      LowerVectorSubIOpToAIEVecSubElemOp, LowerVectorSubFOpToAIEVecSubElemOp,
+      FoldVectorExtractAndBroadcastToAIEBroadcast,
+      ConvertMulAddToAIEVecFMAElemOpPattern,
+      ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
+      patterns.getContext(), shiftParam);
 }
 
 static void
@@ -1081,8 +1230,50 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    return (laneSize != 32 || resultElWidth != 16) &&
-           (laneSize != 16 || resultElWidth != 32);
+    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+    laneSizeElWidthPairSet.insert({64, 8});
+    laneSizeElWidthPairSet.insert({32, 16});
+    laneSizeElWidthPairSet.insert({16, 32});
+    laneSizeElWidthPairSet.insert({32, 32});
+
+    return !laneSizeElWidthPairSet.count(
+        std::make_pair(laneSize, resultElWidth));
+  });
+
+  target.addDynamicallyLegalOp<arith::SubIOp>([](arith::SubIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+    laneSizeElWidthPairSet.insert({64, 8});
+    laneSizeElWidthPairSet.insert({32, 16});
+    laneSizeElWidthPairSet.insert({16, 32});
+    laneSizeElWidthPairSet.insert({32, 32});
+
+    return !laneSizeElWidthPairSet.count(
+        std::make_pair(laneSize, resultElWidth));
+  });
+
+  target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(resultType);
+    return laneSize != 16;
+  });
+
+  target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(resultType);
+    return laneSize != 16;
   });
 
   target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
@@ -1204,13 +1395,12 @@ void LowerVectorToAIEVec::runOnOperation() {
   }
 
   AnalysisManager am = getAnalysisManager();
-  populateAIEVecCommonConversionPatterns(patterns, am);
   configureAIEVecCommonLegalizations(target, am);
   if (aieVersion == AIEArch::AIE) {
     populateAIEVecV1ConversionPatterns(patterns, am);
     configureAIEVecV1Legalizations(target, am);
   } else {
-    populateAIEVecV2ConversionPatterns(patterns, am);
+    populateAIEVecV2ConversionPatterns(patterns, am, shiftParam);
     configureAIEVecV2Legalizations(target, am);
   }
 

@@ -355,12 +355,9 @@ LogicalResult UPSOp::verify() {
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
-  if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
+  if (stypeWidth >= atypeWidth)
     return emitError("the element type of result accumulator "
                      "must be wider than that of the source vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
-    return emitError("the element type of result accumulator must "
-                     "be same as the source vector");
 
   return success();
 }
@@ -1048,6 +1045,102 @@ ParseResult AddOp::parse(OpAsmParser &parser, OperationState &result) {
 
 ParseResult SubOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseAddSubOp(parser, result);
+}
+
+//===----------------------------------------------------------------------===//
+// AddElemOp and SubElemOp
+//===----------------------------------------------------------------------===//
+
+// Print out AddElem and SubElem op.
+template <typename T> void printAddElemSubElemOp(OpAsmPrinter &p, T op) {
+  // Print the lhs operand
+  p << " " << op.getLhs();
+  // Print the rhs operand
+  p << ", " << op.getRhs();
+
+  // Print the types
+  p << " : " << op.getLhs().getType() << ", " << op.getRhs().getType();
+  p << ", " << op.getResult().getType();
+}
+
+void aievec::AddElemOp::print(OpAsmPrinter &p) {
+  printAddElemSubElemOp<aievec::AddElemOp>(p, *this);
+}
+
+void aievec::SubElemOp::print(OpAsmPrinter &p) {
+  printAddElemSubElemOp<aievec::SubElemOp>(p, *this);
+}
+
+// Verify AddElem and SubElem op.
+template <typename T> LogicalResult verifyAddElemSubElemOp(T op) {
+  // Verify the types
+  VectorType resultType =
+      op.getResult().getType().template dyn_cast<VectorType>();
+  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+
+  if (!lhsType || !rhsType || !resultType)
+    return op.emitError("requires vector type");
+
+  // All the vector types must match
+  if (lhsType != rhsType || rhsType != resultType)
+    return op.emitError("all vectors must be of same type");
+
+  return success();
+}
+
+LogicalResult aievec::AddElemOp::verify() {
+  return verifyAddElemSubElemOp<aievec::AddElemOp>(*this);
+}
+
+LogicalResult aievec::SubElemOp::verify() {
+  return verifyAddElemSubElemOp<aievec::SubElemOp>(*this);
+}
+
+// Parse AddElem and SubElem op.
+ParseResult parseAddElemSubElemOp(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 3> types;
+  OpAsmParser::UnresolvedOperand lhs, rhs;
+
+  // Parse the lhs and rhs
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  // Assert that there are three types: lhs, rhs, and result
+  if (types.size() != 3)
+    return parser.emitError(typesLoc, "requires three types");
+
+  // Some verification
+  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  if (!lhsType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  if (!rhsType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType resultType = types[2].dyn_cast<VectorType>();
+  if (!resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the lhs, rhs, and accumulator in the result
+  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
+      parser.resolveOperand(rhs, rhsType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
+ParseResult AddElemOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseAddElemSubElemOp(parser, result);
+}
+
+ParseResult SubElemOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseAddElemSubElemOp(parser, result);
 }
 
 //===----------------------------------------------------------------------===//

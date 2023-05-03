@@ -489,7 +489,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
   // If the vector size to be loaded is less than or equal to 256, we
   // can just do a direct memory copy. If the translation is for AIEML,
   // this number should be doubled
-  if (vecSizeInBits <= (AIEML ? 512 : 256)) {
+  if (vecSizeInBits <= (AIEML ? 1024 : 256)) {
     // Print the lhs
     if (failed(emitter.emitAssignPrefix(*updOp)))
       return failure();
@@ -1063,6 +1063,26 @@ static LogicalResult printAddOrSubOperand(CppEmitter &emitter, T op,
   return success();
 }
 
+// Print lhs or rhs operand of add_elem/sub_elem intrinsic
+template <typename T>
+static LogicalResult printAddElemOrSubElemOperand(CppEmitter &emitter, T op,
+                                                  unsigned opNum) {
+  // We currently only support printing operands 0 and 1
+  if (opNum > 1)
+    return failure();
+
+  // The operand should have already been emitted
+  Value operand = opNum == 0 ? op.getLhs() : op.getRhs();
+  if (!emitter.hasValueInScope(operand))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << emitter.getOrCreateName(operand);
+
+  return success();
+}
+
 // Print lhs or rhs operand of mul/mac intrinsic
 template <typename T>
 static LogicalResult printFMAOrMulOperand(CppEmitter &emitter, T op,
@@ -1398,6 +1418,62 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
     return failure();
   os << ", ";
   if (failed(printAddOrSubOperand<aievec::SubOp>(emitter, subOp, 1)))
+    return failure();
+  os << ")";
+  return success();
+}
+
+// Generate the AddElem op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::AddElemOp add_elemOp) {
+  auto lhs = add_elemOp.getLhs();
+  auto rhs = add_elemOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*add_elemOp, true)))
+    return failure();
+
+  os << "add(";
+  if (failed(printAddElemOrSubElemOperand<aievec::AddElemOp>(emitter,
+                                                             add_elemOp, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printAddElemOrSubElemOperand<aievec::AddElemOp>(emitter,
+                                                             add_elemOp, 1)))
+    return failure();
+  os << ")";
+  return success();
+}
+
+// Generate the SubElem op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::SubElemOp sub_elemOp) {
+  auto lhs = sub_elemOp.getLhs();
+  auto rhs = sub_elemOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*sub_elemOp, true)))
+    return failure();
+
+  os << "sub(";
+  if (failed(printAddElemOrSubElemOperand<aievec::SubElemOp>(emitter,
+                                                             sub_elemOp, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printAddElemOrSubElemOperand<aievec::SubElemOp>(emitter,
+                                                             sub_elemOp, 1)))
     return failure();
   os << ")";
   return success();
@@ -2438,10 +2514,11 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           // Vector ops
           .Case<vector::TransferWriteOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<aievec::AddOp, aievec::ConcatOp, aievec::ExtOp, aievec::FMAOp,
-                aievec::MulOp, aievec::PackOp, aievec::SelectOp, aievec::SRSOp,
-                aievec::SubOp, aievec::UPDOp, aievec::UPSOp, aievec::FMAElemOp,
-                aievec::MulElemOp, aievec::BroadcastOp,
+          .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
+                aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
+                aievec::SelectOp, aievec::SRSOp, aievec::SubOp,
+                aievec::SubElemOp, aievec::UPDOp, aievec::UPSOp,
+                aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp>(
               [&](auto op) { return printOperation(*this, op); })
