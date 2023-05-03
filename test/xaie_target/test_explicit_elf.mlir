@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck %s
 
 // CHECK: mlir_aie_configure_cores
 // CHECK: XAieTile_CoreControl(&(ctx->TileInst[3][3]), XAIE_DISABLE, XAIE_ENABLE);

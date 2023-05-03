@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck %s
 
 // AIE.end is not the last block.
 

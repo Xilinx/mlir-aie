@@ -14,7 +14,7 @@
 // stream switches that connect the AIE array to PL.
 //
 
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck %s
 
 // CHECK: mlir_aie_configure_switchboxes
 // CHECK: XAieTile_StrmConnectCct(&(ctx->TileInst[x][y]),

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-packet-flows %s | aie-translate --aie-generate-xaie | FileCheck %s
+// RUN: aie-opt --aie-create-packet-flows %s | aie-translate --aie-generate-xaie --xaie-target=v1 | FileCheck %s
 
 // CHECK: void mlir_aie_configure_dmas(aie_libxaie_ctx_t* ctx) {
 // CHECK: XAieDma_ShimBdSetNext(&ShimDMAInst_7_0,  /* bd */ 0,  /* nextbd */ 0);

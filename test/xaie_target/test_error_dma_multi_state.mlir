@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: (aie-translate --aie-generate-xaie %s 2>&1 || true) | FileCheck %s
+// RUN: (aie-translate --aie-generate-xaie --xaie-target=v1 %s 2>&1 || true) | FileCheck %s
 // CHECK: acquires/releases the lock in a DMA block from/to multiple states.
 
 module @test_error_dma_multi_state {

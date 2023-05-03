@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck %s
 
 // Test acquire with '1'.   Single BD.
 // CHECK: XAieDma_TileBdSetLock(&(ctx->TileDMAInst[3][3]), {{.*}}0, XAIEDMA_TILE_BD_ADDRA, {{.*}}0, XAIE_ENABLE, {{.*}}0, XAIE_ENABLE, {{.*}}1);

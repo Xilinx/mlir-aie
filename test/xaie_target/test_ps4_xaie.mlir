@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck --match-full-lines %s
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck --match-full-lines %s
 
 // CHECK: XAieTile_CoreControl(&(ctx->TileInst[0][1]), XAIE_ENABLE, XAIE_DISABLE);
 // CHECK: XAieTile_CoreControl(&(ctx->TileInst[1][1]), XAIE_ENABLE, XAIE_DISABLE);
