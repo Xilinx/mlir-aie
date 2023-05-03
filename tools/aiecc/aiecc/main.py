@@ -240,10 +240,7 @@ class flow_runner:
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
       await self.do_call(task, ['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', self.file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(self.tmpdirname, 'aie_inc.cpp')
-      if(opts.xaie == 1):
-          await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v1', file_physical, '-o', file_inc_cpp])
-      else:
-          await self.do_call(task, ['aie-translate', '--aie-generate-xaie', '--xaie-target=v2', file_physical, '-o', file_inc_cpp])
+      await self.do_call(task, ['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
 
       cmd = ['clang','-std=c++11']
       if(opts.host_target):
@@ -266,13 +263,10 @@ class flow_runner:
       xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
       cmd += ['-I%s' % xaiengine_include_path]
       cmd += ['-L%s' % xaiengine_lib_path]
-      if(opts.xaie == 2):
-        cmd += ['-DLIBXAIENGINEV2']
+      cmd += ['-DLIBXAIENGINEV2']
 
       cmd += ['-I%s' % self.tmpdirname]
       cmd += ['-fuse-ld=lld','-lm','-lxaiengine']
-      if(opts.xaie == 1):
-        cmd += ['-lmetal','-lopen_amp']
 
       if(opts.aie_target == "AIE2"):
         cmd += ['-D__AIEARCH__=20']

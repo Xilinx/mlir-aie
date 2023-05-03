@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
-// CHECK: XAie_LockAcquire(&(ctx->DevInst), XAie_TileLoc(3,3), XAie_LockInit(0,1), 1);
+// CHECK: XAie_LockSetValue(&(ctx->DevInst), XAie_TileLoc(3,3), XAie_LockInit(0, 1));
 
 module @test_lock_init {
  AIE.device(xcvc1902) {
