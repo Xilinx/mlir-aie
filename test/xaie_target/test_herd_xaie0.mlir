@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: stephenn
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck %s
 
 // CHECK: for (x = ifm_X + 0; x < ifm_X + 1; x += 1) {
 // CHECK: for (y = ifm_Y + 0; y < ifm_Y + 1; y += 1) {

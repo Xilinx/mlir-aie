@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-packet-flows --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
+// RUN: aie-opt --aie-create-packet-flows --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie --xaie-target=v1 | FileCheck %s
 
 // CHECK: void mlir_aie_configure_switchboxes(aie_libxaie_ctx_t* ctx) {
 // CHECK: // Core Stream Switch column 7 row 1

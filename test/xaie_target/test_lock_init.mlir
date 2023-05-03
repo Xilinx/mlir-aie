@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-xaie  --xaie-target=v1 %s | FileCheck %s
-// CHECK: XAieTile_LockRelease(&(ctx->TileInst[3][3]), 0, 1, 1);
+// RUN: aie-translate --aie-generate-xaie --xaie-target=v1 %s | FileCheck %s
+// CHECK: XAieTile_LockAcquire(&(ctx->TileInst[3][3]), 0, 1, 1);
 
 module @test_lock_init {
  AIE.device(xcvc1902) {
