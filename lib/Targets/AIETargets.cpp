@@ -50,7 +50,7 @@ static llvm::cl::opt<int>
 static llvm::cl::opt<std::string>
     xaieTarget("xaie-target",
                llvm::cl::desc("target of aie-generate-xaie option: v1|v2"),
-               llvm::cl::init("v1"));
+               llvm::cl::init("v2"));
 
 namespace xilinx {
 namespace AIE {
