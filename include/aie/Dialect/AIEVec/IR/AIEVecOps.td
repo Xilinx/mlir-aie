@@ -71,6 +71,19 @@ def AIEVec_AddOp:
   }];
 }
 
+def AIEVec_AddElemOp:
+  AIEVec_Op<"add_elem", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector add elem";
+  let description = [{
+    Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
+    on all types of vectors.`$result = `$lhs + $rhs`.
+  }];
+}
+
 def AIEVec_SubOp:
   AIEVec_Op<"sub", [
     Pure
@@ -110,6 +123,19 @@ def AIEVec_SubOp:
                             return idx==0 ? "xoffsets_hi" : "zoffsets_hi"; } 
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xsquare" : "zsquare"; }
+  }];
+}
+
+def AIEVec_SubElemOp: 
+  AIEVec_Op<"sub_elem", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector sub elem";
+  let description = [{
+    Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
+    on all types of vectors.`$result = `$lhs - $rhs`.
   }];
 }
 
