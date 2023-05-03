@@ -116,7 +116,7 @@ set(TEST_DEPENDS
 add_lit_testsuite(check-tutorials "Running the aie tutorials tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 300 --time-tests"
+  ARGS "-j8 -sv --timeout 300 --time-tests"
   )
 set_target_properties(check-tutorials PROPERTIES FOLDER "Tutorials")
 
