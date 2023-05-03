@@ -285,7 +285,8 @@ operation ::= `AIE.dmaStart` `(` $channelDir `,` $channelIndex `,` $dest `,` $ch
 ```
 
 This operation declares a DMA channel to be used for data transfer. It usually exists inside
-either a MemOp (representing a TileDMA), or in a ShimDMAOp (representing a ShimDMA).
+either a MemOp (representing a TileDMA), a MemTileDMAOp (representing a DMA in a MemTile),
+or in a ShimDMAOp (representing a ShimDMA).
 A channel is defined by a direction (i.e., MM2S or S2MM) and an index.
 
 Example:
@@ -304,7 +305,7 @@ Conceptually, the AIE.dmaStart operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
 or to a basic block for another dmaStart, to an AIE.end operation.
 
-Traits: HasParent<MemOp, func::FuncOp, ShimDMAOp>, Terminator
+Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
 
 #### Attributes:
 
@@ -650,7 +651,57 @@ Example:
 ```
 Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
 
-Traits: HasValidBDs
+Traits: HasValidBDs, HasValidDMAChannels
+
+Interfaces: CallableOpInterface, FlowEndPoint, TileElement
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
+
+### `AIE.memTileDMA` (::xilinx::AIE::MemTileDMAOp)
+
+Declare a memTileDMA op
+
+
+Syntax:
+
+```
+operation ::= `AIE.memTileDMA` `(` $tile `)` regions attr-dict
+```
+
+This operation describes a DMA inside an AIE2 MemTile.
+The region of the op is used to setup the DMAs and Block Descriptors.
+See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.
+
+This operation is restricted to certain compatible tiles in AIE2 devices:
+xcve2302: row 1
+xcve2802: row 1 and 2
+
+Example:
+```
+  m73 = AIE.memTileDMA(%t71) {
+      %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+    ^bd0:
+      AIE.useLock(%lock, "Acquire", 0)
+      AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+      AIE.useLock(%lock, "Release", 1)
+      AIE.nextBd ^bd0
+    ^end:
+      AIE.end
+  }
+```
+Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+
+Traits: HasValidBDs, HasValidDMAChannels
 
 Interfaces: CallableOpInterface, FlowEndPoint, TileElement
 
@@ -696,7 +747,7 @@ Example:
   }
 ```
 
-Traits: HasParent<MemOp, func::FuncOp, ShimDMAOp>, Terminator
+Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
 
 #### Successors:
 
@@ -822,6 +873,8 @@ Example:
   AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
 ```
 This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
+
+Interfaces: TileElement
 
 #### Operands:
 
@@ -1233,7 +1286,7 @@ Example:
 ```
 Create the shimDMA for tile %t70 and setup one DMA channel and one Buffer Descriptor.
 
-Traits: HasValidBDs
+Traits: HasValidBDs, HasValidDMAChannels
 
 Interfaces: FlowEndPoint, TileElement
 
@@ -1412,7 +1465,7 @@ operation ::= `AIE.useLock` `(` $lock `,` $action `,` $value ( `,` $blocking^ )?
 
 This operation uses a lock. A lock can be acquired with a value, or release with a value.
 This should be understood as a "blocking" operation.  This lock must appear in a parent op
-where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).  If the useLock
+where the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).  If the useLock
 operation appears in a module directly, an initialization to the lock will be generated in
 the host implementation.
 
