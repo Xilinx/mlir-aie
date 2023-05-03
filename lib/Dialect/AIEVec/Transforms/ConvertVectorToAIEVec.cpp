@@ -894,6 +894,8 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     if (!resultType)
       return failure();
 
+    // A set recording the vector lane size and element width we are supporting
+    // for aie-ml.
     llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
     laneSizeElWidthPairSet.insert({64, 8});
     laneSizeElWidthPairSet.insert({32, 16});
@@ -1222,37 +1224,33 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                .effectiveSize <= 1024;
   });
 
-  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
+  // A set recording the vector lane size and element width we are supporting
+  // for aie-ml.
+  llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+  laneSizeElWidthPairSet.insert({64, 8});
+  laneSizeElWidthPairSet.insert({32, 16});
+  laneSizeElWidthPairSet.insert({16, 32});
+  laneSizeElWidthPairSet.insert({32, 32});
+
+  target.addDynamicallyLegalOp<arith::AddIOp>([=](arith::AddIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType) {
       return true;
     }
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
-
-    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
-    laneSizeElWidthPairSet.insert({64, 8});
-    laneSizeElWidthPairSet.insert({32, 16});
-    laneSizeElWidthPairSet.insert({16, 32});
-    laneSizeElWidthPairSet.insert({32, 32});
 
     return !laneSizeElWidthPairSet.count(
         std::make_pair(laneSize, resultElWidth));
   });
 
-  target.addDynamicallyLegalOp<arith::SubIOp>([](arith::SubIOp op) {
+  target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType) {
       return true;
     }
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
-
-    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
-    laneSizeElWidthPairSet.insert({64, 8});
-    laneSizeElWidthPairSet.insert({32, 16});
-    laneSizeElWidthPairSet.insert({16, 32});
-    laneSizeElWidthPairSet.insert({32, 32});
 
     return !laneSizeElWidthPairSet.count(
         std::make_pair(laneSize, resultElWidth));
