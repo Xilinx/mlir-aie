@@ -1227,8 +1227,11 @@ module @test16_prime_sieve_large {
     %sum_0 = arith.constant 2 : i32
     %t = arith.constant 1 : i32
   
+    // store the index of the next prime number
+    memref.store %t, %buf0_1[%c0] : memref<3072xi32>
+
     // output integers starting with 2...
-    scf.for %arg0 = %c0 to %cend step %c1
+    scf.for %arg0 = %c1 to %cend step %c1
       iter_args(%sum_iter = %sum_0) -> (i32) {
       %sum_next = arith.addi %sum_iter, %t : i32
       memref.store %sum_iter, %buf0_1[%arg0] : memref<3072xi32>
@@ -1242,21 +1245,35 @@ module @test16_prime_sieve_large {
     %c1 = arith.constant 1 : index
     %cend = arith.constant 3072 : index
     %count_0 = arith.constant 0 : i32
+    %one = arith.constant 1 : i32
   
-    // The first number we receive is prime
-    %prime = memref.load %bufin[%c0] : memref<3072xi32>
-  
+    // The first number we receive is the index of the next prime
+    %id = memref.load %bufin[%c0] : memref<3072xi32>
+
+    // Compute the next id and store it in the output buffer
+    %nextid = arith.addi %id, %one : i32
+    memref.store %nextid, %bufout[%c0] : memref<3072xi32>
+
+    // Copy the prior inputs
+    %id_index = arith.index_cast %id : i32 to index
+    %nextid_index = arith.index_cast %nextid : i32 to index
+    scf.for %arg0 = %c1 to %nextid_index step %c1 {
+      %in_val = memref.load %bufin[%arg0] : memref<3072xi32>
+      memref.store %in_val, %bufout[%arg0] : memref<3072xi32>
+    }
+    %prime = memref.load %bufin[%id_index] : memref<3072xi32>
+
     // Step through the remaining inputs and sieve out multiples of %prime
-    scf.for %arg0 = %c1 to %cend step %c1
-      iter_args(%count_iter = %prime, %in_iter = %c1, %out_iter = %c0) -> (i32, index, index) {
+    scf.for %arg0 = %nextid_index to %cend step %c1
+      iter_args(%count_iter = %prime, %in_iter = %nextid_index, %out_iter = %nextid_index) -> (i32, index, index) {
       // Get the next input value
       %in_val = memref.load %bufin[%in_iter] : memref<3072xi32>
-  
+
       // Potential next counters
       %count_inc = arith.addi %count_iter, %prime: i32
       %in_inc = arith.addi %in_iter, %c1 : index
       %out_inc = arith.addi %out_iter, %c1 : index
-  
+
       // Compare the input value with the counter
       %b = arith.cmpi "slt", %in_val, %count_iter : i32
       %count_next, %in_next, %out_next = scf.if %b -> (i32, index, index) {
