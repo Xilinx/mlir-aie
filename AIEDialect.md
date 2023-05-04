@@ -312,7 +312,7 @@ Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `channelDir` | xilinx::AIE::DMAChannelDirAttr | DMA Channel direction
-| `channelIndex` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1
+| `channelIndex` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Results:
 
@@ -555,6 +555,7 @@ Interfaces: TileElement
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `lockID` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+| `init` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
 #### Operands:
 
@@ -1463,17 +1464,18 @@ Syntax:
 operation ::= `AIE.useLock` `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
 ```
 
-This operation uses a lock. A lock can be acquired with a value, or release with a value.
-This should be understood as a "blocking" operation.  This lock must appear in a parent op
-where the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).  If the useLock
-operation appears in a module directly, an initialization to the lock will be generated in
-the host implementation.
+This operation uses a lock. In AIE1, a lock can be acquired with a value,
+or released with a value. This should be understood as a "blocking"
+operation. In AIE2, locks are counting semaphores without inherent
+acquired/release characteristic. This lock must appear in a parent op where
+the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
+MemTileDMAOp).
 
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 2
+| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 | `action` | xilinx::AIE::LockActionAttr | lock acquire/release
 | `blocking` | xilinx::AIE::LockBlockingAttr | lock operation is blocking
 
