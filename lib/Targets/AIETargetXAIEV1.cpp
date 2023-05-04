@@ -292,12 +292,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
-        if (op.acquire()) {
+        if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
+        } else {
+          op.emitOpError("unsupported lock action");
         }
       }
 
@@ -438,12 +440,14 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
         hasLock = true;
-        if (op.acquire()) {
+        if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
+        } else {
+          op.emitOpError("unsupported lock action");
         }
       }
 
@@ -524,20 +528,16 @@ mlir::LogicalResult AIETranslateToXAIEV1(ModuleOp module, raw_ostream &output) {
   // u8 XAieTile_LockAcquire(XAieGbl_Tile *TileInstPtr, u8 LockId, u8 LockVal,
   // u32 TimeOut); u8 XAieTile_LockRelease(XAieGbl_Tile *TileInstPtr, u8 LockId,
   // u8 LockVal, u32 TimeOut);
-  for (auto op : targetOp.getOps<UseLockOp>()) {
-    int lockVal = op.getLockValue();
-    int timeOut = op.getTimeout();
-    LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-    TileOp tile = dyn_cast<TileOp>(lock.getTile().getDefiningOp());
+  for (auto lock : targetOp.getOps<LockOp>()) {
+    TileOp tile = lock.getTileOp();
     int col = tile.colIndex();
     int row = tile.rowIndex();
     int lockID = lock.getLockIDValue();
-    if (op.acquire()) {
-      output << "XAieTile_LockAcquire(" << tileInstStr(col, row) << ", "
-             << lockID << ", " << lockVal << ", " << timeOut << ");\n";
-    } else if (op.release()) {
+    auto init = lock.getInit();
+    if (init) {
+      int timeOut = 1;
       output << "XAieTile_LockRelease(" << tileInstStr(col, row) << ", "
-             << lockID << ", " << lockVal << ", " << timeOut << ");\n";
+             << lockID << ", " << *init << ", " << timeOut << ");\n";
     }
   }
   output << "} // mlir_aie_initialize_locks\n";

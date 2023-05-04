@@ -147,6 +147,8 @@ def Consume: I32EnumAttrCase<"Consume", 1>;
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
 def Release: I32EnumAttrCase<"Release", 1>;
+def AcquireGreaterEqual: I32EnumAttrCase<"AcquireGreaterEqual", 2>;
+
 def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
 def Blocking: I32EnumAttrCase<"Blocking", 1>;
 
@@ -155,10 +157,11 @@ def xcve2302: I32EnumAttrCase<"xcve2302", 2>;
 def xcve2802: I32EnumAttrCase<"xcve2802", 3>;
 
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
-  [Acquire, Release]> {
+  [Acquire, AcquireGreaterEqual, Release]> {
 
   let cppNamespace = "xilinx::AIE";
 }
+
 def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
   [NonBlocking, Blocking]> {
 

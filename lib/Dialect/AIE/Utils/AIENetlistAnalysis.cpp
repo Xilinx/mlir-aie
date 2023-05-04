@@ -413,7 +413,7 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
   device.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseLockOp>(Op)) {
       Value lock = op.getLock();
-      if (op.acquire()) {
+      if (op.acquire() || op.acquire_ge()) {
         visitors[lock].push_back(op);
       } else if (op.release()) {
         if (!visitors[lock].empty()) {

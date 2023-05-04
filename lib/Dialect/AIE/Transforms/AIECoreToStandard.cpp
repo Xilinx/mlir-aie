@@ -199,7 +199,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (!isa<DeviceOp>(useLock->getParentOp())) {
       std::string funcName = "llvm.aie.lock.";
-      if (useLock.acquire())
+      if (useLock.acquire() || useLock.acquire_ge())
         funcName += "acquire.reg";
       else if (useLock.release())
         funcName += "release.reg";
@@ -209,13 +209,18 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
         return module.emitOpError("Could not find the intrinsic function!");
 
       SmallVector<Value, 2> args;
+      auto lockValue = useLock.getLockValue();
 
+      // AIE2 acquire greater equal is encoded as a negative value.
+      if (useLock.acquire_ge()) {
+        lockValue = -lockValue;
+      }
       args.push_back(rewriter.create<arith::IndexCastOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           useLock.getLock()));
       args.push_back(rewriter.create<arith::ConstantOp>(
           useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          rewriter.getI32IntegerAttr(useLock.getLockValue())));
+          rewriter.getI32IntegerAttr(lockValue)));
 
       rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
                                     args);

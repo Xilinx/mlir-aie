@@ -82,9 +82,6 @@ static std::string tileLockStr(StringRef id, StringRef val) {
   rss << "XAie_LockInit(" << id << "," << val << ")";
   return str;
 }
-static std::string tileLockStr(int id, int val) {
-  return tileLockStr(std::to_string(id), std::to_string(val));
-}
 static std::string packetStr(StringRef id, StringRef type) {
   std::string str;
   llvm::raw_string_ostream rss(str);
@@ -288,12 +285,15 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
-        if (op.acquire()) {
+        if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
+        } else {
+          // unreachable for current targets
+          return op.emitOpError("unsupported lock action");
         }
       }
 
@@ -456,12 +456,15 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
         hasLock = true;
-        if (op.acquire()) {
+        if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
           acqValue = op.getLockValue();
         } else if (op.release()) {
           relEnable = enable;
           relValue = op.getLockValue();
+        } else {
+          // unreachable for current targets
+          return op.emitOpError("unsupported lock action");
         }
       }
 
@@ -554,22 +557,16 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << "void mlir_aie_initialize_locks(" << ctx_p << ") {\n";
   // Lock configuration
-  for (auto op : targetOp.getOps<UseLockOp>()) {
-    int lockVal = op.getLockValue();
-    int timeOut = op.getTimeout();
-    LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-    TileOp tile = dyn_cast<TileOp>(lock.getTile().getDefiningOp());
+  for (auto lock : targetOp.getOps<LockOp>()) {
+    TileOp tile = lock.getTileOp();
     int col = tile.colIndex();
     int row = tile.rowIndex();
     int lockID = lock.getLockIDValue();
-    if (op.acquire()) {
-      output << "XAie_LockAcquire(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", " << tileLockStr(lockID, lockVal)
-             << ", " << timeOut << ");\n";
-    } else if (op.release()) {
-      output << "XAie_LockRelease(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", " << tileLockStr(lockID, lockVal)
-             << ", " << timeOut << ");\n";
+    auto init = lock.getInit();
+    if (init) {
+      output << "XAie_LockSetValue(" << deviceInstRef << ", "
+             << tileLocStr(col, row) << ", "
+             << "XAie_LockInit(" << lockID << ", " << *init << "));\n";
     }
   }
   output << "} // mlir_aie_initialize_locks\n";

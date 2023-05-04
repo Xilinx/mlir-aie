@@ -1001,7 +1001,7 @@ struct AcquireReleaseOneStateInDMABlock {
     auto block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
-      if (op.acquire()) {
+      if (op.acquire() || op.acquire_ge()) {
         if (acqValue != -1 && acqValue != op.getLockValue()) {
           return failure();
         }
@@ -1018,10 +1018,16 @@ struct AcquireReleaseOneStateInDMABlock {
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
-  // AIE.useLock may be used in a device to set the lock's default value
+  // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
           (*this)->getParentOp()))
-    return success();
+    return (*this)->emitOpError("must be used in a core or memory operation.");
+
+  const auto &target_model = getTargetModel(*this);
+  if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+      acquire_ge())
+    return (*this)->emitOpError(
+        "AcquireGreaterEqual is not supported in AIE1.");
 
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
   if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::MemTileDMAOp,
@@ -1030,7 +1036,8 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
-    if (UsesOneLockInDMABlock::verifyTrait(*this).failed())
+    if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+        UsesOneLockInDMABlock::verifyTrait(*this).failed())
       return (*this)->emitOpError(
           "used in a DMA block that have multiple locks.");
 
