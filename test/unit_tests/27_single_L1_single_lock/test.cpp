@@ -8,25 +8,24 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <thread>
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/mman.h>
+#include <thread>
+#include <unistd.h>
 #include <xaiengine.h>
-#include "test_library.h"
 
 #include "aie_inc.cpp"
 
 constexpr int numberOfLoops = 4;
-constexpr int golden[4] = {7,13,43,47};
+constexpr int golden[4] = {7, 13, 43, 47};
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
@@ -45,25 +44,24 @@ int main(int argc, char *argv[])
 
   int errors = 0;
 
-  for (int j= 0; j < numberOfLoops; j++)
-  {
-    printf("Receiving sub-block: %d\n",j);
+  for (int j = 0; j < numberOfLoops; j++) {
+    printf("Receiving sub-block: %d\n", j);
 
-    // acquire core lock  
+    // acquire core lock
     if (mlir_aie_acquire_coreLock(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired coreLock for read\n");
     else
       printf("ERROR: timed out on acquire coreLock for read\n");
 
     // check aie L1 content
-    mlir_aie_check("After start cores:", mlir_aie_read_buffer_aieL1(_xaie, 0), golden[j], errors);
+    mlir_aie_check("After start cores:", mlir_aie_read_buffer_aieL1(_xaie, 0),
+                   golden[j], errors);
 
     // release core lock
     if (mlir_aie_release_coreLock(_xaie, 0, 10000) == XAIE_OK)
       printf("Released coreLock for write\n");
     else
-      printf("ERROR: timed out release coreLock for write\n");    
-    
+      printf("ERROR: timed out release coreLock for write\n");
   }
 
   int res = 0;

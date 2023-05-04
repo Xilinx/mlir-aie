@@ -8,23 +8,22 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <thread>
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/mman.h>
+#include <thread>
+#include <unistd.h>
 #include <xaiengine.h>
-#include "test_library.h"
 
 #include "aie_inc.cpp"
 
 constexpr int bufferSize = 64;
 constexpr int numberOfSubBuffers = 4;
-
 
 void printSublock(int *subblock, int size) {
   for (int i = 0; i < size; i++)
@@ -33,8 +32,7 @@ void printSublock(int *subblock, int size) {
   printf("\n");
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
@@ -45,7 +43,6 @@ int main(int argc, char *argv[])
   mlir_aie_configure_dmas(_xaie);
 
   mlir_aie_init_mems(_xaie, 1);
-
 
   // int *mem_ptr = mlir_aie_mem_alloc(_xaie, 0, bufferSize);
   // for (int i = 0; i < bufferSize/numberOfSubBuffers; i++) {
@@ -73,34 +70,31 @@ int main(int argc, char *argv[])
   mlir_aie_start_cores(_xaie);
 
   int errors = 0;
-  for (int j= 0; j < numberOfSubBuffers; j++)
-  {
-    printf("Receiving sub-block: %d\n",j);
+  for (int j = 0; j < numberOfSubBuffers; j++) {
+    printf("Receiving sub-block: %d\n", j);
 
     // acquire output shim
-    
+
     if (mlir_aie_acquire_coreLock(_xaie, 1, 10000) == XAIE_OK)
-    //if (mlir_aie_acquire_shimLock(_xaie, 1, 10000) == XAIE_OK)
+      // if (mlir_aie_acquire_shimLock(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired coreLock for read\n");
     else
       printf("ERROR: timed out on shimLock for read\n");
 
     // check output DDR
-    //mlir_aie_sync_mem_cpu(_xaie, 1);
-    //printSublock(mem_ptr, bufferSize/numberOfSubBuffers);
-    for (int i = 0; i < bufferSize/numberOfSubBuffers; i++)
-      //mlir_aie_check("After start cores:", mem_ptr[i], j, errors);
-      mlir_aie_check("After start cores:", mlir_aie_read_buffer_a72(_xaie, i), j+1,
-                 errors);
-
+    // mlir_aie_sync_mem_cpu(_xaie, 1);
+    // printSublock(mem_ptr, bufferSize/numberOfSubBuffers);
+    for (int i = 0; i < bufferSize / numberOfSubBuffers; i++)
+      // mlir_aie_check("After start cores:", mem_ptr[i], j, errors);
+      mlir_aie_check("After start cores:", mlir_aie_read_buffer_a72(_xaie, i),
+                     j + 1, errors);
 
     // release output shim
-    //if (mlir_aie_release_shimLock(_xaie, 0, 10000) == XAIE_OK)
+    // if (mlir_aie_release_shimLock(_xaie, 0, 10000) == XAIE_OK)
     if (mlir_aie_release_coreLock(_xaie, 0, 10000) == XAIE_OK)
       printf("Released shimLock for write\n");
     else
-      printf("ERROR: timed out shimLock for write\n");    
-    
+      printf("ERROR: timed out shimLock for write\n");
   }
 
   int res = 0;
