@@ -37,22 +37,19 @@ mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
 set -o pipefail
 set -e
-cmake -GNinja \
-    -DCMAKE_C_COMPILER=clang-12 \
-    -DCMAKE_CXX_COMPILER=clang++-12 \
+cmake -GNinja\
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
-    -DLLVM_USE_LINKER=lld-12 \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
-    -DAIE_RUNTIME_TARGETS:STRING="x86_64;aarch64" \
-    -DAIE_RUNTIME_TEST_TARGET=x86_64 \
-    -DSysrootAarch64="/group/xrlabs/platforms/vck190-pynq-v2.7/sysroot" \
-    -DVitisSysroot="/group/xrlabs/platforms/vck190-pynq-v2.7/sysroot" \
-    /scratch2/jefff/ipu/pynqMLIR-AIE |& tee cmake.log
+    "-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
+    -DAIE_RUNTIME_TEST_TARGET=aarch64 \
+    .. |& tee cmake.log
 
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
