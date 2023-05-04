@@ -34,16 +34,12 @@ class ConnectivityAnalysis {
   ModuleOp &module;
 
 public:
-
-  // At each switchbox coordinate, track which flows are 
-  // in transit by packet rules.
+  // At each switchbox coordinate, track which flows are in transit
   DenseMap<Coord, SmallVector<int, 8>* > in_transit_pkt_flow_ids;
 
-  // When delivered to a path endpoint, e.g. Core or DMA
+  // When delivered to a path endpoint, e.g. Core or DMA, add to this list
   DenseMap<Coord, SmallVector<PortID, 8>* > delivered_pkt_flow_ids;
-  //std::vector <PacketFlow*> packet_flows;
   int MAX_COL = 0, MAX_ROW = 0;
-
 
   ConnectivityAnalysis(ModuleOp &m) : module(m) {
     for (auto tile : m.getOps<TileOp>()) {
@@ -72,6 +68,7 @@ public:
         delivered_pkt_flow_ids[std::make_pair(col, row)] = new SmallVector<PortID, 8>();
   }
 
+  // Debugging print functions
   void print_in_transit_pkt_flow_ids() {
     LLVM_DEBUG(llvm::dbgs() << " Packet IDs in transit:\n");
     for (auto  item : in_transit_pkt_flow_ids) {
@@ -135,39 +132,19 @@ public:
 private:
   llvm::Optional<PortConnection>
   getConnectionThroughWire(Operation *op, Port masterPort) const {
-    
-    //LLVM_DEBUG(llvm::dbgs() << "\n\tBEGIN getConnectionThroughWire():\n"); 
-    //if (SwitchboxOp switchOp = dyn_cast_or_null<SwitchboxOp>(op)) {
-    ////TileOp tileOp = dyn_cast<TileOp>(switchOp.getTileOp());
-    //          //dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
-    //  LLVM_DEBUG(llvm::dbgs() << "\t\tFrom: "
-    //           << stringifyWireBundle(masterPort.first) << " " << masterPort.second << " in tile(");
-    //  LLVM_DEBUG(llvm::dbgs() << switchOp.colIndex() << ", " << switchOp.rowIndex() << ")\n");
-    ////LLVM_DEBUG(op->dump());
-    ////LLVM_DEBUG(tileOp.dump());
-    //}
-
     for (auto wireOp : module.getOps<WireOp>()) {
       if (wireOp.getSource().getDefiningOp() == op &&
           wireOp.getSourceBundle() == masterPort.first) {
-        //LLVM_DEBUG(llvm::dbgs() << "\t" << "WireOp source matches: " << *wireOp << "\n");
         Operation *other = wireOp.getDest().getDefiningOp();
         Port otherPort =
             std::make_pair(wireOp.getDestBundle(), masterPort.second);
-        //LLVM_DEBUG(llvm::dbgs() << "\tConnects To:\n" << *other <<  "\nPort: "
-        //                        << stringifyWireBundle(otherPort.first) 
-        //                        << " : " << otherPort.second << "\n");
         return std::make_pair(other, otherPort);
       }
       if (wireOp.getDest().getDefiningOp() == op &&
           wireOp.getDestBundle() == masterPort.first) {
-        //LLVM_DEBUG(llvm::dbgs() << "\t" << "WireOp dest matches: " << *wireOp << "\n");
         Operation *other = wireOp.getSource().getDefiningOp();
         Port otherPort =
             std::make_pair(wireOp.getSourceBundle(), masterPort.second);
-        //LLVM_DEBUG(llvm::dbgs() << "\tConnects To:\n" << *other << "\nPort: "
-        //                        << stringifyWireBundle(otherPort.first) << " "
-        //                        << " : " << otherPort.second << "\n");
         return std::make_pair(other, otherPort);
       }
     }
@@ -177,14 +154,12 @@ private:
 
   std::vector<PortMaskValue>
   getConnectionsThroughSwitchbox(Operation* op, Region &r, Port sourcePort) const {
-    LLVM_DEBUG(llvm::dbgs() << "\t\tBEGIN getConnectionsThroughSwitchbox():\n");
-
     std::pair<int, int> sb_coord;
     if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(op))
       sb_coord = std::make_pair(switchOp.colIndex(), switchOp.rowIndex());
     else if(auto switchOp = dyn_cast_or_null<ShimMuxOp>(op))
       sb_coord = std::make_pair(switchOp.colIndex(), switchOp.rowIndex());
-    else {  
+    else { // TODO: better way to emit an error? 
       LLVM_DEBUG(llvm::dbgs() << "ERROR: getConnectionsThroughSwitchbox():"
                   << "op is not a valid SwitchboxOp or ShimMuxOp!\n");
       std::exit(1);
@@ -198,9 +173,6 @@ private:
       if (connectOp.sourcePort() == sourcePort) {
         MaskValue maskValue = std::make_pair(0, 0);
         portSet.push_back(std::make_pair(connectOp.destPort(), maskValue));
-        //LLVM_DEBUG(llvm::dbgs()
-        //           << "To:" << stringifyWireBundle(connectOp.destPort().first)
-        //           << " " << connectOp.destPort().second << "\n");
       }
     }
 
@@ -280,7 +252,6 @@ private:
   maskSwitchboxConnections(Operation* switchOp,
                            std::vector<PortMaskValue> nextPortMaskValues,
                            MaskValue maskValue) const {
-    //LLVM_DEBUG(llvm::dbgs() << "\t\tBEGIN maskSwitchboxConnections():\n");
     std::vector<PacketConnection> worklist;
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.first;
@@ -317,13 +288,9 @@ public:
   // switchbox can broadcast.
   std::vector<PacketConnection> getConnectedTiles(TileOp tileOp,
                                                   Port port) const {
-
-                                                  
     Coord src_coord = std::make_pair(tileOp.colIndex(), tileOp.rowIndex());
-    
-
     LLVM_DEBUG(llvm::dbgs()
-               << "\nBEGIN getConnectedTiles(" 
+               << "\n\tBEGIN getConnectedTiles(" 
                << " Tile(" << src_coord.first << ", " << src_coord.second << "), "
                << stringifyWireBundle(port.first) << " " << (int)port.second << ")\n");
 
@@ -358,18 +325,12 @@ public:
             LLVM_DEBUG(llvm::dbgs() << "else packet flow\n");
           if (TileOp endTileOp = dyn_cast_or_null<TileOp>(other)) {
             Coord coord = std::make_pair(endTileOp.colIndex(), endTileOp.rowIndex());
-            //PortID srcPortID = std::make_pair(masterSetOp.destPort(), ID);
-            //PacketFlowEndpoint flow_src = std::make_pair(sb_coord, srcPortID);
-
             SmallVector<PortID, 8>* pkt_ids = delivered_pkt_flow_ids.at(coord);
-            // If packet ID has been delivered to this tile
             LLVM_DEBUG(llvm::dbgs() << "(" << coord.first << ", " << coord.second << ") pkt_ids:\n");
             for ( PortID p : *pkt_ids) {
               printPortID(p);
               if(p.second == maskValue.second)
                 connectedTiles.push_back(t);
-              //PacketFlowEndpoint flow_end = std::make_pair(sb_coord, portID);
-              //PacketFlow delivered_pkt_flow = std::make_pair(flow_src, flow_end);
             }
             LLVM_DEBUG(llvm::dbgs() << "\n");
           }
@@ -414,7 +375,7 @@ public:
       }
     }
     LLVM_DEBUG(llvm::dbgs() 
-              << "\nEND getConnectedTile(): " 
+              << "\tEND getConnectedTile(): " 
               << connectedTiles.size() << " connected tiles found.\n");
     return connectedTiles;
   }
@@ -422,7 +383,7 @@ public:
 
 static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
                           OpBuilder &rewriter) {
-  LLVM_DEBUG(llvm::dbgs() << "Begin findFlowsFrom() tile ("
+  LLVM_DEBUG(llvm::dbgs() << "\n***Begin findFlowsFrom() tile ("
       << op.colIndex() << ", " << op.rowIndex() << ")\n");
 
   Operation *Op = op.getOperation();
@@ -447,7 +408,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
           analysis.getConnectedTiles(op, std::make_pair(bundle, i));
         
       if(tiles.size() > 0)
-        LLVM_DEBUG(llvm::dbgs() << tiles.size() << " tile found connected to source tile (" << op.colIndex() << ", " << op.rowIndex() << ") " 
+        LLVM_DEBUG(llvm::dbgs() << "\n&&& " << tiles.size() << " tile(s) found connected to source tile (" << op.colIndex() << ", " << op.rowIndex() << ") " 
                               << stringifyWireBundle(bundle) << " : " << i << "\n");
       for(unsigned int t = 0; t < tiles.size(); t++) {
         TileOp tileOp = cast<TileOp>(tiles[t].first.first);
@@ -478,16 +439,16 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
             int ID = p.second;
             if (delivered_port == destPort && ((ID & mask) == match)) {
               LLVM_DEBUG(llvm::dbgs() << "Creating new PacketFlowOp!\n");
-              LLVM_DEBUG(llvm::dbgs() << " Src: ");
+              LLVM_DEBUG(llvm::dbgs() << "Src: ");
               LLVM_DEBUG(Op->dump());
-              LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(bundle) << ":"
-                          << i << "\n");
+              LLVM_DEBUG(llvm::dbgs() << "(" << stringifyWireBundle(bundle) << ":"
+                          << i << ")\n");
               LLVM_DEBUG(llvm::dbgs() << "Dest: ");
               LLVM_DEBUG(destOp->dump());
-              LLVM_DEBUG(llvm::dbgs() << stringifyWireBundle(destPort.first) << ":"
-                          << destPort.second << "\n");
+              LLVM_DEBUG(llvm::dbgs() << "(" << stringifyWireBundle(destPort.first) << ":"
+                          << destPort.second << ")\n");
               int flow_id = p.second;
-              LLVM_DEBUG(llvm::dbgs() << "  ID: " << flow_id << "\n");
+              LLVM_DEBUG(llvm::dbgs() << "ID: " << flow_id << "\n");
 
               PacketFlowOp flowOp =
                   rewriter.create<PacketFlowOp>(Op->getLoc(), flow_id);
