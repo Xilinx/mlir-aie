@@ -3,7 +3,7 @@
 ## Prerequisites
 
 ```
-clang 10.0.0+
+clang 12.0.0+
 lld
 cmake 3.20.6
 ninja 1.8.2
@@ -16,12 +16,6 @@ clang/llvm 14+ from source https://github.com/llvm/llvm-project
 Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
 
 In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip libboost-all-dev` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
-
-NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
- 
-```
-export PATH=$PATH:<Vitis_install_path>/Vitis/2022.2/aietools/bin:<Vitis_install_path>/Vitis/2022.2/bin
-```
 
 The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions. 
 This script requires `virtualenv`.
@@ -44,7 +38,7 @@ the tools are largely board and device independent and can be adapted to other e
 
 1. Clone the mlir-aie repo.
     ```
-    git clone https://github.com/Xilinx/mlir-aie.git
+    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
     cd mlir-aie
     ```
 
@@ -73,10 +67,16 @@ particular revision is expected to work.
     ```
     This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` with the path to `llvm/build`. The Vitis enviroment will have to be set up for this to succeed. 
+    You will also need to install clang 12, which is the compiler we use for building MLIR-AIE itself. However,
+    you do not need to do this from source. On Ubuntu, you may do this by running:
+    ```
+    sudo apt-get install clang-12
+    ```
+
+4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` (optionally with the path to `llvm/build` as its first argument). The Vitis enviroment will have to be set up for this to succeed. 
     ```
     source <Vitis Install Path>/settings64.sh
-    ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
+    ./utils/build-mlir-aie.sh 
     ```
     This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
