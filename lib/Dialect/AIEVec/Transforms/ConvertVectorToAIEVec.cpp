@@ -464,6 +464,102 @@ struct ConvertMulIToAIEVecMulElemOpPattern
   unsigned shiftParam;
 };
 
+// Return the offset of a given transfer read operation with regards to the
+// specified vector type. If the read is aligned size of the vector type, then
+// the offset is 0. Otherwise, the offset is the number of elements past the
+// immediately preceding aligned address.
+template <
+    typename TransferReadLikeOp,
+    typename = std::enable_if_t<
+        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp> ||
+        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp::Adaptor>>>
+static unsigned getTransferReadAlignmentOffset(TransferReadLikeOp op,
+                                               VectorType vType) {
+  // TODO: Add support for cases where the index is not comming from an
+  // TODO: `affine.apply` op. E.g.: when the index is a constant.
+  auto innerMostIndex = op.getIndices().back();
+  auto vectorLength = vType.getShape().back();
+  if (auto defOp = innerMostIndex.getDefiningOp())
+    if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
+      if (applyOp.getAffineMap().getNumDims() == 1)
+        return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
+               vectorLength;
+  return 0;
+}
+
+// This pattern converts a `vector.transfer_read` with an unaligned access
+// into two aligned `vector.transfer_read` operations, followed by a
+// concatenation and a `vector.extract_strided_slice` and
+// `vector.insert_strided_slice` ops.
+struct SplitUnalignedTransferReadPattern
+    : public OpConversionPattern<vector::TransferReadOp> {
+  using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Check that it's not a splat transfer read.
+    if (adaptor.getPermutationMap().isConstant())
+      return failure();
+
+    // Check if the transfer is unaligned.
+    auto vType = readOp.getVectorType();
+    unsigned offset = getTransferReadAlignmentOffset(adaptor, vType);
+    if (offset == 0)
+      return failure();
+
+    // Create two aligned transfer reads, one for the lower part of the vector
+    // and one for the higher part.
+
+    // Calculate the aligned indices for the lower and higher parts.
+    // TODO: Add support for cases where the offset is greater than the
+    // TODO: vector length.
+    auto lowIdx =
+        dyn_cast<AffineApplyOp>(adaptor.getIndices().back().getDefiningOp())
+            .getMapOperands()[0];
+    auto vLen = vType.getShape().back();
+    auto affineMap =
+        AffineMap::get(1, 0, {getAffineDimExpr(0, readOp.getContext()) + vLen});
+    auto hiIdx = rewriter.create<AffineApplyOp>(
+        readOp.getLoc(), affineMap, SmallVector<Value, 1>({lowIdx}));
+
+    SmallVector<Value, 8> newIndicesLow, newIndicesHi;
+    newIndicesLow.append(adaptor.getIndices().begin(),
+                         adaptor.getIndices().end());
+    newIndicesHi.append(adaptor.getIndices().begin(),
+                        adaptor.getIndices().end());
+    newIndicesLow[newIndicesLow.size() - 1] = lowIdx;
+    newIndicesHi[newIndicesHi.size() - 1] = hiIdx;
+
+    // Create the aligned transfer reads for the low and high vectors.
+    auto lowReadOp = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), readOp.getVectorType(), adaptor.getSource(),
+        newIndicesLow, adaptor.getPadding());
+    auto hiReadOp = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), readOp.getVectorType(), adaptor.getSource(),
+        newIndicesHi, adaptor.getPadding());
+
+    // Create the `vector.extract_strided_slice` of the low and hi vectors.
+    auto lowExtractOp = rewriter.create<vector::ExtractStridedSliceOp>(
+        readOp.getLoc(), lowReadOp.getResult(), offset, vLen - offset, 1);
+    auto hiExtractOp = rewriter.create<vector::ExtractStridedSliceOp>(
+        readOp.getLoc(), hiReadOp.getResult(), 0, offset, 1);
+
+    // Create new empty vector of the same type as the original vector.
+    auto newVec = rewriter.create<arith::ConstantOp>(
+        readOp.getLoc(), vType, rewriter.getZeroAttr(vType));
+
+    // Create the `vector.insert_strided_slice` of the low and hi vectors.
+    auto lowInsertOp = rewriter.create<vector::InsertStridedSliceOp>(
+        readOp.getLoc(), lowExtractOp.getResult(), newVec, 0, 1);
+    rewriter.replaceOpWithNewOp<vector::InsertStridedSliceOp>(
+        readOp, hiExtractOp.getResult(), lowInsertOp.getResult(), vLen - offset,
+        1);
+
+    return success();
+  }
+};
+
 // This pattern converts a `vector.transfer_read` with a splat permutation map
 // into a contiguous `vector.transfer_read` followed by a `vector.extract` to
 // obtain the splat value and a `vector.broadcast` to broadcast it into a
@@ -1420,7 +1516,14 @@ configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
       });
 }
 
-static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {}
+static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addDynamicallyLegalOp<vector::TransferReadOp>(
+      [](vector::TransferReadOp op) {
+        return !op.getPermutationMap().isConstant() &&
+               getTransferReadAlignmentOffset(op, op.getVectorType()) == 0;
+      });
+}
 
 static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {}
 
@@ -1431,7 +1534,9 @@ populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 }
 
 static void
-populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
+populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext());
+}
 
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
