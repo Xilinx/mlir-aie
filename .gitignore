@@ -1,3 +1,12 @@
+*.elf
+*.elf.*
+*.exe
+*.map
+*.log
+*.o
+*.vcd
+*.prf
+
 /build*
 /install*
 /sandbox*
@@ -17,3 +26,12 @@ __pycache__
 /platforms/vck190_bare/vivado/vck190_bare_proj
 utils/vitisVariables.config
 runtime_lib/xaiengine/src
+
+/tutorials/**/elf/*
+/tutorials/**/acdc_project/*
+/tutorials/**/aiesimulator_output/*
+/tutorials/**/sim/*
+/tutorials/**/work/*
+/tutorials/**/*.ll
+/tutorials/**/.AIE_SIM_CMD_LINE_OPTIONS
+/tutorials/**/aie.mlir.prj
