@@ -14,7 +14,15 @@
 
 cmake_minimum_required(VERSION 3.21)
 
-set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
+project(MLIR_AIE C CXX)
+
+if(NOT EXISTS ${CMAKE_C_COMPILER})
+  message(FATAL_ERROR "Required compiler " ${CMAKE_C_COMPILER} " not found.")
+endif()
+
+if(NOT EXISTS ${CMAKE_CXX_COMPILER})
+  message(FATAL_ERROR "Required compiler " ${CMAKE_CXX_COMPILER} " not found.")
+endif()
 
 set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
 set(AIE_RUNTIME_TEST_TARGET "x86_64" CACHE STRING "Runtime architecture to test with.")

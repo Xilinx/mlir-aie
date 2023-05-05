@@ -19,18 +19,17 @@
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 1 ]; then
-    echo "ERROR: Needs at least 1 arguments for <llvm build dir>."
-    exit 1
-fi
-
 BASE_DIR=`realpath $(dirname $0)/..`
+source "${BASE_DIR}/utils/common.sh"
+
 CMAKEMODULES_DIR=$BASE_DIR/cmake
 
-LLVM_BUILD_DIR=`realpath $1`
-
+LLVM_BUILD_DIR=${1:-"${BASE_DIR}/llvm/build"}
+LLVM_BUILD_DIR=$(realpath $LLVM_BUILD_DIR)
 BUILD_DIR=${3:-"build"}
 INSTALL_DIR=${4:-"install"}
+
+sanity_checks $# "$CMAKEMODULES_DIR" "$LLVM_BUILD_DIR"
 
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
@@ -38,8 +37,7 @@ cd $BUILD_DIR
 set -o pipefail
 set -e
 cmake -GNinja\
-    -DCMAKE_C_COMPILER=clang \
-    -DCMAKE_CXX_COMPILER=clang++ \
+    --toolchain="${CMAKEMODULES_DIR}/toolchainFiles/toolchain_x86_64.cmake" \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
@@ -51,7 +49,7 @@ cmake -GNinja\
     -DAIE_RUNTIME_TEST_TARGET=aarch64 \
     .. |& tee cmake.log
 
-ninja |& tee ninja.log
-ninja install |& tee ninja-install.log
+ninja -v |& tee ninja.log
+ninja -v install |& tee ninja-install.log
 #ninja check-aie |& tee ninja-check-aie.log
 cd ..
