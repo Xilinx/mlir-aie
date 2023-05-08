@@ -37,11 +37,14 @@ CC_ARGS := -fPIC -fpermissive -c -std=c++17 -D__AIEARCH__=10 -DAIE_OPTION_SCALAR
 ps/test.o: $(host)
 	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<
 
+ps/test_library.o: ${MLIR_AIE_INSTALL}/../runtime_lib/test_lib/test_library.cpp
+	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<
+
 ps/genwrapper_for_ps.o: ps/genwrapper_for_ps.cpp
 	$(CC_ENV);$(CC) $(CC_ARGS) -o $@ $<
 
-ps/ps.so: ps/genwrapper_for_ps.o ps/test.o $(eval PATH:=$(XILINX_VITIS_AIETOOLS)/tps/lnx64/gcc/bin/:$(PATH))
-	(${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++ -o "ps/ps.so" ps/genwrapper_for_ps.o ps/test.o -L ${MLIR_AIE_INSTALL}/runtime_lib/x86_64/test_lib/lib -ltest_lib_sim_aie -Wl,--as-needed -shared -lxaiengine -lxioutils -ladf_api -lsystemc -lxtlm -flto -L ${XILINX_VITIS_AIETOOLS}/lib/lnx64.o -L${XILINX_VITIS_AIETOOLS}/data/osci_systemc/lib/lnx64)
+ps/ps.so: ps/genwrapper_for_ps.o ps/test.o ps/test_library.o $(eval PATH:=$(XILINX_VITIS_AIETOOLS)/tps/lnx64/gcc/bin/:$(PATH))
+	(${XILINX_VITIS_AIETOOLS}/tps/lnx64/gcc/bin/g++ -o "ps/ps.so" ps/genwrapper_for_ps.o ps/test.o ps/test_library.o -Wl,--as-needed -shared -lxaiengine -lxioutils -ladf_api -lsystemc -lxtlm -flto -L ${XILINX_VITIS_AIETOOLS}/lib/lnx64.o -L${XILINX_VITIS_AIETOOLS}/data/osci_systemc/lib/lnx64)
 
 link: ps/ps.so
 
