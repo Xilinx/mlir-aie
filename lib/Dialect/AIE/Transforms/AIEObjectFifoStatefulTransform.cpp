@@ -838,9 +838,6 @@ struct AIEObjectFifoStatefulTransformPass
             findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
         createOp->setAttr("elemNumber",
                           builder.getI32IntegerAttr(prodMaxAcquire));
-        createOp.getOperation()->setAttr(
-            SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr(createOp.name()->getValue() + "_prod"));
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
         // register split consumer objectFifos
