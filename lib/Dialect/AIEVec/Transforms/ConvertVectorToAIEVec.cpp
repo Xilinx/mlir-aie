@@ -1019,8 +1019,7 @@ struct LowerVectorMinMaxOpToAIEVecMinMaxOp
     if (!resultType)
       return failure();
 
-    // A set recording the vector lane size and element width we are supporting
-    // for aie-ml.
+    // A set recording the element width we are supporting for aie-ml.
     llvm::SmallSet<unsigned, 16> elWidthSet;
     elWidthSet.insert(8);
     elWidthSet.insert(16);
