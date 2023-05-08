@@ -1003,6 +1003,51 @@ using LowerVectorSubFOpToAIEVecSubElemOp =
     LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubFOp,
                                                     aievec::SubElemOp>;
 
+template <typename SrcOpTy, typename DstOpTy>
+struct LowerVectorMinMaxOpToAIEVecMinMaxOp
+    : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LowerVectorMinMaxOpToAIEVecMinMaxOp(MLIRContext *context)
+      : OpConversionPattern<SrcOpTy>(context) {}
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
+    if (!resultType)
+      return failure();
+
+    // A set recording the vector lane size and element width we are supporting
+    // for aie-ml.
+    llvm::SmallSet<unsigned, 16> elWidthSet;
+    elWidthSet.insert(8);
+    elWidthSet.insert(16);
+    elWidthSet.insert(32);
+
+    Type scalarType = resultType.getElementType();
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (!(elWidthSet.count(resultElWidth) && laneSize * resultElWidth == 512))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(),
+                                         adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
+using LowerVectorMinSIOpToAIEVecMinOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
+using LowerVectorMaxSIOpToAIEVecMaxOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+using LowerVectorMinFOpToAIEVecMinOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinFOp, aievec::MinOp>;
+using LowerVectorMaxFOpToAIEVecMaxOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxFOp, aievec::MaxOp>;
+
 // If a UPD op is loading a vector twice the size of the architecture
 // vector size, split it into a high and low load into the accumulator.
 // TODO: This is a process we may want to include as part of the
@@ -1130,6 +1175,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   patterns.add<
       LowerVectorAddIOpToAIEVecAddElemOp, LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubIOpToAIEVecSubElemOp, LowerVectorSubFOpToAIEVecSubElemOp,
+      LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
+      LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
@@ -1213,13 +1260,18 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                .effectiveSize <= 1024;
   });
 
-  // A set recording the vector lane size and element width we are supporting
-  // for aie-ml.
-  llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+  // A set recording the vector lane size and element width supported
+  llvm::SmallSet<std::pair<unsigned, unsigned>, 16> laneSizeElWidthPairSet;
   laneSizeElWidthPairSet.insert({64, 8});
   laneSizeElWidthPairSet.insert({32, 16});
   laneSizeElWidthPairSet.insert({16, 32});
   laneSizeElWidthPairSet.insert({32, 32});
+
+  // A set recording the element width supported
+  llvm::SmallSet<unsigned, 16> elWidthSet;
+  elWidthSet.insert(8);
+  elWidthSet.insert(16);
+  elWidthSet.insert(32);
 
   target.addDynamicallyLegalOp<arith::AddIOp>([=](arith::AddIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
@@ -1294,6 +1346,54 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(resultType);
 
     return (laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32));
+  });
+
+  target.addDynamicallyLegalOp<arith::MinSIOp>([=](arith::MinSIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::MaxSIOp>([=](arith::MaxSIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::MinFOp>([=](arith::MinFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::MaxFOp>([=](arith::MaxFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
   });
 }
 
