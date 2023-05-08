@@ -25,11 +25,11 @@
 constexpr int numberOfLoops = 4;
 constexpr int golden[4] = {7, 13, 43, 47};
 
-#ifdef __AIEARCH__ 
-unsigned short aieArch =  __AIEARCH__;
+#ifdef __AIEARCH__
+unsigned short aieArch = __AIEARCH__;
 #else
 unsigned short aieArch = 10;
-#endif 
+#endif
 
 int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
@@ -64,7 +64,8 @@ int main(int argc, char *argv[]) {
                    golden[j], errors);
 
     // release core lock
-    if (mlir_aie_release_coreLock(_xaie, (aieArch==20) ? -1 : 0, 10000) == XAIE_OK)
+    if (mlir_aie_release_coreLock(_xaie, (aieArch == 20) ? -1 : 0, 10000) ==
+        XAIE_OK)
       printf("Released coreLock for write\n");
     else
       printf("ERROR: timed out release coreLock for write\n");
