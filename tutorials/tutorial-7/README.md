@@ -28,4 +28,4 @@ It is also possible to combine broadcast in this abstraction with shim tiles suc
 
 2. What AIE components should be generated for each tile to achieve the broadcast data movement? <img src="../images/answer1.jpg" title="One buffer/lock pair for each tile, as well as tile DMAs for each of them. Flows must also be established between each producer/consumer tile pair." height=25>
 
-3. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
+3. Run `make` and `make -C aie.mlir.prj/sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.

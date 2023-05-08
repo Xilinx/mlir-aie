@@ -97,7 +97,7 @@ There is also the microcode of the function under `Function detail: extern_kerne
 
 7. Verify functionality by running simulation
     ```
-    make -C sim
+    make -C aie.mlir.prj/sim
     ```
 
 8. Copy the design files (tutorial-2.exe, core_1_4.elf) to the board and run the design to check that the design runs successfully on hardware.

@@ -11,13 +11,13 @@
 
 In [tutorial-2a](../tutorial-2a), we described how to construct the host code `test.cpp` file for configuring, running and testing our AI Engine design. This tutorial focuses on how to run a hybrid software simulation of our design with the Vitis aiesimulator. While single kernel simulation is important and covered in [tutorial-9](../../tutorial-9), we focus here on simulating our entire AI Engine system design where individual tiles run a cycle accurate simulation and communication between tiles are simulated at the transaction level. 
 
-By default, `aiecc.py` will generate the `sim` directory which contains the stub and configuration files necessary for integrating with `aiesimulator`. These configuration files are specific to the the MLIR-AIE design so any changes to the design would require a recompile by `aiecc.py` to update the files under `sim`. The `sim` directory also contains a wrapper for our top level host code source (`test.cpp`) to run on the simulation host controller. To compile this wrapper and run the simulator, you can simply call:
+By default, `aiecc.py` will generate the `sim` directory which contains the stub and configuration files necessary for integrating with `aiesimulator` inside `aie.mlir.prj/`. These configuration files are specific to the the MLIR-AIE design so any changes to the design would require a recompile by `aiecc.py` to update the files under `sim`. The `sim` directory also contains a wrapper for our top level host code source (`test.cpp`) to run on the simulation host controller. To compile this wrapper and run the simulator, you can simply call:
 ```
-make -C sim
+make -C {path to}/sim
 ```
 The wrapper and necessary host API source files (test.cpp, test_library.cpp) are then compiled to generate the top level simulator library (`ps.po`) and then `aiesimulator` is invoked automatically. The command to invoke `aiesimulator` directly from outside the `sim` folder is:
 ```
-aiesimulator --pkg-dir=./sim --dump-vcd foo
+aiesimulator --pkg-dir={path to}/sim --dump-vcd foo
 ```
 This command points the simulator to the local `sim` directory and generates the simulation waveform vcd to `foo.vcd`. The simulation results will be outputted to the terminal as applicable. 
 
@@ -44,7 +44,7 @@ In simulation, the transaction model requires the allocated physical address rat
 
 1. Compile the design and then compile the simulation wrapper and run `aiesimulator`.
     ```
-    make; make -C sim
+    make; make -C aie.mlir.prj/sim
     ```
     You should see the simulator print a number of status messages before finally running the host code and outputting the `PASS` message.
 
