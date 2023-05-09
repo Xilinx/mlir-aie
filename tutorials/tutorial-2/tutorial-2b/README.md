@@ -7,9 +7,28 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
+# <ins>Tutorial 2b - Device configuration</ins>
+
+In [tutorial-2a](../tutorial-2a), we described how to construct the host code `test.cpp` file for configuring, running and testing our AI Engine design. This tutorial focuses on how to run a hybrid software simulation of our design with the Vitis aiesimulator.
+
+Before we dive into the simulation aspects, we introduce the `mlir-aie` device configuration operation:
+```
+module @module_name {
+    AIE.device(target_device) {
+      ... 
+      AI Engine array components and connections 
+      ...
+    }
+}
+```
+
+This operation specifies which particular device is being targetted by the design. This information is necessary as different AIE devices have different hardware architectures which influence some of the lower level mappings and library calls when running designs, both in simulation and on hardware.
+
+This operation can be added explicitly, as can be seen in the MLIR source code (`aie.mlir`). Alternatively, `aiecc.py` also adds a defaut device target as part of its build flow in case no other target was specified in the code. The different device targets are described in [AIETargetModel.h](../../../include/aie/Dialect/AIE/IR/AIETargetModel.h) with the default target being the `VC1902TargetModel`.
+
 # <ins>Tutorial 2b - Simulation</ins>
 
-In [tutorial-2a](../tutorial-2a), we described how to construct the host code `test.cpp` file for configuring, running and testing our AI Engine design. This tutorial focuses on how to run a hybrid software simulation of our design with the Vitis aiesimulator. While single kernel simulation is important and covered in [tutorial-9](../../tutorial-9), we focus here on simulating our entire AI Engine system design where individual tiles run a cycle accurate simulation and communication between tiles are simulated at the transaction level. 
+While single kernel simulation is important and covered in [tutorial-9](../../tutorial-9), we focus here on simulating our entire AI Engine system design where individual tiles run a cycle accurate simulation and communication between tiles are simulated at the transaction level. 
 
 By default, `aiecc.py` will generate the `sim` directory which contains the stub and configuration files necessary for integrating with `aiesimulator` inside `aie.mlir.prj/`. These configuration files are specific to the the MLIR-AIE design so any changes to the design would require a recompile by `aiecc.py` to update the files under `sim`. The `sim` directory also contains a wrapper for our top level host code source (`test.cpp`) to run on the simulation host controller. To compile this wrapper and run the simulator, you can simply call:
 ```
