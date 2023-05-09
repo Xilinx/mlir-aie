@@ -23,7 +23,7 @@
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
-  printf("Tutorial-2c test start.\n");
+  printf("Tutorial-9 test start.\n");
 
   int errors = 0;
   int num_iter = 1;
@@ -109,6 +109,6 @@ int main(int argc, char *argv[]) {
   // Teardown and cleanup of AIE array
   mlir_aie_deinit_libxaie(_xaie);
 
-  printf("Tutorial-2c test done.\n");
+  printf("Tutorial-9 test done.\n");
   return res;
 }

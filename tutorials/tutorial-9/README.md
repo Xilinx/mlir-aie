@@ -103,4 +103,4 @@ There is also the microcode of the function under `Function detail: extern_kerne
 8. Copy the design files (tutorial-2.exe, core_1_4.elf) to the board and run the design to check that the design runs successfully on hardware.
 
 ### <ins>Challenge Exercise</ins>
-9. Change the design to use the kernel.o created by matmul_kernel. Note that the arguments are very different so you will need to use `mlir_aie_write32` to initialize the local data memory and then `mlir_aie_read32` to check the kernel results to verify correct functionality that we check in the [mlir_kernel/test.cc](mlir_kernel/test.cc).
+9. Change the design to use the kernel.o created by matmul_kernel. Note that the arguments are very different so you will need to use `mlir_aie_write_buffer_<bufname>` to initialize the local data memory and then `mlir_aie_read_buffer_<bufname>` to check the kernel results to verify correct functionality that we check in the [mlir_kernel/test.cc](mlir_kernel/test.cc). <img src="../images/answer1.jpg" title="See example host code under <answers> sub-directory. This can be built by running > make tutorial-9_matmul_perf.exe" height=25>
