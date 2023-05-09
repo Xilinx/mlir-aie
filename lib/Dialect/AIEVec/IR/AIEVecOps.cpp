@@ -1883,5 +1883,102 @@ ParseResult MulConvOp::parse(OpAsmParser &parser, OperationState &result) {
 ParseResult FMAConvOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAConvOp(parser, result, true);
 }
+
+//===----------------------------------------------------------------------===//
+// MinOp and MaxOp
+//===----------------------------------------------------------------------===//
+
+// Print out Min and Max op.
+template <typename T> void printMinMaxOp(OpAsmPrinter &p, T op) {
+  // Print the lhs operand
+  p << " " << op.getLhs();
+  // Print the rhs operand
+  p << ", " << op.getRhs();
+
+  // Print the types
+  p << " : " << op.getLhs().getType() << ", " << op.getRhs().getType();
+  p << ", " << op.getResult().getType();
+}
+
+void aievec::MinOp::print(OpAsmPrinter &p) {
+  printMinMaxOp<aievec::MinOp>(p, *this);
+}
+
+void aievec::MaxOp::print(OpAsmPrinter &p) {
+  printMinMaxOp<aievec::MaxOp>(p, *this);
+}
+
+// Verify Min and Max op.
+template <typename T> LogicalResult verifyMinMaxOp(T op) {
+  // Verify the types
+  VectorType resultType =
+      op.getResult().getType().template dyn_cast<VectorType>();
+  VectorType lhsType = op.getLhs().getType().template dyn_cast<VectorType>();
+  VectorType rhsType = op.getRhs().getType().template dyn_cast<VectorType>();
+
+  if (!lhsType || !rhsType || !resultType)
+    return op.emitError("requires vector type");
+
+  // All the vector types must match
+  if (lhsType != rhsType || rhsType != resultType)
+    return op.emitError("all vectors must be of same type");
+
+  return success();
+}
+
+LogicalResult aievec::MinOp::verify() {
+  return verifyMinMaxOp<aievec::MinOp>(*this);
+}
+
+LogicalResult aievec::MaxOp::verify() {
+  return verifyMinMaxOp<aievec::MaxOp>(*this);
+}
+
+// Parse Min and Max op.
+ParseResult parseMinMaxOp(OpAsmParser &parser, OperationState &result) {
+  llvm::SMLoc typesLoc;
+  SmallVector<Type, 3> types;
+  OpAsmParser::UnresolvedOperand lhs, rhs;
+
+  // Parse the lhs and rhs
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs))
+    return failure();
+
+  // Parse all the attributes and types
+  if (parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+    return failure();
+
+  // Assert that there are three types: lhs, rhs, and result
+  if (types.size() != 3)
+    return parser.emitError(typesLoc, "requires three types");
+
+  // Some verification
+  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  if (!lhsType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  if (!rhsType)
+    return parser.emitError(typesLoc, "requires vector type");
+  VectorType resultType = types[2].dyn_cast<VectorType>();
+  if (!resultType)
+    return parser.emitError(typesLoc, "requires vector type");
+
+  // Populate the lhs, rhs, and accumulator in the result
+  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
+      parser.resolveOperand(rhs, rhsType, result.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, result.types);
+}
+
+ParseResult MinOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseMinMaxOp(parser, result);
+}
+
+ParseResult MaxOp::parse(OpAsmParser &parser, OperationState &result) {
+  return parseMinMaxOp(parser, result);
+}
+
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.cpp.inc"

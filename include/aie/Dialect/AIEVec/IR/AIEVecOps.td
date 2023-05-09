@@ -630,4 +630,29 @@ def AIEVec_FMAConvOp:
    }];
 }
 
+def AIEVec_MinOp:
+  AIEVec_Op<"min", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector minimum";
+  let description = [{
+    Xilinx-specific intrinsic that calculates the minimum between two input vectors.
+    `$result = min(`$lhs, $rhs`).
+  }];
+}
+
+def AIEVec_MaxOp:
+  AIEVec_Op<"max", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector maximum";
+  let description = [{
+    Xilinx-specific intrinsic that calculates the maximum between two input vectors.
+    `$result = max(`$lhs, $rhs`).
+  }];
+}
 #endif // AIEVEC_OPS
