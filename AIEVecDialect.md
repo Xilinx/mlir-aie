@@ -341,6 +341,58 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.max` (::xilinx::aievec::MaxOp)
+
+AIE vector maximum
+
+Xilinx-specific intrinsic that calculates the maximum between two input vectors.
+`$result = max(`$lhs, $rhs`).
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.min` (::xilinx::aievec::MinOp)
+
+AIE vector minimum
+
+Xilinx-specific intrinsic that calculates the minimum between two input vectors.
+`$result = min(`$lhs, $rhs`).
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.mul_conv` (::xilinx::aievec::MulConvOp)
 
 AIE2 multiply convolution
