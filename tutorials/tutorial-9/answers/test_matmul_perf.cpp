@@ -92,7 +92,8 @@ int main(int argc, char *argv[]) {
   printf("NOTE: Not yet testing matmul functionality.\n");
   // printf("Checking a*b=c results\n");
   // for(int i=0; i<32; i++) {
-  //   mlir_aie_check("After start cores:", mlir_aie_read_buffer_c14(_xaie, i), i,
+  //   mlir_aie_check("After start cores:", mlir_aie_read_buffer_c14(_xaie, i),
+  //   i,
   //                  errors);
   // }
 
