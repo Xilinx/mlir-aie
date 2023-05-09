@@ -367,14 +367,19 @@ struct AIEObjectFifoStatefulTransformPass
   void createTileDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode) {
-    int numBlocks = op.size();
+    unsigned numBlocks = op.size();
     if (numBlocks == 0)
       return;
     TileOp objFifoTileOp = op.getProducerTileOp();
-    const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
-    assert(numBlocks <= target_model.getNumBDs(objFifoTileOp.getCol(),
-                                               objFifoTileOp.getRow()) &&
-           "Max number of BDs in a DMA channel exceeded.");
+    assert([&] {
+      const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
+      if (numBlocks > target_model.getNumBDs(objFifoTileOp.getCol(),
+                                               objFifoTileOp.getRow())) {
+        printf("Max number of BDs in a DMA channel exceeded.\n");
+        return false;
+      }
+      return true;
+    }());
 
     // search for MemOp
     MemOp *producerMem = nullptr;
@@ -415,7 +420,7 @@ struct AIEObjectFifoStatefulTransformPass
     Block *succ = nullptr;
     Block *curr = bdBlock;
     int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    for (unsigned i = 0; i < numBlocks; i++) {
       if (i == numBlocks - 1) {
         succ = bdBlock;
       } else {
@@ -435,14 +440,19 @@ struct AIEObjectFifoStatefulTransformPass
   void createShimDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode) {
-    int numBlocks = externalBuffersPerFifo[op].size();
+    unsigned numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
     TileOp objFifoTileOp = op.getProducerTileOp();
-    const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
-    assert(numBlocks <= target_model.getNumBDs(objFifoTileOp.getCol(),
-                                               objFifoTileOp.getRow()) &&
-           "Max number of BDs in a DMA channel exceeded.");
+    assert([&] {
+      const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
+      if (numBlocks > target_model.getNumBDs(objFifoTileOp.getCol(),
+                                               objFifoTileOp.getRow())) {
+        printf("Max number of BDs in a DMA channel exceeded.\n");
+        return false;
+      }
+      return true;
+    }());
 
     // search for ShimDMAOp
     ShimDMAOp *producerMem = nullptr;
@@ -483,7 +493,7 @@ struct AIEObjectFifoStatefulTransformPass
     Block *succ;
     Block *curr = bdBlock;
     int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    for (unsigned i = 0; i < numBlocks; i++) {
       if (i == numBlocks - 1) {
         succ = bdBlock;
       } else {
