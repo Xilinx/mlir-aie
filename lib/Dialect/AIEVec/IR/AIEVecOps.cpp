@@ -1900,10 +1900,6 @@ template <typename T> void printMinMaxOp(OpAsmPrinter &p, T op) {
   p << ", " << op.getResult().getType();
 }
 
-void aievec::MinOp::print(OpAsmPrinter &p) {
-  printMinMaxOp<aievec::MinOp>(p, *this);
-}
-
 void aievec::MaxOp::print(OpAsmPrinter &p) {
   printMinMaxOp<aievec::MaxOp>(p, *this);
 }
@@ -1924,10 +1920,6 @@ template <typename T> LogicalResult verifyMinMaxOp(T op) {
     return op.emitError("all vectors must be of same type");
 
   return success();
-}
-
-LogicalResult aievec::MinOp::verify() {
-  return verifyMinMaxOp<aievec::MinOp>(*this);
 }
 
 LogicalResult aievec::MaxOp::verify() {
@@ -1970,10 +1962,6 @@ ParseResult parseMinMaxOp(OpAsmParser &parser, OperationState &result) {
     return failure();
 
   return parser.addTypeToList(resultType, result.types);
-}
-
-ParseResult MinOp::parse(OpAsmParser &parser, OperationState &result) {
-  return parseMinMaxOp(parser, result);
 }
 
 ParseResult MaxOp::parse(OpAsmParser &parser, OperationState &result) {

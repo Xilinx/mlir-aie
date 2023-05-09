@@ -632,7 +632,8 @@ def AIEVec_FMAConvOp:
 
 def AIEVec_MinOp:
   AIEVec_Op<"min", [
-    Pure
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
@@ -641,6 +642,8 @@ def AIEVec_MinOp:
     Xilinx-specific intrinsic that calculates the minimum between two input vectors.
     `$result = min(`$lhs, $rhs`).
   }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
 }
 
 def AIEVec_MaxOp:
