@@ -368,8 +368,10 @@ struct AIEObjectFifoStatefulTransformPass
     int numBlocks = op.size();
     if (numBlocks == 0)
       return;
-    assert(numBlocks <= 14 &&
-           "Cannot have more than 16 blocks in a DMA channel.");
+    TileOp objFifoTileOp = op.getProducerTileOp();
+    const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
+    assert(numBlocks <= target_model.getNumBDs(objFifoTileOp.getCol(), objFifoTileOp.getRow()) &&
+           "Max number of BDs in a DMA channel exceeded.");
 
     // search for MemOp
     MemOp *producerMem = nullptr;
@@ -384,7 +386,7 @@ struct AIEObjectFifoStatefulTransformPass
     if (producerMem == nullptr) {
       builder.setInsertionPointToEnd(device.getBody());
       MemOp newMemOp = builder.create<MemOp>(builder.getUnknownLoc(),
-                                             op.getProducerTileOp());
+                                             objFifoTileOp);
       producerMem = &newMemOp;
       Region &r = producerMem->getBody();
       r.push_back(new Block);
@@ -433,8 +435,10 @@ struct AIEObjectFifoStatefulTransformPass
     int numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
-    assert(numBlocks <= 14 &&
-           "Cannot have more than 16 blocks in a DMA channel.");
+    TileOp objFifoTileOp = op.getProducerTileOp();
+    const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
+    assert(numBlocks <= target_model.getNumBDs(objFifoTileOp.getCol(), objFifoTileOp.getRow()) &&
+           "Max number of BDs in a DMA channel exceeded.");
 
     // search for ShimDMAOp
     ShimDMAOp *producerMem = nullptr;
@@ -450,7 +454,7 @@ struct AIEObjectFifoStatefulTransformPass
       builder.setInsertionPointToEnd(device.getBody());
       ShimDMAOp newMemOp = builder.create<ShimDMAOp>(builder.getUnknownLoc(),
                                                      builder.getIndexType(),
-                                                     op.getProducerTile());
+                                                     objFifoTileOp);
       producerMem = &newMemOp;
       Region &r = producerMem->getBody();
       r.push_back(new Block);
