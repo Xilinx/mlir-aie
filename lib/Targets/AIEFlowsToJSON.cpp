@@ -81,11 +81,15 @@ std::pair<uint32_t, uint32_t> getNextCoords(uint32_t col, uint32_t row,
 
 mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   output << "{\n";
+  if (module.getOps<DeviceOp>().empty()) {
+    module.emitOpError("expected AIE.device operation at toplevel");
+  }
+  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   // count flow sources and destinations
   std::map<TileID, int> source_counts;
   std::map<TileID, int> destination_counts;
-  for (FlowOp flowOp : module.getOps<FlowOp>()) {
+  for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dest = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcID = std::make_pair(source.colIndex(), source.rowIndex());
@@ -95,7 +99,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   }
 
   // for each switchbox, write name, coordinates, and routing demand info
-  for (SwitchboxOp switchboxOp : module.getOps<SwitchboxOp>()) {
+  for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
     uint32_t col = switchboxOp.colIndex();
     uint32_t row = switchboxOp.rowIndex();
     std::string switchString = "\"switchbox" + std::to_string(col) +
@@ -137,7 +141,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   // for each flow, trace it through switchboxes and write the route to JSON
   int flow_count = 0;
   std::set<std::pair<TileOp, Port>> flowSources;
-  for (FlowOp flowOp : module.getOps<FlowOp>()) {
+  for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     // objects used to trace through the flow
     Port curr_port =
         std::make_pair(flowOp.getSourceBundle(), flowOp.getSourceChannel());
@@ -161,7 +165,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
     std::queue<SwitchboxOp> next_switches;
 
     // find the starting switchbox
-    for (SwitchboxOp switchboxOp : module.getOps<SwitchboxOp>()) {
+    for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
       if (switchboxOp.colIndex() == source.colIndex() &&
           switchboxOp.rowIndex() == source.rowIndex()) {
         curr_switchbox = switchboxOp;
@@ -170,7 +174,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
     }
 
     // if the flow starts in a shim, handle seperately
-    for (ShimMuxOp shimMuxOp : module.getOps<ShimMuxOp>()) {
+    for (ShimMuxOp shimMuxOp : targetOp.getOps<ShimMuxOp>()) {
       if (shimMuxOp.colIndex() == source.colIndex() &&
           shimMuxOp.rowIndex() == source.rowIndex()) {
         for (ConnectOp connectOp : shimMuxOp.getOps<ConnectOp>()) {
@@ -208,7 +212,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
               connectOp.getDestBundle());
 
           // search for next switchbox to connect to
-          for (SwitchboxOp switchboxOp : module.getOps<SwitchboxOp>()) {
+          for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
             if (uint32_t(switchboxOp.colIndex()) == next_coords.first &&
                 uint32_t(switchboxOp.rowIndex()) == next_coords.second) {
               next_switches.push(switchboxOp);
