@@ -352,19 +352,21 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  /// Function that either calls createTileDMA() or createShimDMA() based on
-  /// op tile row value.
+  /// Function that either calls createAIETileDMA(), createShimDMA() or 
+  /// createMemTileDMA() based on op tile row value.
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode) {
     if (op.getProducerTileOp().isShimTile())
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode);
+    else if (op.getProducerTileOp().isMemTile())
+      createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode);
     else
-      createTileDMA(device, builder, op, channelDir, channelIndex, lockMode);
+      createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode);
   }
 
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
-  void createTileDMA(DeviceOp &device, OpBuilder &builder,
+  void createAIETileDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode) {
     unsigned numBlocks = op.size();
@@ -503,6 +505,78 @@ struct AIEObjectFifoStatefulTransformPass
       createBdBlock<ExternalBufferOp>(builder, op, lockMode,
                                       externalBuffersPerFifo[op][blockIndex],
                                       channelDir, blockIndex, succ);
+      curr = succ;
+      blockIndex++;
+    }
+  }
+
+  /// Function used to create a MemTileDMAOp region with a DMA channel.
+  /// It uses creatBdBlock(), see there for lockMode input.
+  void createMemTileDMA(DeviceOp &device, OpBuilder &builder,
+                     ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                     int channelIndex, int lockMode) {
+    int numBlocks = op.size();
+    if (numBlocks == 0)
+      return;
+    assert([&] {
+      const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
+      if (numBlocks > target_model.getNumBDs(objFifoTileOp.getCol(),
+                                             objFifoTileOp.getRow())) {
+        printf("Max number of BDs in a DMA channel exceeded.\n");
+        return false;
+      }
+      return true;
+    }());
+
+    // search for MemTileDMAOp
+    MemTileDMAOp *producerDMA = nullptr;
+    for (auto dmaOp : device.getOps<MemTileDMAOp>()) {
+      if (dmaOp.getTile() == op.getProducerTile()) {
+        producerDMA = &dmaOp;
+        break;
+      }
+    }
+
+    // if none exists, create one
+    if (producerDMA == nullptr) {
+      builder.setInsertionPointToEnd(device.getBody());
+      MemTileDMAOp newDMAOp = builder.create<MemTileDMAOp>(builder.getUnknownLoc(),
+                                             op.getProducerTileOp());
+      producerDMA = &newDMAOp;
+      Region &r = producerDMA->getBody();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
+    }
+
+    Block *endBlock = findEndOpBlock(&(producerDMA->getBody()));
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
+
+    // create DMA channel
+    builder.setInsertionPointToStart(dmaBlock);
+    builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
+                               channelIndex, bdBlock, endBlock);
+    if (lastDmaBlock != nullptr)
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+    // create Bd blocks
+    Block *succ = nullptr;
+    Block *curr = bdBlock;
+    int blockIndex = 0;
+    for (int i = 0; i < numBlocks; i++) {
+      if (i == numBlocks - 1) {
+        succ = bdBlock;
+      } else {
+        succ = builder.createBlock(endBlock);
+      }
+      builder.setInsertionPointToStart(curr);
+      createBdBlock<BufferOp>(builder, op, lockMode, 
+                              buffersPerFifo[op][blockIndex], 
+                              channelDir, blockIndex, succ);
       curr = succ;
       blockIndex++;
     }
