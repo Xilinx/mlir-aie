@@ -61,7 +61,7 @@ aie-opt --aie-objectFifo-stateful-transform <mlir source file>
 
 1. Read through the [/objectFifo_ver/aie.mlir](aie.mlir) design. In which tile and its local memory will the objectFifo lowering generate the buffer and its lock? <img src="../../images/answer1.jpg" title="On even rows tiles have local memories to their left, so the shared memory is that of tile (2,4). That is where the lowering will generate the shared buffer and lock." height=25>
 
-2. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
+2. Run `make` and `make -C aie.mlir.prj/sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
 3. Change the locations of tiles (1,4) and (2,4) to (1,3) and (2,3). Navigate to the location of the [/objectFifo_ver/aie.mlir](aie.mlir) design and apply the objectFifo lowering on it. In which tile's local memory module did the lowering generate the buffer and its lock this time? <img src="../../images/answer1.jpg" title="On odd rows tiles have local memories to their right, so the shared memory is that of tile (1,3). That is where the lowering will generate the shared buffer and lock." height=25>
 

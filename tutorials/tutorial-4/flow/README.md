@@ -158,7 +158,7 @@ EventMonitor pc0(_xaie, 3, 4, 0, XAIE_EVENT_BROADCAST_2_MEM,
 The reported performance counter value then gives the difference between the two triggers. You would have to account for the 2 cycles per hop difference based on distance but for larger designs, that delta would be small.
 
 6. Add the performance timers to the tutorial-4 design and measure the difference between the lock id #6 acquire for tile(1,4) and lock id #8 release for tile(3,4). Run the design in simulation to measure the result. How many cycles did you measure? <img src="../../images/answer1.jpg" title="339 cycles." height=25>
-    > Solution: `make -C sim host=../answers/test_perf.cpp`
+    > Solution: `make -C aie.mlir.prj/sim host=../answers/test_perf.cpp`
 
 7. Compare this number with the design in tutorial-3. Why is there such a large difference? <img src="../../images/answer1.jpg" title="The tile DMA is transferring 256 words which adds 256 cycles to the two cores. 339-256 = 83 cycles." height=25>
 

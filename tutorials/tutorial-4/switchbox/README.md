@@ -24,7 +24,7 @@ The "East" output in %tile14 connects to the "West" input of %tile24, and so the
  
 2. If the ports between switchboxes in tile(2,4) and tile(3,4) are both changed from 3 to 4, does this change the behavior of our design? <img src="../../images/answer1.jpg" title="No, the stream would still be connected." height=25>
 
-3. Build the design with `make` and simulate with `make -C sim` to see that the design functions correctly after replacing the flow op.
+3. Build the design with `make` and simulate with `make -C aie.mlir.prj/sim` to see that the design functions correctly after replacing the flow op.
 
 ## <ins>Advanced Topics - Pathfinder Routing and Visualizations</ins>
 The lowering from abstract `AIE.flow` ops to physical `AIE.switchbox` and `AIE.wire` ops is accomplished with the `--aie-create-pathfinder-flows` pass. This pass uses an iterative congestion-aware algorithm to find legal routes for all flows in the AIE array. For each flow, Pathfinder creates a route using Djikstra's Shortest Path algorithm. When congestion occurs (too many routes want to use the same physical wires) then the "demand" for those high congestion wires is increased, and then Pathfinder runs another iteration. This repeats iteratively until all flows are legally mapped onto the available routing resources. 

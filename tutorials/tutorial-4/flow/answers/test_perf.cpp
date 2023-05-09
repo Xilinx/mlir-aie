@@ -77,8 +77,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_start_cores(_xaie);
 
   // Wait time for cores to run. Number used here is much larger than needed.
-  if (mlir_aie_acquire_lock_a34_8(_xaie, 1, 1000) == XAIE_OK)
-    printf("Acquired lock_a34_8 (1) in tile (3,4). Done.\n");
+  if (mlir_aie_acquire_lock_a34_7(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock_a34_7 (1) in tile (3,4). Done.\n");
   else
     printf("Timed out (1000) while trying to acquire lock_a34_8 (1).\n");
 
