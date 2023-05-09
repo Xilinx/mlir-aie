@@ -14,7 +14,7 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @non_adjacency_AIE2 {
-// CHECK:   AIE.device(ipu) {
+// CHECK:   AIE.device(xcve2302) {
 // CHECK:     %0 = AIE.tile(1, 2)
 // CHECK:     %1 = AIE.tile(3, 3)
 // CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
@@ -93,7 +93,7 @@
 // CHECK: }
 
 module @non_adjacency_AIE2 {
- AIE.device(ipu) {
+ AIE.device(xcve2302) {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 

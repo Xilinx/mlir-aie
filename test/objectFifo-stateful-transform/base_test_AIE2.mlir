@@ -14,7 +14,7 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @elementGenerationAIE2 {
-// CHECK:   AIE.device(ipu) {
+// CHECK:   AIE.device(xcve2302) {
 // CHECK:     %0 = AIE.tile(1, 2)
 // CHECK:     %1 = AIE.tile(1, 3)
 // CHECK:     %2 = AIE.tile(3, 3)
@@ -29,7 +29,7 @@
 // CHECK: }
 
 module @elementGenerationAIE2 {
- AIE.device(ipu) {
+ AIE.device(xcve2302) {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
     %tile33 = AIE.tile(3, 3)
