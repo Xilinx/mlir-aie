@@ -116,13 +116,12 @@ public:
     xilinx::AIE::DMAChannel dmaChan;
     if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
       masterChannelsPerTile[tile] = 0;
-      dmaChan = std::make_pair(DMAChannelDir::MM2S, 0);
     } else {
       assert(masterChannelsPerTile[tile] < 1 &&
              "All tile DMA master channels are already in use.");
       masterChannelsPerTile[tile]++;
-      dmaChan = std::make_pair(DMAChannelDir::MM2S, 1);
     }
+    dmaChan = std::make_pair(DMAChannelDir::MM2S, masterChannelsPerTile[tile]);
     return dmaChan;
   }
 
@@ -131,13 +130,12 @@ public:
     xilinx::AIE::DMAChannel dmaChan;
     if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
       slaveChannelsPerTile[tile] = 0;
-      dmaChan = std::make_pair(DMAChannelDir::S2MM, 0);
     } else {
       assert(slaveChannelsPerTile[tile] < 1 &&
              "All tile DMA slave channels are already in use.");
       slaveChannelsPerTile[tile]++;
-      dmaChan = std::make_pair(DMAChannelDir::S2MM, 1);
     }
+    dmaChan = std::make_pair(DMAChannelDir::S2MM, slaveChannelsPerTile[tile]);
     return dmaChan;
   }
 };
