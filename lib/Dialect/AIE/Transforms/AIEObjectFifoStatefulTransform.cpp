@@ -901,7 +901,11 @@ struct AIEObjectFifoStatefulTransformPass
     if (objFifo.size() == 0)
       return 0;
 
-    // if shimTile size is equal to number of external buffers
+    // if memTile, size is equal to objFifo size
+    if (tile.getDefiningOp<TileOp>().isMemTile())
+      return objFifo.size();
+
+    // if shimTile, size is equal to number of external buffers
     if (tile.getDefiningOp<TileOp>().isShimTile()) {
       for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
         if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
