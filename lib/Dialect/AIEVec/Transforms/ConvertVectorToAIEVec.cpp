@@ -488,9 +488,9 @@ static unsigned getTransferReadAlignmentOffset(TransferReadLikeOp op,
 }
 
 // This pattern converts a `vector.transfer_read` with an unaligned access
-// into two aligned `vector.transfer_read` operations, followed by a
-// concatenation and a `vector.extract_strided_slice` and
-// `vector.insert_strided_slice` ops.
+// into an aligned `vector.transfer_read` twice as long, followed by a
+// `vector.extract_strided_slice` selecting the subvector matching the
+// original `vector.transfer_read`.
 struct SplitUnalignedTransferReadPattern
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
@@ -508,8 +508,7 @@ struct SplitUnalignedTransferReadPattern
     if (offset == 0)
       return failure();
 
-    // Create two aligned transfer reads, one for the lower part of the vector
-    // and one for the higher part.
+    // Create an aligned transfer read
 
     // Calculate the aligned indices for the lower and higher parts.
     // TODO: Add support for cases where the offset is greater than the
@@ -518,43 +517,20 @@ struct SplitUnalignedTransferReadPattern
         dyn_cast<AffineApplyOp>(adaptor.getIndices().back().getDefiningOp())
             .getMapOperands()[0];
     auto vLen = vType.getShape().back();
-    auto affineMap =
-        AffineMap::get(1, 0, {getAffineDimExpr(0, readOp.getContext()) + vLen});
-    auto hiIdx = rewriter.create<AffineApplyOp>(
-        readOp.getLoc(), affineMap, SmallVector<Value, 1>({lowIdx}));
+    auto longVecTy = VectorType::get(2 * vLen, vType.getElementType());
+    SmallVector<Value, 8> alignedIdx;
+    alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
+    alignedIdx[alignedIdx.size() - 1] = lowIdx;
 
-    SmallVector<Value, 8> newIndicesLow, newIndicesHi;
-    newIndicesLow.append(adaptor.getIndices().begin(),
-                         adaptor.getIndices().end());
-    newIndicesHi.append(adaptor.getIndices().begin(),
-                        adaptor.getIndices().end());
-    newIndicesLow[newIndicesLow.size() - 1] = lowIdx;
-    newIndicesHi[newIndicesHi.size() - 1] = hiIdx;
+    // Create the aligned transfer read for a vector 2x as long that covers the
+    // elements of the unaligned vector.
+    auto newReadOp = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), longVecTy, adaptor.getSource(), alignedIdx,
+        adaptor.getPadding());
 
-    // Create the aligned transfer reads for the low and high vectors.
-    auto lowReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVectorType(), adaptor.getSource(),
-        newIndicesLow, adaptor.getPadding());
-    auto hiReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVectorType(), adaptor.getSource(),
-        newIndicesHi, adaptor.getPadding());
-
-    // Create the `vector.extract_strided_slice` of the low and hi vectors.
-    auto lowExtractOp = rewriter.create<vector::ExtractStridedSliceOp>(
-        readOp.getLoc(), lowReadOp.getResult(), offset, vLen - offset, 1);
-    auto hiExtractOp = rewriter.create<vector::ExtractStridedSliceOp>(
-        readOp.getLoc(), hiReadOp.getResult(), 0, offset, 1);
-
-    // Create new empty vector of the same type as the original vector.
-    auto newVec = rewriter.create<arith::ConstantOp>(
-        readOp.getLoc(), vType, rewriter.getZeroAttr(vType));
-
-    // Create the `vector.insert_strided_slice` of the low and hi vectors.
-    auto lowInsertOp = rewriter.create<vector::InsertStridedSliceOp>(
-        readOp.getLoc(), lowExtractOp.getResult(), newVec, 0, 1);
-    rewriter.replaceOpWithNewOp<vector::InsertStridedSliceOp>(
-        readOp, hiExtractOp.getResult(), lowInsertOp.getResult(), vLen - offset,
-        1);
+    // Create a `vector.extract_strided_slice` to extract the unaligned vector.
+    rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
+        readOp, newReadOp.getResult(), offset, vLen, 1);
 
     return success();
   }
