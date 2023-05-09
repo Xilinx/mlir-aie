@@ -374,7 +374,7 @@ struct AIEObjectFifoStatefulTransformPass
     assert([&] {
       const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
       if (numBlocks > target_model.getNumBDs(objFifoTileOp.getCol(),
-                                               objFifoTileOp.getRow())) {
+                                             objFifoTileOp.getRow())) {
         printf("Max number of BDs in a DMA channel exceeded.\n");
         return false;
       }
@@ -447,7 +447,7 @@ struct AIEObjectFifoStatefulTransformPass
     assert([&] {
       const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
       if (numBlocks > target_model.getNumBDs(objFifoTileOp.getCol(),
-                                               objFifoTileOp.getRow())) {
+                                             objFifoTileOp.getRow())) {
         printf("Max number of BDs in a DMA channel exceeded.\n");
         return false;
       }
