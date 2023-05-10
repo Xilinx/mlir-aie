@@ -47,6 +47,34 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 // A port on a switch is identified by the tile and port name.
 typedef std::pair<Operation *, Port> PhysPort;
 
+int computeMaskValue(SmallVector<std::pair<PhysPort, int>, 4> group) {
+      // Iterate over all the ID values in a group
+      // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
+      // value, the bit position should be "don't care", and we will set the
+      // mask bit of that position to 0
+      int mask[5] = {-1, -1, -1, -1, -1};
+      for (auto port : group) {
+        int ID = port.second;
+        for (int i = 0; i < 5; i++) {
+          if (mask[i] == -1)
+            mask[i] = ((ID >> i) & 0x1);
+          else if (mask[i] != ((ID >> i) & 0x1))
+            mask[i] = 2; // found bit difference --> mark as "don't care"
+        }
+      }
+
+      int maskValue = 0;
+      for (int i = 4; i >= 0; i--) {
+        if (mask[i] == 2) // don't care
+          mask[i] = 0;
+        else
+          mask[i] = 1;
+        maskValue = (maskValue << 1) + mask[i];
+      }
+       return maskValue;
+
+}
+
 int getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
                             Port sourcePort, int flowID,
                             WireBundle destBundle) {
@@ -376,7 +404,6 @@ struct AIERoutePacketFlowsPass
       }
     }
 
-    pathfinder.printFlows();
     // all flows are populated, call the congestion-aware Pathfinder algorithm
     DenseMap<Flow*, SwitchSettings*> flow_solutions;
     pathfinder.findPaths(flow_solutions, 1000);
@@ -384,23 +411,23 @@ struct AIERoutePacketFlowsPass
     // Print out flow_solutions for debugging
     LLVM_DEBUG(llvm::dbgs() << "###Pathfinder packet routing results###" <<"\n");
     LLVM_DEBUG(llvm::dbgs() << "flow_solutions.size(): " << flow_solutions.size() << "\n");
-    for (auto iter = flow_solutions.begin(); iter != flow_solutions.end(); iter++) {
-      // Print info about the flow
-      Flow* f = iter->first;
-      Pathfinder::printFlow(f);
+    //for (auto iter = flow_solutions.begin(); iter != flow_solutions.end(); iter++) {
+    //  // Print info about the flow
+    //  Flow* f = iter->first;
+    //  Pathfinder::printFlow(f);
 
-      // Print info about the SwitchSettings which implement this flow
-      SwitchSettings* settings = iter->second;
-      Pathfinder::printSwitchSettings(settings);
-    }
+    //  // Print info about the SwitchSettings which implement this flow
+    //  SwitchSettings* settings = iter->second;
+    //  Pathfinder::printSwitchSettings(settings);
+    //}
 
     //Pathfinder::convertFlowSolutionsToDenseMap(flow_solutions, switchboxes);
 
     // check whether the pathfinder algorithm creates a legal routing
-    //if (!pathfinder.isLegal())
-    //  m.emitError("Unable to find a legal routing");
+    if (!pathfinder.isLegal())
+      m.emitError("Unable to find a legal routing");
 
-    LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
+    //LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 
     //DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
     //for (auto swbox : switchboxes) {
@@ -432,15 +459,15 @@ struct AIERoutePacketFlowsPass
         //update_coordinates(nextCol, nextRow, sourcePort.first);
 
         //update tile of interest
-        Operation *tileOp = getOrCreateTile(builder, sb->col, sb->row);
+        Operation* op = getOrCreateTile(builder, sb->col, sb->row);
 
-        auto sourceFlow = std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
-        LLVM_DEBUG(llvm::dbgs() << "\tsourceFlow(" << tileOp << ", " 
+        auto sourceFlow = std::make_pair(std::make_pair(op, sourcePort), flowID);
+        LLVM_DEBUG(llvm::dbgs() << "\tFlow source: (" << sb->col << ", " << sb->row
                 << stringifyWireBundle(sourcePort.first) << ":" << sourcePort.second 
                 << ") ID: " << flowID << "\n");
 
         for (Port destPort : destPorts) {
-          packetFlows[sourceFlow].push_back(std::make_pair(tileOp, destPort));
+          packetFlows[sourceFlow].push_back(std::make_pair(op, destPort));
           LLVM_DEBUG(llvm::dbgs() << "\ttile (" << sb->col << ", " << sb->row << "): "
                                 << stringifyWireBundle(sourcePort.first) << " "
                                 << sourcePort.second << " -> "
@@ -502,7 +529,6 @@ struct AIERoutePacketFlowsPass
         amselValue = map.first.second;
 
         // check if same destinations
-        // SmallVector<Port, 4> ports(map.second);
         SmallVector<Port, 4> ports(
             masterAMSels[std::make_pair(tileOp, amselValue)]);
         if (ports.size() != packetFlow.second.size())
@@ -527,7 +553,7 @@ struct AIERoutePacketFlowsPass
         bool foundAMSelValue = false;
         for (int a = 0; a < numArbiters; a++) {
           for (int i = 0; i < numMsels; i++) {
-            amselValue = a + i * numArbiters;
+            amselValue = i * numArbiters + a;
             if (masterAMSels.count(std::make_pair(tileOp, amselValue)) == 0) {
               foundAMSelValue = true;
               break;
@@ -581,6 +607,21 @@ struct AIERoutePacketFlowsPass
     // Two flows can be merged if they share the same destinations
     SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
     SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
+
+    // Print slavePorts for debugging
+    for (auto item : slavePorts) {
+      PhysPort physPort = item.first;
+      int flowID = item.second;
+      Operation* op = physPort.first;
+      Port port = physPort.second;
+      TileOp tileOp = dyn_cast<TileOp>(op);
+
+      LLVM_DEBUG(llvm::dbgs() << "slavePort: (" 
+              << tileOp.colIndex() << ", " << tileOp.rowIndex() << ") "
+              << "\tport: " << stringifyWireBundle(port.first) << ":" 
+              << port.second << "\tflowID: " << flowID << "\n");
+    }
+
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
       Port slavePort1 = slave1.first.second;
@@ -589,6 +630,7 @@ struct AIERoutePacketFlowsPass
       for (auto &group : slaveGroups) {
         auto slave2 = group.front();
         Port slavePort2 = slave2.first.second;
+        
         if (slavePort1 != slavePort2)
           continue;
 
@@ -605,6 +647,9 @@ struct AIERoutePacketFlowsPass
           }
         }
 
+        // Removing this clause makes all the rules seperate
+        // i.e. mask = 31
+        //if (false)
         if (matched) {
           group.push_back(slave1);
           foundgroup = true;
@@ -620,54 +665,190 @@ struct AIERoutePacketFlowsPass
 
     DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
     for (auto group : slaveGroups) {
-      // Iterate over all the ID values in a group
-      // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
-      // value, the bit position should be "don't care", and we will set the
-      // mask bit of that position to 0
-      int mask[5] = {-1, -1, -1, -1, -1};
       for (auto port : group) {
-        int ID = port.second;
-        for (int i = 0; i < 5; i++) {
-          if (mask[i] == -1)
-            mask[i] = ((ID >> i) & 0x1);
-          else if (mask[i] != ((ID >> i) & 0x1))
-            mask[i] = 2; // found bit difference --> mark as "don't care"
-        }
-      }
-
-      int maskValue = 0;
-      for (int i = 4; i >= 0; i--) {
-        if (mask[i] == 2) // don't care
-          mask[i] = 0;
-        else
-          mask[i] = 1;
-        maskValue = (maskValue << 1) + mask[i];
-      }
-      for (auto port : group)
+        int maskValue = computeMaskValue(group);
         slaveMasks[port] = maskValue;
+      }
     }
 
-    LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
-    for (auto map : slaveMasks) {
-      auto port = map.first.first;
-      TileOp tile = dyn_cast<TileOp>(port.first);
-      WireBundle bundle = port.second.first;
-      int channel = port.second.second;
-      int ID = map.first.second;
-      int mask = map.second;
+    // Sometimes packet rules can interfere with each other.
+    // e.g.
+    // AIE.packetrules(DMA : 0) {
+    //   AIE.rule(24, 0, %40)
+    //   AIE.rule(24, 0, %41) // No packets will ever reach this rule!
+    // }
+    // Let's try to make that not happen!
+    LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks for precluding:\n");
 
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
-                 << channel << '\n');
-      LLVM_DEBUG(llvm::dbgs() << "Mask "
-                              << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-      LLVM_DEBUG(llvm::dbgs() << "ID "
-                              << "0x" << llvm::Twine::utohexstr(ID) << '\n');
-      for (int i = 0; i < 31; i++) {
-        if ((i & mask) == (ID & mask))
-          LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
-                                  << "0x" << llvm::Twine::utohexstr(i) << '\n');
+    // Organize the slave groups by PhysPorts
+    DenseMap< PhysPort, 
+      SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> > 
+      slaveGroupsByCoord;
+
+    for (auto group : slaveGroups) {
+      slaveGroupsByCoord[group.front().first].push_back(group); 
+    }
+
+    // PhysPort, ID, masterset_num
+    DenseMap<std::pair<PhysPort, int>, std::pair<Port, int> > priorityMap;
+
+    for (auto item : slaveGroupsByCoord) {
+      PhysPort physPort = item.first;
+      TileOp tile = dyn_cast<TileOp>(physPort.first);
+      Coord coord = std::make_pair(tile.colIndex(), tile.rowIndex());
+
+      LLVM_DEBUG(llvm::dbgs() << "\n&&&\n");
+      SmallVector<Port, 4> tileMasters;
+      for (auto map : mastersets) {
+        if (physPort.first != map.first.first)
+          continue;
+        tileMasters.push_back(map.first.second);
       }
+
+      LLVM_DEBUG(llvm::dbgs() << "tileMasters:\n");
+      for (Port port : tileMasters)
+        LLVM_DEBUG(llvm::dbgs() << "(" << coord.first << ", " << coord.second << ") "
+                << "Port: " << stringifyWireBundle(port.first) << " "
+                << port.second << '\n');
+
+      auto groupsAtCoord = item.second;
+      SmallVector<int, 8> matchedIDs;
+      SmallVector<int, 8> precludedIDs;
+      for(auto group : groupsAtCoord) {
+        std::pair<PhysPort, int> pair = group.front();
+        PhysPort physPort = pair.first;
+        WireBundle bundle = physPort.second.first;
+        int mask = slaveMasks[pair];
+        int channel = physPort.second.second;
+        int match = pair.second & mask;
+      // auto port = map.first.first;
+      // TileOp tile = dyn_cast<TileOp>(port.first);
+      // WireBundle bundle = port.second.first;
+      // int channel = port.second.second;
+      // int match = map.first.second;
+      // int mask = map.second;
+
+        LLVM_DEBUG(llvm::dbgs() << "Slave:\n(" << coord.first << ", " << coord.second << ")"
+                  << " Port " << stringifyWireBundle(bundle) << ":"
+                  << channel << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "Mask: " << mask << ", ");
+                                //<< "0x" << llvm::Twine::utohexstr(mask) << '\t');
+        LLVM_DEBUG(llvm::dbgs() << "match: " << match << ", ");
+                                //<< "0x" << llvm::Twine::utohexstr(match) << '\t');
+        LLVM_DEBUG(llvm::dbgs() << "Flow ID matches: ");
+        for (int i = 0; i < 31; i++) {
+          if ((i & mask) == (match & mask)) {
+            if(std::count(matchedIDs.begin(), matchedIDs.end(), i)) {
+              precludedIDs.push_back(i);
+            }
+            LLVM_DEBUG(llvm::dbgs() << i << ", ");
+            matchedIDs.push_back(i);
+          }
+        }
+        LLVM_DEBUG(llvm::dbgs() << "\nslaveAMSels[<"
+          << "(" << coord.first << ", " << coord.second << "), "
+          << " Port " << stringifyWireBundle(bundle) << ":" << channel
+          << ">]: " << slaveAMSels[pair] << "\t");
+        
+        // search mastersets for a PhysPort that matches AMSel
+        for (auto item : mastersets) {
+          PhysPort p = item.first;
+          TileOp tileOp = dyn_cast<TileOp>(p.first);
+          Port masterPort = p.second;
+          WireBundle masterBundle = masterPort.first;
+          int masterChannel = masterPort.second;
+
+          SmallVector<int, 4> masterAMsels = item.second;
+
+          // if same coord
+          if (std::make_pair(tileOp.colIndex(), tileOp.rowIndex()) == coord){
+            for (int AMsel : masterAMsels) {
+              if (AMsel == slaveAMSels[pair])
+                LLVM_DEBUG(llvm::dbgs() << "masterAMsel Port: "
+                      << stringifyWireBundle(masterBundle) << ":" 
+                      << masterChannel << "\n");
+            }
+          }
+        }
+
+        LLVM_DEBUG(llvm::dbgs() << "\nPrecluded IDs:\n");
+        for( int i : precludedIDs){
+            LLVM_DEBUG(llvm::dbgs() << i << ", ");
+            Flow* flow_ptr = Pathfinder::getPacketFlow(flow_solutions, i);
+            SwitchSettings* settings_ptr = flow_solutions[flow_ptr];
+            Switchbox* sb_ptr = Pathfinder::getSwitchbox(settings_ptr, coord);
+            SwitchConnection connection = (*settings_ptr)[sb_ptr];
+            Pathfinder::printSwitchConnection(connection);
+            
+            // We now have a SwitchConnection which tells us where all these 
+            // packets are intended to go!
+            // Since some of these packets are precluded by a previous rule, 
+            // we want to make a special packet rule to accomodate them.
+            // So we make a list of precluded rules which need priority:
+            auto key = std::make_pair(physPort, i);
+            //Port srcPort = std::get<0>(connection);
+            SmallVector<Port> destPorts = std::get<1>(connection);
+            int ID = std::get<2>(connection);
+            assert (i == ID);
+
+            for (Port dp : destPorts) {
+              for (auto item : mastersets) {
+                Port masterPort = item.first.second;
+                if (dp == masterPort)
+                  priorityMap[key] = std::make_pair(masterPort, slaveAMSels[key]);
+              }
+            }
+
+
+            // --OR--
+            // So we modify slaveGroups:
+            //SmallVector<std::pair<PhysPort, int>, 4> newGroup;
+            //newGroup.push_back(std::make_pair(physPort, i));
+            //slaveGroups.insert(slaveGroups.begin(), newGroup);
+        }
+        LLVM_DEBUG(llvm::dbgs() << "\n\n");
+      }
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "\n^^^priorityMap:\n");
+    for (auto item : priorityMap) {
+      auto key = item.first;
+      PhysPort physPort = key.first;
+      TileOp slaveTileOp = dyn_cast<TileOp>(physPort.first);
+      WireBundle bundle = physPort.second.first;
+      int channel = physPort.second.second;
+      int ID = key.second;
+      Port masterPort = item.second.first;
+      int slaveAMSel = item.second.second;
+      LLVM_DEBUG(llvm::dbgs() << "(" << slaveTileOp.colIndex() << ", " 
+                              << slaveTileOp.rowIndex() << ")");
+      LLVM_DEBUG(llvm::dbgs() << "\tSource Port (slave):" << stringifyWireBundle(bundle)
+                              << ":" << channel);
+      LLVM_DEBUG(llvm::dbgs() << "\tID: " << ID 
+                              << "\tAMsel: " << slaveAMSel << "\t");
+      LLVM_DEBUG(llvm::dbgs() << "\tmasterPort: "
+                    << stringifyWireBundle(masterPort.first) << ":" 
+                    << masterPort.second << "\t");
+
+      //for (auto pair : mastersets) {
+      //  PhysPort p = pair.first;
+      //  SmallVector<int, 4> masterAMsels = pair.second;
+
+      //  TileOp masterTileOp = dyn_cast<TileOp>(p.first);
+      //  Port port = p.second;
+      //  WireBundle masterBundle = port.first;
+      //  int masterChannel = port.second;
+
+      //  if (slaveTileOp == masterTileOp) {
+      //    for (int AMsel : masterAMsels) {
+      //      if (AMsel == slaveAMSel)
+      //        LLVM_DEBUG(llvm::dbgs() << "Dest Port (master): "
+      //              << stringifyWireBundle(masterBundle) << ":" 
+      //              << masterChannel << "\t");
+      //    }
+      //  }
+      //}
+        LLVM_DEBUG(llvm::dbgs() << "\n\n");
     }
 
     // Realize the routes in MLIR
@@ -688,8 +869,20 @@ struct AIERoutePacketFlowsPass
         if (tileOp != map.first.first)
           continue;
 
+        WireBundle bundle = map.first.second.first;
+        int channel = map.first.second.second;
+        assert(tileOp);
+        TileOp tile = dyn_cast<TileOp>(tileOp);
+        LLVM_DEBUG(llvm::dbgs()
+                  << "master " << tile << " " << stringifyWireBundle(bundle)
+                  << " : " << channel << '\n');
+        for (auto value : map.second)
+          LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
+
+
         for (auto value : map.second) {
           amselOpNeededVector[value] = true;
+          LLVM_DEBUG(llvm::dbgs() << "amselOpNeededVector[" << value << "]: true\n");
         }
       }
       // Create all the amsel Ops
@@ -732,36 +925,61 @@ struct AIERoutePacketFlowsPass
       // Generate the packet rules
       DenseMap<Port, PacketRulesOp> slaveRules;
       for (auto group : slaveGroups) {
+        //data type reminder: SmallVector<std::pair<PhysPort, int>, 4> group;
         builder.setInsertionPoint(b.getTerminator());
 
-        auto port = group.front().first;
-        if (tileOp != port.first)
+        std::pair<PhysPort, int> front = group.front();
+
+        PhysPort physPort = front.first;
+        if (tileOp != physPort.first)
           continue;
 
-        WireBundle bundle = port.second.first;
-        int channel = port.second.second;
-        auto slave = port.second;
 
-        int mask = slaveMasks[group.front()];
-        int ID = group.front().second & mask;
+        Port slavePort  = physPort.second;
+        WireBundle bundle = slavePort .first;
+        int channel = slavePort .second;
+        int mask = slaveMasks[front];
+        int ID = front.second & mask;
 
         // Verify that we actually map all the ID's correctly.
-        for (auto slave : group) {
-          assert((slave.second & mask) == ID);
+        for (auto s : group) {
+          assert((s.second & mask) == ID);
         }
-        Value amsel = amselOps[slaveAMSels[group.front()]];
+        Value amsel = amselOps[slaveAMSels[front]];
 
         PacketRulesOp packetrules;
-        if (slaveRules.count(slave) == 0) {
+        LLVM_DEBUG(llvm::dbgs() << "\nslavePort: "
+                  << stringifyWireBundle(slavePort.first)
+                  << ":" << slavePort.second << "\n");
+        if (slaveRules.count(slavePort) == 0) {
           packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
                                                       bundle, channel);
           packetrules.ensureTerminator(packetrules.getRules(), builder,
                                        builder.getUnknownLoc());
-          slaveRules[slave] = packetrules;
-        } else
-          packetrules = slaveRules[slave];
+          slaveRules[slavePort] = packetrules;
+        } else { //When will this else execute?
+          packetrules = slaveRules[slavePort];
+        }
 
         Block &rules = packetrules.getRules().front();
+
+        //generate priority packet rules
+        for (auto pair : group) {
+          if(priorityMap.count(pair)) {
+            int priorityID = pair.second;
+            Port priorityPort = priorityMap[pair].first;
+            int priorityAMsel = priorityMap[pair].second;
+            LLVM_DEBUG(llvm::dbgs() << "Generate Priority Packet rule: AIE.rule(31, "
+              << priorityID << ", " << priorityAMsel << ")\n");
+            LLVM_DEBUG(llvm::dbgs() << "Amsel: " << amselOps[priorityAMsel] << "\n");
+            LLVM_DEBUG(llvm::dbgs() << "priorityPort: " << stringifyWireBundle(priorityPort.first) << ":"
+                          << priorityPort.second << "\n\n");
+
+            builder.setInsertionPointToStart(&rules);
+            builder.create<PacketRuleOp>(builder.getUnknownLoc(), 31, priorityID, amselOps[priorityAMsel]);
+          }
+        }
+
         builder.setInsertionPoint(rules.getTerminator());
         builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
       }
@@ -893,13 +1111,10 @@ struct AIERoutePacketFlowsPass
 
 
     // add WireOps between all tiles used.
-    // builder.setInsertionPointToEnd(m);
     for (auto map : tiles) {
       Operation *tileOp = map.second;
       TileOp tile = dyn_cast<TileOp>(tileOp);
       SwitchboxOp swbox = getOrCreateSwitchbox(builder, tile);
-      //builder.setInsertionPointAfter(tileOp);
-      //builder.setInsertionPointToEnd(swbox);
       builder.setInsertionPointAfter(swbox);
       createWireOps(builder, swbox, m);
     }

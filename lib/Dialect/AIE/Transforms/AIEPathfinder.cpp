@@ -89,8 +89,11 @@ void Pathfinder::initializeGraph(int maxcol, int maxrow) {
 // Pathfinder::addFlow
 // add a flow from src to dst
 // can have an arbitrary number of dst locations due to fanout
-void Pathfinder::addFlow(Coord srcCoords, Port srcPort, 
-                        Coord dstCoords, Port dstPort, int flow_id) {
+void Pathfinder::addFlow(
+    Coord srcCoords, Port srcPort, 
+    Coord dstCoords, Port dstPort,
+    int flow_id)
+  {
   // check if a flow with this source already exists
   for (unsigned int i = 0; i < flows.size(); i++) {
     Switchbox *otherSrc = std::get<0>(*flows[i]).first;
@@ -159,9 +162,9 @@ void Pathfinder::addFixedConnection(Coord coords, Port port) {
 // returns a map specifying switchbox settings for all flows
 // if no legal routing can be found after MAX_ITERATIONS, returns empty vector
 void Pathfinder::findPaths(
-        DenseMap<Flow*, SwitchSettings*> & flow_solutions,
-        const int MAX_ITERATIONS) {
-
+    DenseMap<Flow*, SwitchSettings*> & flow_solutions,
+    const int MAX_ITERATIONS)
+  {
   LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths()\n");
   int iteration_count = 0;
   // Each flow has a set of SwitchSettings which implements that flow
@@ -379,12 +382,12 @@ void Pathfinder::printFlow(Flow* f) {
   }
 }
 
-void Pathfinder::printSwitchSettings(SwitchSettings* settings) {
-  for(auto settings_iter = settings->begin(); settings_iter != settings->end(); settings_iter++) {
-    Switchbox* sb = settings_iter->first;
+void Pathfinder::printSwitchSettings(SwitchSettings* settings_ptr) {
+  for(auto settings_iter = settings_ptr->begin(); settings_iter != settings_ptr->end(); settings_iter++) {
+    Switchbox* sb_ptr = settings_iter->first;
     SwitchConnection connection = settings_iter->second;
     LLVM_DEBUG(llvm::dbgs() << "SwitchConnection: Flow ID " << std::get<2>(connection) << "\n");
-    LLVM_DEBUG(llvm::dbgs() << "\tSwitchbox (" << sb->col << ", " << sb->row << ")\n");
+    LLVM_DEBUG(llvm::dbgs() << "\tSwitchbox (" << sb_ptr->col << ", " << sb_ptr->row << ")\n");
     Port srcPort = std::get<0>(connection);
     LLVM_DEBUG(llvm::dbgs() << "\tSource Port "
         << stringifyWireBundle(srcPort.first) << srcPort.second << "\n");
@@ -397,3 +400,44 @@ void Pathfinder::printSwitchSettings(SwitchSettings* settings) {
     LLVM_DEBUG(llvm::dbgs() << "\n");
 }
 
+
+void Pathfinder::printSwitchConnection(const SwitchConnection & connection) {
+  LLVM_DEBUG(llvm::dbgs() << "SwitchConnection: Flow ID " << std::get<2>(connection) << "\n");
+  Port srcPort = std::get<0>(connection);
+  LLVM_DEBUG(llvm::dbgs() << "\tSource Port "
+      << stringifyWireBundle(srcPort.first) << srcPort.second << "\n");
+  SmallVector<Port> destPorts = std::get<1>(connection);
+  for(Port p : destPorts) {
+    LLVM_DEBUG(llvm::dbgs() << "\tDest Port "
+      << stringifyWireBundle(p.first) << p.second << "\n");
+  }
+}
+
+
+Flow* Pathfinder::getPacketFlow(
+    const DenseMap<Flow*, SwitchSettings*> flow_solutions, 
+    int target_ID) 
+  {
+  for (auto item : flow_solutions) {
+    Flow* f_ptr = item.first;
+    int flow_ID = std::get<2>(*f_ptr);
+    if (flow_ID == target_ID)
+      return f_ptr;
+  }
+
+  return nullptr;
+}
+
+Switchbox* Pathfinder::getSwitchbox(
+    const SwitchSettings* settings,
+    Coord target_coord)
+  {
+  for (auto item : *settings) {
+    Switchbox* sb_ptr = item.first;
+    Coord coord = std::make_pair(sb_ptr->col, sb_ptr->row);
+    if(coord == target_coord)
+      return sb_ptr;
+  }
+
+  return nullptr;
+}

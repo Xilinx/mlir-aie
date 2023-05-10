@@ -43,15 +43,9 @@ public:
 
   ConnectivityAnalysis(ModuleOp &m) : module(m) {
     for (auto tile : m.getOps<TileOp>()) {
-      if (tile.colIndex() > MAX_COL)
-        MAX_COL = tile.colIndex();
-      if (tile.rowIndex() > MAX_ROW)
-        MAX_ROW = tile.rowIndex();
+      MAX_COL = std::max(MAX_COL, tile.colIndex());
+      MAX_ROW = std::max(MAX_ROW, tile.rowIndex());
     }
-    resetInTransitIDs();
-    resetDeliveredIDs();
-    LLVM_DEBUG(llvm::dbgs() << "MAX_COL = " << MAX_COL << "\n");
-    LLVM_DEBUG(llvm::dbgs() << "MAX_ROW = " << MAX_ROW << "\n");
   }
 
   void resetInTransitIDs() {
@@ -203,15 +197,15 @@ private:
                            << "Connects To: "
                            << stringifyWireBundle(masterSetOp.destPort().first)
                            << " " << masterSetOp.destPort().second 
-                           << "\tMask: " << maskValue.first << "\tMatch Value: " << maskValue.second << "\n\n");
+                           << "\tMask: " << maskValue.first << "\tMatch Value: " << maskValue.second << "\n");
 
                 int mask = maskValue.first;
                 int match = maskValue.second;
 
                 auto next_sb_coord = getNextCoord(sb_coord, masterSetOp.destPort().first);
 
-                LLVM_DEBUG(llvm::dbgs() << "next_sb_coord: (" << next_sb_coord.first << ", "
-                                          << next_sb_coord.second << ")\n");
+                LLVM_DEBUG(llvm::dbgs() << "IDs passed to tile (" << next_sb_coord.first << ", "
+                                          << next_sb_coord.second << "):\n");
 
                 for(unsigned int ID = 0; ID < 32; ID++){
                   if (std::count(pkt_ids_at_sb->begin(), pkt_ids_at_sb->end(), ID)) {
@@ -230,7 +224,14 @@ private:
                                   << stringifyWireBundle(masterSetOp.destPort().first) << ":" 
                                   << masterSetOp.destPort().second << " : ");
                         PortID portID = std::make_pair(masterSetOp.destPort(), ID);
+
+                        // If this portID is not already in the delivered packets list, add it
+                        //SmallVector<PortID, 8>* currIDs = delivered_pkt_flow_ids.at(sb_coord);
+                        //if(std::find(currIDs->begin(), currIDs->end(), portID) == currIDs->end()){
+                        //  currIDs->push_back(portID);
+                        //}
                         delivered_pkt_flow_ids.at(sb_coord)->push_back(portID);
+
                       } else {
                         in_transit_pkt_flow_ids.at(next_sb_coord)->push_back(ID);
                       }
@@ -238,7 +239,7 @@ private:
                     }
                   }
                 }
-                LLVM_DEBUG(llvm::dbgs() << "\n");
+                LLVM_DEBUG(llvm::dbgs() << "\n\n");
                 portSet.push_back(
                     std::make_pair(masterSetOp.destPort(), maskValue));
               }
@@ -437,15 +438,16 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
           for(PortID p : *analysis.delivered_pkt_flow_ids.at(destCoord)) {
             Port delivered_port = p.first;
             int ID = p.second;
-            if (delivered_port == destPort && ((ID & mask) == match)) {
+            if (delivered_port == destPort && ((ID & mask) == (match & mask))) {
               LLVM_DEBUG(llvm::dbgs() << "Creating new PacketFlowOp!\n");
               LLVM_DEBUG(llvm::dbgs() << "Src: ");
               LLVM_DEBUG(Op->dump());
-              LLVM_DEBUG(llvm::dbgs() << "(" << stringifyWireBundle(bundle) << ":"
-                          << i << ")\n");
+              LLVM_DEBUG(llvm::dbgs() << "(" << stringifyWireBundle(bundle) 
+                          << ":" << i << ")\n");
               LLVM_DEBUG(llvm::dbgs() << "Dest: ");
               LLVM_DEBUG(destOp->dump());
-              LLVM_DEBUG(llvm::dbgs() << "(" << stringifyWireBundle(destPort.first) << ":"
+              LLVM_DEBUG(llvm::dbgs() << "(" 
+                          << stringifyWireBundle(destPort.first) << ":"
                           << destPort.second << ")\n");
               int flow_id = p.second;
               LLVM_DEBUG(llvm::dbgs() << "ID: " << flow_id << "\n");
@@ -463,6 +465,8 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
               LLVM_DEBUG(llvm::dbgs() << "Done creating PacketFlowOp!\n\n");
             }
           }
+          // avoid duplicates
+          analysis.delivered_pkt_flow_ids.at(destCoord)->clear();
         }
       }
     }

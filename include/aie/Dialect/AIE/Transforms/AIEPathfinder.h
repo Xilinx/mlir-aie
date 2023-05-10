@@ -35,14 +35,14 @@ namespace AIE {
 
 using namespace boost;
 
-struct Switchbox { // acts as a vertex
+struct Switchbox { // acts as a vertex in a graph
   unsigned short col, row;
   // int dist;
   unsigned int pred; // predecessor for dijkstra's
   bool processed;    // denotes this switchbox has already been processed
 };
 
-struct Channel { // acts as an edge
+struct Channel { // acts as an edge in a graph
   float demand;  // indicates how many flows want to use this Channel
   unsigned short
       used_capacity;           // how many flows are actually using this Channel
@@ -52,7 +52,9 @@ struct Channel { // acts as an edge
   WireBundle bundle;
 };
 
-// create a graph type that uses Switchboxes as vertices and Channels as edges
+
+// Types used by boost::graph
+// SwitchboxGraph uses Switchboxes as vertices and Channels as edges
 typedef adjacency_list<vecS, vecS, bidirectionalS, Switchbox, Channel>
     SwitchboxGraph;
 
@@ -70,11 +72,10 @@ typedef std::pair<int, int> Coord;
 // std::get<1>(SwitchConnection) is the fanout
 // std::get<2>(SwitchConnection) is the packet ID (set to -1 for circuit switched) 
 typedef std::tuple<Port, SmallVector<Port>, int> SwitchConnection;
-//typedef std::tuple<Port, std::set<Port>, int> SwitchSetting; // TODO: change to SwitchConnection
 typedef DenseMap<Switchbox *, SwitchConnection> SwitchSettings;
 
 // A Flow defines source and destination vertices
-// Only one source, but any number of destinations (fanout)
+// Only one source, but can have multiple destinations (fanout)
 typedef std::pair<Switchbox *, Port> PathEndPoint;
 typedef std::tuple<PathEndPoint, SmallVector<PathEndPoint>, int> Flow;
 
@@ -108,9 +109,18 @@ public:
     return nullptr;
   }
 
+  static Flow* getPacketFlow(
+    const DenseMap<Flow*, SwitchSettings*> flow_solutions,
+    int target_ID);
+
+  static Switchbox* getSwitchbox(
+    const SwitchSettings* settings,
+    Coord target_coord);
+
   // Printing functions for debugging
   void printFlows();
   static void printFlow(Flow*);
+  static void printSwitchConnection(const SwitchConnection &);
   static void printSwitchSettings(SwitchSettings*);
 };
 
