@@ -73,7 +73,8 @@ def AIEVec_AddOp:
 
 def AIEVec_AddElemOp:
   AIEVec_Op<"add_elem", [
-    Pure
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
@@ -82,6 +83,8 @@ def AIEVec_AddElemOp:
     Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
     on all types of vectors.`$result = `$lhs + $rhs`.
   }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
 }
 
 def AIEVec_SubOp:
@@ -128,7 +131,8 @@ def AIEVec_SubOp:
 
 def AIEVec_SubElemOp: 
   AIEVec_Op<"sub_elem", [
-    Pure
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
@@ -137,6 +141,8 @@ def AIEVec_SubElemOp:
     Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
     on all types of vectors.`$result = `$lhs - $rhs`.
   }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
 }
 
 def AIEVec_FMAOp :
@@ -632,7 +638,8 @@ def AIEVec_FMAConvOp:
 
 def AIEVec_MinOp:
   AIEVec_Op<"min", [
-    Pure
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
@@ -641,11 +648,14 @@ def AIEVec_MinOp:
     Xilinx-specific intrinsic that calculates the minimum between two input vectors.
     `$result = min(`$lhs, $rhs`).
   }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
 }
 
 def AIEVec_MaxOp:
   AIEVec_Op<"max", [
-    Pure
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
   Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
   Results<(outs AnyVector:$result)> {
@@ -654,5 +664,7 @@ def AIEVec_MaxOp:
     Xilinx-specific intrinsic that calculates the maximum between two input vectors.
     `$result = max(`$lhs, $rhs`).
   }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
 }
 #endif // AIEVEC_OPS
