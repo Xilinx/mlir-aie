@@ -234,7 +234,8 @@ public:
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {}; // FIXME
+  llvm::SmallDenseSet<unsigned, 6> noc_columns = {
+      2, 3, 6, 7, 10, 11};
 public:
   VE2302TargetModel() {}
 
@@ -254,7 +255,8 @@ public:
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {}; // FIXME
+  llvm::SmallDenseSet<unsigned, 12> noc_columns = {
+      2, 3, 6, 7, 10, 11, 14, 15, 18, 19, 22, 23};
 public:
   VE2802TargetModel() {}
 
