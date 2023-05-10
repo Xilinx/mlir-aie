@@ -350,7 +350,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  /// Function that either calls createAIETileDMA(), createShimDMA() or 
+  /// Function that either calls createAIETileDMA(), createShimDMA() or
   /// createMemTileDMA() based on op tile row value.
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode) {
@@ -365,8 +365,8 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create a MemOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
   void createAIETileDMA(DeviceOp &device, OpBuilder &builder,
-                     ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                     int channelIndex, int lockMode) {
+                        ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                        int channelIndex, int lockMode) {
     unsigned numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -511,11 +511,12 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function used to create a MemTileDMAOp region with a DMA channel.
   /// It uses creatBdBlock(), see there for lockMode input.
   void createMemTileDMA(DeviceOp &device, OpBuilder &builder,
-                     ObjectFifoCreateOp op, DMAChannelDir channelDir,
-                     int channelIndex, int lockMode) {
+                        ObjectFifoCreateOp op, DMAChannelDir channelDir,
+                        int channelIndex, int lockMode) {
     int numBlocks = op.size();
     if (numBlocks == 0)
       return;
+    TileOp objFifoTileOp = op.getProducerTileOp();
     assert([&] {
       const auto &target_model = xilinx::AIE::getTargetModel(objFifoTileOp);
       if (numBlocks > target_model.getNumBDs(objFifoTileOp.getCol(),
@@ -538,8 +539,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     if (producerDMA == nullptr) {
       builder.setInsertionPointToEnd(device.getBody());
-      MemTileDMAOp newDMAOp = builder.create<MemTileDMAOp>(builder.getUnknownLoc(),
-                                             op.getProducerTileOp());
+      MemTileDMAOp newDMAOp = builder.create<MemTileDMAOp>(
+          builder.getUnknownLoc(), objFifoTileOp);
       producerDMA = &newDMAOp;
       Region &r = producerDMA->getBody();
       r.push_back(new Block);
@@ -572,9 +573,9 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
       }
       builder.setInsertionPointToStart(curr);
-      createBdBlock<BufferOp>(builder, op, lockMode, 
-                              buffersPerFifo[op][blockIndex], 
-                              channelDir, blockIndex, succ);
+      createBdBlock<BufferOp>(builder, op, lockMode,
+                              buffersPerFifo[op][blockIndex], channelDir,
+                              blockIndex, succ);
       curr = succ;
       blockIndex++;
     }
