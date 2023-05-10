@@ -10,6 +10,13 @@ Types and operations for AIE vector dialect
 
 AIE vector add elem
 
+
+Syntax:
+
+```
+operation ::= `aievec.add_elem` $lhs `,` $rhs attr-dict `:` type($result)
+```
+
 Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
 on all types of vectors.`$result = `$lhs + $rhs`.
 
@@ -345,6 +352,13 @@ Effects: MemoryEffects::Effect{}
 
 AIE vector maximum
 
+
+Syntax:
+
+```
+operation ::= `aievec.max` $lhs `,` $rhs attr-dict `:` type($result)
+```
+
 Xilinx-specific intrinsic that calculates the maximum between two input vectors.
 `$result = max(`$lhs, $rhs`).
 
@@ -370,6 +384,13 @@ Effects: MemoryEffects::Effect{}
 ### `aievec.min` (::xilinx::aievec::MinOp)
 
 AIE vector minimum
+
+
+Syntax:
+
+```
+operation ::= `aievec.min` $lhs `,` $rhs attr-dict `:` type($result)
+```
 
 Xilinx-specific intrinsic that calculates the minimum between two input vectors.
 `$result = min(`$lhs, $rhs`).
@@ -668,6 +689,13 @@ Effects: MemoryEffects::Effect{}
 ### `aievec.sub_elem` (::xilinx::aievec::SubElemOp)
 
 AIE vector sub elem
+
+
+Syntax:
+
+```
+operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
+```
 
 Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
 on all types of vectors.`$result = `$lhs - $rhs`.
