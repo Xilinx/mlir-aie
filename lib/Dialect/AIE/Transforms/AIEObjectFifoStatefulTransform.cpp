@@ -513,7 +513,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createMemTileDMA(DeviceOp &device, OpBuilder &builder,
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode) {
-    int numBlocks = op.size();
+    unsigned numBlocks = op.size();
     if (numBlocks == 0)
       return;
     TileOp objFifoTileOp = op.getProducerTileOp();
@@ -539,8 +539,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     if (producerDMA == nullptr) {
       builder.setInsertionPointToEnd(device.getBody());
-      MemTileDMAOp newDMAOp = builder.create<MemTileDMAOp>(
-          builder.getUnknownLoc(), objFifoTileOp);
+      MemTileDMAOp newDMAOp =
+          builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
       producerDMA = &newDMAOp;
       Region &r = producerDMA->getBody();
       r.push_back(new Block);
@@ -566,7 +566,7 @@ struct AIEObjectFifoStatefulTransformPass
     Block *succ = nullptr;
     Block *curr = bdBlock;
     int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    for (unsigned i = 0; i < numBlocks; i++) {
       if (i == numBlocks - 1) {
         succ = bdBlock;
       } else {

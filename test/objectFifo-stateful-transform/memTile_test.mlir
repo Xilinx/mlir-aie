@@ -14,18 +14,37 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @memTile {
+// CHECK:   AIE.device(xcve2302) {
+// CHECK:     %0 = AIE.tile(2, 1)
+// CHECK:     %1 = AIE.tile(2, 2)
+// CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
+// CHECK:     %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
+// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
+// CHECK:     %4 = AIE.lock(%0, 0) {init = 2 : i32, sym_name = "of_0_prod_lock"}
+// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_0_cons_lock"}
+// CHECK:     %6 = AIE.memTileDMA(%0) {
+// CHECK:       %7 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       AIE.useLock(%5, AcquireGreaterEqual, 1)
+// CHECK:       AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%4, Release, 1)
+// CHECK:       AIE.nextBd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       AIE.useLock(%5, AcquireGreaterEqual, 1)
+// CHECK:       AIE.dmaBd(<%3 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%4, Release, 1)
+// CHECK:       AIE.nextBd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       AIE.end
+// CHECK:     }
+// CHECK:   }
+// CHECK: }
 
 module @memTile {
  AIE.device(xcve2302) {
-    %tile10 = AIE.tile(2, 0)
     %tile11 = AIE.tile(2, 1)
     %tile12 = AIE.tile(2, 2)
 
-    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile10, {%tile11}, 2) : !AIE.objectFifo<memref<16xi32>>
-
-    %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers(%tile10, %objFifo0 : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
-
-    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2) : !AIE.objectFifo<memref<16xi32>>
  }
 }
