@@ -46,42 +46,26 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 
 // A port on a switch is identified by the tile and port name.
 typedef std::pair<Operation *, Port> PhysPort;
+typedef std::bitset<5> BitMask;
 
-int computeMaskValueBetter(SmallVector<std::pair<PhysPort, int>, 4> group) {
-  // compute masks using bitwise XOR operation ^
-  // std::bitset<4> name ("1100");
-  // std::bitset<4> name (my_int);
-  SmallVector<int, 4> XORs;
-  LLVM_DEBUG(llvm::dbgs() << "\n\nGroup:\n");
-
+int computeMaskValueBitMask(SmallVector<std::pair<PhysPort, int>, 4> group) {
+  // use std::bitset to compute masks using bitwise XOR operation ^
+  // Identify which bits have differences 
+  // by computing XOR on all pairs of IDs within the group.
+  BitMask mask = BitMask(0b00000);
   for (unsigned int i = 0; i < group.size(); i++) {
-    int mask = 0;
-    LLVM_DEBUG(llvm::dbgs() << "mask: " << mask << "\n");
-    int first = group[i].second;;
-    LLVM_DEBUG(llvm::dbgs() << "first: " << first << "\n");
+    BitMask first = BitMask(group[i].second);
     for (unsigned int j = i; j < group.size(); j++) {
-      int ID = group[j].second;
-      LLVM_DEBUG(llvm::dbgs() << "ID: " << ID << "\n");
-      int xor_result = first ^ ID;
-      LLVM_DEBUG(llvm::dbgs() << "xor_result: " << xor_result << "\n");
-      mask |= xor_result;
+      BitMask ID = BitMask(group[j].second);
+      mask |= first xor ID;
     }
-    LLVM_DEBUG(llvm::dbgs() << "final mask: " << mask << "\n\n");
-    XORs.push_back(mask);
   }
 
-  // Combine all XOR results with bitwise OR
-  int maskValue = XORs[0];
-  LLVM_DEBUG(llvm::dbgs() << "\nXORs:\n");
-  LLVM_DEBUG(llvm::dbgs() << XORs[0] << "\n");
-  for (unsigned int i = 1; i < XORs.size(); i++) {
-    LLVM_DEBUG(llvm::dbgs() << XORs[i] << "\n");
-    maskValue |= XORs[i];
-  }
-
-  // Invert with bitwise not, but keep only 5 LSB
-  return (~maskValue) & 31;
+  // We now have 1's in bit positions which differ within the group.
+  // These 1's are the "don't cares", so we simply flip all bits.
+  return int(mask.flip().to_ullong());
 }
+
 
 int computeMaskValue(SmallVector<std::pair<PhysPort, int>, 4> group) {
       // Iterate over all the ID values in a group
@@ -703,7 +687,7 @@ struct AIERoutePacketFlowsPass
     for (auto group : slaveGroups) {
       for (auto port : group) {
         int maskValue = computeMaskValue(group);
-        int maskValueBetter = computeMaskValueBetter (group);
+        int maskValueBetter = computeMaskValueBitMask(group);
         if (maskValue == maskValueBetter)
           LLVM_DEBUG(llvm::dbgs() << "@@@mask values MATCH!\n");
         else
