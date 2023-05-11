@@ -52,7 +52,7 @@ The acquire value must match the current lock state in order for the acquire to 
 
 6. Change back the tiles to (1,4) and (2,4). Based on what you know about locks, which tile will execute its kernel code first (inside the lock calls) in this design? <img src="../images/answer1.jpg" title="Tile(1,4), because the lock initially starts in state Release 0, so Acquire 0 will succeed first." height=25>
 
-7. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
+7. Run `make` and `make -C aie.mlir.prj/sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
 8. Change the design so that tile(2,4) runs first. What do you expect the value of buf[5] will be with this change? <img src="../images/answer1.jpg" title="100" height=25>
 

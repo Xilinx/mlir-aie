@@ -35,7 +35,7 @@ Checking buf[3] = 14.
 PASS!
 Tutorial-2c test done.
 ```
-Congratulations! You've successfully execute a design on AI Engines!
+Congratulations! You've successfully executed a design on AI Engines!
 
 ## <ins>Advanced Topic - Performance measurement in hardware</ins>
 Now that we've compiled, simulated and run our design. We can take a step back to leverage some of the AI Engine's built in performance measurement hardware (timers and event traces) to capture actual on-board performance. There is robust infrastructure build into the Vitis AIEngine tools to provide a complete picture of AI Engine performance in hardware which leverages the performance measurement capabilities of the AI Engines. We look at a slice of those capabilities which is helpful to gain some performance numbers of our design. This is an active area for research for providing early performance estimation and runtime measurements.

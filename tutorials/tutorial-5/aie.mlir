@@ -18,7 +18,7 @@
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
 module @tutorial_5 {
-
+    
     // 1 tile in row 4 (col 3)
     // even rows have local memory to its left
     %tile34 = AIE.tile(3, 4)
@@ -43,7 +43,7 @@ module @tutorial_5 {
     // Register the external memory pointers to the object FIFOs.
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_out}) : (memref<256xi32>)
- 
+
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
@@ -62,11 +62,11 @@ module @tutorial_5 {
         %d1   = memref.load %input[%idx1] : memref<256xi32>
         %c1   = arith.constant 100 : i32 
         %d2   = arith.addi %d1, %c1 : i32
-		%idx2 = arith.constant 5 : index
-		memref.store %d2, %input[%idx2] : memref<256xi32>
+        %idx2 = arith.constant 5 : index
+        memref.store %d2, %input[%idx2] : memref<256xi32>
 
-		memref.store %d1, %output[%idx1] : memref<256xi32> 
-		memref.store %d2, %output[%idx2] : memref<256xi32>  
+        memref.store %d1, %output[%idx1] : memref<256xi32> 
+        memref.store %d2, %output[%idx2] : memref<256xi32>  
         
         // Release the previously acquired objects.
         // This is equivalent to releasing an AIE lock after accessing an AIE buffer.

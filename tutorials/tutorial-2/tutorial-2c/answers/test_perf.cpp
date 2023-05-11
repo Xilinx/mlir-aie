@@ -45,8 +45,10 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  // Helper function to clear tile data memory
-  mlir_aie_clear_tile_memory(_xaie, 1, 4);
+  // Clear buffer data memory
+  for (int i = 0; i < 256; i++) {
+    mlir_aie_write_buffer_a14(_xaie, i, 0);
+  }
 
   // Check the buffer value at index 3 to ensure it is zeroed out
   // prior to running our simple kernel.

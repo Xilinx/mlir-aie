@@ -72,6 +72,7 @@ The main flow of `aiecc.py` is:
 ```
 aie-opt 
 --lower-affine
+--aie-canonicalize-device
 --aie-assign-lock-ids
 --aie-register-objectFifos
 --aie-objectFifo-stateful-transform
@@ -130,7 +131,7 @@ input_with_addresses.mlir -o input_physical.mlir
 aie-translate --aie-generate-xaie --xaie-target=v2 input_physical.mlir -o aie_inc.cpp
 ```
 
-### <ins>8. 1st set of core optimizations</ins>
+### <ins>7. 1st set of core optimizations</ins>
 ```
 aie-opt 
 --aie-localize-locks 
@@ -138,7 +139,7 @@ aie-opt
 input_with_addresses.mlir -o  -o core_*.mlir
 ```
 
-### <ins>9. 2nd set of core optimizations</ins>
+### <ins>8. 2nd set of core optimizations</ins>
 ```
 aie-opt
 -aie-normalize-address-spaces
@@ -156,7 +157,7 @@ aie-opt
 core*.mlir -o opt.mlir
 ```
 
-### <ins>10. Translate to generate .bcf or .ldscript</ins>
+### <ins>9. Translate to generate .bcf or .ldscript</ins>
 ```
 aie-translate input_with_addresses.mlir --aie-generate-bcf --tilecol=COL --tilerow=ROW -o core*.bcf
 or 
@@ -164,7 +165,7 @@ aie-translate input_with_addresses.mlir --aie-generate-ldscript --tilecol=COL --
 ```
 
 
-### <ins>11. Compile core (e.g. xchesscc_wrapper)</ins>
+### <ins>10. Compile core (e.g. xchesscc_wrapper)</ins>
 This section makes calls to `xchesscc_wrapper` to compile the final core*.elf.
 ```
 xchesscc_wrapper -d -f core*.o link_with_obj +l core*bcf -o core*elf

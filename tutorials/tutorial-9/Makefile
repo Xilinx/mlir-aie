@@ -10,6 +10,9 @@ all: tutorial-9.exe
 external_kernel/kernel.o: external_kernel/kernel.cc
 	$(MAKE) -C external_kernel mlir
 
+matmul_kernel/kernel.o: matmul_kernel/kernel.cc
+	$(MAKE) -C matmul_kernel mlir
+
 kernel.o: external_kernel/kernel.o
 	cp external_kernel/kernel.o ./kernel.o
 
@@ -24,6 +27,7 @@ tutorial-9.exe: test.cpp aie.mlir kernel.o
 
 clean:
 	$(MAKE) -C external_kernel clean
+	$(MAKE) -C matmul_kernel clean
 	rm -rf aie.mlir.prj aiesimulator_output *elf core* *log *vcd *exe pl_sample_counts *.o .AIE_SIM_CMD_LINE_OPTIONS
 
 #------------------------------------------------------------------------------
@@ -32,5 +36,5 @@ clean:
 tutorial-9_perf.exe: ./answers/test_perf.cpp ./aie.mlir kernel.o
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
-tutorial-9_matmul_perf.exe: ./answers/test_perf.cpp ./answers/aie_matmul.mlir kernel_matmul.o
+tutorial-9_matmul_perf.exe: ./answers/test_matmul_perf.cpp ./answers/aie_matmul.mlir kernel_matmul.o
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@

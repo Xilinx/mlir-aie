@@ -8,17 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-2a.exe
+// aiecc.py -j4 --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/  %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o tutorial-9.exe
 
 // REQUIRES: valid_xchess_license
 // RUN: make -C %S
-// RUN: %run_on_board ./tutorial-2a.exe
+// RUN: %run_on_board ./tutorial-9.exe
 // RUN: make -C %S clean
-
 
 // Declare this MLIR module. A block encapsulates all 
 // AIE tiles, buffers, and communication in an AI Engine design
-module @tutorial_2a {
+module @tutorial_9 {
 
     // Declare tile object of the AIE class located at position col 1, row 4
     %tile14 = AIE.tile(1, 4)
@@ -27,12 +26,19 @@ module @tutorial_2a {
     // size 256 deep x int32 wide. By default, the address of 
     // this buffer begins after the stack (1024 Bytes offset) and 
     // all subsequent buffers are allocated one after another in memory.
-    %buf = AIE.buffer(%tile14) { sym_name = "a14" } : memref<256xi32>
+    %bufa   = AIE.buffer(%tile14) { sym_name = "a14" }   : memref<32xi32>
+    %bufb   = AIE.buffer(%tile14) { sym_name = "b14" }   : memref<32xi32>
+    %bufacc = AIE.buffer(%tile14) { sym_name = "acc14" } : memref<32xi32>
+    %bufc   = AIE.buffer(%tile14) { sym_name = "c14" }   : memref<32xi32>
 
     // Declare a lock 0 associated with tile(1,4) with a 
     // symbolic name "lock14_0" which can be used by access functions
-    // in the generated host API (aie.mlir.prj/aie_inc.cpp)
+    // in the generated API (aie.mlir.prj/aie_inc.cpp)
     %lock14_0 = AIE.lock(%tile14, 0) { sym_name = "lock14_0" }
+
+    // declare kernel function name "extern_kernel" with one positional 
+    // function argument, in this case mapped to a memref
+    func.func private @extern_kernel(%a: memref<32xi32>, %b: memref<32xi32>, %acc: memref<32xi32>, %c: memref<32xi32>) -> ()
 
     // Define the algorithm for the core of tile(1, 4)
     // buf[3] = 14
@@ -40,9 +46,8 @@ module @tutorial_2a {
         // Acquire lock right when core starts
         AIE.useLock(%lock14_0, "Acquire", 0)
 
-		%val = arith.constant 14 : i32 // declare a constant (int32)
-		%idx = arith.constant 3 : index // declare a constant (index)
-		memref.store %val, %buf[%idx] : memref<256xi32> // store val in buf[3]
+        // Call function and map local buffer %buf to function argument
+        func.call @extern_kernel(%bufa, %bufb, %bufacc, %bufc) : (memref<32xi32>, memref<32xi32>, memref<32xi32>, memref<32xi32>) -> ()
 
         // Release acquired lock at end of program.
         // This can be used by host to mark beginning/end of a program or
@@ -50,6 +55,6 @@ module @tutorial_2a {
         // by acquiring this lock (with value 1). 
         AIE.useLock(%lock14_0, "Release", 1)
         AIE.end
-    }
+    } { link_with="kernel_matmul.o" } // indicate kernel object name used by this core
 
 }
