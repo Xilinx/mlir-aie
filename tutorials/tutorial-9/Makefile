@@ -25,6 +25,9 @@ kernel_matmul.o: matmul_kernel/kernel.o
 tutorial-9.exe: test.cpp aie.mlir kernel.o
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
+sim : test.cpp aie.mlir kernel.o
+	aiecc.py -j4 --xchesscc --xbridge --aiesim $(word 2,$^) -I$(AIE_RUNTIME_LIB)/x86_64/test_lib/include -L$(AIE_RUNTIME_LIB)/x86_64/test_lib/lib -ltest_lib ./$<
+
 clean:
 	$(MAKE) -C external_kernel clean
 	$(MAKE) -C matmul_kernel clean

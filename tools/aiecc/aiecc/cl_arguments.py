@@ -48,14 +48,14 @@ def parse_args():
             help='Link using peano')
     parser.add_argument('--aiesim',
             dest="aiesim",
-            default=True,
+            default=False,
             action='store_true',
             help='Generate aiesim Work folder')
     parser.add_argument('--no-aiesim',
             dest="aiesim",
             default=False,
             action='store_false',
-            help='Do no generate aiesim Work folder')
+            help='Do not generate aiesim Work folder')
     parser.add_argument('--xchesscc',
             dest="xchesscc",
             default=aie_compile_with_xchesscc,
@@ -148,6 +148,15 @@ def parse_args():
 
     return opts
 
+def strip_host_args_for_aiesim(args):
+    parser = argparse.ArgumentParser(prog='aiecc')
+    parser.add_argument('-o',
+            metavar="output",
+            default="",
+            help='output file')
+
+    opts = parser.parse_known_args(args)
+    return opts[1]
 
 def _positive_int(arg):
     return _int(arg, 'positive', lambda i: i > 0)
