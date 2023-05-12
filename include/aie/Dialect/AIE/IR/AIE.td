@@ -100,6 +100,7 @@ def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
       %tile = aie.tile(1, 1)
       %CORE = aie.core(%tile) { ... }
     }
+    ```
   }];
   let arguments = (
     ins AIEDevice:$device
