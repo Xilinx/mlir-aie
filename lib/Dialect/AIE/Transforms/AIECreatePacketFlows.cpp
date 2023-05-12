@@ -44,56 +44,130 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-// A port on a switch is identified by the tile and port name.
+// A PhysPort on a switch is identified by the tile and port name.
 typedef std::pair<Operation *, Port> PhysPort;
+
+// Binary bits representation of a mask
 typedef std::bitset<5> BitMask;
 
-int computeMaskValueBitMask(SmallVector<std::pair<PhysPort, int>, 4> group) {
-  // use std::bitset to compute masks using bitwise XOR operation ^
-  // Identify which bits have differences 
-  // by computing XOR on all pairs of IDs within the group.
+// MaskRule represents a packet rule <mask, match>
+// MLIR equivalent: AIE.rule(mask, match, amsel);
+typedef std::pair<BitMask, BitMask> MaskRule;
+
+void printMaskRule(MaskRule rule) {
+  LLVM_DEBUG(llvm::dbgs() << "Rule(" << rule.first.to_ullong()
+                          << ", " << rule.second.to_ullong() << ")\n");
+}
+
+// Compute masks by finding which bits differ within the group.
+// Identify differences by computing XOR on all pairs of IDs 
+BitMask computeMaskValue(SmallVector<std::pair<PhysPort, int>, 4> group) {
   BitMask mask = BitMask(0b00000);
-  for (unsigned int i = 0; i < group.size(); i++) {
+  for (unsigned int i = 0; i < group.size()-1; i++) {
     BitMask first = BitMask(group[i].second);
-    for (unsigned int j = i; j < group.size(); j++) {
+    for (unsigned int j = i+1; j < group.size(); j++) {
       BitMask ID = BitMask(group[j].second);
+      // Find different bits with XOR, accumulate differences with OR
       mask |= first xor ID;
     }
   }
-
   // We now have 1's in bit positions which differ within the group.
   // These 1's are the "don't cares", so we simply flip all bits.
-  return int(mask.flip().to_ullong());
+  return mask.flip();
 }
 
 
-int computeMaskValue(SmallVector<std::pair<PhysPort, int>, 4> group) {
-      // Iterate over all the ID values in a group
-      // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
-      // value, the bit position should be "don't care", and we will set the
-      // mask bit of that position to 0
-      int mask[5] = {-1, -1, -1, -1, -1};
-      for (auto port : group) {
-        int ID = port.second;
-        for (int i = 0; i < 5; i++) {
-          if (mask[i] == -1)
-            mask[i] = ((ID >> i) & 0x1);
-          else if (mask[i] != ((ID >> i) & 0x1))
-            mask[i] = 2; // found bit difference --> mark as "don't care"
+// Create a single MaskRule which encompasses all IDs of r1 and r2
+// but it might also direct additional IDs that are not in r1 or r2
+MaskRule combineMaskRules(MaskRule r1, MaskRule r2) {
+  BitMask mask1  = r1.first;
+  BitMask match1 = r1.second;
+  BitMask mask2  = r2.first;
+  BitMask match2 = r2.second;
+
+  // In the mask, 0's are "don't cares"
+  // Any bit differences in the mathces are also don't care
+  // Combine all "don't cares" with &
+  BitMask combinedMask = mask1 & mask2 & (~(match1 ^ match2));
+
+  // In the match, only keep bits that are the same
+  BitMask combinedMatch= match1 & match2;
+
+  // & operations will either do nothing or reduce hamming weight,
+  // therefore the combined rule cannot be more specific
+
+  return std::make_pair(combinedMask, combinedMatch);
+}
+
+
+// Given a Maskrule, compute which flow IDs (0-31) will be picked up by the rule
+std::vector<int> performMaskRule(MaskRule rule, bool print=false) {
+  std::vector<int> results;
+  BitMask mask = rule.first;
+  BitMask match= rule.second;
+  if(print) LLVM_DEBUG(llvm::dbgs() << "Matches: ");
+  for(int i = 0; i < 31; i++) {
+    if ((BitMask(i) & mask) == match) {
+      results.push_back(i);
+      if(print) LLVM_DEBUG(llvm::dbgs() << i << ", ");
+    }
+  }
+  if(print) LLVM_DEBUG(llvm::dbgs() << "\n");
+  return results;
+}
+
+// Given a group of input ports and flow IDs, find a set of MaskRules which
+// direct those flow IDs. Margin refers to the number of extra IDs that are
+// included in the rules but were not part of the group. We want margin to
+// be as low as possible, and never exceed MAX_MARGIN.
+SmallVector<MaskRule, 4> findBestMaskRules(SmallVector<std::pair<PhysPort, int>, 4> group, int MAX_MARGIN=0) {
+  SmallVector<MaskRule, 4> maskRules;
+  LLVM_DEBUG(llvm::dbgs() << "\n\nBegin findBestMaskRules:\n");
+  // Start with a set of very specific rules
+  // One rule targeting each specific ID
+  LLVM_DEBUG(llvm::dbgs() << "\tInitial Rules:\n");
+  for (auto item : group) {
+    MaskRule rule = std::make_pair(BitMask(31), BitMask(item.second));
+    maskRules.push_back(rule);
+    printMaskRule(rule);
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "\nCombined Rules:\n");
+  // Next, try to combine them without picking up any extra flow IDs
+  for (int margin = 0; margin <= MAX_MARGIN; margin++) {
+    LLVM_DEBUG(llvm::dbgs() << "--> loop margin: " << margin << "\n");
+    for (unsigned int i = 0; i < maskRules.size()-1; i++) {
+      for (unsigned int j = i+1; j < maskRules.size(); j++) {
+        MaskRule newRule = combineMaskRules(maskRules[i], maskRules[j]);
+        int old_match_count = performMaskRule(maskRules[i]).size() +
+                                performMaskRule(maskRules[j]).size();
+        int new_match_count = performMaskRule(newRule).size();
+        if (new_match_count - margin <= old_match_count) {
+          LLVM_DEBUG(llvm::dbgs() << "\tGood combo found:\n");
+          printMaskRule(maskRules[i]);
+          printMaskRule(maskRules[j]);
+          LLVM_DEBUG(llvm::dbgs() << "Combine into newRule:\n");
+          printMaskRule(newRule);
+          maskRules.erase(maskRules.begin()+j);
+          maskRules.erase(maskRules.begin()+i);
+          maskRules.push_back(newRule);
+          // after combining rules, reset indices
+          i = 0;
+          j = 0;
         }
       }
+    }
+  }
 
-      int maskValue = 0;
-      for (int i = 4; i >= 0; i--) {
-        if (mask[i] == 2) // don't care
-          mask[i] = 0;
-        else
-          mask[i] = 1;
-        maskValue = (maskValue << 1) + mask[i];
-      }
-       return maskValue;
-
+  LLVM_DEBUG(llvm::dbgs() << "\n-->Final rules:\n");
+  for (auto rule : maskRules) {
+    printMaskRule(rule);
+    performMaskRule(rule, true);
+  }
+  LLVM_DEBUG(llvm::dbgs() << "\n");
+  return maskRules;
 }
+
 
 int getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
                             Port sourcePort, int flowID,
@@ -162,6 +236,8 @@ void update_coordinates(int &xCur, int &yCur, WireBundle move) {
   }
 }
 
+
+// DEPRECATED BY PATHFINDER
 // Build a packet-switched route from the sourse to the destination with the
 // given ID. The route is recorded in the given map of switchboxes.
 void buildPSRoute(
@@ -268,6 +344,7 @@ void buildPSRoute(
       std::make_pair(std::make_pair(lastPort, destPort), flowID));
 }
 
+
 SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
   for (auto i : tile.getResult().getUsers()) {
     if (llvm::isa<SwitchboxOp>(*i)) {
@@ -293,12 +370,10 @@ struct AIERoutePacketFlowsPass
     return tileOp;
   }
 
-  void createWireOps(OpBuilder &builder, SwitchboxOp sw, ModuleOp &m) {
 
+  void createWireOps(OpBuilder &builder, SwitchboxOp sw, ModuleOp &m) {
     int col = sw.colIndex();
     int row = sw.rowIndex();
-
-    //TileOp tile = cast<TileOp>(tiles[std::make_pair(col, row)]);
     TileOp tile = cast<TileOp>(sw.getTileOp());
 
     // add wires between Core and Switchbox
@@ -330,7 +405,6 @@ struct AIERoutePacketFlowsPass
         }
       }
     } else { // it is normal tile (not in shim)
-
       // add wires between DMA and Switchbox
       builder.create<WireOp>(builder.getUnknownLoc(),
             tile, WireBundle::DMA,
@@ -349,7 +423,6 @@ struct AIERoutePacketFlowsPass
   }
 
   void runOnOperation() override {
-
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
@@ -372,10 +445,15 @@ struct AIERoutePacketFlowsPass
     // to the dest swboxes, and only use packet-switch to route at the dest
     // swboxes
 
-    // Map from a port and flowID to
     DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
     SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
     DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+
+    // The logical model of all the switchboxes.
+    // Each "Connect" is a Port-to-Port switchbox setting.
+    // The SmallVector of Connects defines a Packet Route
+    DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
+        switchboxes;
 
     int maxcol = 0, maxrow = 0;
     for (auto tileOp : m.getOps<TileOp>()) {
@@ -385,13 +463,6 @@ struct AIERoutePacketFlowsPass
       maxrow = std::max(maxrow, row);
       tiles[std::make_pair(col, row)] = tileOp;
     }
-
-
-    // The logical model of all the switchboxes.
-    // Each "Connect" is a Port-to-Port switchbox setting.
-    // The SmallVector of Connects defines a Packet Route
-    DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
-        switchboxes;
 
     Pathfinder pathfinder = Pathfinder(maxcol, maxrow);
     // Add all PacketRoutes to Pathfinder object
@@ -482,7 +553,7 @@ struct AIERoutePacketFlowsPass
         Operation* op = getOrCreateTile(builder, sb->col, sb->row);
 
         auto sourceFlow = std::make_pair(std::make_pair(op, sourcePort), flowID);
-        LLVM_DEBUG(llvm::dbgs() << "\tFlow source: (" << sb->col << ", " << sb->row
+        LLVM_DEBUG(llvm::dbgs() << "\tFlow source: (" << sb->col << ", " << sb->row << ") "
                 << stringifyWireBundle(sourcePort.first) << ":" << sourcePort.second 
                 << ") ID: " << flowID << "\n");
 
@@ -627,6 +698,7 @@ struct AIERoutePacketFlowsPass
     // Two flows can be merged if they share the same destinations
     SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
     SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
+    SmallVector<SmallVector<MaskRule, 4>, 64> maskRules;
 
     // Print slavePorts for debugging
     for (auto item : slavePorts) {
@@ -644,12 +716,12 @@ struct AIERoutePacketFlowsPass
 
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
-      Port slavePort1 = slave1.first.second;
+      PhysPort slavePort1 = slave1.first;
 
       bool foundgroup = false;
       for (auto &group : slaveGroups) {
         auto slave2 = group.front();
-        Port slavePort2 = slave2.first.second;
+        PhysPort slavePort2 = slave2.first;
         
         if (slavePort1 != slavePort2)
           continue;
@@ -667,9 +739,6 @@ struct AIERoutePacketFlowsPass
           }
         }
 
-        // Removing this clause makes all the rules seperate
-        // i.e. mask = 31
-        //if (false)
         if (matched) {
           group.push_back(slave1);
           foundgroup = true;
@@ -683,18 +752,35 @@ struct AIERoutePacketFlowsPass
       }
     }
 
-    DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
+    //DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
+    DenseMap<std::pair<PhysPort, int>, SmallVector<MaskRule, 4>> slaveMasks;
     for (auto group : slaveGroups) {
-      for (auto port : group) {
-        int maskValue = computeMaskValue(group);
-        int maskValueBetter = computeMaskValueBitMask(group);
-        if (maskValue == maskValueBetter)
-          LLVM_DEBUG(llvm::dbgs() << "@@@mask values MATCH!\n");
-        else
-          LLVM_DEBUG(llvm::dbgs() << "@@@mask values DON'T match!\n");
-          LLVM_DEBUG(llvm::dbgs() << "Orig: " << maskValue << "\tNew: " << maskValueBetter << "\n");
-        slaveMasks[port] = maskValue;
+      LLVM_DEBUG(llvm::dbgs() << "Generating MaskRules:\tgroup.size(): " << group.size() << "\n");
+      auto front = group.front();
+      for (auto p : group) {
+        TileOp tile = dyn_cast<TileOp>(p.first.first);
+        Port port = p.first.second;
+        auto bundle = port.first;
+        int channel = port.second;
+        LLVM_DEBUG(llvm::dbgs() << "\nXXXslavePort: "
+                      << "(" << tile.colIndex() << ", " << tile.rowIndex() << ") "
+                      << stringifyWireBundle(bundle)
+                      << ":" << channel << "\tFlowID: " << p.second << "\n");
+
       }
+
+      PhysPort physPort = front.first;
+      Port port = physPort.second;
+      LLVM_DEBUG(llvm::dbgs()
+            << "\tport: " << stringifyWireBundle(port.first) << ":" 
+            << port.second << "\n");
+
+      SmallVector<MaskRule, 4> bestRules;
+      int hamming_margin = 0;
+      do {
+        bestRules = findBestMaskRules(group, hamming_margin++);
+      } while (bestRules.size() > 4);
+      slaveMasks[front] = bestRules;
     }
 
     // Sometimes packet rules can interfere with each other.
@@ -718,6 +804,7 @@ struct AIERoutePacketFlowsPass
     // PhysPort, ID, masterset_num
     DenseMap<std::pair<PhysPort, int>, std::pair<Port, int> > priorityMap;
 
+    /*
     for (auto item : slaveGroupsByCoord) {
       PhysPort physPort = item.first;
       TileOp tile = dyn_cast<TileOp>(physPort.first);
@@ -738,21 +825,21 @@ struct AIERoutePacketFlowsPass
                 << port.second << '\n');
 
       auto groupsAtCoord = item.second;
+
       SmallVector<int, 8> matchedIDs;
       SmallVector<int, 8> precludedIDs;
       for(auto group : groupsAtCoord) {
         std::pair<PhysPort, int> pair = group.front();
         PhysPort physPort = pair.first;
         WireBundle bundle = physPort.second.first;
-        int mask = slaveMasks[pair];
         int channel = physPort.second.second;
-        int match = pair.second & mask;
-      // auto port = map.first.first;
-      // TileOp tile = dyn_cast<TileOp>(port.first);
-      // WireBundle bundle = port.second.first;
-      // int channel = port.second.second;
-      // int match = map.first.second;
-      // int mask = map.second;
+
+        //int mask = slaveMasks[pair];
+        //int match = pair.second & mask;
+        
+      SmallVector<MaskRule, 4> maskRules = slaveMasks[pair];
+      int mask = 
+
 
         LLVM_DEBUG(llvm::dbgs() << "Slave:\n(" << coord.first << ", " << coord.second << ")"
                   << " Port " << stringifyWireBundle(bundle) << ":"
@@ -797,8 +884,11 @@ struct AIERoutePacketFlowsPass
           }
         }
 
-        LLVM_DEBUG(llvm::dbgs() << "\nPrecluded IDs:\n");
-        for( int i : precludedIDs){
+        if (precludedIDs.size() > 0)
+          LLVM_DEBUG(llvm::dbgs() << "\nPrecluded IDs:\n");
+        else
+          LLVM_DEBUG(llvm::dbgs() << "\nNo IDs will be hidden!\n");
+        for (int i : precludedIDs){
             LLVM_DEBUG(llvm::dbgs() << i << ", ");
             Flow* flow_ptr = Pathfinder::getPacketFlow(flow_solutions, i);
             SwitchSettings* settings_ptr = flow_solutions[flow_ptr];
@@ -835,7 +925,9 @@ struct AIERoutePacketFlowsPass
         LLVM_DEBUG(llvm::dbgs() << "\n\n");
       }
     }
+    */
 
+    /*
     LLVM_DEBUG(llvm::dbgs() << "\n^^^priorityMap:\n");
     for (auto item : priorityMap) {
       auto key = item.first;
@@ -876,6 +968,8 @@ struct AIERoutePacketFlowsPass
       //}
         LLVM_DEBUG(llvm::dbgs() << "\n\n");
     }
+
+    */
 
     // Realize the routes in MLIR
     for (auto map : tiles) {
@@ -959,55 +1053,79 @@ struct AIERoutePacketFlowsPass
         PhysPort physPort = front.first;
         if (tileOp != physPort.first)
           continue;
-
+        TileOp tile = dyn_cast<TileOp>(tileOp);
 
         Port slavePort  = physPort.second;
-        WireBundle bundle = slavePort .first;
-        int channel = slavePort .second;
-        int mask = slaveMasks[front];
-        int ID = front.second & mask;
+        WireBundle bundle = slavePort.first;
+        int channel = slavePort.second;
 
-        // Verify that we actually map all the ID's correctly.
-        for (auto s : group) {
-          assert((s.second & mask) == ID);
-        }
-        Value amsel = amselOps[slaveAMSels[front]];
 
-        PacketRulesOp packetrules;
-        LLVM_DEBUG(llvm::dbgs() << "\nslavePort: "
-                  << stringifyWireBundle(slavePort.first)
-                  << ":" << slavePort.second << "\n");
-        if (slaveRules.count(slavePort) == 0) {
-          packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
-                                                      bundle, channel);
-          packetrules.ensureTerminator(packetrules.getRules(), builder,
-                                       builder.getUnknownLoc());
-          slaveRules[slavePort] = packetrules;
-        } else { //When will this else execute?
-          packetrules = slaveRules[slavePort];
-        }
 
-        Block &rules = packetrules.getRules().front();
+        // Generate AIE.packetrules and AIE.rule ops
+        //for (auto item : packetFlows) 
+        {
+        //  auto key = item.first;
+          SmallVector<MaskRule, 4> maskRules = slaveMasks[front];
+          Value amsel = amselOps[slaveAMSels[front]];
 
-        //generate priority packet rules
-        for (auto pair : group) {
-          if(priorityMap.count(pair)) {
-            int priorityID = pair.second;
-            Port priorityPort = priorityMap[pair].first;
-            int priorityAMsel = priorityMap[pair].second;
-            LLVM_DEBUG(llvm::dbgs() << "Generate Priority Packet rule: AIE.rule(31, "
-              << priorityID << ", " << priorityAMsel << ")\n");
-            LLVM_DEBUG(llvm::dbgs() << "Amsel: " << amselOps[priorityAMsel] << "\n");
-            LLVM_DEBUG(llvm::dbgs() << "priorityPort: " << stringifyWireBundle(priorityPort.first) << ":"
-                          << priorityPort.second << "\n\n");
+          // Sort maskRules by descending Hamming Weight of each mask.
+          // "Heavier" masks (those with more 1's) are by definition more specific
+          // And therefore should be placed first to avoid being precluded.
+          std::sort(maskRules.begin(), maskRules.end(),
+          [](const MaskRule &a, const MaskRule &b) {
+              return a.first.count() > b.first.count();
+          });
 
-            builder.setInsertionPointToStart(&rules);
-            builder.create<PacketRuleOp>(builder.getUnknownLoc(), 31, priorityID, amselOps[priorityAMsel]);
+          for (MaskRule rule : maskRules) {
+            int mask = rule.first.to_ullong();
+            int match= rule.second.to_ullong();
+
+            // Verify that we actually map all the match's correctly.
+            //for (auto s : group) {
+            //  assert((s.second & mask) == match);
+            //}
+
+            PacketRulesOp packetrules;
+            LLVM_DEBUG(llvm::dbgs() << "\nslavePort: "
+                      << "(" << tile.colIndex() << ", " << tile.rowIndex() << ") "
+                      << stringifyWireBundle(bundle)
+                      << ":" << channel << "\n");
+            performMaskRule(rule, true);
+            if (slaveRules.count(slavePort) == 0) {
+              packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
+                                                          bundle, channel);
+              packetrules.ensureTerminator(packetrules.getRules(), builder,
+                                          builder.getUnknownLoc());
+              slaveRules[slavePort] = packetrules;
+            } else { //When will this else execute?
+              packetrules = slaveRules[slavePort];
+            }
+
+            Block &rules = packetrules.getRules().front();
+
+            /*
+            //generate priority packet rules
+            for (auto pair : group) {
+              if(priorityMap.count(pair)) {
+                int priorityID = pair.second;
+                Port priorityPort = priorityMap[pair].first;
+                int priorityAMsel = priorityMap[pair].second;
+                LLVM_DEBUG(llvm::dbgs() << "Generate Priority Packet rule: AIE.rule(31, "
+                  << priorityID << ", " << priorityAMsel << ")\n");
+                LLVM_DEBUG(llvm::dbgs() << "Amsel: " << amselOps[priorityAMsel] << "\n");
+                LLVM_DEBUG(llvm::dbgs() << "priorityPort: " << stringifyWireBundle(priorityPort.first) << ":"
+                              << priorityPort.second << "\n\n");
+
+                builder.setInsertionPointToStart(&rules);
+                builder.create<PacketRuleOp>(builder.getUnknownLoc(), 31, priorityID, amselOps[priorityAMsel]);
+              }
+            }
+            */
+
+            builder.setInsertionPoint(rules.getTerminator());
+            builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, match, amsel);
           }
         }
-
-        builder.setInsertionPoint(rules.getTerminator());
-        builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
       }
     }
 
