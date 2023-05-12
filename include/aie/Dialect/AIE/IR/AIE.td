@@ -341,10 +341,10 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, IsCoreTile, TileElement]>, Results
     This operation represents an AIEngine processor core belonging to a tile.
     The region of a CoreOp contains code that gets run on the AIE core.  This code will
     typically be outlined into the LLVM dialect, eventually resulting in a binary file
-    for each core.  The name of this file can be be specified using the 'elf_file'
+    for each core.  The name of this file can be be specified using the `elf_file`
     attribute.
 
-    This op has an optional 'stackSize' attribute, to control the amount of memory (in bytes)
+    This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data allocations
     in other cores.
@@ -1006,7 +1006,7 @@ def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "MemTileDM
     This operation terminates the basic block describing a buffer descriptor inside
     a tile or shim DMA operation.  It references a single following buffer descriptor.
     Note that unlike other terminators (like cf.br), canonicalization should not remove
-    the 'nextBd' terminator, since it would result in invalid buffer descriptors.
+    the `nextBd` terminator, since it would result in invalid buffer descriptors.
 
     Example:
     ```
