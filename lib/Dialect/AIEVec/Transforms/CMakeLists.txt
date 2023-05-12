@@ -16,9 +16,11 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec/Transforms
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec/Analysis
 
   DEPENDS
   MLIRAIEVecPassIncGen
+  MLIRAIEVecAnalysisPassIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bitset>
 #include <optional>
 #include <tuple>
 
@@ -16,6 +17,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #include "VectorToAIEVecConversions.h"
 
@@ -30,6 +32,50 @@ using namespace xilinx::aievec;
 //===----------------------------------------------------------------------===//
 // Utility functions
 //===----------------------------------------------------------------------===//
+
+// Return the offset of a given transfer read operation with regards to the
+// specified vector type. If the read is aligned to the specified alignment
+// parameter (in bits), then the offset is 0. Otherwise, the offset is the
+// number of elements past the immediately preceding aligned vector length.
+template <
+    typename TransferReadLikeOp,
+    typename = std::enable_if_t<
+        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp> ||
+        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp::Adaptor>>>
+static int64_t getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
+                                              VectorType vType,
+                                              int64_t alignment) {
+  // TODO: Add support for cases where the index is not comming from an
+  // TODO: `affine.apply` op or when the affine map has more than one
+  // TODO: dimension. We also need to address the case where the index is an
+  // TODO: induction variable.
+  auto innerMostIndex = readOp.getIndices().back();
+  auto vectorLength = vType.getShape().back();
+  auto idxDefOp = innerMostIndex.getDefiningOp();
+  if (!idxDefOp)
+    return 0L;
+  int64_t vectorLengthAlignmentOffset =
+      TypeSwitch<Operation *, int64_t>(idxDefOp)
+          .Case<arith::ConstantOp>([&](auto constantOp) {
+            return cast<IntegerAttr>(constantOp.getValue()).getInt() %
+                   vectorLength;
+          })
+          .template Case<AffineApplyOp>([&](auto applyOp) {
+            if (applyOp.getAffineMap().getNumDims() == 1)
+              return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
+                     vectorLength;
+            return 0L;
+          })
+          .Default([&](auto) {
+            // XXX: If we can't determine the offset, we assume the access is
+            // XXX: aligned.
+            return 0L;
+          });
+  int64_t absoluteAlignmentOffset = alignment / getElementSizeInBits(vType);
+  if (vectorLengthAlignmentOffset % absoluteAlignmentOffset)
+    return vectorLengthAlignmentOffset;
+  return 0;
+}
 
 // Given the LHS and RHS of an `arith::AddIOp`, if one of them is defined by an
 // `arith::MulIOp`, return a tuple with the `lhs`, `rhs`, and `acc` of the MAC
@@ -85,6 +131,73 @@ static aievec::MulElemOp createMulElemAieML(ConversionPatternRewriter &rewriter,
   auto mulElemOp = rewriter.create<aievec::MulElemOp>(
       loc, accType, lConcatOp->getResult(0), rConcatOp->getResult(0));
   return mulElemOp;
+}
+
+// Return the list of attributes that configure an `aievec.select` op to
+// perform a rotation of the input vector by `rotation` number of elements.
+// The attribute values depend on the vector type of the select operation.
+static SmallVector<NamedAttribute>
+buildAttributeListForRotationSelectOp(PatternRewriter &rewriter, VectorType vTy,
+                                      int64_t rotation) {
+  unsigned width = 0;
+  auto elemTy = vTy.getElementType();
+  auto intTy = dyn_cast<IntegerType>(elemTy);
+  if (intTy)
+    width = intTy.getWidth();
+  StringAttr attr0 = rewriter.getStringAttr("0");
+  StringAttr attr0x06040200 = rewriter.getStringAttr("0x06040200");
+  StringAttr attr0x0e0c0a08 = rewriter.getStringAttr("0x0e0c0a08");
+  StringAttr attr0x2103 = rewriter.getStringAttr("0x2103");
+  StringAttr attr0x3210 = rewriter.getStringAttr("0x3210");
+  StringAttr selectAttrName = rewriter.getStringAttr("select");
+  StringAttr xoffsetsAttrName = rewriter.getStringAttr("xoffsets");
+  StringAttr xoffsetsHiAttrName = rewriter.getStringAttr("xoffsets_hi");
+  StringAttr xsquareAttrName = rewriter.getStringAttr("xsquare");
+  StringAttr xstartAttrName = rewriter.getStringAttr("xstart");
+  StringAttr yoffsetsAttrName = rewriter.getStringAttr("yoffsets");
+  StringAttr yoffsetsHiAttrName = rewriter.getStringAttr("yoffsets_hi");
+  StringAttr ysquareAttrName = rewriter.getStringAttr("ysquare");
+  StringAttr ystartAttrName = rewriter.getStringAttr("ystart");
+
+  switch (width) {
+  case 16:
+    if (rotation % 2) {
+      int64_t xstart = rotation + 1;
+      int64_t ystart = rotation - 1;
+      return SmallVector<NamedAttribute, 9>(
+          {{selectAttrName, rewriter.getStringAttr("0x11111111")},
+           {xoffsetsAttrName, attr0x06040200},
+           {xoffsetsHiAttrName, attr0x0e0c0a08},
+           {xsquareAttrName, attr0x2103},
+           {xstartAttrName, rewriter.getStringAttr(std::to_string(xstart))},
+           {yoffsetsAttrName, rewriter.getStringAttr("0x0503010f")},
+           {yoffsetsHiAttrName, rewriter.getStringAttr("0x0d0b0907")},
+           {ysquareAttrName, attr0x2103},
+           {ystartAttrName, rewriter.getStringAttr(std::to_string(ystart))}});
+    } else {
+      return SmallVector<NamedAttribute, 9>(
+          {{selectAttrName, attr0},
+           {xoffsetsAttrName, attr0x06040200},
+           {xoffsetsHiAttrName, attr0x0e0c0a08},
+           {xsquareAttrName, attr0x3210},
+           {xstartAttrName, rewriter.getStringAttr(std::to_string(rotation))},
+           {yoffsetsAttrName, attr0},
+           {yoffsetsHiAttrName, attr0},
+           {ysquareAttrName, attr0},
+           {ystartAttrName, attr0}});
+    }
+    break;
+  case 32:
+    return SmallVector<NamedAttribute, 7>(
+        {{selectAttrName, attr0},
+         {xoffsetsAttrName, rewriter.getStringAttr("0x76543210")},
+         {xsquareAttrName, attr0x3210},
+         {xstartAttrName, rewriter.getStringAttr(std::to_string(rotation))},
+         {yoffsetsAttrName, attr0},
+         {ysquareAttrName, attr0},
+         {ystartAttrName, attr0}});
+  }
+  return {};
 }
 
 namespace xilinx {
@@ -301,8 +414,9 @@ struct UPDOpEffectiveAccessSizeAnalysis {
 };
 
 //===----------------------------------------------------------------------===//
-// Lowering patterns
+// Rewrite patterns
 //===----------------------------------------------------------------------===//
+
 // This pattern fold `vector.extract` and `vector.broadcast` into
 // `aievec.broadcast` for aie-ml
 struct FoldVectorExtractAndBroadcastToAIEBroadcast
@@ -314,17 +428,28 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
                   ConversionPatternRewriter &rewriter) const override {
 
     auto extOp =
-        dyn_cast<vector::ExtractOp>(bcastOp.getSource().getDefiningOp());
+        dyn_cast<vector::ExtractOp>(adaptor.getSource().getDefiningOp());
 
     if (!extOp)
       return failure();
 
     auto src = extOp.getVector();
     auto pos = extOp.getPosition();
-    VectorType resultType = bcastOp.getResult().getType().cast<VectorType>();
-
-    rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(
-        bcastOp, resultType, src, cast<IntegerAttr>(pos[0]).getInt());
+    int64_t posVal = cast<IntegerAttr>(pos[0]).getInt();
+    VectorType srcVecType = cast<VectorType>(src.getType());
+    VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
+    if (srcVecType != resultType) {
+      if (srcVecType.getNumElements() != 2 * resultType.getNumElements())
+        return failure();
+      int8_t half = static_cast<int8_t>(posVal / resultType.getNumElements());
+      posVal -= half * resultType.getNumElements();
+      src = rewriter
+                .create<aievec::ExtOp>(extOp.getLoc(), resultType, src,
+                                       rewriter.getI8IntegerAttr(half))
+                .getResult();
+    }
+    rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType, src,
+                                                     posVal);
 
     return success();
   }
@@ -659,14 +784,15 @@ struct LowerVectorTransferReadToAIEUPD
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
 
   LowerVectorTransferReadToAIEUPD(MLIRContext *context, AnalysisManager &am,
-                                  int32_t maxVectorSize = 256)
+                                  int64_t minVectorSize, int64_t maxVectorSize,
+                                  int64_t alignment, int64_t maxLoadSize)
       : OpConversionPattern<vector::TransferReadOp>(context), am(am),
-        maxVectorSize(maxVectorSize) {}
+        minVectorSize(minVectorSize), maxVectorSize(maxVectorSize),
+        vectorAlignment(alignment), maxLoadSize(maxLoadSize) {}
 
   LogicalResult
   matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // == Handle invalid read operations ==
     // Masked loads
     if (readOp.getMask())
       return readOp.emitError() << "AIE doesn't support masked loads.";
@@ -680,75 +806,43 @@ struct LowerVectorTransferReadToAIEUPD
     if (map.isConstant())
       return failure();
 
-    // When a transfer read with a constant innermost index is not aligned, we
-    // get the corresponding aligned load followed by an aievec.shift op.
-    // Example:
-    // Convert -
-    // %0 = vector.transfer_read %arg1[16] : vector<32xi8>
-    // %1 = vector.transfer_read %arg1[34] : vector<32xi8>
-    //
-    // to -
-    //
-    // %0 = aievec.upd %arg1[0] : vector<32xi8>
-    // %1 = aievec.upd %arg1[32] : vector<32xi8>
-    // %2 = aievec.shift %0, %1 {shift = 16 : i32} : vector<32xi8>
-    // %3 = aievec.upd %arg1[64] : vector<32xi8>
-    // %4 = aievec.shift %2, %3 {shift = 2 : i32} : vector<32xi8>
-    //
-    SmallVector<Value, 4> indices(adaptor.getIndices().begin(),
-                                  adaptor.getIndices().end());
-    Value innerMostIdx = indices[indices.size() - 1];
-    Value newIdx = innerMostIdx;
-    VectorType vType = readOp.getVector().getType().cast<VectorType>();
-    int32_t lanes = getVectorLaneSize(vType);
+    // Misaligned accesses
+    auto vType = readOp.getVectorType();
+    if (getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment) != 0)
+      return failure();
 
-    if (auto defOp = innerMostIdx.getDefiningOp()) {
-      if (auto constOp = dyn_cast<arith::ConstantOp>(defOp)) {
-        int64_t val = constOp.getValue().cast<IntegerAttr>().getInt();
-        if (val) {
-          int64_t offset = val % lanes;
-          int64_t idx = val / lanes * lanes;
-          newIdx = rewriter.create<arith::ConstantOp>(
-              constOp.getLoc(),
-              rewriter.getIntegerAttr(constOp.getType(), idx));
-          indices[indices.size() - 1] = newIdx;
-          int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
+    // Invalid vector size.
+    // We can handle cases where the vector size is:
+    //   1) the minimum vector size
+    //   2) a square multiple of the alignment size and up to the maximum
+    //      vector size.
+    int64_t vSize = vType.getNumElements() * vType.getElementTypeBitWidth();
+    if (vSize > maxVectorSize ||
+        (vSize % vectorAlignment && vSize != minVectorSize))
+      return failure();
+    // We can deal with linked update instructions when the vector size is
+    // exactly twice the load size. This could change in future architectures
+    if (vSize > maxLoadSize && vSize != maxLoadSize * 2)
+      return failure();
+    int64_t multiplicity = vSize / vectorAlignment;
+    if ((vSize > minVectorSize) && std::bitset<8>(multiplicity).count() != 1)
+      return failure();
 
-          if (shiftBytes) {
-            auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
-                readOp.getLoc(), vType, adaptor.getSource(), indices, 0, 0,
-                TypedValue<VectorType>(nullptr));
-            newIdx = rewriter.create<arith::ConstantOp>(
-                constOp.getLoc(),
-                rewriter.getIntegerAttr(constOp.getType(), idx + lanes));
-            indices[indices.size() - 1] = newIdx;
-            // Load the next vector lanes
-            auto nextUpdOp = rewriter.create<xilinx::aievec::UPDOp>(
-                readOp.getLoc(), vType, adaptor.getSource(), indices, 0, 0,
-                TypedValue<VectorType>(nullptr));
-
-            arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
-                readOp.getLoc(), rewriter.getI32IntegerAttr(shiftBytes));
-            rewriter.replaceOpWithNewOp<xilinx::aievec::ShiftOp>(
-                readOp, vType, updOp->getResult(0), nextUpdOp->getResult(0),
-                constOp.getResult());
-          } else {
-            rewriter.replaceOpWithNewOp<xilinx::aievec::UPDOp>(
-                readOp, vType, adaptor.getSource(), indices, 0, 0,
-                TypedValue<VectorType>(nullptr));
-          }
-          return success();
-        }
-      }
-    }
-    rewriter.replaceOpWithNewOp<xilinx::aievec::UPDOp>(
-        readOp, vType, adaptor.getSource(), indices, 0, 0,
+    auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
+        readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(), 0, 0,
         TypedValue<VectorType>(nullptr));
+    if (vSize > maxLoadSize) {
+      updOp = rewriter.create<xilinx::aievec::UPDOp>(
+          readOp.getLoc(), vType, adaptor.getSource(), adaptor.getIndices(),
+          maxLoadSize, 1, updOp.getResult());
+    }
+    rewriter.replaceOp(readOp, updOp.getResult());
+
     return success();
   }
 
   AnalysisManager &am;
-  int32_t maxVectorSize;
+  int64_t minVectorSize, maxVectorSize, vectorAlignment, maxLoadSize;
 };
 
 // XXX: Notice that this template doesn't verify that the vector element type
@@ -1440,36 +1534,151 @@ struct LowerVectorReductionAddBfloat16Op
   }
 };
 
-// If a UPD op is loading a vector twice the size of the architecture
-// vector size, split it into a high and low load into the accumulator.
-// TODO: This is a process we may want to include as part of the
-// TODO: legalization of `vector.transfer_read`.
-struct SplitUPDOpOnAccPattern : public OpConversionPattern<aievec::UPDOp> {
+// Convert a `vector.extract_strided_slice` op on 1D vectors into an
+// `aievec.select` + `aievec.ext` op.
+struct LowerVectorExtractStridedSliceOpAIEv1Pattern
+    : public OpConversionPattern<vector::ExtractStridedSliceOp> {
+  using OpConversionPattern<vector::ExtractStridedSliceOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto vType = extractOp.getVectorType();
+    if (vType.getRank() != 1)
+      return failure();
+
+    int64_t stride = cast<IntegerAttr>(adaptor.getStrides()[0]).getInt();
+    if (stride != 1)
+      return failure();
+
+    // AIE doesn't support select operations on i8
+    if (getElementSizeInBits(vType) == 8)
+      return extractOp.emitError()
+             << "AIEv1 doesn't support select ops on int8 types";
+
+    // We only accept the case where we are extracting a slice half the size of
+    // the input vector.
+    int64_t size = cast<IntegerAttr>(adaptor.getSizes()[0]).getInt();
+    if (vType.getNumElements() != 2 * size)
+      return failure();
+
+    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    auto selectOp = rewriter.create<aievec::SelectOp>(
+        extractOp.getLoc(), vType, adaptor.getVector(),
+        buildAttributeListForRotationSelectOp(rewriter, vType, offset));
+    rewriter.replaceOpWithNewOp<aievec::ExtOp>(extractOp, extractOp.getType(),
+                                               selectOp.getResult(),
+                                               rewriter.getI8IntegerAttr(0));
+
+    return success();
+  }
+};
+
+// Convert a `vector.extract_strided_slice` op on 1D vectors into an
+// `aievec.shift` op.
+struct LowerVectorExtractStridedSliceOpAIEMLPattern
+    : public OpConversionPattern<vector::ExtractStridedSliceOp> {
+  using OpConversionPattern<vector::ExtractStridedSliceOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto vType = cast<VectorType>(adaptor.getVector().getType());
+    if (vType.getRank() != 1)
+      return failure();
+
+    int64_t stride = cast<IntegerAttr>(adaptor.getStrides()[0]).getInt();
+    if (stride != 1)
+      return failure();
+
+    // We only accept the case where we are extracting a slice half the size of
+    // the input vector.
+    int64_t size = cast<IntegerAttr>(adaptor.getSizes()[0]).getInt();
+    if (vType.getNumElements() != 2 * size)
+      return failure();
+
+    auto shortVecType = cast<VectorType>(extractOp.getResult().getType());
+    auto bottomHalf = rewriter
+                          .create<aievec::ExtOp>(
+                              extractOp.getLoc(), shortVecType,
+                              adaptor.getVector(), rewriter.getI8IntegerAttr(0))
+                          .getResult();
+    auto topHalf = rewriter
+                       .create<aievec::ExtOp>(extractOp.getLoc(), shortVecType,
+                                              adaptor.getVector(),
+                                              rewriter.getI8IntegerAttr(1))
+                       .getResult();
+    int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
+    int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
+    auto shiftBytesConstOp = rewriter.create<arith::ConstantOp>(
+        extractOp.getLoc(), rewriter.getIntegerType(32),
+        rewriter.getI32IntegerAttr(shiftBytes));
+    rewriter.replaceOpWithNewOp<aievec::ShiftOp>(
+        extractOp, shortVecType, bottomHalf, topHalf, shiftBytesConstOp);
+
+    return success();
+  }
+};
+
+// Replaces a short UPD op with a wide one followed by an ext op of the bottom
+// half.
+struct ExpandUPDToUPDAndExtPattern : public OpConversionPattern<aievec::UPDOp> {
   using OpConversionPattern<aievec::UPDOp>::OpConversionPattern;
 
-  SplitUPDOpOnAccPattern(MLIRContext *context, AnalysisManager &am,
-                         int32_t maxVectorSize = 256)
-      : OpConversionPattern<aievec::UPDOp>(context), am(am),
-        maxVectorSize(maxVectorSize) {}
+  ExpandUPDToUPDAndExtPattern(MLIRContext *context)
+      : OpConversionPattern<aievec::UPDOp>(context) {}
 
   LogicalResult
   matchAndRewrite(aievec::UPDOp updOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(updOp)
-            .effectiveSize < 2 * static_cast<unsigned>(maxVectorSize))
+    // Verify that we haven't already expanded this one
+    if (updOp->hasOneUse() && isa<aievec::ExtOp>(*updOp->getUsers().begin()))
       return failure();
 
-    auto updOp0 = rewriter.create<aievec::UPDOp>(
-        updOp.getLoc(), updOp.getResult().getType(), adaptor.getSource(),
-        adaptor.getIndices(), 0, 0);
-    rewriter.replaceOpWithNewOp<aievec::UPDOp>(
-        updOp, updOp.getResult().getType(), adaptor.getSource(),
-        adaptor.getIndices(), 2 * maxVectorSize, 1, updOp0.getResult());
+    auto vecType = cast<VectorType>(updOp.getType());
+    SmallVector<int64_t, 4> vecShape(vecType.getShape().begin(),
+                                     vecType.getShape().end());
+    vecShape[vecType.getRank() - 1] *= 2;
+    auto longVecType = VectorType::get(vecShape, vecType.getElementType());
+    auto newUpdOp = rewriter.create<aievec::UPDOp>(
+        updOp.getLoc(), longVecType, adaptor.getSource(), adaptor.getIndices(),
+        adaptor.getOffset(), adaptor.getIndex(), adaptor.getVector());
+    rewriter.replaceOpWithNewOp<aievec::ExtOp>(
+        updOp, vecType, newUpdOp.getResult(), rewriter.getI8IntegerAttr(0));
+
     return success();
   }
+};
 
-  AnalysisManager &am;
-  int32_t maxVectorSize;
+// Replaces a wide UPD op followed by an ext op of the bottom half with a short
+// UPD op.
+struct FuseExtIntoUPDPattern : public OpConversionPattern<aievec::ExtOp> {
+  using OpConversionPattern<aievec::ExtOp>::OpConversionPattern;
+
+  FuseExtIntoUPDPattern(MLIRContext *context)
+      : OpConversionPattern<aievec::ExtOp>(context) {}
+
+  LogicalResult
+  matchAndRewrite(aievec::ExtOp extOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Verify we are extracting the lower half...
+    if (extOp.getIndex() != 0)
+      return failure();
+    // ...of a UPDOp
+    auto updOp = dyn_cast<aievec::UPDOp>(extOp.getSource().getDefiningOp());
+    if (!updOp)
+      return failure();
+
+    // Verify that this is a direct upd -> ext pattern
+    if (!updOp->hasOneUse())
+      return failure();
+
+    rewriter.replaceOpWithNewOp<aievec::UPDOp>(
+        extOp, extOp.getType(), updOp.getSource(), updOp.getIndices(),
+        updOp.getOffset(), updOp.getIndex(), updOp.getVector());
+
+    return success();
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -1478,19 +1687,19 @@ struct SplitUPDOpOnAccPattern : public OpConversionPattern<aievec::UPDOp> {
 
 static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
-  patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
-      patterns.getContext(), am, 256);
+  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), am, 128,
+                                                512, 128, 256);
   patterns
       .add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
            LowerVectorSubFOpToAIEVecSubOp, ConvertMulAddToAIEVecFMAOpPattern,
-           FoldBroadcastToFMAOp, LowerVectorAddIOpToAIEVecAddOp>(
-          patterns.getContext());
+           FoldBroadcastToFMAOp, LowerVectorAddIOpToAIEVecAddOp,
+           LowerVectorExtractStridedSliceOpAIEv1Pattern>(patterns.getContext());
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
-  patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
-      patterns.getContext(), am, 512);
+  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), am, 128,
+                                                1024, 256, 1024);
 
   patterns.add<
       LowerVectorAddIOpToAIEVecAddElemOp, LowerVectorAddFOpToAIEVecAddElemOp,
@@ -1503,8 +1712,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorReductionAddFloatOp, LowerVectorReductionAddBfloat16Op,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
-      ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
-      patterns.getContext());
+      ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern,
+      LowerVectorExtractStridedSliceOpAIEMLPattern>(patterns.getContext());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1512,11 +1721,11 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 // TODO: Review the validity of these legalizations beyond basic cases.
-
 static void configureAIEVecCommonLegalizations(ConversionTarget &target,
                                                AnalysisManager &am) {
   target.addLegalDialect<xilinx::aievec::AIEVecDialect, arith::ArithDialect>();
   target.addIllegalOp<vector::TransferReadOp>();
+  target.addIllegalOp<vector::ExtractStridedSliceOp>();
   target.addDynamicallyLegalOp<arith::AddIOp>(
       [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::AddFOp>(
@@ -1529,10 +1738,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
 static void configureAIEVecV1Legalizations(ConversionTarget &target,
                                            AnalysisManager &am) {
-  target.addDynamicallyLegalOp<aievec::UPDOp>([&am](xilinx::aievec::UPDOp op) {
-    return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
-               .effectiveSize <= 512;
-  });
   target.addDynamicallyLegalOp<aievec::FMAOp>([](xilinx::aievec::FMAOp op) {
     auto lhsDefOp = op.getLhs().getDefiningOp();
     aievec::ConcatOp concatOp = nullptr;
@@ -1563,10 +1768,6 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
 static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                            AnalysisManager &am) {
   target.addLegalOp<UnrealizedConversionCastOp>();
-  target.addDynamicallyLegalOp<aievec::UPDOp>([&am](aievec::UPDOp op) {
-    return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
-               .effectiveSize <= 1024;
-  });
 
   // A set recording the vector lane size and element width supported
   llvm::SmallSet<std::pair<unsigned, unsigned>, 16> laneSizeElWidthPairSet;
@@ -1862,6 +2063,60 @@ createLowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options) {
   return std::make_unique<LowerVectorToAIEVec>(options);
 }
 
+//===---------------------------------------------------------------------------
+// Custom canonicalization passes
+//===---------------------------------------------------------------------------
+
+// This pass widens UPD ops to twice the width followed by an ext op of the
+// bottom half. This can be used together with SimplifyUPDOpsPass to find
+// additional common subexpressions with UPDs generated from unaligned
+// `transfer_read` ops.
+struct ExtendUPDOpsPass
+    : public PassWrapper<ExtendUPDOpsPass, OperationPass<func::FuncOp>> {
+  void runOnOperation() override {
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+    ConversionTarget target(*context);
+    patterns.add<ExpandUPDToUPDAndExtPattern>(patterns.getContext());
+    target.addLegalDialect<aievec::AIEVecDialect>();
+    target.addDynamicallyLegalOp<aievec::UPDOp>([](aievec::UPDOp op) {
+      return op.getVector() ||
+             (op->hasOneUse() && isa<aievec::UPDOp>(*op->getUsers().begin())) ||
+             llvm::all_of(op->getUsers(),
+                          [](Operation *op) { return isa<aievec::ExtOp>(op); });
+    });
+    auto func = getOperation();
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
+// This pass replaces wide UPD ops that are only used by a single ext op of the
+// bottom half. This pass undos the work of ExtendUPDOpsPass.
+// TODO: This pass can be extended to work with wide UPD ops that are used by
+// TODO: a single ext op of the top half, which might be a good opportunity to
+// TODO: further optimize wide UPDs.
+struct SimplifyUPDOpsPass
+    : public PassWrapper<SimplifyUPDOpsPass, OperationPass<func::FuncOp>> {
+  void runOnOperation() override {
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+    ConversionTarget target(*context);
+    patterns.add<FuseExtIntoUPDPattern>(patterns.getContext());
+    target.addLegalDialect<aievec::AIEVecDialect>();
+    target.addDynamicallyLegalOp<aievec::ExtOp>([](aievec::ExtOp op) {
+      auto defOp = op.getSource().getDefiningOp();
+      return !defOp || !isa<aievec::UPDOp>(defOp) || !defOp->hasOneUse() ||
+             op.getIndex() != 0;
+    });
+    auto func = getOperation();
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
 //============================================================================//
 //=============== Main Vector2AIEVec Pipeline Configuration ==================//
 //============================================================================//
@@ -1870,6 +2125,11 @@ void xilinx::aievec::buildLowerVectorToAIEVec(
     OpPassManager &pm, const LowerVectorToAIEVecOptions &options) {
   // Add lowering from `Vector` to `AIEVec`
   pm.addPass(createLowerVectorToAIEVec(options));
+  pm.addPass(createCanonicalizerPass());
+
+  // Simplify UPD ops
+  pm.addPass(std::make_unique<ExtendUPDOpsPass>());
   pm.addPass(createCSEPass());
+  pm.addPass(std::make_unique<SimplifyUPDOpsPass>());
   pm.addPass(createCanonicalizerPass());
 }
