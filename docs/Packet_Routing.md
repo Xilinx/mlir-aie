@@ -126,4 +126,6 @@ This approach combines as many packet rules as possible without adding extra flo
 
     c.  **Suggestion: add estimated bandwidth information to packet flows.**
 
+4) An alternative approach I attempted was to identify when some packet IDs were precluded by a higher priority rule, and simply add an extra specific rule to "protect" that packet ID. Code for this can be found in previous commits, but has been removed since it did not work as well as I'd hoped. This approach was good because it guaranteed that there would be no misrouted packets, but it resulted in a lot of extra rules and very often exceeded 4 per input port.
+
 
