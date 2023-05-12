@@ -139,21 +139,26 @@ SmallVector<MaskRule, 4> findBestMaskRules(SmallVector<std::pair<PhysPort, int>,
     for (unsigned int i = 0; i < maskRules.size()-1; i++) {
       for (unsigned int j = i+1; j < maskRules.size(); j++) {
         MaskRule newRule = combineMaskRules(maskRules[i], maskRules[j]);
+        
         int old_match_count = performMaskRule(maskRules[i]).size() +
                                 performMaskRule(maskRules[j]).size();
         int new_match_count = performMaskRule(newRule).size();
+
+        // If this new rule is a "good" one,
+        // then we replace the two old rules with this new one!
+        // A "good" rule doesn't add any extra IDs (unless margin is non-zero)
         if (new_match_count - margin <= old_match_count) {
           LLVM_DEBUG(llvm::dbgs() << "\tGood combo found:\n");
           printMaskRule(maskRules[i]);
           printMaskRule(maskRules[j]);
           LLVM_DEBUG(llvm::dbgs() << "Combine into newRule:\n");
           printMaskRule(newRule);
+
           maskRules.erase(maskRules.begin()+j);
           maskRules.erase(maskRules.begin()+i);
           maskRules.push_back(newRule);
           // after combining rules, reset indices
-          i = 0;
-          j = 0;
+          i = 0; j = 0;
         }
       }
     }
@@ -390,59 +395,35 @@ struct AIERoutePacketFlowsPass
     DenseMap<Flow*, SwitchSettings*> flow_solutions;
     pathfinder.findPaths(flow_solutions, 1000);
 
-    // Print out flow_solutions for debugging
-    LLVM_DEBUG(llvm::dbgs() << "###Pathfinder packet routing results###" <<"\n");
-    LLVM_DEBUG(llvm::dbgs() << "flow_solutions.size(): " << flow_solutions.size() << "\n");
-    //for (auto iter = flow_solutions.begin(); iter != flow_solutions.end(); iter++) {
-    //  // Print info about the flow
-    //  Flow* f = iter->first;
-    //  Pathfinder::printFlow(f);
-
-    //  // Print info about the SwitchSettings which implement this flow
-    //  SwitchSettings* settings = iter->second;
-    //  Pathfinder::printSwitchSettings(settings);
-    //}
-
-    //Pathfinder::convertFlowSolutionsToDenseMap(flow_solutions, switchboxes);
-
     // check whether the pathfinder algorithm creates a legal routing
     if (!pathfinder.isLegal())
       m.emitError("Unable to find a legal routing");
 
-    //LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
+    LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 
-    //DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
-    //for (auto swbox : switchboxes) {
     for (auto sol : flow_solutions) {
       Flow* flow = sol.first;
       PathEndPoint flow_start = std::get<0>(*flow);
       Switchbox* flow_start_sb = flow_start.first;
       SmallVector<PathEndPoint> flow_end = std::get<1>(*flow);
-      //int flowID = std::get<2>(*flow);
 
-      int col = flow_start_sb->col; //swbox.first.first;
-      int row = flow_start_sb->row; //swbox.first.second;
+      int col = flow_start_sb->col;
+      int row = flow_start_sb->row;
 
       LLVM_DEBUG(llvm::dbgs() << "Flow starting at: (" 
                               << col << ", " << row << ") flowID: "
                               << std::get<2>(*flow) << "\nConnections:\n");
 
       SwitchSettings* settings = sol.second;
-      //SmallVector<std::pair<Connect, int>, 8> connects(swbox.second);
       for (auto item : *settings) {
         Switchbox* sb = item.first;
         SwitchConnection connect = item.second;
-        Port sourcePort = std::get<0>(connect); //connect.first.first;
-        SmallVector<Port> destPorts = std::get<1>(connect); //connect.first.second;
-        //Port destPort = *destPorts.begin(); //*std::next(destPorts.begin(), 0);
-        int flowID = std::get<2>(connect); //connect.second;
-
-        //int nextCol = sb->col, nextRow = sb->row;
-        //update_coordinates(nextCol, nextRow, sourcePort.first);
+        Port sourcePort = std::get<0>(connect);
+        SmallVector<Port> destPorts = std::get<1>(connect);
+        int flowID = std::get<2>(connect);
 
         //update tile of interest
         Operation* op = getOrCreateTile(builder, sb->col, sb->row);
-
         auto sourceFlow = std::make_pair(std::make_pair(op, sourcePort), flowID);
         LLVM_DEBUG(llvm::dbgs() << "\tFlow source: (" << sb->col << ", " << sb->row << ") "
                 << stringifyWireBundle(sourcePort.first) << ":" << sourcePort.second 
@@ -589,7 +570,6 @@ struct AIERoutePacketFlowsPass
     // Two flows can be merged if they share the same destinations
     SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
     SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
-    SmallVector<SmallVector<MaskRule, 4>, 64> maskRules;
 
     // Print slavePorts for debugging
     for (auto item : slavePorts) {
@@ -647,17 +627,6 @@ struct AIERoutePacketFlowsPass
     for (auto group : slaveGroups) {
       LLVM_DEBUG(llvm::dbgs() << "Generating MaskRules:\tgroup.size(): " << group.size() << "\n");
       auto front = group.front();
-      for (auto p : group) {
-        TileOp tile = dyn_cast<TileOp>(p.first.first);
-        Port port = p.first.second;
-        auto bundle = port.first;
-        int channel = port.second;
-        LLVM_DEBUG(llvm::dbgs() << "\nXXXslavePort: "
-                      << "(" << tile.colIndex() << ", " << tile.rowIndex() << ") "
-                      << stringifyWireBundle(bundle)
-                      << ":" << channel << "\tFlowID: " << p.second << "\n");
-      }
-
       PhysPort physPort = front.first;
       Port port = physPort.second;
       LLVM_DEBUG(llvm::dbgs()
@@ -761,72 +730,47 @@ struct AIERoutePacketFlowsPass
         WireBundle bundle = slavePort.first;
         int channel = slavePort.second;
 
-
-
         // Generate AIE.packetrules and AIE.rule ops
-        //for (auto item : packetFlows) 
-        {
-        //  auto key = item.first;
-          SmallVector<MaskRule, 4> maskRules = slaveMasks[front];
-          Value amsel = amselOps[slaveAMSels[front]];
+        SmallVector<MaskRule, 4> maskRules = slaveMasks[front];
+        Value amsel = amselOps[slaveAMSels[front]];
 
-          // Sort maskRules by descending Hamming Weight of each mask.
-          // "Heavier" masks (those with more 1's) are by definition more specific
-          // And therefore should be placed first to avoid being precluded.
-          std::sort(maskRules.begin(), maskRules.end(),
-          [](const MaskRule &a, const MaskRule &b) {
-              return a.first.count() > b.first.count();
-          });
+        // Sort maskRules by descending Hamming Weight of each mask.
+        // "Heavier" masks (those with more 1's) are by definition more specific
+        // And therefore should be placed first to avoid being precluded.
+        std::sort(maskRules.begin(), maskRules.end(),
+        [](const MaskRule &a, const MaskRule &b) {
+            return a.first.count() > b.first.count();
+        });
 
-          for (MaskRule rule : maskRules) {
-            int mask = rule.first.to_ullong();
-            int match= rule.second.to_ullong();
+        for (MaskRule rule : maskRules) {
+          int mask = rule.first.to_ullong();
+          int match= rule.second.to_ullong();
 
-            // Verify that we actually map all the match's correctly.
-            //for (auto s : group) {
-            //  assert((s.second & mask) == match);
-            //}
+          // Verify that we actually map all the match's correctly.
+          //for (auto s : group) {
+          //  assert((s.second & mask) == match);
+          //}
 
-            PacketRulesOp packetrules;
-            LLVM_DEBUG(llvm::dbgs() << "\nslavePort: "
-                      << "(" << tile.colIndex() << ", " << tile.rowIndex() << ") "
-                      << stringifyWireBundle(bundle)
-                      << ":" << channel << "\n");
-            performMaskRule(rule, true);
-            if (slaveRules.count(slavePort) == 0) {
-              packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
-                                                          bundle, channel);
-              packetrules.ensureTerminator(packetrules.getRules(), builder,
-                                          builder.getUnknownLoc());
-              slaveRules[slavePort] = packetrules;
-            } else { //When will this else execute?
-              packetrules = slaveRules[slavePort];
-            }
-
-            Block &rules = packetrules.getRules().front();
-
-            /*
-            //generate priority packet rules
-            for (auto pair : group) {
-              if(priorityMap.count(pair)) {
-                int priorityID = pair.second;
-                Port priorityPort = priorityMap[pair].first;
-                int priorityAMsel = priorityMap[pair].second;
-                LLVM_DEBUG(llvm::dbgs() << "Generate Priority Packet rule: AIE.rule(31, "
-                  << priorityID << ", " << priorityAMsel << ")\n");
-                LLVM_DEBUG(llvm::dbgs() << "Amsel: " << amselOps[priorityAMsel] << "\n");
-                LLVM_DEBUG(llvm::dbgs() << "priorityPort: " << stringifyWireBundle(priorityPort.first) << ":"
-                              << priorityPort.second << "\n\n");
-
-                builder.setInsertionPointToStart(&rules);
-                builder.create<PacketRuleOp>(builder.getUnknownLoc(), 31, priorityID, amselOps[priorityAMsel]);
-              }
-            }
-            */
-
-            builder.setInsertionPoint(rules.getTerminator());
-            builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, match, amsel);
+          PacketRulesOp packetrules;
+          LLVM_DEBUG(llvm::dbgs() << "\nslavePort: "
+                    << "(" << tile.colIndex() << ", " << tile.rowIndex() << ") "
+                    << stringifyWireBundle(bundle)
+                    << ":" << channel << "\n");
+          performMaskRule(rule, true);
+          if (slaveRules.count(slavePort) == 0) {
+            packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
+                                                        bundle, channel);
+            packetrules.ensureTerminator(packetrules.getRules(), builder,
+                                        builder.getUnknownLoc());
+            slaveRules[slavePort] = packetrules;
+          } else { //When will this else execute?
+            packetrules = slaveRules[slavePort];
           }
+
+          Block &rules = packetrules.getRules().front();
+
+          builder.setInsertionPoint(rules.getTerminator());
+          builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, match, amsel);
         }
       }
     }

@@ -226,10 +226,6 @@ private:
                         PortID portID = std::make_pair(masterSetOp.destPort(), ID);
 
                         // If this portID is not already in the delivered packets list, add it
-                        //SmallVector<PortID, 8>* currIDs = delivered_pkt_flow_ids.at(sb_coord);
-                        //if(std::find(currIDs->begin(), currIDs->end(), portID) == currIDs->end()){
-                        //  currIDs->push_back(portID);
-                        //}
                         delivered_pkt_flow_ids.at(sb_coord)->push_back(portID);
 
                       } else {
@@ -258,11 +254,6 @@ private:
       Port nextPort = nextPortMaskValue.first;
       MaskValue nextMaskValue = nextPortMaskValue.second;
       int maskConflicts = nextMaskValue.first & maskValue.first;
-      //LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.first << " "
-      //                        << maskValue.second << "\n");
-      //LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.first << " "
-      //                        << nextMaskValue.second << "\n");
-      //LLVM_DEBUG(llvm::dbgs() << "conflicts: " << maskConflicts << "\n");
 
       if ((maskConflicts & nextMaskValue.second) !=
           (maskConflicts & maskValue.second)) {
