@@ -14,6 +14,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #include "VectorToVectorConversions.h"
 
@@ -30,25 +31,46 @@ using namespace xilinx::aievec;
 //============================================================================//
 
 // Return the offset of a given transfer read operation with regards to the
-// specified vector type. If the read is aligned size of the vector type, then
-// the offset is 0. Otherwise, the offset is the number of elements past the
-// immediately preceding aligned address.
+// specified vector type. If the read is aligned to the specified alignment
+// parameter (in bits), then the offset is 0. Otherwise, the offset is the
+// number of elements past the immediately preceding aligned vector length.
 template <
     typename TransferReadLikeOp,
     typename = std::enable_if_t<
         std::is_same_v<TransferReadLikeOp, vector::TransferReadOp> ||
         std::is_same_v<TransferReadLikeOp, vector::TransferReadOp::Adaptor>>>
-static unsigned getTransferReadAlignmentOffset(TransferReadLikeOp op,
-                                               VectorType vType) {
+static int64_t getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
+                                              VectorType vType,
+                                              int64_t alignment) {
   // TODO: Add support for cases where the index is not comming from an
-  // TODO: `affine.apply` op. E.g.: when the index is a constant.
-  auto innerMostIndex = op.getIndices().back();
+  // TODO: `affine.apply` op or when the affine map has more than one
+  // TODO: dimension. We also need to address the case where the index is an
+  // TODO: induction variable.
+  auto innerMostIndex = readOp.getIndices().back();
   auto vectorLength = vType.getShape().back();
-  if (auto defOp = innerMostIndex.getDefiningOp())
-    if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
-      if (applyOp.getAffineMap().getNumDims() == 1)
-        return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
-               vectorLength;
+  auto idxDefOp = innerMostIndex.getDefiningOp();
+  if (!idxDefOp)
+    return 0L;
+  int64_t vectorLengthAlignmentOffset =
+      TypeSwitch<Operation *, int64_t>(idxDefOp)
+          .Case<arith::ConstantOp>([&](auto constantOp) {
+            return cast<IntegerAttr>(constantOp.getValue()).getInt() %
+                   vectorLength;
+          })
+          .template Case<AffineApplyOp>([&](auto applyOp) {
+            if (applyOp.getAffineMap().getNumDims() == 1)
+              return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
+                     vectorLength;
+            return 0L;
+          })
+          .Default([&](auto) {
+            // XXX: If we can't determine the offset, we assume the access is
+            // XXX: aligned.
+            return 0L;
+          });
+  int64_t absoluteAlignmentOffset = alignment / getElementSizeInBits(vType);
+  if (vectorLengthAlignmentOffset % absoluteAlignmentOffset)
+    return vectorLengthAlignmentOffset;
   return 0;
 }
 
@@ -64,6 +86,12 @@ struct SplitUnalignedTransferReadPattern
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
 
+  SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t minVectorSize,
+                                    int64_t maxVectorSize, int64_t alignment)
+      : OpConversionPattern<vector::TransferReadOp>(context),
+        minVectorSize(minVectorSize), maxVectorSize(maxVectorSize),
+        vectorAlignment(alignment) {}
+
   LogicalResult
   matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -73,29 +101,47 @@ struct SplitUnalignedTransferReadPattern
 
     // Check if the transfer is unaligned.
     auto vType = readOp.getVectorType();
-    unsigned offset = getTransferReadAlignmentOffset(adaptor, vType);
+    int64_t offset =
+        getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment);
     if (offset == 0)
       return failure();
 
-    // Create an aligned transfer read
+    // Verify that we can load a vector 2x as long as the original
+    auto vLen = vType.getShape().back();
+    auto longVecTy = VectorType::get(2 * vLen, vType.getElementType());
+    auto longVecSize = getElementSizeInBits(vType) * 2 * vLen;
+    if (longVecSize > maxVectorSize)
+      return failure();
 
     // Calculate the aligned indices for the lower and higher parts.
     // TODO: Add support for cases where the offset is greater than the
     // TODO: vector length.
-    auto lowIdx =
-        dyn_cast<AffineApplyOp>(adaptor.getIndices().back().getDefiningOp())
-            .getMapOperands()[0];
-    auto vLen = vType.getShape().back();
-    auto longVecTy = VectorType::get(2 * vLen, vType.getElementType());
+    auto loc = readOp.getLoc();
+    auto newInnerMostIdx =
+        TypeSwitch<Operation *, Value>(
+            adaptor.getIndices().back().getDefiningOp())
+            .Case<AffineApplyOp>(
+                [&](auto applyOp) { return applyOp.getMapOperands()[0]; })
+            .Case<arith::ConstantOp>([&](auto constantOp) {
+              auto cstValue = cast<IntegerAttr>(constantOp.getValue()).getInt();
+              auto newCstValue = cstValue - offset;
+              auto newConstantIdxOp = rewriter.create<arith::ConstantOp>(
+                  loc,
+                  rewriter.getIntegerAttr(constantOp.getType(), newCstValue));
+              return newConstantIdxOp.getResult();
+            })
+            .Default([&](auto) {
+              llvm_unreachable("Unexpected index type");
+              return nullptr;
+            });
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
-    alignedIdx[alignedIdx.size() - 1] = lowIdx;
+    alignedIdx[alignedIdx.size() - 1] = newInnerMostIdx;
 
     // Create the aligned transfer read for a vector 2x as long that covers the
     // elements of the unaligned vector.
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), longVecTy, adaptor.getSource(), alignedIdx,
-        adaptor.getPadding());
+        loc, longVecTy, adaptor.getSource(), alignedIdx, adaptor.getPadding());
 
     // Create a `vector.extract_strided_slice` to extract the unaligned vector.
     rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
@@ -103,6 +149,10 @@ struct SplitUnalignedTransferReadPattern
 
     return success();
   }
+
+  int64_t minVectorSize;
+  int64_t maxVectorSize;
+  int64_t vectorAlignment;
 };
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
@@ -112,6 +162,9 @@ struct SplitUnalignedTransferReadPattern
 struct ConvertSplatTransferReadToBroadcastPattern
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
+
+  ConvertSplatTransferReadToBroadcastPattern(MLIRContext *context)
+      : OpConversionPattern<vector::TransferReadOp>(context) {}
 
   LogicalResult
   matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
@@ -163,16 +216,12 @@ struct ConvertSplatTransferReadToBroadcastPattern
 //============================================================================//
 //================ Common AIE canonicalization configuration =================//
 //============================================================================//
-
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<vector::VectorDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<AffineDialect>();
   target.addLegalDialect<aievec::AIEVecDialect>();
-  target.addDynamicallyLegalOp<vector::TransferReadOp>(
-      [](vector::TransferReadOp op) {
-        return !op.getPermutationMap().isConstant();
-      });
+  target.addLegalDialect<vector::VectorDialect>();
 }
 
 static void
@@ -186,27 +235,36 @@ populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //============================================================================//
 
 static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect>();
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType()) == 0;
+               getTransferReadAlignmentOffset(op, op.getVectorType(), 128) == 0;
       });
 }
 
 static void
 populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext());
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
+                                                  512, 128);
 }
 
 //============================================================================//
 //============== AIEML-specific canonicalization configuration ===============//
 //============================================================================//
 
-static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {}
+static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
+  target.addDynamicallyLegalOp<vector::TransferReadOp>(
+      [](vector::TransferReadOp op) {
+        return !op.getPermutationMap().isConstant() &&
+               getTransferReadAlignmentOffset(op, op.getVectorType(), 256) == 0;
+      });
+}
 
 static void
-populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
+populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
+                                                  1024, 256);
+}
 
 //============================================================================//
 //=================== Common AIE Canonicalization Passes =====================//

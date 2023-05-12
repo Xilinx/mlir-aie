@@ -1,4 +1,5 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+#include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -192,6 +193,10 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
+//===----------------------------------------------------------------------===//
+// Legalizations
+//===----------------------------------------------------------------------===//
+
 static void
 configureAIEVecV1TransformationLegalizations(ConversionTarget &target) {
   target.addLegalDialect<aievec::AIEVecDialect>();
@@ -202,9 +207,6 @@ configureAIEVecV1TransformationLegalizations(ConversionTarget &target) {
   });
 }
 
-//===----------------------------------------------------------------------===//
-// Legalizations
-//===----------------------------------------------------------------------===//
 static void
 configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<xilinx::aievec::BroadcastOp>(
@@ -373,9 +375,11 @@ void xilinx::aievec::buildOptimizeAIEVec(OpPassManager &pm,
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());
 
-  // TODO: This pass should only be included if the target is AIEML.
   // Add generating aievec convolution ops pass
-  pm.addPass(createAIEVecConvOpTransformationPass(options));
+  if (options.aieTarget == "aieml") {
+    pm.addPass(createAIEVecConvolutionAnalysisPass());
+    pm.addPass(createAIEVecConvOpTransformationPass(options));
+  }
 
   // Add post-lowering canonicalization passes.
   pm.addPass(createCSEPass());

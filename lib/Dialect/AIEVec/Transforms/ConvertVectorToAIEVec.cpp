@@ -45,6 +45,10 @@ using namespace xilinx::aievec;
 
 #define DEBUG_TYPE "vector-to-aievec-conversion"
 
+//===----------------------------------------------------------------------===//
+// Rewrite patterns
+//===----------------------------------------------------------------------===//
+
 template <typename OpTy>
 struct SetInboundsToReadStoreOpPattern : public RewritePattern {
   SetInboundsToReadStoreOpPattern(MLIRContext *context)
@@ -72,6 +76,10 @@ struct SetInboundsToReadStoreOpPattern : public RewritePattern {
 
 using SetInboundsToReadOp = SetInboundsToReadStoreOpPattern<TransferReadOp>;
 using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
+
+//===----------------------------------------------------------------------===//
+// Lowering passes
+//===----------------------------------------------------------------------===//
 
 struct RedundantLoadStoreOptimizationPass
     : public PassWrapper<RedundantLoadStoreOptimizationPass,
@@ -111,7 +119,6 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // NOTE: This sub-pipeline ingests arbitrary MLIR Vector code.
   buildCanonicalizeVectorForAIEVec(
       pm, options.getCanonicalizeVectorForAIEVecOptions());
-
   // NOTE: At this stage, all the Vector code in the IR can be mapped
   // HOTE: to AIEVec operations.
 
@@ -122,7 +129,6 @@ void xilinx::aievec::buildConvertVectorToAIEVec(
   // NOTE: This sub-pipeline ingests MLIR Vector code that can be mapped to
   // NOTE: AIEVec operations.
   buildLowerVectorToAIEVec(pm, options.getLowerVectorToAIEVecOptions());
-
   // NOTE: At this stage, all vector operations are expressed in AIEVec dialect.
 
   //============================================================================
