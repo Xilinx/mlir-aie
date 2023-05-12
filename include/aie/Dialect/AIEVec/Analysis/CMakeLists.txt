@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2022 Xilinx Inc.
 
-add_subdirectory(Analysis)
-add_subdirectory(IR)
-add_subdirectory(Transforms)
+set(LLVM_TARGET_DEFINITIONS Passes.td)
+mlir_tablegen(Passes.h.inc -gen-pass-decls -name AIEVecAnalysis)
+add_public_tablegen_target(MLIRAIEVecAnalysisPassIncGen)
+
+add_mlir_doc(Passes AIEVecAnalysisPasses ./ -gen-pass-doc)
