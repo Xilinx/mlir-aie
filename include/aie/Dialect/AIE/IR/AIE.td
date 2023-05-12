@@ -35,8 +35,8 @@ This is a dialect for describing netlists of AIE components in a
 Versal device.  It focuses on representing logical stream connections
 between cores and DMAs, along with the implementation of those logical
 connections in the various switch components.  In the dialect, a
-switch is referred to as 'switchbox' to avoid confusion with the
-'switch' keyword in C/C++.
+switch is referred to as `switchbox` to avoid confusion with the
+`switch` keyword in C/C++.
 
   }];
   let useDefaultTypePrinterParser = 1;
@@ -87,10 +87,10 @@ def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
 
     When using this operation, all resources in a physical device are available and
     the design does not need to be concerned with other potential users of a physical
-    device.  In addition, within an "aie.device" operation, tile addresses are absolute
+    device.  In addition, within an `aie.device` operation, tile addresses are absolute
     coordinates and are not intended to describe a relocatable design.  To describe
     a portion of a device which may be relocatable, the intention would be to provide another
-    operation, for instance maybe "aie.segment".
+    operation, for instance maybe `aie.segment`.
     The design itself is described using a region of code contained by the device
     operation.
 
@@ -262,7 +262,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
   let summary = "Declare a switch in the PL shim";
   let description = [{
     This operation represents the additional interconnect that is part of a shim interface tile.
-    Like the "AIE.switchbox" operation, "AIE.shimMux" is configured
+    Like the `AIE.switchbox` operation, `AIE.shimMux` is configured
     by code in its region, but can only contain connect operations
 
     Example:
@@ -417,10 +417,10 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
   let description = [{
     This operation represents a programmed circuit-switched connection in a stream switch.
     It associates a source bundle and source channel with a destination bundle and a destination channel.
-    This operation must exist within an "aie.switchbox" or "aie.shimswitchbox" operation.
-    All of the "aie.connect" operations in a switchbox must have a different destinations.
-    All of the "aie.connect" operations must also have a destination which is different from all
-    of the "aie.masterset" operations in the same switchbox.
+    This operation must exist within an `aie.switchbox` or `aie.shimswitchbox` operation.
+    All of the `aie.connect` operations in a switchbox must have a different destinations.
+    All of the `aie.connect` operations must also have a destination which is different from all
+    of the `aie.masterset` operations in the same switchbox.
 
     Example:
     ```
@@ -452,9 +452,9 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
-    The "aie.flow" operation represents a circuit switched connection between two endpoints, usually
-    "aie.tile" operations.  During routing, this is replaced by "aie.connect" operations which represent
-    the programmed connections inside a switchbox, along with "aie.wire" operations which represent
+    The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
+    `aie.tile` operations.  During routing, this is replaced by `aie.connect` operations which represent
+    the programmed connections inside a switchbox, along with `aie.wire` operations which represent
     physical connections between switchboxes and other components.
 
     Example:
@@ -577,8 +577,8 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   );
   let summary = "A bundle of physical wires between components";
   let description = [{
-    The "aie.wire" operation represents a physical set of connections between components in a Versal device.
-    Typically, these components are switches, represented by an "aie.switchbox" operation, and tiles,
+    The `aie.wire` operation represents a physical set of connections between components in a Versal device.
+    Typically, these components are switches, represented by an `aie.switchbox` operation, and tiles,
     represented by an [aie.tile](#aietile-aietileop) operation.
   }];
   let assemblyFormat = [{
@@ -1282,8 +1282,8 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
-    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and one or 
-    more consumers, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+    The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
+    more consumers, which are `aie.tile` operations. The aie.createObjectFifo instantiates the given number of 
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
     based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
 
@@ -1319,7 +1319,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
-    The "aie.objectFifo.registerExternalBuffers" operation is used to register one or multiple external buffers 
+    The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
     to the shim tile(s) used in an objectFifo creation. During the objectFifo lowering pass, shim DMAs that are
     generated for those shim tiles will use the registered external buffers. This is currently done because 
     external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
@@ -1358,7 +1358,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
-    The "aie.objectFifo.acquire" operation first acquires the locks of the next given number 
+    The `aie.objectFifo.acquire` operation first acquires the locks of the next given number 
     of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
     (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
     the acquired objects which can be used to access them.
@@ -1403,8 +1403,8 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let description = [{
-    The "aie.objectFifo.release" operation releases the locks of the given number of objects 
-    in the objectFifo. The mode it releases the locks in is chosen based on the "port" 
+    The `aie.objectFifo.release` operation releases the locks of the given number of objects 
+    in the objectFifo. The mode it releases the locks in is chosen based on the `port` 
     (producer: release for read, consumer: release for write). 
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
@@ -1474,7 +1474,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
   let description = [{
-    The "aie.registerProcess" operation allows the user to register a function to an objectFifo along with its 
+    The `aie.registerProcess` operation allows the user to register a function to an objectFifo along with its 
     acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
     on the objectFifo elements. This generated sequence is often in the form of a for loop, however, in the case 
     of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
