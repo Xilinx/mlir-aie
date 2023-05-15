@@ -100,6 +100,7 @@ def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
       %tile = aie.tile(1, 1)
       %CORE = aie.core(%tile) { ... }
     }
+    ```
   }];
   let arguments = (
     ins AIEDevice:$device
@@ -1442,7 +1443,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   let description = [{
     Access the Nth element of a value of ObjectFifoSubview type.
 
-  Example:
+    Example:
     ```
       %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
       %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
