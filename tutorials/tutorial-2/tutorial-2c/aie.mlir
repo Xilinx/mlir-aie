@@ -17,7 +17,7 @@
 
 // Declare this MLIR module. A block encapsulates all 
 // AIE tiles, buffers, and communication in an AI Engine design
-module @tutorial_1 {
+module @tutorial_2c {
 
     // Declare tile object of the AIE class located at position col 1, row 4
     %tile14 = AIE.tile(1, 4)

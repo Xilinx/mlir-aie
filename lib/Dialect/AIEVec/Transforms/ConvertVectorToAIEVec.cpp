@@ -268,7 +268,8 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
 
     Type accType = getVectorOpDestType(cast<VectorType>(acc.getType()),
                                        /*AIEML =*/true);
-    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc);
+    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc,
+                                                shiftParam);
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
         addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
@@ -461,6 +462,78 @@ struct ConvertMulIToAIEVecMulElemOpPattern
   }
 
   unsigned shiftParam;
+};
+
+// Return the offset of a given transfer read operation with regards to the
+// specified vector type. If the read is aligned size of the vector type, then
+// the offset is 0. Otherwise, the offset is the number of elements past the
+// immediately preceding aligned address.
+template <
+    typename TransferReadLikeOp,
+    typename = std::enable_if_t<
+        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp> ||
+        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp::Adaptor>>>
+static unsigned getTransferReadAlignmentOffset(TransferReadLikeOp op,
+                                               VectorType vType) {
+  // TODO: Add support for cases where the index is not comming from an
+  // TODO: `affine.apply` op. E.g.: when the index is a constant.
+  auto innerMostIndex = op.getIndices().back();
+  auto vectorLength = vType.getShape().back();
+  if (auto defOp = innerMostIndex.getDefiningOp())
+    if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
+      if (applyOp.getAffineMap().getNumDims() == 1)
+        return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
+               vectorLength;
+  return 0;
+}
+
+// This pattern converts a `vector.transfer_read` with an unaligned access
+// into an aligned `vector.transfer_read` twice as long, followed by a
+// `vector.extract_strided_slice` selecting the subvector matching the
+// original `vector.transfer_read`.
+struct SplitUnalignedTransferReadPattern
+    : public OpConversionPattern<vector::TransferReadOp> {
+  using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Check that it's not a splat transfer read.
+    if (adaptor.getPermutationMap().isConstant())
+      return failure();
+
+    // Check if the transfer is unaligned.
+    auto vType = readOp.getVectorType();
+    unsigned offset = getTransferReadAlignmentOffset(adaptor, vType);
+    if (offset == 0)
+      return failure();
+
+    // Create an aligned transfer read
+
+    // Calculate the aligned indices for the lower and higher parts.
+    // TODO: Add support for cases where the offset is greater than the
+    // TODO: vector length.
+    auto lowIdx =
+        dyn_cast<AffineApplyOp>(adaptor.getIndices().back().getDefiningOp())
+            .getMapOperands()[0];
+    auto vLen = vType.getShape().back();
+    auto longVecTy = VectorType::get(2 * vLen, vType.getElementType());
+    SmallVector<Value, 8> alignedIdx;
+    alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
+    alignedIdx[alignedIdx.size() - 1] = lowIdx;
+
+    // Create the aligned transfer read for a vector 2x as long that covers the
+    // elements of the unaligned vector.
+    auto newReadOp = rewriter.create<vector::TransferReadOp>(
+        readOp.getLoc(), longVecTy, adaptor.getSource(), alignedIdx,
+        adaptor.getPadding());
+
+    // Create a `vector.extract_strided_slice` to extract the unaligned vector.
+    rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
+        readOp, newReadOp.getResult(), offset, vLen, 1);
+
+    return success();
+  }
 };
 
 // This pattern converts a `vector.transfer_read` with a splat permutation map
@@ -862,6 +935,190 @@ using LowerVectorSubIOpToAIEVecSubOp =
 using LowerVectorSubFOpToAIEVecSubOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::SubFOp, aievec::SubOp>;
 
+template <typename SrcOpTy, typename AIEv2ElemOp>
+static LogicalResult genAddElemAieML(ConversionPatternRewriter &rewriter,
+                                     Value lval, Value rval, VectorType srcType,
+                                     SrcOpTy srcOp) {
+  auto lCastOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), srcType, lval,
+                                                 /*isResAcc*/ true);
+  auto rCastOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), srcType, rval,
+                                                 /*isResAcc*/ true);
+  auto elemOp = rewriter.create<AIEv2ElemOp>(
+      srcOp.getLoc(), lCastOp->getResult(0).getType(), lCastOp->getResult(0),
+      rCastOp->getResult(0));
+  rewriter.replaceOpWithNewOp<aievec::CastOp>(
+      srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
+  return success();
+}
+
+template <typename SrcOpTy, typename DstOpTy>
+struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
+    : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp(MLIRContext *context)
+      : OpConversionPattern<SrcOpTy>(context) {}
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
+    if (!resultType)
+      return failure();
+
+    // A set recording the vector lane size and element width we are supporting
+    // for aie-ml.
+    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+    laneSizeElWidthPairSet.insert({64, 8});
+    laneSizeElWidthPairSet.insert({32, 16});
+    laneSizeElWidthPairSet.insert({16, 32});
+    laneSizeElWidthPairSet.insert({32, 32});
+
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto lhsDefOp = lhs.getDefiningOp();
+    auto rhsDefOp = rhs.getDefiningOp();
+    if ((lhsDefOp && isa<arith::MulIOp>(lhsDefOp)) ||
+        (rhsDefOp && isa<arith::MulIOp>(rhsDefOp)) ||
+        (lhsDefOp && isa<arith::MulFOp>(lhsDefOp)) ||
+        (rhsDefOp && isa<arith::MulFOp>(rhsDefOp)))
+      return failure();
+
+    Type scalarType = resultType.getElementType();
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (scalarType.isa<IntegerType>()) {
+      if (!laneSizeElWidthPairSet.count(
+              std::make_pair(laneSize, resultElWidth)))
+        return failure();
+
+      if (laneSize == 32 && resultElWidth == 32) {
+        if (!lhsDefOp || !rhsDefOp) {
+          return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
+                                                   resultType, srcOp);
+        }
+        auto lhsExt = dyn_cast<arith::ExtSIOp>(lhsDefOp);
+        auto rhsExt = dyn_cast<arith::ExtSIOp>(rhsDefOp);
+        if (!lhsExt || !rhsExt) {
+          return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
+                                                   resultType, srcOp);
+        }
+        auto lval = lhsExt->getOperand(0);
+        auto rval = rhsExt->getOperand(0);
+
+        VectorType lSrcType = cast<VectorType>(lval.getType());
+        VectorType rSrcType = cast<VectorType>(rval.getType());
+
+        unsigned lBitWidth = lSrcType.getElementType().getIntOrFloatBitWidth();
+        unsigned rBitWidth = rSrcType.getElementType().getIntOrFloatBitWidth();
+
+        if ((lBitWidth != 8 || rBitWidth != 8) &&
+            (lBitWidth != 16 || rBitWidth != 16)) {
+          return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
+                                                   resultType, srcOp);
+        }
+
+        Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
+        auto lUpsOp =
+            rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
+        auto rUpsOp =
+            rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
+        auto elemOp = rewriter.create<DstOpTy>(
+            srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+            lUpsOp->getResult(0), rUpsOp->getResult(0));
+        rewriter.replaceOpWithNewOp<aievec::CastOp>(
+            srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
+        return success();
+      } else {
+        rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs, rhs);
+        return success();
+      }
+    } // Float types
+    else {
+      if (laneSize != 16)
+        return failure();
+
+      // v16float
+      if (resultElWidth == 32) {
+        return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs, resultType,
+                                                 srcOp);
+      }
+      // v16bfloat16
+      Type accType = getVectorOpDestType(resultType, /*AIEML =*/true);
+      auto lUpsOp =
+          rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lhs);
+      auto rUpsOp =
+          rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rhs);
+      auto elemOp = rewriter.create<DstOpTy>(
+          srcOp.getLoc(), lUpsOp->getResult(0).getType(), lUpsOp->getResult(0),
+          rUpsOp->getResult(0));
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, srcOp.getType(),
+                                                 elemOp.getResult());
+      return success();
+    }
+    return failure();
+  }
+};
+
+using LowerVectorAddIOpToAIEVecAddElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::AddIOp,
+                                                    aievec::AddElemOp>;
+using LowerVectorSubIOpToAIEVecSubElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubIOp,
+                                                    aievec::SubElemOp>;
+using LowerVectorAddFOpToAIEVecAddElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::AddFOp,
+                                                    aievec::AddElemOp>;
+using LowerVectorSubFOpToAIEVecSubElemOp =
+    LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp<arith::SubFOp,
+                                                    aievec::SubElemOp>;
+
+template <typename SrcOpTy, typename DstOpTy>
+struct LowerVectorMinMaxOpToAIEVecMinMaxOp
+    : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LowerVectorMinMaxOpToAIEVecMinMaxOp(MLIRContext *context)
+      : OpConversionPattern<SrcOpTy>(context) {}
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
+    if (!resultType)
+      return failure();
+
+    // A set recording the element width we are supporting for aie-ml.
+    llvm::SmallSet<unsigned, 16> elWidthSet;
+    elWidthSet.insert(8);
+    elWidthSet.insert(16);
+    elWidthSet.insert(32);
+
+    Type scalarType = resultType.getElementType();
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (!(elWidthSet.count(resultElWidth) && laneSize * resultElWidth == 512))
+      return failure();
+
+    rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(),
+                                         adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
+using LowerVectorMinSIOpToAIEVecMinOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
+using LowerVectorMaxSIOpToAIEVecMaxOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+using LowerVectorMinFOpToAIEVecMinOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinFOp, aievec::MinOp>;
+using LowerVectorMaxFOpToAIEVecMaxOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxFOp, aievec::MaxOp>;
+
 // If a UPD op is loading a vector twice the size of the architecture
 // vector size, split it into a high and low load into the accumulator.
 // TODO: This is a process we may want to include as part of the
@@ -970,18 +1227,15 @@ struct MergeSingleColumnI16FMAOpPattern
 // Pattern collection
 //===----------------------------------------------------------------------===//
 
-static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns,
-                                                   AnalysisManager &am) {
-  patterns.add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
-               LowerVectorSubFOpToAIEVecSubOp>(patterns.getContext());
-}
-
 static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 256);
-  patterns.add<ConvertMulAddToAIEVecFMAOpPattern, FoldBroadcastToFMAOp,
-               LowerVectorAddIOpToAIEVecAddOp>(patterns.getContext());
+  patterns
+      .add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
+           LowerVectorSubFOpToAIEVecSubOp, ConvertMulAddToAIEVecFMAOpPattern,
+           FoldBroadcastToFMAOp, LowerVectorAddIOpToAIEVecAddOp>(
+          patterns.getContext());
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
@@ -989,11 +1243,15 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   patterns.add<LowerVectorTransferReadToAIEUPD, SplitUPDOpOnAccPattern>(
       patterns.getContext(), am, 512);
 
-  patterns.add<LowerVectorAddIOpToAIEVecAddOp,
-               FoldVectorExtractAndBroadcastToAIEBroadcast,
-               ConvertMulAddToAIEVecFMAElemOpPattern,
-               ConvertMulIToAIEVecMulElemOpPattern,
-               ConvertMulFToAIEVecMulElemOpPattern>(patterns.getContext());
+  patterns.add<
+      LowerVectorAddIOpToAIEVecAddElemOp, LowerVectorAddFOpToAIEVecAddElemOp,
+      LowerVectorSubIOpToAIEVecSubElemOp, LowerVectorSubFOpToAIEVecSubElemOp,
+      LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
+      LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
+      FoldVectorExtractAndBroadcastToAIEBroadcast,
+      ConvertMulAddToAIEVecFMAElemOpPattern,
+      ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
+      patterns.getContext());
 }
 
 static void
@@ -1073,7 +1331,20 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                .effectiveSize <= 1024;
   });
 
-  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
+  // A set recording the vector lane size and element width supported
+  llvm::SmallSet<std::pair<unsigned, unsigned>, 16> laneSizeElWidthPairSet;
+  laneSizeElWidthPairSet.insert({64, 8});
+  laneSizeElWidthPairSet.insert({32, 16});
+  laneSizeElWidthPairSet.insert({16, 32});
+  laneSizeElWidthPairSet.insert({32, 32});
+
+  // A set recording the element width supported
+  llvm::SmallSet<unsigned, 16> elWidthSet;
+  elWidthSet.insert(8);
+  elWidthSet.insert(16);
+  elWidthSet.insert(32);
+
+  target.addDynamicallyLegalOp<arith::AddIOp>([=](arith::AddIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType) {
       return true;
@@ -1081,8 +1352,38 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    return (laneSize != 32 || resultElWidth != 16) &&
-           (laneSize != 16 || resultElWidth != 32);
+    return !laneSizeElWidthPairSet.count(
+        std::make_pair(laneSize, resultElWidth));
+  });
+
+  target.addDynamicallyLegalOp<arith::SubIOp>([=](arith::SubIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !laneSizeElWidthPairSet.count(
+        std::make_pair(laneSize, resultElWidth));
+  });
+
+  target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(resultType);
+    return laneSize != 16;
+  });
+
+  target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(resultType);
+    return laneSize != 16;
   });
 
   target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
@@ -1116,6 +1417,54 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(resultType);
 
     return (laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32));
+  });
+
+  target.addDynamicallyLegalOp<arith::MinSIOp>([=](arith::MinSIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::MaxSIOp>([=](arith::MaxSIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::MinFOp>([=](arith::MinFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::MaxFOp>([=](arith::MaxFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !(elWidthSet.count(resultElWidth) &&
+             laneSize * resultElWidth == 512);
   });
 }
 
@@ -1204,7 +1553,6 @@ void LowerVectorToAIEVec::runOnOperation() {
   }
 
   AnalysisManager am = getAnalysisManager();
-  populateAIEVecCommonConversionPatterns(patterns, am);
   configureAIEVecCommonLegalizations(target, am);
   if (aieVersion == AIEArch::AIE) {
     populateAIEVecV1ConversionPatterns(patterns, am);
@@ -1243,7 +1591,14 @@ configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
       });
 }
 
-static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {}
+static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addDynamicallyLegalOp<vector::TransferReadOp>(
+      [](vector::TransferReadOp op) {
+        return !op.getPermutationMap().isConstant() &&
+               getTransferReadAlignmentOffset(op, op.getVectorType()) == 0;
+      });
+}
 
 static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {}
 
@@ -1254,7 +1609,9 @@ populateCommonAIECanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 }
 
 static void
-populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {}
+populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext());
+}
 
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {}

@@ -44,8 +44,8 @@ module @tutorial_3 {
         %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
         %val = arith.constant 14 : i32 
-		%idx = arith.constant 3 : index 
-		memref.store %val, %input[%idx] : memref<256xi32>
+        %idx = arith.constant 3 : index 
+        memref.store %val, %input[%idx] : memref<256xi32>
         
         // Release the previously acquired object.
         // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
@@ -68,8 +68,8 @@ module @tutorial_3 {
         %d1   = memref.load %input[%idx1] : memref<256xi32>
         %c1   = arith.constant 100 : i32 
         %d2   = arith.addi %d1, %c1 : i32
-		%idx2 = arith.constant 5 : index
-		memref.store %d2, %input[%idx2] : memref<256xi32> 
+        %idx2 = arith.constant 5 : index
+        memref.store %d2, %input[%idx2] : memref<256xi32> 
 
         AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
 
@@ -77,5 +77,4 @@ module @tutorial_3 {
         AIE.useLock(%lock24_2, "Release", 1)
         AIE.end
     }
-
 }

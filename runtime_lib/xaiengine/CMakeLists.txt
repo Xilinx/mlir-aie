@@ -8,10 +8,11 @@ cmake_minimum_required(VERSION 3.20.1)
 
 project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 
-set(xaienginePath ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
-#set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
-file(GLOB libheaders ${xaienginePath}/*.h)
-file(GLOB libheadersSub ${xaienginePath}/*/*.h)
+set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
+#tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
+set(xaienginePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
+file(GLOB libheaders ${xaienginePathTmp}/*.h ${xaienginePath}/xioutils.h)
+file(GLOB libheadersSub ${xaienginePathTmp}/*/*.h)
 
 # copy header files into build area
 foreach(file ${libheaders})

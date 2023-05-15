@@ -17,13 +17,13 @@
 // CHECK:   %1 = AIE.tile(3, 3)
 // CHECK:   AIE.flow(%0, DMA : 0, %1, DMA : 0)
 // CHECK:   %2 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_0"} : memref<16xi32>
-// CHECK:   %3 = AIE.lock(%0, 0) {sym_name = "objfifo_prod_lock_0"}
+// CHECK:   %3 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "objfifo_prod_lock_0"}
 // CHECK:   %4 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_1"} : memref<16xi32>
-// CHECK:   %5 = AIE.lock(%0, 1) {sym_name = "objfifo_prod_lock_1"}
+// CHECK:   %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "objfifo_prod_lock_1"}
 // CHECK:   %6 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK:   %7 = AIE.lock(%1, 0) {sym_name = "objfifo_cons_lock_0"}
+// CHECK:   %7 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
 // CHECK:   %8 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK:   %9 = AIE.lock(%1, 1) {sym_name = "objfifo_cons_lock_1"}
+// CHECK:   %9 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:     return
 // CHECK:   }

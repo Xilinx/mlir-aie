@@ -30,7 +30,7 @@ This is where the advantage of implementing designs at the `objectFifo` abstract
 
 1. Read through the [aie.mlir](aie.mlir) design. In the previous tutorial we saw that the objectFifo lowering creates buffer/lock pairs in the shared memory module between two tiles. Where are these elements created for tiles (1,4) and (3,4)? Verify your answer by applying the objectFifo lowering on the [aie.mlir](aie.mlir) design (see [tutorial-3](../tutorial-3) for the command). <img src="../images/answer1.jpg" title="The objectFifo lowering will create one buffer/lock pair in the memory module local to each tile: total of 2 buffers and 2 locks created. Because each tile has its own buffer/lock pair we say that the objectFifo was split as the total number of created elements is > than the original objectFifo size." height=25>
 
-2. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
+2. Run `make` and `make -C aie.mlir.prj/sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
 3. Increase the size of the objectFifo to 2. Apply the lowering again. Are additional elements generated? <img src="../images/answer1.jpg" title="Yes. Each tile DMA now has access to a double buffer." height=25>
 

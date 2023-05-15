@@ -39,16 +39,22 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
+  /// Return true if the given tile is a 'Core' tile.  These tiles
+  /// include a Core, TileDMA, tile memory, and stream connections.
+  virtual bool isCoreTile(int col, int row) const = 0;
+
   /// Return true if the given tile is an AIE2 'Memory' tile.  These tiles
-  /// include a TileDMA and stream connections, but no core.
+  /// include a TileDMA, tile memory, and stream connections, but no core.
   virtual bool isMemTile(int col, int row) const = 0;
 
   /// Return true if the given tile is a Shim NOC tile.  These tiles include a
-  /// ShimDMA and a connection to the memory-mapped NOC.
+  /// ShimDMA and a connection to the memory-mapped NOC.  They do not contain
+  /// any memory.
   virtual bool isShimNOCTile(int col, int row) const = 0;
 
   /// Return true if the given tile is a Shim PL interface tile.  These tiles do
-  /// not include a ShimDMA and instead include connections to the PL.
+  /// not include a ShimDMA and instead include connections to the PL.  They do
+  /// not contain any memory.
   virtual bool isShimPLTile(int col, int row) const = 0;
 
   /// Return true if the given tile ID is valid.
@@ -111,7 +117,7 @@ public:
   virtual uint32_t getLocalMemorySize() const = 0;
 
   /// Return the number of lock objects
-  virtual uint32_t getNumLocks() const = 0;
+  virtual uint32_t getNumLocks(int col, int row) const = 0;
 
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
@@ -122,6 +128,7 @@ class AIE1TargetModel : public AIETargetModel {
 public:
   AIE1TargetModel() {}
 
+  bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
 
   AIEArch getTargetArch() const override;
@@ -161,7 +168,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
-  uint32_t getNumLocks() const override { return 16; }
+  uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
 };
 
@@ -200,7 +207,9 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
-  uint32_t getNumLocks() const override { return 64; }
+  uint32_t getNumLocks(int col, int row) const override {
+    return isMemTile(col, row) ? 64 : 16;
+  }
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
   }
@@ -225,7 +234,8 @@ public:
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {}; // FIXME
+  llvm::SmallDenseSet<unsigned, 8> noc_columns = {2, 3, 6, 7, 10, 11};
+
 public:
   VE2302TargetModel() {}
 
@@ -234,6 +244,7 @@ public:
     return 4; /* One Shim row, 1 memtile rows, and 2 Core rows. */
   }
 
+  bool isCoreTile(int col, int row) const override { return row > 1; }
   bool isMemTile(int col, int row) const override { return row == 1; }
   bool isShimNOCTile(int col, int row) const override {
     return row == 0 && noc_columns.contains(col);
@@ -244,7 +255,9 @@ public:
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {}; // FIXME
+  llvm::SmallDenseSet<unsigned, 16> noc_columns = {2,  3,  6,  7,  14, 15,
+                                                   22, 23, 30, 31, 34, 35};
+
 public:
   VE2802TargetModel() {}
 
@@ -253,6 +266,7 @@ public:
     return 11; /* One Shim row, 2 memtile rows, and 8 Core rows. */
   }
 
+  bool isCoreTile(int col, int row) const override { return row > 2; }
   bool isMemTile(int col, int row) const override {
     return (row == 1) || (row == 2);
   }

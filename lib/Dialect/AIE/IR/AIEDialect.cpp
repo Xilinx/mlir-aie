@@ -70,13 +70,14 @@ static xilinx::AIE::VE2302TargetModel VE2302model;
 static xilinx::AIE::VE2802TargetModel VE2802model;
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
-  if (auto array = op->getParentOfType<xilinx::AIE::AIETarget>()) {
-    return array.getTargetModel();
-  } else {
-    // For backward compatibility, return a basic device model compatible with
-    // the VCK190
-    return VC1902model;
-  }
+  if (auto t = dyn_cast<xilinx::AIE::AIETarget>(op))
+    return t.getTargetModel();
+  if (auto t = op->getParentOfType<xilinx::AIE::AIETarget>())
+    return t.getTargetModel();
+
+  // For backward compatibility, return a basic device model compatible with
+  // the VCK190
+  return VC1902model;
 }
 
 // Walk the operation hierarchy until we find a containing TileElement.
@@ -388,6 +389,28 @@ xilinx::AIE::HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   return success();
 }
 
+// Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
+// has valid DMA channels.
+template <typename ConcreteType>
+LogicalResult
+xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
+  auto element = cast<ConcreteType>(op);
+  DenseSet<xilinx::AIE::DMAChannel> used_channels;
+  for (auto &bodyOp : element.getBody().getOps()) {
+    // check for duplicate DMA channels within the same MemTileDMAOp
+    if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
+      xilinx::AIE::DMAChannel dmaChan = std::make_pair(
+          DMA_start.getChannelDir(), DMA_start.getChannelIndex());
+      if (used_channels.count(dmaChan))
+        return DMA_start.emitOpError() << "duplicate DMA channel "
+                                       << stringifyDMAChannelDir(dmaChan.first)
+                                       << dmaChan.second << " not allowed";
+      used_channels.insert(dmaChan);
+    }
+  }
+  return success();
+}
+
 // ObjectFifoCreateOp
 LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
   if (!hasName())
@@ -401,10 +424,14 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 
 // ObjectFifoRegisterExternalBuffersOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
-  if (!getTile().getDefiningOp<TileOp>().isShimTile())
+  if (!getTileOp().isShimTile())
     return emitOpError("tile is not a shim tile");
 
   return success();
+}
+xilinx::AIE::TileOp
+xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
 // ObjectFifoAcquireOp
@@ -677,10 +704,6 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   if (body.empty())
     return emitOpError("should have non-empty body");
 
-  auto tileOp = getTileOp();
-  if (!tileOp.isShimNOCTile())
-    return emitOpError("must be in a ShimTile with a NOC connection");
-
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
       xilinx::AIE::Port dest =
@@ -696,9 +719,6 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
-  }
-  if (!getTileOp().isShimTile()) {
-    return emitOpError("must be in a shim tile, i.e. row == 0.");
   }
   return success();
 }
@@ -740,10 +760,9 @@ int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
   if (getBody().empty())
-    return emitOpError("cannot have an empty body");
+    return emitOpError("should have non-empty body");
 
-  auto tileOp = getTileOp();
-  if (!tileOp.isShimNOCTile())
+  if (!getTileOp().isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
 
   auto result =
@@ -824,7 +843,7 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   Region &body = getBody();
   DenseSet<xilinx::AIE::DMAChannel> used_channels;
   if (body.empty())
-    return emitOpError("cannot have an empty body");
+    return emitOpError("should have non-empty body");
 
   auto result =
       HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
@@ -857,28 +876,59 @@ LogicalResult xilinx::AIE::MemOp::verify() {
 xilinx::AIE::TileOp xilinx::AIE::MemOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
-int xilinx::AIE::MemOp::colIndex() {
-  Operation *Op = getTile().getDefiningOp();
-  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
+int xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
 
-  return tile.colIndex();
-}
-
-int xilinx::AIE::MemOp::rowIndex() {
-  Operation *Op = getTile().getDefiningOp();
-  xilinx::AIE::TileOp tile = dyn_cast<xilinx::AIE::TileOp>(Op);
-
-  return tile.rowIndex();
-}
+int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
-/// return null in the case of an external callable object, e.g. an external
+/// return nullptr in the case of an external callable object, e.g. an external
 /// function.
 Region *xilinx::AIE::MemOp::getCallableRegion() { return &(getBody()); }
 
 /// Returns the results types that the callable region produces when executed.
 ArrayRef<Type> xilinx::AIE::MemOp::getCallableResults() { return getType(); }
 
+// MemTileDMAOp
+LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
+  assert(getOperation()->getNumRegions() == 1 &&
+         "MemTileDMAOp has zero region!");
+  assert(!getBody().empty() && "MemTileDMAOp should have non-empty body");
+
+  auto result =
+      HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
+                        xilinx::AIE::EndOp>::verifyTrait(*this);
+  if (result.failed()) {
+    return result;
+  }
+
+  for (auto &bodyOp : getBody().getOps()) {
+    if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {
+      if (!allocOp->getAttr("id"))
+        return allocOp.emitOpError()
+               << "allocOp in MemTileDMAOp region should have an id attribute";
+    }
+  }
+  return success();
+}
+
+xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
+  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+}
+int xilinx::AIE::MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
+
+int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+
+/// Returns the region on the current operation that is callable. This may
+/// return nullptr in the case of an external callable object, e.g. an external
+/// function.
+Region *xilinx::AIE::MemTileDMAOp::getCallableRegion() { return &(getBody()); }
+
+/// Returns the results types that the callable region produces when executed.
+ArrayRef<Type> xilinx::AIE::MemTileDMAOp::getCallableResults() {
+  return getType();
+}
+
+// SwitchboxOp
 xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
@@ -910,9 +960,12 @@ LogicalResult xilinx::AIE::LockOp::verify() {
 
   if (getLockID().has_value()) {
     const auto &target_model = xilinx::AIE::getTargetModel(getTileOp());
-    if (getLockID().value() >= target_model.getNumLocks())
+    auto tileOp = getTileOp();
+    unsigned int numLocks =
+        target_model.getNumLocks(tileOp.getCol(), tileOp.getRow());
+    if (getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
-             << target_model.getNumLocks() - 1 << ")";
+             << numLocks - 1 << ")";
   }
 
   return success();
@@ -954,7 +1007,7 @@ struct AcquireReleaseOneStateInDMABlock {
     auto block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
-      if (op.acquire()) {
+      if (op.acquire() || op.acquire_ge()) {
         if (acqValue != -1 && acqValue != op.getLockValue()) {
           return failure();
         }
@@ -971,19 +1024,26 @@ struct AcquireReleaseOneStateInDMABlock {
 };
 
 LogicalResult xilinx::AIE::UseLockOp::verify() {
-  // AIE.useLock may be used in a device to set the lock's default value
+  // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
           (*this)->getParentOp()))
-    return success();
+    return (*this)->emitOpError("must be used in a core or memory operation.");
 
-  // Otherwise, AIE.useLock should be inside MemOp, or ShimDMAOp,
-  if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::ShimDMAOp>::verifyTrait(
-          *this)
+  const auto &target_model = getTargetModel(*this);
+  if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+      acquire_ge())
+    return (*this)->emitOpError(
+        "AcquireGreaterEqual is not supported in AIE1.");
+
+  // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
+  if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::MemTileDMAOp,
+                    xilinx::AIE::ShimDMAOp>::verifyTrait(*this)
           .succeeded()) {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
-    if (UsesOneLockInDMABlock::verifyTrait(*this).failed())
+    if (target_model.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+        UsesOneLockInDMABlock::verifyTrait(*this).failed())
       return (*this)->emitOpError(
           "used in a DMA block that have multiple locks.");
 

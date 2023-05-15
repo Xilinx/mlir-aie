@@ -355,12 +355,9 @@ LogicalResult UPSOp::verify() {
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
-  if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
+  if (stypeWidth >= atypeWidth)
     return emitError("the element type of result accumulator "
                      "must be wider than that of the source vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
-    return emitError("the element type of result accumulator must "
-                     "be same as the source vector");
 
   return success();
 }
@@ -1790,5 +1787,6 @@ ParseResult MulConvOp::parse(OpAsmParser &parser, OperationState &result) {
 ParseResult FMAConvOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAConvOp(parser, result, true);
 }
+
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.cpp.inc"

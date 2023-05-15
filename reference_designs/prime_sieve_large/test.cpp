@@ -39,16 +39,22 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   printf("Waiting for the result ...\n");
-  if (!mlir_aie_acquire_prime_output_lock(_xaie, 1, 100000)) {
+  if (mlir_aie_acquire_prime_output_lock(_xaie, 1, 100000) != XAIE_OK) {
     printf("ERROR: timeout hit!\n");
   }
 
-  mlir_aie_check("primes[0]", mlir_aie_read_buffer_prime_output(_xaie, 0), 7,
+  int count = mlir_aie_read_buffer_prime_output(_xaie, 0);
+  printf("Found %d primes\n", count);
+  for (int i = 1; i <= count; i++) {
+    printf("prime[%d] = %d\n", i, mlir_aie_read_buffer_prime_output(_xaie, i));
+  }
+
+  mlir_aie_check("primes[1]", mlir_aie_read_buffer_prime_output(_xaie, 1), 2,
                  errors);
-  mlir_aie_check("primes[1]", mlir_aie_read_buffer_prime_output(_xaie, 1), 11,
+  mlir_aie_check("primes[2]", mlir_aie_read_buffer_prime_output(_xaie, 2), 3,
                  errors);
-  mlir_aie_check("primes[2]", mlir_aie_read_buffer_prime_output(_xaie, 2), 13,
-                 errors);
+  mlir_aie_check("primes[400]", mlir_aie_read_buffer_prime_output(_xaie, 400),
+                 2741, errors);
 
   int res = 0;
   if (!errors) {

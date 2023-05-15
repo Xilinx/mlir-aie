@@ -20,9 +20,9 @@
 // CHECK:    %6 = AIE.lock(%3, 8)
 // CHECK:    %7 = AIE.lock(%4, 8)
 // CHECK:    %8 = AIE.core(%0)  {
-// CHECK:      %c192 = arith.constant 192 : index
-// CHECK:      AIE.useLock(%c192, Acquire, 0)
-// CHECK:      AIE.useLock(%c192, Release, 1)
+// CHECK:      %c48 = arith.constant 48 : index
+// CHECK:      AIE.useLock(%c48, Acquire, 0)
+// CHECK:      AIE.useLock(%c48, Release, 1)
 // CHECK:      AIE.end
 // CHECK:    }
 // CHECK:    %9 = AIE.core(%1)  {
@@ -32,24 +32,24 @@
 // CHECK:      AIE.end
 // CHECK:    }
 // CHECK:    %10 = AIE.core(%2)  {
-// CHECK:      %c136 = arith.constant 136 : index
-// CHECK:      AIE.useLock(%c136, Acquire, 0)
-// CHECK:      AIE.useLock(%c136, Release, 1)
+// CHECK:      %c40 = arith.constant 40 : index
+// CHECK:      AIE.useLock(%c40, Acquire, 0)
+// CHECK:      AIE.useLock(%c40, Release, 1)
 // CHECK:      AIE.end
 // CHECK:    }
 // CHECK:    %11 = AIE.core(%3)  {
-// CHECK:      %c200 = arith.constant 200 : index
-// CHECK:      AIE.useLock(%c200, Acquire, 0)
-// CHECK:      AIE.useLock(%c200, Release, 1)
+// CHECK:      %c56 = arith.constant 56 : index
+// CHECK:      AIE.useLock(%c56, Acquire, 0)
+// CHECK:      AIE.useLock(%c56, Release, 1)
 // CHECK:      AIE.end
 // CHECK:    }
 // CHECK:    %12 = AIE.core(%4)  {
-// CHECK:      %c200 = arith.constant 200 : index
-// CHECK:      %c72 = arith.constant 72 : index
-// CHECK:      AIE.useLock(%c72, Acquire, 0)
-// CHECK:      AIE.useLock(%c72, Release, 1)
-// CHECK:      AIE.useLock(%c200, Acquire, 0)
-// CHECK:      AIE.useLock(%c200, Release, 1)
+// CHECK:      %c56 = arith.constant 56 : index
+// CHECK:      %c24 = arith.constant 24 : index
+// CHECK:      AIE.useLock(%c24, Acquire, 0)
+// CHECK:      AIE.useLock(%c24, Release, 1)
+// CHECK:      AIE.useLock(%c56, Acquire, 0)
+// CHECK:      AIE.useLock(%c56, Release, 1)
 // CHECK:      AIE.end
 // CHECK:    }
 // CHECK:  }

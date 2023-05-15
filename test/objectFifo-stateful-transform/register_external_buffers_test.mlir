@@ -17,13 +17,13 @@
 // CHECK:   %0 = AIE.tile(7, 1)
 // CHECK:   %1 = AIE.tile(7, 0)
 // CHECK:   AIE.flow(%1, DMA : 0, %0, DMA : 0)
-// CHECK:   %2 = AIE.lock(%1, 0) {sym_name = "ext_of_prod_lock_0"}
+// CHECK:   %2 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "ext_of_prod_lock_0"}
 // CHECK:   %3 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
-// CHECK:   %4 = AIE.lock(%0, 0) {sym_name = "ext_of_cons_lock_0"}
+// CHECK:   %4 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
 // CHECK:   %5 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>
-// CHECK:   %6 = AIE.lock(%0, 1) {sym_name = "ext_of_cons_lock_1"}
+// CHECK:   %6 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
 // CHECK:   %7 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32>
-// CHECK:   %8 = AIE.lock(%0, 2) {sym_name = "ext_of_cons_lock_2"}
+// CHECK:   %8 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
 // CHECK:   %9 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
 // CHECK:     return

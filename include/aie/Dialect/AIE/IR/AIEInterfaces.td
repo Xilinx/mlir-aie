@@ -20,6 +20,27 @@ def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
+// Op is a DMA-like operation with valid channels
+def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
+  string cppNamespace = "::xilinx::AIE";
+}
+
+def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
+                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+
+def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
+def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
+def IsTileWithMemory : PredOpTrait<"op exists in a tile with local memory", Or<[PredIsCoreTile, PredIsMemTile]>>;
+def IsShimTile : PredOpTrait<"op exists in a shim tile", Or<[PredIsShimNOCTile, PredIsShimPLTile]>>;
+def IsShimNOCTile : PredOpTrait<"op exists in a shim tile with NOC connection", PredIsShimNOCTile>;
+def IsShimPLTile : PredOpTrait<"op exists in a shim tile with PL interface", PredIsShimPLTile>;
+
 def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   let description = [{
     Interface for operations that have interconnect-like properties,
@@ -126,6 +147,8 @@ def Consume: I32EnumAttrCase<"Consume", 1>;
 
 def Acquire: I32EnumAttrCase<"Acquire", 0>;
 def Release: I32EnumAttrCase<"Release", 1>;
+def AcquireGreaterEqual: I32EnumAttrCase<"AcquireGreaterEqual", 2>;
+
 def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
 def Blocking: I32EnumAttrCase<"Blocking", 1>;
 
@@ -134,10 +157,11 @@ def xcve2302: I32EnumAttrCase<"xcve2302", 2>;
 def xcve2802: I32EnumAttrCase<"xcve2802", 3>;
 
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
-  [Acquire, Release]> {
+  [Acquire, AcquireGreaterEqual, Release]> {
 
   let cppNamespace = "xilinx::AIE";
 }
+
 def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
   [NonBlocking, Blocking]> {
 

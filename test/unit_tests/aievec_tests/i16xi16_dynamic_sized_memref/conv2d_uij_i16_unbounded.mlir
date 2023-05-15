@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+
+// REQUIRES: valid_xchess_license
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16" --aie-vectorize="shift=10 zero-offset=4" | aie-translate --aievec-to-cpp -o gen.cc
 // RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. %S/i16xi16.cc %S/kernel.cc

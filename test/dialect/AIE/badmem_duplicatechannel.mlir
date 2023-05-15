@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --canonicalize %s |& FileCheck %s
-// CHECK: 'AIE.dmaStart' op duplicate DMA channel MM2S0 in MemOp
+// CHECK: 'AIE.dmaStart' op duplicate DMA channel MM2S0 not allowed
 
 module @test {
   %t1 = AIE.tile(1, 1)

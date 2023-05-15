@@ -24,9 +24,9 @@
 // CHECK:   %7 = AIE.lock(%0, 2)
 // CHECK:   AIE.flow(%0, DMA : 1, %1, DMA : 0)
 // CHECK:   %8 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_0"} : memref<16xi32>
-// CHECK:   %9 = AIE.lock(%0, 3) {sym_name = "objfifo_prod_lock_0"}
+// CHECK:   %9 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "objfifo_prod_lock_0"}
 // CHECK:   %10 = AIE.buffer(%0) {sym_name = "objfifo_prod_buff_1"} : memref<16xi32>
-// CHECK:   %11 = AIE.lock(%0, 4) {sym_name = "objfifo_prod_lock_1"}
+// CHECK:   %11 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "objfifo_prod_lock_1"}
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:     return
 // CHECK:   }
