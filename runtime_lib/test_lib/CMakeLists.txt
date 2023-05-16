@@ -31,6 +31,9 @@ install(TARGETS test_lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
 
+if (DEFINED VITIS_ROOT)
+set(xaienginePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
+file(GLOB libheaders ${xaienginePath}/xioutils.h)
 # create extra libs supporting simulation
 # AIE1 test_lib for aiesimulator
 add_library(test_lib_sim_aie STATIC test_library.cpp)
@@ -57,3 +60,4 @@ target_include_directories(test_lib_sim_aie2 PRIVATE
 install(TARGETS test_lib_sim_aie2 
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
 )
+endif()
