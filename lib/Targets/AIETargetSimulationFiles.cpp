@@ -296,7 +296,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     int row = tileOp.rowIndex();
 
     // NOTE: row == 0 assumes shim always row 0
-    if (tileOp.isShimNOCorPLTile()) || tileOp.isMemTile())
+    if (tileOp.isShimNOCorPLTile() || tileOp.isMemTile())
       continue; // Skip shim and mem tiles (handled below)
 
     if (arch == AIEArch::AIE2) {
