@@ -298,7 +298,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     int row = tileOp.rowIndex();
 
     // NOTE: row == 0 assumes shim always row 0
-    if (row == 0 || targetOp.getTargetModel().isMemTile(col,row))
+    if (row == 0 || targetOp.getTargetModel().isMemTile(col, row))
       continue; // Skip shim and mem tiles (handled below)
 
     if (arch == AIEArch::AIE2) {
@@ -306,7 +306,9 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       output << "      <TILE name=\"CR(" <<
           // CR coordinates ignores shim, and 2 mem rows hence row-3
           // AIE2 - xcve2802
-          std::to_string(col) << "," << std::to_string(row - targetOp.getTargetModel().getNumMemTileRows() - 1)
+          std::to_string(col) << ","
+             << std::to_string(
+                    row - targetOp.getTargetModel().getNumMemTileRows() - 1)
              << ")\" "
              // CR coordinates ignores shim and 1 mem row, hence row-2
              // AIE2 - xcve2302
@@ -318,7 +320,10 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
           // TODO: where does number of mem_banks come from?? Hardcoded to 0 for
           // now
           // TODO: does stream_util matter for sim?
-          std::to_string(col) << "," << std::to_string(row - targetOp.getTargetModel().getNumMemTileRows()) << "\">\n";
+          std::to_string(col) << ","
+             << std::to_string(row -
+                               targetOp.getTargetModel().getNumMemTileRows())
+             << "\">\n";
 
     } else {
       output << "      <TILE name=\"CR(" <<
@@ -350,27 +355,31 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   // For each ShimOp in the module, generate a <SHIM> section
   for (ShimDMAOp shimOp : targetOp.getOps<ShimDMAOp>()) {
     if (arch == AIEArch::AIE2) {
-      auto noc_label = (targetOp.getTargetModel().isShimNOCTile(shimOp.colIndex(),shimOp.rowIndex())) ? 
-                       "AIE_PL_NOC_SIM" : "AIE_PL_SHIM";
+      auto noc_label = (targetOp.getTargetModel().isShimNOCTile(
+                           shimOp.colIndex(), shimOp.rowIndex()))
+                           ? "AIE_PL_NOC_SIM"
+                           : "AIE_PL_SHIM";
       output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
-            << ", " << std::to_string(shimOp.rowIndex()) << ")\" "
-          // TODO: stream_util can be 0 for aiesim purposes?
-          "type=\"" << noc_label << "\" stream_util=\"0\" num_pl_streams=\"0\" " <<
+             << ", " << std::to_string(shimOp.rowIndex())
+             << ")\" "
+                // TODO: stream_util can be 0 for aiesim purposes?
+                "type=\""
+             << noc_label << "\" stream_util=\"0\" num_pl_streams=\"0\" " <<
           // TODO: how to get num_aximm_connections from mlir?
           "num_aximm_connections=\"1\" coordinates=\""
-            << std::to_string(shimOp.colIndex()) << ","
-            << std::to_string(shimOp.rowIndex()) << "\" "
-            << "></SHIM>\n";
+             << std::to_string(shimOp.colIndex()) << ","
+             << std::to_string(shimOp.rowIndex()) << "\" "
+             << "></SHIM>\n";
     } else {
       output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
-            << ", " << std::to_string(shimOp.rowIndex()) << ")\" " <<
+             << ", " << std::to_string(shimOp.rowIndex()) << ")\" " <<
           // TODO: stream_util can be 0 for aiesim purposes?
           "type=\"AIE_PL_NOC_SHIM\" stream_util=\"0\" num_pl_streams=\"0\" " <<
           // TODO: how to get num_aximm_connections from mlir?
           "num_aximm_connections=\"1\" coordinates=\""
-            << std::to_string(shimOp.colIndex()) << ","
-            << std::to_string(shimOp.rowIndex()) << "\" "
-            << "></SHIM>\n";
+             << std::to_string(shimOp.colIndex()) << ","
+             << std::to_string(shimOp.rowIndex()) << "\" "
+             << "></SHIM>\n";
     }
   }
 
@@ -384,14 +393,14 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       if (row == 0 || row > targetOp.getTargetModel().getNumMemTileRows())
         continue; // Skip regular tiles (handled above)
 
-      output << "      <MEM name=\"MEM(" << std::to_string(col)
-            << ", " << std::to_string(row - 1) << ")\" "
-          // TODO: stream_util can be 0 for aiesim purposes?
-          "type=\"AIE_MEM\" mem_banks=\"0\" mme_rw_rate=\"0.1\" " <<
-          "stream_util=\"0.1\" coordinates=\""
-            << std::to_string(col) << ","
-            << std::to_string(row - 1) << "\" "
-            << "></MEM>\n";
+      output << "      <MEM name=\"MEM(" << std::to_string(col) << ", "
+             << std::to_string(row - 1)
+             << ")\" "
+                // TODO: stream_util can be 0 for aiesim purposes?
+                "type=\"AIE_MEM\" mem_banks=\"0\" mme_rw_rate=\"0.1\" "
+             << "stream_util=\"0.1\" coordinates=\"" << std::to_string(col)
+             << "," << std::to_string(row - 1) << "\" "
+             << "></MEM>\n";
     }
   }
 

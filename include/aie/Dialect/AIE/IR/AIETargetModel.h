@@ -124,7 +124,6 @@ public:
   virtual uint32_t getNumBDs(int col, int row) const = 0;
 
   virtual uint32_t getNumMemTileRows() const = 0;
-
 };
 
 class AIE1TargetModel : public AIETargetModel {

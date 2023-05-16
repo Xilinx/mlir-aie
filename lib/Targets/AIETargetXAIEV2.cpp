@@ -126,8 +126,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
-    // if (tileOp.isShimNOCorPLTile()) {
-    if (tileOp.isShimNOCorPLTile() || tileOp.isMemTile()) {
+    if (tileOp.isShimTile() || tileOp.isMemTile()) {
       // Resets no needed with V2 kernel driver
     } else {
       // Resets no needed with V2 kernel driver
