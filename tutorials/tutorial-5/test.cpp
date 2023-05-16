@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
                  mlir_aie_read_buffer_of_out_buff_0(_xaie, 3), 14, errors);
   // Check buffer at index 5 again for expected value of 114 for tile(3,4)
   printf("Checking buf[5] = 114.\n");
-  mlir_aie_check("After start cores:", 
+  mlir_aie_check("After start cores:",
                  mlir_aie_read_buffer_of_out_buff_0(_xaie, 5), 114, errors);
   printf("Checking ddr_ptr[5] = 114.\n");
   mlir_aie_check("After start cores:", mem_ptr_out[5], 114, errors);

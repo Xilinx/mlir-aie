@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 
   printf("Release lock for accessing DDR.\n");
   mlir_aie_release_obj_in_lock_0(_xaie, 1,
-                                      0); // (_xaie,release_value,time_out)
+                                 0); // (_xaie,release_value,time_out)
   mlir_aie_release_obj_out_flux_cons_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
