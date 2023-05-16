@@ -41,42 +41,42 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   # if no LibXAIE_{target}_DIR specified, build xaiengine_${target} from Vitis
   if (DEFINED LibXAIE_${target}_DIR)
     message("Using xaiengine from LibXAIE_${target}_DIR=${LibXAIE_${target}_DIR}.")
-    #set(xaiengine_${target} ${LibXAIE_${target}_DIR})
-    ExternalProject_Add(xaiengine_${target}
-    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
-    SOURCE_DIR ${LibXAIE_${target}_DIR}
-    DOWNLOAD_COMMAND ""
-    )
+    set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
+    find_package(LibXAIE)
+    message(STATUS "FOUND LibXAIE: ${LibXAIE_FOUND}, XILINX_XAIE_LIB_DIR: ${XILINX_XAIE_LIB_DIR}, XILINX_XAIE_INCLUDE_DIR: ${XILINX_XAIE_INCLUDE_DIR}")
   else()
     if (DEFINED VITIS_ROOT)
-    message("No custom LibXAIE dir found for ${target}. Building xaiengine for ${target} from Vitis.")
-    ExternalProject_Add(xaiengine_${target}
-    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
-    SOURCE_DIR ${PROJECT_SOURCE_DIR}/xaiengine
-    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine
-    CMAKE_CACHE_ARGS
-            -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
-    CMAKE_ARGS
-            -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-            -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
-            -DAIE_RUNTIME_TARGET=${target}
-            -DVITIS_ROOT=${VITIS_ROOT}
-            -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
-            -DSysroot=${Sysroot}
-    BUILD_ALWAYS true
-    STEP_TARGETS clean build install test
-    USES_TERMINAL_CONFIGURE true
-    USES_TERMINAL_BUILD true
-    USES_TERMINAL_TEST true
-    USES_TERMINAL_INSTALL true
-    TEST_BEFORE_INSTALL true
-    TEST_EXCLUDE_FROM_MAIN true
+      message("No custom LibXAIE dir found for ${target}. Building xaiengine for ${target} from Vitis.") 
+      set(XILINX_XAIE_INCLUDE_DIR) #set path where to pick up libxaiengine from build area
+      set(testLibDependsOnXaiengine xaiengine_${target}-build)
+      ExternalProject_Add(xaiengine_${target}
+      PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
+      SOURCE_DIR ${PROJECT_SOURCE_DIR}/xaiengine
+      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine
+      CMAKE_CACHE_ARGS
+          -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+      CMAKE_ARGS
+          -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
+          -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+          -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+          -DAIE_RUNTIME_TARGET=${target}
+          -DVITIS_ROOT=${VITIS_ROOT}
+          -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
+          -DSysroot=${Sysroot}
+      BUILD_ALWAYS true
+      STEP_TARGETS clean build install test
+      USES_TERMINAL_CONFIGURE true
+      USES_TERMINAL_BUILD true
+      USES_TERMINAL_TEST true
+      USES_TERMINAL_INSTALL true
+      TEST_BEFORE_INSTALL true
+      TEST_EXCLUDE_FROM_MAIN true
     )
     endif()
   endif()
 
   # test_lib
+  message(STATUS "setting up test_lib")
   ExternalProject_Add(test_lib_${target}
   PREFIX ${CMAKE_CURRENT_BINARY_DIR}/test_libTmp/${target}
   SOURCE_DIR ${PROJECT_SOURCE_DIR}/test_lib
@@ -88,8 +88,9 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
+          -DLibXAIE_INC_DIR=${XILINX_XAIE_INCLUDE_DIR}
           -DSysroot=${Sysroot}
-  DEPENDS xaiengine_${target}
+  DEPENDS ${testLibDependsOnXaiengine}
   BUILD_ALWAYS true
   STEP_TARGETS clean build install test
   USES_TERMINAL_CONFIGURE true
