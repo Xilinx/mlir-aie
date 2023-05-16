@@ -126,7 +126,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
-    if (tileOp.isShimNOCorPLTile()) {
+    // if (tileOp.isShimNOCorPLTile()) {
+    if (tileOp.isShimNOCorPLTile() || tileOp.isMemTile()) {
       // Resets no needed with V2 kernel driver
     } else {
       // Resets no needed with V2 kernel driver
@@ -171,7 +172,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   for (auto tileOp : targetOp.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
-    if (!tileOp.isShimTile()) {
+    if (!tileOp.isShimTile() && !tileOp.isMemTile()) {
       output << "XAie_CoreUnreset(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ");\n";
       output << "XAie_CoreEnable(" << deviceInstRef << ", "
