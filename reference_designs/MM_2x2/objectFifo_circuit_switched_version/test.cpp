@@ -97,12 +97,12 @@ int main(int argc, char *argv[]) {
 
   printf("before core start\n");
 
-  mlir_aie_release_of_LHS0_prod_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_LHS1_prod_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_RHS0_prod_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_RHS1_prod_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_RHS2_prod_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_RHS3_prod_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_LHS0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_LHS1_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_RHS0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_RHS1_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_RHS2_lock_0(_xaie, 1, 0);
+  mlir_aie_release_of_RHS3_lock_0(_xaie, 1, 0);
 
   mlir_aie_start_cores(_xaie);
 

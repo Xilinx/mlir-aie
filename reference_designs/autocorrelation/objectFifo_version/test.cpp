@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-  mlir_aie_release_of_in_prod_lock_0(_xaie, 1, 10000);
+  mlir_aie_release_of_in_lock_0(_xaie, 1, 10000);
 
   printf("Waiting for the result ...\n");
   if (mlir_aie_acquire_of_out_cons_lock_0(_xaie, 1, 100000)) {

@@ -23,10 +23,10 @@
 // CHECK:   AIE.flow(%1, DMA : 0, %3, DMA : 0)
 // CHECK:   AIE.flow(%1, DMA : 0, %2, DMA : 0)
 // CHECK:   AIE.flow(%1, DMA : 0, %0, DMA : 0)
-// CHECK:   %5 = AIE.buffer(%1) {sym_name = "broadcast_of_prod_buff_0"} : memref<16xi32>
-// CHECK:   %6 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "broadcast_of_prod_lock_0"}
-// CHECK:   %7 = AIE.buffer(%1) {sym_name = "broadcast_of_prod_buff_1"} : memref<16xi32>
-// CHECK:   %8 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "broadcast_of_prod_lock_1"}
+// CHECK:   %5 = AIE.buffer(%1) {sym_name = "broadcast_of_buff_0"} : memref<16xi32>
+// CHECK:   %6 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "broadcast_of_lock_0"}
+// CHECK:   %7 = AIE.buffer(%1) {sym_name = "broadcast_of_buff_1"} : memref<16xi32>
+// CHECK:   %8 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "broadcast_of_lock_1"}
 // CHECK:   %9 = AIE.buffer(%4) {sym_name = "broadcast_of_3_cons_buff_0"} : memref<16xi32>
 // CHECK:   %10 = AIE.lock(%4, 0) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_0"}
 // CHECK:   %11 = AIE.buffer(%4) {sym_name = "broadcast_of_3_cons_buff_1"} : memref<16xi32>
