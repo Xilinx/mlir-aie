@@ -15,20 +15,20 @@
 // CHECK: module @multiFifo  {
 // CHECK:    %0 = AIE.tile(1, 2)
 // CHECK:    %1 = AIE.tile(1, 3)
-// CHECK:    %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:    %3 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "of_0_lock_0"}
-// CHECK:    %4 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:    %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_0_lock_1"}
-// CHECK:    %6 = AIE.buffer(%0) {sym_name = "of_0_buff_2"} : memref<16xi32>
-// CHECK:    %7 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "of_0_lock_2"}
-// CHECK:    %8 = AIE.buffer(%0) {sym_name = "of_0_buff_3"} : memref<16xi32>
-// CHECK:    %9 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "of_0_lock_3"}
-// CHECK:    %10 = AIE.buffer(%0) {sym_name = "of_1_buff_0"} : memref<16xi32>
-// CHECK:    %11 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "of_1_lock_0"}
-// CHECK:    %12 = AIE.buffer(%0) {sym_name = "of_1_buff_1"} : memref<16xi32>
-// CHECK:    %13 = AIE.lock(%0, 5) {init = 0 : i32, sym_name = "of_1_lock_1"}
-// CHECK:    %14 = AIE.buffer(%0) {sym_name = "of_1_buff_2"} : memref<16xi32>
-// CHECK:    %15 = AIE.lock(%0, 6) {init = 0 : i32, sym_name = "of_1_lock_2"}
+// CHECK:    %2 = AIE.buffer(%0) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK:    %3 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "of_lock_0"}
+// CHECK:    %4 = AIE.buffer(%0) {sym_name = "of_buff_1"} : memref<16xi32>
+// CHECK:    %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_lock_1"}
+// CHECK:    %6 = AIE.buffer(%0) {sym_name = "of_buff_2"} : memref<16xi32>
+// CHECK:    %7 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "of_lock_2"}
+// CHECK:    %8 = AIE.buffer(%0) {sym_name = "of_buff_3"} : memref<16xi32>
+// CHECK:    %9 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "of_lock_3"}
+// CHECK:    %10 = AIE.buffer(%0) {sym_name = "of2_buff_0"} : memref<16xi32>
+// CHECK:    %11 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "of2_lock_0"}
+// CHECK:    %12 = AIE.buffer(%0) {sym_name = "of2_buff_1"} : memref<16xi32>
+// CHECK:    %13 = AIE.lock(%0, 5) {init = 0 : i32, sym_name = "of2_lock_1"}
+// CHECK:    %14 = AIE.buffer(%0) {sym_name = "of2_buff_2"} : memref<16xi32>
+// CHECK:    %15 = AIE.lock(%0, 6) {init = 0 : i32, sym_name = "of2_lock_2"}
 // CHECK:    func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:      return
 // CHECK:    }
@@ -81,8 +81,8 @@ module @multiFifo {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) : !AIE.objectFifo<memref<16xi32>>
-    %objFifo2 = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 3) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifo2 = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 3) {sym_name = "of2"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%line_in:memref<16xi32>) -> () {
         return

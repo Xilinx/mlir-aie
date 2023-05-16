@@ -51,14 +51,14 @@ int main(int argc, char *argv[]) {
 
   int i = 0;
   while (i < 25) {
-    mlir_aie_acquire_of_0_lock_0(_xaie, 0, 10000);
+    mlir_aie_acquire_of_in_lock_0(_xaie, 0, 10000);
     for (int j = 0; j < 256; j++)
       mem_ptr_in[j] = i;
     mlir_aie_sync_mem_dev(_xaie, 0);
-    mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
+    mlir_aie_release_of_in_lock_0(_xaie, 1, 0);
 
     // acquire output shim
-    if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
+    if (mlir_aie_acquire_of_out_cons_lock_0(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
@@ -70,7 +70,7 @@ int main(int argc, char *argv[]) {
                      errors);
 
     // release output shim
-    if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
+    if (mlir_aie_release_of_out_cons_lock_0(_xaie, 0, 10000) == XAIE_OK)
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");

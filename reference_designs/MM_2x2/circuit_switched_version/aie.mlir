@@ -52,6 +52,19 @@ module @MM_2x2 {
   %buf64_1 = AIE.buffer(%t64) {sym_name = "buf64_1"} : memref<1024xi32>  //RHS_tile1
   %buf64_2 = AIE.buffer(%t64) {sym_name = "buf64_2"} : memref<1024xi32>  //Out_tile0
 
+  %lock63_0 = AIE.lock(%t63, 0)
+  %lock63_1 = AIE.lock(%t63, 1)
+  %lock63_3 = AIE.lock(%t63, 3)
+  %lock64_0 = AIE.lock(%t64, 0)
+  %lock64_1 = AIE.lock(%t64, 1)
+  %lock64_2 = AIE.lock(%t64, 2)
+  %lock73_0 = AIE.lock(%t73, 0)
+  %lock73_1 = AIE.lock(%t73, 1)
+  %lock73_2 = AIE.lock(%t73, 2)
+  %lock74_0 = AIE.lock(%t74, 0)
+  %lock74_1 = AIE.lock(%t74, 1)
+  %lock74_2 = AIE.lock(%t74, 2)
+
   %buf73_0 = AIE.buffer(%t73) {sym_name = "buf73_0"} : memref<1024xi32>  //LHS_tile0
   %buf73_1 = AIE.buffer(%t73) {sym_name = "buf73_1"} : memref<1024xi32>  //RHS_tile2
   %buf73_2 = AIE.buffer(%t73) {sym_name = "buf73_2"} : memref<1024xi32>  //Accumulator
@@ -101,12 +114,12 @@ module @MM_2x2 {
       AIE.nextBd ^bd5
     ^bd6:
       AIE.useLock(%lock60_2, "Acquire", 1)
-      AIE.dmaBd(<%buffer6 : memref<1024xi32>, 0, 1024>, 0)    //send Out_tile0
+      AIE.dmaBd(<%buffer6 : memref<1025xi32>, 0, 1025>, 0)    //send Out_tile0
       AIE.useLock(%lock60_2, "Release", 0)
       AIE.nextBd ^bd6
     ^bd7:
       AIE.useLock(%lock60_3, "Acquire", 1)
-      AIE.dmaBd(<%buffer7 : memref<1024xi32>, 0, 1024>, 0)    //send Out_tile1
+      AIE.dmaBd(<%buffer7 : memref<1025xi32>, 0, 1025>, 0)    //send Out_tile1
       AIE.useLock(%lock60_3, "Release", 0)
       AIE.nextBd ^bd7
     ^end:
@@ -149,8 +162,6 @@ module @MM_2x2 {
       AIE.end
   }
 
-  %lock63_0 = AIE.lock(%t63, 0)
-  %lock63_1 = AIE.lock(%t63, 1)
   %m63 = AIE.mem(%t63)  {
     AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
   ^dma0:
@@ -169,8 +180,6 @@ module @MM_2x2 {
     AIE.end
   }
 
-  %lock64_0 = AIE.lock(%t64, 0)
-  %lock64_1 = AIE.lock(%t64, 1)
   %m64 = AIE.mem(%t64)  {
     AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
   ^dma0:
@@ -198,7 +207,6 @@ module @MM_2x2 {
 
   func.func private @extern_kernel(%A: memref<1024xi32>, %B: memref<1024xi32>, %acc: memref<1024xi32>, %C: memref<1024xi32>) -> ()
 
-  %lock63_3 = AIE.lock(%t63, 3)
   %core63 = AIE.core(%t63) { 
     AIE.useLock(%lock63_0, "Acquire", 1)
     AIE.useLock(%lock63_1, "Acquire", 1)
@@ -210,7 +218,6 @@ module @MM_2x2 {
     AIE.end
   } { link_with="kernel.o" }
 
-  %lock64_2 = AIE.lock(%t64, 2)
   %core64 = AIE.core(%t64) { 
     AIE.useLock(%lock63_3, "Acquire", 1)
     AIE.useLock(%lock64_0, "Acquire", 1)
@@ -224,8 +231,6 @@ module @MM_2x2 {
     AIE.end
   } { link_with="kernel.o" }
 
-  %lock73_0 = AIE.lock(%t73, 0)
-  %lock73_1 = AIE.lock(%t73, 1)
   %m73 = AIE.mem(%t73)  {
     AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
   ^dma0:
@@ -244,8 +249,6 @@ module @MM_2x2 {
     AIE.end
   }
 
-  %lock74_0 = AIE.lock(%t74, 0)
-  %lock74_1 = AIE.lock(%t74, 1)
   %m74 = AIE.mem(%t74)  {
     AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
   ^dma0:
@@ -271,7 +274,6 @@ module @MM_2x2 {
     AIE.end
   }
 
-  %lock73_2 = AIE.lock(%t73, 2)
   %core73 = AIE.core(%t73) { 
     AIE.useLock(%lock73_0, "Acquire", 1)
     AIE.useLock(%lock73_1, "Acquire", 1)
@@ -283,7 +285,6 @@ module @MM_2x2 {
     AIE.end
   } { link_with="kernel.o" }
 
-  %lock74_2 = AIE.lock(%t74, 2)
   %core74 = AIE.core(%t74) { 
     AIE.useLock(%lock73_2, "Acquire", 1)
     AIE.useLock(%lock74_0, "Acquire", 1)

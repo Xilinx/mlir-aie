@@ -27,15 +27,15 @@ module @autocorrelation {
     %inputExt = AIE.external_buffer {sym_name = "input"} : memref<1024 x i32>
     %outputExt = AIE.external_buffer {sym_name = "output"} : memref<1024 x i32>
 
-    %objFifoIn = AIE.objectFifo.createObjectFifo(%tile7_0, {%tile0_1, %tile0_2, %tile0_3, %tile0_4}, 1) : !AIE.objectFifo<memref<1024xi32>>
-    %objFifoOut = AIE.objectFifo.createObjectFifo(%tile0_1, {%tile7_0}, 1) : !AIE.objectFifo<memref<1024xi32>>
+    %objFifoIn = AIE.objectFifo.createObjectFifo(%tile7_0, {%tile0_1, %tile0_2, %tile0_3, %tile0_4}, 1) {sym_name = "of_in"} : !AIE.objectFifo<memref<1024xi32>>
+    %objFifoOut = AIE.objectFifo.createObjectFifo(%tile0_1, {%tile7_0}, 1) {sym_name = "of_out"} : !AIE.objectFifo<memref<1024xi32>>
 
     AIE.objectFifo.registerExternalBuffers(%tile7_0, %objFifoIn : !AIE.objectFifo<memref<1024xi32>>, {%inputExt}) : (memref<1024xi32>)
     AIE.objectFifo.registerExternalBuffers(%tile7_0, %objFifoOut : !AIE.objectFifo<memref<1024xi32>>, {%outputExt}) : (memref<1024xi32>)
 
-    %objFifo_04_03 = AIE.objectFifo.createObjectFifo(%tile0_4, {%tile0_3}, 1) : !AIE.objectFifo<memref<1024xi32>>
-    %objFifo_03_02 = AIE.objectFifo.createObjectFifo(%tile0_3, {%tile0_2}, 1) : !AIE.objectFifo<memref<1024xi32>>
-    %objFifo_02_01 = AIE.objectFifo.createObjectFifo(%tile0_2, {%tile0_1}, 1) : !AIE.objectFifo<memref<1024xi32>>
+    %objFifo_04_03 = AIE.objectFifo.createObjectFifo(%tile0_4, {%tile0_3}, 1) {sym_name = "of_04_03"} : !AIE.objectFifo<memref<1024xi32>>
+    %objFifo_03_02 = AIE.objectFifo.createObjectFifo(%tile0_3, {%tile0_2}, 1) {sym_name = "of_03_02"} : !AIE.objectFifo<memref<1024xi32>>
+    %objFifo_02_01 = AIE.objectFifo.createObjectFifo(%tile0_2, {%tile0_1}, 1) {sym_name = "of_02_01"} : !AIE.objectFifo<memref<1024xi32>>
 
     func.func @autocorrelate(%bufin: memref<1024xi32>, %bufout:memref<1024xi32>, %offset:index, %blocksize:index) -> () {
         %c0 = arith.constant 0 : index
