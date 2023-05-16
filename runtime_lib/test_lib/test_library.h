@@ -43,94 +43,6 @@ struct ext_mem_model_t {
 static uint16_t nextAlignedAddr;
 #endif
 
-/*
- ******************************************************************************
- * LIBXAIENGIENV1
- ******************************************************************************
- */
-#ifdef LIBXAIENGINEV1
-
-#define XAIE_NUM_ROWS 8
-#define XAIE_NUM_COLS 50
-#define XAIE_ADDR_ARRAY_OFF 0x800
-
-#define MODE_CORE 0
-#define MODE_PL 1
-#define MODE_MEM 2
-
-struct aie_libxaie_ctx_t {
-  XAieGbl_Config *AieConfigPtr;
-  XAieGbl AieInst;
-  XAieGbl_HwCfg AieConfig;
-  XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-  XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-};
-
-// class for using events and PF cpounters
-class EventMonitor {
-public:
-  EventMonitor(struct XAieGbl_Tile *_tilePtr, u32 _pfc, u32 _startE, u32 _endE,
-               u32 _resetE, u8 _mode) {
-    tilePtr = _tilePtr;
-    pfc = _pfc;
-    mode = _mode; // 0: Core, 1: PL, 2, Mem
-    if (mode == MODE_CORE) {
-      XAieTileCore_PerfCounterControl(tilePtr, pfc, _startE, _endE, _resetE);
-    } else if (mode == MODE_PL) {
-      XAieTilePl_PerfCounterControl(tilePtr, pfc, _startE, _endE, _resetE);
-    } else {
-      XAieTileMem_PerfCounterControl(tilePtr, pfc, _startE, _endE, _resetE);
-    }
-  }
-  void set() {
-    if (mode == MODE_CORE) {
-      start = XAieTileCore_PerfCounterGet(tilePtr, pfc);
-    } else if (mode == MODE_PL) {
-      start = XAieTilePl_PerfCounterGet(tilePtr, pfc);
-    } else {
-      start = XAieTileMem_PerfCounterGet(tilePtr, pfc);
-    }
-  }
-  u32 read() {
-    if (mode == MODE_CORE) {
-      return XAieTileCore_PerfCounterGet(tilePtr, pfc);
-    } else if (mode == MODE_PL) {
-      return XAieTilePl_PerfCounterGet(tilePtr, pfc);
-    } else {
-      return XAieTileMem_PerfCounterGet(tilePtr, pfc);
-    }
-  }
-  u32 diff() {
-    u32 end;
-    if (mode == MODE_CORE) {
-      end = XAieTileCore_PerfCounterGet(tilePtr, pfc);
-    } else if (mode == MODE_PL) {
-      end = XAieTilePl_PerfCounterGet(tilePtr, pfc);
-    } else {
-      end = XAieTileMem_PerfCounterGet(tilePtr, pfc);
-    }
-    if (end < start) {
-      printf("WARNING: EventMonitor: performance counter wrapped!\n");
-      return 0; // TODO: fix this
-    } else {
-      return end - start;
-    }
-  }
-
-private:
-  u32 start;
-  u32 pfc;
-  u8 mode;
-  struct XAieGbl_Tile *tilePtr;
-};
-
-/*
- ******************************************************************************
- * LIBXAIENGIENV2
- ******************************************************************************
- */
-#else // LIBXAIENGINEV1
-
 #if __AIEARCH__ == 20
 // TODO - Need flag in sim to choose between AIE or AIEML
 // xcve2802
@@ -288,8 +200,6 @@ private:
   u8 col, row;
   XAie_DevInst *devInst;
 };
-
-#endif // LIBXAIENGINEV1
 
 /*
  ******************************************************************************
