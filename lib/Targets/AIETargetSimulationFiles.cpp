@@ -245,9 +245,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     break; // Should only have 1 object in iterator
   }
   AIEArch arch = AIEArch::AIE1;
-  // auto model = targetOp.getTargetModel();
   if (targetOp) {
-    // arch = model.getTargetArch();
     arch = targetOp.getTargetModel().getTargetArch();
   }
 
@@ -298,7 +296,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     int row = tileOp.rowIndex();
 
     // NOTE: row == 0 assumes shim always row 0
-    if (row == 0 || targetOp.getTargetModel().isMemTile(col, row))
+    if (tileOp.isShimNOCorPLTile()) || tileOp.isMemTile())
       continue; // Skip shim and mem tiles (handled below)
 
     if (arch == AIEArch::AIE2) {
@@ -390,7 +388,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       int row = tileOp.rowIndex();
 
       // NOTE: row == 0 assumes shim always row 0
-      if (row == 0 || row > targetOp.getTargetModel().getNumMemTileRows())
+      if (row == 0 || row > (int)targetOp.getTargetModel().getNumMemTileRows())
         continue; // Skip regular tiles (handled above)
 
       output << "      <MEM name=\"MEM(" << std::to_string(col) << ", "
