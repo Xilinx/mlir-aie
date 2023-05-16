@@ -38,6 +38,15 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   message("Building AIE runtime for ${target} with TOOLCHAIN=${${target}_TOOLCHAIN_FILE}")
   
   # xaiengine
+  # if no LibXAIE_{target}_DIR specified, build from Vitis
+  if (DEFINED ${LibXAIE_${target}_DIR})
+  ExternalProject_Add(xaiengine_${target}
+    PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
+    SOURCE_DIR ${LibXAIE_${target}_DIR}/xaiengine
+    BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine
+  )
+  else()
+  message("No custom LibXAIE dir found for ${target}. Building xaiengine for ${target} from Vitis.")
   ExternalProject_Add(xaiengine_${target}
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
     SOURCE_DIR ${PROJECT_SOURCE_DIR}/xaiengine
@@ -61,6 +70,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     TEST_BEFORE_INSTALL true
     TEST_EXCLUDE_FROM_MAIN true
   )
+  endif()
 
   # test_lib
   ExternalProject_Add(test_lib_${target}
