@@ -456,24 +456,27 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       int acqValue = 0, relValue = 0;
       StringRef acqEnable = disable;
       StringRef relEnable = disable;
-      int lockID;
+      int acqLockId, relLockId;
       for (auto op : block.getOps<UseLockOp>()) {
         LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
-        lockID = lock.getLockIDValue();
         if (op.acquire() || op.acquire_ge()) {
           acqEnable = enable;
+          acqLockId = lock.getLockIDValue();
           acqValue = op.getLockValue();
+          if (op.acquire_ge())
+            acqValue = -acqValue;
         } else if (op.release()) {
           relEnable = enable;
+          relLockId = lock.getLockIDValue();
           relValue = op.getLockValue();
         } else {
-          // unreachable for current targets
           return op.emitOpError("unsupported lock action");
         }
       }
 
       if (target_model.isMemTile(col, row)) {
-        lockID += 64;
+        acqLockId += 64;
+        relLockId += 64;
         BaseAddrA += 0x80000; 
       }
 
@@ -496,8 +499,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
                << tileLocStr(col, row) << ");\n";
         output << "XAie_DmaSetLock(" << tileDMAInstRefStr(col, row, bdNum)
                << ", "
-               << "XAie_LockInit(" << lockID << "," << acqValue << "),"
-               << "XAie_LockInit(" << lockID << "," << relValue << "));\n";
+               << "XAie_LockInit(" << acqLockId << "," << acqValue << "),"
+               << "XAie_LockInit(" << relLockId << "," << relValue << "));\n";
         output << "XAie_DmaSetAddrLen(" << tileDMAInstRefStr(col, row, bdNum)
                << ", "
                << " /* addrA */ "
