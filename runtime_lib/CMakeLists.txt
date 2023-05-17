@@ -71,7 +71,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       USES_TERMINAL_INSTALL true
       TEST_BEFORE_INSTALL true
       TEST_EXCLUDE_FROM_MAIN true
-    )
+      )
     endif()
   endif()
 
