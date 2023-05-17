@@ -124,9 +124,9 @@ Traits: HasParent<SwitchboxOp, ShimMuxOp>
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 | `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 ### `AIE.core` (::xilinx::AIE::CoreOp)
 
@@ -465,9 +465,9 @@ Example:
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 | `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
 
@@ -609,7 +609,7 @@ Traits: HasParent<SwitchboxOp>
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
 
@@ -1060,7 +1060,7 @@ Traits: HasParent<PacketFlowOp>
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
 
@@ -1180,7 +1180,7 @@ Traits: SingleBlockImplicitTerminator<EndOp>
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 ### `AIE.packet_source` (::xilinx::AIE::PacketSourceOp)
 
@@ -1205,7 +1205,7 @@ Traits: HasParent<PacketFlowOp>
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
 #### Operands:
 
