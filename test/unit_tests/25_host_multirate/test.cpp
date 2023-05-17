@@ -49,21 +49,21 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  mlir_aie_acquire_of_0_lock_0(_xaie, 0, 10000);
+  mlir_aie_acquire_of_in_lock_0(_xaie, 0, 10000);
   for (int i = 0; i < 256; i++)
     mem_ptr_in[i] = i;
   for (int i = 0; i < 64; i++)
     mem_ptr_out[i] = -99;
   mlir_aie_sync_mem_dev(_xaie, 0);
   mlir_aie_sync_mem_dev(_xaie, 1);
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 10000);
+  mlir_aie_release_of_in_lock_0(_xaie, 1, 10000);
 
   int i = 0;
   while (i < 4) {
     mlir_aie_release_hostLock(_xaie, 1, 0);
 
     // acquire output shim
-    if (mlir_aie_acquire_of_3_lock_0(_xaie, 1, 10000) == XAIE_OK)
+    if (mlir_aie_acquire_of_out_cons_lock_0(_xaie, 1, 10000) == XAIE_OK)
       printf("Acquired objFifo 3 lock 0 for read\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for read\n");
@@ -75,7 +75,7 @@ int main(int argc, char *argv[]) {
                      mem_ptr_in[(i * 64) + j], errors);
 
     // release output shim
-    if (mlir_aie_release_of_3_lock_0(_xaie, 0, 10000) == XAIE_OK)
+    if (mlir_aie_release_of_out_cons_lock_0(_xaie, 0, 10000) == XAIE_OK)
       printf("Released objFifo 3 lock 0 for write\n");
     else
       printf("ERROR: timed out on objFifo 3 lock 0 for write\n");

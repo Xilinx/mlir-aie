@@ -26,8 +26,8 @@ module @twoFilter2D  {
     %buff_out = AIE.buffer(%tile14) { sym_name = "out" } :  memref<10x16xi32>
     %lock_out = AIE.lock(%tile14, 0) { sym_name = "lock_out" }
 
-    %objFifoOne = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) : !AIE.objectFifo<memref<16xi32>>
-    %objFifoTwo = AIE.objectFifo.createObjectFifo(%tile13, {%tile14}, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifoOne = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) {sym_name = "of1"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifoTwo = AIE.objectFifo.createObjectFifo(%tile13, {%tile14}, 4) {sym_name = "of2"} : !AIE.objectFifo<memref<16xi32>>
 
     // Kernel Functions
     func.func @generateLineScalar(%valueIndex : index, %lineOut : memref<16xi32>) -> () {

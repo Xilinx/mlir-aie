@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 
-
 module @hdiff_large_0 {
 //---col 0---*-
   %tile0_2 = AIE.tile(0, 2)

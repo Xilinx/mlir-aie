@@ -17,13 +17,13 @@
 // CHECK:   %0 = AIE.tile(7, 1)
 // CHECK:   %1 = AIE.tile(7, 0)
 // CHECK:   AIE.flow(%1, DMA : 0, %0, DMA : 0)
-// CHECK:   %2 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "of_0_lock_0"}
-// CHECK:   %3 = AIE.buffer(%0) {sym_name = "of_1_buff_0"} : memref<16xi32>
-// CHECK:   %4 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "of_1_lock_0"}
-// CHECK:   %5 = AIE.buffer(%0) {sym_name = "of_1_buff_1"} : memref<16xi32>
-// CHECK:   %6 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_1_lock_1"}
-// CHECK:   %7 = AIE.buffer(%0) {sym_name = "of_1_buff_2"} : memref<16xi32>
-// CHECK:   %8 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "of_1_lock_2"}
+// CHECK:   %2 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
+// CHECK:   %3 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
+// CHECK:   %4 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
+// CHECK:   %5 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>
+// CHECK:   %6 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
+// CHECK:   %7 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32>
+// CHECK:   %8 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
 // CHECK:   %9 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
 // CHECK:   func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
 // CHECK:     return
@@ -75,7 +75,7 @@ module @register_external_buffers {
     %tile71 = AIE.tile(7, 1)
     %tile70 = AIE.tile(7, 0)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile70, {%tile71}, 3) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile70, {%tile71}, 3) {sym_name = "ext_of"} : !AIE.objectFifo<memref<16xi32>>
 
     %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)

@@ -28,7 +28,7 @@ module @tutorial_4 {
     // The size of the object FIFO, i.e. its number of elements, is 1.
     // Objects, i.e. allocated memory elements, have type memref<256xi32>.
     // These tiles do not share memory between them.
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile34}, 1) : !AIE.objectFifo<memref<256xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile34}, 1) {sym_name = "of"} : !AIE.objectFifo<memref<256xi32>>
 
     // This lock will be used to gate when our 2nd core is done
     %lock34_8 = AIE.lock(%tile34, 8) { sym_name = "lock_a34_8" }
