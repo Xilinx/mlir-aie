@@ -28,11 +28,12 @@ project(aie-test LANGUAGES CXX C)
 
 # find package AIE if running tests from AIE installation
 if(NOT AIE_BINARY_DIR)
-find_package(AIE REQUIRED CONFIG)
+  find_package(AIE REQUIRED CONFIG)
+  set(LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR CACHE STRING "") #pick up libxaiengine from installation folder if no other location specified
 endif()
 
-# default to host system architecture for runtime target
-set(AIE_RUNTIME_TEST_TARGET ${CMAKE_HOST_SYSTEM_PROCESSOR} CACHE STRING "Runtime architecture to test with.")
+# default to x86_64 system architecture for runtime target
+set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
 list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
 set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
@@ -63,9 +64,15 @@ find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE
-if(DEFINED VITIS_ROOT)
-  message(STATUS "Vitis available, libxaie will be compiled and picked up locally")
-  set(LibXAIE_FOUND TRUE)
+if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
+    message("Test using xaiengine from LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR=${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR}")
+    set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
+    find_package(LibXAIE)
+else()
+  if(DEFINED VITIS_ROOT)
+    message(STATUS "Test has Vitis available, no libxaie location specified so pick up from build area")
+    set(LibXAIE_FOUND TRUE)
+  endif()
 endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to

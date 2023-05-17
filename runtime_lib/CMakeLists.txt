@@ -76,28 +76,30 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   endif()
 
   # test_lib
-  message(STATUS "setting up test_lib")
-  ExternalProject_Add(test_lib_${target}
-  PREFIX ${CMAKE_CURRENT_BINARY_DIR}/test_libTmp/${target}
-  SOURCE_DIR ${PROJECT_SOURCE_DIR}/test_lib
-  BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/test_lib/lib
-  CMAKE_CACHE_ARGS
+  if (DEFINED VITIS_ROOT OR DEFINED LibXAIE_${target}_DIR)
+    message(STATUS "setting up test_lib")
+    ExternalProject_Add(test_lib_${target}
+      PREFIX ${CMAKE_CURRENT_BINARY_DIR}/test_libTmp/${target}
+      SOURCE_DIR ${PROJECT_SOURCE_DIR}/test_lib
+      BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/test_lib/lib
+      CMAKE_CACHE_ARGS
           -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
-  CMAKE_ARGS
+      CMAKE_ARGS
           -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
           -DLibXAIE_INC_DIR=${XILINX_XAIE_INCLUDE_DIR}
           -DSysroot=${Sysroot}
-  DEPENDS ${testLibDependsOnXaiengine}
-  BUILD_ALWAYS true
-  STEP_TARGETS clean build install test
-  USES_TERMINAL_CONFIGURE true
-  USES_TERMINAL_BUILD true
-  USES_TERMINAL_TEST true
-  USES_TERMINAL_INSTALL true
-  TEST_BEFORE_INSTALL true
-  TEST_EXCLUDE_FROM_MAIN true
-)
+      DEPENDS ${testLibDependsOnXaiengine}
+      BUILD_ALWAYS true
+      STEP_TARGETS clean build install test
+      USES_TERMINAL_CONFIGURE true
+      USES_TERMINAL_BUILD true
+      USES_TERMINAL_TEST true
+      USES_TERMINAL_INSTALL true
+      TEST_BEFORE_INSTALL true
+      TEST_EXCLUDE_FROM_MAIN true
+    )
+  endif()
 endforeach()
