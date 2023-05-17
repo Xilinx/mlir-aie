@@ -241,8 +241,7 @@ struct AIEObjectFifoStatefulTransformPass
           builder.getUnknownLoc(), creation_tile, prodLockID, op.size());
       prodLock.getOperation()->setAttr(
           mlir::SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name()->getValue() +
-                                "_prod_lock"));
+          builder.getStringAttr(op.name()->getValue() + "_prod_lock"));
       locks.push_back(prodLock);
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
@@ -251,8 +250,7 @@ struct AIEObjectFifoStatefulTransformPass
                                                creation_tile, consLockID, 0);
       consLock.getOperation()->setAttr(
           mlir::SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr(op.name()->getValue() +
-                                "_cons_lock"));
+          builder.getStringAttr(op.name()->getValue() + "_cons_lock"));
       locks.push_back(consLock);
     }
     return locks;
@@ -820,9 +818,11 @@ struct AIEObjectFifoStatefulTransformPass
     auto &target = dev.getTargetModel();
     if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
       int lockMode = 0;
-      if ((port == ObjectFifoPort::Produce && lockAction == LockAction::Release) ||
-          (port == ObjectFifoPort::Consume && lockAction == LockAction::Acquire))
-          lockMode = 1;
+      if ((port == ObjectFifoPort::Produce &&
+           lockAction == LockAction::Release) ||
+          (port == ObjectFifoPort::Consume &&
+           lockAction == LockAction::Acquire))
+        lockMode = 1;
       for (int i = 0; i < numLocks; i++) {
         int lockID = acc[op];
         builder.create<UseLockOp>(builder.getUnknownLoc(),
