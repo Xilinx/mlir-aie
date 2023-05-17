@@ -18,10 +18,10 @@
 // CHECK:     %0 = AIE.tile(2, 1)
 // CHECK:     %1 = AIE.tile(2, 2)
 // CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
-// CHECK:     %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:     %4 = AIE.lock(%0, 0) {init = 2 : i32, sym_name = "of_0_prod_lock"}
-// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_0_cons_lock"}
+// CHECK:     %2 = AIE.buffer(%0) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_buff_1"} : memref<16xi32>
+// CHECK:     %4 = AIE.lock(%0, 0) {init = 2 : i32, sym_name = "of_prod_lock"}
+// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_cons_lock"}
 // CHECK:     %6 = AIE.memTileDMA(%0) {
 // CHECK:       %7 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -45,6 +45,6 @@ module @memTile {
     %tile11 = AIE.tile(2, 1)
     %tile12 = AIE.tile(2, 2)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
  }
 }

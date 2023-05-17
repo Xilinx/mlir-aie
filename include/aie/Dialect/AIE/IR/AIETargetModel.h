@@ -122,6 +122,8 @@ public:
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
   virtual uint32_t getNumBDs(int col, int row) const = 0;
+
+  virtual uint32_t getNumMemTileRows() const = 0;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -170,6 +172,7 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
+  uint32_t getNumMemTileRows() const override { return 0; }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -213,6 +216,7 @@ public:
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
   }
+  // uint32_t getNumMemTileRows() const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -252,11 +256,12 @@ public:
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
   }
+  uint32_t getNumMemTileRows() const override { return 1; }
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {2,  3,  6,  7,  10, 11,
-                                                   14, 15, 18, 19, 22, 23};
+  llvm::SmallDenseSet<unsigned, 16> noc_columns = {2,  3,  6,  7,  14, 15,
+                                                   22, 23, 30, 31, 34, 35};
 
 public:
   VE2802TargetModel() {}
@@ -276,6 +281,7 @@ public:
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
   }
+  uint32_t getNumMemTileRows() const override { return 2; }
 };
 
 } // namespace AIE

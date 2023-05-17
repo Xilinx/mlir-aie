@@ -18,12 +18,12 @@
 // CHECK:     %0 = AIE.tile(1, 2)
 // CHECK:     %1 = AIE.tile(1, 3)
 // CHECK:     %2 = AIE.tile(3, 3)
-// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:     %4 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:     %5 = AIE.buffer(%0) {sym_name = "of_0_buff_2"} : memref<16xi32>
-// CHECK:     %6 = AIE.buffer(%0) {sym_name = "of_0_buff_3"} : memref<16xi32>
-// CHECK:     %7 = AIE.lock(%0, 0) {init = 4 : i32, sym_name = "of_0_prod_lock"}
-// CHECK:     %8 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_0_cons_lock"}
+// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of0_buff_0"} : memref<16xi32>
+// CHECK:     %4 = AIE.buffer(%0) {sym_name = "of0_buff_1"} : memref<16xi32>
+// CHECK:     %5 = AIE.buffer(%0) {sym_name = "of0_buff_2"} : memref<16xi32>
+// CHECK:     %6 = AIE.buffer(%0) {sym_name = "of0_buff_3"} : memref<16xi32>
+// CHECK:     %7 = AIE.lock(%0, 0) {init = 4 : i32, sym_name = "of0_prod_lock"}
+// CHECK:     %8 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of0_cons_lock"}
 // CHECK:     AIE.flow(%0, DMA : 0, %2, DMA : 0)
 // CHECK:   }
 // CHECK: }

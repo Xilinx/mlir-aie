@@ -33,7 +33,7 @@ This allows us to push and pull data off the cascade ports.
 
 2. Verify correct functionality by compiling the design and then simulating the design via make.
     ```
-    make; make -C sim
+    make; make -C aie.mlir.prj/sim
     ```
 
 3. Move the design to an even row and make the necessary code changes. Verify your design works in simulation.

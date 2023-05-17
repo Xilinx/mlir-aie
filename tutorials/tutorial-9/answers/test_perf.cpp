@@ -23,7 +23,11 @@
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
-  printf("Tutorial-7 test start.\n");
+  printf("Tutorial-9 test start.\n");
+
+  int errors = 0;
+  int num_iter = 1;
+  u32 pc0_times[num_iter]; // track timer values
 
   // Standard helper function for initializing and configuring AIE array.
   // The host is used to initialize/ configure/ program the AIE array.
@@ -31,8 +35,8 @@ int main(int argc, char *argv[]) {
   // aie_libxaie_ctx_t - AIE config struct
   // mlir_aie_init_device - Alloc AIE config struct
   // mlir_aie_configure_cores - Reset cores and locks. Load elfs.
-  // mlir_aie_configure_switchboxes - Configure switchboxes.
-  // mlir_aie_configure_dmas - Configure tile DMAs.
+  // mlir_aie_configure_switchboxes - Switchboxes not used in this example.
+  // mlir_aie_configure_dmas - TileDMAs not used in this example.
   // mlir_aie_initialize_locks - placeholder
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
@@ -41,13 +45,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
-  int errors = 0;
-
   // Clear buffer data memory
   for (int i = 0; i < 256; i++) {
-    mlir_aie_write_buffer_of_buff_0(_xaie, i, 0);
-    mlir_aie_write_buffer_of_1_cons_buff_0(_xaie, i, 0);
-    mlir_aie_write_buffer_of_0_cons_buff_0(_xaie, i, 0);
+    mlir_aie_write_buffer_a14(_xaie, i, 0);
   }
 
   // Check the buffer value at index 3 to ensure it is zeroed out
@@ -60,38 +60,37 @@ int main(int argc, char *argv[]) {
   // mlir_aie_check - helper function to compare values to expected
   // golden value and print error message to stdout and increment
   // "errors" variable if mismatch occurs.
-  mlir_aie_check("Before start cores:",
-                 mlir_aie_read_buffer_of_buff_0(_xaie, 3), 0, errors);
-  mlir_aie_check("Before start cores:",
-                 mlir_aie_read_buffer_of_0_cons_buff_0(_xaie, 5), 0, errors);
-  mlir_aie_check("Before start cores:",
-                 mlir_aie_read_buffer_of_1_cons_buff_0(_xaie, 5), 0, errors);
+  mlir_aie_check("Before start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 0,
+                 errors);
+
+  // Performance counters
+  // Trigger off start (0x00) of an AIE program
+  XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 4), 0, 0);
+  // Trigger off done (0x088) of an AIE program
+  XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 4), 1, 240);
+
+  // Define custom EventMonitor class to track event triggers for program
+  // counter
+  EventMonitor pc0(_xaie, 1, 4, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
+                   XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+  pc0.set();
 
   // Helper function to enable all AIE cores
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  if (mlir_aie_acquire_lock_a34_8(_xaie, 1, 1000) == XAIE_OK)
-    printf("Acquired lock_a34_8(1). Tile(3,4) is done.\n");
+  // Wait for lock14_0 to indicate tile(1,4) is done
+  if (mlir_aie_acquire_lock14_0(_xaie, 1, 1000) == XAIE_OK)
+    printf("Acquired lock14_0 (1) in tile (1,4). Done.\n");
   else
-    printf("Timed out (1000) while trying to acquire lock_a34_8(1).\n");
-  if (mlir_aie_acquire_lock_a35_8(_xaie, 1, 1000) == XAIE_OK)
-    printf("Acquired lock_a35_8(1). Tile(3,5) is done.\n");
-  else
-    printf("Timed out (1000) while trying to acquire lock_a35_8(1).\n");
+    printf("Timed out (1000) while trying to acquire lock14_0 (1).\n");
 
-  // Check buffer at index 3 again for expected value of 14 for tile(1,4)
+  pc0_times[0] = pc0.diff(); // store program counter value (0th iteration)
+
+  // Check buffer at index 3 again for expected value of 14
   printf("Checking buf[3] = 14.\n");
-  mlir_aie_check("After start cores:", mlir_aie_read_buffer_of_buff_0(_xaie, 3),
-                 14, errors);
-  // Check buffer at index 5 again for expected value of 114 for tile(3,4)
-  printf("Checking buf[5] = 114 for tile(3,4).\n");
-  mlir_aie_check("After start cores:",
-                 mlir_aie_read_buffer_of_0_cons_buff_0(_xaie, 5), 114, errors);
-  // Check buffer at index 5 again for expected value of 114 for tile(3,5)
-  printf("Checking buf[5] = 114 for tile (3,5).\n");
-  mlir_aie_check("After start cores:",
-                 mlir_aie_read_buffer_of_1_cons_buff_0(_xaie, 5), 114, errors);
+  mlir_aie_check("After start cores:", mlir_aie_read_buffer_a14(_xaie, 3), 14,
+                 errors);
 
   // Print Pass/Fail result of our test
   int res = 0;
@@ -103,9 +102,13 @@ int main(int argc, char *argv[]) {
     res = -1;
   }
 
+  printf("\nProgram cycle counts:\n");
+  // Output the timer values (average, standard deviation) for 1 iteration
+  computeStats(pc0_times, 1);
+
   // Teardown and cleanup of AIE array
   mlir_aie_deinit_libxaie(_xaie);
 
-  printf("Tutorial-7 test done.\n");
+  printf("Tutorial-9 test done.\n");
   return res;
 }

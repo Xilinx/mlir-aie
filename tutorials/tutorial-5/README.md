@@ -45,7 +45,7 @@ AIE.objectFifo.registerExternalBuffers(shimTile, objectFifo, {list of external b
 
 2. How many external buffers are defined and to which objectFifo are they registered? <img src="../images/answer1.jpg" title="2 buffers. ext_buf70_in is registered to objFifo_in. ext_buf70_out is registered to objFifo_out." height=25>
 
-3. Run `make` and `make -C sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
+3. Run `make` and `make -C aie.mlir.prj/sim` to compile the design with `aiecc.py` and then simulate that design with aiesimulator.
 
 4. How can the design be changed to use a double buffer in the shimDMA of shim tile (7,0) for objFifo_out instead? <img src="../images/answer1.jpg" title="An additional AIE.external_buffer should be created and registered to objFifo_out." height=25>
 

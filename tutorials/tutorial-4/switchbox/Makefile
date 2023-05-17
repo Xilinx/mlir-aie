@@ -14,7 +14,7 @@ tutorial-4.exe: test.cpp aie.mlir
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 pathfinder:
-	aie-opt --aie-create-pathfinder-flows ./path/pathfinder_input.mlir > ./path/pathfinder_output.mlir
+	aie-opt --aie-canonicalize-device ./path/pathfinder_input.mlir | aie-opt --aie-create-pathfinder-flows > ./path/pathfinder_output.mlir
 	aie-opt --aie-find-flows ./path/pathfinder_output.mlir | aie-translate --aie-flows-to-json > ./path/pathfinder_output.json
 
 clean:

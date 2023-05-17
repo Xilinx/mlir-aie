@@ -26,7 +26,7 @@ module @tutorial_3 {
     // The size of the object FIFO, i.e. its number of elements, is 1.
     // Objects, i.e. allocated memory elements, have type memref<256xi32>
     // These tiles share memory between them.
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile24}, 1) : !AIE.objectFifo<memref<256xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile24}, 1) {sym_name = "of"} : !AIE.objectFifo<memref<256xi32>>
 
     // This lock will be used to gate when our 2nd core is done
     %lock24_2 = AIE.lock(%tile24, 2) { sym_name = "lock_a24_2" }
@@ -44,8 +44,8 @@ module @tutorial_3 {
         %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
         %val = arith.constant 14 : i32 
-		%idx = arith.constant 3 : index 
-		memref.store %val, %input[%idx] : memref<256xi32>
+        %idx = arith.constant 3 : index 
+        memref.store %val, %input[%idx] : memref<256xi32>
         
         // Release the previously acquired object.
         // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
@@ -68,8 +68,8 @@ module @tutorial_3 {
         %d1   = memref.load %input[%idx1] : memref<256xi32>
         %c1   = arith.constant 100 : i32 
         %d2   = arith.addi %d1, %c1 : i32
-		%idx2 = arith.constant 5 : index
-		memref.store %d2, %input[%idx2] : memref<256xi32> 
+        %idx2 = arith.constant 5 : index
+        memref.store %d2, %input[%idx2] : memref<256xi32> 
 
         AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
 
@@ -77,5 +77,4 @@ module @tutorial_3 {
         AIE.useLock(%lock24_2, "Release", 1)
         AIE.end
     }
-
 }

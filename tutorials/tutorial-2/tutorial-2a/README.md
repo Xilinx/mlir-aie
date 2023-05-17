@@ -11,7 +11,7 @@
 
 From the previous introduction in [tutorial-2](..), the first step is to initialize and configure our design (whether it be for simulation or hardware implementaion). Our build utility `aiecc.py` had actually already done part of this for us since `aie.mlir` specifies a design for the entire AI Engine array. As a result, `aiecc.py` has already generated a directory with the host API libraries necessary to initialize, configure and interact with our design. These can be found in the `aie.mlir.prj` folder after you run `aiecc.py`. 
 
-Of particular interest is the `aie.mlir.prj/aie_inc.cpp` file which contains many of the configuration API functions for our design. These functions can be invoked from host code to initialize, configure and control our AI Engine design. Additional common host code API functions for testing can also be found in the [runtime_lib/test_library.cpp](../../../runtime_lib/test_library.cpp).
+Of particular interest is the `aie.mlir.prj/aie_inc.cpp` file which contains many of the configuration API functions for our design. These functions can be invoked from host code to initialize, configure and control our AI Engine design. Additional common host code API functions for testing can also be found in the [runtime_lib/test_lib/test_library.h](../../../runtime_lib/test_lib/test_library.h).
 
 ## <ins>Tutorial 2a Lab</ins>
 

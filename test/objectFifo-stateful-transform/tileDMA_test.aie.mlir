@@ -24,10 +24,10 @@
 // CHECK:     %6 = AIE.buffer(%0) : memref<16xi32>
 // CHECK:     %7 = AIE.lock(%0, 2)
 // CHECK:     AIE.flow(%0, DMA : 1, %1, DMA : 0)
-// CHECK:     %8 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:     %9 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:     %10 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "of_0_lock_0"}
-// CHECK:     %11 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "of_0_lock_1"}
+// CHECK:     %8 = AIE.buffer(%0) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK:     %9 = AIE.buffer(%0) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK:     %10 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK:     %11 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "objfifo_lock_1"}
 // CHECK:     func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:       return
 // CHECK:     }
@@ -37,10 +37,10 @@
 // CHECK:       %c12 = arith.constant 12 : index
 // CHECK:       %c2 = arith.constant 2 : index
 // CHECK:       scf.for %arg0 = %c0 to %c12 step %c2 {
-// CHECK:         AIE.useLock(%10, Acquire, 1)
+// CHECK:         AIE.useLock(%10, Acquire, 0)
 // CHECK:         func.call @some_work(%8) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%10, Release, 1)
-// CHECK:         AIE.useLock(%11, Acquire, 1)
+// CHECK:         AIE.useLock(%11, Acquire, 0)
 // CHECK:         func.call @some_work(%9) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%11, Release, 1)
 // CHECK:       }
@@ -95,7 +95,7 @@ module @tileDMA_channels {
     %buff2 = AIE.buffer(%tile12) : memref<16xi32>
     %lock2 = AIE.lock(%tile12, 2)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

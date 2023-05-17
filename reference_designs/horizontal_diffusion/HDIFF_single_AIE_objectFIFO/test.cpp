@@ -60,12 +60,6 @@ int main(int argc, char *argv[]) {
 #define DMA_COUNT 1536
   int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
   int *ddr_ptr_out = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
-//   int *mem_ptr2 = mlir_aie_mem_alloc(_xaie, 2, DMA_COUNT);
-//   int *mem_ptr3 = mlir_aie_mem_alloc(_xaie, 3, DMA_COUNT);
-//   int *mem_ptr4 = mlir_aie_mem_alloc(_xaie, 4, DMA_COUNT);
-//   int *mem_ptr5 = mlir_aie_mem_alloc(_xaie, 5, DMA_COUNT);
-//   int *mem_ptr6 = mlir_aie_mem_alloc(_xaie, 6, DMA_COUNT);
-//   int *mem_ptr7 = mlir_aie_mem_alloc(_xaie, 7, DMA_COUNT);
 
   // initialize the external buffers
   for (int i = 0; i < DMA_COUNT; i++) {
@@ -75,33 +69,20 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
-//   mlir_aie_sync_mem_dev(_xaie, 2); // only used in libaiev2
-//   mlir_aie_sync_mem_dev(_xaie, 3); // only used in libaiev2
-//   mlir_aie_sync_mem_dev(_xaie, 4); // only used in libaiev2
-//   mlir_aie_sync_mem_dev(_xaie, 5); // only used in libaiev2
-//   mlir_aie_sync_mem_dev(_xaie, 6); // only used in libaiev2
-//   mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
 
 #ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_ddr_test_buffer_in0((u64)ddr_ptr_in); // external set address
   mlir_aie_external_set_addr_ddr_test_buffer_out((u64)ddr_ptr_out);
-//   mlir_aie_external_set_addr_RHS_tile0((u64)mem_ptr2);
-//   mlir_aie_external_set_addr_RHS_tile1((u64)mem_ptr3);
-//   mlir_aie_external_set_addr_RHS_tile2((u64)mem_ptr4);
-//   mlir_aie_external_set_addr_RHS_tile3((u64)mem_ptr5);
-//   mlir_aie_external_set_addr_Out_tile0((u64)mem_ptr6);
-//   mlir_aie_external_set_addr_Out_tile1((u64)mem_ptr7);
-//   mlir_aie_configure_shimdma_60(_xaie);
   mlir_aie_configure_shimdma_70(_xaie);
-//   mlir_aie_configure_shimdma_100(_xaie);
 #endif
 
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 1);
 
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 0); // (_xaie,release_value,time_out)
-  mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_lock_0(_xaie, 1,
+                                 0); // (_xaie,release_value,time_out)
+  mlir_aie_release_obj_out_cons_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
   t = clock(); 
@@ -118,10 +99,8 @@ int main(int argc, char *argv[]) {
 
   usleep(sleep_u);
 
+  mlir_aie_acquire_obj_out_cons_lock_0(_xaie, 1, 0);
 
-//   mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
-//   mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
- 
   mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2 //sync up with output
   ///// --- end counter-----
   for (int i =0; i < 256; i ++ ){

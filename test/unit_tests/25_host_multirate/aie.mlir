@@ -30,8 +30,8 @@ module @host_multirate {
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<64xi32> 
 
-    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<64xi32>>
-    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<64xi32>>
+    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) {sym_name = "of_in"}  : !AIE.objectFifo<memref<64xi32>>
+    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) {sym_name = "of_out"}  : !AIE.objectFifo<memref<64xi32>>
 
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<64xi32>>, {%ext_buf70_out}) : (memref<64xi32>)

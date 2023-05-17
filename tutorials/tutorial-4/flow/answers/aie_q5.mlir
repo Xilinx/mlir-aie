@@ -58,7 +58,7 @@ module @tutorial_4 {
             AIE.useLock(%lock14_6, Acquire, 1)
             AIE.dmaBd(<%buf14 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock14_6, Release, 0)
-            cf.br ^bd0
+            AIE.nextBd ^bd0
         ^end:
             AIE.end
     }    
@@ -99,7 +99,7 @@ module @tutorial_4 {
             // 0   - A/B mode enable (default is disabled)
             AIE.dmaBd(<%buf34 : memref<256xi32>, 0, 256>, 0)
             AIE.useLock(%lock34_7, Release, 1)
-            cf.br ^bd0
+            AIE.nextBd ^bd0
         ^end:
             AIE.end
     }    

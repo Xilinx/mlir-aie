@@ -156,7 +156,6 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>
       splitFifos;     // maps each objFifo between non-adjacent tiles to its
                       // corresponding consumer objectFifos
-  int of_index = 0;   // used to give objectFifo elements a symbolic name
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -215,7 +214,7 @@ struct AIEObjectFifoStatefulTransformPass
                                              creation_tile, lockID, 0);
         lock.getOperation()->setAttr(
             mlir::SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr("of_" + std::to_string(of_index) + "_lock_" +
+            builder.getStringAttr(op.name()->getValue() + "_lock_" +
                                   std::to_string(of_elem_index)));
         locks.push_back(lock);
         of_elem_index++;
@@ -228,7 +227,7 @@ struct AIEObjectFifoStatefulTransformPass
           builder.getUnknownLoc(), creation_tile, prodLockID, op.size());
       prodLock.getOperation()->setAttr(
           mlir::SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr("of_" + std::to_string(of_index) +
+          builder.getStringAttr(op.name()->getValue() +
                                 "_prod_lock"));
       locks.push_back(prodLock);
 
@@ -238,7 +237,7 @@ struct AIEObjectFifoStatefulTransformPass
                                                creation_tile, consLockID, 0);
       consLock.getOperation()->setAttr(
           mlir::SymbolTable::getSymbolAttrName(),
-          builder.getStringAttr("of_" + std::to_string(of_index) +
+          builder.getStringAttr(op.name()->getValue() +
                                 "_cons_lock"));
       locks.push_back(consLock);
     }
@@ -276,7 +275,7 @@ struct AIEObjectFifoStatefulTransformPass
                                                  elemType, creation_tile);
         buff.getOperation()->setAttr(
             mlir::SymbolTable::getSymbolAttrName(),
-            builder.getStringAttr("of_" + std::to_string(of_index) + "_buff_" +
+            builder.getStringAttr(op.name()->getValue() + "_buff_" +
                                   std::to_string(of_elem_index)));
         buffers.push_back(buff);
       }
@@ -286,8 +285,6 @@ struct AIEObjectFifoStatefulTransformPass
 
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
-
-    of_index++;
   }
 
   /// Function that returns a pointer to the block of a Region
@@ -952,6 +949,7 @@ struct AIEObjectFifoStatefulTransformPass
       bool shared = false;
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int share_direction = 0;
+      int consumerIndex = 0;
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
@@ -977,6 +975,18 @@ struct AIEObjectFifoStatefulTransformPass
 
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerTile, consumerTile, consMaxAcquire);
+
+        if (createOp.getConsumerTiles().size() > 1) {
+          consumerFifo.getOperation()->setAttr(
+              SymbolTable::getSymbolAttrName(),
+              builder.getStringAttr(createOp.name()->getValue() + "_" +
+                                    std::to_string(consumerIndex) + "_cons"));
+          consumerIndex++;
+        } else {
+          consumerFifo.getOperation()->setAttr(
+              SymbolTable::getSymbolAttrName(),
+              builder.getStringAttr(createOp.name()->getValue() + "_cons"));
+        }
 
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
           detectExternalBuffers(device, createOp, consumerFifo, consumerTile);

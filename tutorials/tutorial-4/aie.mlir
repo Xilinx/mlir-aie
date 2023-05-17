@@ -18,7 +18,7 @@
 // Declare this MLIR module. A wrapper that can contain all 
 // AIE tiles, buffers, and data movement
 module @tutorial_4 {
-
+    
     // 2 tiles in row 4 (col 1 and col 3)
     // even rows have local memory to its left
     %tile14 = AIE.tile(1, 4)
@@ -28,7 +28,7 @@ module @tutorial_4 {
     // The size of the object FIFO, i.e. its number of elements, is 1.
     // Objects, i.e. allocated memory elements, have type memref<256xi32>.
     // These tiles do not share memory between them.
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile34}, 1) : !AIE.objectFifo<memref<256xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile14, {%tile34}, 1) {sym_name = "of"} : !AIE.objectFifo<memref<256xi32>>
 
     // This lock will be used to gate when our 2nd core is done
     %lock34_8 = AIE.lock(%tile34, 8) { sym_name = "lock_a34_8" }
@@ -46,8 +46,8 @@ module @tutorial_4 {
         %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
         %val = arith.constant 14 : i32 
-		%idx = arith.constant 3 : index 
-		memref.store %val, %input[%idx] : memref<256xi32> 
+        %idx = arith.constant 3 : index 
+        memref.store %val, %input[%idx] : memref<256xi32> 
         
         // Release the previously acquired object.
         // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
@@ -56,7 +56,7 @@ module @tutorial_4 {
         AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
         AIE.end
     } 
- 
+
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100
     %core34 = AIE.core(%tile34) {
@@ -70,8 +70,8 @@ module @tutorial_4 {
         %d1   = memref.load %input[%idx1] : memref<256xi32>
         %c1   = arith.constant 100 : i32 
         %d2   = arith.addi %d1, %c1 : i32
-		%idx2 = arith.constant 5 : index
-		memref.store %d2, %input[%idx2] : memref<256xi32> 
+        %idx2 = arith.constant 5 : index
+        memref.store %d2, %input[%idx2] : memref<256xi32> 
         
         AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
 

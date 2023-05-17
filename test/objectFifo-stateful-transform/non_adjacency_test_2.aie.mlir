@@ -17,18 +17,18 @@
 // CHECK:     %0 = AIE.tile(1, 2)
 // CHECK:     %1 = AIE.tile(3, 3)
 // CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
-// CHECK:     %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:     %4 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "of_0_lock_0"}
-// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_0_lock_1"}
-// CHECK:     %6 = AIE.buffer(%1) {sym_name = "of_1_buff_0"} : memref<16xi32>
-// CHECK:     %7 = AIE.buffer(%1) {sym_name = "of_1_buff_1"} : memref<16xi32>
-// CHECK:     %8 = AIE.buffer(%1) {sym_name = "of_1_buff_2"} : memref<16xi32>
-// CHECK:     %9 = AIE.buffer(%1) {sym_name = "of_1_buff_3"} : memref<16xi32>
-// CHECK:     %10 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "of_1_lock_0"}
-// CHECK:     %11 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "of_1_lock_1"}
-// CHECK:     %12 = AIE.lock(%1, 2) {init = 0 : i32, sym_name = "of_1_lock_2"}
-// CHECK:     %13 = AIE.lock(%1, 3) {init = 0 : i32, sym_name = "of_1_lock_3"}
+// CHECK:     %2 = AIE.buffer(%0) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK:     %3 = AIE.buffer(%0) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK:     %4 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK:     %6 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
+// CHECK:     %7 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
+// CHECK:     %8 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_2"} : memref<16xi32>
+// CHECK:     %9 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_3"} : memref<16xi32>
+// CHECK:     %10 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK:     %11 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
+// CHECK:     %12 = AIE.lock(%1, 2) {init = 0 : i32, sym_name = "objfifo_cons_lock_2"}
+// CHECK:     %13 = AIE.lock(%1, 3) {init = 0 : i32, sym_name = "objfifo_cons_lock_3"}
 // CHECK:     func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:       return
 // CHECK:     }
@@ -38,10 +38,10 @@
 // CHECK:       %c12 = arith.constant 12 : index
 // CHECK:       %c2 = arith.constant 2 : index
 // CHECK:       scf.for %arg0 = %c0 to %c12 step %c2 {
-// CHECK:         AIE.useLock(%4, Acquire, 1)
+// CHECK:         AIE.useLock(%4, Acquire, 0)
 // CHECK:         func.call @some_work(%2) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%4, Release, 1)
-// CHECK:         AIE.useLock(%5, Acquire, 1)
+// CHECK:         AIE.useLock(%5, Acquire, 0)
 // CHECK:         func.call @some_work(%3) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%5, Release, 1)
 // CHECK:       }
@@ -53,18 +53,18 @@
 // CHECK:       %c12 = arith.constant 12 : index
 // CHECK:       %c4 = arith.constant 4 : index
 // CHECK:       scf.for %arg0 = %c0 to %c12 step %c4 {
-// CHECK:         AIE.useLock(%10, Acquire, 0)
-// CHECK:         AIE.useLock(%11, Acquire, 0)
-// CHECK:         AIE.useLock(%12, Acquire, 0)
+// CHECK:         AIE.useLock(%10, Acquire, 1)
+// CHECK:         AIE.useLock(%11, Acquire, 1)
+// CHECK:         AIE.useLock(%12, Acquire, 1)
 // CHECK:         func.call @some_work(%6) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%10, Release, 0)
-// CHECK:         AIE.useLock(%13, Acquire, 0)
+// CHECK:         AIE.useLock(%13, Acquire, 1)
 // CHECK:         func.call @some_work(%7) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%11, Release, 0)
-// CHECK:         AIE.useLock(%10, Acquire, 0)
+// CHECK:         AIE.useLock(%10, Acquire, 1)
 // CHECK:         func.call @some_work(%8) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%12, Release, 0)
-// CHECK:         AIE.useLock(%11, Acquire, 0)
+// CHECK:         AIE.useLock(%11, Acquire, 1)
 // CHECK:         func.call @some_work(%9) : (memref<16xi32>) -> ()
 // CHECK:         AIE.useLock(%13, Release, 0)
 // CHECK:       }
@@ -118,7 +118,7 @@ module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 4) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 4) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

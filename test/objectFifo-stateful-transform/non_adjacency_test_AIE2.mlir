@@ -18,14 +18,14 @@
 // CHECK:     %0 = AIE.tile(1, 2)
 // CHECK:     %1 = AIE.tile(3, 3)
 // CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
-// CHECK:     %2 = AIE.buffer(%0) {sym_name = "of_0_buff_0"} : memref<16xi32>
-// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_0_buff_1"} : memref<16xi32>
-// CHECK:     %4 = AIE.lock(%0, 0) {init = 2 : i32, sym_name = "of_0_prod_lock"}
-// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_0_cons_lock"}
-// CHECK:     %6 = AIE.buffer(%1) {sym_name = "of_1_buff_0"} : memref<16xi32>
-// CHECK:     %7 = AIE.buffer(%1) {sym_name = "of_1_buff_1"} : memref<16xi32>
-// CHECK:     %8 = AIE.lock(%1, 0) {init = 2 : i32, sym_name = "of_1_prod_lock"}
-// CHECK:     %9 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "of_1_cons_lock"}
+// CHECK:     %2 = AIE.buffer(%0) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK:     %3 = AIE.buffer(%0) {sym_name = "of_buff_1"} : memref<16xi32>
+// CHECK:     %4 = AIE.lock(%0, 0) {init = 2 : i32, sym_name = "of_prod_lock"}
+// CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_cons_lock"}
+// CHECK:     %6 = AIE.buffer(%1) {sym_name = "of_cons_buff_0"} : memref<16xi32>
+// CHECK:     %7 = AIE.buffer(%1) {sym_name = "of_cons_buff_1"} : memref<16xi32>
+// CHECK:     %8 = AIE.lock(%1, 0) {init = 2 : i32, sym_name = "of_cons_prod_lock"}
+// CHECK:     %9 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "of_cons_cons_lock"}
 // CHECK:     func.func @some_work(%arg0: memref<16xi32>) {
 // CHECK:       return
 // CHECK:     }
@@ -97,7 +97,7 @@ module @non_adjacency_AIE2 {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return
