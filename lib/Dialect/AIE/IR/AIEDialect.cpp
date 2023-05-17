@@ -1209,7 +1209,7 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
     default:
       return 0;
     }
-  else if (getTileOp().isShimTile()) 
+  else if (isShimTile()) 
     switch (bundle) {
     //case WireBundle::Core:
     //  return 2;
@@ -1238,7 +1238,7 @@ int TileOp::getNumDestConnections(WireBundle bundle) {
     default:
       return 0;
     }
-  else if (getTileOp().isShimTile()) 
+  else if (isShimTile()) 
     switch (bundle) {
     //case WireBundle::Core:
     //  return 2;

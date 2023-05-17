@@ -473,7 +473,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
 
       if (target_model.isMemTile(col, row)) {
-        lockId += 64;
+        lockID += 64;
         BaseAddrA += 0x80000; 
       }
 

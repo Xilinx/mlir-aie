@@ -175,6 +175,7 @@ public:
   uint32_t getNumLocks(int col, int row) const override { return 16; }
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   uint32_t getNumMemTileRows() const override { return 0; }
+  uint32_t getMemTileSize() const override { return 0; }
 };
 
 class AIE2TargetModel : public AIETargetModel {
