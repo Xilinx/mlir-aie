@@ -140,6 +140,9 @@ public:
   /// the origins of connect operations in the switchbox.
   virtual uint32_t getNumSourceShimMuxConnections(int col, int row,
                                                   WireBundle bundle) const = 0;
+
+  // Run consistency checks on the target model.
+  void validate() const;
 };
 
 class AIE1TargetModel : public AIETargetModel {

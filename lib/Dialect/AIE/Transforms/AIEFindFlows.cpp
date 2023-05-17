@@ -219,6 +219,9 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
 
   std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
   for (WireBundle bundle : bundles) {
+    LLVM_DEBUG(llvm::dbgs()
+               << op << stringifyWireBundle(bundle) << " has "
+               << op.getNumSourceConnections(bundle) << " Connections\n");
     for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
       std::vector<PacketConnection> tiles =
           analysis.getConnectedTiles(op, std::make_pair(bundle, i));
@@ -259,6 +262,7 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
 
     DeviceOp d = getOperation();
     ConnectivityAnalysis analysis(d);
+    d.getTargetModel().validate();
 
     OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {

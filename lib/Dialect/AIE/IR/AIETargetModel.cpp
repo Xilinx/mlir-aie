@@ -547,5 +547,63 @@ AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
     return 0;
 }
 
+void AIETargetModel::validate() const {
+  // Every tile in a shimtile row must be a shimtile, and can only be one type
+  // of shim tile.
+  for (int j = 0; j < columns(); j++) {
+    assert(!isMemTile(j, 0) && (isShimPLTile(j, 0) || isShimNOCTile(j, 0)) &&
+           !isCoreTile(j, 0));
+    assert(isShimPLTile(j, 0) ^ isShimNOCTile(j, 0));
+  }
+
+  // Every tile in a memtile row must be a memtile.
+  for (int i = 1; i < 1 + (int)getNumMemTileRows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
+             !isCoreTile(j, i));
+
+  // Every other tile is a coretile.
+  for (int i = 1 + (int)getNumMemTileRows(); i < rows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(!isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
+             isCoreTile(j, i));
+
+  // Looking North, busses must match
+  for (int i = 0; i < rows() - 1; i++)
+    for (int j = 0; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::North) ==
+             getNumDestSwitchboxConnections(j, i + 1, WireBundle::South));
+  // Looking South, busses must match
+  for (int i = 1; i < rows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::South) ==
+             getNumDestSwitchboxConnections(j, i - 1, WireBundle::North));
+  // Looking East, busses must match
+  for (int i = 0; i < rows(); i++)
+    for (int j = 0; j < columns() - 1; j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::East) ==
+             getNumDestSwitchboxConnections(j + 1, i, WireBundle::West));
+  // Looking West, busses must match
+  for (int i = 0; i < rows(); i++)
+    for (int j = 1; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::West) ==
+             getNumDestSwitchboxConnections(j - 1, i, WireBundle::East));
+  // Edges have no connections
+  for (int j = 0; j < columns(); j++)
+    assert(getNumSourceSwitchboxConnections(j, rows() - 1, WireBundle::North) ==
+           0);
+  for (int i = 0; i < rows(); i++)
+    assert(getNumSourceSwitchboxConnections(columns() - 1, i,
+                                            WireBundle::East) == 0);
+  for (int i = 0; i < rows(); i++)
+    assert(getNumSourceSwitchboxConnections(0, i, WireBundle::West) == 0);
+
+  // FIFOS are consistent
+  for (int i = 0; i < rows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::FIFO) ==
+             getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
+}
+
 } // namespace AIE
 } // namespace xilinx
