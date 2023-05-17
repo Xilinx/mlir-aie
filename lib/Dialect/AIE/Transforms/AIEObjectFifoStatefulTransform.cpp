@@ -805,7 +805,10 @@ struct AIEObjectFifoStatefulTransformPass
     auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
     auto &target = dev.getTargetModel();
     if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
-      int lockMode = port == ObjectFifoPort::Produce ? 1 : 0;
+      int lockMode = 0;
+      if ((port == ObjectFifoPort::Produce && lockAction == LockAction::Release) ||
+          (port == ObjectFifoPort::Consume && lockAction == LockAction::Acquire))
+          lockMode = 1;
       for (int i = 0; i < numLocks; i++) {
         int lockID = acc[op];
         builder.create<UseLockOp>(builder.getUnknownLoc(),
