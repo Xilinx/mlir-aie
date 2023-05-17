@@ -63,19 +63,10 @@ find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 
 # Look for LibXAIE
-get_directory_property(LibXAIE_ROOT
-  DIRECTORY ${CMAKE_SOURCE_DIR}/runtime_lib
-  DEFINITION LibXAIE_ROOT)
-if(DEFINED LibXAIE_ROOT)
-  message(STATUS "Libxaie will be compiled and picked up from ${LibXAIE_ROOT}")
+if(DEFINED VITIS_ROOT)
+  message(STATUS "Vitis available, libxaie will be compiled and picked up locally")
   set(LibXAIE_FOUND TRUE)
-else()
-  if(DEFINED VITIS_ROOT)
-    message(STATUS "Vitis available, libxaie will be compiled and picked up locally")
-    set(LibXAIE_FOUND TRUE)
-  endif()
 endif()
-
 
 # Define the default arguments to use with 'lit', and an option for the user to
 # override.

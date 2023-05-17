@@ -33,8 +33,7 @@ install(TARGETS test_lib
 
 # create extra libs supporting simulation
 if (DEFINED VITIS_ROOT)
-    set(xaienginePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
-    file(GLOB libheaders ${xaienginePath}/xioutils.h)
+    set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
 
     # AIE1 test_lib for aiesimulator
     add_library(test_lib_sim_aie STATIC test_library.cpp)
@@ -43,7 +42,7 @@ if (DEFINED VITIS_ROOT)
 
     target_include_directories(test_lib_sim_aie PRIVATE
         ${LibXAIE_INC_DIR}
-        ${libheaders}
+        ${xaienginePath}
     )
 
     install(TARGETS test_lib_sim_aie 
@@ -57,7 +56,7 @@ if (DEFINED VITIS_ROOT)
 
     target_include_directories(test_lib_sim_aie2 PRIVATE
         ${LibXAIE_INC_DIR}
-        ${libheaders}
+        ${xaienginePath}
     )
 
     install(TARGETS test_lib_sim_aie2 
