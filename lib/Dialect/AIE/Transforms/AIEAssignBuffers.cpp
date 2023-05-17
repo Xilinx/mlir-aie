@@ -56,7 +56,11 @@ struct AIEAssignBufferAddressesPass
 
     for (auto tile : device.getOps<TileOp>()) {
       const auto &target_model = getTargetModel(tile);
-      int max_data_memory_size = target_model.getLocalMemorySize();
+      int max_data_memory_size = 0;
+      if (tile.isMemTile())
+        max_data_memory_size = target_model.getMemTileSize();
+      else
+        max_data_memory_size = target_model.getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
       for (auto buffer : device.getOps<BufferOp>())
@@ -67,6 +71,7 @@ struct AIEAssignBufferAddressesPass
         return a.getAllocationSize() > b.getAllocationSize();
       });
 
+      // Address range owned by the MemTile is 0x80000.
       // Address range owned by the tile is 0x8000,
       // but we need room at the bottom for stack.
       int stacksize = 0;

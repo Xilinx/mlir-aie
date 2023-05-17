@@ -374,6 +374,189 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       }
     }
   }
+  for (auto memOp : targetOp.getOps<MemTileDMAOp>()) {
+    int col = memOp.colIndex();
+    int row = memOp.rowIndex();
+    // Reset not needed with V2 kernel driver
+
+    DenseMap<Block *, int> blockMap;
+    DenseMap<Block *, int> channelMap;
+
+    for (auto &block : memOp.getBody()) {
+      for (auto op : block.getOps<DMAStartOp>()) {
+        int chNum = op.getChannelIndex();
+        channelMap[&block] = chNum;
+        auto dest = op.getDest();
+        while (dest) {
+          channelMap[dest] = chNum;
+          dest = dest->getSuccessors()[0];
+          if (channelMap.count(dest))
+            dest = nullptr;
+        }
+      }
+    }
+
+    // Assign each block a BD number
+    int evenBdNum = 0;
+    int oddBdNum = 24;
+    for (auto &block : memOp.getBody()) {
+      if (block.getOps<DMABDOp>().empty())
+        continue;
+      assert(channelMap.count(&block));
+      if (target_model.isMemTile(col, row) && channelMap[&block] & 1)
+        blockMap[&block] = oddBdNum++;
+      else
+        blockMap[&block] = evenBdNum++;
+    }
+
+    for (auto &block : memOp.getBody()) {
+      bool foundBdPacket = false;
+      int packetType = 0;
+      int packetID = 0;
+      bool foundBd = false;
+      int lenA = 0;
+      int lenB = 0;
+      int bytesA = 0;
+      int bytesB = 0;
+      int offsetA = 0;
+      int BaseAddrA = 0;
+      bool hasA = false;
+      bool hasB = false;
+      StringRef bufA = "0";
+      StringRef bufB = "0";
+      StringRef AbMode = disable;
+      //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
+      for (auto op : block.getOps<DMABDOp>()) {
+        foundBd = true;
+        ShapedType bufferType =
+            op.getBuffer().getType().cast<::mlir::MemRefType>();
+        if (op.isA()) {
+          BaseAddrA = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
+          lenA = op.getLenValue();
+          bytesA = bufferType.getElementTypeBitWidth() / 8;
+          offsetA = op.getOffsetValue();
+          bufA = "XAIEDMA_TILE_BD_ADDRA";
+          hasA = true;
+        }
+        if (op.isB()) {
+          lenB = op.getLenValue();
+          bytesB = bufferType.getElementTypeBitWidth() / 8;
+          bufB = "XAIEDMA_TILE_BD_ADDRB";
+          hasB = true;
+        }
+      }
+
+      if (hasA && hasB) {
+        AbMode = enable;
+        if (lenA != lenB)
+          llvm::errs() << "ABmode must have matching lengths.\n";
+        if (bytesA != bytesB)
+          llvm::errs() << "ABmode must have matching element data types.\n";
+      }
+      int acqValue = 0, relValue = 0;
+      StringRef acqEnable = disable;
+      StringRef relEnable = disable;
+      int acqLockId, relLockId;
+      for (auto op : block.getOps<UseLockOp>()) {
+        LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+        if (op.acquire() || op.acquire_ge()) {
+          acqEnable = enable;
+          acqLockId = lock.getLockIDValue();
+          acqValue = op.getLockValue();
+          if (op.acquire_ge())
+            acqValue = -acqValue;
+        } else if (op.release()) {
+          relEnable = enable;
+          relLockId = lock.getLockIDValue();
+          relValue = op.getLockValue();
+        } else {
+          return op.emitOpError("unsupported lock action");
+        }
+      }
+
+      if (target_model.isMemTile(col, row)) {
+        acqLockId += 64;
+        relLockId += 64;
+        BaseAddrA += 0x80000;
+      }
+
+      for (auto op : block.getOps<DMABDPACKETOp>()) {
+        foundBdPacket = true;
+        packetType = op.getPacketType();
+        packetID = op.getPacketID();
+      }
+
+      int bdNum = blockMap[&block];
+      if (foundBd) {
+        // TODO AB mode separated
+
+        // TODO For now, we are going to name each dma desc with loc and bd
+        // which we assume is unique. This is strictly not enforced but in
+        // practice, this is true
+        output << "XAie_DmaDesc " << tileDMAInstStr(col, row, bdNum) << ";\n";
+        output << "XAie_DmaDescInit(" << deviceInstRef << ", "
+               << tileDMAInstRefStr(col, row, bdNum) << ", "
+               << tileLocStr(col, row) << ");\n";
+        output << "XAie_DmaSetLock(" << tileDMAInstRefStr(col, row, bdNum)
+               << ", "
+               << "XAie_LockInit(" << acqLockId << "," << acqValue << "),"
+               << "XAie_LockInit(" << relLockId << "," << relValue << "));\n";
+        output << "XAie_DmaSetAddrLen(" << tileDMAInstRefStr(col, row, bdNum)
+               << ", "
+               << " /* addrA */ "
+               << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
+               << " /* len */ " << lenA << " * " << bytesA << ");\n";
+
+        if (block.getNumSuccessors() > 0) {
+          Block *nextBlock = block.getSuccessors()[0]; // should have only one
+                                                       // successor block
+
+          int enableNextBd = 1;
+          if (!nextBlock->getOps<EndOp>().empty())
+            enableNextBd = 0;
+
+          int nextBdNum = blockMap[nextBlock];
+          output << "XAie_DmaSetNextBd(" << tileDMAInstRefStr(col, row, bdNum)
+                 << ", "
+                 << " /* nextbd */ " << nextBdNum << ", "
+                 << " /* enableNextBd */ " << enableNextBd << ");\n";
+        }
+        if (foundBdPacket) {
+          output << "XAie_DmaSetPkt(" << tileDMAInstRefStr(col, row, bdNum)
+                 << ", " << packetStr(packetID, packetType) << ");\n";
+        }
+        output << "XAie_DmaEnableBd(" << tileDMAInstRefStr(col, row, bdNum)
+               << ");\n";
+        output << "XAie_DmaWriteBd(" << deviceInstRef << ", "
+               << tileDMAInstRefStr(col, row, bdNum) << ", "
+               << tileLocStr(col, row) << ", "
+               << " /* bd */ " << bdNum << ");\n";
+      }
+    }
+
+    for (auto &block : memOp.getBody()) {
+      for (auto op : block.getOps<DMAStartOp>()) {
+        int bdNum = blockMap[op.getDest()];
+
+        llvm::StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
+        int chNum = op.getChannelIndex();
+
+        output << "XAie_DmaChannelPushBdToQueue(" << deviceInstRef << ", "
+               << tileLocStr(col, row) << ", "
+               << "/* ChNum */" << chNum
+               << ", "
+               // TODO hack until physical dialect changes
+               << "/* dmaDir */ DMA_" << dmaDir << ", "
+               << "/* BdNum */" << bdNum << ");\n";
+        output << "XAie_DmaChannelEnable(" << deviceInstRef << ", "
+               << tileLocStr(col, row) << ", "
+               << "/* ChNum */ " << chNum
+               << ", "
+               // TODO hack until physical dialect changes
+               << "/* dmaDir */ DMA_" << dmaDir << ");\n";
+      }
+    }
+  }
   output << "} // mlir_aie_configure_dmas\n\n";
 
   for (auto op : targetOp.getOps<ExternalBufferOp>()) {
