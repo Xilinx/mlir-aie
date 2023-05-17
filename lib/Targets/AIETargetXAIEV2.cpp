@@ -477,7 +477,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       if (target_model.isMemTile(col, row)) {
         acqLockId += 64;
         relLockId += 64;
-        BaseAddrA += 0x80000; 
+        BaseAddrA += 0x80000;
       }
 
       for (auto op : block.getOps<DMABDPACKETOp>()) {
