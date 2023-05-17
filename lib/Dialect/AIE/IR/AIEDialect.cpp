@@ -1078,9 +1078,6 @@ namespace AIE {
 int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   if (getTileOp().isShimTile())
     switch (bundle) {
-    // case WireBundle::Core: return 0;
-    // case WireBundle::DMA: return 2;
-    // case WireBundle::PLIO: return 4;
     case WireBundle::FIFO:
       return 2;
     case WireBundle::North:
@@ -1098,20 +1095,12 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
     }
   else if (getTileOp().isMemTile())
     switch (bundle) {
-    // case WireBundle::Core:
-    //   return 2;
     case WireBundle::DMA:
       return 6;
-    // case WireBundle::FIFO:
-    //   return 2;
     case WireBundle::North:
       return 4;
-    // case WireBundle::West:
-    //   return 4;
     case WireBundle::South:
       return 6;
-    // case WireBundle::East:
-    //   return 4;
     case WireBundle::Trace:
       return 1;
     default:
@@ -1142,9 +1131,6 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
 int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   if (getTileOp().isShimTile())
     switch (bundle) {
-    // case WireBundle::Core: return 0;
-    // case WireBundle::DMA: return 2;
-    // case WireBundle::PLIO: return 2;
     case WireBundle::FIFO:
       return 2;
     case WireBundle::North:
@@ -1160,20 +1146,12 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
     }
   else if (getTileOp().isMemTile())
     switch (bundle) {
-    // case WireBundle::Core:
-    //   return 2;
     case WireBundle::DMA:
       return 6;
-    // case WireBundle::FIFO:
-    //   return 2;
     case WireBundle::North:
       return 6;
-    // case WireBundle::West:
-    //   return 4;
     case WireBundle::South:
       return 4;
-    // case WireBundle::East:
-    //   return 4;
     case WireBundle::Trace:
       return 1;
     default:
@@ -1202,8 +1180,6 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
 int TileOp::getNumSourceConnections(WireBundle bundle) {
   if (isMemTile())
     switch (bundle) {
-    // case WireBundle::Core:
-    //   return 2;
     case WireBundle::DMA:
       return 6;
     default:
@@ -1211,8 +1187,6 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
     }
   else if (isShimTile())
     switch (bundle) {
-    // case WireBundle::Core:
-    //   return 2;
     case WireBundle::DMA:
       return 2;
     default:
@@ -1231,8 +1205,6 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
 int TileOp::getNumDestConnections(WireBundle bundle) {
   if (isMemTile())
     switch (bundle) {
-    // case WireBundle::Core:
-    //   return 2;
     case WireBundle::DMA:
       return 6;
     default:
@@ -1240,8 +1212,6 @@ int TileOp::getNumDestConnections(WireBundle bundle) {
     }
   else if (isShimTile())
     switch (bundle) {
-    // case WireBundle::Core:
-    //   return 2;
     case WireBundle::DMA:
       return 2;
     default:
