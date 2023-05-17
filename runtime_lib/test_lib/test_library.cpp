@@ -27,49 +27,9 @@ extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
 // namespace aie_device {
 //}
 
-/// @brief  Initialize libXAIE and allocate a new context object.
-/// @return A pointer to the context
-aie_libxaie_ctx_t *mlir_aie_init_libxaie() {
-  aie_libxaie_ctx_t *ctx =
-      (aie_libxaie_ctx_t *)malloc(sizeof(aie_libxaie_ctx_t));
-  if (!ctx)
-    return 0;
-
-  ctx->AieConfigPtr.AieGen = XAIE_HW_GEN;
-  ctx->AieConfigPtr.BaseAddr = XAIE_BASE_ADDR;
-  ctx->AieConfigPtr.ColShift = XAIE_COL_SHIFT;
-  ctx->AieConfigPtr.RowShift = XAIE_ROW_SHIFT;
-  ctx->AieConfigPtr.NumRows = XAIE_NUM_ROWS;
-  ctx->AieConfigPtr.NumCols = XAIE_NUM_COLS;
-  ctx->AieConfigPtr.ShimRowNum = XAIE_SHIM_ROW;
-  ctx->AieConfigPtr.MemTileRowStart = XAIE_RES_TILE_ROW_START;
-  ctx->AieConfigPtr.MemTileNumRows = XAIE_RES_TILE_NUM_ROWS;
-  //  ctx->AieConfigPtr.ReservedRowStart = XAIE_RES_TILE_ROW_START;
-  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;
-  ctx->AieConfigPtr.AieTileRowStart = XAIE_AIE_TILE_ROW_START;
-  ctx->AieConfigPtr.AieTileNumRows = XAIE_AIE_TILE_NUM_ROWS;
-  ctx->AieConfigPtr.PartProp = {0};
-  ctx->DevInst = {0};
-
-  /*
-    XAIEGBL_HWCFG_SET_CONFIG((&xaie->AieConfig),
-                             XAIE_NUM_ROWS, XAIE_NUM_COLS, 0x800);
-    XAieGbl_HwInit(&xaie->AieConfig);
-    xaie->AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-    XAieGbl_CfgInitialize(&xaie->AieInst,
-                          &xaie->TileInst[0][0], xaie->AieConfigPtr);
-
-    _air_host_active_libxaie1 = xaie;
-  */
-
-  return ctx;
-}
-
 /// @brief  Release access to the libXAIE context.
 /// @param ctx The context
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
-  //  if (xaie == _air_host_active_libxaie1)
-  //    _air_host_active_libxaie1 = nullptr;
   AieRC RC = XAie_Finish(&(ctx->DevInst));
   if (RC != XAIE_OK) {
     printf("Failed to finish tiles.\n");

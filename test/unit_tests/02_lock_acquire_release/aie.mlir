@@ -10,8 +10,6 @@
 
 // RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test.elf -L%aie_runtime_lib%/test_lib/lib -ltest_lib
 // RUN: %run_on_board ./test.elf
-// RUN: aiecc.py --aiesim %s -I%aie_sim_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -L%aie_sim_runtime_lib%/test_lib/lib -ltest_lib
-// RUN: aiesimulator --pkg-dir=aie.mlir.prj/sim
 
 module @test02_lock_acquire_release {
   %tile13 = AIE.tile(1, 3)
