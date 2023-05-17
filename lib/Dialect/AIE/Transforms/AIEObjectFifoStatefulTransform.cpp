@@ -117,8 +117,15 @@ public:
     if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
       masterChannelsPerTile[tile] = 0;
     } else {
-      assert(masterChannelsPerTile[tile] < 1 &&
-             "All tile DMA master channels are already in use.");
+      assert([&] {
+        TileOp tileOp = tile.getDefiningOp<TileOp>();
+        int numChannels = tileOp.getNumSourceConnections(WireBundle::DMA);
+        if (masterChannelsPerTile[tile] >= (numChannels - 1)) {
+          printf("All tile DMA master channels are already in use.\n");
+          return false;
+        }
+        return true;
+      }());
       masterChannelsPerTile[tile]++;
     }
     dmaChan = std::make_pair(DMAChannelDir::MM2S, masterChannelsPerTile[tile]);
@@ -131,8 +138,15 @@ public:
     if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
       slaveChannelsPerTile[tile] = 0;
     } else {
-      assert(slaveChannelsPerTile[tile] < 1 &&
-             "All tile DMA slave channels are already in use.");
+      assert([&] {
+        TileOp tileOp = tile.getDefiningOp<TileOp>();
+        int numChannels = tileOp.getNumDestConnections(WireBundle::DMA);
+        if (slaveChannelsPerTile[tile] >= (numChannels - 1)) {
+          printf("All tile DMA slave channels are already in use.\n");
+          return false;
+        }
+        return true;
+      }());
       slaveChannelsPerTile[tile]++;
     }
     dmaChan = std::make_pair(DMAChannelDir::S2MM, slaveChannelsPerTile[tile]);
