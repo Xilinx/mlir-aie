@@ -43,71 +43,6 @@ struct ext_mem_model_t {
 static uint16_t nextAlignedAddr;
 #endif
 
-#if __AIEARCH__ == 20
-// TODO - Need flag in sim to choose between AIE or AIEML
-// xcve2802
-#define XAIE_HW_GEN XAIE_DEV_GEN_AIEML
-#define XAIE_NUM_ROWS 11
-#define XAIE_NUM_COLS 38
-#define XAIE_BASE_ADDR 0x20000000000
-#define XAIE_COL_SHIFT 25
-#define XAIE_ROW_SHIFT 20
-#define XAIE_SHIM_ROW 0
-#define XAIE_MEM_TILE_ROW_START 1
-#define XAIE_MEM_TILE_NUM_ROWS 2
-#define XAIE_RES_TILE_ROW_START 1
-#define XAIE_RES_TILE_NUM_ROWS 2
-#define XAIE_AIE_TILE_ROW_START 3
-#define XAIE_AIE_TILE_NUM_ROWS 8
-
-// xcve2302
-// #define XAIE_HW_GEN XAIE_DEV_GEN_AIEML
-// #define XAIE_NUM_ROWS 4
-// #define XAIE_NUM_COLS 17
-// #define XAIE_BASE_ADDR 0x20000000000
-// #define XAIE_COL_SHIFT 25
-// #define XAIE_ROW_SHIFT 20
-// #define XAIE_SHIM_ROW 0
-// #define XAIE_MEM_TILE_ROW_START 1
-// #define XAIE_MEM_TILE_NUM_ROWS 1
-// #define XAIE_RES_TILE_ROW_START 1
-// #define XAIE_RES_TILE_NUM_ROWS 1
-// #define XAIE_AIE_TILE_ROW_START 2
-// #define XAIE_AIE_TILE_NUM_ROWS 2
-// #define FOR_WRITE                0
-// #define FOR_READ                 1
-
-#else
-
-#define XAIE_HW_GEN XAIE_DEV_GEN_AIE
-#define XAIE_BASE_ADDR 0x20000000000
-#define XAIE_NUM_ROWS 9
-#define XAIE_NUM_COLS 50
-#define XAIE_COL_SHIFT 23
-#define XAIE_ROW_SHIFT 18
-#define XAIE_SHIM_ROW 0
-#define XAIE_RES_TILE_ROW_START 0
-#define XAIE_RES_TILE_NUM_ROWS 0
-#define XAIE_AIE_TILE_ROW_START 1
-#define XAIE_AIE_TILE_NUM_ROWS 8
-
-#endif // __AIEARCH__=20
-
-// XAie_SetupConfig(ConfigPtr, XAIE_DEV_GEN_AIE, XAIE_BASE_ADDR,
-//        XAIE_COL_SHIFT, XAIE_ROW_SHIFT,
-//        XAIE_NUM_COLS, XAIE_NUM_ROWS, XAIE_SHIM_ROW,
-//        XAIE_RES_TILE_ROW_START, XAIE_RES_TILE_NUM_ROWS,
-//        XAIE_AIE_TILE_ROW_START, XAIE_AIE_TILE_NUM_ROWS);
-/*
-XAie_Config ConfigPtr = {XAIE_DEV_GEN_AIE, XAIE_BASE_ADDR,
-        XAIE_COL_SHIFT, XAIE_ROW_SHIFT,
-        XAIE_NUM_ROWS, XAIE_NUM_COLS, XAIE_SHIM_ROW,
-        XAIE_RES_TILE_ROW_START, XAIE_RES_TILE_NUM_ROWS,
-        XAIE_AIE_TILE_ROW_START, XAIE_AIE_TILE_NUM_ROWS, {0}, };
-//XAie_InstDeclare(DevInst, &ConfigPtr);
-XAie_DevInst DevInst = { 0 };
-*/
-
 struct aie_libxaie_ctx_t {
   XAie_Config AieConfigPtr;
   XAie_DevInst DevInst;
@@ -207,6 +142,8 @@ private:
  ******************************************************************************
  */
 
+/// @brief  Initialize libXAIE and allocate a new context object.
+/// @return A pointer to the context
 aie_libxaie_ctx_t *mlir_aie_init_libxaie();
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *);
 
