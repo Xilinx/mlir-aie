@@ -48,7 +48,7 @@
 // CHECK:       func.call @some_work(%5) : (memref<16xi32>) -> ()
 // CHECK:       AIE.useLock(%7, Release, 1)
 // CHECK:       AIE.useLock(%8, Release, 1)
-// CHECK:       AIE.useLock(%9, Release, 0)
+// CHECK:       AIE.useLock(%9, Release, 1)
 // CHECK:       AIE.useLock(%13, Release, 1)
 // CHECK:       AIE.useLock(%14, Acquire, 0)
 // CHECK:       AIE.useLock(%15, Acquire, 0)
