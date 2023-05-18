@@ -1119,6 +1119,121 @@ using LowerVectorMinFOpToAIEVecMinOp =
 using LowerVectorMaxFOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxFOp, aievec::MaxOp>;
 
+static arith::CmpIPredicate
+convertToIntegerPredicate(arith::CmpFPredicate pred) {
+  switch (pred) {
+  case CmpFPredicate::UEQ:
+  case CmpFPredicate::OEQ:
+    return CmpIPredicate::eq;
+  case CmpFPredicate::UGT:
+  case CmpFPredicate::OGT:
+    return CmpIPredicate::ugt;
+  case CmpFPredicate::UGE:
+  case CmpFPredicate::OGE:
+    return CmpIPredicate::uge;
+  case CmpFPredicate::ULT:
+  case CmpFPredicate::OLT:
+    return CmpIPredicate::ult;
+  case CmpFPredicate::ULE:
+  case CmpFPredicate::OLE:
+    return CmpIPredicate::ule;
+  case CmpFPredicate::UNE:
+  case CmpFPredicate::ONE:
+    return CmpIPredicate::ne;
+  default:
+    llvm_unreachable("Unexpected predicate!");
+  }
+}
+
+static arith::CmpIPredicate
+convertToIntegerPredicate(arith::CmpIPredicate pred) {
+  return pred;
+}
+
+static aievec::CmpOp createCmpOpAieML(ConversionPatternRewriter &rewriter,
+                                      CmpIPredicate pred, Location loc,
+                                      Type type, Value lhs, Value rhs) {
+  switch (pred) {
+  case CmpIPredicate::eq:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "eq");
+  case CmpIPredicate::ne:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ne");
+  case CmpIPredicate::slt:
+  case CmpIPredicate::ult:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "lt");
+  case CmpIPredicate::sle:
+  case CmpIPredicate::ule:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "le");
+  case CmpIPredicate::sgt:
+  case CmpIPredicate::ugt:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "gt");
+  case CmpIPredicate::sge:
+  case CmpIPredicate::uge:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ge");
+  }
+  return nullptr;
+}
+
+template <typename SrcOpTy, typename CmpTy>
+struct LowerVectorCmpOpToAIEVecCmpOp : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LowerVectorCmpOpToAIEVecCmpOp(MLIRContext *context)
+      : OpConversionPattern<SrcOpTy>(context) {}
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType lhsType = dyn_cast<VectorType>(srcOp.getLhs().getType());
+    if (!lhsType)
+      return failure();
+
+    llvm::SmallSet<unsigned, 16> elWidthSet;
+    elWidthSet.insert(8);
+    elWidthSet.insert(16);
+    elWidthSet.insert(32);
+
+    Type scalarType = lhsType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(lhsType);
+
+    if (!(elWidthSet.count(elWidth) && laneSize * elWidth == 512))
+      return failure();
+
+    // Unsigned int and unsigned long long are acceptable type.
+    Type type =
+        mlir::IntegerType::get(srcOp.getContext(), laneSize <= 32 ? 32 : 64,
+                               mlir::IntegerType::Unsigned);
+
+    Location loc = srcOp.getLoc();
+    Value lhs = srcOp.getLhs();
+    Value rhs = srcOp.getRhs();
+    CmpTy pred = srcOp.getPredicate();
+
+    arith::CmpIPredicate ipred = convertToIntegerPredicate(pred);
+
+    aievec::CmpOp aieCmpOp =
+        createCmpOpAieML(rewriter, ipred, loc, type, lhs, rhs);
+
+    if (!aieCmpOp)
+      return failure();
+
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getResult().getType());
+    // Convert vector i1 type to unsigned interger type by built-in unrealized
+    // conversion cast op.
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+        srcOp, resultType, aieCmpOp.getResult());
+
+    return success();
+  }
+};
+
+using LowerVectorCmpIOpToAIEVecCmpOp =
+    LowerVectorCmpOpToAIEVecCmpOp<arith::CmpIOp, CmpIPredicate>;
+using LowerVectorCmpFOpToAIEVecCmpOp =
+    LowerVectorCmpOpToAIEVecCmpOp<arith::CmpFOp, CmpFPredicate>;
+
 // If a UPD op is loading a vector twice the size of the architecture
 // vector size, split it into a high and low load into the accumulator.
 // TODO: This is a process we may want to include as part of the
@@ -1248,6 +1363,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorSubIOpToAIEVecSubElemOp, LowerVectorSubFOpToAIEVecSubElemOp,
       LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
       LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
+      LowerVectorCmpIOpToAIEVecCmpOp, LowerVectorCmpFOpToAIEVecCmpOp,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
@@ -1326,6 +1442,7 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
 
 static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                            AnalysisManager &am) {
+  target.addLegalOp<UnrealizedConversionCastOp>();
   target.addDynamicallyLegalOp<aievec::UPDOp>([&am](aievec::UPDOp op) {
     return am.getChildAnalysis<UPDOpEffectiveAccessSizeAnalysis>(op)
                .effectiveSize <= 1024;
@@ -1465,6 +1582,36 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     return !(elWidthSet.count(resultElWidth) &&
              laneSize * resultElWidth == 512);
+  });
+
+  target.addDynamicallyLegalOp<arith::CmpIOp>([=](arith::CmpIOp op) {
+    auto lhsType = dyn_cast<VectorType>(op.getLhs().getType());
+    if (!lhsType) {
+      return true;
+    }
+    auto lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(lhsType);
+
+    if (!(elWidthSet.count(lhsElWidth) && laneSize * lhsElWidth == 512)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<arith::CmpFOp>([=](arith::CmpFOp op) {
+    auto lhsType = dyn_cast<VectorType>(op.getLhs().getType());
+    if (!lhsType) {
+      return true;
+    }
+    auto lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(lhsType);
+
+    if (!(elWidthSet.count(lhsElWidth) && laneSize * lhsElWidth == 512)) {
+      return true;
+    }
+
+    return false;
   });
 }
 

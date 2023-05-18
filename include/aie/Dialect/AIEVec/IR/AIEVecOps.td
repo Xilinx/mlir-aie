@@ -667,4 +667,29 @@ def AIEVec_MaxOp:
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_CmpOp:
+  AIEVec_Op<"cmp", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, DefaultValuedStrAttr<StrAttr, "">:$pred)>,
+  Results<(outs AnyUnsignedInteger:$result)> {
+  let summary = "AIE vector comparison";
+  let description = [{
+    Xilinx-specific intrinsic that compares operations between two input vectors.
+    The attribute predicate defines which type of comparison is
+    performed. The following comparisons are supported:
+
+    -   equal (mnemonic: `"eq"`)
+    -   not equal (mnemonic: `"ne"`)
+    -   less than (mnemonic: `"lt"`)
+    -   less than or equal (mnemonic: `"le"`)
+    -   greater than (mnemonic: `"gt"`)
+    -   greater than or equal (mnemonic: `"ge"`)
+  }];
+
+  let assemblyFormat = "$lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS
