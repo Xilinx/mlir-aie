@@ -11,7 +11,7 @@ project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
 #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
 set(xaienginePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
-file(GLOB libheaders ${xaienginePathTmp}/*.h ${xaienginePath}/xioutils.h)
+file(GLOB libheaders ${xaienginePathTmp}/*.h)
 file(GLOB libheadersSub ${xaienginePathTmp}/*/*.h)
 
 # copy header files into build area

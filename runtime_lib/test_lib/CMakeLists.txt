@@ -14,7 +14,7 @@ target_compile_options(test_lib PRIVATE -fPIC)
 target_compile_definitions(test_lib PRIVATE LIBXAIENGINEV2)
 
 target_include_directories(test_lib PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}/../../xaiengine/include
+    ${LibXAIE_INC_DIR}
 )
 
 # copy header files into build area
@@ -32,28 +32,34 @@ install(TARGETS test_lib
 )
 
 # create extra libs supporting simulation
-# AIE1 test_lib for aiesimulator
-add_library(test_lib_sim_aie STATIC test_library.cpp)
-target_compile_options(test_lib_sim_aie PRIVATE -fPIC)
-target_compile_definitions(test_lib_sim_aie PRIVATE LIBXAIENGINEV2 __AIESIM__)
+if (DEFINED VITIS_ROOT)
+    set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
 
-target_include_directories(test_lib_sim_aie PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}/../../xaiengine/include
-)
+    # AIE1 test_lib for aiesimulator
+    add_library(test_lib_sim_aie STATIC test_library.cpp)
+    target_compile_options(test_lib_sim_aie PRIVATE -fPIC)
+    target_compile_definitions(test_lib_sim_aie PRIVATE LIBXAIENGINEV2 __AIESIM__)
 
-install(TARGETS test_lib_sim_aie 
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-)
+    target_include_directories(test_lib_sim_aie PRIVATE
+        ${LibXAIE_INC_DIR}
+        ${xaienginePath}
+    )
 
-# AIE2 test_lib for aiesimulator
-add_library(test_lib_sim_aie2 STATIC test_library.cpp)
-target_compile_options(test_lib_sim_aie2 PRIVATE -fPIC)
-target_compile_definitions(test_lib_sim_aie2 PRIVATE LIBXAIENGINEV2 __AIESIM__ __AIEARCH__=20)
+    install(TARGETS test_lib_sim_aie 
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+    )
 
-target_include_directories(test_lib_sim_aie2 PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}/../../xaiengine/include
-)
+    # AIE2 test_lib for aiesimulator
+    add_library(test_lib_sim_aie2 STATIC test_library.cpp)
+    target_compile_options(test_lib_sim_aie2 PRIVATE -fPIC)
+    target_compile_definitions(test_lib_sim_aie2 PRIVATE LIBXAIENGINEV2 __AIESIM__ __AIEARCH__=20)
 
-install(TARGETS test_lib_sim_aie2 
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-)
+    target_include_directories(test_lib_sim_aie2 PRIVATE
+        ${LibXAIE_INC_DIR}
+        ${xaienginePath}
+    )
+
+    install(TARGETS test_lib_sim_aie2 
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+    )
+endif(DEFINED VITIS_ROOT)
