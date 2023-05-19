@@ -25,6 +25,7 @@ import aiecc.cl_arguments
 import aiecc.configure
 
 import rich.progress as progress
+import re
 
 aie_opt_passes = ['--aie-normalize-address-spaces',
                   '--canonicalize',
@@ -94,7 +95,7 @@ class flow_runner:
 
   def aie_target_defines(self):
       result = []
-      if(opts.aie_target == "AIE2"):
+      if(self.aie_target == "AIE2"):
         result += ['-D__AIEARCH__=20']
       else:
         result += ['-D__AIEARCH__=10']
@@ -141,10 +142,10 @@ class flow_runner:
       if(opts.compile and opts.xchesscc):
         thispath = os.path.dirname(os.path.realpath(__file__))
         runtime_lib_path = os.path.join(thispath, '..','..','aie_runtime_lib')
-        chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, opts.aie_target.upper(),'chess_intrinsic_wrapper.cpp')
+        chess_intrinsic_wrapper_cpp = os.path.join(runtime_lib_path, self.aie_target.upper(),'chess_intrinsic_wrapper.cpp')
 
         self.chess_intrinsic_wrapper = os.path.join(self.tmpdirname, 'chess_intrinsic_wrapper.ll')
-        await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
+        await self.do_call(task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+f', '+P', '4', chess_intrinsic_wrapper_cpp, '-o', self.chess_intrinsic_wrapper])
         await self.do_call(task, ['sed', '-i', 's/^target.*//', self.chess_intrinsic_wrapper])
 
         await self.do_call(task, ['sed', '-i', 's/noalias_sidechannel[^,]*,//', self.chess_intrinsic_wrapper])
@@ -157,11 +158,11 @@ class flow_runner:
         return
 
       thispath = os.path.dirname(os.path.realpath(__file__))
-      runtime_lib_path = os.path.join(thispath, '..','..','aie_runtime_lib', opts.aie_target.upper())
+      runtime_lib_path = os.path.join(thispath, '..','..','aie_runtime_lib', self.aie_target.upper())
       clang_path = os.path.dirname(shutil.which('clang'))
       # The build path for libc can be very different from where it's installed.
-      llvmlibc_build_lib_path = os.path.join(clang_path, '..', 'runtimes', 'runtimes-' + opts.aie_target.lower() + '-none-unknown-elf-bins', 'libc', 'lib', 'libc.a')
-      llvmlibc_install_lib_path = os.path.join(clang_path, '..', 'lib', opts.aie_target.lower() + '-none-unknown-elf', 'libc.a')
+      llvmlibc_build_lib_path = os.path.join(clang_path, '..', 'runtimes', 'runtimes-' + self.aie_target.lower() + '-none-unknown-elf-bins', 'libc', 'lib', 'libc.a')
+      llvmlibc_install_lib_path = os.path.join(clang_path, '..', 'lib', self.aie_target.lower() + '-none-unknown-elf', 'libc.a')
       me_basic_o = os.path.join(runtime_lib_path, 'me_basic.o')
       libc = os.path.join(runtime_lib_path, 'libc.a')
       libm = os.path.join(runtime_lib_path, 'libm.a')
@@ -204,18 +205,18 @@ class flow_runner:
           file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir)
           if(self.opts.link and self.opts.xbridge):
             link_with_obj = self.extract_input_files(file_core_bcf)
-            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+            await self.do_call(task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           elif(self.opts.link):
-            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
-            await self.do_call(task, ['clang', '-O2', '--target=' + opts.aie_peano_target, file_core_obj, *clang_link_args,
+            await self.do_call(task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_core_llvmir_chesslinked, '-o', file_core_obj])
+            await self.do_call(task, ['clang', '-O2', '--target=' + self.aie_peano_target, file_core_obj, *clang_link_args,
                                       '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
         else:
           file_core_obj = self.file_obj
           if(opts.link and opts.xbridge):
             link_with_obj = self.extract_input_files(file_core_bcf)
-            await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+            await self.do_call(task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
           elif(opts.link):
-            await self.do_call(task, ['clang', '-O2', '--target=' + opts.aie_peano_target, file_core_obj, *clang_link_args,
+            await self.do_call(task, ['clang', '-O2', '--target=' + self.aie_peano_target, file_core_obj, *clang_link_args,
                                       '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
       elif(opts.compile):
@@ -227,9 +228,9 @@ class flow_runner:
           file_core_obj = self.file_obj
         if(opts.link and opts.xbridge):
           link_with_obj = self.extract_input_files(file_core_bcf)
-          await self.do_call(task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
+          await self.do_call(task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-d', '-f', file_core_obj, link_with_obj, '+l', file_core_bcf, '-o', file_core_elf])
         elif(opts.link):
-          await self.do_call(task, ['clang', '-O2', '--target=' + opts.aie_peano_target, file_core_obj, *clang_link_args,
+          await self.do_call(task, ['clang', '-O2', '--target=' + self.aie_peano_target, file_core_obj, *clang_link_args,
                                     '-Wl,-T,'+file_core_ldscript, '-o', file_core_elf])
 
       self.progress_bar.update(self.progress_bar.task_completed,advance=1)
@@ -322,7 +323,7 @@ class flow_runner:
                  "-Wno-enum-constexpr-conversion", # clang is picky
                  "-Wno-format-security",
                  "-DSC_INCLUDE_DYNAMIC_PROCESSES", "-D__AIESIM__", "-D__PS_INIT_AIE__",
-                 "-DXAIE_DEBUG", "-Og", "-Dmain(...)=ps_main(...)",
+                 "-Og", "-Dmain(...)=ps_main(...)",
                  "-I" + self.tmpdirname, # Pickup aie_inc.cpp
                  "-I" + opts.aietools_path + "/include",
                  "-I" + opts.aietools_path + "/include/drivers/aiengine",
@@ -332,9 +333,14 @@ class flow_runner:
                  "-I" + opts.aietools_path + "/include/common_cpp/common_cpp_v1_0/include",
                  ]
 
+      # runtime_xaiengine_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
+      # xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
+      # '-L%s' % xaiengine_lib_path,
+
+      # Don't use shipped version of xaiengine?
       sim_link_args = ['-L' + opts.aietools_path + '/lib/lnx64.o',
                        '-L' + opts.aietools_path + '/data/osci_systemc/lib/lnx64',
-                       '-Wl,--as-needed', '-lxaiengine', '-lxioutils',
+                       '-Wl,--as-needed', '-lxioutils', '-lxaiengine',
                        '-ladf_api', '-lsystemc', '-lxtlm', "-flto"
                        ]
       processes = []
@@ -403,6 +409,12 @@ class flow_runner:
                                           '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses], True)
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
+        t = self.do_run(['aie-translate', '--aie-generate-target-arch', self.file_with_addresses])
+        self.aie_target = t.stdout.strip()
+        if(not re.fullmatch('AIE.?', self.aie_target)):
+          print("Unexpected target " + self.aie_target + ". Exiting...")
+          exit(-3)
+        self.aie_peano_target = self.aie_target.lower() + "-none-elf"
 
         await self.prepare_for_chesshack(progress_bar.task)
 
@@ -419,7 +431,7 @@ class flow_runner:
           self.file_obj = os.path.join(self.tmpdirname, 'input.o')
           if(opts.compile and opts.xchesscc):
             file_llvmir_hacked = await self.chesshack(progress_bar.task, self.file_llvmir)
-            await self.do_call(progress_bar.task, ['xchesscc_wrapper', opts.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
+            await self.do_call(progress_bar.task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
           elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
             await self.do_call(progress_bar.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
@@ -448,7 +460,6 @@ class flow_runner:
 def main(builtin_params={}):
     global opts
     opts = aiecc.cl_arguments.parse_args()
-    opts.aie_peano_target = opts.aie_target.lower() + "-none-elf"
 
     is_windows = platform.system() == 'Windows'
 
