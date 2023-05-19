@@ -683,10 +683,14 @@ def AIEVec_CmpOp:
 
     -   equal (mnemonic: `"eq"`)
     -   not equal (mnemonic: `"ne"`)
-    -   less than (mnemonic: `"lt"`)
-    -   less than or equal (mnemonic: `"le"`)
-    -   greater than (mnemonic: `"gt"`)
-    -   greater than or equal (mnemonic: `"ge"`)
+    -   signed less than (mnemonic: `"slt"`)
+    -   unsigned less than (mnemonic: `"ult"`)
+    -   signed less than or equal (mnemonic: `"sle"`)
+    -   unsigned less than or equal (mnemonic: `"ule"`)
+    -   signed greater than (mnemonic: `"sgt"`)
+    -   unsigned greater than (mnemonic: `"ugt"`)
+    -   signed greater than or equal (mnemonic: `"sge"`)
+    -   unsigned greater than or equal (mnemonic: `"uge"`)
   }];
 
   let assemblyFormat = "$lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)";

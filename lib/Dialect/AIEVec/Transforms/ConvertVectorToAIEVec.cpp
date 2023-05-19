@@ -1126,17 +1126,21 @@ convertToIntegerPredicate(arith::CmpFPredicate pred) {
   case CmpFPredicate::OEQ:
     return CmpIPredicate::eq;
   case CmpFPredicate::UGT:
-  case CmpFPredicate::OGT:
     return CmpIPredicate::ugt;
+  case CmpFPredicate::OGT:
+    return CmpIPredicate::sgt;
   case CmpFPredicate::UGE:
-  case CmpFPredicate::OGE:
     return CmpIPredicate::uge;
+  case CmpFPredicate::OGE:
+    return CmpIPredicate::sge;
   case CmpFPredicate::ULT:
-  case CmpFPredicate::OLT:
     return CmpIPredicate::ult;
+  case CmpFPredicate::OLT:
+    return CmpIPredicate::slt;
   case CmpFPredicate::ULE:
-  case CmpFPredicate::OLE:
     return CmpIPredicate::ule;
+  case CmpFPredicate::OLE:
+    return CmpIPredicate::sle;
   case CmpFPredicate::UNE:
   case CmpFPredicate::ONE:
     return CmpIPredicate::ne;
@@ -1159,17 +1163,21 @@ static aievec::CmpOp createCmpOpAieML(ConversionPatternRewriter &rewriter,
   case CmpIPredicate::ne:
     return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ne");
   case CmpIPredicate::slt:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "slt");
   case CmpIPredicate::ult:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "lt");
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ult");
   case CmpIPredicate::sle:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "sle");
   case CmpIPredicate::ule:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "le");
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ule");
   case CmpIPredicate::sgt:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "sgt");
   case CmpIPredicate::ugt:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "gt");
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ugt");
   case CmpIPredicate::sge:
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "sge");
   case CmpIPredicate::uge:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ge");
+    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "uge");
   }
   return nullptr;
 }
