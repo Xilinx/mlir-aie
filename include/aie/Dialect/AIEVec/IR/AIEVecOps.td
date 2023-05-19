@@ -677,7 +677,7 @@ def AIEVec_CmpOp:
   Results<(outs AnyUnsignedInteger:$result)> {
   let summary = "AIE vector comparison";
   let description = [{
-    Xilinx-specific intrinsic that compares operations between two input vectors.
+    Xilinx-specific intrinsic that performs element-wise comparisonof two input vectors.
     The attribute predicate defines which type of comparison is
     performed. The following comparisons are supported:
 
