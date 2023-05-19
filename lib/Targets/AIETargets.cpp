@@ -480,6 +480,22 @@ SECTIONS
       },
       registerDialects);
 
+  TranslateFromMLIRRegistration registrationTargetArch(
+      "aie-generate-target-arch", "Get the target architecture",
+      [](ModuleOp module, raw_ostream &output) {
+        AIEArch arch = AIEArch::AIE1;
+        if (!module.getOps<DeviceOp>().empty()) {
+          DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+          arch = targetOp.getTargetModel().getTargetArch();
+        }
+        if (arch == AIEArch::AIE1)
+          output << "AIE\n";
+        else
+          output << stringifyEnum(arch) << "\n";
+        return success();
+      },
+      registerDialects);
+
   TranslateFromMLIRRegistration registrationCoreList(
       "aie-generate-corelist", "Generate python list of cores",
       [](ModuleOp module, raw_ostream &output) {
