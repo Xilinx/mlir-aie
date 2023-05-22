@@ -10,9 +10,12 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc_wrapper aie -c %S/kernel.cc
-// RUN: aiecc.py --aiesim --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: aiecc.py --aiesim --xchesscc --xbridge %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
-// RUN: aie.mlir.prj/aiesim.sh
+// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+
+// CHECK: test start.
+// CHECK: PASS!
 
 module {
   %tile13 = AIE.tile(1, 3)
