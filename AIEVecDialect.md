@@ -167,6 +167,57 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.cmp` (::xilinx::aievec::CmpOp)
+
+AIE vector comparison
+
+
+Syntax:
+
+```
+operation ::= `aievec.cmp` $lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)
+```
+
+Xilinx-specific intrinsic that performs element-wise comparisonof two input vectors.
+The attribute predicate defines which type of comparison is
+performed. The following comparisons are supported:
+
+-   equal (mnemonic: `"eq"`)
+-   not equal (mnemonic: `"ne"`)
+-   signed less than (mnemonic: `"slt"`)
+-   unsigned less than (mnemonic: `"ult"`)
+-   signed less than or equal (mnemonic: `"sle"`)
+-   unsigned less than or equal (mnemonic: `"ule"`)
+-   signed greater than (mnemonic: `"sgt"`)
+-   unsigned greater than (mnemonic: `"ugt"`)
+-   signed greater than or equal (mnemonic: `"sge"`)
+-   unsigned greater than or equal (mnemonic: `"uge"`)
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `pred` | ::mlir::StringAttr | string attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | unsigned integer
+
 ### `aievec.concat` (::xilinx::aievec::ConcatOp)
 
 AIE concat
