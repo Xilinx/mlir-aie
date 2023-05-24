@@ -11,7 +11,7 @@ module {
       %0 = affine.load %arg0[%arg3] : memref<1024xi8>
       %1 = affine.load %arg1[%arg3] : memref<1024xi8>
       %2 = arith.cmpi sge, %0, %1 : i8
-      %3 = arith.select %2, %1, %0 : i1, i8
+      %3 = arith.select %2, %0, %1 : i1, i8
       affine.store %3, %arg2[%arg3] : memref<1024xi8>
     }
     return

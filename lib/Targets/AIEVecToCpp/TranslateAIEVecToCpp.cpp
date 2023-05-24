@@ -1778,9 +1778,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
   raw_indented_ostream &os = emitter.ostream();
 
   os << "sel(";
-  os << emitter.getOrCreateName(lhs);
-  os << ", ";
   os << emitter.getOrCreateName(rhs);
+  os << ", ";
+  os << emitter.getOrCreateName(lhs);
   os << ", ";
   os << emitter.getOrCreateName(sel);
   os << ")";

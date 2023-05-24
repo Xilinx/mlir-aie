@@ -11,7 +11,7 @@ module {
       %0 = affine.load %arg0[%arg3] : memref<1024xbf16>
       %1 = affine.load %arg1[%arg3] : memref<1024xbf16>
       %2 = arith.cmpf ole, %0, %1 : bf16
-      %3 = arith.select %2, %1, %0 : i1, bf16
+      %3 = arith.select %2, %0, %1 : i1, bf16
       affine.store %3, %arg2[%arg3] : memref<1024xbf16>
     }
     return
