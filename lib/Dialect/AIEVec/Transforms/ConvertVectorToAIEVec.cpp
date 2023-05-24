@@ -1242,6 +1242,44 @@ using LowerVectorCmpIOpToAIEVecCmpOp =
 using LowerVectorCmpFOpToAIEVecCmpOp =
     LowerVectorCmpOpToAIEVecCmpOp<arith::CmpFOp, CmpFPredicate>;
 
+struct LowerVectorSelectOpToAIEVecSelOp
+    : public OpConversionPattern<arith::SelectOp> {
+  using OpConversionPattern<arith::SelectOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::SelectOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
+    if (!resultType)
+      return failure();
+
+    llvm::SmallSet<unsigned, 16> elWidthSet;
+    elWidthSet.insert(8);
+    elWidthSet.insert(16);
+    elWidthSet.insert(32);
+
+    Type scalarType = resultType.getElementType();
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (!(elWidthSet.count(resultElWidth) && laneSize * resultElWidth == 512))
+      return failure();
+
+    Type type =
+        mlir::IntegerType::get(srcOp.getContext(), laneSize <= 32 ? 32 : 64,
+                               mlir::IntegerType::Unsigned);
+
+    auto convertOp = rewriter.create<UnrealizedConversionCastOp>(
+        srcOp.getLoc(), type, adaptor.getCondition());
+
+    rewriter.replaceOpWithNewOp<aievec::SelOp>(
+        srcOp, srcOp.getResult().getType(), srcOp.getTrueValue(),
+        srcOp.getFalseValue(), convertOp.getResult(0));
+
+    return success();
+  }
+};
+
 // If a UPD op is loading a vector twice the size of the architecture
 // vector size, split it into a high and low load into the accumulator.
 // TODO: This is a process we may want to include as part of the
@@ -1372,6 +1410,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
       LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp, LowerVectorCmpFOpToAIEVecCmpOp,
+      LowerVectorSelectOpToAIEVecSelOp,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
@@ -1616,6 +1655,21 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(lhsType);
 
     if (!(elWidthSet.count(lhsElWidth) && laneSize * lhsElWidth == 512)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<arith::SelectOp>([=](arith::SelectOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (!(elWidthSet.count(resultElWidth) && laneSize * resultElWidth == 512)) {
       return true;
     }
 

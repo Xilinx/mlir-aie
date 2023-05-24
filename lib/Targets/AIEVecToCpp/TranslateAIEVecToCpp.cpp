@@ -1713,6 +1713,80 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate the comparison intrinsics(eq, ne, lt, le, gt, ge) for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The lhs and rhs should have already been emitted
+  Value lhs = cmpOp.getLhs();
+  Value rhs = cmpOp.getRhs();
+
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*cmpOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  StringRef pred = cmpOp.getPred();
+  if (pred == "eq") {
+    os << "eq";
+  } else if (pred == "ne") {
+    os << "ne";
+  } else if (pred == "slt" || pred == "ult") {
+    os << "lt";
+  } else if (pred == "sle" || pred == "ule") {
+    os << "le";
+  } else if (pred == "sgt" || pred == "ugt") {
+    os << "gt";
+  } else if (pred == "sge" || pred == "uge") {
+    os << "ge";
+  } else {
+    return failure();
+  }
+  os << "(";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
+  os << ")";
+  return success();
+}
+
+// Generate the sel intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The lhs, rhs and sel should have already been emitted
+  Value lhs = selOp.getLhs();
+  Value rhs = selOp.getRhs();
+  Value sel = selOp.getSel();
+
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs) ||
+      !emitter.hasValueInScope(sel))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*selOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "sel(";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
+  os << ", ";
+  os << emitter.getOrCreateName(sel);
+  os << ")";
+  return success();
+}
+
 // Generate the transfer write op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     vector::TransferWriteOp writeOp) {
@@ -2166,25 +2240,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << " " << functionOp.getName();
 
   os << "(";
-  if (functionOp.isDeclaration()) {
-    if (failed(interleaveCommaWithError(
-            functionOp.getArgumentTypes(), os, [&](Type type) -> LogicalResult {
-              if (failed(emitter.emitType(functionOp.getLoc(), type)))
-                return failure();
-              // If it is a memref argument, we need to check if it has dynamic
-              // shape. If so, the dimensions have to be printed out
-              MemRefType argType = dyn_cast<MemRefType>(type);
-              if (argType)
-                for (unsigned dim = 0; dim < argType.getRank(); ++dim)
-                  if (argType.isDynamicDim(dim))
-                    os << ", size_t";
-              return success();
-            })))
-      return failure();
-    os << ");\n";
-    return success();
-  }
-
   if (failed(interleaveCommaWithError(
           functionOp.getArguments(), os,
           [&](BlockArgument arg) -> LogicalResult {
@@ -2198,7 +2253,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
             return success();
           })))
     return failure();
-
   os << ") {\n";
   os.indent();
   if (emitter.shouldDeclareVariablesAtTop()) {
@@ -2611,7 +2665,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
-                aievec::MinOp, aievec::MaxOp>(
+                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
