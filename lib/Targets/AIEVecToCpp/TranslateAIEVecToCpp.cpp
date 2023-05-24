@@ -1748,10 +1748,28 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
   } else {
     return failure();
   }
+
   os << "(";
-  os << emitter.getOrCreateName(lhs);
-  os << ", ";
-  os << emitter.getOrCreateName(rhs);
+  VectorType vType = lhs.getType().cast<VectorType>();
+  Type eltType = vType.getElementType();
+
+  if (eltType.isa<IntegerType>() &&
+      (pred == "ult" || pred == "ule" || pred == "ugt" || pred == "uge")) {
+    unsigned lanes = getVectorLaneSize(vType);
+    unsigned width = getElementSizeInBits(vType);
+    os << "v" << std::to_string(lanes) << "uint" << std::to_string(width);
+    os << "(";
+    os << emitter.getOrCreateName(lhs);
+    os << "), ";
+    os << "v" << std::to_string(lanes) << "uint" << std::to_string(width);
+    os << "(";
+    os << emitter.getOrCreateName(rhs);
+    os << ")";
+  } else {
+    os << emitter.getOrCreateName(lhs);
+    os << ", ";
+    os << emitter.getOrCreateName(rhs);
+  }
   os << ")";
   return success();
 }
