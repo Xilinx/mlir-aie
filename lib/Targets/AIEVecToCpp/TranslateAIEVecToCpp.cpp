@@ -2258,6 +2258,25 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << " " << functionOp.getName();
 
   os << "(";
+  if (functionOp.isDeclaration()) {
+    if (failed(interleaveCommaWithError(
+            functionOp.getArgumentTypes(), os, [&](Type type) -> LogicalResult {
+              if (failed(emitter.emitType(functionOp.getLoc(), type)))
+                return failure();
+              // If it is a memref argument, we need to check if it has dynamic
+              // shape. If so, the dimensions have to be printed out
+              MemRefType argType = dyn_cast<MemRefType>(type);
+              if (argType)
+                for (unsigned dim = 0; dim < argType.getRank(); ++dim)
+                  if (argType.isDynamicDim(dim))
+                    os << ", size_t";
+              return success();
+            })))
+      return failure();
+    os << ");\n";
+    return success();
+  }
+
   if (failed(interleaveCommaWithError(
           functionOp.getArguments(), os,
           [&](BlockArgument arg) -> LogicalResult {
@@ -2271,6 +2290,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
             return success();
           })))
     return failure();
+
   os << ") {\n";
   os.indent();
   if (emitter.shouldDeclareVariablesAtTop()) {
