@@ -1277,9 +1277,6 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
-
-
-
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
@@ -1288,13 +1285,17 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
     based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
 
+    For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
+    take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
+    size will be applied. If a single size is specified, it will be applied to both producer and consumers.
+
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
     Example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, {4}) : !AIE.objectFifo<memref<16xi32>> 
     ```
     This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
   }];
@@ -1302,19 +1303,21 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let arguments = (
     ins Index:$producerTile,
         Variadic<Index>:$consumerTiles,
-        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$elemNumber
+        ArrayAttr:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
 
   let assemblyFormat = [{
-    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
+    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
   }];
   
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int size() { return getElemNumber(); }
+    int size(int index = 0) { 
+      return dyn_cast<IntegerAttr>(getElemNumber()[index]).getInt(); 
+    }
     TileOp getProducerTileOp();
     bool hasName() {
        return name().has_value();

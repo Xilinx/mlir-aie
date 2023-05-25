@@ -203,9 +203,10 @@ struct AIEObjectFifoStatefulTransformPass
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
                                       Value prodTile, Value consTile,
-                                      int depth) {
+                                      std::vector<Attribute> depth) {
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), datatype, prodTile, consTile, depth);
+        builder.getUnknownLoc(), datatype, prodTile, consTile, 
+        builder.getArrayAttr(ArrayRef(depth)));
     return fifo;
   }
 
@@ -829,7 +830,7 @@ struct AIEObjectFifoStatefulTransformPass
                                   locksPerFifo[op][lockID], lockMode,
                                   lockAction);
         acc[op] =
-            (lockID + 1) % op.getElemNumber(); // update to next objFifo elem
+            (lockID + 1) % op.size(); // update to next objFifo elem
       }
     } else {
       int lockMode = 1;
@@ -851,7 +852,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockMode,
                                   lockAction);
         acc[op] =
-            (acc[op] + 1) % op.getElemNumber(); // update to next objFifo elem
+            (acc[op] + 1) % op.size(); // update to next objFifo elem
       }
     }
   }
@@ -905,50 +906,6 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  /// Function used to find the size of an objectFifo after split based on
-  /// the maximum number of elements (of the original objectFifo) acquired
-  /// by a process running on given tile. If no CoreOp exists for this tile
-  /// return 0.
-  int findObjectFifoSize(DeviceOp &device, Value tile,
-                         ObjectFifoCreateOp objFifo) {
-    if (objFifo.size() == 0)
-      return 0;
-
-    // if memTile, size is equal to objFifo size
-    if (tile.getDefiningOp<TileOp>().isMemTile())
-      return objFifo.size();
-
-    // if shimTile, size is equal to number of external buffers
-    if (tile.getDefiningOp<TileOp>().isShimTile()) {
-      for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-        if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
-          return regOp.getExternalBuffers().size();
-      }
-    }
-
-    int maxAcquire = 0;
-    for (auto coreOp : device.getOps<CoreOp>()) {
-      if (coreOp.getTile() == tile) {
-        coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-          if (acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
-            if (acqOp.acqNumber() > maxAcquire)
-              maxAcquire = acqOp.acqNumber();
-        });
-      }
-    }
-
-    if (maxAcquire > 0) {
-      if ((maxAcquire == 1) && (objFifo.size() == 1)) {
-        return 1;
-      }
-      return maxAcquire + 1;
-      // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
-      // for prefetching: simplest case scenario is at least a ping-pong buffer
-    }
-
-    return 0;
-  }
-
   void runOnOperation() override {
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
@@ -967,6 +924,7 @@ struct AIEObjectFifoStatefulTransformPass
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int share_direction = 0;
       int consumerIndex = 0;
+      int consumerDepth = createOp.size();
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
@@ -984,14 +942,16 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        int consMaxAcquire =
-            findObjectFifoSize(device, consumerTileOp, createOp);
+        if (createOp.getElemNumber().size() > 1) 
+          // +1 to account for 1st depth (producer)
+          consumerDepth = createOp.size(consumerIndex + 1);
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
 
+        std::vector<Attribute> cosumerObfFifoSize = {builder.getI32IntegerAttr(consumerDepth)};
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerTile, consumerTile, consMaxAcquire);
+            builder, datatype, consumerTile, consumerTile, cosumerObfFifoSize);
 
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifo.getOperation()->setAttr(
@@ -1021,10 +981,11 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-        int prodMaxAcquire =
-            findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
-        createOp->setAttr("elemNumber",
-                          builder.getI32IntegerAttr(prodMaxAcquire));
+        if (createOp.getElemNumber().size() > 1) {
+          std::vector<Attribute> objFifoSize = {builder.getI32IntegerAttr(createOp.size())};
+          createOp->setAttr("elemNumber",
+                            builder.getArrayAttr(ArrayRef(objFifoSize)));
+        }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
         // register split consumer objectFifos
@@ -1216,7 +1177,7 @@ struct AIEObjectFifoStatefulTransformPass
         // create subview: buffers that were already acquired + new acquires
         for (int i = 0; i < numCreate; i++) {
           acquiredIndices.push_back(start);
-          start = (start + 1) % op.getElemNumber();
+          start = (start + 1) % op.size();
         }
         std::vector<BufferOp *> subviewRefs;
         for (auto index : acquiredIndices)
