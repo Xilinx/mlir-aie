@@ -70,6 +70,7 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
+// CHECK:   AIE.shimDMAAllocationInfo("ext_of", MM2S, 0, 7)
 // CHECK: }
 
 module @register_external_buffers {

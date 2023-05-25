@@ -27,6 +27,7 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/IR/Module.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/TargetSelect.h"
 
 #include "aie/Dialect/ADF/ADFDialect.h"
@@ -47,12 +48,35 @@ static llvm::cl::opt<int>
     tileRow("tilerow", llvm::cl::desc("row coordinate of core to translate"),
             llvm::cl::init(0));
 
+llvm::json::Value attrToJSON(Attribute &attr) {
+  if (auto a = attr.dyn_cast<StringAttr>()) {
+    return llvm::json::Value(a.getValue().str());
+  } else if (auto array_attr = attr.dyn_cast<ArrayAttr>()) {
+    llvm::json::Array arrayJSON;
+    for (auto a : array_attr)
+      arrayJSON.push_back(attrToJSON(a));
+    return llvm::json::Value(std::move(arrayJSON));
+  } else if (auto dict_attr = attr.dyn_cast<DictionaryAttr>()) {
+    llvm::json::Object dictJSON;
+    for (auto a : dict_attr) {
+      auto ident = a.getName();
+      auto attr = a.getValue();
+      dictJSON[ident.str()] = attrToJSON(attr);
+    }
+    return llvm::json::Value(std::move(dictJSON));
+  } else if (auto int_attr = attr.dyn_cast<IntegerAttr>()) {
+    return llvm::json::Value(int_attr.getInt());
+  } else
+    return llvm::json::Value(std::string(""));
+}
+
 namespace xilinx {
 namespace AIE {
 
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<func::FuncDialect>();
+  registry.insert<scf::SCFDialect>();
   registry.insert<cf::ControlFlowDialect>();
   registry.insert<DLTIDialect>();
   registry.insert<arith::ArithDialect>();
@@ -149,6 +173,31 @@ void registerAIETranslations() {
           if (auto tile = target_model.getMemEast(srcCoord))
             doBuffer(tile, target_model.getMemEastBaseAddress());
         }
+        return success();
+      },
+      registerDialects);
+
+      TranslateFromMLIRRegistration registrationShimDMAToJSON(
+      "aie-generate-json", "Transform AIE shim DMA allocation info into JSON",
+      [](ModuleOp module, raw_ostream &output) {
+        llvm::json::Object moduleJSON;
+        for (auto shimDMA_meta : module.getOps<ShimDMAAllocationInfoOp>()) {
+          llvm::json::Object shimJSON;
+          ShimDMAAllocationInfoOpAdaptor shimDMAAllocationInfoOpAdaptor(shimDMA_meta);
+          auto channelDir = shimDMAAllocationInfoOpAdaptor.getChannelDirAttr();
+          shimJSON["channelDir"] = attrToJSON(channelDir);
+          auto channelIndex = shimDMAAllocationInfoOpAdaptor.getChannelIndexAttr();
+          shimJSON["channelIndex"] = attrToJSON(channelIndex);
+          auto col = shimDMAAllocationInfoOpAdaptor.getColAttr();
+          shimJSON["col"] = attrToJSON(col);
+          moduleJSON[shimDMA_meta.getSymName()] =
+                  llvm::json::Value(std::move(shimJSON));
+        }
+        llvm::json::Value topv(std::move(moduleJSON));
+        std::string ret;
+        llvm::raw_string_ostream ss(ret);
+        ss << llvm::formatv("{0:2}", topv) << "\n";
+        output << ss.str();
         return success();
       },
       registerDialects);

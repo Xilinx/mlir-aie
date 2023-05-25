@@ -1277,8 +1277,36 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
+def AIE_ShimDMAAllocationInfoOp : AIE_Op<"shimDMAAllocationInfo", [HasParent<"ModuleOp">]> {
+  let summary = "Runtime allocation information for a single shim DMA";
+  let description = [{
+    Runtime allocation information for a single shim DMA. It contains attributes for the
+    sym_name of the operation which generated the shim DMA, for the DMAChannelDir and 
+    channel index, and for the column of the shim tile to which the originating operation 
+    was mapped.
 
-
+    Example:
+    ```
+      %tile00 = AIE.tile(0, 0)
+      %tile02 = AIE.tile(0, 2)
+      %connect1 = AIE.objectFifo.createObjectFifo(%tile00, {%tile02}, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+    ```
+    could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+    ```
+      AIE.shimDMAAllocationInfo("of_in_0", MM2S, 1, 0)
+    ```
+  }];
+  let arguments = (
+    ins StrAttr:$sym_name,
+        DMAChannelDir:$channelDir,
+        I64Attr:$channelIndex,
+        I64Attr:$col
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $sym_name `,` $channelDir `,` $channelIndex `,` $col `)` attr-dict  
+  }];
+}
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
