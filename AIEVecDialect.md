@@ -629,6 +629,40 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.sel` (::xilinx::aievec::SelOp)
+
+AIE vector lane wise selection
+
+
+Syntax:
+
+```
+operation ::= `aievec.sel` $lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)
+```
+
+Xilinx-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
+`$result = sel(`$lhs, $rhs, $sel`).
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+| `sel` | unsigned integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.select` (::xilinx::aievec::SelectOp)
 
 AIE vector lane selection
