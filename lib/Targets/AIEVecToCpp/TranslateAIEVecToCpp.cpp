@@ -1713,6 +1713,98 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate the comparison intrinsics(eq, ne, lt, le, gt, ge) for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The lhs and rhs should have already been emitted
+  Value lhs = cmpOp.getLhs();
+  Value rhs = cmpOp.getRhs();
+
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*cmpOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  StringRef pred = cmpOp.getPred();
+  if (pred == "eq") {
+    os << "eq";
+  } else if (pred == "ne") {
+    os << "ne";
+  } else if (pred == "slt" || pred == "ult") {
+    os << "lt";
+  } else if (pred == "sle" || pred == "ule") {
+    os << "le";
+  } else if (pred == "sgt" || pred == "ugt") {
+    os << "gt";
+  } else if (pred == "sge" || pred == "uge") {
+    os << "ge";
+  } else {
+    return failure();
+  }
+
+  os << "(";
+  VectorType vType = lhs.getType().cast<VectorType>();
+  Type eltType = vType.getElementType();
+
+  if (eltType.isa<IntegerType>() &&
+      (pred == "ult" || pred == "ule" || pred == "ugt" || pred == "uge")) {
+    unsigned lanes = getVectorLaneSize(vType);
+    unsigned width = getElementSizeInBits(vType);
+    os << "v" << std::to_string(lanes) << "uint" << std::to_string(width);
+    os << "(";
+    os << emitter.getOrCreateName(lhs);
+    os << "), ";
+    os << "v" << std::to_string(lanes) << "uint" << std::to_string(width);
+    os << "(";
+    os << emitter.getOrCreateName(rhs);
+    os << ")";
+  } else {
+    os << emitter.getOrCreateName(lhs);
+    os << ", ";
+    os << emitter.getOrCreateName(rhs);
+  }
+  os << ")";
+  return success();
+}
+
+// Generate the sel intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The lhs, rhs and sel should have already been emitted
+  Value lhs = selOp.getLhs();
+  Value rhs = selOp.getRhs();
+  Value sel = selOp.getSel();
+
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs) ||
+      !emitter.hasValueInScope(sel))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*selOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "sel(";
+  os << emitter.getOrCreateName(rhs);
+  os << ", ";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(sel);
+  os << ")";
+  return success();
+}
+
 // Generate the transfer write op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     vector::TransferWriteOp writeOp) {
@@ -2611,7 +2703,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
-                aievec::MinOp, aievec::MaxOp>(
+                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
