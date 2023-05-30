@@ -13,7 +13,7 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK: module @alloc {
-// CHECK:   AIE.device(ipu) {
+// CHECK:   AIE.device(xcve2302) {
 // CHECK:     %0 = AIE.tile(0, 0)
 // CHECK:     %1 = AIE.tile(0, 2)
 // CHECK:     %2 = AIE.tile(0, 3)
