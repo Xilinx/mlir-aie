@@ -177,21 +177,23 @@ void registerAIETranslations() {
       },
       registerDialects);
 
-      TranslateFromMLIRRegistration registrationShimDMAToJSON(
+  TranslateFromMLIRRegistration registrationShimDMAToJSON(
       "aie-generate-json", "Transform AIE shim DMA allocation info into JSON",
       [](ModuleOp module, raw_ostream &output) {
         llvm::json::Object moduleJSON;
         for (auto shimDMA_meta : module.getOps<ShimDMAAllocationInfoOp>()) {
           llvm::json::Object shimJSON;
-          ShimDMAAllocationInfoOpAdaptor shimDMAAllocationInfoOpAdaptor(shimDMA_meta);
+          ShimDMAAllocationInfoOpAdaptor shimDMAAllocationInfoOpAdaptor(
+              shimDMA_meta);
           auto channelDir = shimDMAAllocationInfoOpAdaptor.getChannelDirAttr();
           shimJSON["channelDir"] = attrToJSON(channelDir);
-          auto channelIndex = shimDMAAllocationInfoOpAdaptor.getChannelIndexAttr();
+          auto channelIndex =
+              shimDMAAllocationInfoOpAdaptor.getChannelIndexAttr();
           shimJSON["channelIndex"] = attrToJSON(channelIndex);
           auto col = shimDMAAllocationInfoOpAdaptor.getColAttr();
           shimJSON["col"] = attrToJSON(col);
           moduleJSON[shimDMA_meta.getSymName()] =
-                  llvm::json::Value(std::move(shimJSON));
+              llvm::json::Value(std::move(shimJSON));
         }
         llvm::json::Value topv(std::move(moduleJSON));
         std::string ret;

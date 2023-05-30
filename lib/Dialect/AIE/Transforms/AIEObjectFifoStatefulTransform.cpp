@@ -949,17 +949,18 @@ struct AIEObjectFifoStatefulTransformPass
     return 0;
   }
 
-  /// Function used to generate, from an objectFifo with a shimTile endpoint, a 
-  /// shimDMAAllocationInfoOp containing the channelDir, channelIndex and shimTile col 
-  /// assigned by the objectFifo lowering.
-  void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx, 
-                                      StringRef name, int colIndex, 
-                                      DMAChannelDir channelDir, int channelIndex) {
-    builder.create<ShimDMAAllocationInfoOp>(builder.getUnknownLoc(), 
-                                      builder.getStringAttr(name.str()), 
-                                      DMAChannelDirAttr::get(ctx, channelDir),
-                                      builder.getI64IntegerAttr(channelIndex), 
-                                      builder.getI64IntegerAttr(colIndex));
+  /// Function used to generate, from an objectFifo with a shimTile endpoint, a
+  /// shimDMAAllocationInfoOp containing the channelDir, channelIndex and
+  /// shimTile col assigned by the objectFifo lowering.
+  void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
+                                      StringRef name, int colIndex,
+                                      DMAChannelDir channelDir,
+                                      int channelIndex) {
+    builder.create<ShimDMAAllocationInfoOp>(
+        builder.getUnknownLoc(), builder.getStringAttr(name.str()),
+        DMAChannelDirAttr::get(ctx, channelDir),
+        builder.getI64IntegerAttr(channelIndex),
+        builder.getI64IntegerAttr(colIndex));
   }
 
   void runOnOperation() override {
@@ -1058,9 +1059,10 @@ struct AIEObjectFifoStatefulTransformPass
       // generate objectFifo allocation info
       builder.setInsertionPointAfter(device);
       if (producer.getProducerTileOp().isShimTile())
-        createObjectFifoAllocationInfo(builder, ctx, producer.name()->getValue(), 
-                                 producer.getProducerTileOp().colIndex(), 
-                                 producerChan.first, producerChan.second);
+        createObjectFifoAllocationInfo(builder, ctx,
+                                       producer.name()->getValue(),
+                                       producer.getProducerTileOp().colIndex(),
+                                       producerChan.first, producerChan.second);
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
@@ -1071,9 +1073,10 @@ struct AIEObjectFifoStatefulTransformPass
         // generate objectFifo allocation info
         builder.setInsertionPointAfter(device);
         if (consumer.getProducerTileOp().isShimTile())
-          createObjectFifoAllocationInfo(builder, ctx, producer.name()->getValue(), 
-                                 consumer.getProducerTileOp().colIndex(), 
-                                 consumerChan.first, consumerChan.second);
+          createObjectFifoAllocationInfo(
+              builder, ctx, producer.name()->getValue(),
+              consumer.getProducerTileOp().colIndex(), consumerChan.first,
+              consumerChan.second);
 
         // create flow
         builder.setInsertionPointAfter(producer);
