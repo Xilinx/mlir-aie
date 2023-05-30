@@ -1427,10 +1427,9 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
-static void
-populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
-                                           unsigned shiftParam) {
-  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(),
+static void populateAIEVecConvOpTransformationPatterns(
+    RewritePatternSet &patterns, AnalysisManager &am, unsigned shiftParam) {
+  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am,
                                                shiftParam);
 }
 
@@ -1711,17 +1710,13 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
 }
 
 static void
-configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target) {
+configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
+                                                 AnalysisManager &am) {
   target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
-  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
-    SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
-    MulDefMapTy macChainMap;
-    unsigned dupFactor = 1;
-    bool hasMulConv = false;
-    Value acc = nullptr;
-    return !canFoldMulAddChainToConvOp(op, macChainMap, groupFusedOps,
-                                       dupFactor, hasMulConv, acc);
+  target.addDynamicallyLegalOp<arith::AddIOp>([&am](arith::AddIOp op) {
+    return !am.getChildAnalysis<canFoldMulAddChainToConvOpAnalysis>(op)
+                .canFoldMulAddChainToConvOp;
   });
 }
 //===----------------------------------------------------------------------===//
@@ -1939,9 +1934,10 @@ void AIEVecConvOpTransformationPass::runOnOperation() {
     }
   }
 
+  AnalysisManager am = getAnalysisManager();
   if (aieVersion == AIEArch::AIE_ML) {
-    populateAIEVecConvOpTransformationPatterns(patterns, shiftParam);
-    configureAIEVecConvOpTransformationLegalizations(target);
+    populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam);
+    configureAIEVecConvOpTransformationLegalizations(target, am);
   }
 
   if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
