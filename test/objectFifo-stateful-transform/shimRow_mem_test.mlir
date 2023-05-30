@@ -70,7 +70,7 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
-// CHECK:   AIE.shimDMAAllocationInfo("objfifo", MM2S, 0, 7)
+// CHECK:   AIE.shimDMAAllocation("objfifo", MM2S, 0, 7)
 // CHECK: }
 
 module @shimRow_mem {

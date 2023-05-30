@@ -1277,11 +1277,11 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationInfoOp : AIE_Op<"shimDMAAllocationInfo", [HasParent<"ModuleOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"ModuleOp">]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     Runtime allocation information for a single shim DMA. It contains attributes for the
-    sym_name of the operation which generated the shim DMA, for the DMAChannelDir and 
+    sym_name of an operation which generated the shim DMA, for the DMAChannelDir and 
     channel index, and for the column of the shim tile to which the originating operation 
     was mapped.
 
@@ -1293,7 +1293,7 @@ def AIE_ShimDMAAllocationInfoOp : AIE_Op<"shimDMAAllocationInfo", [HasParent<"Mo
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
-      AIE.shimDMAAllocationInfo("of_in_0", MM2S, 1, 0)
+      AIE.shimDMAAllocation("of_in_0", MM2S, 1, 0)
     ```
   }];
   let arguments = (

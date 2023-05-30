@@ -22,10 +22,10 @@
 // CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
 // CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
 // CHECK:   }
-// CHECK:   AIE.shimDMAAllocationInfo({{.*}}, {{.*}}, {{.*}}, 2)
-// CHECK:   AIE.shimDMAAllocationInfo({{.*}}, {{.*}}, {{.*}}, 2)
-// CHECK:   AIE.shimDMAAllocationInfo({{.*}}, {{.*}}, {{.*}}, 2)
-// CHECK:   AIE.shimDMAAllocationInfo({{.*}}, {{.*}}, {{.*}}, 2)
+// CHECK:   AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
+// CHECK:   AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
+// CHECK:   AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
+// CHECK:   AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
 // CHECK: }
 
 module @alloc {
