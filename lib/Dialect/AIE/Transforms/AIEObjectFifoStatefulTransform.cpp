@@ -956,11 +956,11 @@ struct AIEObjectFifoStatefulTransformPass
                                       StringRef name, int colIndex,
                                       DMAChannelDir channelDir,
                                       int channelIndex) {
-    builder.create<ShimDMAAllocationOp>(
-        builder.getUnknownLoc(), builder.getStringAttr(name.str()),
-        DMAChannelDirAttr::get(ctx, channelDir),
-        builder.getI64IntegerAttr(channelIndex),
-        builder.getI64IntegerAttr(colIndex));
+    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
+                                        builder.getStringAttr(name.str()),
+                                        DMAChannelDirAttr::get(ctx, channelDir),
+                                        builder.getI64IntegerAttr(channelIndex),
+                                        builder.getI64IntegerAttr(colIndex));
   }
 
   void runOnOperation() override {

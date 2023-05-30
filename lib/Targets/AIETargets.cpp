@@ -183,12 +183,10 @@ void registerAIETranslations() {
         llvm::json::Object moduleJSON;
         for (auto shimDMA_meta : module.getOps<ShimDMAAllocationOp>()) {
           llvm::json::Object shimJSON;
-          ShimDMAAllocationOpAdaptor shimDMAAllocationOpAdaptor(
-              shimDMA_meta);
+          ShimDMAAllocationOpAdaptor shimDMAAllocationOpAdaptor(shimDMA_meta);
           auto channelDir = shimDMAAllocationOpAdaptor.getChannelDirAttr();
           shimJSON["channelDir"] = attrToJSON(channelDir);
-          auto channelIndex =
-              shimDMAAllocationOpAdaptor.getChannelIndexAttr();
+          auto channelIndex = shimDMAAllocationOpAdaptor.getChannelIndexAttr();
           shimJSON["channelIndex"] = attrToJSON(channelIndex);
           auto col = shimDMAAllocationOpAdaptor.getColAttr();
           shimJSON["col"] = attrToJSON(col);
