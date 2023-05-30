@@ -1280,10 +1280,13 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
 def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"ModuleOp">]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
-    Runtime allocation information for a single shim DMA. It contains attributes for the
-    sym_name of an operation which generated the shim DMA, for the DMAChannelDir and 
-    channel index, and for the column of the shim tile to which the originating operation 
-    was mapped.
+    This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
+    and hence there is no appropriate dmaStart operation to indicate which channel is being
+    used and on which column the shimDMA is. 
+
+    It contains attributes for the sym_name of an operation which generated the shim DMA, 
+    for the DMAChannelDir and channel index, and for the column of the shim tile to which 
+    the originating operation was mapped.
 
     Example:
     ```
