@@ -1256,6 +1256,47 @@ Traits: HasParent<CoreOp>
 | `channel` | integer
 | `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
+### `AIE.shimDMAAllocation` (::xilinx::AIE::ShimDMAAllocationOp)
+
+Runtime allocation information for a single shim DMA
+
+
+Syntax:
+
+```
+operation ::= `AIE.shimDMAAllocation` `(` $sym_name `,` $channelDir `,` $channelIndex `,` $col `)` attr-dict
+```
+
+This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
+and hence there is no appropriate dmaStart operation to indicate which channel is being
+used and on which column the shimDMA is. 
+
+It contains attributes for the sym_name of an operation which generated the shim DMA, 
+for the DMAChannelDir and channel index, and for the column of the shim tile to which 
+the originating operation was mapped.
+
+Example:
+```
+  %tile00 = AIE.tile(0, 0)
+  %tile02 = AIE.tile(0, 2)
+  %connect1 = AIE.objectFifo.createObjectFifo(%tile00, {%tile02}, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+```
+could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+```
+  AIE.shimDMAAllocation("of_in_0", MM2S, 1, 0)
+```
+
+Traits: HasParent<ModuleOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `sym_name` | ::mlir::StringAttr | string attribute
+| `channelDir` | xilinx::AIE::DMAChannelDirAttr | DMA Channel direction
+| `channelIndex` | ::mlir::IntegerAttr | 64-bit signless integer attribute
+| `col` | ::mlir::IntegerAttr | 64-bit signless integer attribute
+
 ### `AIE.shimDMA` (::xilinx::AIE::ShimDMAOp)
 
 Declare a DMA in the PL shim
