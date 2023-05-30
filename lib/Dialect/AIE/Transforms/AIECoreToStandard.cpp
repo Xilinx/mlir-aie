@@ -496,8 +496,8 @@ struct AIECoreToStandardPass
              AIEOpRemoval<AIE::FlowOp>, AIEOpRemoval<AIE::MemOp>,
              AIEOpRemoval<AIE::ShimDMAOp>, AIEOpRemoval<AIE::ShimMuxOp>,
              AIEOpRemoval<AIE::SwitchboxOp>, AIEOpRemoval<AIE::LockOp>,
-             AIEOpRemoval<AIE::BufferOp>, AIEOpRemoval<AIE::ExternalBufferOp>>(
-            m.getContext(), m);
+             AIEOpRemoval<AIE::BufferOp>, AIEOpRemoval<AIE::ExternalBufferOp>,
+             AIEOpRemoval<AIE::ShimDMAAllocationOp>>(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();
