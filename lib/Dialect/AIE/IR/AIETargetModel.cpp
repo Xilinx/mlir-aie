@@ -128,6 +128,154 @@ bool AIE1TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
 
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
+uint32_t
+AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
+                                                WireBundle bundle) const {
+  if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+    switch (bundle) {
+    case WireBundle::FIFO:
+      return 2;
+    case WireBundle::North:
+      return 6;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 6;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 2;
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::FIFO:
+      return 2;
+    case WireBundle::North:
+      if (row == rows() - 1)
+        return 0;
+      else
+        return 6;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 4;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    default:
+      return 0;
+    }
+}
+uint32_t
+AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
+                                                  WireBundle bundle) const {
+  if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+    switch (bundle) {
+    case WireBundle::FIFO:
+      return 2;
+    case WireBundle::North:
+      return 4;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 8;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 2;
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::FIFO:
+      return 2;
+    case WireBundle::North:
+      if (row == rows() - 1)
+        return 0;
+      else
+        return 4;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 6;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    case WireBundle::Trace:
+      return 2;
+    default:
+      return 0;
+    }
+}
+uint32_t
+AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
+                                              WireBundle bundle) const {
+  if (isShimNOCTile(col, row))
+    switch (bundle) {
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::NOC:
+      return 4;
+    case WireBundle::PLIO:
+      return 6;
+    case WireBundle::South:
+      return 8; // Connection to the south port of the stream switch
+    default:
+      return 0;
+    }
+  else
+    return 0;
+}
+uint32_t
+AIE1TargetModel::getNumSourceShimMuxConnections(int col, int row,
+                                                WireBundle bundle) const {
+  if (isShimNOCTile(col, row))
+    switch (bundle) {
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::NOC:
+      return 4;
+    case WireBundle::PLIO:
+      return 6;
+    case WireBundle::South:
+      return 6;
+    default:
+      return 0;
+    }
+  else
+    return 0;
+}
 
 ///
 /// AIE2 TargetModel
@@ -225,6 +373,236 @@ bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
   else
     return (IsMemSouth && !isMemTile(memCol, memRow)) || IsMemNorth ||
            IsMemWest || IsMemEast;
+}
+uint32_t
+AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
+                                                WireBundle bundle) const {
+  if (isMemTile(col, row))
+    switch (bundle) {
+    case WireBundle::DMA:
+      return 6;
+    case WireBundle::North:
+      return 6;
+    case WireBundle::South:
+      return 4;
+    default:
+      return 0;
+    }
+  else if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+    switch (bundle) {
+    case WireBundle::FIFO:
+      return 1;
+    case WireBundle::North:
+      return 6;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 6;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 1;
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::FIFO:
+      return 1;
+    case WireBundle::North:
+      if (row == rows() - 1)
+        return 0;
+      else
+        return 6;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 4;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    default:
+      return 0;
+    }
+}
+uint32_t
+AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
+                                                  WireBundle bundle) const {
+  if (isMemTile(col, row))
+    switch (bundle) {
+    case WireBundle::DMA:
+      return 6;
+    case WireBundle::North:
+      return 4;
+    case WireBundle::South:
+      return 6;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
+  else if (isShimNOCTile(col, row) || isShimPLTile(col, row))
+    switch (bundle) {
+    case WireBundle::FIFO:
+      return 1;
+    case WireBundle::North:
+      return 4;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 8;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
+  else
+    switch (bundle) {
+    case WireBundle::Core:
+      return 1;
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::FIFO:
+      return 1;
+    case WireBundle::North:
+      if (row == rows() - 1)
+        return 0;
+      else
+        return 4;
+    case WireBundle::West:
+      if (col == 0)
+        return 0;
+      else
+        return 4;
+    case WireBundle::South:
+      return 6;
+    case WireBundle::East:
+      if (col == columns() - 1)
+        return 0;
+      else
+        return 4;
+    case WireBundle::Trace:
+      return 1;
+    default:
+      return 0;
+    }
+}
+uint32_t
+AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
+                                              WireBundle bundle) const {
+  if (isShimNOCTile(col, row))
+    switch (bundle) {
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::NOC:
+      return 4;
+    case WireBundle::PLIO:
+      return 6;
+    case WireBundle::South:
+      return 8;
+    default:
+      return 0;
+    }
+  else
+    return 0;
+}
+uint32_t
+AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
+                                                WireBundle bundle) const {
+  if (isShimNOCTile(col, row))
+    switch (bundle) {
+    case WireBundle::DMA:
+      return 2;
+    case WireBundle::NOC:
+      return 4;
+    case WireBundle::PLIO:
+      return 6;
+    case WireBundle::South:
+      return 6;
+    default:
+      return 0;
+    }
+  else
+    return 0;
+}
+
+void AIETargetModel::validate() const {
+  // Every tile in a shimtile row must be a shimtile, and can only be one type
+  // of shim tile.
+  for (int j = 0; j < columns(); j++) {
+    assert(!isMemTile(j, 0) && (isShimPLTile(j, 0) || isShimNOCTile(j, 0)) &&
+           !isCoreTile(j, 0));
+    assert(isShimPLTile(j, 0) ^ isShimNOCTile(j, 0));
+  }
+
+  // Every tile in a memtile row must be a memtile.
+  for (int i = 1; i < 1 + (int)getNumMemTileRows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
+             !isCoreTile(j, i));
+
+  // Every other tile is a coretile.
+  for (int i = 1 + (int)getNumMemTileRows(); i < rows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(!isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
+             isCoreTile(j, i));
+
+  // Looking North, busses must match
+  for (int i = 0; i < rows() - 1; i++)
+    for (int j = 0; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::North) ==
+             getNumDestSwitchboxConnections(j, i + 1, WireBundle::South));
+  // Looking South, busses must match
+  for (int i = 1; i < rows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::South) ==
+             getNumDestSwitchboxConnections(j, i - 1, WireBundle::North));
+  // Looking East, busses must match
+  for (int i = 0; i < rows(); i++)
+    for (int j = 0; j < columns() - 1; j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::East) ==
+             getNumDestSwitchboxConnections(j + 1, i, WireBundle::West));
+  // Looking West, busses must match
+  for (int i = 0; i < rows(); i++)
+    for (int j = 1; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::West) ==
+             getNumDestSwitchboxConnections(j - 1, i, WireBundle::East));
+  // Edges have no connections
+  for (int j = 0; j < columns(); j++)
+    assert(getNumSourceSwitchboxConnections(j, rows() - 1, WireBundle::North) ==
+           0);
+  for (int i = 0; i < rows(); i++)
+    assert(getNumSourceSwitchboxConnections(columns() - 1, i,
+                                            WireBundle::East) == 0);
+  for (int i = 0; i < rows(); i++)
+    assert(getNumSourceSwitchboxConnections(0, i, WireBundle::West) == 0);
+
+  // FIFOS are consistent
+  for (int i = 0; i < rows(); i++)
+    for (int j = 0; j < columns(); j++)
+      assert(getNumSourceSwitchboxConnections(j, i, WireBundle::FIFO) ==
+             getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
 }
 
 } // namespace AIE

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib%/ %extraAieCcFlags% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @test22_init_locks {
@@ -17,9 +17,8 @@ module @test22_init_locks {
   %buf13_0 = AIE.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf13_1 = AIE.buffer(%tile13) { sym_name = "b" } : memref<256xi32>
 
-  %lock13_3 = AIE.lock(%tile13, 3) { sym_name = "lock_a" }
+  %lock13_3 = AIE.lock(%tile13, 3) { init = 1 : i32, sym_name = "lock_a" }
   %lock13_5 = AIE.lock(%tile13, 5) { sym_name = "lock_b" }
-  AIE.useLock(%lock13_3, "Acquire", 1)
 
   %core13 = AIE.core(%tile13) {
     AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)

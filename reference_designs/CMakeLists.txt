@@ -24,7 +24,18 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)
 endif()
 
-project(aie-test LANGUAGES CXX C)
+project(ref-designs LANGUAGES CXX C)
+
+# find package AIE if running tests from AIE installation
+if(NOT AIE_BINARY_DIR)
+  find_package(AIE REQUIRED CONFIG)
+  set(LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR CACHE STRING "") #pick up libxaiengine from installation folder if no other location specified
+endif()
+
+# default to x86_64 system architecture for runtime target
+set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
+list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
+set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -49,20 +60,19 @@ set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
 set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
-find_package(Vitis)
+find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
 
-# Look for LibXAIE in the sysroot.  Depending on the sysroot, this might live in multiple locations.
-set(LibXAIE_ROOT ${VitisSysroot}/usr ${VitisSysroot}/opt/xaiengine ${VitisSysroot}/opt/xaienginev2 STRING "Default libxaie location.")
-find_package(LibXAIE)
-
-if(LibXAIE_FOUND)
-message(STATUS "Using LibXAIE in: ${XILINX_XAIE_DIR}")
+# Look for LibXAIE
+if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
+    message("Ref designs using xaiengine from LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR=${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR}")
+    set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
+    find_package(LibXAIE)
 else()
-message(STATUS "LibXAIE NOT FOUND: Skipping some tests")
-endif()
-if(NOT AIE_BINARY_DIR)
-find_package(AIE REQUIRED CONFIG)
+  if(DEFINED VITIS_ROOT)
+    message(STATUS "Ref designs have Vitis available, no libxaie location specified so pick up from build area")
+    set(LibXAIE_FOUND TRUE)
+  endif()
 endif()
 
 # Define the default arguments to use with 'lit', and an option for the user to
@@ -114,7 +124,6 @@ set(TEST_DEPENDS
   aiecc.py
   aie-opt
   aie-translate
-  runtime-libs
   )
 
 add_lit_testsuite(check-reference-designs "Running the aie reference designs"

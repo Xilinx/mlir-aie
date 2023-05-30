@@ -262,9 +262,9 @@ xilinx::AIE::NetlistAnalysis::getBufferBaseAddress(Operation *bufOp) const {
     return buf.address();
   } else if (auto buf = dyn_cast<ExternalBufferOp>(bufOp)) {
     assert(false && "External buffer addresses are assigned at runtime.");
-  } else {
-    llvm_unreachable("unknown buffer type");
   }
+  llvm_unreachable("unknown buffer type");
+  return 0;
 }
 
 SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
@@ -413,7 +413,7 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
   device.getBodyRegion().walk([&](Operation *Op) {
     if (auto op = dyn_cast<UseLockOp>(Op)) {
       Value lock = op.getLock();
-      if (op.acquire()) {
+      if (op.acquire() || op.acquire_ge()) {
         visitors[lock].push_back(op);
       } else if (op.release()) {
         if (!visitors[lock].empty()) {
@@ -453,16 +453,6 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
         lockChains.push_back(std::make_pair(srcRelLockOp, dstAcqLockOp));
     }
   }
-}
-
-int xilinx::AIE::NetlistAnalysis::getAvailableLockID(Operation *tileOp) {
-  const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
-  for (unsigned i = 0; i < target_model.getNumLocks(); i++) {
-    if (locks.count(std::make_pair(tileOp, i)) == 0)
-      return i;
-  }
-
-  return -1;
 }
 
 void xilinx::AIE::NetlistAnalysis::print(raw_ostream &os) {

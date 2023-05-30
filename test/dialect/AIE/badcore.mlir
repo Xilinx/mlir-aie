@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.core' op CoreOp cannot be created on shim tile, i.e. row == 0
+// CHECK: error: 'AIE.core' op failed to verify that op exists in a core tile
 
 module @test {
   %t1 = AIE.tile(4, 0)

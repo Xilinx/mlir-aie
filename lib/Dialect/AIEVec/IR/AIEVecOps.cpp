@@ -207,6 +207,17 @@ ParseResult CastOp::parse(OpAsmParser &parser, OperationState &result) {
 // SRSOp
 //===----------------------------------------------------------------------===//
 
+// SRS fold method. It will fold with a preceding UPS operation.
+OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
+  auto srcDefOp = getSource().getDefiningOp();
+  if (!srcDefOp)
+    return nullptr;
+  auto upsOp = dyn_cast<UPSOp>(srcDefOp);
+  if (!upsOp)
+    return nullptr;
+  return upsOp.getSource();
+}
+
 // Print out SRS op.
 void SRSOp::print(OpAsmPrinter &p) {
   // Print the source accumulator
@@ -245,7 +256,8 @@ LogicalResult SRSOp::verify() {
   if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "wider than that of the result vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
+  else if (atype.isa<FloatType>() && stypeWidth != 16 &&
+           stypeWidth != atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "same as the result vector");
 
@@ -343,12 +355,9 @@ LogicalResult UPSOp::verify() {
   unsigned stypeWidth = stype.getIntOrFloatBitWidth();
   unsigned atypeWidth = atype.getIntOrFloatBitWidth();
 
-  if (atype.isa<IntegerType>() && stypeWidth >= atypeWidth)
+  if (stypeWidth >= atypeWidth)
     return emitError("the element type of result accumulator "
                      "must be wider than that of the source vector");
-  else if (atype.isa<FloatType>() && stypeWidth != atypeWidth)
-    return emitError("the element type of result accumulator must "
-                     "be same as the source vector");
 
   return success();
 }
@@ -1778,5 +1787,6 @@ ParseResult MulConvOp::parse(OpAsmParser &parser, OperationState &result) {
 ParseResult FMAConvOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseMulFMAConvOp(parser, result, true);
 }
+
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.cpp.inc"

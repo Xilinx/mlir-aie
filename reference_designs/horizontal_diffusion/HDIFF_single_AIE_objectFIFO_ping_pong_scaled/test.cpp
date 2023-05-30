@@ -350,91 +350,91 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_shimdma_460(_xaie);
   mlir_aie_configure_shimdma_470(_xaie);
 
-  //   mlir_aie_configure_shimdma_100(_xaie);
 #endif
 
   printf("Release lock for accessing DDR.\n");
 
-  mlir_aie_release_of_40_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_43_lock_0(_xaie, 0, 0); // (_xaie,release_value,time_out)
-  mlir_aie_release_of_44_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_47_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_1_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_1_2_cons_lock_0(_xaie, 0,
+                                           0); // (_xaie,release_value,time_out)
+  mlir_aie_release_obj_in_0_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_0_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_64_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_67_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_68_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_71_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_11_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_10_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_10_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_11_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_96_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_99_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_100_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_103_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_31_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_30_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_30_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_31_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_80_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_83_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_84_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_87_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_9_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_8_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_8_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_9_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_112_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_115_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_116_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_119_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_18_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_18_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_19_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_19_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_120_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_123_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_124_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_127_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_27_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_27_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_26_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_26_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_88_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_91_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_92_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_95_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_in_4_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_5_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_out_4_2_cons_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_in_5_lock_0(_xaie, 1, 0);
 
   // /33
-  mlir_aie_release_of_8_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_11_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_12_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_15_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_7_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_7_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_6_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_6_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_16_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_19_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_20_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_23_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_3_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_3_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_2_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_2_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_48_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_51_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_52_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_55_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_24_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_25_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_25_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_24_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_104_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_107_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_108_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_111_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_14_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_14_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_15_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_15_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_0_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_3_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_4_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_7_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_12_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_12_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_13_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_13_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_56_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_59_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_60_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_63_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_17_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_16_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_16_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_17_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_24_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_27_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_28_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_31_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_28_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_28_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_29_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_29_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_32_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_35_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_36_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_39_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_21_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_20_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_20_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_21_2_cons_lock_0(_xaie, 0, 0);
 
-  mlir_aie_release_of_72_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_75_lock_0(_xaie, 0, 0);
-  mlir_aie_release_of_76_lock_0(_xaie, 1, 0);
-  mlir_aie_release_of_79_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_22_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_22_2_cons_lock_0(_xaie, 0, 0);
+  mlir_aie_release_obj_in_23_lock_0(_xaie, 1, 0);
+  mlir_aie_release_obj_out_23_2_cons_lock_0(_xaie, 0, 0);
 
   printf("Start cores\n");
   t = clock();
@@ -453,9 +453,6 @@ int main(int argc, char *argv[]) {
   usleep(sleep_u);
   // /mnt/scratch/gagsingh/mlir-aie/install/bin/aie-opt
   // --aie-objectFifo-stateful-transform aie.mlir
-
-  //   mlir_aie_acquire_of_17_lock_0(_xaie, 1, 0);
-  //   mlir_aie_acquire_of_15_lock_0(_xaie, 1, 0);
 
   mlir_aie_sync_mem_cpu(_xaie,
                         32); //// only used in libaiev2 //sync up with output

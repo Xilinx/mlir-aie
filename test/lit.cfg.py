@@ -35,9 +35,8 @@ config.test_source_root = os.path.dirname(__file__)
 
 config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
-config.substitutions.append(('%VITIS_SYSROOT%', config.vitis_sysroot))
 config.substitutions.append(('%extraAieCcFlags%', config.extraAieCcFlags))
-config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib")))
+config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib",config.aieHostTarget)))
 config.substitutions.append(('%aietools', config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment('AIETOOLS', config.vitis_aietools_dir)
@@ -46,6 +45,16 @@ if(config.enable_board_tests):
     config.substitutions.append(('%run_on_board', "echo %T >> /home/xilinx/testlog | sync | sudo"))
 else:
     config.substitutions.append(('%run_on_board', "echo"))
+
+VitisSysrootFlag = ''
+if (config.aieHostTarget == 'x86_64'):
+    config.substitutions.append(('%aieHostTargetTriplet%', 'x86_64-unknown-linux-gnu'))
+elif (config.aieHostTarget == 'aarch64'):
+    config.substitutions.append(('%aieHostTargetTriplet%', 'aarch64-linux-gnu'))
+    VitisSysrootFlag = '--sysroot='+config.vitis_sysroot
+
+config.substitutions.append(('%VitisSysrootFlag%', VitisSysrootFlag))
+config.substitutions.append(('%aieHostTargetArch%', config.aieHostTarget))
 
 llvm_config.with_system_environment(
     ['HOME', 'INCLUDE', 'LIB', 'TMP', 'TEMP'])

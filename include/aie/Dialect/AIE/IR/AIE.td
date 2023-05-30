@@ -35,8 +35,8 @@ This is a dialect for describing netlists of AIE components in a
 Versal device.  It focuses on representing logical stream connections
 between cores and DMAs, along with the implementation of those logical
 connections in the various switch components.  In the dialect, a
-switch is referred to as 'switchbox' to avoid confusion with the
-'switch' keyword in C/C++.
+switch is referred to as `switchbox` to avoid confusion with the
+`switch` keyword in C/C++.
 
   }];
   let useDefaultTypePrinterParser = 1;
@@ -87,10 +87,10 @@ def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
 
     When using this operation, all resources in a physical device are available and
     the design does not need to be concerned with other potential users of a physical
-    device.  In addition, within an "aie.device" operation, tile addresses are absolute
+    device.  In addition, within an `aie.device` operation, tile addresses are absolute
     coordinates and are not intended to describe a relocatable design.  To describe
     a portion of a device which may be relocatable, the intention would be to provide another
-    operation, for instance maybe "aie.segment".
+    operation, for instance maybe `aie.segment`.
     The design itself is described using a region of code contained by the device
     operation.
 
@@ -100,6 +100,7 @@ def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
       %tile = aie.tile(1, 1)
       %CORE = aie.core(%tile) { ... }
     }
+    ```
   }];
   let arguments = (
     ins AIEDevice:$device
@@ -253,7 +254,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   ];
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
                                       SingleBlockImplicitTerminator<"EndOp">]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -262,7 +263,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
   let summary = "Declare a switch in the PL shim";
   let description = [{
     This operation represents the additional interconnect that is part of a shim interface tile.
-    Like the "AIE.switchbox" operation, "AIE.shimMux" is configured
+    Like the `AIE.switchbox` operation, `AIE.shimMux` is configured
     by code in its region, but can only contain connect operations
 
     Example:
@@ -290,7 +291,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs, HasValidDMAChannels, IsShimNOCTile
                                       /*, CallableOpInterface*/]>,
                          Results<(outs Index)> {
   let arguments = (
@@ -330,7 +331,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement
   }];
 }
 
-def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, IsCoreTile, TileElement]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<I32Attr, "0x400">:$stackSize
@@ -340,10 +341,10 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, TileElement]>, Results<(outs Index
     This operation represents an AIEngine processor core belonging to a tile.
     The region of a CoreOp contains code that gets run on the AIE core.  This code will
     typically be outlined into the LLVM dialect, eventually resulting in a binary file
-    for each core.  The name of this file can be be specified using the 'elf_file'
+    for each core.  The name of this file can be be specified using the `elf_file`
     attribute.
 
-    This op has an optional 'stackSize' attribute, to control the amount of memory (in bytes)
+    This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data allocations
     in other cores.
@@ -409,18 +410,18 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
 def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> ]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel,
         WireBundle:$destBundle,
-        I32Attr:$destChannel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$destChannel
   );
   let summary = "A circuit-switched connection inside a switchbox";
   let description = [{
     This operation represents a programmed circuit-switched connection in a stream switch.
     It associates a source bundle and source channel with a destination bundle and a destination channel.
-    This operation must exist within an "aie.switchbox" or "aie.shimswitchbox" operation.
-    All of the "aie.connect" operations in a switchbox must have a different destinations.
-    All of the "aie.connect" operations must also have a destination which is different from all
-    of the "aie.masterset" operations in the same switchbox.
+    This operation must exist within an `aie.switchbox` or `aie.shimswitchbox` operation.
+    All of the `aie.connect` operations in a switchbox must have a different destinations.
+    All of the `aie.connect` operations must also have a destination which is different from all
+    of the `aie.masterset` operations in the same switchbox.
 
     Example:
     ```
@@ -445,16 +446,16 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
   let arguments = (
     ins Index:$source,
         WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel,
         Index:$dest,
         WireBundle:$destBundle,
-        I32Attr:$destChannel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$destChannel
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
-    The "aie.flow" operation represents a circuit switched connection between two endpoints, usually
-    "aie.tile" operations.  During routing, this is replaced by "aie.connect" operations which represent
-    the programmed connections inside a switchbox, along with "aie.wire" operations which represent
+    The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
+    `aie.tile` operations.  During routing, this is replaced by `aie.connect` operations which represent
+    the programmed connections inside a switchbox, along with `aie.wire` operations which represent
     physical connections between switchboxes and other components.
 
     Example:
@@ -533,7 +534,7 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
 def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
   let arguments = (
     ins WireBundle:$destBundle,
-        I32Attr:$destChannel,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$destChannel,
         Variadic<Index>:$amsels
   );
   let summary = "Packet switched input connection";
@@ -577,8 +578,8 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   );
   let summary = "A bundle of physical wires between components";
   let description = [{
-    The "aie.wire" operation represents a physical set of connections between components in a Versal device.
-    Typically, these components are switches, represented by an "aie.switchbox" operation, and tiles,
+    The `aie.wire` operation represents a physical set of connections between components in a Versal device.
+    Typically, these components are switches, represented by an `aie.switchbox` operation, and tiles,
     represented by an [aie.tile](#aietile-aietileop) operation.
   }];
   let assemblyFormat = [{
@@ -600,7 +601,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
                                               SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel
   );
   let regions = (region AnyRegion:$rules);
   let summary = "Packet switched routing rules";
@@ -613,6 +614,7 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
     See [AIE.rule](#aierule-aiepacketruleop) for an example.
   }];
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
+  let hasVerifier = 1;
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
     Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
@@ -705,7 +707,7 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A sourceport";
   let description = [{
@@ -727,7 +729,7 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$channel
   );
   let summary = "A destination port";
   let description = [{
@@ -850,13 +852,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   // ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
                      Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
   let description = [{
     This operation declares a DMA channel to be used for data transfer. It usually exists inside
-    either a MemOp (representing a TileDMA), or in a ShimDMAOp (representing a ShimDMA).
+    either a MemOp (representing a TileDMA), a MemTileDMAOp (representing a DMA in a MemTile),
+    or in a ShimDMAOp (representing a ShimDMA).
     A channel is defined by a direction (i.e., MM2S or S2MM) and an index.
 
     Example:
@@ -877,8 +880,8 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
   }];
 
   let arguments = (
-    ins DMAChannelDir:$channelDir, 
-        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$channelIndex
+    ins DMAChannelDir:$channelDir,
+        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$channelIndex
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
@@ -900,7 +903,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "func::FuncOp", "S
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
+def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, IsCoreTile, HasValidBDs, HasValidDMAChannels]>,
                      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
@@ -946,13 +949,64 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface]>,
   ];
 }
 
-def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "func::FuncOp", "ShimDMAOp"]>]> {
+// This op is not actually Callable, but we want to inline code into them, so we have to
+// implement CallableOpInterface
+def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableOpInterface, IsMemTile, HasValidBDs, HasValidDMAChannels]>,
+                     Results<(outs Index)> {
+  let summary = "Declare a memTileDMA op";
+  let description = [{
+    This operation describes a DMA inside an AIE2 MemTile.
+    The region of the op is used to setup the DMAs and Block Descriptors.
+    See DMAStartOp and DMABdOp for more concrete examples on DMAs and Block Descriptors.
+
+    This operation is restricted to certain compatible tiles in AIE2 devices:
+    xcve2302: row 1
+    xcve2802: row 1 and 2
+
+    Example:
+    ```
+      m73 = AIE.memTileDMA(%t71) {
+          %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^end)
+        ^bd0:
+          AIE.useLock(%lock, "Acquire", 0)
+          AIE.dmaBd(<%buf : memref<64xi16>, 0, 64>, 0)
+          AIE.useLock(%lock, "Release", 1)
+          AIE.nextBd ^bd0
+        ^end:
+          AIE.end
+      }
+    ```
+    Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
+  }];
+  let arguments = (
+    ins Index:$tile
+  );
+  let regions = (region AnyRegion:$body);
+  let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    int colIndex();
+    int rowIndex();
+    TileOp getTileOp();
+    // CallableOpInterface
+    Region *getCallableRegion();
+    ArrayRef<Type> getCallableResults();
+    static StringRef getDefaultDialect() { return "AIE"; }
+  }];
+  let builders = [
+    OpBuilder<(ins "Value":$tile), [{
+      build($_builder, $_state, $_builder.getIndexType(), tile);
+    }]>
+  ];
+}
+
+def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside
     a tile or shim DMA operation.  It references a single following buffer descriptor.
     Note that unlike other terminators (like cf.br), canonicalization should not remove
-    the 'nextBd' terminator, since it would result in invalid buffer descriptors.
+    the `nextBd` terminator, since it would result in invalid buffer descriptors.
 
     Example:
     ```
@@ -994,7 +1048,8 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   }];
   let arguments = (
     ins Index:$tile,
-        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID,
+        OptionalAttr<I32Attr>:$init
   );
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
   let extraClassDeclaration = [{
@@ -1023,30 +1078,31 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
     TileOp getTileOp();
   }];
   let builders = [
-    OpBuilder<(ins "Value":$tile, "int":$lockID), [{
+    OpBuilder<(ins "Value":$tile, "int":$lockID, "int":$init), [{
       build($_builder, $_state,
         $_builder.getIndexType(),
         tile,
-        $_builder.getI32IntegerAttr(lockID));
+        $_builder.getI32IntegerAttr(lockID),
+        $_builder.getI32IntegerAttr(init));
       }]>
   ];
   let hasVerifier = 1;
   // let hasCanonicalizer = 1;
 }
 
-
 def AIE_UseLockOp: AIE_Op<"useLock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    This operation uses a lock. A lock can be acquired with a value, or release with a value.
-    This should be understood as a "blocking" operation.  This lock must appear in a parent op
-    where the tile can be determined (A CoreOp, a ShimDMAOp, or a MemOp).  If the useLock
-    operation appears in a module directly, an initialization to the lock will be generated in
-    the host implementation.
+    This operation uses a lock. In AIE1, a lock can be acquired with a value,
+    or released with a value. This should be understood as a "blocking"
+    operation. In AIE2, locks are counting semaphores without inherent
+    acquired/release characteristic. This lock must appear in a parent op where
+    the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
+    MemTileDMAOp).
   }];
   let arguments = (
     ins Index:$lock,
-        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<2>]>:$value,
+        I32Attr:$value,
         LockAction:$action,
         OptionalAttr<LockBlocking>:$blocking
   );
@@ -1055,7 +1111,9 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::Value":$lock, "uint32_t":$value, "xilinx::AIE::LockAction":$action),
+    OpBuilder<(ins "::mlir::Value":$lock,
+                   "uint32_t":$value,
+                   "xilinx::AIE::LockAction":$action),
     [{
       build($_builder, $_state, lock, value, action, nullptr);
     }]>
@@ -1063,13 +1121,14 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
 
   let extraClassDeclaration = [{
     bool acquire() { return (getAction() == LockAction::Acquire); }
+    bool acquire_ge() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
     int getLockValue() { return getValue(); }
     int getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", [TileElement]>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1218,14 +1277,45 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
+def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"ModuleOp">]> {
+  let summary = "Runtime allocation information for a single shim DMA";
+  let description = [{
+    This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
+    and hence there is no appropriate dmaStart operation to indicate which channel is being
+    used and on which column the shimDMA is. 
 
+    It contains attributes for the sym_name of an operation which generated the shim DMA, 
+    for the DMAChannelDir and channel index, and for the column of the shim tile to which 
+    the originating operation was mapped.
 
+    Example:
+    ```
+      %tile00 = AIE.tile(0, 0)
+      %tile02 = AIE.tile(0, 2)
+      %connect1 = AIE.objectFifo.createObjectFifo(%tile00, {%tile02}, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+    ```
+    could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+    ```
+      AIE.shimDMAAllocation("of_in_0", MM2S, 1, 0)
+    ```
+  }];
+  let arguments = (
+    ins StrAttr:$sym_name,
+        DMAChannelDir:$channelDir,
+        I64Attr:$channelIndex,
+        I64Attr:$col
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $sym_name `,` $channelDir `,` $channelIndex `,` $col `)` attr-dict  
+  }];
+}
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
-    The "aie.createObjectFifo" operation creates a circular buffer established between a producer and one or 
-    more consumers, which are "aie.tile" operations. The aie.createObjectFifo instantiates the given number of 
+    The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
+    more consumers, which are `aie.tile` operations. The aie.createObjectFifo instantiates the given number of 
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
     based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
 
@@ -1251,17 +1341,30 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let assemblyFormat = [{
     `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
   }];
+  
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     int size() { return getElemNumber(); }
     TileOp getProducerTileOp();
+    bool hasName() {
+       return name().has_value();
+     }
+    mlir::Optional<StringAttr> name() {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        return {attr};
+      } else {
+        return {};
+      }
+      llvm_unreachable("unreachable");
+    }
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", []> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
-    The "aie.objectFifo.registerExternalBuffers" operation is used to register one or multiple external buffers 
+    The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
     to the shim tile(s) used in an objectFifo creation. During the objectFifo lowering pass, shim DMAs that are
     generated for those shim tiles will use the registered external buffers. This is currently done because 
     external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
@@ -1279,8 +1382,8 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 
   let arguments = (
     ins Index:$tile,
-        AIE_ObjectFifoType:$fifo,
-        Variadic<AnyMemRef>:$externalBuffers
+    AIE_ObjectFifoType:$fifo,
+    Variadic<AnyMemRef>:$externalBuffers
   );
 
   let assemblyFormat = [{
@@ -1290,6 +1393,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    TileOp getTileOp();
     AIEObjectFifoType getFifoType() {
       return getFifo().getType().cast<AIEObjectFifoType>();
     }
@@ -1299,7 +1403,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
-    The "aie.objectFifo.acquire" operation first acquires the locks of the next given number 
+    The `aie.objectFifo.acquire` operation first acquires the locks of the next given number 
     of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
     (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
     the acquired objects which can be used to access them.
@@ -1344,8 +1448,8 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let description = [{
-    The "aie.objectFifo.release" operation releases the locks of the given number of objects 
-    in the objectFifo. The mode it releases the locks in is chosen based on the "port" 
+    The `aie.objectFifo.release` operation releases the locks of the given number of objects 
+    in the objectFifo. The mode it releases the locks in is chosen based on the `port` 
     (producer: release for read, consumer: release for write). 
 
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
@@ -1383,7 +1487,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   let description = [{
     Access the Nth element of a value of ObjectFifoSubview type.
 
-  Example:
+    Example:
     ```
       %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
       %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
@@ -1415,7 +1519,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
   let description = [{
-    The "aie.registerProcess" operation allows the user to register a function to an objectFifo along with its 
+    The `aie.registerProcess` operation allows the user to register a function to an objectFifo along with its 
     acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
     on the objectFifo elements. This generated sequence is often in the form of a for loop, however, in the case 
     of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 

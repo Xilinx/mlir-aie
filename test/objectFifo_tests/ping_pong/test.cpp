@@ -45,8 +45,9 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   printf("Waiting to acquire output lock for read ...\n");
-  if (!mlir_aie_acquire_lock_out(_xaie, 1, LOCK_TIMEOUT)) {
-    printf("ERROR: timeout hit!\n");
+  if (mlir_aie_acquire_lock_out(_xaie, 1, LOCK_TIMEOUT)) {
+    printf("ERROR: did not acquire lock!\n");
+    errors++;
   }
 
   for (int i = 0; i < HEIGHT; i++) {

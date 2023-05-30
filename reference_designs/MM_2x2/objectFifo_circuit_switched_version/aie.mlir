@@ -12,7 +12,7 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc -p me -P %aietools/data/cervino/lib -c %S/../kernel.cc
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
 module @MM_2x2 {
@@ -26,18 +26,18 @@ module @MM_2x2 {
 
   %t100 = AIE.tile(10, 0)
 
-  %of_LHS0 = AIE.objectFifo.createObjectFifo(%t60, {%t63, %t73}, 1) {sym_name = ""} : !AIE.objectFifo<memref<1024xi32>>
-  %of_LHS1 = AIE.objectFifo.createObjectFifo(%t60, {%t64, %t74}, 1) : !AIE.objectFifo<memref<1024xi32>>
-  %of_RHS0 = AIE.objectFifo.createObjectFifo(%t70, {%t63}, 1) : !AIE.objectFifo<memref<1024xi32>>
-  %of_RHS1 = AIE.objectFifo.createObjectFifo(%t70, {%t64}, 1) : !AIE.objectFifo<memref<1024xi32>>
-  %of_RHS2 = AIE.objectFifo.createObjectFifo(%t100, {%t73}, 1) : !AIE.objectFifo<memref<1024xi32>>
-  %of_RHS3 = AIE.objectFifo.createObjectFifo(%t100, {%t74}, 1) : !AIE.objectFifo<memref<1024xi32>>
+  %of_LHS0 = AIE.objectFifo.createObjectFifo(%t60, {%t63, %t73}, 1) {sym_name = "of_LHS0"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_LHS1 = AIE.objectFifo.createObjectFifo(%t60, {%t64, %t74}, 1) {sym_name = "of_LHS1"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_RHS0 = AIE.objectFifo.createObjectFifo(%t70, {%t63}, 1) {sym_name = "of_RHS0"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_RHS1 = AIE.objectFifo.createObjectFifo(%t70, {%t64}, 1) {sym_name = "of_RHS1"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_RHS2 = AIE.objectFifo.createObjectFifo(%t100, {%t73}, 1) {sym_name = "of_RHS2"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_RHS3 = AIE.objectFifo.createObjectFifo(%t100, {%t74}, 1) {sym_name = "of_RHS3"} : !AIE.objectFifo<memref<1024xi32>>
 
-  %of_Out0 = AIE.objectFifo.createObjectFifo(%t64, {%t60}, 1) : !AIE.objectFifo<memref<1024xi32>>
-  %of_Out1 = AIE.objectFifo.createObjectFifo(%t74, {%t60}, 1) : !AIE.objectFifo<memref<1024xi32>>
+  %of_Out0 = AIE.objectFifo.createObjectFifo(%t64, {%t60}, 1) {sym_name = "of_out0"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_Out1 = AIE.objectFifo.createObjectFifo(%t74, {%t60}, 1) {sym_name = "of_out1"} : !AIE.objectFifo<memref<1024xi32>>
 
-  %of_ACC0 = AIE.objectFifo.createObjectFifo(%t63, {%t64}, 1) : !AIE.objectFifo<memref<1024xi32>>
-  %of_ACC1 = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 1) : !AIE.objectFifo<memref<1024xi32>>
+  %of_ACC0 = AIE.objectFifo.createObjectFifo(%t63, {%t64}, 1) {sym_name = "of_acc0"} : !AIE.objectFifo<memref<1024xi32>>
+  %of_ACC1 = AIE.objectFifo.createObjectFifo(%t73, {%t74}, 1) {sym_name = "of_acc1"} : !AIE.objectFifo<memref<1024xi32>>
 
   %buffer0 = AIE.external_buffer {sym_name = "LHS_tile0"} : memref<1024 x i32>     //LHS_tile0
   %buffer1 = AIE.external_buffer {sym_name = "LHS_tile1"} : memref<1024 x i32>     //LHS_tile1

@@ -114,9 +114,11 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
 };
 
 static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
-                     Operation *tileOp) {
-  const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
-  for (unsigned i = 0; i < target_model.getNumLocks(); i++) {
+                     Operation *op) {
+  auto tileOp = cast<TileOp>(op);
+  const auto &target_model = xilinx::AIE::getTargetModel(op);
+  for (unsigned i = 0;
+       i < target_model.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
     int usageCnt = locks[std::make_pair(tileOp, i)];
     if (usageCnt == 0) {
       locks[std::make_pair(tileOp, i)] = 1;
@@ -160,8 +162,6 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       Operation *acqUser = TA.getTokenUserOp(acquire);
       bool IsRelUserCore = isa<CoreOp>(relUser);
       bool IsAcqUserCore = isa<CoreOp>(acqUser);
-      std::pair<int, int> relUserCoord = TA.getCoord(relUser);
-      std::pair<int, int> acqUserCoord = TA.getCoord(acqUser);
 
       Operation *tileOp = TA.getShareableTileOp(relUser, acqUser);
 
@@ -169,13 +169,13 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
                  release->print(llvm::dbgs());
                  if (IsRelUserCore) llvm::dbgs() << " @Core";
                  else llvm::dbgs() << " @DMA";
-                 llvm::dbgs() << " (" << relUserCoord.first << ", "
-                              << relUserCoord.second << ")" << '\n';
+                 llvm::dbgs() << " (" << TA.getCoord(relUser).first << ", "
+                              << TA.getCoord(relUser).second << ")" << '\n';
                  acquire->print(llvm::dbgs());
                  if (IsAcqUserCore) llvm::dbgs() << " @Core";
                  else llvm::dbgs() << " @DMA";
-                 llvm::dbgs() << " (" << acqUserCoord.first << ", "
-                              << acqUserCoord.second << ")" << '\n';);
+                 llvm::dbgs() << " (" << TA.getCoord(acqUser).first << ", "
+                              << TA.getCoord(acqUser).second << ")" << '\n';);
 
       // ignore chain that involves a MemOp (DMA) user and CoreOp user and they
       // don't have a shareable tile. This might be caused by MemcpyOp lowering
@@ -197,7 +197,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
       builder.setInsertionPointAfter(tileOp);
       LockOp lock =
-          builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID);
+          builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID, 0);
 
       lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);
 

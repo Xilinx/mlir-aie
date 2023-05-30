@@ -48,8 +48,9 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   printf("Waiting to acquire output lock for read ...\n");
-  if (!mlir_aie_acquire_lock_out12(_xaie, 1, LOCK_TIMEOUT)) {
-    printf("ERROR: timeout hit!\n");
+  if (mlir_aie_acquire_lock_out12(_xaie, 1, LOCK_TIMEOUT)) {
+    printf("ERROR: did not acquire lock!\n");
+    errors++;
   }
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
@@ -65,8 +66,9 @@ int main(int argc, char *argv[]) {
   }
 
   printf("Waiting to acquire output lock for read ...\n");
-  if (!mlir_aie_acquire_lock_out14(_xaie, 1, LOCK_TIMEOUT)) {
-    printf("ERROR: timeout hit!\n");
+  if (mlir_aie_acquire_lock_out14(_xaie, 1, LOCK_TIMEOUT)) {
+    printf("ERROR: did not acquire lock!\n");
+    errors++;
   }
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {
@@ -82,8 +84,9 @@ int main(int argc, char *argv[]) {
   }
 
   printf("Waiting to acquire output lock for read ...\n");
-  if (!mlir_aie_acquire_lock_out33(_xaie, 1, LOCK_TIMEOUT)) {
-    printf("ERROR: timeout hit!\n");
+  if (mlir_aie_acquire_lock_out33(_xaie, 1, LOCK_TIMEOUT)) {
+    printf("ERROR: did not acquire lock!\n");
+    errors++;
   }
   for (int i = 0; i < HEIGHT; i++) {
     for (int j = 0; j < LINE_WIDTH; j++) {

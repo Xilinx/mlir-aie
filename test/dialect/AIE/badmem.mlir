@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --canonicalize %s |& FileCheck %s
-// CHECK: 'cf.br' op Is an illegal terminator inside 
+// CHECK: 'cf.br' op is not an allowed terminator
 
 module @test {
   %t1 = AIE.tile(1, 1)

@@ -71,6 +71,22 @@ def AIEVec_AddOp:
   }];
 }
 
+def AIEVec_AddElemOp:
+  AIEVec_Op<"add_elem", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector add elem";
+  let description = [{
+    Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
+    on all types of vectors.`$result = `$lhs + $rhs`.
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_SubOp:
   AIEVec_Op<"sub", [
     Pure
@@ -111,6 +127,22 @@ def AIEVec_SubOp:
     StringRef getSquareAttrName(int idx) { assert(idx==0 || idx==1); 
                             return idx==0 ? "xsquare" : "zsquare"; }
   }];
+}
+
+def AIEVec_SubElemOp: 
+  AIEVec_Op<"sub_elem", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector sub elem";
+  let description = [{
+    Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
+    on all types of vectors.`$result = `$lhs - $rhs`.
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
 }
 
 def AIEVec_FMAOp :
@@ -381,6 +413,7 @@ def AIEVec_SRSOp:
     precision is controlled by the shift parameter.
     `$result = srs($source, $shift)`
   }];
+  let hasFolder = 1;
 }
 
 def AIEVec_UPDOp:
@@ -603,4 +636,80 @@ def AIEVec_FMAConvOp:
    }];
 }
 
+def AIEVec_MinOp:
+  AIEVec_Op<"min", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector minimum";
+  let description = [{
+    Xilinx-specific intrinsic that calculates the minimum between two input vectors.
+    `$result = min(`$lhs, $rhs`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_MaxOp:
+  AIEVec_Op<"max", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector maximum";
+  let description = [{
+    Xilinx-specific intrinsic that calculates the maximum between two input vectors.
+    `$result = max(`$lhs, $rhs`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_CmpOp:
+  AIEVec_Op<"cmp", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, DefaultValuedStrAttr<StrAttr, "">:$pred)>,
+  Results<(outs AnyUnsignedInteger:$result)> {
+  let summary = "AIE vector comparison";
+  let description = [{
+    Xilinx-specific intrinsic that performs element-wise comparisonof two input vectors.
+    The attribute predicate defines which type of comparison is
+    performed. The following comparisons are supported:
+
+    -   equal (mnemonic: `"eq"`)
+    -   not equal (mnemonic: `"ne"`)
+    -   signed less than (mnemonic: `"slt"`)
+    -   unsigned less than (mnemonic: `"ult"`)
+    -   signed less than or equal (mnemonic: `"sle"`)
+    -   unsigned less than or equal (mnemonic: `"ule"`)
+    -   signed greater than (mnemonic: `"sgt"`)
+    -   unsigned greater than (mnemonic: `"ugt"`)
+    -   signed greater than or equal (mnemonic: `"sge"`)
+    -   unsigned greater than or equal (mnemonic: `"uge"`)
+  }];
+
+  let assemblyFormat = "$lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_SelOp:
+  AIEVec_Op<"sel", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyUnsignedInteger:$sel)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector lane wise selection";
+  let description = [{
+    Xilinx-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
+    `$result = sel(`$lhs, $rhs, $sel`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS

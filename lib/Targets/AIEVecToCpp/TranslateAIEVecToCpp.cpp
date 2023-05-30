@@ -489,7 +489,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
   // If the vector size to be loaded is less than or equal to 256, we
   // can just do a direct memory copy. If the translation is for AIEML,
   // this number should be doubled
-  if (vecSizeInBits <= (AIEML ? 512 : 256)) {
+  if (vecSizeInBits <= (AIEML ? 1024 : 256)) {
     // Print the lhs
     if (failed(emitter.emitAssignPrefix(*updOp)))
       return failure();
@@ -657,7 +657,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
   } else {
     if (eltType.isa<FloatType>()) {
       width = eltType.cast<FloatType>().getWidth();
-      os << "v" << lanes << "float";
+      os << "v" << lanes;
+      if (width == 16) {
+        os << "bfloat16";
+      } else {
+        os << "float";
+      }
     } else {
       width = getElementSizeInBits(resType);
       os << "v" << lanes << "int" << width;
@@ -694,7 +699,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   // srs op. We can simply generate an assignment
   if (eltType.isa<FloatType>()) {
     if (AIEML) {
-      unsigned width = eltType.cast<FloatType>().getWidth();
+      unsigned width = getElementSizeInBits(resType);
       if (width == 32) {
         os << "srs";
       } else if (width == 16) {
@@ -779,9 +784,16 @@ printOperation(CppEmitter &emitter,
   if (failed(emitter.emitAssignPrefix(*broadcastScalarOp)))
     return failure();
 
+  Type eltType = resType.getElementType();
   os << "broadcast_to_v";
-  os << lanes << "int";
-  os << width;
+  if (eltType.isa<IntegerType>()) {
+    os << lanes << "int";
+    os << width;
+  } else if (width == 16) {
+    os << lanes << "bfloat16";
+  } else {
+    os << lanes << "float";
+  }
   os << "(" << emitter.getOrCreateName(source) << ")";
   return success();
 }
@@ -801,13 +813,20 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
     return failure();
 
   VectorType resType = extOp.getResult().getType().cast<VectorType>();
+  Type eltType = resType.getElementType();
   unsigned lanes = getVectorLaneSize(resType);
   unsigned resWidth = getElementSizeInBits(resType);
 
   // Print the version of ext for aie-ml
   if (AIEML) {
-    os << "extract_v" << std::to_string(lanes) << "int"
-       << std::to_string(resWidth);
+    os << "extract_v" << std::to_string(lanes);
+    if (eltType.isa<IntegerType>()) {
+      os << "int" << std::to_string(resWidth);
+    } else if (resWidth == 16) {
+      os << "bfloat16";
+    } else {
+      os << "float";
+    }
   } else {
     // Print the version of ext for aie1
     int32_t vecSizeInBits = getVectorSizeInBits(resType);
@@ -1040,6 +1059,46 @@ static LogicalResult printAddOrSubOperand(CppEmitter &emitter, T op,
     os << ", " << offsetHi;
   if (!square.empty())
     os << ", " << square;
+
+  return success();
+}
+
+// Print lhs or rhs operand of min/max intrinsic
+template <typename T>
+static LogicalResult printMinMaxOperand(CppEmitter &emitter, T op,
+                                        unsigned opNum) {
+  // We currently only support printing operands 0 and 1
+  if (opNum > 1)
+    return failure();
+
+  // The operand should have already been emitted
+  Value operand = opNum == 0 ? op.getLhs() : op.getRhs();
+  if (!emitter.hasValueInScope(operand))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << emitter.getOrCreateName(operand);
+
+  return success();
+}
+
+// Print lhs or rhs operand of add_elem/sub_elem intrinsic
+template <typename T>
+static LogicalResult printAddElemOrSubElemOperand(CppEmitter &emitter, T op,
+                                                  unsigned opNum) {
+  // We currently only support printing operands 0 and 1
+  if (opNum > 1)
+    return failure();
+
+  // The operand should have already been emitted
+  Value operand = opNum == 0 ? op.getLhs() : op.getRhs();
+  if (!emitter.hasValueInScope(operand))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << emitter.getOrCreateName(operand);
 
   return success();
 }
@@ -1384,6 +1443,112 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SubOp subOp) {
   return success();
 }
 
+// Generate the Min op
+static LogicalResult printOperation(CppEmitter &emitter, aievec::MinOp minOp) {
+  auto lhs = minOp.getLhs();
+  auto rhs = minOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*minOp)))
+    return failure();
+
+  os << "min(";
+  if (failed(printMinMaxOperand<aievec::MinOp>(emitter, minOp, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printMinMaxOperand<aievec::MinOp>(emitter, minOp, 1)))
+    return failure();
+  os << ")";
+  return success();
+}
+
+// Generate the Max op
+static LogicalResult printOperation(CppEmitter &emitter, aievec::MaxOp maxOp) {
+  auto lhs = maxOp.getLhs();
+  auto rhs = maxOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*maxOp)))
+    return failure();
+
+  os << "max(";
+  if (failed(printMinMaxOperand<aievec::MaxOp>(emitter, maxOp, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printMinMaxOperand<aievec::MaxOp>(emitter, maxOp, 1)))
+    return failure();
+  os << ")";
+  return success();
+}
+
+// Generate the AddElem op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::AddElemOp add_elemOp) {
+  auto lhs = add_elemOp.getLhs();
+  auto rhs = add_elemOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*add_elemOp, true)))
+    return failure();
+
+  os << "add(";
+  if (failed(printAddElemOrSubElemOperand<aievec::AddElemOp>(emitter,
+                                                             add_elemOp, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printAddElemOrSubElemOperand<aievec::AddElemOp>(emitter,
+                                                             add_elemOp, 1)))
+    return failure();
+  os << ")";
+  return success();
+}
+
+// Generate the SubElem op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::SubElemOp sub_elemOp) {
+  auto lhs = sub_elemOp.getLhs();
+  auto rhs = sub_elemOp.getRhs();
+
+  // The sources should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*sub_elemOp, true)))
+    return failure();
+
+  os << "sub(";
+  if (failed(printAddElemOrSubElemOperand<aievec::SubElemOp>(emitter,
+                                                             sub_elemOp, 0)))
+    return failure();
+  os << ", ";
+  if (failed(printAddElemOrSubElemOperand<aievec::SubElemOp>(emitter,
+                                                             sub_elemOp, 1)))
+    return failure();
+  os << ")";
+  return success();
+}
+
 // Generate the FMA op
 static LogicalResult printOperation(CppEmitter &emitter, aievec::FMAOp fmaOp) {
   auto acc = fmaOp.getAcc();
@@ -1545,6 +1710,98 @@ static LogicalResult printOperation(CppEmitter &emitter,
   // Finally, set the name of the result to the accumulator's name
   emitter.setName(fma_convOp->getResult(0), accName);
 
+  return success();
+}
+
+// Generate the comparison intrinsics(eq, ne, lt, le, gt, ge) for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter, aievec::CmpOp cmpOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The lhs and rhs should have already been emitted
+  Value lhs = cmpOp.getLhs();
+  Value rhs = cmpOp.getRhs();
+
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*cmpOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  StringRef pred = cmpOp.getPred();
+  if (pred == "eq") {
+    os << "eq";
+  } else if (pred == "ne") {
+    os << "ne";
+  } else if (pred == "slt" || pred == "ult") {
+    os << "lt";
+  } else if (pred == "sle" || pred == "ule") {
+    os << "le";
+  } else if (pred == "sgt" || pred == "ugt") {
+    os << "gt";
+  } else if (pred == "sge" || pred == "uge") {
+    os << "ge";
+  } else {
+    return failure();
+  }
+
+  os << "(";
+  VectorType vType = lhs.getType().cast<VectorType>();
+  Type eltType = vType.getElementType();
+
+  if (eltType.isa<IntegerType>() &&
+      (pred == "ult" || pred == "ule" || pred == "ugt" || pred == "uge")) {
+    unsigned lanes = getVectorLaneSize(vType);
+    unsigned width = getElementSizeInBits(vType);
+    os << "v" << std::to_string(lanes) << "uint" << std::to_string(width);
+    os << "(";
+    os << emitter.getOrCreateName(lhs);
+    os << "), ";
+    os << "v" << std::to_string(lanes) << "uint" << std::to_string(width);
+    os << "(";
+    os << emitter.getOrCreateName(rhs);
+    os << ")";
+  } else {
+    os << emitter.getOrCreateName(lhs);
+    os << ", ";
+    os << emitter.getOrCreateName(rhs);
+  }
+  os << ")";
+  return success();
+}
+
+// Generate the sel intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
+  if (!AIEML) {
+    return failure();
+  }
+
+  // The lhs, rhs and sel should have already been emitted
+  Value lhs = selOp.getLhs();
+  Value rhs = selOp.getRhs();
+  Value sel = selOp.getSel();
+
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs) ||
+      !emitter.hasValueInScope(sel))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*selOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "sel(";
+  os << emitter.getOrCreateName(rhs);
+  os << ", ";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(sel);
+  os << ")";
   return success();
 }
 
@@ -2001,6 +2258,25 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << " " << functionOp.getName();
 
   os << "(";
+  if (functionOp.isDeclaration()) {
+    if (failed(interleaveCommaWithError(
+            functionOp.getArgumentTypes(), os, [&](Type type) -> LogicalResult {
+              if (failed(emitter.emitType(functionOp.getLoc(), type)))
+                return failure();
+              // If it is a memref argument, we need to check if it has dynamic
+              // shape. If so, the dimensions have to be printed out
+              MemRefType argType = dyn_cast<MemRefType>(type);
+              if (argType)
+                for (unsigned dim = 0; dim < argType.getRank(); ++dim)
+                  if (argType.isDynamicDim(dim))
+                    os << ", size_t";
+              return success();
+            })))
+      return failure();
+    os << ");\n";
+    return success();
+  }
+
   if (failed(interleaveCommaWithError(
           functionOp.getArguments(), os,
           [&](BlockArgument arg) -> LogicalResult {
@@ -2014,6 +2290,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
             return success();
           })))
     return failure();
+
   os << ") {\n";
   os.indent();
   if (emitter.shouldDeclareVariablesAtTop()) {
@@ -2122,9 +2399,15 @@ StringRef CppEmitter::getMemRefDimParam(Value memref, unsigned index) {
 /// Return true if the specified dim of memref has a parameter
 /// associated with it
 bool CppEmitter::isMemRefDimParam(Value memref, unsigned index) {
-  MemRefType type = memref.getType().dyn_cast<MemRefType>();
-  assert(type && type.isDynamicDim(index) &&
-         "the dimension size at index is not dynamic");
+  assert([&] {
+    MemRefType type = memref.getType().dyn_cast<MemRefType>();
+    if (!(type && type.isDynamicDim(index))) {
+      printf("the dimension size at index is not dynamic\n");
+      return false;
+    }
+    return true;
+  }());
+
   auto p = std::make_pair(memref, index);
   return paramIndexMapper.count(p);
 }
@@ -2413,12 +2696,14 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           // Vector ops
           .Case<vector::TransferWriteOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<aievec::AddOp, aievec::ConcatOp, aievec::ExtOp, aievec::FMAOp,
-                aievec::MulOp, aievec::PackOp, aievec::SelectOp, aievec::SRSOp,
-                aievec::SubOp, aievec::UPDOp, aievec::UPSOp, aievec::FMAElemOp,
-                aievec::MulElemOp, aievec::BroadcastOp,
+          .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
+                aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
+                aievec::SelectOp, aievec::SRSOp, aievec::SubOp,
+                aievec::SubElemOp, aievec::UPDOp, aievec::UPSOp,
+                aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
-                aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp>(
+                aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
+                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -2522,8 +2807,14 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
         if (isAcc) {
           return (os << "v16accfloat"), success();
         } else {
-          return (os << "v" << std::to_string(dimSize) << "bfloat16"),
-                 success();
+          auto fType = eltType.cast<FloatType>();
+          unsigned width = fType.getWidth();
+          if (width == 16) {
+            return (os << "v" << std::to_string(dimSize) << "bfloat16"),
+                   success();
+          } else {
+            return (os << "v" << std::to_string(dimSize) << "float"), success();
+          }
         }
       } else {
         os << "v" << std::to_string(dimSize);

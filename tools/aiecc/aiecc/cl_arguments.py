@@ -82,7 +82,7 @@ def parse_args():
             help='Disable compiling of AIE code')
     parser.add_argument('--host-target',
             dest="host_target",
-            default="",
+            default="x86_64-unknown-linux-gnu",
             help='Target architecture of the host program')
     parser.add_argument('--aie-target',
             dest="aie_target",
@@ -108,16 +108,6 @@ def parse_args():
             default=aie_disable_link,
             action='store_false',
             help='Disable linking of AIE code')
-    parser.add_argument('--aie-generate-xaiev2',
-            dest="xaie",
-            default=2,
-            action='store_const', const=2,
-            help='Generate libxaie v2 drivers (default is v2)')
-    parser.add_argument('--aie-generate-xaie',
-            dest="xaie",
-            default=2,
-            action='store_const', const=1,
-            help='Generate libxaie v1 drivers (default is v2)')
     parser.add_argument("host_args",
             action='store',
             help='arguments for host compiler',
