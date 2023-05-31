@@ -16,9 +16,9 @@ int main(int argc, char *argv[]) {
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
   std::generate(g_in0, g_in0 + IN0_SIZE,
-                [&]() mutable { return random_float(-80, 80, 10); });
+                [&]() { return random_float(-80, 80, 10); });
   std::generate(g_in1, g_in1 + IN1_SIZE,
-                [&]() mutable { return random_float(-80, 80, 10); });
+                [&]() { return random_float(-80, 80, 10); });
 
   writeData(g_in0, IN0_SIZE, dataDir + "/in0.txt");
   writeData(g_in1, IN1_SIZE, dataDir + "/in1.txt");

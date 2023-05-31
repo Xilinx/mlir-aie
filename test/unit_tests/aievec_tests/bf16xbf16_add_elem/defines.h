@@ -1,4 +1,4 @@
 #pragma once
-#define IN0_SIZE 1024
-#define IN1_SIZE 1024
-#define OUT0_SIZE 1024
+constexpr unsigned const IN0_SIZE = 1024;;
+constexpr unsigned const IN1_SIZE = 1024;;
+constexpr unsigned const OUT0_SIZE = 1024;;
