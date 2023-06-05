@@ -39,10 +39,18 @@ struct AIECanonicalizeDevicePass
     // the new op quite yet.
     OpBuilder builder(moduleOp->getContext());
 
+    // If no device op is present, we assume the VC1902 device by default, or
+    // the VE2802 device if AIE-ML compilation is demanded by the user 
+    // (i.e. flag --aie-target=AIE2 set).
+    AIEDevice defaultDevice = AIEDevice::xcvc1902;
+    if(AIEArch::AIE2 == aieTarget) {
+      defaultDevice = AIEDevice::xcve2802;
+    }
+
     Location location = builder.getUnknownLoc();
     DeviceOp deviceOp = builder.create<DeviceOp>(
         location,
-        AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902));
+        AIEDeviceAttr::get(builder.getContext(), defaultDevice));
 
     deviceOp.getRegion().takeBody(moduleOp.getBodyRegion());
     new (&moduleOp->getRegion(0)) Region(moduleOp);

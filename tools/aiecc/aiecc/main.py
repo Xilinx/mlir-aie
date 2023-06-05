@@ -336,7 +336,7 @@ class flow_runner:
         self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
         await self.do_call(progress.task, ['aie-opt',
                                           '--lower-affine',
-                                          '--aie-canonicalize-device',
+                                          '--aie-canonicalize-device=aie-target={}'.format(opts.aie_target.upper()),
                                           '--aie-assign-lock-ids',
                                           '--aie-register-objectFifos',
                                           '--aie-objectFifo-stateful-transform',

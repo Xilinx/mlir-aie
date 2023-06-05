@@ -4,6 +4,10 @@
 # running make, the following should work to find the AIE install directory.
 AIE_INSTALL ?= $(shell realpath $(dir $(shell which aie-opt))/../runtime_lib/aarch64)
 
+# To run tutorials on new AIE-ML architecture, set this to AIE2
+# in an environment variable, e.g. AIE_TARGET=AIE2 make
+AIE_TARGET ?= AIE
+
 # VITIS related variables
 VITIS_ROOT ?= $(shell realpath $(dir $(shell which vitis))/../)
 VITIS_AIETOOLS_DIR ?= ${VITIS_ROOT}/aietools
@@ -23,7 +27,7 @@ LIBCXX_VERSION ?= 11.2.0
 
 # The following flags are passed to both AI core and host compilation for
 # aiecc.py invocations.
-AIECC_FLAGS += --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu
+AIECC_FLAGS += --sysroot=${MLIR_AIE_SYSROOT} --host-target=aarch64-linux-gnu --aie-target=${AIE_TARGET}
 
 CHESSCC_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}

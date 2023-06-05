@@ -126,6 +126,13 @@ We will be introducing more components and the ways these components are customi
     ```
     > make
     ```
+   
+   Alternatively, to compile the first tutorial for the AIE-ML architecture, run:
+   ```
+   > AIE_TARGET=AIE2 make
+   ```
+
+   Note that not all tutorials have been ported to AIE-ML yet.
 
 ### <ins>MLIR-AIE Transformations</ins>
 Under the hood, `make` calls `aiecc.py` which itself calls a number of utilities that are built as part of the `mlir-aie` project (`aie-translate`, `aie-opt`). More details on these utilities can be found in [tutorial-10](../tutorial-10). These utilities are built as part of the `mlir-aie` to perform IR transformations and lowerings. In this example, since we are already describing our design at a low physical level, we will perform the final transformation and produce an AI Engine program (core_1_4.elf).

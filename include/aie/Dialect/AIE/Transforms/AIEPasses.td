@@ -45,6 +45,13 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
+
+  let options = [
+    Option<"aieTarget", "aie-target", "xilinx::AIE::AIEArch", "xilinx::AIE::AIEArch::AIE1",
+           "Target architecture of AIE device (AIE1 or AIE2 aka AIE-ML).",
+           "::llvm::cl::values(clEnumValN(xilinx::AIE::AIEArch::AIE1, \"AIE\", \"First generation AIE.\"),\n"
+           "                   clEnumValN(xilinx::AIE::AIEArch::AIE2, \"AIE2\", \"Second generation AIE-ML.\"))">
+  ];
 }
 
 def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {

@@ -24,7 +24,7 @@ module @module_name {
 
 This operation specifies which particular device is being targetted by the design. This information is necessary as different AIE devices have different hardware architectures which influence some of the lower level mappings and library calls when running designs, both in simulation and on hardware.
 
-This operation can be added explicitly, as can be seen in the MLIR source code (`aie.mlir`). Alternatively, `aiecc.py` also adds a defaut device target as part of its build flow in case no other target was specified in the code. The different device targets are described in [AIETargetModel.h](../../../include/aie/Dialect/AIE/IR/AIETargetModel.h) with the default target being the `VC1902TargetModel`.
+This operation can be added explicitly, as can be seen in the MLIR source code (`aie.mlir`). Alternatively, `aiecc.py` also adds a defaut device target as part of its build flow in case no other target was specified in the code. The different device targets are described in [AIETargetModel.h](../../../include/aie/Dialect/AIE/IR/AIETargetModel.h) with the default target being the `VC1902TargetModel`. If you are targeting the newer AIE-ML architecture, the default target is `VE2802TargetModel`.
 
 # <ins>Tutorial 2b - Simulation</ins>
 

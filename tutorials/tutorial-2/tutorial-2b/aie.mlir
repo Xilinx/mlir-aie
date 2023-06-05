@@ -22,6 +22,8 @@ module @tutorial_2b {
     
     // Declare the target device
     AIE.device(xcvc1902) {
+    // For AIE-ML, use an AIE-ML device, for example:
+    // AIE.device(xcve2802) {
         // Declare tile object of the AIE class located at position col 1, row 4
         %tile14 = AIE.tile(1, 4)
 

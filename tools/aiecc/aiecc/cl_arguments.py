@@ -87,6 +87,7 @@ def parse_args():
     parser.add_argument('--aie-target',
             dest="aie_target",
             default="AIE",
+            choices=["AIE", "AIE2"],
             help='Target architecture of the AIE program')
     parser.add_argument('--compile-host',
             dest="compile_host",
