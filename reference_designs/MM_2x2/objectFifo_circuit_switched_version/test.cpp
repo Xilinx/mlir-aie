@@ -81,7 +81,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 6); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 7); // only used in libaiev2
 
-#ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_LHS_tile0((u64)mem_ptr0);
   mlir_aie_external_set_addr_LHS_tile1((u64)mem_ptr1);
   mlir_aie_external_set_addr_RHS_tile0((u64)mem_ptr2);
@@ -93,7 +92,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_shimdma_60(_xaie);
   mlir_aie_configure_shimdma_70(_xaie);
   mlir_aie_configure_shimdma_100(_xaie);
-#endif
 
   printf("before core start\n");
 

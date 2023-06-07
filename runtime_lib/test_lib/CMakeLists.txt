@@ -11,7 +11,6 @@ project("test lib for ${AIE_RUNTIME_TARGET}")
 add_library(test_lib STATIC test_library.cpp)
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "test_library.h")
 target_compile_options(test_lib PRIVATE -fPIC)
-target_compile_definitions(test_lib PRIVATE LIBXAIENGINEV2)
 
 target_include_directories(test_lib PRIVATE
     ${LibXAIE_INC_DIR}
@@ -38,7 +37,7 @@ if (DEFINED VITIS_ROOT)
     # AIE1 test_lib for aiesimulator
     add_library(test_lib_sim_aie STATIC test_library.cpp)
     target_compile_options(test_lib_sim_aie PRIVATE -fPIC)
-    target_compile_definitions(test_lib_sim_aie PRIVATE LIBXAIENGINEV2 __AIESIM__)
+    target_compile_definitions(test_lib_sim_aie PRIVATE __AIESIM__)
 
     target_include_directories(test_lib_sim_aie PRIVATE
         ${LibXAIE_INC_DIR}
@@ -52,7 +51,7 @@ if (DEFINED VITIS_ROOT)
     # AIE2 test_lib for aiesimulator
     add_library(test_lib_sim_aie2 STATIC test_library.cpp)
     target_compile_options(test_lib_sim_aie2 PRIVATE -fPIC)
-    target_compile_definitions(test_lib_sim_aie2 PRIVATE LIBXAIENGINEV2 __AIESIM__ __AIEARCH__=20)
+    target_compile_definitions(test_lib_sim_aie2 PRIVATE __AIESIM__ __AIEARCH__=20)
 
     target_include_directories(test_lib_sim_aie2 PRIVATE
         ${LibXAIE_INC_DIR}
