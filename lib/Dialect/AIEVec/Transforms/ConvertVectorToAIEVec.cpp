@@ -34,8 +34,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
-
 #include "FoldMulAddChainToConvOp.h"
+
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
 #define GEN_PASS_DEF_CANONICALIZEFORAIEVEC
@@ -1427,12 +1427,6 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
-static void populateAIEVecConvOpTransformationPatterns(
-    RewritePatternSet &patterns, AnalysisManager &am, unsigned shiftParam) {
-  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am,
-                                               shiftParam);
-}
-
 //===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
@@ -1709,16 +1703,6 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
       });
 }
 
-static void
-configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
-                                                 AnalysisManager &am) {
-  target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addDynamicallyLegalOp<arith::AddIOp>([&am](arith::AddIOp op) {
-    return !am.getChildAnalysis<canFoldMulAddChainToConvOpAnalysis>(op)
-                .canFoldMulAddChainToConvOp;
-  });
-}
 //===----------------------------------------------------------------------===//
 // Lowering passes
 //===----------------------------------------------------------------------===//
