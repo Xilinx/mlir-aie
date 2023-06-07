@@ -34,6 +34,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
+
 #include "FoldMulAddChainToConvOp.h"
 
 namespace xilinx::aievec {
