@@ -263,7 +263,6 @@ class flow_runner:
       xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
       cmd += ['-I%s' % xaiengine_include_path]
       cmd += ['-L%s' % xaiengine_lib_path]
-      cmd += ['-DLIBXAIENGINEV2']
 
       cmd += ['-I%s' % self.tmpdirname]
       cmd += ['-fuse-ld=lld','-lm','-lxaiengine']

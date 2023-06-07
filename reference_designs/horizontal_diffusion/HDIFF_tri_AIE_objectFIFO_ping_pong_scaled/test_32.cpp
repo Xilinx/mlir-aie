@@ -514,7 +514,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 61);
   mlir_aie_sync_mem_dev(_xaie, 62);
   mlir_aie_sync_mem_dev(_xaie, 63);
-#ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_ddr_buffer_in_0((u64)ddr_ptr_in_0);
   mlir_aie_external_set_addr_ddr_buffer_in_1((u64)ddr_ptr_in_1);
   mlir_aie_external_set_addr_ddr_buffer_in_2((u64)ddr_ptr_in_2);
@@ -595,7 +594,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_shimdma_430(_xaie);
   mlir_aie_configure_shimdma_460(_xaie);
   mlir_aie_configure_shimdma_470(_xaie);
-#endif
 
   printf("before core start");
   // mlir_aie_print_tile_status(_xaie, 7, 3);
