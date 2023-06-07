@@ -16,9 +16,17 @@ target_include_directories(test_lib PRIVATE
     ${LibXAIE_INC_DIR}
 )
 
-# copy header files into build area
+# copy header and source files into build area
 set(basefile test_library.h)
 set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
+add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
+add_custom_command(OUTPUT ${dest}
+                  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${basefile} ${dest}
+                  DEPENDS ${basefile}
+)
+
+set(basefile test_library.cpp)
+set(dest ${CMAKE_CURRENT_BINARY_DIR}/../src/${basefile})
 add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
 add_custom_command(OUTPUT ${dest}
                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${basefile} ${dest}
@@ -29,6 +37,7 @@ install(TARGETS test_lib
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
+install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/src)
 
 # create extra libs supporting simulation
 if (DEFINED VITIS_ROOT)
