@@ -18,7 +18,6 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.h"
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -35,6 +34,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
+
+#include "FoldMulAddChainToConvOp.h"
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
@@ -1427,13 +1428,6 @@ populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
-static void
-populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
-                                           unsigned shiftParam) {
-  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(),
-                                               shiftParam);
-}
-
 //===----------------------------------------------------------------------===//
 // Legalizations
 //===----------------------------------------------------------------------===//
@@ -1710,20 +1704,6 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
       });
 }
 
-static void
-configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
-    SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
-    MulDefMapTy macChainMap;
-    unsigned dupFactor = 1;
-    bool hasMulConv = false;
-    Value acc = nullptr;
-    return !canFoldMulAddChainToConvOp(op, macChainMap, groupFusedOps,
-                                       dupFactor, hasMulConv, acc);
-  });
-}
 //===----------------------------------------------------------------------===//
 // Lowering passes
 //===----------------------------------------------------------------------===//
@@ -1939,9 +1919,10 @@ void AIEVecConvOpTransformationPass::runOnOperation() {
     }
   }
 
+  AnalysisManager am = getAnalysisManager();
   if (aieVersion == AIEArch::AIE_ML) {
-    populateAIEVecConvOpTransformationPatterns(patterns, shiftParam);
-    configureAIEVecConvOpTransformationLegalizations(target);
+    populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam);
+    configureAIEVecConvOpTransformationLegalizations(target, am);
   }
 
   if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
