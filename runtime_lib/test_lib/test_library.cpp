@@ -89,35 +89,38 @@ int mlir_aie_init_device(aie_libxaie_ctx_t *ctx) {
     return -1;
   }
 
-#if !defined(__AIESIM__) || !(__AIEARCH__ == 20)
-  RC = XAie_PmRequestTiles(&(ctx->DevInst), NULL, 0);
-  if (RC != XAIE_OK) {
-    printf("Failed to request tiles.\n");
-    return -1;
+  // Without this special case, the simulator generates
+  // FATAL::[ xtlm::907 ] b_transport_cb is not registered with the utils
+  const XAie_Backend *Backend = ctx->DevInst.Backend;
+  if (Backend->Type != XAIE_IO_BACKEND_SIM) {
+    RC = XAie_PmRequestTiles(&(ctx->DevInst), NULL, 0);
+    if (RC != XAIE_OK) {
+      printf("Failed to request tiles.\n");
+      return -1;
+    }
+
+    // TODO Extra code to really teardown the partitions
+    RC = XAie_Finish(&(ctx->DevInst));
+    if (RC != XAIE_OK) {
+      printf("Failed to finish tiles.\n");
+      return -1;
+    }
+    RC = XAie_CfgInitialize(&(ctx->DevInst), &(ctx->AieConfigPtr));
+    if (RC != XAIE_OK) {
+      printf("Driver initialization failed.\n");
+      return -1;
+    }
+    RC = XAie_PmRequestTiles(&(ctx->DevInst), NULL, 0);
+    if (RC != XAIE_OK) {
+      printf("Failed to request tiles.\n");
+      return -1;
+    }
   }
 
-  // TODO Extra code to really teardown the partitions
-  RC = XAie_Finish(&(ctx->DevInst));
-  if (RC != XAIE_OK) {
-    printf("Failed to finish tiles.\n");
-    return -1;
+  if (Backend->Type == XAIE_IO_BACKEND_SIM) {
+    printf("Turning ecc off\n");
+    XAie_TurnEccOff(&(ctx->DevInst));
   }
-  RC = XAie_CfgInitialize(&(ctx->DevInst), &(ctx->AieConfigPtr));
-  if (RC != XAIE_OK) {
-    printf("Driver initialization failed.\n");
-    return -1;
-  }
-  RC = XAie_PmRequestTiles(&(ctx->DevInst), NULL, 0);
-  if (RC != XAIE_OK) {
-    printf("Failed to request tiles.\n");
-    return -1;
-  }
-#endif
-
-#if defined(__AIESIM__) && !defined(__CDO__)
-  printf("Turning ecc off\n");
-  XAie_TurnEccOff(&(ctx->DevInst));
-#endif
 
   return 0;
 }
