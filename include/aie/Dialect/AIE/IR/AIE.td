@@ -1331,7 +1331,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 
     Example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, {4}) : !AIE.objectFifo<memref<16xi32>> 
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
     ```
     This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
   }];
