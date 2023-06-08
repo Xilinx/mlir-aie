@@ -10,8 +10,9 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc_wrapper aie -c %S/kernel.cc
-// RUN: aiecc.py --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: aiecc.py --aiesim --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
+// UN: aie.mlir.prj/aiesim.sh
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %t73 = AIE.tile(7, 3)

@@ -9,6 +9,7 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   IntervalReuse.cpp
   AIEVectorize.cpp
   ConvertVectorToAIEVec.cpp
+  FoldMulAddChainToConvOp.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec/Transforms

@@ -11,15 +11,22 @@ project("test lib for ${AIE_RUNTIME_TARGET}")
 add_library(test_lib STATIC test_library.cpp)
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "test_library.h")
 target_compile_options(test_lib PRIVATE -fPIC)
-target_compile_definitions(test_lib PRIVATE LIBXAIENGINEV2)
 
 target_include_directories(test_lib PRIVATE
     ${LibXAIE_INC_DIR}
 )
 
-# copy header files into build area
+# copy header and source files into build area
 set(basefile test_library.h)
 set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
+add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
+add_custom_command(OUTPUT ${dest}
+                  COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${basefile} ${dest}
+                  DEPENDS ${basefile}
+)
+
+set(basefile test_library.cpp)
+set(dest ${CMAKE_CURRENT_BINARY_DIR}/../src/${basefile})
 add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
 add_custom_command(OUTPUT ${dest}
                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/${basefile} ${dest}
@@ -30,6 +37,7 @@ install(TARGETS test_lib
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
+install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/src)
 
 # create extra libs supporting simulation
 if (DEFINED VITIS_ROOT)
@@ -38,7 +46,7 @@ if (DEFINED VITIS_ROOT)
     # AIE1 test_lib for aiesimulator
     add_library(test_lib_sim_aie STATIC test_library.cpp)
     target_compile_options(test_lib_sim_aie PRIVATE -fPIC)
-    target_compile_definitions(test_lib_sim_aie PRIVATE LIBXAIENGINEV2 __AIESIM__)
+    target_compile_definitions(test_lib_sim_aie PRIVATE __AIESIM__)
 
     target_include_directories(test_lib_sim_aie PRIVATE
         ${LibXAIE_INC_DIR}
@@ -52,7 +60,7 @@ if (DEFINED VITIS_ROOT)
     # AIE2 test_lib for aiesimulator
     add_library(test_lib_sim_aie2 STATIC test_library.cpp)
     target_compile_options(test_lib_sim_aie2 PRIVATE -fPIC)
-    target_compile_definitions(test_lib_sim_aie2 PRIVATE LIBXAIENGINEV2 __AIESIM__ __AIEARCH__=20)
+    target_compile_definitions(test_lib_sim_aie2 PRIVATE __AIESIM__ __AIEARCH__=20)
 
     target_include_directories(test_lib_sim_aie2 PRIVATE
         ${LibXAIE_INC_DIR}

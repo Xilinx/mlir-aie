@@ -98,4 +98,6 @@ int _main_init(int argc, char **argv) property(envelope) {
   exit(main(argc, argv)); // run program and stop simulation (never returns)
   return 0;
 }
+
+void __cxa_finalize(void *) {}
 }

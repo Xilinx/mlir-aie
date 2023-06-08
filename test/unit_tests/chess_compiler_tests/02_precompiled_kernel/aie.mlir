@@ -9,9 +9,13 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: valid_xchess_license
-// RUN: aiecc.py --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: xchesscc_wrapper aie +l aie.mlir.prj/core_1_3.bcf %S/kernel.cc -o custom_1_3.elf
 // RUN: %run_on_board ./test.elf
+// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+
+// CHECK: test start.
+// CHECK: PASS!
 
 module @test_chess_02_deprecated_precompiled_kernel {
   %tile13 = AIE.tile(1, 3)

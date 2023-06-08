@@ -41,13 +41,13 @@ if [ "$runTimeArch" == "aarch64" ]; then
     
     aiecc.py -v --sysroot=$SYSROOT_DIR \
         --host-target=aarch64-linux-gnu ./aie.mlir \
-        -DLIBXAIENGINEV2 -I${runtimeLibs}/test_lib/include -L${runtimeLibs}/test_lib/lib -ltest_lib $extraAieCCFlags \
+        -I${runtimeLibs}/test_lib/include -L${runtimeLibs}/test_lib/lib -ltest_lib $extraAieCCFlags \
         ./test.cpp -o test.elf
 elif [ "$runTimeArch" == "x86_64" ]; then
     runtimeLibs+=/x86_64
     
     aiecc.py -v  ./aie.mlir \
-        -DLIBXAIENGINEV2 -fPIC -I${runtimeLibs}/test_lib/include -L${runtimeLibs}/test_lib/lib -ltest_lib \
+        -fPIC -I${runtimeLibs}/test_lib/include -L${runtimeLibs}/test_lib/lib -ltest_lib \
         ./test.cpp -o test.elf
 else
     echo "Error: unsupported runtime architecture"

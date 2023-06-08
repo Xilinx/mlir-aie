@@ -119,6 +119,60 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   NL.collectBuffers(buffers);
 
   //---------------------------------------------------------------------------
+  // mlir_aie_init_libxaie
+  //---------------------------------------------------------------------------
+  output << "aie_libxaie_ctx_t* mlir_aie_init_libxaie() {\n";
+  output << "  aie_libxaie_ctx_t *ctx = (aie_libxaie_ctx_t "
+            "*)malloc(sizeof(aie_libxaie_ctx_t));\n";
+  output << "  if (!ctx)\n";
+  output << "    return 0;\n";
+
+  auto arch = target_model.getTargetArch();
+  std::string AIE1_device("XAIE_DEV_GEN_AIE");
+  std::string AIE2_device("XAIE_DEV_GEN_AIEML");
+  std::string device;
+  int col_shift = 0;
+  int row_shift = 0;
+  switch (arch) {
+  case AIEArch::AIE1:
+    device = AIE1_device;
+    col_shift = 23;
+    row_shift = 18;
+    break;
+  case AIEArch::AIE2:
+    device = AIE2_device;
+    col_shift = 25;
+    row_shift = 20;
+    break;
+  }
+  assert(col_shift);
+  assert(row_shift);
+  output << "  ctx->AieConfigPtr.AieGen = " << device << ";\n";
+  output << "  ctx->AieConfigPtr.BaseAddr = 0x20000000000;\n";
+  output << "  ctx->AieConfigPtr.ColShift = " << col_shift << ";\n";
+  output << "  ctx->AieConfigPtr.RowShift = " << row_shift << ";\n";
+  output << "  ctx->AieConfigPtr.NumRows = " << target_model.rows() << ";\n";
+  output << "  ctx->AieConfigPtr.NumCols = " << target_model.columns() << ";\n";
+  output << "  ctx->AieConfigPtr.ShimRowNum = 0;\n";
+  output << "  ctx->AieConfigPtr.MemTileRowStart = 1;\n";
+  output << "  ctx->AieConfigPtr.MemTileNumRows = "
+         << target_model.getNumMemTileRows() << ";\n";
+  output << "  //  ctx->AieConfigPtr.ReservedRowStart = "
+            "XAIE_RES_TILE_ROW_START;\n";
+  output
+      << "  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;\n";
+  output << "  ctx->AieConfigPtr.AieTileRowStart = "
+         << (1 + target_model.getNumMemTileRows()) << ";\n";
+  output << "  ctx->AieConfigPtr.AieTileNumRows = "
+         << (target_model.rows() - 1 - target_model.getNumMemTileRows())
+         << ";\n";
+  output << "  ctx->AieConfigPtr.PartProp = {0};\n";
+  output << "  ctx->DevInst = {0};\n";
+  output << "  return ctx;\n";
+  output << "}\n";
+  output << "\n";
+
+  //---------------------------------------------------------------------------
   // mlir_aie_configure_cores
   //---------------------------------------------------------------------------
   output << "void mlir_aie_configure_cores(" << ctx_p << ") {\n";

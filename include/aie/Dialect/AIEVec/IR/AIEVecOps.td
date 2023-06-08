@@ -696,4 +696,20 @@ def AIEVec_CmpOp:
   let assemblyFormat = "$lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_SelOp:
+  AIEVec_Op<"sel", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyUnsignedInteger:$sel)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector lane wise selection";
+  let description = [{
+    Xilinx-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
+    `$result = sel(`$lhs, $rhs, $sel`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS

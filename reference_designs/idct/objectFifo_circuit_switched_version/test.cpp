@@ -88,11 +88,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-#ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_buffer_in((u64)ddr_ptr_in);
   mlir_aie_external_set_addr_buffer_out((u64)ddr_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie);
-#endif
 
   // EventMonitor pc0(_xaie, 7, 3, 0, XAIE_EVENT_LOCK_3_ACQ_MEM,
   // XAIE_EVENT_LOCK_3_REL_MEM, XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); EventMonitor

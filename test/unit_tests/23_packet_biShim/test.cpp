@@ -112,11 +112,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
   mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
 
-#ifdef LIBXAIENGINEV2
   mlir_aie_external_set_addr_input((u64)mem_ptr0);
   mlir_aie_external_set_addr_output((u64)mem_ptr1);
   mlir_aie_configure_shimdma_70(_xaie);
-#endif
 
   usleep(sleep_u);
 

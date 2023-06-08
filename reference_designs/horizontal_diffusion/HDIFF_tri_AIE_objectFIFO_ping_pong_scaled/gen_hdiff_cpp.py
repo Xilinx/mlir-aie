@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
         f.write("  mlir_aie_sync_mem_dev(_xaie, %d);\n"%(i) )
     for i in range (0, total_b_block): # col 0 is reserved in aie
         f.write("  mlir_aie_sync_mem_dev(_xaie, %d);\n"%(total_b_block+i) )
-    f.write("#ifdef LIBXAIENGINEV2\n")
+
     for i in range (0, total_b_block): # col 0 is reserved in aie
         f.write("    mlir_aie_external_set_addr_ddr_buffer_in_%d((u64)ddr_ptr_in_%d); \n"%(i,i) )
     
@@ -212,7 +212,6 @@ int main(int argc, char *argv[]) {
             if(block%2==0): 
                 shim_place=noc_div_two_channel(block)
                 f.write("    mlir_aie_configure_shimdma_%d0(_xaie);\n"%(shim_place))
-    f.write("#endif\n")
     f.write('''
   printf("before core start");
   // mlir_aie_print_tile_status(_xaie, 7, 3);

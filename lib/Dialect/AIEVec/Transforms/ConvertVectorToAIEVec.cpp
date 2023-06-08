@@ -18,7 +18,6 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.h"
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
@@ -35,6 +34,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
+
+#include "FoldMulAddChainToConvOp.h"
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
@@ -1242,6 +1243,44 @@ using LowerVectorCmpIOpToAIEVecCmpOp =
 using LowerVectorCmpFOpToAIEVecCmpOp =
     LowerVectorCmpOpToAIEVecCmpOp<arith::CmpFOp, CmpFPredicate>;
 
+struct LowerVectorSelectOpToAIEVecSelOp
+    : public OpConversionPattern<arith::SelectOp> {
+  using OpConversionPattern<arith::SelectOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::SelectOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType resultType = dyn_cast<VectorType>(srcOp.getType());
+    if (!resultType)
+      return failure();
+
+    llvm::SmallSet<unsigned, 16> elWidthSet;
+    elWidthSet.insert(8);
+    elWidthSet.insert(16);
+    elWidthSet.insert(32);
+
+    Type scalarType = resultType.getElementType();
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (!(elWidthSet.count(resultElWidth) && laneSize * resultElWidth == 512))
+      return failure();
+
+    Type type =
+        mlir::IntegerType::get(srcOp.getContext(), laneSize <= 32 ? 32 : 64,
+                               mlir::IntegerType::Unsigned);
+
+    auto convertOp = rewriter.create<UnrealizedConversionCastOp>(
+        srcOp.getLoc(), type, adaptor.getCondition());
+
+    rewriter.replaceOpWithNewOp<aievec::SelOp>(
+        srcOp, srcOp.getResult().getType(), srcOp.getTrueValue(),
+        srcOp.getFalseValue(), convertOp.getResult(0));
+
+    return success();
+  }
+};
+
 // If a UPD op is loading a vector twice the size of the architecture
 // vector size, split it into a high and low load into the accumulator.
 // TODO: This is a process we may want to include as part of the
@@ -1372,6 +1411,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
       LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp, LowerVectorCmpFOpToAIEVecCmpOp,
+      LowerVectorSelectOpToAIEVecSelOp,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
@@ -1386,13 +1426,6 @@ populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns) {
 static void
 populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
-}
-
-static void
-populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
-                                           unsigned shiftParam) {
-  patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(),
-                                               shiftParam);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1621,6 +1654,21 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     return false;
   });
+
+  target.addDynamicallyLegalOp<arith::SelectOp>([=](arith::SelectOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType) {
+      return true;
+    }
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (!(elWidthSet.count(resultElWidth) && laneSize * resultElWidth == 512)) {
+      return true;
+    }
+
+    return false;
+  });
 }
 
 static bool singleColumnFMAOpCanFold(aievec::FMAOp fmaOp) {
@@ -1656,20 +1704,6 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
       });
 }
 
-static void
-configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<xilinx::aievec::AIEVecDialect>();
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addDynamicallyLegalOp<arith::AddIOp>([](arith::AddIOp op) {
-    SmallVector<SmallVector<arith::MulIOp, 8>, 8> groupFusedOps;
-    MulDefMapTy macChainMap;
-    unsigned dupFactor = 1;
-    bool hasMulConv = false;
-    Value acc = nullptr;
-    return !canFoldMulAddChainToConvOp(op, macChainMap, groupFusedOps,
-                                       dupFactor, hasMulConv, acc);
-  });
-}
 //===----------------------------------------------------------------------===//
 // Lowering passes
 //===----------------------------------------------------------------------===//
@@ -1885,9 +1919,10 @@ void AIEVecConvOpTransformationPass::runOnOperation() {
     }
   }
 
+  AnalysisManager am = getAnalysisManager();
   if (aieVersion == AIEArch::AIE_ML) {
-    populateAIEVecConvOpTransformationPatterns(patterns, shiftParam);
-    configureAIEVecConvOpTransformationLegalizations(target);
+    populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam);
+    configureAIEVecConvOpTransformationLegalizations(target, am);
   }
 
   if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
