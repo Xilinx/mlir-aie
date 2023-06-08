@@ -27,6 +27,44 @@
 // CHECK:     %9 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "of0_lock_2"}
 // CHECK:     %10 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "of0_lock_3"}
 // CHECK:     AIE.flow(%0, DMA : 0, %2, DMA : 0)
+// CHECK:     %11 = AIE.buffer(%0) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK:     %12 = AIE.buffer(%0) {sym_name = "of1_buff_1"} : memref<16xi32>
+// CHECK:     %13 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "of1_lock_0"}
+// CHECK:     %14 = AIE.lock(%0, 5) {init = 0 : i32, sym_name = "of1_lock_1"}
+// CHECK:     %15 = AIE.buffer(%2) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK:     %16 = AIE.buffer(%2) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
+// CHECK:     %17 = AIE.lock(%2, 0) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK:     %18 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "of1_cons_lock_1"}
+// CHECK:     %19 = AIE.mem(%0) {
+// CHECK:       %21 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       AIE.useLock(%13, Acquire, 1)
+// CHECK:       AIE.dmaBd(<%11 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%13, Release, 0)
+// CHECK:       AIE.nextBd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       AIE.useLock(%14, Acquire, 1)
+// CHECK:       AIE.dmaBd(<%12 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%14, Release, 0)
+// CHECK:       AIE.nextBd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       AIE.end
+// CHECK:     }
+// CHECK:     %20 = AIE.mem(%2) {
+// CHECK:       %21 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       AIE.useLock(%17, Acquire, 0)
+// CHECK:       AIE.dmaBd(<%15 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%17, Release, 1)
+// CHECK:       AIE.nextBd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       AIE.useLock(%18, Acquire, 0)
+// CHECK:       AIE.dmaBd(<%16 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%18, Release, 1)
+// CHECK:       AIE.nextBd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       AIE.end
+// CHECK:     }
 // CHECK:   }
 // CHECK: }
 

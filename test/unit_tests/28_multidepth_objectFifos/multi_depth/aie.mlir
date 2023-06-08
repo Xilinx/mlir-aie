@@ -23,7 +23,7 @@ module @multi_depth {
         %buff_out = AIE.buffer(%tile25) {sym_name = "buff_out"} : memref<4x32xi32>
 
         %of_in = AIE.objectFifo.createObjectFifo(%tile20, {%tile23, %tile25}, [2, 2, 3]) {sym_name = "of_in"} : !AIE.objectFifo<memref<32xi32>>
-        %of_inter = AIE.objectFifo.createObjectFifo(%tile23, {%tile25}, [2]) {sym_name = "of_inter"} : !AIE.objectFifo<memref<32xi32>>
+        %of_inter = AIE.objectFifo.createObjectFifo(%tile23, {%tile25}, 2) {sym_name = "of_inter"} : !AIE.objectFifo<memref<32xi32>>
 
         %ext_buffer_in_0  = AIE.external_buffer {sym_name = "ext_buffer_in_0"} : memref<32xi32>
         %ext_buffer_in_1  = AIE.external_buffer {sym_name = "ext_buffer_in_1"} : memref<32xi32>

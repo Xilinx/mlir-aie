@@ -64,6 +64,8 @@ def AIE_ObjectFifoSubviewType :
 
 def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
 
+def AIE_ObjectFifo_Depth : AnyAttrOf<[ConfinedAttr<I64Attr, [IntMinValue<0>]>, ArrayAttr]>;
+
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
                                            AnyTensor.predicate]>,
@@ -1303,7 +1305,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let arguments = (
     ins Index:$producerTile,
         Variadic<Index>:$consumerTiles,
-        ArrayAttr:$elemNumber
+        AIE_ObjectFifo_Depth:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
@@ -1316,7 +1318,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 
   let extraClassDeclaration = [{
     int size(int index = 0) { 
-      return dyn_cast<IntegerAttr>(getElemNumber()[index]).getInt(); 
+      if (isa<ArrayAttr>(getElemNumber()))
+        return dyn_cast<IntegerAttr>(dyn_cast<ArrayAttr>(getElemNumber())[index]).getInt(); 
+      else 
+        return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
     }
     TileOp getProducerTileOp();
     bool hasName() {

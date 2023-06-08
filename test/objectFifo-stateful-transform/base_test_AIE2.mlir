@@ -25,6 +25,44 @@
 // CHECK:     %7 = AIE.lock(%0, 0) {init = 4 : i32, sym_name = "of0_prod_lock"}
 // CHECK:     %8 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of0_cons_lock"}
 // CHECK:     AIE.flow(%0, DMA : 0, %2, DMA : 0)
+// CHECK:     %9 = AIE.buffer(%0) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK:     %10 = AIE.buffer(%0) {sym_name = "of1_buff_1"} : memref<16xi32>
+// CHECK:     %11 = AIE.lock(%0, 2) {init = 2 : i32, sym_name = "of1_prod_lock"}
+// CHECK:     %12 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "of1_cons_lock"}
+// CHECK:     %13 = AIE.buffer(%2) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK:     %14 = AIE.buffer(%2) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
+// CHECK:     %15 = AIE.lock(%2, 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock"}
+// CHECK:     %16 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock"}
+// CHECK:     %17 = AIE.mem(%0) {
+// CHECK:       %19 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       AIE.useLock(%12, AcquireGreaterEqual, 1)
+// CHECK:       AIE.dmaBd(<%9 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%11, Release, 1)
+// CHECK:       AIE.nextBd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       AIE.useLock(%12, AcquireGreaterEqual, 1)
+// CHECK:       AIE.dmaBd(<%10 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%11, Release, 1)
+// CHECK:       AIE.nextBd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       AIE.end
+// CHECK:     }
+// CHECK:     %18 = AIE.mem(%2) {
+// CHECK:       %19 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       AIE.useLock(%15, AcquireGreaterEqual, 1)
+// CHECK:       AIE.dmaBd(<%13 : memref<16xi32>, 0, 16>, 0)
+// CHECK: // CHECK:       AIE.useLock(%16, Release, 1)
+// CHECK:       AIE.nextBd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       AIE.useLock(%15, AcquireGreaterEqual, 1)
+// CHECK:       AIE.dmaBd(<%14 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.useLock(%16, Release, 1)
+// CHECK:       AIE.nextBd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       AIE.end
+// CHECK:     }
 // CHECK:   }
 // CHECK: }
 

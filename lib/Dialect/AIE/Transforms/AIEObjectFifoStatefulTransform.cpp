@@ -942,7 +942,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        if (createOp.getElemNumber().size() > 1) 
+        if (isa<ArrayAttr>(createOp.getElemNumber())) 
           // +1 to account for 1st depth (producer)
           consumerDepth = createOp.size(consumerIndex + 1);
         builder.setInsertionPointAfter(createOp);
@@ -981,7 +981,7 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-        if (createOp.getElemNumber().size() > 1) {
+        if (isa<ArrayAttr>(createOp.getElemNumber())) {
           std::vector<Attribute> objFifoSize = {builder.getI32IntegerAttr(createOp.size())};
           createOp->setAttr("elemNumber",
                             builder.getArrayAttr(ArrayRef(objFifoSize)));
