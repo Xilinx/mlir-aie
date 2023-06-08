@@ -24,7 +24,7 @@
 
 int main(int argc, char *argv[]) {
   printf("Test start.\n");
-  
+
   u32 pc0_times[0]; // track timer values
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
@@ -51,13 +51,14 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 2, 3);
   mlir_aie_clear_tile_memory(_xaie, 2, 5);
 
-  // Define custom EventMonitor class to track event triggers for program counter
-  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(2,0), 
-                        XAIE_PL_MOD, 3,
-                        XAIE_EVENT_LOCK_0_RELEASED_PL);
+  // Define custom EventMonitor class to track event triggers for program
+  // counter
+  XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(2, 0), XAIE_PL_MOD, 3,
+                      XAIE_EVENT_LOCK_0_RELEASED_PL);
   EventMonitor pc0(_xaie, 2, 5, 0, XAIE_EVENT_BROADCAST_3_MEM,
-                   XAIE_EVENT_LOCK_0_REL_MEM,
-                   XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD); // device, tile, PC_number, start event, stop event, reset event, mode
+                   XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                   XAIE_MEM_MOD); // device, tile, PC_number, start event, stop
+                                  // event, reset event, mode
   pc0.set();
 
   // Helper function to enable all AIE cores
@@ -97,8 +98,9 @@ int main(int argc, char *argv[]) {
   // check output
   for (int i = 0; i < 4; i++)
     for (int j = 0; j < 32; j++)
-      mlir_aie_check("Output:",
-                 mlir_aie_read_buffer_buff_out(_xaie, i * 32 + j), (2 * i + 1), errors);
+      mlir_aie_check(
+          "Output:", mlir_aie_read_buffer_buff_out(_xaie, i * 32 + j),
+          (2 * i + 1), errors);
 
   int res = 0;
   if (!errors) {

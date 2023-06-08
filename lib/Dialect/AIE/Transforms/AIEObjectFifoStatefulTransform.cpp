@@ -205,7 +205,7 @@ struct AIEObjectFifoStatefulTransformPass
                                       Value prodTile, Value consTile,
                                       std::vector<Attribute> depth) {
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), datatype, prodTile, consTile, 
+        builder.getUnknownLoc(), datatype, prodTile, consTile,
         builder.getArrayAttr(ArrayRef(depth)));
     return fifo;
   }
@@ -829,8 +829,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.create<UseLockOp>(builder.getUnknownLoc(),
                                   locksPerFifo[op][lockID], lockMode,
                                   lockAction);
-        acc[op] =
-            (lockID + 1) % op.size(); // update to next objFifo elem
+        acc[op] = (lockID + 1) % op.size(); // update to next objFifo elem
       }
     } else {
       int lockMode = 1;
@@ -851,8 +850,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
         builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockMode,
                                   lockAction);
-        acc[op] =
-            (acc[op] + 1) % op.size(); // update to next objFifo elem
+        acc[op] = (acc[op] + 1) % op.size(); // update to next objFifo elem
       }
     }
   }
@@ -957,14 +955,15 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        if (isa<ArrayAttr>(createOp.getElemNumber())) 
+        if (isa<ArrayAttr>(createOp.getElemNumber()))
           // +1 to account for 1st depth (producer)
           consumerDepth = createOp.size(consumerIndex + 1);
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
 
-        std::vector<Attribute> cosumerObfFifoSize = {builder.getI32IntegerAttr(consumerDepth)};
+        std::vector<Attribute> cosumerObfFifoSize = {
+            builder.getI32IntegerAttr(consumerDepth)};
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerTile, consumerTile, cosumerObfFifoSize);
 
@@ -997,7 +996,8 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
-          std::vector<Attribute> objFifoSize = {builder.getI32IntegerAttr(createOp.size())};
+          std::vector<Attribute> objFifoSize = {
+              builder.getI32IntegerAttr(createOp.size())};
           createOp->setAttr("elemNumber",
                             builder.getArrayAttr(ArrayRef(objFifoSize)));
         }
