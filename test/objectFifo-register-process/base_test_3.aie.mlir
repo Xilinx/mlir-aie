@@ -16,7 +16,7 @@
 // CHECK:   %0 = AIE.tile(1, 2)
 // CHECK:   %1 = AIE.tile(1, 3)
 // CHECK:   %2 = AIE.tile(3, 3)
-// CHECK:   %3 = AIE.objectFifo.createObjectFifo(%0, {%2, %1}, 2) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
+// CHECK:   %3 = AIE.objectFifo.createObjectFifo(%0, {%2, %1}, 2 : i64) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 // CHECK:   %cst = arith.constant dense<1> : tensor<1xi32>
 // CHECK:   %cst_0 = arith.constant dense<1> : tensor<1xi32>
 // CHECK:   %c10 = arith.constant 10 : index

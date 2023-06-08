@@ -219,9 +219,12 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
     auto &target = dev.getTargetModel();
+    int numElem = op.size();
+    if (creation_tile.isShimTile())
+      numElem = externalBuffersPerFifo[op].size();
     if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
-      for (int i = 0; i < op.size(); i++) {
+      for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int lockID = lockAnalysis.getLockID(creation_tile);
         assert(lockID >= 0 && "No more locks to allocate!");
@@ -239,7 +242,7 @@ struct AIEObjectFifoStatefulTransformPass
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
       LockOp prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, op.size());
+          builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
       prodLock.getOperation()->setAttr(
           mlir::SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name()->getValue() + "_prod_lock"));

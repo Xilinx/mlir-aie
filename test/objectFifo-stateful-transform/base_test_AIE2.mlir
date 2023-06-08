@@ -53,7 +53,7 @@
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       AIE.useLock(%15, AcquireGreaterEqual, 1)
 // CHECK:       AIE.dmaBd(<%13 : memref<16xi32>, 0, 16>, 0)
-// CHECK: // CHECK:       AIE.useLock(%16, Release, 1)
+// CHECK:       AIE.useLock(%16, Release, 1)
 // CHECK:       AIE.nextBd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       AIE.useLock(%15, AcquireGreaterEqual, 1)
