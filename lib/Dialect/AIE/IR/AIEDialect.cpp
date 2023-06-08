@@ -416,6 +416,12 @@ LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
   if (!hasName())
     return emitOpError("does not have a sym_name.");
 
+  if (isa<ArrayAttr>(getElemNumber())) {
+    size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
+    if (numDepths != (getConsumerTiles().size() + 1)) // +1 for producer depth
+      return emitOpError("does not have enough depths specified for producer and for each consumer.");
+  }
+
   return success();
 }
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
