@@ -394,7 +394,9 @@ class flow_runner:
         *progress.Progress.get_default_columns(),
         progress.TimeElapsedColumn(),
         progress.MofNCompleteColumn(),
-        progress.TextColumn("{task.fields[command]}")) as progress_bar:
+        progress.TextColumn("{task.fields[command]}"),
+        redirect_stdout = False,
+        redirect_stderr = False) as progress_bar:
         self.progress_bar = progress_bar
         progress_bar.task = progress_bar.add_task("[green] MLIR compilation:", total=1, command="1 Worker")
 
