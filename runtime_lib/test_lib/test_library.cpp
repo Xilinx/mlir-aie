@@ -434,59 +434,59 @@ void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
   u32 status, coreTimerLow, PC, LR, SP, locks, R0, R4;
   u32 trace_status;
-#if (__AIEARCH__ == 20)
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031100, &PC);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031130, &LR);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031120, &SP);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000340D8, &trace_status);
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031100, &PC);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031130, &LR);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031120, &SP);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000340D8, &trace_status);
 
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C00, &R0);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C40, &R4);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C00, &R0);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C40, &R4);
 
-#else
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030280, &PC);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302B0, &LR);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302A0, &SP);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000140D8, &trace_status);
+  } else {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030280, &PC);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302B0, &LR);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302A0, &SP);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000140D8, &trace_status);
 
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030000, &R0);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030040, &R4);
-#endif
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030000, &R0);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030040, &R4);
+  }
   printf("Core [%d, %d] status is %08X, timer is %u, PC is %08X"
          ", LR is %08X, SP is %08X, R0 is %08X,R4 is %08X\n",
          col, row, status, coreTimerLow, PC, LR, SP, R0, R4);
   printf("Core [%d, %d] trace status is %08X\n", col, row, trace_status);
 
-#if (__AIEARCH__ == 20)
-  printf("Core [%d, %d] AIE2 locks are: ", col, row);
-  int lockAddr = tileAddr + 0x0001F000;
-  XAie_Write32(&(ctx->DevInst), lockAddr, 3);
-  for (int lock = 0; lock < 16; lock++) {
-    XAie_Read32(&(ctx->DevInst), lockAddr, &locks);
-    printf("%X ", locks);
-    lockAddr += 0x10;
-  }
-  printf("\n");
-#else
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
-  printf("Core [%d, %d] AIE1 locks are %08X\n", col, row, locks);
-  for (int lock = 0; lock < 16; lock++) {
-    u32 two_bits = (locks >> (lock * 2)) & 0x3;
-    if (two_bits) {
-      printf("Lock %d: ", lock);
-      u32 acquired = two_bits & 0x1;
-      u32 value = two_bits & 0x2;
-      if (acquired)
-        printf("Acquired ");
-      printf(value ? "1" : "0");
-      printf("\n");
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    printf("Core [%d, %d] AIE2 locks are: ", col, row);
+    int lockAddr = tileAddr + 0x0001F000;
+    XAie_Write32(&(ctx->DevInst), lockAddr, 3);
+    for (int lock = 0; lock < 16; lock++) {
+      XAie_Read32(&(ctx->DevInst), lockAddr, &locks);
+      printf("%X ", locks);
+      lockAddr += 0x10;
+    }
+    printf("\n");
+  } else {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
+    printf("Core [%d, %d] AIE1 locks are %08X\n", col, row, locks);
+    for (int lock = 0; lock < 16; lock++) {
+      u32 two_bits = (locks >> (lock * 2)) & 0x3;
+      if (two_bits) {
+        printf("Lock %d: ", lock);
+        u32 acquired = two_bits & 0x1;
+        u32 value = two_bits & 0x2;
+        if (acquired)
+          printf("Acquired ");
+        printf(value ? "1" : "0");
+        printf("\n");
+      }
     }
   }
-#endif
 
   const char *core_status_strings[] = {"Enabled",
                                        "In Reset",
