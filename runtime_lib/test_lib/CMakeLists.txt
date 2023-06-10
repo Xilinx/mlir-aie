@@ -39,35 +39,21 @@ install(TARGETS test_lib
 )
 install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/src)
 
-# create extra libs supporting simulation
-if (DEFINED VITIS_ROOT)
-    set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
+set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
+# Memory Allocator
+add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
+target_compile_options(memory_allocator_ion PRIVATE -fPIC)
+target_compile_definitions(memory_allocator_ion PRIVATE)
 
-    # AIE1 test_lib for aiesimulator
-    add_library(test_lib_sim_aie STATIC test_library.cpp)
-    target_compile_options(test_lib_sim_aie PRIVATE -fPIC)
-    target_compile_definitions(test_lib_sim_aie PRIVATE __AIESIM__)
+install(TARGETS memory_allocator_ion
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+)
 
-    target_include_directories(test_lib_sim_aie PRIVATE
-        ${LibXAIE_INC_DIR}
-        ${xaienginePath}
-    )
+add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
+target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
+target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
+target_include_directories(memory_allocator_sim_aie PRIVATE ${xaienginePath})
 
-    install(TARGETS test_lib_sim_aie 
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-    )
-
-    # AIE2 test_lib for aiesimulator
-    add_library(test_lib_sim_aie2 STATIC test_library.cpp)
-    target_compile_options(test_lib_sim_aie2 PRIVATE -fPIC)
-    target_compile_definitions(test_lib_sim_aie2 PRIVATE __AIESIM__ __AIEARCH__=20)
-
-    target_include_directories(test_lib_sim_aie2 PRIVATE
-        ${LibXAIE_INC_DIR}
-        ${xaienginePath}
-    )
-
-    install(TARGETS test_lib_sim_aie2 
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-    )
-endif(DEFINED VITIS_ROOT)
+install(TARGETS memory_allocator_sim_aie
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+)

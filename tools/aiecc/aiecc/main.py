@@ -313,9 +313,11 @@ class flow_runner:
       thispath = os.path.dirname(os.path.realpath(__file__))
 
       runtime_simlib_path = os.path.join(thispath, '..','..','aie_runtime_lib', self.aie_target.upper(),'aiesim')
+      runtime_testlib_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', '')
       sim_makefile   = os.path.join(runtime_simlib_path, "Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
+      memory_allocator = os.path.join(runtime_testlib_path, 'libmemory_allocator_sim_aie.a')
 
       sim_cc_args = ["-fPIC", "-flto", "-fpermissive",
                  "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR",
@@ -331,6 +333,7 @@ class flow_runner:
                  "-I" + opts.aietools_path + "/tps/boost_1_72_0",
                  "-I" + opts.aietools_path + "/include/xtlm/include",
                  "-I" + opts.aietools_path + "/include/common_cpp/common_cpp_v1_0/include",
+                 memory_allocator
                  ]
 
       # runtime_xaiengine_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'xaiengine')

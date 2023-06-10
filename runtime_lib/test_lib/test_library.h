@@ -14,11 +14,6 @@
 #include <stdlib.h>
 #include <xaiengine.h>
 
-#if defined(__AIESIM__)
-#include "xioutils.h"
-#include <iostream>
-#endif
-
 extern "C" {
 
 #define mlir_aie_check(s, r, v, errors)                                        \
@@ -32,32 +27,9 @@ extern "C" {
     errors++;                                                                  \
   }
 
-struct ext_mem_model_t {
-  void *virtualAddr;
-  uint64_t physicalAddr;
-  size_t size;
-};
-
-#if defined(__AIESIM__)
-// static variable for tracking current DDR physical addr during AIESIM
-static uint16_t nextAlignedAddr;
-#endif
-
 struct aie_libxaie_ctx_t {
   XAie_Config AieConfigPtr;
   XAie_DevInst DevInst;
-  /*
-    XAieGbl_Config *AieConfigPtr;
-    XAieGbl AieInst;
-    XAieGbl_HwCfg AieConfig;
-    XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
-    XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS+1];
-  */
-#if defined(__AIESIM__)
-  ext_mem_model_t **buffers;
-#else
-  XAie_MemInst **buffers;
-#endif
 };
 
 // class for using events and PF cpounters
@@ -182,11 +154,6 @@ void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row);
 
 /// Zero out the configuration memory of the shim tile.
 void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row);
-
-void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs);
-int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size);
-void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx);
-void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx);
 
 void computeStats(u32 performance_counter[], int n);
 

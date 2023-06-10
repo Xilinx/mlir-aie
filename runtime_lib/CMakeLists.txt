@@ -90,6 +90,8 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
           -DLibXAIE_INC_DIR=${XILINX_XAIE_INCLUDE_DIR}
+          -DVITIS_ROOT=${VITIS_ROOT}
+          -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
           -DSysroot=${Sysroot}
       DEPENDS ${testLibDependsOnXaiengine}
       BUILD_ALWAYS true
