@@ -64,7 +64,7 @@ def AIE_ObjectFifoSubviewType :
 
 def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
 
-def AIE_ObjectFifo_Depth : AnyAttrOf<[ConfinedAttr<I64Attr, [IntMinValue<0>]>, ArrayAttr]>;
+def AIE_ObjectFifo_Depth : AnyAttrOf<[ConfinedAttr<I32Attr, [IntMinValue<0>]>, ArrayAttr]>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
