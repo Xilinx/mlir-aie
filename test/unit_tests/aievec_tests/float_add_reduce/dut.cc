@@ -1,0 +1,41 @@
+void dut(float *restrict v1, float *restrict v2) {
+  v16float v3 = broadcast_to_v16float((float)0.000000);
+  size_t v4 = 0;
+  size_t v5 = 1024;
+  size_t v6 = 16;
+  v16float v7;
+  v16float v8 = v3;
+  for (size_t v9 = v4; v9 < v5; v9 += v6)
+    chess_prepare_for_pipelining chess_loop_range(64, 64) {
+      v16float v10 = *(v16float *)(v1 + v9);
+      v16accfloat v11 = v16accfloat(v8);
+      v16accfloat v12 = v16accfloat(v10);
+      v16accfloat v13 = add(v11, v12);
+      v16float v14 = v16float(v13);
+      v8 = v14;
+    }
+  v7 = v8;
+  v16float v15 = shift_bytes(v7, undef_v16float(), 32);
+  v16accfloat v16 = v16accfloat(v7);
+  v16accfloat v17 = v16accfloat(v15);
+  v16accfloat v18 = add(v16, v17);
+  v16float v19 = v16float(v18);
+  v16float v20 = shift_bytes(v19, undef_v16float(), 16);
+  v16accfloat v21 = v16accfloat(v19);
+  v16accfloat v22 = v16accfloat(v20);
+  v16accfloat v23 = add(v21, v22);
+  v16float v24 = v16float(v23);
+  v16float v25 = shift_bytes(v24, undef_v16float(), 8);
+  v16accfloat v26 = v16accfloat(v24);
+  v16accfloat v27 = v16accfloat(v25);
+  v16accfloat v28 = add(v26, v27);
+  v16float v29 = v16float(v28);
+  v16float v30 = shift_bytes(v29, undef_v16float(), 4);
+  v16accfloat v31 = v16accfloat(v29);
+  v16accfloat v32 = v16accfloat(v30);
+  v16accfloat v33 = add(v31, v32);
+  v16float v34 = v16float(v33);
+  float v35 = extract_elem(v34, 0);
+  *(float *)v2 = v35;
+  return;
+}

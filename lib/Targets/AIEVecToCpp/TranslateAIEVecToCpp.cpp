@@ -518,9 +518,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
     }
 
     // The granularity of upd is 128/256/512 for 256/512/1024 bit values
-    int32_t granularity = vecSizeInBits == 256   ? 128
-                          : vecSizeInBits == 512 ? 256
-                                                 : 512;
+    int32_t granularity =
+        vecSizeInBits == 256 ? 128 : vecSizeInBits == 512 ? 256 : 512;
     // Create a vector type with number of lanes halved of the result
     unsigned lanes = getVectorLaneSize(resultType);
     assert(lanes % 2 == 0 &&
@@ -545,9 +544,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
     }
     os << emitter.getOrCreateName(result);
     os << " = ";
-    os << (granularity == 128   ? "upd_v"
-           : granularity == 256 ? "upd_w"
-                                : "upd_x");
+    os << (granularity == 128 ? "upd_v"
+                              : granularity == 256 ? "upd_w" : "upd_x");
     os << "(";
     os << emitter.getOrCreateName(result);
     os << ", ";
@@ -832,9 +830,8 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
     int32_t vecSizeInBits = getVectorSizeInBits(resType);
     assert(vecSizeInBits == 128 || vecSizeInBits == 256 ||
            vecSizeInBits == 512);
-    os << (vecSizeInBits == 128   ? "ext_v"
-           : vecSizeInBits == 256 ? "ext_w"
-                                  : "ext_x");
+    os << (vecSizeInBits == 128 ? "ext_v"
+                                : vecSizeInBits == 256 ? "ext_w" : "ext_x");
   }
   os << "(";
   // The source accumulator should have already been emitted
@@ -853,8 +850,9 @@ static std::string getUndefVector(VectorType sourceType) {
   Type eltType = sourceType.getElementType();
   int32_t eltSize = getElementSizeInBits(sourceType);
   return "undef_v" + std::to_string(lanes) +
-         (eltType.isa<FloatType>() ? "float" : "int") +
-         std::to_string(eltSize) + "()";
+         (eltType.isa<FloatType>() ? eltSize == 16 ? "bfloat16" : "float"
+                                   : "int" + std::to_string(eltSize)) +
+         "()";
 }
 
 // Generate the concat intrinsic
@@ -960,9 +958,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
   assert(elementSizeInBits == 16 || elementSizeInBits == 32 ||
          elementSizeInBits == 64);
   // Print name
-  os << (elementSizeInBits == 16   ? "select32"
-         : elementSizeInBits == 32 ? "select16"
-                                   : "select8");
+  os << (elementSizeInBits == 16
+             ? "select32"
+             : elementSizeInBits == 32 ? "select16" : "select8");
   os << "(";
   // Print select bits
   assert(!selectOp.getSelect().empty());
@@ -1805,6 +1803,32 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
   return success();
 }
 
+// Generate the extract elem intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::ExtElemOp extElemOp) {
+  Value source = extElemOp.getSource();
+  int32_t index = extElemOp.getIndex();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*extElemOp)))
+    return failure();
+
+  // source should have already been emitted
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  os << "extract_elem";
+  os << "(";
+  // Print the source and index
+  os << emitter.getOrCreateName(source);
+  os << ", ";
+  os << index;
+  os << ")";
+  return success();
+}
+
 // Generate the transfer write op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     vector::TransferWriteOp writeOp) {
@@ -1835,6 +1859,31 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << ")";
   os << " = ";
   os << emitter.getOrCreateName(vector);
+  return success();
+}
+
+// Generate the memref store op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::StoreOp storeOp) {
+  Value value = storeOp.getValue();
+  Value memref = storeOp.getMemref();
+
+  // If the value, or the memref being outputted is not already emitted,
+  // error out
+  if (!emitter.hasValueInScope(value) || !emitter.hasValueInScope(memref))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "*(";
+  if (failed(emitter.emitType(
+          storeOp->getLoc(),
+          cast<MemRefType>(memref.getType()).getElementType())))
+    return failure();
+  os << " *)";
+  os << emitter.getOrCreateName(memref);
+  os << " = ";
+  os << emitter.getOrCreateName(value);
   return success();
 }
 
@@ -2438,6 +2487,44 @@ bool CppEmitter::hasBlockLabel(Block &block) {
   return blockMapper.count(&block);
 }
 
+template <typename ElTy>
+static bool hasSameDenseValue(DenseIntElementsAttr dense,
+                              std::string &firstValue) {
+  SmallVector<ElTy> denseValues;
+  for (APInt elem : dense) {
+    denseValues.push_back(elem.getLimitedValue());
+  }
+  ElTy firstV = denseValues[0];
+  if (llvm::all_of(denseValues, [firstV](ElTy v) { return v == firstV; })) {
+    firstValue = std::to_string(firstV);
+    return true;
+  }
+  return false;
+}
+
+template <typename ElTy>
+static bool hasSameDenseValue(DenseFPElementsAttr dense,
+                              std::string &firstValue) {
+  SmallVector<ElTy> denseValues;
+  for (APFloat elem : dense) {
+    denseValues.push_back(elem.convertToFloat());
+  }
+  ElTy firstV = denseValues[0];
+
+  if (llvm::all_of(denseValues, [firstV](ElTy v) { return v == firstV; })) {
+    firstValue = std::to_string(firstV);
+
+    if (firstValue == "inf") {
+      firstValue = "3.40282347e+38F";
+    } else if (firstValue == "-inf") {
+      firstValue = "1.175494351e-38F";
+    }
+
+    return true;
+  }
+  return false;
+}
+
 LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   auto printInt = [&](const APInt &val, bool isUnsigned) {
     if (val.getBitWidth() == 1) {
@@ -2483,9 +2570,35 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     return success();
   }
   if (auto dense = attr.dyn_cast<DenseFPElementsAttr>()) {
-    os << '{';
-    interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
-    os << '}';
+    if (AIEML) {
+      if (auto vType = dense.getType().dyn_cast<VectorType>()) {
+        if (auto fType = vType.getElementType().dyn_cast<FloatType>()) {
+          unsigned width = fType.getWidth();
+          bool hasSameValue = false;
+          std::string firstValue = "";
+          if (width == 32) {
+            hasSameValue = hasSameDenseValue<float>(dense, firstValue);
+          } else if (width == 16) {
+            hasSameValue = hasSameDenseValue<float>(dense, firstValue);
+          }
+          if (hasSameValue) {
+            os << "broadcast_to_";
+            if (failed(emitType(loc, vType)))
+              return failure();
+            os << "((";
+            if (failed(emitType(loc, fType)))
+              return failure();
+            os << ")";
+            os << firstValue;
+            os << ")";
+          }
+        }
+      }
+    } else {
+      os << '{';
+      interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
+      os << '}';
+    }
     return success();
   }
 
@@ -2521,17 +2634,46 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     if (auto vType = dense.getType().dyn_cast<VectorType>()) {
       if (auto iType = vType.getElementType().dyn_cast<IntegerType>()) {
         if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
-          os << "null_";
+          if (AIEML) {
+            os << "undef_";
+          } else {
+            os << "null_";
+          }
           if (failed(emitType(loc, vType)))
             return failure();
           os << "()";
           return success();
         }
-        os << '{';
-        interleaveComma(dense, os, [&](const APInt &val) {
-          printInt(val, shouldMapToUnsigned(iType.getSignedness()));
-        });
-        os << '}';
+
+        if (AIEML) {
+          unsigned width = iType.getWidth();
+          bool hasSameValue = false;
+          std::string firstValue = "";
+          if (width == 32) {
+            hasSameValue = hasSameDenseValue<int32_t>(dense, firstValue);
+          } else if (width == 16) {
+            hasSameValue = hasSameDenseValue<int16_t>(dense, firstValue);
+          } else if (width == 8) {
+            hasSameValue = hasSameDenseValue<int8_t>(dense, firstValue);
+          }
+          if (hasSameValue) {
+            os << "broadcast_to_";
+            if (failed(emitType(loc, vType)))
+              return failure();
+            os << "((";
+            if (failed(emitType(loc, iType)))
+              return failure();
+            os << ")";
+            os << firstValue;
+            os << ")";
+          }
+        } else {
+          os << '{';
+          interleaveComma(dense, os, [&](const APInt &val) {
+            printInt(val, shouldMapToUnsigned(iType.getSignedness()));
+          });
+          os << '}';
+        }
         return success();
       }
       if (auto iType = vType.getElementType().dyn_cast<IndexType>()) {
@@ -2693,8 +2835,11 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           //  Arith ops.
           .Case<arith::AddIOp>(
               [&](auto op) { return printOperation<arith::AddIOp>(*this, op); })
-          // Vector ops
+          // Vector ops.
           .Case<vector::TransferWriteOp>(
+              [&](auto op) { return printOperation(*this, op); })
+          // Memref ops.
+          .Case<memref::StoreOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
                 aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
@@ -2703,7 +2848,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
-                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp>(
+                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp,
+                aievec::ExtElemOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");

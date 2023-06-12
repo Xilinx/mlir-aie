@@ -712,4 +712,21 @@ def AIEVec_SelOp:
   let assemblyFormat = "$lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_ExtElemOp:
+  AIEVec_Op<"ext_elem", [
+    Pure
+  ]>,
+  Arguments<(ins AnyVector:$source,
+             DefaultValuedAttr<I32Attr, "0">:$index)>,
+  Results<(outs AnyTypeOf<[BF16, F32, I32, I16, I8]>:$result)> {
+  let summary = "AIE extract element";
+  let description =
+      [{AMD - specific extract element
+                  intrinsic.Extract element determined by index from vector.
+    `$result = ext_elem($source, $index)`.}];
+  let assemblyFormat = "$source ` ` `{` `index` `=` $index  attr-dict `}` `:` "
+                       "type($source) `,` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS
