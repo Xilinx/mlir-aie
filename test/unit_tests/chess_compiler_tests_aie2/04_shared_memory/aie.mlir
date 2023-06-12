@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+// aiecc.py -j0 --aiesim --xchesscc --xbridge aie.mlir -I/wrk/hdstaff/stephenn/nobkup/acdc-install-wsl/runtime_lib/x86_64/test_lib/include test.cpp -o test.elf -L/wrk/hdstaff/stephenn/nobkup/acdc-install-wsl/runtime_lib/x86_64/test_lib/lib -ltest_lib
+// aiecc.py -j0 --aiesim --xchesscc --xbridge aie.mlir -I/wrk/hdstaff/stephenn/nobkup/acdc-install-wsl/runtime_lib/x86_64/test_lib/include test.cpp -o test.elf /wrk/hdstaff/stephenn/nobkup/acdc-install-wsl/runtime_lib/x86_64/test_lib/lib/test_library.cpp
+
 // RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test.elf -L%aie_runtime_lib%/test_lib/lib -ltest_lib
 // RUN: %run_on_board ./test.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
