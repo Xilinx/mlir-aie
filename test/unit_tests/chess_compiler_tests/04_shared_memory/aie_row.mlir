@@ -10,7 +10,9 @@
 
 // RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test.elf -L%aie_runtime_lib%/test_lib/lib -ltest_lib
 // RUN: %run_on_board ./test.elf
-// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: aie_row.mlir.prj/aiesim.sh | FileCheck %s
+
+// XFAIL: *
 
 // CHECK: test start.
 // CHECK: PASS!

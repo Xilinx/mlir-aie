@@ -44,9 +44,8 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
     find_package(LibXAIE)
     message(STATUS "FOUND LibXAIE: ${LibXAIE_FOUND}, XILINX_XAIE_LIB_DIR: ${XILINX_XAIE_LIB_DIR}, XILINX_XAIE_INCLUDE_DIR: ${XILINX_XAIE_INCLUDE_DIR}")
-  else()
-    if (DEFINED VITIS_ROOT)
-      message("No custom LibXAIE dir found for ${target}. Building xaiengine for ${target} from Vitis.") 
+  elseif (DEFINED VITIS_ROOT)
+      message("LibXAIE_${target}_DIR not specified: Building xaiengine for ${target} from Vitis at ${VITIS_ROOT}.") 
       set(XILINX_XAIE_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine/include) #set path where to pick up libxaiengine from build area
       set(testLibDependsOnXaiengine xaiengine_${target}-build)
       ExternalProject_Add(xaiengine_${target}
@@ -72,7 +71,8 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       TEST_BEFORE_INSTALL true
       TEST_EXCLUDE_FROM_MAIN true
       )
-    endif()
+  else()
+    message(sTATUS "LibXAIE_${target}_DIR not specified and Vitis not found.  LibXAIE not built.")
   endif()
 
   # test_lib

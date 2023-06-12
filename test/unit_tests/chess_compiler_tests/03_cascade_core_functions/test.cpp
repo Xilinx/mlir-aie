@@ -42,8 +42,12 @@ main(int argc, char *argv[])
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
 
+    // In simulation, we can't perform this check. because
+    // memory is not initialized to zero.
+#ifndef __AIESIM__
     mlir_aie_check("Before release lock:", mlir_aie_read_buffer_c(_xaie, 5), 0,
                    errors);
+#endif
 
     printf("Release input buffer lock.\n");
     mlir_aie_release_input_lock(_xaie, 1, 0);
