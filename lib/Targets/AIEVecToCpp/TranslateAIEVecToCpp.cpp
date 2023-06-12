@@ -518,8 +518,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
     }
 
     // The granularity of upd is 128/256/512 for 256/512/1024 bit values
-    int32_t granularity =
-        vecSizeInBits == 256 ? 128 : vecSizeInBits == 512 ? 256 : 512;
+    int32_t granularity = vecSizeInBits == 256   ? 128
+                          : vecSizeInBits == 512 ? 256
+                                                 : 512;
     // Create a vector type with number of lanes halved of the result
     unsigned lanes = getVectorLaneSize(resultType);
     assert(lanes % 2 == 0 &&
@@ -544,8 +545,9 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::UPDOp updOp) {
     }
     os << emitter.getOrCreateName(result);
     os << " = ";
-    os << (granularity == 128 ? "upd_v"
-                              : granularity == 256 ? "upd_w" : "upd_x");
+    os << (granularity == 128   ? "upd_v"
+           : granularity == 256 ? "upd_w"
+                                : "upd_x");
     os << "(";
     os << emitter.getOrCreateName(result);
     os << ", ";
@@ -830,8 +832,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
     int32_t vecSizeInBits = getVectorSizeInBits(resType);
     assert(vecSizeInBits == 128 || vecSizeInBits == 256 ||
            vecSizeInBits == 512);
-    os << (vecSizeInBits == 128 ? "ext_v"
-                                : vecSizeInBits == 256 ? "ext_w" : "ext_x");
+    os << (vecSizeInBits == 128   ? "ext_v"
+           : vecSizeInBits == 256 ? "ext_w"
+                                  : "ext_x");
+
   }
   os << "(";
   // The source accumulator should have already been emitted
@@ -958,9 +962,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
   assert(elementSizeInBits == 16 || elementSizeInBits == 32 ||
          elementSizeInBits == 64);
   // Print name
-  os << (elementSizeInBits == 16
-             ? "select32"
-             : elementSizeInBits == 32 ? "select16" : "select8");
+  os << (elementSizeInBits == 16   ? "select32"
+         : elementSizeInBits == 32 ? "select16"
+                                   : "select8");
   os << "(";
   // Print select bits
   assert(!selectOp.getSelect().empty());
