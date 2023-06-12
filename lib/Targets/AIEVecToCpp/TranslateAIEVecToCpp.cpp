@@ -835,7 +835,6 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
     os << (vecSizeInBits == 128   ? "ext_v"
            : vecSizeInBits == 256 ? "ext_w"
                                   : "ext_x");
-
   }
   os << "(";
   // The source accumulator should have already been emitted
