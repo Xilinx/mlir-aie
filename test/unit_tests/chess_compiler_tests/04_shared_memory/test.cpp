@@ -48,19 +48,27 @@ int main(int argc, char *argv[]) {
   }
   mlir_aie_write_buffer_a(_xaie, 3, 7);
 
+  // In simulation, we can't perform this check. because
+  // memory is not initialized to zero.
+#ifndef __AIESIM__
   mlir_aie_check("Before", mlir_aie_read_buffer_a(_xaie, 3), 7, errors);
   mlir_aie_check("Before", mlir_aie_read_buffer_b(_xaie, 5), 0, errors);
   mlir_aie_check("Before", mlir_aie_read_buffer_c(_xaie, 5), 0, errors);
+#endif
 
   printf("Starting cores\n");
   mlir_aie_start_cores(_xaie);
 
+  // In simulation, we can't perform this check. because
+  // memory is not initialized to zero.
+#ifndef __AIESIM__
   mlir_aie_check("Before and started", mlir_aie_read_buffer_a(_xaie, 3), 7,
                  errors);
   mlir_aie_check("Before and started", mlir_aie_read_buffer_b(_xaie, 5), 0,
                  errors);
   mlir_aie_check("Before and started", mlir_aie_read_buffer_c(_xaie, 5), 0,
                  errors);
+#endif
 
   printf("Release input buffer lock.\n");
   mlir_aie_release_input_lock(_xaie, 1, 0);
