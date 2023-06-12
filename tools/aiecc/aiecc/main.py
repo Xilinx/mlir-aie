@@ -276,6 +276,10 @@ class flow_runner:
       runtime_xaiengine_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'xaiengine')
       xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
       xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
+      runtime_testlib_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'lib')
+      memory_allocator = os.path.join(runtime_testlib_path, 'libmemory_allocator_ion.a')
+
+      cmd += [memory_allocator]
       cmd += ['-I%s' % xaiengine_include_path]
       cmd += ['-L%s' % xaiengine_lib_path]
 
@@ -313,7 +317,8 @@ class flow_runner:
       thispath = os.path.dirname(os.path.realpath(__file__))
 
       runtime_simlib_path = os.path.join(thispath, '..','..','aie_runtime_lib', self.aie_target.upper(),'aiesim')
-      runtime_testlib_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', '')
+      runtime_testlib_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'lib')
+      runtime_testlib_include_path = os.path.join(thispath, '..','..','runtime_lib', opts.host_target.split('-')[0], 'test_lib', 'include')
       sim_makefile   = os.path.join(runtime_simlib_path, "Makefile")
       sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
@@ -333,6 +338,7 @@ class flow_runner:
                  "-I" + opts.aietools_path + "/tps/boost_1_72_0",
                  "-I" + opts.aietools_path + "/include/xtlm/include",
                  "-I" + opts.aietools_path + "/include/common_cpp/common_cpp_v1_0/include",
+                 "-I" + runtime_testlib_include_path,
                  memory_allocator
                  ]
 
