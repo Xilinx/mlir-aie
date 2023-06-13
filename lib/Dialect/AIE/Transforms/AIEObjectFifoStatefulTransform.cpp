@@ -965,10 +965,10 @@ struct AIEObjectFifoStatefulTransformPass
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
 
-        std::vector<Attribute> consumerObfFifoSize = {
+        std::vector<Attribute> consumerObjFifoSize = {
             builder.getI32IntegerAttr(consumerDepth)};
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerTile, consumerTile, consumerObfFifoSize);
+            builder, datatype, consumerTile, consumerTile, consumerObjFifoSize);
 
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifo.getOperation()->setAttr(
