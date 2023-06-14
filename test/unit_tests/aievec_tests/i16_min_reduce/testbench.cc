@@ -50,7 +50,7 @@ int main(int argc, char *argv[]) {
 // in0 and out0 are in C4 layout.
 void dut_ref(int16_t *in0, int16_t *out0) {
   int16_t minx = INT16_MAX;
-  for (unsigned k = 0; k < OUT0_SIZE; k += 1) {
+  for (unsigned k = 0; k < IN0_SIZE; k += 1) {
     minx = std::min(minx, in0[k]);
   }
   *out0 = minx;

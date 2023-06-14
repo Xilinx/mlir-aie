@@ -2505,24 +2505,43 @@ static bool hasSameDenseValue(DenseIntElementsAttr dense,
   return false;
 }
 
-template <typename ElTy>
-static bool hasSameDenseValue(DenseFPElementsAttr dense,
-                              std::string &firstValue) {
-  SmallVector<ElTy> denseValues;
+static bool hasSameDenseValueOfFloat(DenseFPElementsAttr dense,
+                                     std::string &firstValue) {
+  SmallVector<float> denseValues;
   for (APFloat elem : dense) {
     denseValues.push_back(elem.convertToFloat());
   }
-  ElTy firstV = denseValues[0];
+  float firstV = denseValues[0];
 
-  if (llvm::all_of(denseValues, [firstV](ElTy v) { return v == firstV; })) {
+  if (llvm::all_of(denseValues, [firstV](float v) { return v == firstV; })) {
     firstValue = std::to_string(firstV);
 
     if (firstValue == "inf") {
-      firstValue = "3.40282347e+38F";
+      firstValue = std::to_string(std::numeric_limits<float>::max());
     } else if (firstValue == "-inf") {
-      firstValue = "1.175494351e-38F";
+      firstValue = std::to_string(std::numeric_limits<float>::lowest());
     }
+    return true;
+  }
+  return false;
+}
 
+static bool hasSameDenseValueOfBFloat16(DenseFPElementsAttr dense,
+                                        std::string &firstValue) {
+  SmallVector<float> denseValues;
+  for (APFloat elem : dense) {
+    denseValues.push_back(elem.convertToFloat());
+  }
+  float firstV = denseValues[0];
+
+  if (llvm::all_of(denseValues, [firstV](float v) { return v == firstV; })) {
+    firstValue = std::to_string(firstV);
+
+    if (firstValue == "inf") {
+      firstValue = std::to_string(3.39e+38F);
+    } else if (firstValue == "-inf") {
+      firstValue = std::to_string(1.18e-38F);
+    }
     return true;
   }
   return false;
@@ -2580,9 +2599,9 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           bool hasSameValue = false;
           std::string firstValue = "";
           if (width == 32) {
-            hasSameValue = hasSameDenseValue<float>(dense, firstValue);
+            hasSameValue = hasSameDenseValueOfFloat(dense, firstValue);
           } else if (width == 16) {
-            hasSameValue = hasSameDenseValue<float>(dense, firstValue);
+            hasSameValue = hasSameDenseValueOfBFloat16(dense, firstValue);
           }
           if (hasSameValue) {
             os << "broadcast_to_";

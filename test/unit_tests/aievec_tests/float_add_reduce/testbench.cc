@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
 // in0 and out0 are in C4 layout.
 void dut_ref(float *in0, float *out0) {
   float sum = 0.0f;
-  for (unsigned k = 0; k < OUT0_SIZE; k += 1) {
+  for (unsigned k = 0; k < IN0_SIZE; k += 1) {
     sum += in0[k];
   }
   *out0 = sum;

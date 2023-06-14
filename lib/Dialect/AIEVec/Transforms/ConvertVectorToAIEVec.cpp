@@ -1289,22 +1289,25 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
   Location loc = srcOp.getLoc();
   Value srcVec = srcOp.getVector();
   SmallVector<Value> sources = {srcVec};
-  auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-      loc, srcVec.getType(), sources, shiftIndex * elWidth / 8);
+  Type vecType = srcVec.getType();
 
-  auto curOp = rewriter.create<DstOpTy>(loc, srcVec.getType(), srcVec,
-                                        shiftBytesOp->getResult(0));
-  shiftIndex /= 2;
-  while (shiftIndex) {
-    SmallVector<Value> shiftSources = {curOp.getResult()};
-    shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-        loc, curOp.getType(), shiftSources, shiftIndex * elWidth / 8);
-    curOp =
-        rewriter.create<DstOpTy>(loc, shiftBytesOp.getType(), curOp.getResult(),
-                                 shiftBytesOp->getResult(0));
+  do {
+    auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
+        loc, vecType, sources, shiftIndex * elWidth / 8);
+
+    auto curOp = rewriter.create<DstOpTy>(loc, vecType, srcVec,
+                                          shiftBytesOp->getResult(0));
+
+    srcVec = curOp.getResult();
+    sources = {curOp.getResult()};
+
+    if (shiftIndex == 1) {
+      rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
+                                                     0);
+      return;
+    }
     shiftIndex /= 2;
-  }
-  rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp, 0);
+  } while (shiftIndex);
 }
 
 struct LowerVectorReductionOp
@@ -1339,104 +1342,69 @@ struct LowerVectorReductionOp
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
 
-    if (!(elWidthSet.count(elWidth) &&
-          (laneSize * elWidth == 512 ||
-           (laneSize == 16 && elWidth == 16 && isa<FloatType>(scalarType)))))
+    if (!(elWidthSet.count(elWidth) && laneSize * elWidth == 512))
       return failure();
 
     int shiftIndex = laneSize / 2;
 
+    if (kind == vector::CombiningKind::MINSI ||
+        kind == vector::CombiningKind::MINUI ||
+        kind == vector::CombiningKind::MINF) {
+      generateAIEVecOpsForReductionOp<aievec::MinOp>(
+          rewriter, srcOp, scalarType, shiftIndex, elWidth);
+      return success();
+    }
+
+    if (kind == vector::CombiningKind::MAXSI ||
+        kind == vector::CombiningKind::MAXUI ||
+        kind == vector::CombiningKind::MAXF) {
+      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
+          rewriter, srcOp, scalarType, shiftIndex, elWidth);
+      return success();
+    }
+
     if (kind == vector::CombiningKind::ADD && isa<IntegerType>(scalarType)) {
       generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
           rewriter, srcOp, scalarType, shiftIndex, elWidth);
-    } else if (kind == vector::CombiningKind::MINSI ||
-               kind == vector::CombiningKind::MINUI ||
-               kind == vector::CombiningKind::MINF) {
-      generateAIEVecOpsForReductionOp<aievec::MinOp>(
-          rewriter, srcOp, scalarType, shiftIndex, elWidth);
-    } else if (kind == vector::CombiningKind::MAXSI ||
-               kind == vector::CombiningKind::MAXUI ||
-               kind == vector::CombiningKind::MAXF) {
-      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-          rewriter, srcOp, scalarType, shiftIndex, elWidth);
-    } else if (kind == vector::CombiningKind::ADD &&
-               isa<FloatType>(scalarType)) {
+      return success();
+    }
+
+    if (kind == vector::CombiningKind::ADD && isa<FloatType>(scalarType)) {
       Location loc = srcOp.getLoc();
       Value srcVec = srcOp.getVector();
       SmallVector<Value> sources = {srcVec};
-      auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-          loc, srcVec.getType(), sources, shiftIndex * elWidth / 8);
 
       // float type
       if (elWidth == 32) {
-        auto lCastOp = rewriter.create<aievec::CastOp>(loc, vType, srcVec,
-                                                       /*isResAcc*/ true);
-        auto rCastOp = rewriter.create<aievec::CastOp>(loc, vType,
-                                                       shiftBytesOp.getResult(),
-                                                       /*isResAcc*/ true);
-        auto elemOp = rewriter.create<aievec::AddElemOp>(
-            loc, lCastOp->getResult(0).getType(), lCastOp->getResult(0),
-            rCastOp->getResult(0));
-        auto curOp = rewriter.create<aievec::CastOp>(
-            loc, vType, elemOp.getResult(), /*isResAcc*/ false);
-
-        shiftIndex /= 2;
-        while (shiftIndex) {
-          SmallVector<Value> shiftSources = {curOp.getResult()};
-          shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-              loc, curOp.getType(), shiftSources, shiftIndex * elWidth / 8);
-
-          lCastOp =
-              rewriter.create<aievec::CastOp>(loc, vType, curOp.getResult(),
-                                              /*isResAcc*/ true);
-          rCastOp = rewriter.create<aievec::CastOp>(loc, vType,
-                                                    shiftBytesOp.getResult(),
-                                                    /*isResAcc*/ true);
-          elemOp = rewriter.create<aievec::AddElemOp>(
+        do {
+          auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
+              loc, vType, sources, shiftIndex * elWidth / 8);
+          auto lCastOp = rewriter.create<aievec::CastOp>(loc, vType, srcVec,
+                                                         /*isResAcc*/ true);
+          auto rCastOp = rewriter.create<aievec::CastOp>(
+              loc, vType, shiftBytesOp.getResult(),
+              /*isResAcc*/ true);
+          auto elemOp = rewriter.create<aievec::AddElemOp>(
               loc, lCastOp->getResult(0).getType(), lCastOp->getResult(0),
               rCastOp->getResult(0));
-
-          curOp = rewriter.create<aievec::CastOp>(
+          auto curOp = rewriter.create<aievec::CastOp>(
               loc, vType, elemOp.getResult(), /*isResAcc*/ false);
 
+          srcVec = curOp.getResult();
+          sources = {curOp.getResult()};
+
+          if (shiftIndex == 1) {
+            rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType,
+                                                           curOp, 0);
+            return success();
+          }
+
           shiftIndex /= 2;
-        }
-        rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
-                                                       0);
-      }
-      // bfloat type
-      else {
-        Type accType = getVectorOpDestType(vType, /*AIEML =*/true);
-        auto lUpsOp = rewriter.create<aievec::UPSOp>(loc, accType, srcVec);
-        auto rUpsOp = rewriter.create<aievec::UPSOp>(loc, accType,
-                                                     shiftBytesOp.getResult());
-        auto elemOp = rewriter.create<aievec::AddElemOp>(
-            loc, lUpsOp->getResult(0).getType(), lUpsOp->getResult(0),
-            rUpsOp->getResult(0));
-        auto curOp =
-            rewriter.create<aievec::SRSOp>(loc, vType, elemOp.getResult());
-        shiftIndex /= 2;
-        while (shiftIndex) {
-          SmallVector<Value> shiftSources = {curOp.getResult()};
-          shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-              loc, curOp.getType(), shiftSources, shiftIndex * elWidth / 8);
-          lUpsOp =
-              rewriter.create<aievec::UPSOp>(loc, accType, curOp.getResult());
-          rUpsOp = rewriter.create<aievec::UPSOp>(loc, accType,
-                                                  shiftBytesOp.getResult());
-          elemOp = rewriter.create<aievec::AddElemOp>(
-              loc, lUpsOp->getResult(0).getType(), lUpsOp->getResult(0),
-              rUpsOp->getResult(0));
-          curOp =
-              rewriter.create<aievec::SRSOp>(loc, vType, elemOp.getResult());
-          shiftIndex /= 2;
-        }
-        rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
-                                                       0);
+        } while (shiftIndex);
+        llvm_unreachable("Unreachable!");
       }
     }
-
-    return success();
+    return failure();
   }
 };
 
@@ -1851,9 +1819,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
         auto elWidth = scalarType.getIntOrFloatBitWidth();
         unsigned laneSize = getVectorLaneSize(vType);
 
-        if (!(elWidthSet.count(elWidth) &&
-              (laneSize * elWidth == 512 || (laneSize == 16 && elWidth == 16 &&
-                                             isa<FloatType>(scalarType))))) {
+        if (!(elWidthSet.count(elWidth) && laneSize * elWidth == 512)) {
           return true;
         }
 

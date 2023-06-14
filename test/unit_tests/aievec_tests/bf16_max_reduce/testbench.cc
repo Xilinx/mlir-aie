@@ -4,19 +4,19 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-void dut(int8_t *restrict in0, int8_t *restrict out0);
-void dut_ref(int8_t *in0, int8_t *out0);
+void dut(bfloat16 *restrict in0, bfloat16 *restrict out0);
+void dut_ref(bfloat16 *in0, bfloat16 *out0);
 
-alignas(32) int8_t g_in0[IN0_SIZE];
-alignas(32) int8_t g_out0[OUT0_SIZE];
-alignas(32) int8_t g_out0Ref[OUT0_SIZE];
+alignas(32) bfloat16 g_in0[IN0_SIZE];
+alignas(32) bfloat16 g_out0[OUT0_SIZE];
+alignas(32) bfloat16 g_out0Ref[OUT0_SIZE];
 
 int main(int argc, char *argv[]) {
   // XXX Figure out how to use argv with xme_ca_udm_dbg -A
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
   std::generate(g_in0, g_in0 + IN0_SIZE,
-                [&]() { return random_integer<int8_t>(); });
+                [&]() { return random_bfloat16(-1, 1, 1); });
 
   writeData(g_in0, IN0_SIZE, dataDir + "/in0.txt");
 
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   writeData(g_out0Ref, OUT0_SIZE, dataDir + "/out0_ref.txt");
 
   bool ok = true;
-  ok &= checkData(g_out0, g_out0Ref, OUT0_SIZE, 1);
+  ok &= checkData(g_out0, g_out0Ref, OUT0_SIZE, 0, 1e-1, 1e-1);
 
   if (ok)
     printf("TEST PASSED\n");
@@ -46,10 +46,10 @@ int main(int argc, char *argv[]) {
 }
 
 // in0 and out0 are in C4 layout.
-void dut_ref(int8_t *in0, int8_t *out0) {
-  int16_t sum = 0;
+void dut_ref(bfloat16 *in0, bfloat16 *out0) {
+  bfloat16 maxx = 0.0f;
   for (unsigned k = 0; k < IN0_SIZE; k += 1) {
-    sum += in0[k];
+    maxx = std::max(maxx, in0[k]);
   }
-  *out0 = sum;
+  *out0 = maxx;
 }
