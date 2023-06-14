@@ -907,6 +907,50 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
+  /// Function used to find the size of an objectFifo after split based on
+  /// the maximum number of elements (of the original objectFifo) acquired
+  /// by a process running on given tile. If no CoreOp exists for this tile
+  /// return 0.
+  int findObjectFifoSize(DeviceOp &device, Value tile,
+                         ObjectFifoCreateOp objFifo) {
+    if (objFifo.size() == 0)
+      return 0;
+
+    // if memTile, size is equal to objFifo size
+    if (tile.getDefiningOp<TileOp>().isMemTile())
+      return objFifo.size();
+
+    // if shimTile, size is equal to number of external buffers
+    if (tile.getDefiningOp<TileOp>().isShimTile()) {
+      for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
+        if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
+          return regOp.getExternalBuffers().size();
+      }
+    }
+
+    int maxAcquire = 0;
+    for (auto coreOp : device.getOps<CoreOp>()) {
+      if (coreOp.getTile() == tile) {
+        coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
+          if (acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
+            if (acqOp.acqNumber() > maxAcquire)
+              maxAcquire = acqOp.acqNumber();
+        });
+      }
+    }
+
+    if (maxAcquire > 0) {
+      if ((maxAcquire == 1) && (objFifo.size() == 1)) {
+        return 1;
+      }
+      return maxAcquire + 1;
+      // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
+      // for prefetching: simplest case scenario is at least a ping-pong buffer
+    }
+
+    return 0;
+  }
+
   /// Function used to generate, from an objectFifo with a shimTile endpoint, a
   /// shimDMAAllocationInfoOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
