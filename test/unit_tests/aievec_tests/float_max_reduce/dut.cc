@@ -1,5 +1,6 @@
 void dut(float *restrict v1, float *restrict v2) {
-  v16float v3 = broadcast_to_v16float((float)1.175494351e-38F);
+  v16float v3 = broadcast_to_v16float(
+      (float)-340282346638528859811704183484516925440.000000);
   size_t v4 = 0;
   size_t v5 = 1024;
   size_t v6 = 16;
