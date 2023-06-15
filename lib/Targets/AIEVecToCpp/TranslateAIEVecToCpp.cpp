@@ -33,6 +33,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <limits>
 
 #define DEBUG_TYPE "aievec-to-cpp"
 
@@ -848,11 +849,12 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
 
 // Generate undefined vector strings based on the vector lanes, source type and
 // element size of a vector
-static std::string getUndefVector(VectorType sourceType) {
+static std::string getUndefVector(VectorType sourceType, bool isAcc = false) {
   unsigned lanes = getVectorLaneSize(sourceType);
   Type eltType = sourceType.getElementType();
   int32_t eltSize = getElementSizeInBits(sourceType);
-  return "undef_v" + std::to_string(lanes) +
+  std::string res = "undef_v" + std::to_string(lanes) + (isAcc ? "acc" : "");
+  return res +
          (eltType.isa<FloatType>() ? eltSize == 16 ? "bfloat16" : "float"
                                    : "int" + std::to_string(eltSize)) +
          "()";
@@ -891,11 +893,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ShiftOp shiftOp) {
   SmallVector<Value> sources = shiftOp.getSources();
   int32_t shift = shiftOp.getShift();
+  bool isAcc = shiftOp.getIsAcc();
 
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*shiftOp)))
+  if (failed(emitter.emitAssignPrefix(*shiftOp, isAcc)))
     return failure();
 
   os << "shift_bytes";
@@ -909,7 +912,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
     os << ", ";
     if (sources.size() == 1) {
       VectorType sourceType = source.getType().cast<VectorType>();
-      os << getUndefVector(sourceType);
+      os << getUndefVector(sourceType, isAcc);
       os << ", ";
     }
   }
@@ -2507,20 +2510,17 @@ static bool hasSameDenseValue(DenseIntElementsAttr dense,
 
 static bool hasSameDenseValueOfFloat(DenseFPElementsAttr dense,
                                      std::string &firstValue) {
-  SmallVector<float> denseValues;
-  for (APFloat elem : dense) {
-    denseValues.push_back(elem.convertToFloat());
-  }
-  float firstV = denseValues[0];
+  if (dense.isSplat()) {
+    APFloat apFloat = dense.getSplatValue<APFloat>();
+    float splatVal = apFloat.convertToFloat();
+    firstValue = std::to_string(splatVal);
 
-  if (llvm::all_of(denseValues, [firstV](float v) { return v == firstV; })) {
-    firstValue = std::to_string(firstV);
-
-    if (firstValue == "inf") {
+    if (apFloat.isPosInfinity()) {
       firstValue = std::to_string(std::numeric_limits<float>::max());
-    } else if (firstValue == "-inf") {
+    } else if (apFloat.isNegInfinity()) {
       firstValue = std::to_string(std::numeric_limits<float>::lowest());
     }
+
     return true;
   }
   return false;
@@ -2528,19 +2528,14 @@ static bool hasSameDenseValueOfFloat(DenseFPElementsAttr dense,
 
 static bool hasSameDenseValueOfBFloat16(DenseFPElementsAttr dense,
                                         std::string &firstValue) {
-  SmallVector<float> denseValues;
-  for (APFloat elem : dense) {
-    denseValues.push_back(elem.convertToFloat());
-  }
-  float firstV = denseValues[0];
-
-  if (llvm::all_of(denseValues, [firstV](float v) { return v == firstV; })) {
-    firstValue = std::to_string(firstV);
+  if (dense.isSplat()) {
+    float splatVal = dense.getSplatValue<APFloat>().convertToFloat();
+    firstValue = std::to_string(splatVal);
 
     if (firstValue == "inf") {
-      firstValue = std::to_string(3.39e+38F);
+      firstValue = std::to_string(0x7F80);
     } else if (firstValue == "-inf") {
-      firstValue = std::to_string(1.18e-38F);
+      firstValue = std::to_string(-0xFF80);
     }
     return true;
   }
@@ -2603,7 +2598,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           } else if (width == 16) {
             hasSameValue = hasSameDenseValueOfBFloat16(dense, firstValue);
           }
-          if (hasSameValue) {
+          if (hasSameValue && width == 32) {
             os << "broadcast_to_";
             if (failed(emitType(loc, vType)))
               return failure();
@@ -2613,6 +2608,14 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
             os << ")";
             os << firstValue;
             os << ")";
+          } else if (hasSameValue && width == 16) {
+            os << "extract_v16bfloat16(broadcast_to_v32bfloat16";
+            os << "((";
+            if (failed(emitType(loc, fType)))
+              return failure();
+            os << ")";
+            os << firstValue;
+            os << "), 0)";
           }
         }
       }

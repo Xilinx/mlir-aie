@@ -567,7 +567,7 @@ def AIEVec_ShiftOp:
     Pure
   ]>,
   Arguments<(ins Variadic<AnyVector>:$sources,
-             DefaultValuedAttr<I32Attr, "0">:$shift)>,
+             DefaultValuedAttr<I32Attr, "0">:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 concat and shift";
   let description = [{
@@ -575,7 +575,7 @@ def AIEVec_ShiftOp:
     vectors into a bigger vector, interprets them as a vector of 128 bytes
     and returns v1::v2[shift: shift+64]. The verifier confirms that all the
     input vectors have the same number of lanes.
-    `$result = shift($sources[0], $sources[1], $shift)`
+    `$result = shift($sources[0], $sources[1], $shift, isAcc)`
   }];
 }
 

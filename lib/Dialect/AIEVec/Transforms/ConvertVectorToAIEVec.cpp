@@ -1296,7 +1296,7 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
         loc, vecType, sources, shiftIndex * elWidth / 8);
 
     auto curOp = rewriter.create<DstOpTy>(loc, vecType, srcVec,
-                                          shiftBytesOp->getResult(0));
+                                          shiftBytesOp.getResult());
 
     srcVec = curOp.getResult();
     sources = {curOp.getResult()};
@@ -1333,20 +1333,27 @@ struct LowerVectorReductionOp
     if (!vType)
       return failure();
 
-    llvm::SmallSet<unsigned, 16> elWidthSet;
-    elWidthSet.insert(8);
-    elWidthSet.insert(16);
-    elWidthSet.insert(32);
+    // A set recording the vector lane size and element width we are supporting
+    // for aie-ml.
+    llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+    laneSizeElWidthPairSet.insert({64, 8});
+    laneSizeElWidthPairSet.insert({32, 16});
+    laneSizeElWidthPairSet.insert({16, 32});
 
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
 
-    if (!(elWidthSet.count(elWidth) && laneSize * elWidth == 512))
+    if (scalarType.isa<IntegerType>() &&
+        !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))
+      return failure();
+
+    if (scalarType.isa<FloatType>() && laneSize != 16 && laneSize != 32)
       return failure();
 
     int shiftIndex = laneSize / 2;
 
+    // Reduction minimum
     if (kind == vector::CombiningKind::MINSI ||
         kind == vector::CombiningKind::MINUI ||
         kind == vector::CombiningKind::MINF) {
@@ -1355,6 +1362,7 @@ struct LowerVectorReductionOp
       return success();
     }
 
+    // Reduction maximum
     if (kind == vector::CombiningKind::MAXSI ||
         kind == vector::CombiningKind::MAXUI ||
         kind == vector::CombiningKind::MAXF) {
@@ -1363,12 +1371,14 @@ struct LowerVectorReductionOp
       return success();
     }
 
+    // Reduction add for i32, i16 and i8 types
     if (kind == vector::CombiningKind::ADD && isa<IntegerType>(scalarType)) {
       generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
           rewriter, srcOp, scalarType, shiftIndex, elWidth);
       return success();
     }
 
+    // Reduction add for float and bfloat16
     if (kind == vector::CombiningKind::ADD && isa<FloatType>(scalarType)) {
       Location loc = srcOp.getLoc();
       Value srcVec = srcOp.getVector();
@@ -1376,6 +1386,9 @@ struct LowerVectorReductionOp
 
       // float type
       if (elWidth == 32) {
+        if (laneSize != 16)
+          return failure();
+
         do {
           auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
               loc, vType, sources, shiftIndex * elWidth / 8);
@@ -1385,8 +1398,8 @@ struct LowerVectorReductionOp
               loc, vType, shiftBytesOp.getResult(),
               /*isResAcc*/ true);
           auto elemOp = rewriter.create<aievec::AddElemOp>(
-              loc, lCastOp->getResult(0).getType(), lCastOp->getResult(0),
-              rCastOp->getResult(0));
+              loc, lCastOp.getResult().getType(), lCastOp.getResult(),
+              rCastOp.getResult());
           auto curOp = rewriter.create<aievec::CastOp>(
               loc, vType, elemOp.getResult(), /*isResAcc*/ false);
 
@@ -1402,6 +1415,41 @@ struct LowerVectorReductionOp
           shiftIndex /= 2;
         } while (shiftIndex);
         llvm_unreachable("Unreachable!");
+      }
+
+      // bfloat16 type
+      if (elWidth == 16) {
+        if (laneSize != 16)
+          return failure();
+
+        Type accType = getVectorOpDestType(vType, /*AIEML =*/true);
+        unsigned accWidth = dyn_cast<VectorType>(accType)
+                                .getElementType()
+                                .getIntOrFloatBitWidth();
+        auto upsOp = rewriter.create<aievec::UPSOp>(loc, accType, srcVec);
+        sources = {upsOp.getResult()};
+        srcVec = upsOp.getResult();
+        VectorType vecType = createVectorType(2 * laneSize, scalarType);
+        do {
+          auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
+              loc, accType, sources, shiftIndex * accWidth / 8, true);
+          auto curOp = rewriter.create<aievec::AddElemOp>(
+              loc, accType, srcVec, shiftBytesOp.getResult());
+          srcVec = curOp.getResult();
+          sources = {curOp.getResult()};
+          if (shiftIndex == 1) {
+            auto srsOp =
+                rewriter.create<aievec::SRSOp>(loc, vType, curOp.getResult());
+            SmallVector<Value> concatSources = {srsOp.getResult(),
+                                                srsOp.getResult()};
+            auto concatOp =
+                rewriter.create<aievec::ConcatOp>(loc, vecType, concatSources);
+            rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType,
+                                                           concatOp, 0);
+            return success();
+          }
+          shiftIndex /= 2;
+        } while (shiftIndex);
       }
     }
     return failure();
@@ -1815,13 +1863,21 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
         if (!vType)
           return true;
 
+        llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
+        laneSizeElWidthPairSet.insert({64, 8});
+        laneSizeElWidthPairSet.insert({32, 16});
+        laneSizeElWidthPairSet.insert({16, 32});
+
         Type scalarType = vType.getElementType();
-        auto elWidth = scalarType.getIntOrFloatBitWidth();
+        unsigned elWidth = scalarType.getIntOrFloatBitWidth();
         unsigned laneSize = getVectorLaneSize(vType);
 
-        if (!(elWidthSet.count(elWidth) && laneSize * elWidth == 512)) {
+        if (scalarType.isa<IntegerType>() &&
+            !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))
           return true;
-        }
+
+        if (scalarType.isa<FloatType>() && laneSize != 16 && laneSize != 32)
+          return true;
 
         return false;
       });
