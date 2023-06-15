@@ -61,7 +61,7 @@ int main(int argc, char *argv[]) {
   printf("Release input buffer lock.\n");
   mlir_aie_release_input_lock(_xaie, 1, 0);
   printf("Waiting to acquire output lock for read ...\n");
-  if (mlir_aie_acquire_output_lock(_xaie, 1, LOCK_TIMEOUT)) {
+  if (mlir_aie_acquire_output_lock(_xaie, -1, LOCK_TIMEOUT)) {
     errors++;
     printf("ERROR: timeout hit!\n");
   }
