@@ -715,7 +715,8 @@ def AIEVec_SelOp:
 
 def AIEVec_ExtElemOp:
   AIEVec_Op<"ext_elem", [
-    Pure
+    Pure,
+    AllElementTypesMatch<["source", "result"]>
   ]>,
   Arguments<(ins AnyVector:$source,
              DefaultValuedAttr<I32Attr, "0">:$index)>,

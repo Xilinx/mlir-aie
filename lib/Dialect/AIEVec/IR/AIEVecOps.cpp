@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
