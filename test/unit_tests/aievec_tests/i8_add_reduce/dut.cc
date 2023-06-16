@@ -1,5 +1,5 @@
 void dut(int8_t *restrict v1, int8_t *restrict v2) {
-  v64int8 v3 = undef_v64int8();
+  v64int8 v3 = broadcast_zero_s8();
   size_t v4 = 0;
   size_t v5 = 1024;
   size_t v6 = 64;

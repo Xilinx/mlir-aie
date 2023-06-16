@@ -2661,20 +2661,21 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     }
     if (auto vType = dense.getType().dyn_cast<VectorType>()) {
       if (auto iType = vType.getElementType().dyn_cast<IntegerType>()) {
+        unsigned width = iType.getWidth();
         if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
           if (AIEML) {
-            os << "undef_";
+            os << "broadcast_zero_s";
+            os << width;
           } else {
             os << "null_";
+            if (failed(emitType(loc, vType)))
+              return failure();
           }
-          if (failed(emitType(loc, vType)))
-            return failure();
           os << "()";
           return success();
         }
 
         if (AIEML) {
-          unsigned width = iType.getWidth();
           bool hasSameValue = false;
           std::string firstValue = "";
           if (width == 32) {

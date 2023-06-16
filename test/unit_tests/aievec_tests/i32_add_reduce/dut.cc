@@ -1,5 +1,5 @@
 void dut(int32_t *restrict v1, int32_t *restrict v2) {
-  v16int32 v3 = undef_v16int32();
+  v16int32 v3 = broadcast_zero_s32();
   size_t v4 = 0;
   size_t v5 = 1024;
   size_t v6 = 16;
