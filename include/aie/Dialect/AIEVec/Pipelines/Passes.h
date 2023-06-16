@@ -18,7 +18,50 @@
 #include "mlir/Pass/PassOptions.h"
 
 namespace xilinx {
+enum class AIEArch {
+  AIE,    // Original AIE
+  AIE_ML, // ML/V2 version of AIE
+};
+} // namespace xilinx
+
+namespace xilinx {
 namespace aievec {
+
+// TODO: Create a common base class for all AIEVec pipeline options.
+
+/// Options for the "canonicalize-vector-for-aievec" pipeline.
+struct CanonicalizeVectorForAIEVecOptions
+    : public PassPipelineOptions<CanonicalizeVectorForAIEVecOptions> {
+  PassOptions::Option<std::string> aieTarget{
+      *this, "aie-target",
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+                     "determine the vector size and available operations."),
+      llvm::cl::init("aie")};
+};
+
+/// Options for the "lower-vector-to-aievec" pipeline.
+struct LowerVectorToAIEVecOptions
+    : public PassPipelineOptions<LowerVectorToAIEVecOptions> {
+  PassOptions::Option<std::string> aieTarget{
+      *this, "aie-target",
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+                     "determine the vector size and available operations."),
+      llvm::cl::init("aie")};
+};
+
+/// Options for the "optimize-aievec" pipeline.
+struct OptimizeAIEVecOptions
+    : public PassPipelineOptions<OptimizeAIEVecOptions> {
+  PassOptions::Option<std::string> aieTarget{
+      *this, "aie-target",
+      llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
+                     "determine the vector size and available operations."),
+      llvm::cl::init("aie")};
+  PassOptions::Option<unsigned> shiftParam{
+      *this, "shift",
+      llvm::cl::desc("Shift parameter for rounding and saturation"),
+      llvm::cl::init(0)};
+};
 
 /// Options for the "convert-vector-to-aievec" pipeline.
 struct ConvertVectorToAIEVecOptions
@@ -45,23 +88,34 @@ struct ConvertVectorToAIEVecOptions
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
-  LowerVectorToAIEVecOptions getLowerVectorToAIEVecOptions() const {
-    return LowerVectorToAIEVecOptions{shiftParam, zeroOffset, dupFactor,
-                                      aieTarget};
+  LogicalResult parseFromString(StringRef options) {
+    auto res = PassPipelineOptions::parseFromString(options);
+    if (!failed(res)) {
+      lowerOptions.aieTarget = aieTarget;
+      canonicalizeOptions.aieTarget = aieTarget;
+      optimizeOptions.aieTarget = aieTarget;
+      optimizeOptions.shiftParam = shiftParam;
+    }
+    return res;
   }
 
-  CanonicalizeForAIEVecOptions getCanonicalizeForAIEVecOptions() const {
-    return CanonicalizeForAIEVecOptions{aieTarget};
+  const LowerVectorToAIEVecOptions &getLowerVectorToAIEVecOptions() const {
+    return lowerOptions;
   }
 
-  AIEVecTransformationOptions getAIEVecTransformationOptions() const {
-    return AIEVecTransformationOptions{aieTarget};
+  const CanonicalizeVectorForAIEVecOptions &
+  getCanonicalizeVectorForAIEVecOptions() const {
+    return canonicalizeOptions;
   }
 
-  AIEVecConvOpTransformationOptions
-  getAIEVecConvOpTransformationOptions() const {
-    return AIEVecConvOpTransformationOptions{shiftParam, aieTarget};
+  const OptimizeAIEVecOptions &getOptimizeAIEVecOptions() const {
+    return optimizeOptions;
   }
+
+private:
+  CanonicalizeVectorForAIEVecOptions canonicalizeOptions;
+  LowerVectorToAIEVecOptions lowerOptions;
+  OptimizeAIEVecOptions optimizeOptions;
 };
 
 //===----------------------------------------------------------------------===//
@@ -70,9 +124,19 @@ struct ConvertVectorToAIEVecOptions
 
 /// Adds the "convert-vector-to-aievec" pipeline to the `OpPassManager`. This
 /// pipeline takes `Vector` code, transforms it to make it compatible with the
-/// selected `AIE` target, and lowers it to `AIEVec` dialect.
+/// selected `AIE` target, lowers it to `AIEVec` dialect, and performs some
+/// optimizations based on the target AIE architecture.
 void buildConvertVectorToAIEVec(OpPassManager &pm,
                                 const ConvertVectorToAIEVecOptions &options);
+
+void buildCanonicalizeVectorForAIEVec(
+    OpPassManager &pm, const CanonicalizeVectorForAIEVecOptions &options);
+
+void buildLowerVectorToAIEVec(OpPassManager &pm,
+                              const LowerVectorToAIEVecOptions &options);
+
+void buildOptimizeAIEVec(OpPassManager &pm,
+                         const OptimizeAIEVecOptions &options);
 
 /// Register all pipelines for the AIE Vector dialect.
 void registerAIEVecPipelines();

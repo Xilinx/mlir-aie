@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -canonicalize-for-aievec -canonicalize -split-input-file | FileCheck %s
+// RUN: aie-opt %s -canonicalize-vector-for-aievec -canonicalize -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @splat(
 // CHECK-SAME: %[[MEM:.*]]: memref<?xi32>,
