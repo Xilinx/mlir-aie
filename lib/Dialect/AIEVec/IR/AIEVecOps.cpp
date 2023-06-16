@@ -1502,9 +1502,9 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  // Currently there are two attribute in shift op
+  // Currently there are two attributes in shift op
   if (result.attributes.getAttrs().size() != 2)
-    return parser.emitError(typesLoc, "expects two attribute");
+    return parser.emitError(typesLoc, "expects two attributes");
 
   // Some verification
   VectorType sourceType = types[0].dyn_cast<VectorType>();

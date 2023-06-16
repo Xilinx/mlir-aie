@@ -2598,7 +2598,9 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           } else if (width == 16) {
             hasSameValue = hasSameDenseValueOfBFloat16(dense, firstValue);
           }
-          if (hasSameValue && width == 32) {
+          if (hasSameValue &&
+              (width == 32 ||
+               (width == 16 && getVectorLaneSize(vType) == 32))) {
             os << "broadcast_to_";
             if (failed(emitType(loc, vType)))
               return failure();
@@ -2608,7 +2610,8 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
             os << ")";
             os << firstValue;
             os << ")";
-          } else if (hasSameValue && width == 16) {
+          } else if (hasSameValue && width == 16 &&
+                     getVectorLaneSize(vType) == 16) {
             os << "extract_v16bfloat16(broadcast_to_v32bfloat16";
             os << "((";
             if (failed(emitType(loc, fType)))
