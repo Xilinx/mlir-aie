@@ -2508,35 +2508,30 @@ static bool hasSameDenseValue(DenseIntElementsAttr dense,
   return false;
 }
 
-static bool hasSameDenseValueOfFloat(DenseFPElementsAttr dense,
-                                     std::string &firstValue) {
+static bool hasSameDenseValueOfFloatOrBFloat16(DenseFPElementsAttr dense,
+                                               std::string &firstValue,
+                                               bool isBFloat = false) {
   if (dense.isSplat()) {
     APFloat apFloat = dense.getSplatValue<APFloat>();
     float splatVal = apFloat.convertToFloat();
     firstValue = std::to_string(splatVal);
 
     if (apFloat.isPosInfinity()) {
-      firstValue = std::to_string(std::numeric_limits<float>::max());
+      if (isBFloat) {
+        firstValue = std::to_string(0x7F80);
+      } else {
+        firstValue = std::to_string(std::numeric_limits<float>::max());
+      }
     } else if (apFloat.isNegInfinity()) {
-      firstValue = std::to_string(std::numeric_limits<float>::lowest());
+      if (isBFloat) {
+        firstValue = std::to_string(-0xFF80);
+      } else {
+        firstValue = std::to_string(std::numeric_limits<float>::lowest());
+      }
+    } else if (!apFloat.isNonZero()) {
+      firstValue = "0";
     }
 
-    return true;
-  }
-  return false;
-}
-
-static bool hasSameDenseValueOfBFloat16(DenseFPElementsAttr dense,
-                                        std::string &firstValue) {
-  if (dense.isSplat()) {
-    float splatVal = dense.getSplatValue<APFloat>().convertToFloat();
-    firstValue = std::to_string(splatVal);
-
-    if (firstValue == "inf") {
-      firstValue = std::to_string(0x7F80);
-    } else if (firstValue == "-inf") {
-      firstValue = std::to_string(-0xFF80);
-    }
     return true;
   }
   return false;
@@ -2594,31 +2589,46 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           bool hasSameValue = false;
           std::string firstValue = "";
           if (width == 32) {
-            hasSameValue = hasSameDenseValueOfFloat(dense, firstValue);
+            hasSameValue =
+                hasSameDenseValueOfFloatOrBFloat16(dense, firstValue);
           } else if (width == 16) {
-            hasSameValue = hasSameDenseValueOfBFloat16(dense, firstValue);
+            hasSameValue = hasSameDenseValueOfFloatOrBFloat16(
+                dense, firstValue, /*isBFloat*/ true);
           }
           if (hasSameValue &&
               (width == 32 ||
                (width == 16 && getVectorLaneSize(vType) == 32))) {
-            os << "broadcast_to_";
-            if (failed(emitType(loc, vType)))
-              return failure();
-            os << "((";
-            if (failed(emitType(loc, fType)))
-              return failure();
-            os << ")";
-            os << firstValue;
-            os << ")";
+            if (firstValue == "0") {
+              os << "broadcast_zero_";
+              if (failed(emitType(loc, fType)))
+                return failure();
+              os << "()";
+            } else {
+              os << "broadcast_to_";
+              if (failed(emitType(loc, vType)))
+                return failure();
+              os << "((";
+              if (failed(emitType(loc, fType)))
+                return failure();
+              os << ")";
+              os << firstValue;
+              os << ")";
+            }
           } else if (hasSameValue && width == 16 &&
                      getVectorLaneSize(vType) == 16) {
-            os << "extract_v16bfloat16(broadcast_to_v32bfloat16";
-            os << "((";
-            if (failed(emitType(loc, fType)))
-              return failure();
-            os << ")";
-            os << firstValue;
-            os << "), 0)";
+            os << "extract_v16bfloat16(";
+            if (firstValue == "0") {
+              os << "broadcast_zero_bfloat16()";
+            } else {
+              os << "broadcast_to_v32bfloat16";
+              os << "((";
+              if (failed(emitType(loc, fType)))
+                return failure();
+              os << ")";
+              os << firstValue;
+              os << ")";
+            }
+            os << ", 0)";
           }
         }
       }

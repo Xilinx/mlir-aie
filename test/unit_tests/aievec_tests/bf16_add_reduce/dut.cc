@@ -1,6 +1,5 @@
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2) {
-  v16bfloat16 v3 =
-      extract_v16bfloat16(broadcast_to_v32bfloat16((bfloat16)0.000000), 0);
+  v16bfloat16 v3 = extract_v16bfloat16(broadcast_zero_bfloat16(), 0);
   size_t v4 = 0;
   size_t v5 = 1024;
   size_t v6 = 16;
