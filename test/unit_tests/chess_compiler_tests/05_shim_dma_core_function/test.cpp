@@ -77,14 +77,11 @@ main(int argc, char *argv[])
 
     mlir_aie_initialize_locks(_xaie);
 
-    u32 sleep_u = 100000; 
-    usleep(sleep_u);
     printf("before DMA config\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
 
     mlir_aie_configure_dmas(_xaie);
 
-    usleep(sleep_u);
     printf("after DMA config\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
 
@@ -116,8 +113,13 @@ main(int argc, char *argv[])
     mlir_aie_sync_mem_dev(buf0);
     mlir_aie_sync_mem_dev(buf1);
 
+#ifdef __AIESIM__
+    mlir_aie_external_set_addr_input_buffer(buf0.physicalAddr);
+    mlir_aie_external_set_addr_output_buffer(buf1.physicalAddr);
+#else
     mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
     mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
+#endif
     mlir_aie_configure_shimdma_70(_xaie);
 
     mlir_aie_clear_tile_memory(_xaie, 7, 3);
@@ -151,33 +153,34 @@ main(int argc, char *argv[])
        shimdma_stat_s2mm0);
     */
 
-    usleep(sleep_u);
     printf("before core start\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
 
     printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
 
-    usleep(sleep_u);
     printf("after core start\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
-    u32 locks70;
-    locks70 = mlir_aie_read32(_xaie,
-                              mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
-    printf("Locks70 = %08X\n", locks70);
 
     printf("Release lock for accessing DDR.\n");
     mlir_aie_release_input_lock(_xaie, /*r/w*/ 1, 0);
-    //usleep(10000);
     mlir_aie_release_output_lock(_xaie, /*r/w*/ 1, 0);
 
-    usleep(sleep_u);
+    if (mlir_aie_acquire_input_lock(_xaie, /*r/w*/ 0, 10000)) {
+      printf("input_lock timeout!\n");
+      errors++;
+    }
+    if (mlir_aie_acquire_output_lock(_xaie, /*r/w*/ 0, 10000)) {
+      printf("output_lock timeout\n");
+      errors++;
+    }
+
     printf("after lock release\n");
     mlir_aie_print_tile_status(_xaie, 7, 3);
-    locks70 = mlir_aie_read32(_xaie,
-                              mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x00014F00);
-    printf("Locks70 = %08X\n", locks70);
+    mlir_aie_print_dma_status(_xaie, 7, 3);
+    mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
+    mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 2), 3, errors);
     mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 3), 4, errors);
     mlir_aie_check("After", mlir_aie_read_buffer_a_pong(_xaie, 3), 256 + 4,
                    errors);
