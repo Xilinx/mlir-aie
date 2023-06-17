@@ -12,7 +12,10 @@
 // RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: xchesscc_wrapper aie +l aie.mlir.prj/core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
 // RUN: %run_on_board ./test.elf
-// UN: aie.mlir.prj/aiesim.sh
+// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+
+// CHECK: test start.
+// CHECK: PASS!
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %t73 = AIE.tile(7, 3)
@@ -68,16 +71,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   %lock2 = AIE.lock(%t70, 2) {sym_name = "output_lock" }
 
   // Shim DMA connection to kernel
-  AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-  AIE.flow(%t73, "DMA" : 1, %t71, "South" : 2)
-  %sw1  = AIE.switchbox(%t70) {
-    AIE.connect<"South" : 3, "North" : 3>
-    AIE.connect<"North" : 2, "South" : 2>
-  }
-  %mux1 = AIE.shimmux  (%t70) {
-    AIE.connect<"DMA"   : 0, "North" : 3> 
-    AIE.connect<"North" : 2, "DMA" : 0>
-  }
+  AIE.flow(%t70, "DMA" : 0, %t73, "DMA" : 0)
+  AIE.flow(%t73, "DMA" : 1, %t70, "DMA" : 0)
 
   // Shim DMA loads large buffer to local memory
   %dma = AIE.shimDMA(%t70) {
