@@ -1002,9 +1002,12 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        if (isa<ArrayAttr>(createOp.getElemNumber()))
+        if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
           consumerDepth = createOp.size(consumerIndex + 1);
+        } else {
+          consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
+        }
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
@@ -1047,6 +1050,11 @@ struct AIEObjectFifoStatefulTransformPass
               builder.getI32IntegerAttr(createOp.size())};
           createOp->setAttr("elemNumber",
                             builder.getArrayAttr(ArrayRef(objFifoSize)));
+        } else {
+          int prodMaxAcquire =
+            findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
+          createOp->setAttr("elemNumber",
+                            builder.getI32IntegerAttr(prodMaxAcquire));
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
