@@ -546,11 +546,6 @@ const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
 }
 
 LogicalResult xilinx::AIE::DeviceOp::verify() {
-  auto top = cast<mlir::ModuleOp>((*this)->getParentOp());
-  auto ops = top.getOps<DeviceOp>();
-  int num_devices = std::distance(ops.begin(), ops.end());
-  if (num_devices > 1)
-    return emitOpError("expected at most one device operation");
   return success();
 }
 
