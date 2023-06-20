@@ -1503,7 +1503,6 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  // Currently there are two attributes in shift op
   if (result.attributes.getAttrs().size() != 2)
     return parser.emitError(typesLoc, "expects two attributes");
 

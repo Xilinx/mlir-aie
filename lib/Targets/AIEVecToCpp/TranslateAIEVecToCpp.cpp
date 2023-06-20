@@ -1813,7 +1813,7 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ExtElemOp extElemOp) {
   Value source = extElemOp.getSource();
-  int32_t index = extElemOp.getIndex();
+  Value index = extElemOp.getIndex();
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -1830,7 +1830,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   // Print the source and index
   os << emitter.getOrCreateName(source);
   os << ", ";
-  os << index;
+  os << emitter.getOrCreateName(index);
   os << ")";
   return success();
 }
@@ -2493,48 +2493,38 @@ bool CppEmitter::hasBlockLabel(Block &block) {
   return blockMapper.count(&block);
 }
 
+// Check whether the int type dense value has a splat value and get the int
+// value as a string.
 template <typename ElTy>
-static bool hasSameDenseValue(DenseIntElementsAttr dense,
-                              std::string &firstValue) {
-  SmallVector<ElTy> denseValues;
-  for (APInt elem : dense) {
-    denseValues.push_back(elem.getLimitedValue());
-  }
-  ElTy firstV = denseValues[0];
-  if (llvm::all_of(denseValues, [firstV](ElTy v) { return v == firstV; })) {
-    firstValue = std::to_string(firstV);
-    return true;
-  }
-  return false;
+static std::string getSplatValueOfIntDense(DenseIntElementsAttr dense) {
+  ElTy splatVal = dense.getSplatValue<ElTy>();
+  return std::to_string(splatVal);
 }
 
-static bool hasSameDenseValueOfFloatOrBFloat16(DenseFPElementsAttr dense,
-                                               std::string &firstValue,
-                                               bool isBFloat = false) {
-  if (dense.isSplat()) {
-    APFloat apFloat = dense.getSplatValue<APFloat>();
-    float splatVal = apFloat.convertToFloat();
-    firstValue = std::to_string(splatVal);
+// Get the first float value of a dense type value as a string.
+static std::string getSplatValueOfFloatDense(DenseFPElementsAttr dense,
+                                             bool isBFloat = false) {
+  APFloat apFloat = dense.getSplatValue<APFloat>();
+  float splatVal = apFloat.convertToFloat();
+  std::string firstValue = std::to_string(splatVal);
 
-    if (apFloat.isPosInfinity()) {
-      if (isBFloat) {
-        firstValue = std::to_string(0x7F80);
-      } else {
-        firstValue = std::to_string(std::numeric_limits<float>::max());
-      }
-    } else if (apFloat.isNegInfinity()) {
-      if (isBFloat) {
-        firstValue = std::to_string(-0xFF80);
-      } else {
-        firstValue = std::to_string(std::numeric_limits<float>::lowest());
-      }
-    } else if (!apFloat.isNonZero()) {
-      firstValue = "0";
+  if (apFloat.isPosInfinity()) {
+    if (isBFloat) {
+      firstValue = std::to_string(0x7F80);
+    } else {
+      firstValue = std::to_string(std::numeric_limits<float>::max());
     }
-
-    return true;
+  } else if (apFloat.isNegInfinity()) {
+    if (isBFloat) {
+      firstValue = std::to_string(-0xFF80);
+    } else {
+      firstValue = std::to_string(std::numeric_limits<float>::lowest());
+    }
+  } else if (!apFloat.isNonZero()) {
+    firstValue = "0";
   }
-  return false;
+
+  return firstValue;
 }
 
 LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
@@ -2582,23 +2572,18 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     return success();
   }
   if (auto dense = attr.dyn_cast<DenseFPElementsAttr>()) {
-    if (AIEML) {
+    if (AIEML && dense.isSplat()) {
       if (auto vType = dense.getType().dyn_cast<VectorType>()) {
         if (auto fType = vType.getElementType().dyn_cast<FloatType>()) {
           unsigned width = fType.getWidth();
-          bool hasSameValue = false;
-          std::string firstValue = "";
+          std::string splatValue = "";
           if (width == 32) {
-            hasSameValue =
-                hasSameDenseValueOfFloatOrBFloat16(dense, firstValue);
+            splatValue = getSplatValueOfFloatDense(dense);
           } else if (width == 16) {
-            hasSameValue = hasSameDenseValueOfFloatOrBFloat16(
-                dense, firstValue, /*isBFloat*/ true);
+            splatValue = getSplatValueOfFloatDense(dense, /*isBFloat*/ true);
           }
-          if (hasSameValue &&
-              (width == 32 ||
-               (width == 16 && getVectorLaneSize(vType) == 32))) {
-            if (firstValue == "0") {
+          if (width == 32 || (width == 16 && getVectorLaneSize(vType) == 32)) {
+            if (splatValue == "0") {
               os << "broadcast_zero_";
               if (failed(emitType(loc, fType)))
                 return failure();
@@ -2611,13 +2596,12 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
               if (failed(emitType(loc, fType)))
                 return failure();
               os << ")";
-              os << firstValue;
+              os << splatValue;
               os << ")";
             }
-          } else if (hasSameValue && width == 16 &&
-                     getVectorLaneSize(vType) == 16) {
+          } else if (width == 16 && getVectorLaneSize(vType) == 16) {
             os << "extract_v16bfloat16(";
-            if (firstValue == "0") {
+            if (splatValue == "0") {
               os << "broadcast_zero_bfloat16()";
             } else {
               os << "broadcast_to_v32bfloat16";
@@ -2625,13 +2609,14 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
               if (failed(emitType(loc, fType)))
                 return failure();
               os << ")";
-              os << firstValue;
+              os << splatValue;
               os << ")";
             }
             os << ", 0)";
           }
         }
       }
+      // TODO: Deal with multiple dense value case for AIEML.
     } else {
       os << '{';
       interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
@@ -2685,27 +2670,25 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
           return success();
         }
 
-        if (AIEML) {
-          bool hasSameValue = false;
-          std::string firstValue = "";
+        if (AIEML && dense.isSplat()) {
+          std::string splatValue = "";
           if (width == 32) {
-            hasSameValue = hasSameDenseValue<int32_t>(dense, firstValue);
+            splatValue = getSplatValueOfIntDense<int32_t>(dense);
           } else if (width == 16) {
-            hasSameValue = hasSameDenseValue<int16_t>(dense, firstValue);
+            splatValue = getSplatValueOfIntDense<int16_t>(dense);
           } else if (width == 8) {
-            hasSameValue = hasSameDenseValue<int8_t>(dense, firstValue);
+            splatValue = getSplatValueOfIntDense<int8_t>(dense);
           }
-          if (hasSameValue) {
-            os << "broadcast_to_";
-            if (failed(emitType(loc, vType)))
-              return failure();
-            os << "((";
-            if (failed(emitType(loc, iType)))
-              return failure();
-            os << ")";
-            os << firstValue;
-            os << ")";
-          }
+          os << "broadcast_to_";
+          if (failed(emitType(loc, vType)))
+            return failure();
+          os << "((";
+          if (failed(emitType(loc, iType)))
+            return failure();
+          os << ")";
+          os << splatValue;
+          os << ")";
+          // TODO: Handle multiple dense value case in AIEML.
         } else {
           os << '{';
           interleaveComma(dense, os, [&](const APInt &val) {

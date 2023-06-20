@@ -47,7 +47,6 @@ int main(int argc, char *argv[]) {
   return ok ? 0 : 1;
 }
 
-// in0 and out0 are in C4 layout.
 void dut_ref(int32_t *in0, int32_t *out0) {
   int maxx = INT_MIN;
   for (unsigned k = 0; k < IN0_SIZE; k += 1) {

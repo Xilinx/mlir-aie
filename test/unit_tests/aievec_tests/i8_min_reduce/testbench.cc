@@ -48,10 +48,9 @@ int main(int argc, char *argv[]) {
 }
 
 // in0 and out0 are in C4 layout.
-void dut_ref(int8_t *in0, int8_t *out0) {
-  int8_t minx = INT8_MAX;
-  for (unsigned k = 0; k < IN0_SIZE; k += 1) {
-    minx = std::min(minx, in0[k]);
-  }
-  *out0 = minx;
+int8_t minx = INT8_MAX;
+for (unsigned k = 0; k < IN0_SIZE; k += 1) {
+  minx = std::min(minx, in0[k]);
+}
+*out0 = minx;
 }

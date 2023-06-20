@@ -47,7 +47,6 @@ int main(int argc, char *argv[]) {
   return ok ? 0 : 1;
 }
 
-// in0 and out0 are in C4 layout.
 void dut_ref(bfloat16 *in0, bfloat16 *out0) {
   bfloat16 minx = (bfloat16)0x7F80;
   for (unsigned k = 0; k < IN0_SIZE; k += 1) {
