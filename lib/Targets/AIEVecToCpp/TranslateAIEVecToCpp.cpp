@@ -2512,7 +2512,7 @@ static std::string getSplatValueOfFloatDense(DenseFPElementsAttr dense,
     if (isBFloat) {
       // TODO: Clean this up; emitting largest finite value in lieu of infinity;
       // system headers do not provide a simple way to initialize a bfloat16 to
-      // infinity."
+      // infinity.
       firstValue = std::to_string(0x1.FEp+127f);
     } else {
       firstValue = std::to_string(std::numeric_limits<float>::max());
