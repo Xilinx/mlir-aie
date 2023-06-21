@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2022 Xilinx Inc.
+// (c) Copyright 2023 AMD Inc.
 //
 //===----------------------------------------------------------------------===//
 // Defines AIE vector operations.
@@ -45,7 +45,7 @@ def AIEVec_AddOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector add";
   let description = [{
-    Xilinx-specific advanced add operation that adds two 1-D vectors 
+    AMD-specific advanced add operation that adds two 1-D vectors 
     with lane selection. The vector sizes are at least 256 bits.
     `$result = `$lhs + $rhs`.
   }];
@@ -80,7 +80,7 @@ def AIEVec_AddElemOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector add elem";
   let description = [{
-    Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
+    AMD-specific aie-ml intrinsic that allows you to perform addition operation
     on all types of vectors.`$result = `$lhs + $rhs`.
   }];
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
@@ -103,7 +103,7 @@ def AIEVec_SubOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector subtract";
   let description = [{
-    Xilinx-specific advanced sub operation that subtracts two 1-D vectors 
+    AMD-specific advanced sub operation that subtracts two 1-D vectors 
     with lane selection. The vector sizes are at least 256 bits.
     `$result = `$lhs - $rhs`.
   }];
@@ -138,7 +138,7 @@ def AIEVec_SubElemOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector sub elem";
   let description = [{
-    Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
+    AMD-specific aie-ml intrinsic that allows you to perform substraction operation 
     on all types of vectors.`$result = `$lhs - $rhs`.
   }];
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
@@ -164,7 +164,7 @@ def AIEVec_FMAOp :
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector fused multiply-add";
   let description = [{
-    Xilinx-specific multiply-add operation. It multiplies two 1-D vectors,
+    AMD-specific multiply-add operation. It multiplies two 1-D vectors,
     and adds the result to an accumulator. The vector sizes are at least 
     256 bits, and the left operand vector is at least twice the size of 
     right operand vector. For integers, the lhs and rhs are 8/16/32 bits;
@@ -225,7 +225,7 @@ def AIEVec_FMAElemOp :
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML element-wise vector fused multiply-add";
   let description = [{
-    Xilinx-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
+    AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
     and adds the result to an accumulator.
     `$result = `$lhs * $rhs + $acc`.
     Note: the same operator can be used as fmsub operator by setting the
@@ -261,7 +261,7 @@ def AIEVec_MulOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector multiply";
   let description = [{
-    Xilinx-specific multiply operation that multiplies two 1-D vectors.
+    AMD-specific multiply operation that multiplies two 1-D vectors.
     The vector sizes are at least 256 bits, and the left operand vector 
     is at least twice the size of right operand vector. For integers, the
     lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
@@ -315,7 +315,7 @@ def AIEVec_MulElemOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML vector element-wise multiply";
   let description = [{
-    Xilinx-specific multiply operation that multiplies two 1-D vectors in the same channel.
+    AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
     The vector sizes are at least 512 bits.
     `$result = `$lhs * $rhs`.
   }];
@@ -334,7 +334,7 @@ def AIEVec_BroadcastOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML broadcast";
   let description = [{
-    Xilinx-specific broadcast intrinsic. Extract element index from vector and broadcasts its
+    AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
     value to all lanes of the vector.
     `$result = broadcast($source, $idx)`
   }];
@@ -352,7 +352,7 @@ def AIEVec_BroadcastScalarOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE-ML broadcast scalar";
   let description = [{
-    Xilinx-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
+    AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
     `$result = broadcast_scalar($source)`
   }];
   let builders = [
@@ -370,7 +370,7 @@ def AIEVec_UPSOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE ups";
   let description = [{
-    Xilinx-specific upshift intrinsic. Moves data from AIE vector data type
+    AMD-specific upshift intrinsic. Moves data from AIE vector data type
     to accumulator data type. The adjustment in precision is controlled by
     the shift parameter.
     `$result = ups($source, $shift)`
@@ -408,7 +408,7 @@ def AIEVec_SRSOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE srs";
   let description = [{
-    Xilinx-specific shift-round-saturate intrinsic. Moves values from 
+    AMD-specific shift-round-saturate intrinsic. Moves values from 
     accumulator data type to AIE vector data types. The adjustment in 
     precision is controlled by the shift parameter.
     `$result = srs($source, $shift)`
@@ -430,7 +430,7 @@ def AIEVec_UPDOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE upd";
   let description = [{
-    Xilinx-specific update intrinsic. General upd intrinsic updates contiguous
+    AMD-specific update intrinsic. General upd intrinsic updates contiguous
     lanes of the result vector from a smaller source vector. This form of 
     upd intrinsic combines the load of data from memory into a vector 
     register, and then updating the lanes of the result vector using it. 
@@ -453,7 +453,7 @@ def AIEVec_ConcatOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE concat";
   let description = [{
-    Xilinx-specific concat intrinsic. Concatenates two or more smaller
+    AMD-specific concat intrinsic. Concatenates two or more smaller
     vectors into a bigger vector. The verifier confirms that all the
     input vectors have the same number of lanes.
     `$result = concat($sources[0], $sources[1], ...)`
@@ -469,7 +469,7 @@ def AIEVec_ExtOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE ext";
   let description = [{
-    Xilinx-specific vector extract intrinsic. Selects contiguous lanes from 
+    AMD-specific vector extract intrinsic. Selects contiguous lanes from 
     the source vector, and transfers the data from those lanes to the 
     result. The lane selection is controlled by index.
     `$result = ext($source, $index)`
@@ -494,7 +494,7 @@ def AIEVec_SelectOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector lane selection";
   let description = [{
-    Xilinx-specific vector lane selection operation. It selects between the
+    AMD-specific vector lane selection operation. It selects between the
     first set of lanes or the second one according to the value in 'select'. 
     If the bit in select is 0(1), it returns the value in the first(second) 
     set of lanes.
@@ -542,7 +542,7 @@ def AIEVec_PackOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE pack";
   let description = [{
-    Xilinx-specific pack intrinsic. Pack a vector of 16-bit values into
+    AMD-specific pack intrinsic. Pack a vector of 16-bit values into
     a vector of 8-bit values.
     `$result = pack($source)`
   }];
@@ -556,7 +556,7 @@ def AIEVec_UnpackOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE unpack";
   let description = [{
-    Xilinx-specific unpack intrinsic. Unpack a vector of 8-bit values into
+    AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
     a vector of 16-bit values.
     `$result = unpack($source)`
   }];
@@ -567,15 +567,15 @@ def AIEVec_ShiftOp:
     Pure
   ]>,
   Arguments<(ins Variadic<AnyVector>:$sources,
-             DefaultValuedAttr<I32Attr, "0">:$shift)>,
+             DefaultValuedAttr<I32Attr, "0">:$shift, DefaultValuedAttr<BoolAttr, "false">:$isAcc)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 concat and shift";
   let description = [{
-    Xilinx-specific shift intrinsic. Concatenates two
+    AMD-specific shift intrinsic. Concatenates two
     vectors into a bigger vector, interprets them as a vector of 128 bytes
     and returns v1::v2[shift: shift+64]. The verifier confirms that all the
     input vectors have the same number of lanes.
-    `$result = shift($sources[0], $sources[1], $shift)`
+    `$result = shift($sources[0], $sources[1], $shift, isAcc)`
   }];
 }
 
@@ -588,7 +588,7 @@ def AIEVec_ShuffleOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 shuffle";
   let description = [{
-    Xilinx-specific vector shuffle intrinsic by a specific shuffle mode.
+    AMD-specific vector shuffle intrinsic by a specific shuffle mode.
     `$result = shuffle($source, $mode)`
   }];
 }
@@ -603,7 +603,7 @@ def AIEVec_MulConvOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 multiply convolution";
   let description = [{
-    Xilinx-specific multiply convolution intrinsic. Multiply convolution operation
+    AMD-specific multiply convolution intrinsic. Multiply convolution operation
     of (M x N)matrix with (N x 1)kernel.
     `$result = mul_convMxN($lhs, $rhs)`
   }];
@@ -625,7 +625,7 @@ def AIEVec_FMAConvOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE2 multiply accumulate convolution";
   let description = [{
-    Xilinx-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
+    AMD-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
     operation of (M x N)matrix with (N x 1)kernel.
     `$result = mac_convMxN($lhs, $rhs, $acc)`
   }];
@@ -645,7 +645,7 @@ def AIEVec_MinOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector minimum";
   let description = [{
-    Xilinx-specific intrinsic that calculates the minimum between two input vectors.
+    AMD-specific intrinsic that calculates the minimum between two input vectors.
     `$result = min(`$lhs, $rhs`).
   }];
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
@@ -661,7 +661,7 @@ def AIEVec_MaxOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector maximum";
   let description = [{
-    Xilinx-specific intrinsic that calculates the maximum between two input vectors.
+    AMD-specific intrinsic that calculates the maximum between two input vectors.
     `$result = max(`$lhs, $rhs`).
   }];
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($result)";
@@ -677,7 +677,7 @@ def AIEVec_CmpOp:
   Results<(outs AnyUnsignedInteger:$result)> {
   let summary = "AIE vector comparison";
   let description = [{
-    Xilinx-specific intrinsic that performs element-wise comparisonof two input vectors.
+    AMD-specific intrinsic that performs element-wise comparisonof two input vectors.
     The attribute predicate defines which type of comparison is
     performed. The following comparisons are supported:
 
@@ -706,10 +706,26 @@ def AIEVec_SelOp:
   Results<(outs AnyVector:$result)> {
   let summary = "AIE vector lane wise selection";
   let description = [{
-    Xilinx-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
+    AMD-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
     `$result = sel(`$lhs, $rhs, $sel`).
   }];
   let assemblyFormat = "$lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_ExtElemOp:
+  AIEVec_Op<"ext_elem", [
+    Pure,
+    AllElementTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$source, I32:$index)>,
+  Results<(outs AnyTypeOf<[BF16, F32, I32, I16, I8]>:$result)> {
+  let summary = "AIE extract element";
+  let description =
+      [{AMD - specific extract element
+                  intrinsic. Extract element determined by index from vector.
+    `$result = ext_elem($source, $index)`.}];
+  let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
   let hasVerifier = 0;
 }
 #endif // AIEVEC_OPS

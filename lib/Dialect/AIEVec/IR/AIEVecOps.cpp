@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
 
 using namespace mlir;
@@ -1502,9 +1503,8 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  // Currently there is one attribute in shift op
-  if (result.attributes.getAttrs().size() != 1)
-    return parser.emitError(typesLoc, "expects one attribute");
+  if (result.attributes.getAttrs().size() != 2)
+    return parser.emitError(typesLoc, "expects two attributes");
 
   // Some verification
   VectorType sourceType = types[0].dyn_cast<VectorType>();

@@ -77,8 +77,8 @@ func.func @conv2d (%A: memref<18x288xi16>, %B: memref<12xi16>, %C: memref<16x256
 //      CHECK:    %[[C0:.*]] = arith.constant 0 : index
 //      CHECK:    %[[T0:.*]] = aievec.upd %[[A1]][%[[C0:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<12xi16>, vector<16xi16>
 //      CHECK:    %[[T1:.*]] = aievec.concat %[[T0:.*]], %[[T0:.*]] : vector<16xi16>, vector<32xi16>
-//      CHECK:    %[[T2:.*]] = aievec.shift %[[T1:.*]] {shift = 8 : i32} : vector<32xi16>, vector<32xi16>
-//      CHECK:    %[[T3:.*]] = aievec.shift %[[T1:.*]] {shift = 16 : i32} : vector<32xi16>, vector<32xi16>
+//      CHECK:    %[[T2:.*]] = aievec.shift %[[T1:.*]] {isAcc = false, shift = 8 : i32} : vector<32xi16>, vector<32xi16>
+//      CHECK:    %[[T3:.*]] = aievec.shift %[[T1:.*]] {isAcc = false, shift = 16 : i32} : vector<32xi16>, vector<32xi16>
 //      CHECK:    scf.for %[[A3:.*]] = %[[C0:.*]] to %[[C16:.*]] step %[[C1:.*]] {
 //      CHECK:      %[[T4:.*]] = arith.addi %[[A3]], %[[C1:.*]] : index
 //      CHECK:      %[[T5:.*]] = arith.addi %[[A3]], %[[C2:.*]] : index

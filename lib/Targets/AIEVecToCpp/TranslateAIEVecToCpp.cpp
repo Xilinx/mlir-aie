@@ -33,6 +33,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <limits>
 
 #define DEBUG_TYPE "aievec-to-cpp"
 
@@ -848,13 +849,15 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
 
 // Generate undefined vector strings based on the vector lanes, source type and
 // element size of a vector
-static std::string getUndefVector(VectorType sourceType) {
+static std::string getUndefVector(VectorType sourceType, bool isAcc = false) {
   unsigned lanes = getVectorLaneSize(sourceType);
   Type eltType = sourceType.getElementType();
   int32_t eltSize = getElementSizeInBits(sourceType);
-  return "undef_v" + std::to_string(lanes) +
-         (eltType.isa<FloatType>() ? "float" : "int") +
-         std::to_string(eltSize) + "()";
+  std::string res = "undef_v" + std::to_string(lanes) + (isAcc ? "acc" : "");
+  return res +
+         (eltType.isa<FloatType>() ? eltSize == 16 ? "bfloat16" : "float"
+                                   : "int" + std::to_string(eltSize)) +
+         "()";
 }
 
 // Generate the concat intrinsic
@@ -890,11 +893,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ShiftOp shiftOp) {
   SmallVector<Value> sources = shiftOp.getSources();
   int32_t shift = shiftOp.getShift();
+  bool isAcc = shiftOp.getIsAcc();
 
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*shiftOp)))
+  if (failed(emitter.emitAssignPrefix(*shiftOp, isAcc)))
     return failure();
 
   os << "shift_bytes";
@@ -908,7 +912,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
     os << ", ";
     if (sources.size() == 1) {
       VectorType sourceType = source.getType().cast<VectorType>();
-      os << getUndefVector(sourceType);
+      os << getUndefVector(sourceType, isAcc);
       os << ", ";
     }
   }
@@ -1805,6 +1809,32 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SelOp selOp) {
   return success();
 }
 
+// Generate the extract elem intrinsic
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::ExtElemOp extElemOp) {
+  Value source = extElemOp.getSource();
+  Value index = extElemOp.getIndex();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*extElemOp)))
+    return failure();
+
+  // source should have already been emitted
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  os << "extract_elem";
+  os << "(";
+  // Print the source and index
+  os << emitter.getOrCreateName(source);
+  os << ", ";
+  os << emitter.getOrCreateName(index);
+  os << ")";
+  return success();
+}
+
 // Generate the transfer write op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     vector::TransferWriteOp writeOp) {
@@ -1835,6 +1865,31 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << ")";
   os << " = ";
   os << emitter.getOrCreateName(vector);
+  return success();
+}
+
+// Generate the memref store op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::StoreOp storeOp) {
+  Value value = storeOp.getValue();
+  Value memref = storeOp.getMemref();
+
+  // If the value, or the memref being outputted is not already emitted,
+  // error out
+  if (!emitter.hasValueInScope(value) || !emitter.hasValueInScope(memref))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "*(";
+  if (failed(emitter.emitType(
+          storeOp->getLoc(),
+          cast<MemRefType>(memref.getType()).getElementType())))
+    return failure();
+  os << " *)";
+  os << emitter.getOrCreateName(memref);
+  os << " = ";
+  os << emitter.getOrCreateName(value);
   return success();
 }
 
@@ -2438,6 +2493,43 @@ bool CppEmitter::hasBlockLabel(Block &block) {
   return blockMapper.count(&block);
 }
 
+// Check whether the int type dense value has a splat value and get the int
+// value as a string.
+template <typename ElTy>
+static std::string getSplatValueOfIntDense(DenseIntElementsAttr dense) {
+  ElTy splatVal = dense.getSplatValue<ElTy>();
+  return std::to_string(splatVal);
+}
+
+// Get the first float value of a dense type value as a string.
+static std::string getSplatValueOfFloatDense(DenseFPElementsAttr dense,
+                                             bool isBFloat = false) {
+  APFloat apFloat = dense.getSplatValue<APFloat>();
+  float splatVal = apFloat.convertToFloat();
+  std::string firstValue = std::to_string(splatVal);
+
+  if (apFloat.isPosInfinity()) {
+    if (isBFloat) {
+      // TODO: Clean this up; emitting largest finite value in lieu of infinity;
+      // system headers do not provide a simple way to initialize a bfloat16 to
+      // infinity.
+      firstValue = std::to_string(0x1.FEp+127f);
+    } else {
+      firstValue = std::to_string(std::numeric_limits<float>::max());
+    }
+  } else if (apFloat.isNegInfinity()) {
+    if (isBFloat) {
+      firstValue = std::to_string(-0x1.FEp+127f);
+    } else {
+      firstValue = std::to_string(std::numeric_limits<float>::lowest());
+    }
+  } else if (!apFloat.isNonZero()) {
+    firstValue = "0";
+  }
+
+  return firstValue;
+}
+
 LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   auto printInt = [&](const APInt &val, bool isUnsigned) {
     if (val.getBitWidth() == 1) {
@@ -2483,9 +2575,56 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     return success();
   }
   if (auto dense = attr.dyn_cast<DenseFPElementsAttr>()) {
-    os << '{';
-    interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
-    os << '}';
+    if (AIEML && dense.isSplat()) {
+      if (auto vType = dense.getType().dyn_cast<VectorType>()) {
+        if (auto fType = vType.getElementType().dyn_cast<FloatType>()) {
+          unsigned width = fType.getWidth();
+          std::string splatValue = "";
+          if (width == 32) {
+            splatValue = getSplatValueOfFloatDense(dense);
+          } else if (width == 16) {
+            splatValue = getSplatValueOfFloatDense(dense, /*isBFloat*/ true);
+          }
+          if (width == 32 || (width == 16 && getVectorLaneSize(vType) == 32)) {
+            if (splatValue == "0") {
+              os << "broadcast_zero_";
+              if (failed(emitType(loc, fType)))
+                return failure();
+              os << "()";
+            } else {
+              os << "broadcast_to_";
+              if (failed(emitType(loc, vType)))
+                return failure();
+              os << "((";
+              if (failed(emitType(loc, fType)))
+                return failure();
+              os << ")";
+              os << splatValue;
+              os << ")";
+            }
+          } else if (width == 16 && getVectorLaneSize(vType) == 16) {
+            os << "extract_v16bfloat16(";
+            if (splatValue == "0") {
+              os << "broadcast_zero_bfloat16()";
+            } else {
+              os << "broadcast_to_v32bfloat16";
+              os << "((";
+              if (failed(emitType(loc, fType)))
+                return failure();
+              os << ")";
+              os << splatValue;
+              os << ")";
+            }
+            os << ", 0)";
+          }
+        }
+      }
+      // TODO: Deal with multiple dense value case for AIEML.
+    } else {
+      os << '{';
+      interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
+      os << '}';
+    }
     return success();
   }
 
@@ -2520,18 +2659,46 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     }
     if (auto vType = dense.getType().dyn_cast<VectorType>()) {
       if (auto iType = vType.getElementType().dyn_cast<IntegerType>()) {
+        unsigned width = iType.getWidth();
         if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
-          os << "null_";
-          if (failed(emitType(loc, vType)))
-            return failure();
+          if (AIEML) {
+            os << "broadcast_zero_s";
+            os << width;
+          } else {
+            os << "null_";
+            if (failed(emitType(loc, vType)))
+              return failure();
+          }
           os << "()";
           return success();
         }
-        os << '{';
-        interleaveComma(dense, os, [&](const APInt &val) {
-          printInt(val, shouldMapToUnsigned(iType.getSignedness()));
-        });
-        os << '}';
+
+        if (AIEML && dense.isSplat()) {
+          std::string splatValue = "";
+          if (width == 32) {
+            splatValue = getSplatValueOfIntDense<int32_t>(dense);
+          } else if (width == 16) {
+            splatValue = getSplatValueOfIntDense<int16_t>(dense);
+          } else if (width == 8) {
+            splatValue = getSplatValueOfIntDense<int8_t>(dense);
+          }
+          os << "broadcast_to_";
+          if (failed(emitType(loc, vType)))
+            return failure();
+          os << "((";
+          if (failed(emitType(loc, iType)))
+            return failure();
+          os << ")";
+          os << splatValue;
+          os << ")";
+          // TODO: Handle multiple dense value case in AIEML.
+        } else {
+          os << '{';
+          interleaveComma(dense, os, [&](const APInt &val) {
+            printInt(val, shouldMapToUnsigned(iType.getSignedness()));
+          });
+          os << '}';
+        }
         return success();
       }
       if (auto iType = vType.getElementType().dyn_cast<IndexType>()) {
@@ -2693,8 +2860,11 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           //  Arith ops.
           .Case<arith::AddIOp>(
               [&](auto op) { return printOperation<arith::AddIOp>(*this, op); })
-          // Vector ops
+          // Vector ops.
           .Case<vector::TransferWriteOp>(
+              [&](auto op) { return printOperation(*this, op); })
+          // Memref ops.
+          .Case<memref::StoreOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
                 aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
@@ -2703,7 +2873,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
-                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp>(
+                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp,
+                aievec::ExtElemOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
