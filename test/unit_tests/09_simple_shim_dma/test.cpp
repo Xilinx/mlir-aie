@@ -18,6 +18,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <xaiengine.h>
+
+#include "memory_allocator.h"
 #include "test_library.h"
 
 #include "aie_inc.cpp"
@@ -34,14 +36,13 @@ main(int argc, char *argv[])
   mlir_aie_initialize_locks(_xaie);
   mlir_aie_configure_dmas(_xaie);
 
-  mlir_aie_init_mems(_xaie, 1);
-
 #define DMA_COUNT 512
-  int *mem_ptr = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+  ext_mem_model_t buf0;
+  int *mem_ptr = mlir_aie_mem_alloc(buf0, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(mem_ptr + i) = i + 1;
   }
-  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf0);
 
   // We're going to stamp over the memory
   for (int i=0; i<DMA_COUNT; i++) {

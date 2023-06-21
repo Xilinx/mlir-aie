@@ -17,7 +17,6 @@
 // CHECK: AIE2 ISS
 // CHECK: test start.
 // CHECK: PASS!
-// XFAIL: *
 
 module @test_chesss_01_precompiled_core_function {
   AIE.device(xcve2802) {

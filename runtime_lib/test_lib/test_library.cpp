@@ -434,59 +434,59 @@ void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
   u32 status, coreTimerLow, PC, LR, SP, locks, R0, R4;
   u32 trace_status;
-#if (__AIEARCH__ == 20)
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031100, &PC);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031130, &LR);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031120, &SP);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000340D8, &trace_status);
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031100, &PC);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031130, &LR);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00031120, &SP);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000340D8, &trace_status);
 
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C00, &R0);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C40, &R4);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C00, &R0);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030C40, &R4);
 
-#else
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030280, &PC);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302B0, &LR);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302A0, &SP);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x000140D8, &trace_status);
+  } else {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x032004, &status);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0340F8, &coreTimerLow);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030280, &PC);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302B0, &LR);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000302A0, &SP);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x000140D8, &trace_status);
 
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030000, &R0);
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030040, &R4);
-#endif
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030000, &R0);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00030040, &R4);
+  }
   printf("Core [%d, %d] status is %08X, timer is %u, PC is %08X"
          ", LR is %08X, SP is %08X, R0 is %08X,R4 is %08X\n",
          col, row, status, coreTimerLow, PC, LR, SP, R0, R4);
   printf("Core [%d, %d] trace status is %08X\n", col, row, trace_status);
 
-#if (__AIEARCH__ == 20)
-  printf("Core [%d, %d] AIE2 locks are: ", col, row);
-  int lockAddr = tileAddr + 0x0001F000;
-  XAie_Write32(&(ctx->DevInst), lockAddr, 3);
-  for (int lock = 0; lock < 16; lock++) {
-    XAie_Read32(&(ctx->DevInst), lockAddr, &locks);
-    printf("%X ", locks);
-    lockAddr += 0x10;
-  }
-  printf("\n");
-#else
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
-  printf("Core [%d, %d] AIE1 locks are %08X\n", col, row, locks);
-  for (int lock = 0; lock < 16; lock++) {
-    u32 two_bits = (locks >> (lock * 2)) & 0x3;
-    if (two_bits) {
-      printf("Lock %d: ", lock);
-      u32 acquired = two_bits & 0x1;
-      u32 value = two_bits & 0x2;
-      if (acquired)
-        printf("Acquired ");
-      printf(value ? "1" : "0");
-      printf("\n");
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    printf("Core [%d, %d] AIE2 locks are: ", col, row);
+    int lockAddr = tileAddr + 0x0001F000;
+    XAie_Write32(&(ctx->DevInst), lockAddr, 3);
+    for (int lock = 0; lock < 16; lock++) {
+      XAie_Read32(&(ctx->DevInst), lockAddr, &locks);
+      printf("%X ", locks);
+      lockAddr += 0x10;
+    }
+    printf("\n");
+  } else {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
+    printf("Core [%d, %d] AIE1 locks are %08X\n", col, row, locks);
+    for (int lock = 0; lock < 16; lock++) {
+      u32 two_bits = (locks >> (lock * 2)) & 0x3;
+      if (two_bits) {
+        printf("Lock %d: ", lock);
+        u32 acquired = two_bits & 0x1;
+        u32 value = two_bits & 0x2;
+        if (acquired)
+          printf("Acquired ");
+        printf(value ? "1" : "0");
+        printf("\n");
+      }
     }
   }
-#endif
 
   const char *core_status_strings[] = {"Enabled",
                                        "In Reset",
@@ -578,90 +578,6 @@ void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
   clear_range(&(ctx->DevInst), tileAddr, 0x3F100, 0x3F15C);
   // Stream Switch slave slot config
   clear_range(&(ctx->DevInst), tileAddr, 0x3F200, 0x3F37C);
-}
-
-/// @brief Initialize the memory allocator for buffers in device memory
-/// @param numBufs The number of buffers to reserve
-/// @todo This is at best a quick hack and should be replaced
-void mlir_aie_init_mems(aie_libxaie_ctx_t *ctx, int numBufs) {
-#if defined(__AIESIM__)
-  ctx->buffers =
-      (ext_mem_model_t **)malloc(numBufs * sizeof(ext_mem_model_t *));
-#else
-  ctx->buffers = (XAie_MemInst **)malloc(numBufs * sizeof(XAie_MemInst *));
-#endif
-}
-
-/// @brief Allocate a buffer in device memory
-/// @param bufIdx The index of the buffer to allocate.
-/// @param size The number of 32-bit words to allocate
-/// @return A host-side pointer that can write into the given buffer.
-/// @todo This is at best a quick hack and should be replaced
-int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, int bufIdx, int size) {
-#if defined(__AIESIM__)
-  int size_bytes = size * sizeof(int);
-  ctx->buffers[bufIdx] = new ext_mem_model_t;
-  (ctx->buffers[bufIdx])->virtualAddr = std::malloc(size_bytes);
-  if ((ctx->buffers[bufIdx])->virtualAddr) {
-    (ctx->buffers[bufIdx])->size = size_bytes;
-    // assign physical space in SystemC DDR memory controller
-    (ctx->buffers[bufIdx])->physicalAddr = nextAlignedAddr;
-    // adjust nextAlignedAddr to the next 128-bit aligned address
-    nextAlignedAddr = nextAlignedAddr + size_bytes;
-    uint64_t gapToAligned = nextAlignedAddr % 16; // 16byte (128bit)
-    if (gapToAligned > 0)
-      nextAlignedAddr += (16 - gapToAligned);
-  } else {
-    printf("ExtMemModel: Failed to allocate %d memory.\n", size_bytes);
-  }
-
-  std::cout << "ExtMemModel constructor: virtual address " << std::hex
-            << (ctx->buffers[bufIdx])->virtualAddr << ", physical address "
-            << (ctx->buffers[bufIdx])->physicalAddr << ", size " << std::dec
-            << (ctx->buffers[bufIdx])->size << std::endl;
-
-  return (int *)(ctx->buffers[bufIdx])->virtualAddr;
-#else
-  //  ctx->InBuffers = (XAie_MemInst**)malloc(sizeof(XAie_MemInst*));
-  //  XAie_MemInst *IN;
-  ctx->buffers[bufIdx] =
-      XAie_MemAllocate(&(ctx->DevInst), size * sizeof(int), XAIE_MEM_CACHEABLE);
-  int *mem_ptr = (int *)XAie_MemGetVAddr(ctx->buffers[bufIdx]);
-  XAie_MemSyncForCPU(ctx->buffers[bufIdx]);
-  return mem_ptr;
-#endif
-}
-
-/// @brief Synchronize the buffer from the device to the host CPU.
-/// This is expected to be called after the device writes data into
-/// device memory, so that the data can be read by the CPU.  In
-/// a non-cache coherent system, this implies invalidating the
-/// processor cache associated with the buffer.
-/// @param bufIdx The buffer index.
-void mlir_aie_sync_mem_cpu(aie_libxaie_ctx_t *ctx, int bufIdx) {
-#if defined(__AIESIM__)
-  aiesim_ReadGM((ctx->buffers[bufIdx])->physicalAddr,
-                (ctx->buffers[bufIdx])->virtualAddr,
-                (ctx->buffers[bufIdx])->size);
-#else
-  XAie_MemSyncForCPU(ctx->buffers[bufIdx]);
-#endif
-}
-
-/// @brief Synchronize the buffer from the host CPU to the device.
-/// This is expected to be called after the host writes data into
-/// device memory, so that the data can be read by the device.  In
-/// a non-cache coherent system, this implies flushing the
-/// processor cache associated with the buffer.
-/// @param bufIdx The buffer index.
-void mlir_aie_sync_mem_dev(aie_libxaie_ctx_t *ctx, int bufIdx) {
-#if defined(__AIESIM__)
-  aiesim_WriteGM((ctx->buffers[bufIdx])->physicalAddr,
-                 (ctx->buffers[bufIdx])->virtualAddr,
-                 (ctx->buffers[bufIdx])->size);
-#else
-  XAie_MemSyncForDev(ctx->buffers[bufIdx]);
-#endif
 }
 
 /*

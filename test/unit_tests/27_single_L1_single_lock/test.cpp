@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -19,6 +18,8 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+
+#include "test_library.h"
 
 #include "aie_inc.cpp"
 
@@ -40,8 +41,6 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
   mlir_aie_configure_dmas(_xaie);
-
-  mlir_aie_init_mems(_xaie, 1);
 
   mlir_aie_clear_tile_memory(_xaie, 7, 2);
 

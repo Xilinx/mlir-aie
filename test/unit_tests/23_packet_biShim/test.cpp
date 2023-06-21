@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -19,6 +18,9 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+
+#include "memory_allocator.h"
+#include "test_library.h"
 
 #include "aie_inc.cpp"
 #define MAP_SIZE 16UL
@@ -89,7 +91,6 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
-  mlir_aie_init_mems(_xaie, 2);
   int errors = 0;
 
   printf("Finish configure\n");
@@ -97,9 +98,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_clear_tile_memory(_xaie, 7, 2);
 
 #define DMA_COUNT 256
-  mlir_aie_init_mems(_xaie, 2);
-  int *mem_ptr0 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int *mem_ptr1 = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT + 1);
+  ext_mem_model_t buf0, buf1;
+  int *mem_ptr0 = mlir_aie_mem_alloc(buf0, DMA_COUNT);
+  int *mem_ptr1 = mlir_aie_mem_alloc(buf1, DMA_COUNT + 1);
 
   for (int i = 0; i < DMA_COUNT + 1; i++) {
     if (i == 0) {
@@ -109,8 +110,8 @@ int main(int argc, char *argv[]) {
       mem_ptr1[i] = 1;
     }
   }
-  mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
-  mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+  mlir_aie_sync_mem_dev(buf0);
+  mlir_aie_sync_mem_dev(buf1);
 
   mlir_aie_external_set_addr_input((u64)mem_ptr0);
   mlir_aie_external_set_addr_output((u64)mem_ptr1);
@@ -137,7 +138,7 @@ int main(int argc, char *argv[]) {
   mlir_aie_print_dma_status(_xaie, 7, 2);
   mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
-  mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
+  mlir_aie_sync_mem_cpu(buf1);
 
   for (int bd = 0; bd < DMA_COUNT + 1; bd++) {
     if (bd == 0) {

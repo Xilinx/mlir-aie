@@ -18,6 +18,8 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <xaiengine.h>
+
+#include "memory_allocator.h"
 #include "test_library.h"
 
 #include "aie_inc.cpp"
@@ -102,16 +104,17 @@ main(int argc, char *argv[])
             }
         }
     */
-    mlir_aie_init_mems(_xaie, 2);
+
 #define DMA_COUNT 512
-    int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-    int *ddr_ptr_out = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+    ext_mem_model_t buf0, buf1;
+    int *ddr_ptr_in = mlir_aie_mem_alloc(buf0, DMA_COUNT);
+    int *ddr_ptr_out = mlir_aie_mem_alloc(buf1, DMA_COUNT);
     for (int i = 0; i < DMA_COUNT; i++) {
       *(ddr_ptr_in + i) = i + 1;
       *(ddr_ptr_out + i) = 0;
     }
-    mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
-    mlir_aie_sync_mem_dev(_xaie, 1); // only used in libaiev2
+    mlir_aie_sync_mem_dev(buf0);
+    mlir_aie_sync_mem_dev(buf1);
 
     mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
     mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
@@ -190,7 +193,7 @@ main(int argc, char *argv[])
                 printf("ddr_ptr_out[%d] = %d\n", i, d);
         }
     */
-    mlir_aie_sync_mem_cpu(_xaie, 1); // only used in libaiev2
+    mlir_aie_sync_mem_cpu(buf1);
     mlir_aie_check("DDR out", ddr_ptr_out[5], 20, errors);
     mlir_aie_check("DDR out", ddr_ptr_out[256 + 5], (256 + 4) * 5, errors);
 
