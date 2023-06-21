@@ -17,7 +17,7 @@ Syntax:
 operation ::= `aievec.add_elem` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-Xilinx-specific aie-ml intrinsic that allows you to perform addition operation
+AMD-specific aie-ml intrinsic that allows you to perform addition operation
 on all types of vectors.`$result = `$lhs + $rhs`.
 
 Traits: AlwaysSpeculatableImplTrait
@@ -43,7 +43,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE vector add
 
-Xilinx-specific advanced add operation that adds two 1-D vectors 
+AMD-specific advanced add operation that adds two 1-D vectors 
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs + $rhs`.
 
@@ -83,7 +83,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE-ML broadcast
 
-Xilinx-specific broadcast intrinsic. Extract element index from vector and broadcasts its
+AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
 value to all lanes of the vector.
 `$result = broadcast($source, $idx)`
 
@@ -115,7 +115,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE-ML broadcast scalar
 
-Xilinx-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
+AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
 `$result = broadcast_scalar($source)`
 
 Traits: AlwaysSpeculatableImplTrait
@@ -178,7 +178,7 @@ Syntax:
 operation ::= `aievec.cmp` $lhs `,` $rhs ` ` `{` `pred` `=` $pred attr-dict `}` `:` type($lhs) `,` type($rhs)  `,` type($result)
 ```
 
-Xilinx-specific intrinsic that performs element-wise comparisonof two input vectors.
+AMD-specific intrinsic that performs element-wise comparisonof two input vectors.
 The attribute predicate defines which type of comparison is
 performed. The following comparisons are supported:
 
@@ -222,7 +222,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE concat
 
-Xilinx-specific concat intrinsic. Concatenates two or more smaller
+AMD-specific concat intrinsic. Concatenates two or more smaller
 vectors into a bigger vector. The verifier confirms that all the
 input vectors have the same number of lanes.
 `$result = concat($sources[0], $sources[1], ...)`
@@ -245,11 +245,44 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.ext_elem` (::xilinx::aievec::ExtElemOp)
+
+AIE extract element
+
+
+Syntax:
+
+```
+operation ::= `aievec.ext_elem` $source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)
+```
+
+AMD - specific extract element
+                  intrinsic. Extract element determined by index from vector.
+    `$result = ext_elem($source, $index)`.
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+| `index` | 32-bit signless integer
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | bfloat16 type or 32-bit float or 32-bit signless integer or 16-bit signless integer or 8-bit signless integer
+
 ### `aievec.ext` (::xilinx::aievec::ExtOp)
 
 AIE ext
 
-Xilinx-specific vector extract intrinsic. Selects contiguous lanes from 
+AMD-specific vector extract intrinsic. Selects contiguous lanes from 
 the source vector, and transfers the data from those lanes to the 
 result. The lane selection is controlled by index.
 `$result = ext($source, $index)`
@@ -282,7 +315,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE2 multiply accumulate convolution
 
-Xilinx-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
+AMD-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
 operation of (M x N)matrix with (N x 1)kernel.
 `$result = mac_convMxN($lhs, $rhs, $acc)`
 
@@ -318,7 +351,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE-ML element-wise vector fused multiply-add
 
-Xilinx-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
+AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
 and adds the result to an accumulator.
 `$result = `$lhs * $rhs + $acc`.
 Note: the same operator can be used as fmsub operator by setting the
@@ -354,7 +387,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE vector fused multiply-add
 
-Xilinx-specific multiply-add operation. It multiplies two 1-D vectors,
+AMD-specific multiply-add operation. It multiplies two 1-D vectors,
 and adds the result to an accumulator. The vector sizes are at least 
 256 bits, and the left operand vector is at least twice the size of 
 right operand vector. For integers, the lhs and rhs are 8/16/32 bits;
@@ -410,7 +443,7 @@ Syntax:
 operation ::= `aievec.max` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-Xilinx-specific intrinsic that calculates the maximum between two input vectors.
+AMD-specific intrinsic that calculates the maximum between two input vectors.
 `$result = max(`$lhs, $rhs`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -443,7 +476,7 @@ Syntax:
 operation ::= `aievec.min` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-Xilinx-specific intrinsic that calculates the minimum between two input vectors.
+AMD-specific intrinsic that calculates the minimum between two input vectors.
 `$result = min(`$lhs, $rhs`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -469,7 +502,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE2 multiply convolution
 
-Xilinx-specific multiply convolution intrinsic. Multiply convolution operation
+AMD-specific multiply convolution intrinsic. Multiply convolution operation
 of (M x N)matrix with (N x 1)kernel.
 `$result = mul_convMxN($lhs, $rhs)`
 
@@ -503,7 +536,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE-ML vector element-wise multiply
 
-Xilinx-specific multiply operation that multiplies two 1-D vectors in the same channel.
+AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
 The vector sizes are at least 512 bits.
 `$result = `$lhs * $rhs`.
 
@@ -530,7 +563,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE vector multiply
 
-Xilinx-specific multiply operation that multiplies two 1-D vectors.
+AMD-specific multiply operation that multiplies two 1-D vectors.
 The vector sizes are at least 256 bits, and the left operand vector 
 is at least twice the size of right operand vector. For integers, the
 lhs and rhs are 8/16/32 bits, and result is a 48-bit or 80-bit accumulator.
@@ -574,7 +607,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE pack
 
-Xilinx-specific pack intrinsic. Pack a vector of 16-bit values into
+AMD-specific pack intrinsic. Pack a vector of 16-bit values into
 a vector of 8-bit values.
 `$result = pack($source)`
 
@@ -600,7 +633,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE srs
 
-Xilinx-specific shift-round-saturate intrinsic. Moves values from 
+AMD-specific shift-round-saturate intrinsic. Moves values from 
 accumulator data type to AIE vector data types. The adjustment in 
 precision is controlled by the shift parameter.
 `$result = srs($source, $shift)`
@@ -640,7 +673,7 @@ Syntax:
 operation ::= `aievec.sel` $lhs `,` $rhs `,` $sel attr-dict `:` type($lhs) `,` type($rhs) `,` type($sel) `,` type($result)
 ```
 
-Xilinx-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
+AMD-specific intrinsic that performs lane wise selection between two input vectors, if a bit of sel is zero, the lane of vector lhs is selected, else the lane of vector rhs is selected.
 `$result = sel(`$lhs, $rhs, $sel`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -667,7 +700,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE vector lane selection
 
-Xilinx-specific vector lane selection operation. It selects between the
+AMD-specific vector lane selection operation. It selects between the
 first set of lanes or the second one according to the value in 'select'. 
 If the bit in select is 0(1), it returns the value in the first(second) 
 set of lanes.
@@ -710,11 +743,11 @@ Effects: MemoryEffects::Effect{}
 
 AIE2 concat and shift
 
-Xilinx-specific shift intrinsic. Concatenates two
+AMD-specific shift intrinsic. Concatenates two
 vectors into a bigger vector, interprets them as a vector of 128 bytes
 and returns v1::v2[shift: shift+64]. The verifier confirms that all the
 input vectors have the same number of lanes.
-`$result = shift($sources[0], $sources[1], $shift)`
+`$result = shift($sources[0], $sources[1], $shift, isAcc)`
 
 Traits: AlwaysSpeculatableImplTrait
 
@@ -727,6 +760,7 @@ Effects: MemoryEffects::Effect{}
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
 | `shift` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `isAcc` | ::mlir::BoolAttr | bool attribute
 
 #### Operands:
 
@@ -744,7 +778,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE2 shuffle
 
-Xilinx-specific vector shuffle intrinsic by a specific shuffle mode.
+AMD-specific vector shuffle intrinsic by a specific shuffle mode.
 `$result = shuffle($source, $mode)`
 
 Traits: AlwaysSpeculatableImplTrait
@@ -782,7 +816,7 @@ Syntax:
 operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-Xilinx-specific aie-ml intrinsic that allows you to perform substraction operation 
+AMD-specific aie-ml intrinsic that allows you to perform substraction operation 
 on all types of vectors.`$result = `$lhs - $rhs`.
 
 Traits: AlwaysSpeculatableImplTrait
@@ -808,7 +842,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE vector subtract
 
-Xilinx-specific advanced sub operation that subtracts two 1-D vectors 
+AMD-specific advanced sub operation that subtracts two 1-D vectors 
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs - $rhs`.
 
@@ -848,7 +882,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE upd
 
-Xilinx-specific update intrinsic. General upd intrinsic updates contiguous
+AMD-specific update intrinsic. General upd intrinsic updates contiguous
 lanes of the result vector from a smaller source vector. This form of 
 upd intrinsic combines the load of data from memory into a vector 
 register, and then updating the lanes of the result vector using it. 
@@ -885,7 +919,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE ups
 
-Xilinx-specific upshift intrinsic. Moves data from AIE vector data type
+AMD-specific upshift intrinsic. Moves data from AIE vector data type
 to accumulator data type. The adjustment in precision is controlled by
 the shift parameter.
 `$result = ups($source, $shift)`
@@ -918,7 +952,7 @@ Effects: MemoryEffects::Effect{}
 
 AIE unpack
 
-Xilinx-specific unpack intrinsic. Unpack a vector of 8-bit values into
+AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
 a vector of 16-bit values.
 `$result = unpack($source)`
 
