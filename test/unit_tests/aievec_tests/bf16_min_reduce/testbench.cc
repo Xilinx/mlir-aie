@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
 }
 
 void dut_ref(bfloat16 *in0, bfloat16 *out0) {
-  bfloat16 minx = (bfloat16)0x7F80;
+  bfloat16 minx = bfloat16(0x1.FEp+127f);
   for (unsigned k = 0; k < IN0_SIZE; k += 1) {
     minx = std::min(minx, in0[k]);
   }

@@ -2510,13 +2510,13 @@ static std::string getSplatValueOfFloatDense(DenseFPElementsAttr dense,
 
   if (apFloat.isPosInfinity()) {
     if (isBFloat) {
-      firstValue = std::to_string(0x7F80);
+      firstValue = std::to_string(0x1.FEp+127f);
     } else {
       firstValue = std::to_string(std::numeric_limits<float>::max());
     }
   } else if (apFloat.isNegInfinity()) {
     if (isBFloat) {
-      firstValue = std::to_string(-0xFF80);
+      firstValue = std::to_string(-0x1.FEp+127f);
     } else {
       firstValue = std::to_string(std::numeric_limits<float>::lowest());
     }

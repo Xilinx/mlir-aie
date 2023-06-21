@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
   std::generate(g_in0, g_in0 + IN0_SIZE,
-                [&]() { return random_bfloat16(-1, 1, 1); });
+                [&]() { return random_bfloat16(-3, 3, 2); });
 
   writeData(g_in0, IN0_SIZE, dataDir + "/in0.txt");
 
@@ -35,7 +35,7 @@ int main(int argc, char *argv[]) {
   writeData(g_out0Ref, OUT0_SIZE, dataDir + "/out0_ref.txt");
 
   bool ok = true;
-  ok &= checkData(g_out0, g_out0Ref, OUT0_SIZE, 0, 1e-1, 1e-1);
+  ok &= checkData(g_out0, g_out0Ref, OUT0_SIZE, 0, 1e-3, 1e-3);
 
   if (ok)
     printf("TEST PASSED\n");
@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
 }
 
 void dut_ref(bfloat16 *in0, bfloat16 *out0) {
-  bfloat16 maxx = (bfloat16)(-0xFF80);
+  bfloat16 maxx = bfloat16(-0x1.FEp+127f);
   for (unsigned k = 0; k < IN0_SIZE; k += 1) {
     maxx = std::max(maxx, in0[k]);
   }

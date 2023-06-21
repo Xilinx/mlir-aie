@@ -1,6 +1,7 @@
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2) {
   int32_t v3 = 0;
-  v32bfloat16 v4 = broadcast_to_v32bfloat16((bfloat16)-65408);
+  v32bfloat16 v4 = broadcast_to_v32bfloat16(
+      (bfloat16)-338953138925153547590470800371487866880.000000);
   size_t v5 = 0;
   size_t v6 = 1024;
   size_t v7 = 32;
