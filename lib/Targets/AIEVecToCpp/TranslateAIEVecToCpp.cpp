@@ -2519,7 +2519,7 @@ static std::string getSplatValueOfFloatDense(DenseFPElementsAttr dense,
     }
   } else if (apFloat.isNegInfinity()) {
     if (isBFloat) {
-      E firstValue = std::to_string(-0x1.FEp+127f);
+      firstValue = std::to_string(-0x1.FEp+127f);
     } else {
       firstValue = std::to_string(std::numeric_limits<float>::lowest());
     }
@@ -2545,7 +2545,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   };
 
   auto printFloat = [&](const APFloat &val) {
-    E if (val.isFinite()) {
+    if (val.isFinite()) {
       SmallString<128> strValue;
       // Use default values of toString except don't truncate zeros.
       val.toString(strValue, 0, 0, false);
@@ -2560,11 +2560,9 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
         break;
       };
       os << strValue;
-    }
-    else if (val.isNaN()) {
+    } else if (val.isNaN()) {
       os << "NAN";
-    }
-    else if (val.isInfinity()) {
+    } else if (val.isInfinity()) {
       if (val.isNegative())
         os << "-";
       os << "INFINITY";
