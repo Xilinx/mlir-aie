@@ -64,6 +64,6 @@ module @memTile {
     %tile11 = AIE.tile(2, 1)
     %tile12 = AIE.tile(2, 2)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2 : i32) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
  }
 }
