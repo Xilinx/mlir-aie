@@ -948,7 +948,7 @@ struct AIEObjectFifoStatefulTransformPass
       // for prefetching: simplest case scenario is at least a ping-pong buffer
     }
 
-    return 0;
+    return objFifo.size();
   }
 
   /// Function used to generate, from an objectFifo with a shimTile endpoint, a
