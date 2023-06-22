@@ -46,6 +46,10 @@ install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/$
 set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
 # Memory Allocator
 add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
+find_program(UNAME_EXEC uname)
+execute_process(COMMAND ${UNAME_EXEC} -r OUTPUT_VARIABLE KERNEL_RELEASE OUTPUT_STRIP_TRAILING_WHITESPACE)
+find_path(LINUX_HEADERS_PATH NAMES "linux/dma-buf.h" PATHS "/usr/src/kernels/${KERNEL_RELEASE}/include" REQUIRED)
+target_include_directories(memory_allocator_ion PRIVATE ${LINUX_HEADERS_PATH}/uapi ${LINUX_HEADERS_PATH})
 target_compile_options(memory_allocator_ion PRIVATE -fPIC)
 target_compile_definitions(memory_allocator_ion PRIVATE)
 
