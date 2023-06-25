@@ -17,6 +17,9 @@ cmake_minimum_required(VERSION 3.21)
 
 set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
 
+# Allow cmake to find findVitis.cmake, needed for setting variables such as VITIS_AIE_INCLUDE_DIR
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modulesXilinx")
+
 set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runtime libraries for.")
 set(AIE_RUNTIME_TEST_TARGET "x86_64" CACHE STRING "Runtime architecture to test with.")
 
