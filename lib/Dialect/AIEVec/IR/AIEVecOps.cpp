@@ -1449,41 +1449,38 @@ ParseResult UnpackOp::parse(OpAsmParser &parser, OperationState &result) {
 
 // Print out Shift op.
 void ShiftOp::print(OpAsmPrinter &p) {
-  // Print the source vectors
-  assert(!getSources().empty() && "shift source empty");
-  p << " " << getSources();
+  // Print the lhs and rhs vectors
+  p << " " << getLhs() << ", " << getRhs();
+
+  // Print shift
+  p << ", " << getShift();
 
   // Print the attributes
   p.printOptionalAttrDict((*this)->getAttrs());
 
   // And now print the types
-  p << " : " << getSources().getTypes().front() << ", "
-    << getResult().getType();
+  p << " : " << getLhs().getType() << ", " << getLhs().getType() << ", "
+    << getShift().getType() << ", " << getResult().getType();
 }
 
 // Verify Shift op.
 LogicalResult ShiftOp::verify() {
-  // The number of sources should be 1 or 2.
-  // If the number of sources is 1, this means it will concat an undefined
-  // vector then shift.
-  if (getSources().size() != 1 && getSources().size() != 2)
-    return emitError("sources cannot be empty and cannot concatenate more than "
-                     "two vectors before shift");
-
   // Verify the types
   VectorType resultType = getResult().getType().dyn_cast<VectorType>();
   if (!resultType)
     return emitError("requires vector type");
 
-  SmallVector<Value, 8> srcs(getSources().begin(), getSources().end());
-  // All the sources and result must have the same type
-  for (auto source : srcs) {
-    VectorType type = source.getType().dyn_cast<VectorType>();
-    if (!type)
-      return emitError("requires vector type");
-    if (type != resultType)
-      return emitError("All sources must have same type");
-  }
+  // lhs, rhs and result must have the same type
+  VectorType lhsType = getLhs().getType().dyn_cast<VectorType>();
+  VectorType rhsType = getRhs().getType().dyn_cast<VectorType>();
+
+  if (!lhsType || !rhsType)
+    return emitError("requires vector type");
+  if (lhsType != resultType || rhsType != resultType)
+    return emitError("All vectors must have same type");
+
+  if (!isa<IntegerType>(getShift().getType()))
+    return emitError("requires integer type");
 
   return success();
 }
@@ -1491,11 +1488,13 @@ LogicalResult ShiftOp::verify() {
 // Parse Shift op.
 ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
-  SmallVector<Type, 2> types;
-  SmallVector<OpAsmParser::UnresolvedOperand, 8> sources;
+  SmallVector<Type, 4> types;
+  OpAsmParser::UnresolvedOperand lhs, rhs, shift;
 
   // Parse the source vectors
-  if (parser.parseOperandList(sources))
+  if (parser.parseOperand(lhs) || parser.parseComma() ||
+      parser.parseOperand(rhs) || parser.parseComma() ||
+      parser.parseOperand(shift))
     return failure();
 
   // Parse all the attributes and types
@@ -1503,17 +1502,28 @@ ParseResult ShiftOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
 
-  if (result.attributes.getAttrs().size() != 2)
-    return parser.emitError(typesLoc, "expects two attributes");
+  if (result.attributes.getAttrs().size() != 1)
+    return parser.emitError(typesLoc, "expects one attribute");
+
+  // Assert that there are two types (source and result vectors)
+  if (types.size() != 4)
+    return parser.emitError(typesLoc, "requires four types");
 
   // Some verification
-  VectorType sourceType = types[0].dyn_cast<VectorType>();
-  VectorType resultType = types[1].dyn_cast<VectorType>();
-  if (!sourceType || !resultType)
+  VectorType lhsType = types[0].dyn_cast<VectorType>();
+  VectorType rhsType = types[1].dyn_cast<VectorType>();
+  IntegerType shiftType = types[2].dyn_cast<IntegerType>();
+  VectorType resultType = types[3].dyn_cast<VectorType>();
+  if (!lhsType || !rhsType || !resultType)
     return parser.emitError(typesLoc, "requires vector type");
 
-  // Populate the source vectors in result
-  if (parser.resolveOperands(sources, sourceType, result.operands))
+  if (!shiftType)
+    return parser.emitError(typesLoc, "requires integer type");
+
+  // Populate the lhs vector, rhs vectors and shift in result
+  if (parser.resolveOperand(lhs, lhsType, result.operands) ||
+      parser.resolveOperand(rhs, rhsType, result.operands) ||
+      parser.resolveOperand(shift, shiftType, result.operands))
     return failure();
 
   return parser.addTypeToList(resultType, result.types);

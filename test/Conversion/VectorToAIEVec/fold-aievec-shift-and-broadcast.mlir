@@ -2,10 +2,12 @@
 
 func.func @fold_aievec_shift_and_broadcast(%a: memref<48xi8>) -> (vector<32xi8>, vector<32xi8>) {
     %c0 = arith.constant 0 : index
+    %c16 = arith.constant 16 : i32
+    %c22 = arith.constant 22 : i32
     %0 = aievec.upd %a[%c0] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<32xi8>
-    %1 = aievec.shift %0 {isAcc = false, shift = 16 : i32} : vector<32xi8>, vector<32xi8>
+    %1 = aievec.shift %0, %0, %c16 {isAcc = false} : vector<32xi8>, vector<32xi8>, i32, vector<32xi8>
     %2 = aievec.broadcast %1 {idx = 0 : i8} : vector<32xi8>, vector<32xi8>
-    %3 = aievec.shift %0 {isAcc = false, shift = 22 : i32} : vector<32xi8>, vector<32xi8>
+    %3 = aievec.shift %0, %0, %c22 {isAcc = false} : vector<32xi8>, vector<32xi8>, i32, vector<32xi8>
     %4 = aievec.broadcast %3 {idx = 2 : i8} : vector<32xi8>, vector<32xi8>
     return %2, %4 : vector<32xi8>, vector<32xi8>
 }

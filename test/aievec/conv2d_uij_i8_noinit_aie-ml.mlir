@@ -75,11 +75,13 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
 //      CHECK:    %[[C2:.*]] = arith.constant 2 : index
 //      CHECK:    %[[C1:.*]] = arith.constant 1 : index
 //      CHECK:    %[[C16:.*]] = arith.constant 16 : index
+//      CHECK:    %[[C16_i32:.*]] = arith.constant 16 : i32
+//      CHECK:    %[[C8:.*]] = arith.constant 8 : i32
 //      CHECK:    %[[C0:.*]] = arith.constant 0 : index
 //      CHECK:    %[[T0:.*]] = aievec.upd %[[A1]][%[[C0]]] {index = 0 : i8, offset = 0 : si32} : memref<48xi8>, vector<64xi8>
 //      CHECK:    %[[T1:.*]] = aievec.shuffle %[[T0]] {mode = 0 : i32} : vector<64xi8>, vector<64xi8>
-//      CHECK:    %[[T2:.*]] = aievec.shift %[[T1]] {isAcc = false, shift = 8 : i32} : vector<64xi8>, vector<64xi8>
-//      CHECK:    %[[T3:.*]] = aievec.shift %[[T1]] {isAcc = false, shift = 16 : i32} : vector<64xi8>, vector<64xi8>
+//      CHECK:    %[[T2:.*]] = aievec.shift %[[T1]], %[[T1]], %[[C8]] {isAcc = false} : vector<64xi8>, vector<64xi8>, i32, vector<64xi8>
+//      CHECK:    %[[T3:.*]] = aievec.shift %[[T1]], %[[T1]], %[[C16_i32]] {isAcc = false} : vector<64xi8>, vector<64xi8>, i32, vector<64xi8>
 //      CHECK:    scf.for %[[A3:.*]] = %[[C0]] to %[[C16]] step %[[C1]] {
 //      CHECK:      %[[T4:.*]] = arith.addi %[[A3]], %[[C1]] : index
 //      CHECK:      %[[T5:.*]] = arith.addi %[[A3]], %[[C2]] : index
