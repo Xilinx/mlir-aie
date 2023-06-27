@@ -714,8 +714,8 @@ static aievec::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
   return subOp;
 }
 
-static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, VectState *state,
-                                       Location loc, int32_t shiftBytes,
+static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, int32_t shiftBytes,
+                                       VectState *state, Location loc,
                                        VectorType resType = nullptr) {
   VectorType vecType = rhs.getType().cast<VectorType>();
 
@@ -802,7 +802,7 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
     state->builder.setInsertionPointAfter(shuffleOp);
     loc = shuffleOp->getLoc();
     rhs = generateShiftOp(shuffleOp->getResult(0), shuffleOp->getResult(0),
-                          state, loc, shiftBytes);
+                          shiftBytes, state, loc);
   } else {
     rhs = shuffleOp->getResult(0);
   }
@@ -2236,7 +2236,7 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
 
   // Generate a shift_bytes operation for concatRhs if needed.
   if (shiftBytes) {
-    concatRhs = generateShiftOp(concatRhs, concatRhs, state, loc, shiftBytes);
+    concatRhs = generateShiftOp(concatRhs, concatRhs, shiftBytes, state, loc);
   }
 
   Type stype = vType.getElementType();
