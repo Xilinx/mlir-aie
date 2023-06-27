@@ -574,7 +574,7 @@ def AIEVec_ShiftOp:
     vectors into a bigger vector, interprets them as a vector of 128 bytes
     and returns v1::v2[shift: shift+64]. The verifier confirms that all the
     input vectors have the same number of lanes.
-    `$result = shift($sources[0], $sources[1], $shift)`
+    `$result = shift($lhs, $rhs, $shift)`
   }];
 }
 

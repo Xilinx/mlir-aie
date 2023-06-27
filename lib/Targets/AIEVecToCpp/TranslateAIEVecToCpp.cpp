@@ -847,19 +847,6 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::ExtOp extOp) {
   return success();
 }
 
-// Generate undefined vector strings based on the vector lanes, source type and
-// element size of a vector
-static std::string getUndefVector(VectorType sourceType, bool isAcc = false) {
-  unsigned lanes = getVectorLaneSize(sourceType);
-  Type eltType = sourceType.getElementType();
-  int32_t eltSize = getElementSizeInBits(sourceType);
-  std::string res = "undef_v" + std::to_string(lanes) + (isAcc ? "acc" : "");
-  return res +
-         (eltType.isa<FloatType>() ? eltSize == 16 ? "bfloat16" : "float"
-                                   : "int" + std::to_string(eltSize)) +
-         "()";
-}
-
 // Generate the concat intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ConcatOp concatOp) {
