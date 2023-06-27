@@ -495,11 +495,13 @@ struct FoldMulAddChainToConvOpPattern
       // Generate a shift_bytes operation for rhs if the start position is not
       // 0.
       if (shiftBytes) {
-        SmallVector<Value> sources = {shuffleOp->getResult(0)};
-
+        arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+            shuffleOp->getLoc(), rewriter.getI32IntegerAttr(shiftBytes));
         rhs = rewriter.create<aievec::ShiftOp>(
-            shuffleOp->getLoc(), cast<VectorType>(sources.back().getType()),
-            sources, shiftBytes);
+            shuffleOp->getLoc(),
+            cast<VectorType>(shuffleOp->getResult(0).getType()),
+            shuffleOp->getResult(0), shuffleOp->getResult(0),
+            constOp.getResult());
       }
 
       aievec::UPDOp lUPDOp = cast<aievec::UPDOp>(lhs.getDefiningOp());

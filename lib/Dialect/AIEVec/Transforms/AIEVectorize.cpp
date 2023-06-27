@@ -714,24 +714,16 @@ static aievec::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
   return subOp;
 }
 
-static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
-                                       VectState *state, Location loc,
-                                       int32_t shiftBytes,
+static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, VectState *state,
+                                       Location loc, int32_t shiftBytes,
                                        VectorType resType = nullptr) {
-  // If the number of sources is 1, this means it will concat an undefined
-  // vector then shift.
-  assert((sources.size() == 1 || sources.size() == 2) &&
-         "the number of sources should be 1 or 2");
-
-  VectorType vecType = sources.back().getType().cast<VectorType>();
+  VectorType vecType = rhs.getType().cast<VectorType>();
 
   assert([&] {
-    for (auto source : sources) {
-      VectorType type = source.getType().cast<VectorType>();
-      if (type != vecType) {
-        printf("sources of concat op not of same type\n");
-        return false;
-      }
+    VectorType type = lhs.getType().cast<VectorType>();
+    if (type != vecType) {
+      printf("lhs and rhs do not have same type\n");
+      return false;
     }
     return true;
   }());
@@ -742,8 +734,10 @@ static aievec::ShiftOp generateShiftOp(SmallVector<Value> &sources,
     resType = createVectorType(lanes, scalarType);
   }
 
-  auto shiftOp =
-      state->builder.create<aievec::ShiftOp>(loc, resType, sources, shiftBytes);
+  arith::ConstantOp constOp = state->builder.create<arith::ConstantOp>(
+      loc, state->builder.getI32IntegerAttr(shiftBytes));
+  auto shiftOp = state->builder.create<aievec::ShiftOp>(loc, resType, lhs, rhs,
+                                                        constOp.getResult());
 
   return shiftOp;
 }
@@ -807,8 +801,8 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
   if (shiftBytes) {
     state->builder.setInsertionPointAfter(shuffleOp);
     loc = shuffleOp->getLoc();
-    SmallVector<Value> sources = {shuffleOp->getResult(0)};
-    rhs = generateShiftOp(sources, state, loc, shiftBytes);
+    rhs = generateShiftOp(shuffleOp->getResult(0), shuffleOp->getResult(0),
+                          state, loc, shiftBytes);
   } else {
     rhs = shuffleOp->getResult(0);
   }
@@ -2242,8 +2236,7 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
 
   // Generate a shift_bytes operation for concatRhs if needed.
   if (shiftBytes) {
-    SmallVector<Value> sources = {concatRhs};
-    concatRhs = generateShiftOp(sources, state, loc, shiftBytes);
+    concatRhs = generateShiftOp(concatRhs, concatRhs, state, loc, shiftBytes);
   }
 
   Type stype = vType.getElementType();

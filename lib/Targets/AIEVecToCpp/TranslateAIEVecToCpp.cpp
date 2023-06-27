@@ -891,8 +891,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
 // Generate the shift intrinsic
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::ShiftOp shiftOp) {
-  SmallVector<Value> sources = shiftOp.getSources();
-  int32_t shift = shiftOp.getShift();
+  Value lhs = shiftOp.getLhs();
+  Value rhs = shiftOp.getRhs();
+  Value shift = shiftOp.getShift();
   bool isAcc = shiftOp.getIsAcc();
 
   raw_indented_ostream &os = emitter.ostream();
@@ -904,19 +905,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << "shift_bytes";
   os << "(";
   // Print the lhs, rhs and shift
-  for (auto source : sources) {
-    // source should have already been emitted
-    if (!emitter.hasValueInScope(source))
-      return failure();
-    os << emitter.getOrCreateName(source);
-    os << ", ";
-    if (sources.size() == 1) {
-      VectorType sourceType = source.getType().cast<VectorType>();
-      os << getUndefVector(sourceType, isAcc);
-      os << ", ";
-    }
-  }
-  os << std::to_string(shift);
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
+  os << ", ";
+
+  if (!emitter.hasValueInScope(shift))
+    return failure();
+  os << emitter.getOrCreateName(shift);
   os << ")";
   return success();
 }
