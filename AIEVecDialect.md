@@ -747,7 +747,7 @@ AMD-specific shift intrinsic. Concatenates two
 vectors into a bigger vector, interprets them as a vector of 128 bytes
 and returns v1::v2[shift: shift+64]. The verifier confirms that all the
 input vectors have the same number of lanes.
-`$result = shift($sources[0], $sources[1], $shift, isAcc)`
+`$result = shift($lhs, $rhs, $shift)`
 
 Traits: AlwaysSpeculatableImplTrait
 
@@ -759,14 +759,15 @@ Effects: MemoryEffects::Effect{}
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-| `shift` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 | `isAcc` | ::mlir::BoolAttr | bool attribute
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `sources` | vector of any type values
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+| `shift` | 32-bit signless integer
 
 #### Results:
 
