@@ -813,13 +813,17 @@ Create a circular buffer or channel between two tiles
 Syntax:
 
 ```
-operation ::= `AIE.objectFifo.createObjectFifo` `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
+operation ::= `AIE.objectFifo.createObjectFifo` `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
 ```
 
 The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
 more consumers, which are `aie.tile` operations. The aie.createObjectFifo instantiates the given number of 
 buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
 based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
+
+For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
+take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
+size will be applied. If a single size is specified, it will be applied to both producer and consumers.
 
 This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
 locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
@@ -835,7 +839,7 @@ This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 e
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-| `elemNumber` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+| `elemNumber` | ::mlir::Attribute | 32-bit signless integer attribute whose minimum value is 0 or array attribute
 
 #### Operands:
 
