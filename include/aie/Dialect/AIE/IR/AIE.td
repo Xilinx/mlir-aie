@@ -64,6 +64,8 @@ def AIE_ObjectFifoSubviewType :
 
 def AIE_Type : AnyTypeOf<[AIE_ObjectFifoType, AIE_ObjectFifoSubviewType]>;
 
+def AIE_ObjectFifo_Depth : AnyAttrOf<[ConfinedAttr<I32Attr, [IntMinValue<0>]>, ArrayAttr]>;
+
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
                                            AnyFloat.predicate,
                                            AnyTensor.predicate]>,
@@ -1319,6 +1321,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
     based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
 
+    For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
+    take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
+    size will be applied. If a single size is specified, it will be applied to both producer and consumers.
+
     This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
@@ -1333,19 +1339,24 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   let arguments = (
     ins Index:$producerTile,
         Variadic<Index>:$consumerTiles,
-        ConfinedAttr<I32Attr, [IntMinValue<0>]>:$elemNumber
+        AIE_ObjectFifo_Depth:$elemNumber
   );
 
   let results = (outs AIE_ObjectFifoType:$fifo);
 
   let assemblyFormat = [{
-    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber`)` attr-dict `:` type($fifo)
+    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
   }];
   
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int size() { return getElemNumber(); }
+    int size(int index = 0) { 
+      if (isa<ArrayAttr>(getElemNumber()))
+        return dyn_cast<IntegerAttr>(dyn_cast<ArrayAttr>(getElemNumber())[index]).getInt(); 
+      else 
+        return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
+    }
     TileOp getProducerTileOp();
     bool hasName() {
        return name().has_value();

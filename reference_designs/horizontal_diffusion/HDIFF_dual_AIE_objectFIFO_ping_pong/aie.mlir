@@ -12,9 +12,9 @@ module @hdiff_multi_AIE{
   %lock71_14 = AIE.lock(%t71, 14) { sym_name = "lock71_14" }
   %lock72_14 = AIE.lock(%t72, 14) { sym_name = "lock72_14" }
 
-  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t71,%t72}, 6) {sym_name = "obj_in" }: !AIE.objectFifo<memref<256xi32>>
-  %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t71, {%t72}, 4) {sym_name = "obj_out_lap" } : !AIE.objectFifo<memref<256xi32>>
-  %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t72, {%t70}, 2) {sym_name = "obj_out_flux" } : !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t71,%t72}, 6 : i32) {sym_name = "obj_in" }: !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_out_lap = AIE.objectFifo.createObjectFifo(%t71, {%t72}, 4 : i32) {sym_name = "obj_out_lap" } : !AIE.objectFifo<memref<256xi32>>
+  %obj_fifo_out_flux = AIE.objectFifo.createObjectFifo(%t72, {%t70}, 2 : i32) {sym_name = "obj_out_flux" } : !AIE.objectFifo<memref<256xi32>>
    // DDR buffer
   %ext_buffer_in0  = AIE.external_buffer  {sym_name = "ddr_test_buffer_in0"}: memref<1536 x i32>
   %ext_buffer_out = AIE.external_buffer  {sym_name = "ddr_test_buffer_out"}: memref<512 x i32>

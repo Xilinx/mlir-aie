@@ -1,4 +1,4 @@
-//===- non_adjacency_test_1.aie.mlir --------------------------*- MLIR -*-===//
+//===- non_adjacency_test_1.mlir --------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -96,7 +96,7 @@ module @non_adjacency {
     %tile12 = AIE.tile(1, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2 : i32) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

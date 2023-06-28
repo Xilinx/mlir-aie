@@ -78,7 +78,7 @@ module @shimRow_mem {
     %tile71 = AIE.tile(7, 1)
     %tile70 = AIE.tile(7, 0)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile70, {%tile71}, 3) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile70, {%tile71}, 3 : i32) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
 
     %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
     AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)

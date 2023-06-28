@@ -34,10 +34,10 @@ module @alloc {
         %tile22 = AIE.tile(2, 2)
         %tile23 = AIE.tile(2, 3)
 
-        %connect1 = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
-        %connect2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile20}, 2) {sym_name = "of_out_0"} : !AIE.objectFifo<memref<64xi16>>
+        %connect1 = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2 : i32) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+        %connect2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile20}, 2 : i32) {sym_name = "of_out_0"} : !AIE.objectFifo<memref<64xi16>>
 
-        %connect3 = AIE.objectFifo.createObjectFifo(%tile20, {%tile23}, 2) {sym_name = "of_in_1"} : !AIE.objectFifo<memref<64xi16>>
-        %connect4 = AIE.objectFifo.createObjectFifo(%tile23, {%tile20}, 2) {sym_name = "of_out_1"} : !AIE.objectFifo<memref<64xi16>>
+        %connect3 = AIE.objectFifo.createObjectFifo(%tile20, {%tile23}, 2 : i32) {sym_name = "of_in_1"} : !AIE.objectFifo<memref<64xi16>>
+        %connect4 = AIE.objectFifo.createObjectFifo(%tile23, {%tile20}, 2 : i32) {sym_name = "of_out_1"} : !AIE.objectFifo<memref<64xi16>>
     }
 }

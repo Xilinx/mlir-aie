@@ -203,9 +203,10 @@ struct AIEObjectFifoStatefulTransformPass
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
                                       Value prodTile, Value consTile,
-                                      int depth) {
+                                      std::vector<Attribute> depth) {
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), datatype, prodTile, consTile, depth);
+        builder.getUnknownLoc(), datatype, prodTile, consTile,
+        builder.getArrayAttr(ArrayRef(depth)));
     return fifo;
   }
 
@@ -218,9 +219,12 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
     auto &target = dev.getTargetModel();
+    int numElem = op.size();
+    if (creation_tile.isShimTile())
+      numElem = externalBuffersPerFifo[op].size();
     if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
-      for (int i = 0; i < op.size(); i++) {
+      for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int lockID = lockAnalysis.getLockID(creation_tile);
         assert(lockID >= 0 && "No more locks to allocate!");
@@ -238,7 +242,7 @@ struct AIEObjectFifoStatefulTransformPass
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
       LockOp prodLock = builder.create<LockOp>(
-          builder.getUnknownLoc(), creation_tile, prodLockID, op.size());
+          builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
       prodLock.getOperation()->setAttr(
           mlir::SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name()->getValue() + "_prod_lock"));
@@ -828,8 +832,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.create<UseLockOp>(builder.getUnknownLoc(),
                                   locksPerFifo[op][lockID], lockMode,
                                   lockAction);
-        acc[op] =
-            (lockID + 1) % op.getElemNumber(); // update to next objFifo elem
+        acc[op] = (lockID + 1) % op.size(); // update to next objFifo elem
       }
     } else {
       int lockMode = 1;
@@ -850,8 +853,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
         builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockMode,
                                   lockAction);
-        acc[op] =
-            (acc[op] + 1) % op.getElemNumber(); // update to next objFifo elem
+        acc[op] = (acc[op] + 1) % op.size(); // update to next objFifo elem
       }
     }
   }
@@ -946,7 +948,7 @@ struct AIEObjectFifoStatefulTransformPass
       // for prefetching: simplest case scenario is at least a ping-pong buffer
     }
 
-    return 0;
+    return objFifo.size();
   }
 
   /// Function used to generate, from an objectFifo with a shimTile endpoint, a
@@ -982,6 +984,7 @@ struct AIEObjectFifoStatefulTransformPass
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int share_direction = 0;
       int consumerIndex = 0;
+      int consumerDepth = createOp.size();
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
@@ -999,14 +1002,20 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        int consMaxAcquire =
-            findObjectFifoSize(device, consumerTileOp, createOp);
+        if (isa<ArrayAttr>(createOp.getElemNumber())) {
+          // +1 to account for 1st depth (producer)
+          consumerDepth = createOp.size(consumerIndex + 1);
+        } else {
+          consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
+        }
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
 
+        std::vector<Attribute> consumerObjFifoSize = {
+            builder.getI32IntegerAttr(consumerDepth)};
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerTile, consumerTile, consMaxAcquire);
+            builder, datatype, consumerTile, consumerTile, consumerObjFifoSize);
 
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifo.getOperation()->setAttr(
@@ -1036,10 +1045,17 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-        int prodMaxAcquire =
-            findObjectFifoSize(device, createOp.getProducerTileOp(), createOp);
-        createOp->setAttr("elemNumber",
-                          builder.getI32IntegerAttr(prodMaxAcquire));
+        if (isa<ArrayAttr>(createOp.getElemNumber())) {
+          std::vector<Attribute> objFifoSize = {
+              builder.getI32IntegerAttr(createOp.size())};
+          createOp->setAttr("elemNumber",
+                            builder.getArrayAttr(ArrayRef(objFifoSize)));
+        } else {
+          int prodMaxAcquire = findObjectFifoSize(
+              device, createOp.getProducerTileOp(), createOp);
+          createOp->setAttr("elemNumber",
+                            builder.getI32IntegerAttr(prodMaxAcquire));
+        }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
         // register split consumer objectFifos
@@ -1245,7 +1261,7 @@ struct AIEObjectFifoStatefulTransformPass
         // create subview: buffers that were already acquired + new acquires
         for (int i = 0; i < numCreate; i++) {
           acquiredIndices.push_back(start);
-          start = (start + 1) % op.getElemNumber();
+          start = (start + 1) % op.size();
         }
         std::vector<BufferOp *> subviewRefs;
         for (auto index : acquiredIndices)

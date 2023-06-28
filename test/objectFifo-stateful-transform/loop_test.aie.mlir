@@ -91,7 +91,7 @@ module @loop  {
     %tile12 = AIE.tile(1, 2)
     %tile13 = AIE.tile(1, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4) {sym_name = "loop_of"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4 : i32) {sym_name = "loop_of"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%line_in:memref<16xi32>, %index:index) -> () {
         return
