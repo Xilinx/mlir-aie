@@ -110,9 +110,9 @@ def parse_args():
             nargs=argparse.REMAINDER)
     parser.add_argument('-j',
             dest="nthreads",
-            default=1,
+            default=4,
             action='store',
-            help='Compile with max n-threads in the machine (default is 1).  An argument of zero corresponds to the maximum number of threads on the machine.')
+            help='Compile with max n-threads in the machine (default is 4).  An argument of zero corresponds to the maximum number of threads on the machine.')
     parser.add_argument('--profile',
             dest="profiling",
             default=False,
