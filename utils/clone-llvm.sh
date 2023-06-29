@@ -25,7 +25,8 @@ if [ x"$1" == x--llvm-worktree ]; then
   git_central_llvm_repo_dir="$2"
   (
     cd $git_central_llvm_repo_dir
-    git worktree add "$here"/llvm $commithash
+    # Use force just in case there are various experimental iterations
+    git worktree add --force "$here"/llvm $commithash
   )
 else
   # Fetch main first just to clone
