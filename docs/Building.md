@@ -59,6 +59,8 @@ the tools are largely board and device independent and can be adapted to other e
     source utils/setup_python_packages.sh
     ```
 
+    If you need to exit the sandbox later, type `deactivate`.
+
 3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
 enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
 than 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
@@ -74,10 +76,10 @@ particular revision is expected to work.
     If you have already an LLVM repository, you can instead of cloning
     just make a new worktree from it by using:
     ````
-    ./utils/clone-llvm.sh --worktree <directory-of-existing-LLVM-repository>
+    ./utils/clone-llvm.sh --llvm-worktree <directory-of-existing-LLVM-repository>
     ````
 
-    To build (compile and install) LLVM, run `utils/build-llvm-local.sh`` in the directory that `llvm` and
+    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory that `llvm` and
     `cmakeModules` are cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
     Note that `build-llvm.sh` is a variation of the LLVM build script used for CI on GitHub.
     ```
@@ -86,7 +88,7 @@ particular revision is expected to work.
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
 4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` with
-    the path to the `llvm/build` directory. The Vitis enviroment will
+    the path to the `llvm/build` directory. The Vitis environment will
     have to be set up for this to succeed.
 
     ```
