@@ -20,6 +20,7 @@ add_mlir_dialect_library(
   AIEVectorOpt.cpp
   AIEObjectFifoStatefulTransform.cpp
   AIEObjectFifoRegisterProcess.cpp
+  AIEVerifyConnections.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
