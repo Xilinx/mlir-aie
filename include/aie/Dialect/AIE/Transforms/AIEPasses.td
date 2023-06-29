@@ -212,4 +212,25 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> 
   ];
 }
 
+def AIEVerifyConnections : Pass<"aie-verify-connections", "DeviceOp"> {
+  let summary = "Verify integrity of switchbox connection routing.";
+  let description = [{
+    This pass analyzes `AIE.connect` an `AIE.dmaStart` operations and issues 
+    errors if any discrepancies in routing are detected. Specifically, this 
+    pass ensures...
+
+    1. ... that all ends are properly connected between tiles. For example, 
+       if tile (2, 3) has a eastward outgoing connection, but tile (3, 3) does
+       not have a matching westward incoming connection, an error is raised.
+    2. ... no cycles in routing exist.
+    3. ... all `dmaStart` operations have matching `AIE.connect` operations to
+       route traffic into the DMA.
+
+    This pass does not transform the IR whatsoever.
+  }];
+  let constructor = "xilinx::AIE::createAIEVerifyConnectionsPass()";
+  let dependentDialects = [
+  ];
+}
+
 #endif

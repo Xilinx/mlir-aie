@@ -223,6 +223,7 @@ std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
 std::unique_ptr<OperationPass<DeviceOp>>
 createAIEObjectFifoRegisterProcessPass();
+std::unique_ptr<OperationPass<DeviceOp>> createAIEVerifyConnectionsPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
