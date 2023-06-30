@@ -57,11 +57,15 @@ install(TARGETS memory_allocator_ion
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
 )
 
-add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
-target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
-target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
-target_include_directories(memory_allocator_sim_aie PRIVATE ${xaienginePath})
+if (VITIS_ROOT)
+    add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
+    target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
+    target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
+    target_include_directories(memory_allocator_sim_aie PRIVATE ${xaienginePath})
 
-install(TARGETS memory_allocator_sim_aie
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-)
+    install(TARGETS memory_allocator_sim_aie
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+    )
+else()
+    message(STATUS "Vitis not found, simulation memory allocator will not be built.")
+endif()
