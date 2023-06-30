@@ -4,7 +4,6 @@
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
 ##===----------------------------------------------------------------------===##
 #
 # This script builds mlir-aie given <llvm dir>.
@@ -54,4 +53,3 @@ cmake -GNinja\
 ninja |& tee ninja.log
 ninja install |& tee ninja-install.log
 #ninja check-aie |& tee ninja-check-aie.log
-cd ..

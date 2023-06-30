@@ -43,13 +43,14 @@ the tools are largely board and device independent and can be adapted to other e
 
 ## Building on X86
 
-1. Clone the mlir-aie repo.
+1. Clone the `mlir-aie` repository with its sub-modules:
     ```
-    git clone https://github.com/Xilinx/mlir-aie.git
+    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
     cd mlir-aie
     ```
 
-    __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
+    __All subsequent steps should be run from inside the top-level
+    directory of the `mlir-aie` repository cloned above.__
 
 2. Source `utils/setup_python_packages.sh` to setup the prerequisite python
     packages. This script creates and installs the python packages
@@ -59,15 +60,17 @@ the tools are largely board and device independent and can be adapted to other e
     source utils/setup_python_packages.sh
     ```
 
-    If you need to exit the sandbox later, type `deactivate`.
-    If you have a recent Linux distribution, you might not need since
-    if you are able to have all the required packages from the distribution.
+    If you need to exit the sandbox later, type `deactivate`.  If you
+    have a recent Linux distribution, you might not need this, as you
+    are able to have all the required packages from the distribution.
 
-3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
-enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
-than 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
-so. You may find that other options are also useful. Note that due to changing MLIR APIs, only a
-particular revision is expected to work.
+3. Clone and compile LLVM, with the ability to target AArch64 as a
+   cross-compiler, and with MLIR enabled: in addition, we make some
+   common build optimizations to use a linker (`lld` or `gold`) other
+   than `ld` (which tends to be quite slow on large link jobs) and to
+   link against `libLLVM.so` and `libClang.so`. You may find that other
+   options are also useful. Note that due to changing MLIR APIs, only
+   a particular revision is expected to work.
 
     To clone `llvm`, run `utils/clone-llvm.sh` (see
     `utils/clone-llvm.sh` for the correct `llvm` commit hash):
@@ -81,8 +84,7 @@ particular revision is expected to work.
     ./utils/clone-llvm.sh --llvm-worktree <directory-of-existing-LLVM-repository>
     ````
 
-    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory that `llvm` and
-    `cmakeModules` are cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
+    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory that `llvm` is cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
     (Note that `build-llvm-local.sh` and `build-llvm.sh` are a
     variation of the LLVM build script used for CI on GitHub and
     looking at the continuous integration recipe
