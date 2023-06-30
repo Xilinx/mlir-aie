@@ -9,6 +9,9 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   IntervalReuse.cpp
   AIEVectorize.cpp
   ConvertVectorToAIEVec.cpp
+  VectorToVectorConversions.cpp
+  VectorToAIEVecConversions.cpp
+  AIEVecOptimizations.cpp
   FoldMulAddChainToConvOp.cpp
 
   ADDITIONAL_HEADER_DIRS

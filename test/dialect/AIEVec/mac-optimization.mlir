@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -aievec-transformation -canonicalize -split-input-file | FileCheck %s
+// RUN: aie-opt %s -optimize-aievec -canonicalize -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @merge_single_column_mac(
 // CHECK-SAME: %[[VA:[A-Za-z0-9]+]]: vector<16xi16>,

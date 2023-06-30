@@ -1,4 +1,4 @@
-//===- broadcast_test.aie.mlir --------------------------*- MLIR -*-===//
+//===- broadcast_test.mlir --------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -271,7 +271,7 @@ module @broadcast {
     %tile32 = AIE.tile(3, 2)
     %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile13, {%tile12, %tile14, %tile32, %tile33}, 4) {sym_name = "broadcast_of"} : !AIE.objectFifo<memref<16xi32>>
+    %objFifo = AIE.objectFifo.createObjectFifo(%tile13, {%tile12, %tile14, %tile32, %tile33}, [2, 2, 3, 4, 3]) {sym_name = "broadcast_of"} : !AIE.objectFifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

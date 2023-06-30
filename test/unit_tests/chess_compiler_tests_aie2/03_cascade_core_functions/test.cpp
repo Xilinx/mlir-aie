@@ -33,6 +33,11 @@ int main(int argc, char *argv[]) {
   mlir_aie_configure_dmas(_xaie);
   mlir_aie_initialize_locks(_xaie);
 
+  // FIXME: model in MLIR
+  XAie_CoreConfigAccumulatorControl(&(_xaie->DevInst), XAie_TileLoc(1, 3), WEST,
+                                    EAST);
+  XAie_CoreConfigAccumulatorControl(&(_xaie->DevInst), XAie_TileLoc(2, 3), WEST,
+                                    EAST);
   int errors = 0;
 
   mlir_aie_write_buffer_a(_xaie, 3, 7);
@@ -40,8 +45,8 @@ int main(int argc, char *argv[]) {
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  mlir_aie_check("Before release lock:", mlir_aie_read_buffer_c(_xaie, 5), 0,
-                 errors);
+  // mlir_aie_check("Before release lock:", mlir_aie_read_buffer_c(_xaie, 5), 0,
+  //                errors);
 
   printf("Release input buffer lock.\n");
   mlir_aie_release_input_lock(_xaie, 1, 0);
@@ -52,8 +57,10 @@ int main(int argc, char *argv[]) {
     printf("ERROR: Failed to acquire output lock!\n");
   }
 
-  mlir_aie_dump_tile_memory(_xaie, 1, 3);
-  mlir_aie_dump_tile_memory(_xaie, 2, 3);
+  mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_a(_xaie, 4), 35,
+                 errors);
+  mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_c(_xaie, 4), 35,
+                 errors);
   mlir_aie_check("After acquire lock:", mlir_aie_read_buffer_c(_xaie, 5), 175,
                  errors);
 

@@ -377,9 +377,20 @@ class flow_runner:
                                 '-o', os.path.join(sim_dir, 'flows_physical.json')])
 
       sim_script = os.path.join(self.tmpdirname, 'aiesim.sh')
+      sim_script_template = \
+"""
+#!/bin/sh
+prj_name=$(basename $(dirname $(realpath $0)))
+root=$(dirname $(dirname $(realpath $0)))
+vcd_filename=foo
+if [ -n "$1" ]; then
+  vcd_filename=$1
+fi
+cd $root
+aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
+"""
       with open(sim_script, "wt") as sim_script_file:
-        sim_script_file.write("#!/bin/sh\n")
-        sim_script_file.write("aiesimulator --pkg-dir=" + sim_dir + " --dump-vcd foo\n")
+        sim_script_file.write(sim_script_template)
       stats = os.stat(sim_script)
       os.chmod(sim_script, stats.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
