@@ -167,7 +167,7 @@ struct AIEObjectFifoStatefulTransformPass
                               // external buffers
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
-  DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>
+  std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
       splitFifos;     // maps each objFifo between non-adjacent tiles to its
                       // corresponding consumer objectFifos
   DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> 
@@ -982,11 +982,13 @@ struct AIEObjectFifoStatefulTransformPass
   template <typename MyOp> void checkSplitFifo(MyOp op, TileOp tile) {
     ObjectFifoCreateOp parentFifo =
         op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
-    if (splitFifos.find(parentFifo) != splitFifos.end()) {
-      if (op.getPort() == ObjectFifoPort::Consume) {
-        for (auto splitFifo : splitFifos[parentFifo]) {
-          if (splitFifo.getProducerTile() == tile.getResult())
-            op->replaceUsesOfWith(parentFifo, splitFifo);
+    for (auto& [producer, consumers] : splitFifos) {
+      if (producer == parentFifo) {
+        if (op.getPort() == ObjectFifoPort::Consume) {
+          for (auto splitFifo : consumers) {
+            if (splitFifo.getProducerTile() == tile.getResult())
+              op->replaceUsesOfWith(parentFifo, splitFifo);
+          }
         }
       }
     }
@@ -1093,21 +1095,20 @@ struct AIEObjectFifoStatefulTransformPass
 
         // objectFifos between non-adjacent tiles must be split into two,
         // their elements will be created in next iterations
-        if (isa<ArrayAttr>(createOp.getElemNumber())) {
+        if (isa<ArrayAttr>(createOp.getElemNumber()))
           // +1 to account for 1st depth (producer)
           consumerDepth = createOp.size(consumerIndex + 1);
-        } else {
+        else
           consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
-        }
+        
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
-
         std::vector<Attribute> consumerObjFifoSize = {
             builder.getI32IntegerAttr(consumerDepth)};
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerTile, consumerTile, consumerObjFifoSize);
-
+        // rename split objectFifo
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifo.getOperation()->setAttr(
               SymbolTable::getSymbolAttrName(),
@@ -1120,6 +1121,8 @@ struct AIEObjectFifoStatefulTransformPass
               builder.getStringAttr(createOp.name()->getValue() + "_cons"));
         }
 
+        // identify external buffers that were registered to 
+        // the consumer objectFifo
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
           detectExternalBuffers(device, createOp, consumerFifo, consumerTile);
 
@@ -1132,7 +1135,9 @@ struct AIEObjectFifoStatefulTransformPass
           if (linkOp->getFifoIn() == createOp.getFifo())
             linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(), consumerFifo.getFifo());
       }
-
+      
+      // identify external buffers that were registered to 
+      // the producer objectFifo
       if (createOp.getProducerTileOp().isShimTile())
         detectExternalBuffers(device, createOp, createOp,
                               createOp.getProducerTile());
@@ -1156,14 +1161,14 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
         // register split consumer objectFifos
-        splitFifos[createOp] = splitConsumerFifos;
+        splitFifos.push_back({createOp, splitConsumerFifos});
       }
     }
 
     //===----------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===----------------------------------------------------------------------===//
-    for (auto [producer, consumers] : splitFifos) {
+    for (auto& [producer, consumers] : splitFifos) {
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());

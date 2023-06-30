@@ -1384,9 +1384,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", []> {
 
     Example:
     ```
-      %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, {%t72}, 2) : !AIE.objectFifo<memref<64xi16>>
-      %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, {%t74}, 2) : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo.link(%of_t70_t72, %of_t72_t74) : (!AIE.objectFifo<memref<64xi16>>, !AIE.objectFifo<memref<64xi16>>)
+      %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, {%t72}, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
+      %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, {%t74}, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo.link(%of_t70_t72, {%of_t72_t74}) : (!AIE.objectFifo<memref<64xi16>>, !AIE.objectFifo<memref<64xi16>>)
     ```
     This operation links two objectFifos which have tile %t72 as a link point.
 

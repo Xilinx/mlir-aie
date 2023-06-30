@@ -82,6 +82,7 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
+// CHECK:   AIE.shimDMAAllocation("link1", MM2S, 0, 2)
 // CHECK: }
 
 module @link_AIE1 {
