@@ -249,7 +249,7 @@ class flow_runner:
 
       # Generate the included host interface
       file_physical = os.path.join(self.tmpdirname, 'input_physical.mlir')
-      await self.do_call(task, ['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-lower-multicast', self.file_with_addresses, '-o', file_physical]);
+      await self.do_call(task, ['aie-opt', '--aie-create-pathfinder-flows', '--aie-lower-broadcast-packet', '--aie-create-packet-flows', '--aie-verify-connections', '--aie-lower-multicast', self.file_with_addresses, '-o', file_physical]);
       file_inc_cpp = os.path.join(self.tmpdirname, 'aie_inc.cpp')
       await self.do_call(task, ['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
 
@@ -426,6 +426,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                                           '--aie-objectFifo-stateful-transform',
                                           '--aie-lower-broadcast-packet',
                                           '--aie-create-packet-flows',
+                                          '--aie-verify-connections',
                                           '--aie-lower-multicast',
                                           '--aie-assign-buffer-addresses',
                                           '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses], True)
