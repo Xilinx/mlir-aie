@@ -1,4 +1,4 @@
-//===- link_test_AIE2.mlir ------------------------------------------------*- MLIR -*-===//
+//===- link_test_DDR_to_L1.mlir ------------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -12,7 +12,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK: module @link_AIE2 {
+// CHECK: module @link_DDR_L1 {
 // CHECK:   AIE.device(xcve2302) {
 // CHECK:     %0 = AIE.tile(2, 0)
 // CHECK:     %1 = AIE.tile(2, 1)
@@ -86,7 +86,7 @@
 // CHECK:   AIE.shimDMAAllocation("to_memTile", MM2S, 0, 2)
 // CHECK: }
 
-module @link_AIE2 {
+module @link_DDR_L1 {
     AIE.device(xcve2302) {
         %tile20 = AIE.tile(2, 0)
         %tile21 = AIE.tile(2, 1)
