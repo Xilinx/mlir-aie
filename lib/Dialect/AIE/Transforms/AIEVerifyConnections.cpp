@@ -44,6 +44,7 @@ bool regionContains(mlir::Region& r)
 struct AIEVerifyConnectionsPass 
 	: public AIEVerifyConnectionsBase<AIEVerifyConnectionsPass>
 {
+
 private:
 
   struct endpoint {
@@ -86,7 +87,8 @@ private:
         || regionContains<PacketRulesOp>(switchboxRegion)
         || regionContains<PacketRuleOp>(switchboxRegion)) {
         switchbox->emitWarning() << getPassName() << " currently does not "
-                              "support code containing packet-switched routing";
+                              "support code containing packet-switched "
+                              "routing.";
         ret = false;
       }
     }
@@ -126,6 +128,7 @@ private:
     // How to read the following:
     // "If it goes out `outgoing` at the source, it must come in at
     //  `return value` at the destination."
+    // (And vice versa.)
     switch(outgoing) {
       case WireBundle::North: {
         return WireBundle::South;
@@ -140,10 +143,11 @@ private:
         return WireBundle::East;
       }
       default: {
-
+        // This is not 100% accurate; it could also be DMA.
+        // This function is only really useful for N, E, S, W inputs.
+        return WireBundle::Core;
       }
     }
-    return WireBundle::North; // FIXME
   }
 
   void buildConnectionGraph(Region &region, 
@@ -184,9 +188,10 @@ private:
       const endpoint &src = edge.first;
       link &link = edge.second;
       const endpoint dst = getOppositeEnd(src);
+      assert(0 <= dst.tile.first && 0 <= dst.tile.second);
       if(src.tile == dst.tile) {
         // This is a tile-local connection to DMA or Core
-        // TODO: see if there are any checks that should be performed here.
+        // TODO: Verify there is a DMA that uses this connection.
         continue;
       }
       if(0 == src.tile.second || 0 == dst.tile.second) {
@@ -194,22 +199,36 @@ private:
         // TODO: Check these.
         continue;
       }
-      if(0 > dst.tile.first || 0 > dst.tile.second) {
-        // TODO: Also verify upper limit.
-        link.op.emitError() << "Connection to tile (" << dst.tile.first << ", "
-                            << dst.tile.second << ") is out of range.\n";
+      if(incoming_edges.count(dst) == 0) {
+        link.op.emitError() << "There is no matching incoming connection for "
+                            "<\"" << stringifyWireBundle(dst.bundle) << "\" : "
+                            << dst.channel << ">" " in tile "
+                            "(" << dst.tile.first << ", " << dst.tile.second 
+                            << ")" " for this outgoing connection.";
         signalPassFailure();
       }
-      int incoming_count = incoming_edges.count(dst);
-      if(incoming_count == 0) {
-        link.op.emitError() << "There is no matching incoming edge in tile (" 
-                            << dst.tile.first << ", " << dst.tile.second << ") "
-                            "for this outgoing edge.";
+    }
+
+    // Opposite of above: Verify all incoming edges are matched by an outgoing
+    // edge on the opposite end.
+    for(auto &edge: incoming_edges) {
+      const endpoint &src = edge.first;
+      link &link = edge.second;
+      const endpoint dst = getOppositeEnd(src);
+      assert(0 <= dst.tile.first && 0 <= dst.tile.second);
+      if(src.tile == dst.tile) {
+        continue;
+      }
+      if(0 == src.tile.second || 0 == dst.tile.second) {
+        continue; // Shim row
+      }
+      if(outgoing_edges.count(dst) == 0) {
+        link.op.emitError() << "There is no matching outgoing connection for "
+                            "<\"" << stringifyWireBundle(dst.bundle) << "\" : "
+                            << dst.channel << ">" " in tile "
+                            "(" << dst.tile.first << ", " << dst.tile.second 
+                            << ")" " for this incoming connection.";
         signalPassFailure();
-      } else if(incoming_count < 1) {
-        link.op.emitWarning() << "Duplicate incoming edges at the destination "
-                                 "tile (" << dst.tile.first << ", " 
-                                 << dst.tile.second << ") found.";
       }
     }
   }
@@ -229,14 +248,14 @@ private:
         // There must be a connection going _into_ the DMA.
         if(outgoing_edges.find(dma_end) == outgoing_edges.end()) {
           dma.emitError() << "S2MM DMA defined, but no incoming connections "
-                             "(AIE.connect()) to the DMA are defined.\n";
+                             "to the DMA are defined.";
           signalPassFailure();
         }
       } else { // MM2S
         // There must be a connection going _out of_ the DMA.
         if(incoming_edges.find(dma_end) == incoming_edges.end()) {
-          dma.emitError() << "MM2S DMA defined, but no connections out of the "
-                             "DMA are defined.\n";
+          dma.emitError() << "MM2S DMA defined, but no outgoing connections "
+                             "out of the DMA are defined.";
           signalPassFailure();
         }
       }
@@ -303,6 +322,7 @@ private:
   }
 
 public :
+
   void runOnOperation() override {
     graph outgoing_edges,  // map of AIE.connect()s, indexed by the dest port
           incoming_edges;  // map of AIE.connect()s, indexed by the src port
