@@ -10,11 +10,11 @@ jobs:
   build-docs:
     name: Generate Documentation
     runs-on: ubuntu-latest
-    
+
     # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
     permissions:
       contents: write
-      
+
     steps:
       - name: Configure Environment
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
@@ -22,7 +22,7 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 2
           submodules: "true"
@@ -56,7 +56,7 @@ jobs:
         id: clone-llvm
         run: utils/clone-llvm.sh
         shell: bash
-        
+
       - name: Rebuild and Install LLVM
         run: utils/build-llvm.sh
 
@@ -96,4 +96,3 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build_release/docs
           enable_jekyll: true
-
