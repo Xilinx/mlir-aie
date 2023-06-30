@@ -8,10 +8,58 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Current limitations/To-Dos of this pass:
-// - Does not support packet switching
-// - Is only concerned with dmaBd routes. Routes straight from the core
-//   can still lead nowhere/be disconnected.
+/*
+This pass verifies that the connections between tiles are terminated at both
+ends and contain no cycles.
+
+This pass does not transform the MLIR whatsoever; it is purely analysis. It
+issues errors if there are unterminated connections or cycles. This is done at
+the switchbox connection (`AIE.connect`) and DMA (`AIE.dmaStart`) levels.
+
+Specifically, this pass issues the following new errors after analysis:
+
+- Cycle errors, along with some connection along the cycle.
+   ```
+    error: There is a cycle in the route containing this connection.
+        AIE.connect<"North" : 0, "West" : 0>
+    ````
+- No outgoing connection errors: If there is a switchbox configured with an
+  incoming connection from N, E, S, W direction, but in its neighboring tile's
+  switchbox, there is no outgoing connection from S, W, N, E direction,
+  respectively.
+    ```
+    error: There is no matching outgoing connection for <"East" : 2> in tile
+    (0, 1) for this incoming connection.
+        AIE.connect<"West" : 2, "DMA" : 1>
+    ```
+
+- No incoming connection errors: Essentially the analog of above, if a switchbox
+  is configured to send traffic out towards N, E, S, W, but its neighboring tile
+  is not configured to accept traffic from S, W, N, E, an error is issued.
+    ````
+    error: There is no matching incoming connection for <"West" : 1> in tile
+    (1, 1) for this outgoing connection.
+        AIE.connect<"DMA" : 1, "East" : 1>
+    ````
+
+- No connection for DMAs: If a MM2S DMA is configured, but no switchbox
+   connection DMA->X is configured, or if a S2MM, but no switchbox connection
+   X->DMA is configured, an error is issued.
+    ```
+    error: S2MM DMA defined, but no incoming connections to the DMA are defined.
+        %dma = AIE.dmaStart("S2MM", 0, ^bd, ^end)
+   ```
+
+There are tests in `test/verify-connections` that demonstrate all of the above
+examples.
+
+Current limitations:
+- Does not check if there is a matching configured DMA if a X->DMA
+  `AIE.connect` is issued. (Essentially the opposite of the last error above.)
+- Does not support packet based routing, only circuit switched. A warning is
+  issued by the pass if packet based routing is used and the pass is invoked.
+- Currently does not verify routing in the shim row.
+*/
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/IR/IRMapping.h"
