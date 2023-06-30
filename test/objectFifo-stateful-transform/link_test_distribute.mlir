@@ -166,7 +166,6 @@ module @link_distribute {
         %objFifo3 = AIE.objectFifo.createObjectFifo(%tile21, {%tile23}, 2 : i32) {sym_name = "link3"} : !AIE.objectFifo<memref<20xi32>>
         %objFifo4 = AIE.objectFifo.createObjectFifo(%tile21, {%tile33}, 2 : i32) {sym_name = "link4"} : !AIE.objectFifo<memref<12xi32>>
 
-
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
         AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<48xi32>>, {%ext_buffer_in}) : (memref<48xi32>)
 

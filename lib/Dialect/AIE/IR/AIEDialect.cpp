@@ -437,15 +437,18 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   int inputSize = (int)elemType.getShape()[0];
 
   if (elemType.getShape().size() > 1)
-    return emitError("ObjectFifoLinkOp currently only supports objFifos with 1-dimensional memrefs");
+    return emitError("ObjectFifoLinkOp currently only supports objFifos with "
+                     "1-dimensional memrefs");
 
   for (auto fifoOut : getFifoOuts()) {
     ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
     if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
-      return emitError("ObjectFifoLinkOp must have a link point, i.e., a shared tile between objectFifos");
+      return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
+                       "shared tile between objectFifos");
   }
 
-  // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn datatype
+  // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn
+  // datatype
   if (getFifoOuts().size() > 1) {
     int outputSize = 0;
     for (auto fifoOut : getFifoOuts()) {
@@ -455,15 +458,16 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
       outputSize += (int)elemType.getShape()[0];
 
       if (elemType.getShape().size() > 1)
-        return emitError("ObjectFifoLinkOp currently only supports objFifos with 1-dimensional memrefs");
+        return emitError("ObjectFifoLinkOp currently only supports objFifos "
+                         "with 1-dimensional memrefs");
     }
     if (outputSize != inputSize)
-      return emitError("Total size of output objFifos in ObjectFifoLinkOp must be equal to size of input objFifo");
+      return emitError("Total size of output objFifos in ObjectFifoLinkOp must "
+                       "be equal to size of input objFifo");
   }
 
   return success();
 }
-
 
 // ObjectFifoRegisterExternalBuffersOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {

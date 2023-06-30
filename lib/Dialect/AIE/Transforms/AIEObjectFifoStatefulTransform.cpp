@@ -168,9 +168,9 @@ struct AIEObjectFifoStatefulTransformPass
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
   std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
-      splitFifos;     // maps each objFifo between non-adjacent tiles to its
-                      // corresponding consumer objectFifos
-  DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp> 
+      splitFifos; // maps each objFifo between non-adjacent tiles to its
+                  // corresponding consumer objectFifos
+  DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
       objFifoLinks; // maps each ObjectFifoLinkOp to objFifo whose elements
                     // have been created and should be used
 
@@ -187,9 +187,9 @@ struct AIEObjectFifoStatefulTransformPass
       *share_direction = 0;
       return false;
     }
-    if ((target_model.isMemTile(a.getCol(), a.getRow()) && 
+    if ((target_model.isMemTile(a.getCol(), a.getRow()) &&
          !target_model.isMemTile(b.getCol(), b.getRow())) ||
-        (!target_model.isMemTile(a.getCol(), a.getRow()) && 
+        (!target_model.isMemTile(a.getCol(), a.getRow()) &&
          target_model.isMemTile(b.getCol(), b.getRow()))) {
       *share_direction = 0;
       return false;
@@ -224,8 +224,8 @@ struct AIEObjectFifoStatefulTransformPass
   /// Called by createObjectFifoElements().
   std::vector<LockOp> createObjectFifoLocks(OpBuilder &builder,
                                             LockAnalysis &lockAnalysis,
-                                            ObjectFifoCreateOp op,
-                                            int numElem, TileOp creation_tile) {
+                                            ObjectFifoCreateOp op, int numElem,
+                                            TileOp creation_tile) {
     std::vector<LockOp> locks;
     auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
     auto &target = dev.getTargetModel();
@@ -277,9 +277,9 @@ struct AIEObjectFifoStatefulTransformPass
     return size;
   }
 
-  /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp, 
+  /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
- std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
+  std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
     std::optional<ObjectFifoLinkOp> link = {};
     for (auto user : op.getOperation()->getUsers())
       if (isa<ObjectFifoLinkOp>(user))
@@ -301,7 +301,7 @@ struct AIEObjectFifoStatefulTransformPass
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
-    // if this objectFifo is linked to another, check if the other's elements 
+    // if this objectFifo is linked to another, check if the other's elements
     // have already been created (the elements that are created are those of
     // the objFifo with elements of bigger size)
     bool linked = false;
@@ -330,7 +330,7 @@ struct AIEObjectFifoStatefulTransformPass
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
         BufferOp buff = builder.create<BufferOp>(builder.getUnknownLoc(),
-                                                elemType, creation_tile);
+                                                 elemType, creation_tile);
         buff.getOperation()->setAttr(
             mlir::SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name()->getValue() + "_buff_" +
@@ -344,7 +344,8 @@ struct AIEObjectFifoStatefulTransformPass
         numElem *= linkOp->getFifoOuts().size();
       objFifoLinks[*linkOp] = op;
     }
-    locks = createObjectFifoLocks(builder, lockAnalysis, op, numElem, creation_tile);
+    locks = createObjectFifoLocks(builder, lockAnalysis, op, numElem,
+                                  creation_tile);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -362,7 +363,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a Bd block.
   template <typename MyOp>
-  void createBd(OpBuilder &builder, LockOp acqLock, int acqMode, 
+  void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ) {
     builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqMode,
@@ -378,7 +379,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// producerDMA (i.e. on consumer tile).
   template <typename MyOp>
   void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
-                     int acqNum, int relNum, MyOp buff, int offset, int len, 
+                     int acqNum, int relNum, MyOp buff, int offset, int len,
                      DMAChannelDir channelDir, int blockIndex, Block *succ) {
     LockOp acqLock;
     LockOp relLock;
@@ -396,11 +397,13 @@ struct AIEObjectFifoStatefulTransformPass
       acqMode = acqNum;
       relMode = relNum;
       acqLockAction = LockAction::AcquireGreaterEqual;
-      acqLock = (channelDir == DMAChannelDir::S2MM) ? locksPerFifo[op][0] : locksPerFifo[op][1];
-      relLock = (channelDir == DMAChannelDir::S2MM) ? locksPerFifo[op][1] : locksPerFifo[op][0];
+      acqLock = (channelDir == DMAChannelDir::S2MM) ? locksPerFifo[op][0]
+                                                    : locksPerFifo[op][1];
+      relLock = (channelDir == DMAChannelDir::S2MM) ? locksPerFifo[op][1]
+                                                    : locksPerFifo[op][0];
     }
-    createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode,
-             buff, offset, len, succ);
+    createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
+             offset, len, succ);
   }
 
   /// Function that either calls createAIETileDMA(), createShimDMA() or
@@ -487,8 +490,8 @@ struct AIEObjectFifoStatefulTransformPass
       }
       builder.setInsertionPointToStart(curr);
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], 
-                              offset, len, channelDir, blockIndex, succ);
+                              buffersPerFifo[target][blockIndex], offset, len,
+                              channelDir, blockIndex, succ);
       curr = succ;
       blockIndex++;
     }
@@ -502,7 +505,7 @@ struct AIEObjectFifoStatefulTransformPass
     int numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
-    
+
     int acqNum = 1;
     int relNum = 1;
     int offset = 0;
@@ -558,7 +561,8 @@ struct AIEObjectFifoStatefulTransformPass
       builder.setInsertionPointToStart(curr);
       createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
                                       externalBuffersPerFifo[op][blockIndex],
-                                      offset, len, channelDir, blockIndex, succ);
+                                      offset, len, channelDir, blockIndex,
+                                      succ);
       curr = succ;
       blockIndex++;
     }
@@ -572,7 +576,7 @@ struct AIEObjectFifoStatefulTransformPass
     int numBlocks = op.size();
     if (numBlocks == 0)
       return;
-    
+
     int offset = 0;
     AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
@@ -600,11 +604,13 @@ struct AIEObjectFifoStatefulTransformPass
           } else {
             for (auto fifoOut : linkOp->getFifoOuts()) {
               auto createOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-              AIEObjectFifoType fifoType = createOp.getType().cast<AIEObjectFifoType>();
-              MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-              if (fifoOut == op.getFifo()) 
+              AIEObjectFifoType fifoType =
+                  createOp.getType().cast<AIEObjectFifoType>();
+              MemRefType elemType =
+                  fifoType.getElementType().cast<MemRefType>();
+              if (fifoOut == op.getFifo())
                 break;
-              else 
+              else
                 distribOffset += (int)elemType.getShape()[0];
             }
           }
@@ -666,7 +672,7 @@ struct AIEObjectFifoStatefulTransformPass
       if (isDistribute)
         offset = distribOffset * bytes;
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
-                              buffersPerFifo[target][blockIndex], offset, 
+                              buffersPerFifo[target][blockIndex], offset,
                               lenOut, channelDir, blockIndex, succ);
       curr = succ;
       blockIndex++;
@@ -982,7 +988,7 @@ struct AIEObjectFifoStatefulTransformPass
   template <typename MyOp> void checkSplitFifo(MyOp op, TileOp tile) {
     ObjectFifoCreateOp parentFifo =
         op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
-    for (auto& [producer, consumers] : splitFifos) {
+    for (auto &[producer, consumers] : splitFifos) {
       if (producer == parentFifo) {
         if (op.getPort() == ObjectFifoPort::Consume) {
           for (auto splitFifo : consumers) {
@@ -1100,7 +1106,7 @@ struct AIEObjectFifoStatefulTransformPass
           consumerDepth = createOp.size(consumerIndex + 1);
         else
           consumerDepth = findObjectFifoSize(device, consumerTileOp, createOp);
-        
+
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
@@ -1121,7 +1127,7 @@ struct AIEObjectFifoStatefulTransformPass
               builder.getStringAttr(createOp.name()->getValue() + "_cons"));
         }
 
-        // identify external buffers that were registered to 
+        // identify external buffers that were registered to
         // the consumer objectFifo
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
           detectExternalBuffers(device, createOp, consumerFifo, consumerTile);
@@ -1133,10 +1139,11 @@ struct AIEObjectFifoStatefulTransformPass
         auto linkOp = getOptionalLinkOp(createOp);
         if (linkOp)
           if (linkOp->getFifoIn() == createOp.getFifo())
-            linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(), consumerFifo.getFifo());
+            linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
+                                                      consumerFifo.getFifo());
       }
-      
-      // identify external buffers that were registered to 
+
+      // identify external buffers that were registered to
       // the producer objectFifo
       if (createOp.getProducerTileOp().isShimTile())
         detectExternalBuffers(device, createOp, createOp,
@@ -1168,7 +1175,7 @@ struct AIEObjectFifoStatefulTransformPass
     //===----------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===----------------------------------------------------------------------===//
-    for (auto& [producer, consumers] : splitFifos) {
+    for (auto &[producer, consumers] : splitFifos) {
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
