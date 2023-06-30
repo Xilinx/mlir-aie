@@ -35,7 +35,7 @@ jobs:
 
       - name: Get Submodule Hash
         id: get-submodule-hash
-        run: echo "::set-output name=hash::$(md5sum $(echo utils/clone-llvm.sh))"
+        run: echo "hash=$(md5sum $(echo utils/clone-llvm.sh))" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Ccache for C++ compilation
