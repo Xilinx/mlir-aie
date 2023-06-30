@@ -26,6 +26,7 @@ if [ x"$1" == x--llvm-worktree ]; then
   (
     cd $git_central_llvm_repo_dir
     # Use force just in case there are various experimental iterations
+    # after you have removed the llvm directory
     git worktree add --force "$here"/llvm $commithash
   )
 else
