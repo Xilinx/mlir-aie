@@ -636,9 +636,9 @@ struct AIEObjectFifoStatefulTransformPass
           }
         } else {
           if (target != op) {
-            AIEObjectFifoType targetFifo = 
+            AIEObjectFifoType targetFifo =
                 target.getType().cast<AIEObjectFifoType>();
-            MemRefType targetElemType = 
+            MemRefType targetElemType =
                 targetFifo.getElementType().cast<MemRefType>();
             lenOut = getMemrefTypeSize(targetElemType);
           }
