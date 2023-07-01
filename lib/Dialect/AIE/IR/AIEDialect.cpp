@@ -431,39 +431,66 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 
 // ObjectFifoLinkOp
 LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
-  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
-  AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
-  MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-  int inputSize = (int)elemType.getShape()[0];
+  if (isJoin() && isDistribute())
+    return emitError("ObjectFifoLinkOp does not support 'join' and 'distribute' at the same time");
 
-  if (elemType.getShape().size() > 1)
-    return emitError("ObjectFifoLinkOp currently only supports objFifos with "
-                     "1-dimensional memrefs");
+  if (isJoin()) {
+    ObjectFifoCreateOp fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    AIEObjectFifoType fifoType = fifoOut.getType().cast<AIEObjectFifoType>();
+    MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+    int outputSize = (int)elemType.getShape()[0];
 
-  for (auto fifoOut : getFifoOuts()) {
-    ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-    if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
-      return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
-                       "shared tile between objectFifos");
-  }
+    if (elemType.getShape().size() > 1)
+      return emitError("ObjectFifoLinkOp currently only supports objFifos with 1-dimensional memrefs");
 
-  // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn
-  // datatype
-  if (getFifoOuts().size() > 1) {
+    int inputSize = 0;
+    for (auto fifoIn : getFifoIns()) {
+      ObjectFifoCreateOp fifoInOp = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
+      AIEObjectFifoType fifoType = fifoInOp.getType().cast<AIEObjectFifoType>();
+      MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+      inputSize += (int)elemType.getShape()[0];
+
+      if (fifoOut.getConsumerTiles()[0] != fifoInOp.getProducerTile())
+        return emitError("ObjectFifoLinkOp must have a link point, i.e., a shared tile between objectFifos");
+    }
+    // if size of fifoIns > 1, check that the sum of their datatypes = fifoOut datatype
+    if (inputSize != outputSize)
+      return emitError("Total size of input objFifos in ObjectFifoLinkOp must be equal to size of output objFifo");
+  } else if (isDistribute()) {
+    ObjectFifoCreateOp fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
+    MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+    int inputSize = (int)elemType.getShape()[0];
+
+    if (elemType.getShape().size() > 1)
+      return emitError("ObjectFifoLinkOp currently only supports objFifos with 1-dimensional memrefs");
+    
     int outputSize = 0;
     for (auto fifoOut : getFifoOuts()) {
-      auto op = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-      AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
-      MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+      ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
+      AIEObjectFifoType fifoType = fifoOutOp.getType().cast<AIEObjectFifoType>();
+      MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
       outputSize += (int)elemType.getShape()[0];
 
-      if (elemType.getShape().size() > 1)
-        return emitError("ObjectFifoLinkOp currently only supports objFifos "
-                         "with 1-dimensional memrefs");
+      if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
+        return emitError("ObjectFifoLinkOp must have a link point, i.e., a shared tile between objectFifos");
     }
+    // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn datatype
     if (outputSize != inputSize)
-      return emitError("Total size of output objFifos in ObjectFifoLinkOp must "
-                       "be equal to size of input objFifo");
+      return emitError("Total size of output objFifos in ObjectFifoLinkOp must be equal to size of input objFifo");
+  } else {
+    ObjectFifoCreateOp fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    AIEObjectFifoType fifoInType = fifoIn.getType().cast<AIEObjectFifoType>();
+    MemRefType elemInType = fifoInType.getElementType().cast<MemRefType>();
+
+    ObjectFifoCreateOp fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    AIEObjectFifoType fifoOutType = fifoOut.getType().cast<AIEObjectFifoType>();
+    MemRefType elemOutType = fifoOutType.getElementType().cast<MemRefType>();
+
+    if ((elemInType.getShape().size() > 1) || (elemOutType.getShape().size() > 1))
+      return emitError("ObjectFifoLinkOp currently only supports objFifos with 1-dimensional memrefs");
+    if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
+        return emitError("ObjectFifoLinkOp must have a link point, i.e., a shared tile between objectFifos");
   }
 
   return success();
