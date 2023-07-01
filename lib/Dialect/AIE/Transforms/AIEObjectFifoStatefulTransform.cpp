@@ -310,9 +310,27 @@ struct AIEObjectFifoStatefulTransformPass
       linked = true;
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
         return; // elements have already been created
-      // for now, fifoIn has bigger size
-      if (linkOp->getFifoIn() != op)
-        return;
+      // if distribute, fifoIn has bigger size
+      if (linkOp->isDistribute()) {
+        if (linkOp->getFifoIn() != op)
+          return;
+      } else {
+        AIEObjectFifoType fifoIn = linkOp->getFifoIn().getType().cast<AIEObjectFifoType>();
+        MemRefType elemInType = fifoIn.getElementType().cast<MemRefType>();
+        int inSize = getMemrefTypeSize(elemInType);
+
+        AIEObjectFifoType fifoOut = linkOp->getFifoOuts()[0].getType().cast<AIEObjectFifoType>();
+        MemRefType elemOutType = fifoOut.getElementType().cast<MemRefType>();
+        int outSize = getMemrefTypeSize(elemOutType);
+
+        if (inSize >= outSize) {
+          if (linkOp->getFifoIn() != op)
+            return;
+        } else {
+          if (linkOp->getFifoOuts()[0] != op)
+            return;
+        }
+      }
     }
 
     TileOp creation_tile;
@@ -594,6 +612,11 @@ struct AIEObjectFifoStatefulTransformPass
     if (linkOp) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
+        if (target != op) {
+          AIEObjectFifoType targetFifo = target.getType().cast<AIEObjectFifoType>();
+          MemRefType targetElemType = targetFifo.getElementType().cast<MemRefType>();
+          lenOut = getMemrefTypeSize(targetElemType);
+        }
 
         // find offset based on order of this op in distribute list
         if (linkOp->isDistribute()) {

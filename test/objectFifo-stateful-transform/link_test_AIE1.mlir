@@ -86,17 +86,32 @@
 // CHECK: }
 
 module @link_AIE1 {
-    AIE.device(xcvc1902) {
-        %tile20 = AIE.tile(2, 0)
-        %tile22 = AIE.tile(2, 2)
-        %tile24 = AIE.tile(2, 4)
+    AIE.device(xcve2302) {
+        %0 = AIE.tile(0, 0)
+        %1 = AIE.tile(0, 1)
+        %2 = AIE.tile(0, 2)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<16xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile24}, 2 : i32) {sym_name = "link2"} : !AIE.objectFifo<memref<16xi32>>
-
-        AIE.objectFifo.link(%objFifo, {%objFifo2}) : (!AIE.objectFifo<memref<16xi32>>, !AIE.objectFifo<memref<16xi32>>)
-
-        %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"}: memref<16xi32> 
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buff_in}) : (memref<16xi32>)
+        %objFifo_in0 = AIE.objectFifo.createObjectFifo(%0, {%1}, 2 : i32) {sym_name = "of0"} : !AIE.objectFifo<memref<512xui8>>
+        %objFifo_in1 = AIE.objectFifo.createObjectFifo(%1, {%2}, 2 : i32) {sym_name = "link0"} : !AIE.objectFifo<memref<128xui8>>
+        AIE.objectFifo.link(%objFifo_in0, {%objFifo_in1}) : (!AIE.objectFifo<memref<512xui8>>, !AIE.objectFifo<memref<128xui8>>)
+        
+        %objFifo_out0 = AIE.objectFifo.createObjectFifo(%1, {%0}, 2 : i32) {sym_name = "of1"} : !AIE.objectFifo<memref<512xui8>>
+        %objFifo_out1 = AIE.objectFifo.createObjectFifo(%2, {%1}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<128xui8>>
+        AIE.objectFifo.link(%objFifo_out1, {%objFifo_out0}) : (!AIE.objectFifo<memref<128xui8>>, !AIE.objectFifo<memref<512xui8>>)
+        
+        %21 = AIE.core(%2) {
+            %c0 = arith.constant 0 : index
+            %c1 = arith.constant 1 : index
+            %c4096 = arith.constant 4096 : index
+            scf.for %arg0 = %c0 to %c4096 step %c1 {
+                %subview0 = AIE.objectFifo.acquire<Consume>(%objFifo_in1 : !AIE.objectFifo<memref<128xui8>>, 1) : !AIE.objectFifoSubview<memref<128xui8>>
+                %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<128xui8>> -> memref<128xui8>
+                %subview1 = AIE.objectFifo.acquire<Produce>(%objFifo_out1 : !AIE.objectFifo<memref<128xui8>>, 1) : !AIE.objectFifoSubview<memref<128xui8>>
+                %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<128xui8>> -> memref<128xui8>
+                AIE.objectFifo.release<Consume>(%objFifo_in1 : !AIE.objectFifo<memref<128xui8>>, 1)
+                AIE.objectFifo.release<Produce>(%objFifo_out1 : !AIE.objectFifo<memref<128xui8>>, 1)
+            }
+            AIE.end
+        }
     }
 }
