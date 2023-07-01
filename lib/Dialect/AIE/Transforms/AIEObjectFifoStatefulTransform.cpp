@@ -614,13 +614,6 @@ struct AIEObjectFifoStatefulTransformPass
     if (linkOp) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
-        if (target != op) {
-          AIEObjectFifoType targetFifo =
-              target.getType().cast<AIEObjectFifoType>();
-          MemRefType targetElemType =
-              targetFifo.getElementType().cast<MemRefType>();
-          lenOut = getMemrefTypeSize(targetElemType);
-        }
 
         // find offset based on order of this op in distribute list
         if (linkOp->isDistribute()) {
@@ -640,6 +633,14 @@ struct AIEObjectFifoStatefulTransformPass
               else
                 distribOffset += getMemrefTypeSize(elemType);
             }
+          }
+        } else {
+          if (target != op) {
+            AIEObjectFifoType targetFifo = 
+                target.getType().cast<AIEObjectFifoType>();
+            MemRefType targetElemType = 
+                targetFifo.getElementType().cast<MemRefType>();
+            lenOut = getMemrefTypeSize(targetElemType);
           }
         }
 
