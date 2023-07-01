@@ -436,10 +436,6 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
   int inputSize = (int)elemType.getShape()[0];
 
-  if (elemType.getShape().size() > 1)
-    return emitError("ObjectFifoLinkOp currently only supports objFifos with "
-                     "1-dimensional memrefs");
-
   for (auto fifoOut : getFifoOuts()) {
     ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
     if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
@@ -456,10 +452,6 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
       AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       outputSize += (int)elemType.getShape()[0];
-
-      if (elemType.getShape().size() > 1)
-        return emitError("ObjectFifoLinkOp currently only supports objFifos "
-                         "with 1-dimensional memrefs");
     }
     if (outputSize != inputSize)
       return emitError("Total size of output objFifos in ObjectFifoLinkOp must "

@@ -1373,7 +1373,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
 }
 
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", []> {
-  let summary = "Links two objectFifos through an intermediary tile's dma";
+  let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
     one dataflow movement which is split accross multiple objectFifos. Specifically, during the objectFifo lowering there will

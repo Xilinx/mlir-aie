@@ -611,7 +611,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoOut == op.getFifo())
                 break;
               else
-                distribOffset += (int)elemType.getShape()[0];
+                distribOffset += getMemrefTypeSize(elemType);
             }
           }
         }
