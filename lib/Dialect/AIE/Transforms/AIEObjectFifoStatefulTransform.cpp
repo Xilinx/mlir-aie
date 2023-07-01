@@ -315,11 +315,13 @@ struct AIEObjectFifoStatefulTransformPass
         if (linkOp->getFifoIn() != op)
           return;
       } else {
-        AIEObjectFifoType fifoIn = linkOp->getFifoIn().getType().cast<AIEObjectFifoType>();
+        AIEObjectFifoType fifoIn =
+            linkOp->getFifoIn().getType().cast<AIEObjectFifoType>();
         MemRefType elemInType = fifoIn.getElementType().cast<MemRefType>();
         int inSize = getMemrefTypeSize(elemInType);
 
-        AIEObjectFifoType fifoOut = linkOp->getFifoOuts()[0].getType().cast<AIEObjectFifoType>();
+        AIEObjectFifoType fifoOut =
+            linkOp->getFifoOuts()[0].getType().cast<AIEObjectFifoType>();
         MemRefType elemOutType = fifoOut.getElementType().cast<MemRefType>();
         int outSize = getMemrefTypeSize(elemOutType);
 
@@ -613,8 +615,10 @@ struct AIEObjectFifoStatefulTransformPass
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
         if (target != op) {
-          AIEObjectFifoType targetFifo = target.getType().cast<AIEObjectFifoType>();
-          MemRefType targetElemType = targetFifo.getElementType().cast<MemRefType>();
+          AIEObjectFifoType targetFifo =
+              target.getType().cast<AIEObjectFifoType>();
+          MemRefType targetElemType =
+              targetFifo.getElementType().cast<MemRefType>();
           lenOut = getMemrefTypeSize(targetElemType);
         }
 
