@@ -431,20 +431,25 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 
 // ObjectFifoLinkOp
 LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
-  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
-  AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
-  MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-  int inputSize = (int)elemType.getShape()[0];
+  auto sharedTile = getOptionalSharedTile();
+  if (!sharedTile)
+    return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
+                      "shared tile between objectFifos");
 
-  for (auto fifoOut : getFifoOuts()) {
-    ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-    if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
-      return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
-                       "shared tile between objectFifos");
+  if (sharedTile) {
+  auto sharedTileOp = (*sharedTile).getDefiningOp<TileOp>();
+  for (auto user : sharedTileOp.getOperation()->getUsers())
+    if (isa<xilinx::AIE::CoreOp>(user))
+      return user->emitOpError("currently cannot be created on AIE tile used as "
+                               "share point for ObjectFifoLinkOp");
   }
 
   // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn
   // datatype
+  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
+  AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
+  MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+  int inputSize = (int)elemType.getShape()[0];
   if (getFifoOuts().size() > 1) {
     int outputSize = 0;
     for (auto fifoOut : getFifoOuts()) {
@@ -459,6 +464,15 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   }
 
   return success();
+}
+std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
+  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
+  for (auto fifoOut : getFifoOuts()) {
+    ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
+    if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
+      return {};
+  }
+  return {fifoIn.getConsumerTiles()[0]};
 }
 
 // ObjectFifoRegisterExternalBuffersOp

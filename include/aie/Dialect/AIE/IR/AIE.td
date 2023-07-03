@@ -1411,6 +1411,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", []> {
     bool isDistribute() {
       return getFifoOuts().size() > 1;
     }
+    mlir::Optional<Value> getOptionalSharedTile();
   }];
 }
 
