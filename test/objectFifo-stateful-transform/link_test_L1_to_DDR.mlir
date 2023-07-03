@@ -65,7 +65,7 @@
 // CHECK:       AIE.useLock(%9, Release, 1)
 // CHECK:       AIE.nextBd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
-// CHECK: // CHECK:       AIE.useLock(%10, AcquireGreaterEqual, 1)
+// CHECK:       AIE.useLock(%10, AcquireGreaterEqual, 1)
 // CHECK:       AIE.dmaBd(<%8 : memref<48xi32>, 0, 48>, 0)
 // CHECK:       AIE.useLock(%9, Release, 1)
 // CHECK:       AIE.nextBd ^bb4
