@@ -434,14 +434,15 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   auto sharedTile = getOptionalSharedTile();
   if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
-                      "shared tile between objectFifos");
+                     "shared tile between objectFifos");
 
   if (sharedTile) {
-  auto sharedTileOp = (*sharedTile).getDefiningOp<TileOp>();
-  for (auto user : sharedTileOp.getOperation()->getUsers())
-    if (isa<xilinx::AIE::CoreOp>(user))
-      return user->emitOpError("currently cannot be created on AIE tile used as "
-                               "share point for ObjectFifoLinkOp");
+    auto sharedTileOp = (*sharedTile).getDefiningOp<TileOp>();
+    for (auto user : sharedTileOp.getOperation()->getUsers())
+      if (isa<xilinx::AIE::CoreOp>(user))
+        return user->emitOpError(
+            "currently cannot be created on AIE tile used as "
+            "share point for ObjectFifoLinkOp");
   }
 
   // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn
