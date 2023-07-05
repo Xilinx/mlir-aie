@@ -429,6 +429,44 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
   return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
 }
 
+// ObjectFifoLinkOp
+LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
+  auto sharedTile = getOptionalSharedTile();
+  if (!sharedTile)
+    return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
+                     "shared tile between objectFifos");
+
+  // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn
+  // datatype
+  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
+  AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
+  MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+  int inputSize = (int)elemType.getShape()[0];
+  if (getFifoOuts().size() > 1) {
+    int outputSize = 0;
+    for (auto fifoOut : getFifoOuts()) {
+      auto op = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
+      AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+      MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+      outputSize += (int)elemType.getShape()[0];
+    }
+    if (outputSize != inputSize)
+      return emitError("Total size of output objFifos in ObjectFifoLinkOp must "
+                       "be equal to size of input objFifo");
+  }
+
+  return success();
+}
+std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
+  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
+  for (auto fifoOut : getFifoOuts()) {
+    ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
+    if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
+      return {};
+  }
+  return {fifoIn.getConsumerTiles()[0]};
+}
+
 // ObjectFifoRegisterExternalBuffersOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
   if (!getTileOp().isShimTile())
