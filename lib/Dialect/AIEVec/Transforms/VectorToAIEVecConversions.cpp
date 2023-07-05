@@ -1307,18 +1307,6 @@ struct LowerVectorReductionOp
   LogicalResult
   matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto kind = srcOp.getKind();
-
-    if (kind != vector::CombiningKind::ADD &&
-        kind != vector::CombiningKind::MINSI &&
-        kind != vector::CombiningKind::MINUI &&
-        kind != vector::CombiningKind::MINF &&
-        kind != vector::CombiningKind::MAXSI &&
-        kind != vector::CombiningKind::MAXUI &&
-        kind != vector::CombiningKind::MAXF) {
-      return failure();
-    }
-
     VectorType vType = dyn_cast<VectorType>(srcOp.getVector().getType());
     if (!vType)
       return failure();
@@ -1343,61 +1331,70 @@ struct LowerVectorReductionOp
       return failure();
 
     int shiftIndex = laneSize / 2;
+    auto kind = srcOp.getKind();
 
+    switch (kind) {
     // Reduction minimum
-    if (kind == vector::CombiningKind::MINSI ||
-        kind == vector::CombiningKind::MINUI ||
-        kind == vector::CombiningKind::MINF) {
+    case vector::CombiningKind::MINSI:
       generateAIEVecOpsForReductionOp<aievec::MinOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
       return success();
-    }
-
+    case vector::CombiningKind::MINUI:
+      generateAIEVecOpsForReductionOp<aievec::MinOp>(
+          rewriter, srcOp, shiftIndex, srcOp.getVector());
+      return success();
+    case vector::CombiningKind::MINF:
+      generateAIEVecOpsForReductionOp<aievec::MinOp>(
+          rewriter, srcOp, shiftIndex, srcOp.getVector());
+      return success();
     // Reduction maximum
-    if (kind == vector::CombiningKind::MAXSI ||
-        kind == vector::CombiningKind::MAXUI ||
-        kind == vector::CombiningKind::MAXF) {
+    case vector::CombiningKind::MAXSI:
       generateAIEVecOpsForReductionOp<aievec::MaxOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
       return success();
-    }
-
-    // Reduction add for i32, i16 and i8 types
-    if (kind == vector::CombiningKind::ADD && isa<IntegerType>(scalarType)) {
-      if (laneSize == 32 && elWidth == 32) {
-        Location loc = srcOp.getLoc();
-        VectorType vecType = createVectorType(laneSize / 2, scalarType);
-
-        auto lExtOp =
-            rewriter.create<aievec::ExtOp>(loc, vecType, srcOp.getVector(), 0);
-        auto rExtOp =
-            rewriter.create<aievec::ExtOp>(loc, vecType, srcOp.getVector(), 1);
-        auto addElemOp = rewriter.create<aievec::AddElemOp>(
-            loc, lExtOp.getResult().getType(), lExtOp.getResult(),
-            rExtOp.getResult());
-        shiftIndex /= 2;
-        generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-            rewriter, srcOp, shiftIndex, addElemOp.getResult());
-        return success();
-      }
-      generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+    case vector::CombiningKind::MAXUI:
+      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
       return success();
+    case vector::CombiningKind::MAXF:
+      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
+          rewriter, srcOp, shiftIndex, srcOp.getVector());
+      return success();
+    // Reduction add for i32, i16 and i8 types
+    case vector::CombiningKind::ADD: {
+      if (isa<IntegerType>(scalarType)) {
+        if (laneSize == 32 && elWidth == 32) {
+          Location loc = srcOp.getLoc();
+          VectorType vecType = createVectorType(laneSize / 2, scalarType);
+
+          auto lExtOp = rewriter.create<aievec::ExtOp>(loc, vecType,
+                                                       srcOp.getVector(), 0);
+          auto rExtOp = rewriter.create<aievec::ExtOp>(loc, vecType,
+                                                       srcOp.getVector(), 1);
+          auto addElemOp = rewriter.create<aievec::AddElemOp>(
+              loc, lExtOp.getResult().getType(), lExtOp.getResult(),
+              rExtOp.getResult());
+          shiftIndex /= 2;
+          generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+              rewriter, srcOp, shiftIndex, addElemOp.getResult());
+          return success();
+        }
+        generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+          rewriter, srcOp, shiftIndex, srcOp.getVector());
+        return success();
+      }
+      // Reduction add for float and bfloat16
+      else if (isa<FloatType>(scalarType) && laneSize == 16) {
+        if (elWidth == 32) {
+          generateReductionOpForFloat(rewriter, srcOp, shiftIndex);
+        } else {
+          generateReductionOpForBFloat16(rewriter, srcOp, shiftIndex);
+        }
+        return success();
+      }
     }
-
-    // Reduction add for float and bfloat16
-    if (kind == vector::CombiningKind::ADD && isa<FloatType>(scalarType)) {
-      // float type
-      if (elWidth == 32 && laneSize == 16) {
-        generateReductionOpForFloat(rewriter, srcOp, shiftIndex);
-        return success();
-      }
-
-      // bfloat16 type
-      if (elWidth == 16 && laneSize == 16) {
-        generateReductionOpForBFloat16(rewriter, srcOp, shiftIndex);
-        return success();
-      }
+    default:
+      return failure();
     }
     return failure();
   }
