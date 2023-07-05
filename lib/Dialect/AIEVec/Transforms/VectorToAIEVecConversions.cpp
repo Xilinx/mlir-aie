@@ -1338,28 +1338,28 @@ struct LowerVectorReductionOp
     case vector::CombiningKind::MINSI:
       generateAIEVecOpsForReductionOp<aievec::MinOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
-      return success();
+      break;
     case vector::CombiningKind::MINUI:
       generateAIEVecOpsForReductionOp<aievec::MinOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
-      return success();
+      break;
     case vector::CombiningKind::MINF:
       generateAIEVecOpsForReductionOp<aievec::MinOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
-      return success();
+      break;
     // Reduction maximum
     case vector::CombiningKind::MAXSI:
       generateAIEVecOpsForReductionOp<aievec::MaxOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
-      return success();
+      break;
     case vector::CombiningKind::MAXUI:
       generateAIEVecOpsForReductionOp<aievec::MaxOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
-      return success();
+      break;
     case vector::CombiningKind::MAXF:
       generateAIEVecOpsForReductionOp<aievec::MaxOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
-      return success();
+      break;
     // Reduction add for i32, i16 and i8 types
     case vector::CombiningKind::ADD: {
       if (isa<IntegerType>(scalarType)) {
@@ -1377,11 +1377,10 @@ struct LowerVectorReductionOp
           shiftIndex /= 2;
           generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
               rewriter, srcOp, shiftIndex, addElemOp.getResult());
-          return success();
+        } else {
+          generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+              rewriter, srcOp, shiftIndex, srcOp.getVector());
         }
-        generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-            rewriter, srcOp, shiftIndex, srcOp.getVector());
-        return success();
       }
       // Reduction add for float and bfloat16
       else if (isa<FloatType>(scalarType) && laneSize == 16) {
@@ -1390,13 +1389,13 @@ struct LowerVectorReductionOp
         } else {
           generateReductionOpForBFloat16(rewriter, srcOp, shiftIndex);
         }
-        return success();
       }
+      break;
     }
     default:
       return failure();
     }
-    return failure();
+    return success();
   }
 };
 
