@@ -2647,7 +2647,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
         unsigned width = iType.getWidth();
         if (llvm::all_of(dense, [](const APInt &val) { return val == 0; })) {
           if (AIEML) {
-            if(width * getVectorLaneSize(vType) == 1024){
+            if (width * getVectorLaneSize(vType) == 1024){
               os << "concat(broadcast_zero_s" << width << "(), broadcast_zero_s"
                  << width << "())";
               return success();
