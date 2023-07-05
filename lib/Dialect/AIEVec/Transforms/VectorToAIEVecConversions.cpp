@@ -1072,7 +1072,26 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
                                                    resultType, srcOp);
         }
 
-        // v16bf16 with extension op
+        // v16bf16 with two extension ops
+        if (lhsExt && rhsExt) {
+          auto lval = lhsExt->getOperand(0);
+          auto rval = rhsExt->getOperand(0);
+          VectorType vType = cast<VectorType>(lval.getType());
+
+          Type accType = getVectorOpDestType(vType, /*AIEML =*/true);
+          auto lUpsOp =
+              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
+          auto rUpsOp =
+              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
+          auto elemOp = rewriter.create<DstOpTy>(
+              srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+              lUpsOp->getResult(0), rUpsOp->getResult(0));
+          rewriter.replaceOpWithNewOp<aievec::CastOp>(srcOp, srcOp.getType(),
+                                                      elemOp.getResult());
+          return success();
+        }
+
+        // v16bf16 with one extension op
         if (!lhsExt || !rhsExt) {
           auto lval = lhsExt ? lhsExt->getOperand(0) : lhs;
           auto rval = rhsExt ? rhsExt->getOperand(0) : rhs;
