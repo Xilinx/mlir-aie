@@ -176,38 +176,84 @@ void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
 void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 
-  u32 dma_mm2s_status;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DF10, &dma_mm2s_status);
-  u32 dma_s2mm_status;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DF00, &dma_s2mm_status);
-  u32 dma_mm2s0_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE10, &dma_mm2s0_control);
-  u32 dma_mm2s1_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE18, &dma_mm2s1_control);
-  u32 dma_s2mm0_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE00, &dma_s2mm0_control);
-  u32 dma_s2mm1_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE08, &dma_s2mm1_control);
-  u32 dma_bd0_a;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000, &dma_bd0_a);
-  u32 dma_bd0_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D018, &dma_bd0_control);
-  u32 dma_bd1_a;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D020, &dma_bd1_a);
-  u32 dma_bd1_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D038, &dma_bd1_control);
+  int s2mm0_current_bd, s2mm1_current_bd;
+  int mm2s0_current_bd, mm2s1_current_bd;
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    auto print_aie2_status = [&](auto channel, auto statusOffset,
+                                 auto controlOffset, auto &current_bd) {
+      u32 status, control;
+      XAie_Read32(&(ctx->DevInst), tileAddr + statusOffset, &status);
+      XAie_Read32(&(ctx->DevInst), tileAddr + controlOffset, &control);
+      u32 running = status & 0x3;
+      u32 stalled_acq = (status >> 2) & 0x1;
+      u32 stalled_rel = (status >> 3) & 0x1;
+      u32 stalled_data = (status >> 4) & 0x1;
+      u32 stalled_complete = (status >> 5) & 0x1;
+      current_bd = status >> 24;
+      printf("DMA [%d, %d] AIE2 %s ", col, row, channel);
+      switch (running) {
+      case 0:
+        printf("IDLE ");
+        break;
+      case 1:
+        printf("STARTING ");
+        break;
+      case 2:
+        printf("RUNNING ");
+        break;
+      }
+      if (stalled_acq)
+        printf("Stalled on Acquire ");
+      if (stalled_rel)
+        printf("Stalled on Release ");
+      if (stalled_data)
+        printf("Stalled on Data ");
+      if (stalled_complete)
+        printf("Stalled on Completion ");
+      printf("status:%08X ctrl:%02X\n", status, control);
+    };
+    print_aie2_status("s2mm0", 0x0001DF00, 0x0001DE00, s2mm0_current_bd);
+    print_aie2_status("s2mm1", 0x0001DF04, 0x0001DE08, s2mm1_current_bd);
+    print_aie2_status("mm2s0", 0x0001DF10, 0x0001DE10, mm2s0_current_bd);
+    print_aie2_status("mm2s1", 0x0001DF14, 0x0001DE18, mm2s1_current_bd);
+  } else {
+    u32 dma_mm2s_status;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DF10, &dma_mm2s_status);
+    u32 dma_s2mm_status;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DF00, &dma_s2mm_status);
+    u32 dma_mm2s0_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE10, &dma_mm2s0_control);
+    u32 dma_mm2s1_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE18, &dma_mm2s1_control);
+    u32 dma_s2mm0_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE00, &dma_s2mm0_control);
+    u32 dma_s2mm1_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001DE08, &dma_s2mm1_control);
+    u32 dma_bd0_a;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000, &dma_bd0_a);
+    u32 dma_bd0_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D018, &dma_bd0_control);
+    u32 dma_bd1_a;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D020, &dma_bd1_a);
+    u32 dma_bd1_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D038, &dma_bd1_control);
 
-  u32 s2mm_ch0_running = dma_s2mm_status & 0x3;
-  u32 s2mm_ch1_running = (dma_s2mm_status >> 2) & 0x3;
-  u32 mm2s_ch0_running = dma_mm2s_status & 0x3;
-  u32 mm2s_ch1_running = (dma_mm2s_status >> 2) & 0x3;
+    u32 s2mm_ch0_running = dma_s2mm_status & 0x3;
+    u32 s2mm_ch1_running = (dma_s2mm_status >> 2) & 0x3;
+    u32 mm2s_ch0_running = dma_mm2s_status & 0x3;
+    u32 mm2s_ch1_running = (dma_mm2s_status >> 2) & 0x3;
+    s2mm0_current_bd = (dma_s2mm_status >> 16) & 0xf;
+    s2mm1_current_bd = (dma_s2mm_status >> 20) & 0xf;
+    mm2s0_current_bd = (dma_mm2s_status >> 16) & 0xf;
+    mm2s1_current_bd = (dma_mm2s_status >> 20) & 0xf;
 
-  printf("DMA [%d, %d] mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
-         "s2mm_status/0ctrl/1ctrl is %08X %02X %02X, BD0_Addr_A is %08X, "
-         "BD0_control is %08X, BD1_Addr_A is %08X, BD1_control is %08X\n",
-         col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
-         dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control, dma_bd0_a,
-         dma_bd0_control, dma_bd1_a, dma_bd1_control);
+    printf("DMA [%d, %d] mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
+           "s2mm_status/0ctrl/1ctrl is %08X %02X %02X, BD0_Addr_A is %08X, "
+           "BD0_control is %08X, BD1_Addr_A is %08X, BD1_control is %08X\n",
+           col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
+           dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control, dma_bd0_a,
+           dma_bd0_control, dma_bd1_a, dma_bd1_control);
+  }
   for (int bd = 0; bd < 8; bd++) {
     u32 dma_bd_addr_a;
     XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000 + (0x20 * bd),
@@ -217,21 +263,17 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
                 &dma_bd_control);
     if (dma_bd_control & 0x80000000) {
       printf("BD %d valid\n", bd);
-      int current_s2mm_ch0 = (dma_s2mm_status >> 16) & 0xf;
-      int current_s2mm_ch1 = (dma_s2mm_status >> 20) & 0xf;
-      int current_mm2s_ch0 = (dma_mm2s_status >> 16) & 0xf;
-      int current_mm2s_ch1 = (dma_mm2s_status >> 20) & 0xf;
 
-      if (s2mm_ch0_running && bd == current_s2mm_ch0) {
+      if (bd == s2mm0_current_bd) {
         printf(" * Current BD for s2mm channel 0\n");
       }
-      if (s2mm_ch1_running && bd == current_s2mm_ch1) {
+      if (bd == s2mm1_current_bd) {
         printf(" * Current BD for s2mm channel 1\n");
       }
-      if (mm2s_ch0_running && bd == current_mm2s_ch0) {
+      if (bd == mm2s0_current_bd) {
         printf(" * Current BD for mm2s channel 0\n");
       }
-      if (mm2s_ch1_running && bd == current_mm2s_ch1) {
+      if (bd == mm2s1_current_bd) {
         printf(" * Current BD for mm2s channel 1\n");
       }
 
@@ -293,37 +335,110 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int row = loc.Row;
   u64 tileAddr = _XAie_GetTileAddr(&(ctx->DevInst), row, col);
 
-  u32 dma_mm2s_status;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D164, &dma_mm2s_status);
-  u32 dma_s2mm_status;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D160, &dma_s2mm_status);
+  int s2mm0_current_bd, s2mm1_current_bd;
+  int mm2s0_current_bd, mm2s1_current_bd;
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    auto print_aie2_status = [&](auto channel, auto statusOffset,
+                                 auto controlOffset, auto &current_bd) {
+      u32 status, control;
+      XAie_Read32(&(ctx->DevInst), tileAddr + statusOffset, &status);
+      XAie_Read32(&(ctx->DevInst), tileAddr + controlOffset, &control);
+      u32 running = status & 0x3;
+      u32 stalled_acq = (status >> 2) & 0x1;
+      u32 stalled_rel = (status >> 3) & 0x1;
+      u32 stalled_data = (status >> 4) & 0x1;
+      u32 stalled_complete = (status >> 5) & 0x1;
+      current_bd = status >> 24;
+      printf("DMA [%d, %d] AIE2 %s ", col, row, channel);
+      switch (running) {
+      case 0:
+        printf("IDLE ");
+        break;
+      case 1:
+        printf("STARTING ");
+        break;
+      case 2:
+        printf("RUNNING ");
+        break;
+      }
+      if (stalled_acq)
+        printf("Stalled on Acquire ");
+      if (stalled_rel)
+        printf("Stalled on Release ");
+      if (stalled_data)
+        printf("Stalled on Data ");
+      if (stalled_complete)
+        printf("Stalled on Completion ");
+      printf("status:%08X ctrl:%02X\n", status, control);
+    };
+    print_aie2_status("s2mm0", 0x0001D220, 0x0001D200, s2mm0_current_bd);
+    print_aie2_status("s2mm1", 0x0001D224, 0x0001D208, s2mm1_current_bd);
+    print_aie2_status("mm2s0", 0x0001D228, 0x0001D210, mm2s0_current_bd);
+    print_aie2_status("mm2s1", 0x0001D22c, 0x0001D218, mm2s1_current_bd);
+  } else {
+    u32 dma_mm2s_status, dma_s2mm_status;
+    u32 dma_mm2s0_control, dma_mm2s1_control;
+    u32 dma_s2mm0_control, dma_s2mm1_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D164, &dma_mm2s_status);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D160, &dma_s2mm_status);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D150, &dma_mm2s0_control);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D158, &dma_mm2s1_control);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D140, &dma_s2mm0_control);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D148, &dma_s2mm1_control);
+    u32 dma_bd0_a;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000, &dma_bd0_a);
+    u32 dma_bd0_control;
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D008, &dma_bd0_control);
 
-  u32 dma_mm2s0_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D150, &dma_mm2s0_control);
-  u32 dma_mm2s1_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D158, &dma_mm2s1_control);
+    u32 s2mm_ch0_running = dma_s2mm_status & 0x3;
+    u32 s2mm_ch1_running = (dma_s2mm_status >> 2) & 0x3;
+    u32 mm2s_ch0_running = dma_mm2s_status & 0x3;
+    u32 mm2s_ch1_running = (dma_mm2s_status >> 2) & 0x3;
+    s2mm0_current_bd = (dma_s2mm_status >> 16) & 0xf;
+    s2mm1_current_bd = (dma_s2mm_status >> 20) & 0xf;
+    mm2s0_current_bd = (dma_mm2s_status >> 16) & 0xf;
+    mm2s1_current_bd = (dma_mm2s_status >> 20) & 0xf;
 
-  u32 dma_s2mm0_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D140, &dma_s2mm0_control);
-  u32 dma_s2mm1_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D148, &dma_s2mm1_control);
+    printf("DMA [%d, %d] AIE1 mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
+           "s2mm_status/0ctrl/1ctrl is %08X %02X %02X, BD0_Addr_A is %08X, "
+           "BD0_control is %08X\n",
+           col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
+           dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control, dma_bd0_a,
+           dma_bd0_control);
+  }
 
-  u32 dma_bd0_a;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000, &dma_bd0_a);
-  u32 dma_bd0_control;
-  XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D008, &dma_bd0_control);
+  u32 locks;
+  if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
+    printf("DMA [%d, %d] AIE2 locks are: ", col, row);
+    int lockAddr = tileAddr + 0x00014000;
+    for (int lock = 0; lock < 16; lock++) {
+      XAie_Read32(&(ctx->DevInst), lockAddr, &locks);
+      printf("%X ", locks);
+      lockAddr += 0x10;
+    }
+    int overflowAddr = tileAddr + 0x00014120;
+    int underflowAddr = tileAddr + 0x00014128;
+    u32 overflow, underflow;
+    // XAie_Read32(&(ctx->DevInst), overflowAddr, &overflow);
+    // XAie_Read32(&(ctx->DevInst), underflowAddr, &underflow);
+    printf(" overflow?:%x underflow?:%x\n", overflow, underflow);
+  } else {
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
+    printf("DMA [%d, %d] AIE1 locks are %08X\n", col, row, locks);
+    for (int lock = 0; lock < 16; lock++) {
+      u32 two_bits = (locks >> (lock * 2)) & 0x3;
+      if (two_bits) {
+        printf("Lock %d: ", lock);
+        u32 acquired = two_bits & 0x1;
+        u32 value = two_bits & 0x2;
+        if (acquired)
+          printf("Acquired ");
+        printf(value ? "1" : "0");
+        printf("\n");
+      }
+    }
+  }
 
-  u32 s2mm_ch0_running = dma_s2mm_status & 0x3;
-  u32 s2mm_ch1_running = (dma_s2mm_status >> 2) & 0x3;
-  u32 mm2s_ch0_running = dma_mm2s_status & 0x3;
-  u32 mm2s_ch1_running = (dma_mm2s_status >> 2) & 0x3;
-
-  printf("DMA [%d, %d] mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
-         "s2mm_status/0ctrl/1ctrl is %08X %02X %02X, BD0_Addr_A is %08X, "
-         "BD0_control is %08X\n",
-         col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
-         dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control, dma_bd0_a,
-         dma_bd0_control);
   for (int bd = 0; bd < 8; bd++) {
     u32 dma_bd_addr_a;
     XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000 + (0x14 * bd),
@@ -336,21 +451,17 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
                 &dma_bd_control);
     if (dma_bd_control & 0x1) {
       printf("BD %d valid\n", bd);
-      int current_s2mm_ch0 = (dma_s2mm_status >> 16) & 0xf;
-      int current_s2mm_ch1 = (dma_s2mm_status >> 20) & 0xf;
-      int current_mm2s_ch0 = (dma_mm2s_status >> 16) & 0xf;
-      int current_mm2s_ch1 = (dma_mm2s_status >> 20) & 0xf;
 
-      if (s2mm_ch0_running && bd == current_s2mm_ch0) {
+      if (bd == s2mm0_current_bd) {
         printf(" * Current BD for s2mm channel 0\n");
       }
-      if (s2mm_ch1_running && bd == current_s2mm_ch1) {
+      if (bd == s2mm1_current_bd) {
         printf(" * Current BD for s2mm channel 1\n");
       }
-      if (mm2s_ch0_running && bd == current_mm2s_ch0) {
+      if (bd == mm2s0_current_bd) {
         printf(" * Current BD for mm2s channel 0\n");
       }
-      if (mm2s_ch1_running && bd == current_mm2s_ch1) {
+      if (bd == mm2s1_current_bd) {
         printf(" * Current BD for mm2s channel 1\n");
       }
       /*
