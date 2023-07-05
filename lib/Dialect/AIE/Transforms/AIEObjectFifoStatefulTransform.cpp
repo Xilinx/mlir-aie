@@ -1279,6 +1279,13 @@ struct AIEObjectFifoStatefulTransformPass
             releaseOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
         auto port = releaseOp.getPort();
 
+        auto linkOp = getOptionalLinkOp(op);
+        if (linkOp) {
+          releaseOp->emitOpError("currently cannot access objectFifo used in "
+                                 "ObjectFifoLinkOp");
+          return;
+        }
+
         // update index of next element to release for this objectFifo
         updateAndReturnIndex(relPerFifo, op);
 
@@ -1308,6 +1315,13 @@ struct AIEObjectFifoStatefulTransformPass
         auto port = acquireOp.getPort();
         ObjectFifoCreateOp op =
             acquireOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+
+        auto linkOp = getOptionalLinkOp(op);
+        if (linkOp) {
+          acquireOp->emitOpError("currently cannot access objectFifo used in "
+                                 "ObjectFifoLinkOp");
+          return;
+        }
 
         // index of next element to acquire for this objectFifo
         int start = updateAndReturnIndex(
@@ -1396,7 +1410,6 @@ struct AIEObjectFifoStatefulTransformPass
                          LockAction::AcquireGreaterEqual);
 
         ObjectFifoCreateOp target = op;
-        auto linkOp = getOptionalLinkOp(op);
         if (linkOp)
           if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
             target = objFifoLinks[*linkOp];
@@ -1420,6 +1433,16 @@ struct AIEObjectFifoStatefulTransformPass
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         ObjectFifoAcquireOp acqOp =
             accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+        ObjectFifoCreateOp op =
+            acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+
+        auto linkOp = getOptionalLinkOp(op);
+        if (linkOp) {
+          accessOp->emitOpError("currently cannot access objectFifo used in "
+                                "ObjectFifoLinkOp");
+          return;
+        }
+
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
