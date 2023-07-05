@@ -464,7 +464,6 @@ void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   if (ctx->AieConfigPtr.AieGen == XAIE_DEV_GEN_AIEML) {
     printf("Core [%d, %d] AIE2 locks are: ", col, row);
     int lockAddr = tileAddr + 0x0001F000;
-    XAie_Write32(&(ctx->DevInst), lockAddr, 3);
     for (int lock = 0; lock < 16; lock++) {
       XAie_Read32(&(ctx->DevInst), lockAddr, &locks);
       printf("%X ", locks);
