@@ -931,11 +931,15 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
+    // Integer cases
     if (scalarType.isa<IntegerType>()) {
       if (!laneSizeElWidthPairSet.count(
               std::make_pair(laneSize, resultElWidth)))
         return failure();
 
+      // If the ops are defined without extension ops and with supported data
+      // type, the arith::AddI or arith::SubI can be directly replaced with
+      // aievec::AddElem or aievec::SubElem.
       if (!lhsDefOp && !rhsDefOp) {
         if (laneSize * resultElWidth == 512) {
           rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs,
@@ -1052,12 +1056,13 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
         rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(), lhs, rhs);
         return success();
       }
-    } // Float types
+    }
+    // Float types
     else {
       if (laneSize != 16)
         return failure();
 
-      // v16float or v16bf16 with extension op
+      // v16float or v16bf16 with extension op case
       if (resultElWidth == 32) {
         if (!lhsDefOp && !rhsDefOp) {
           return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
