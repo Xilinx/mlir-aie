@@ -1380,7 +1380,7 @@ struct LowerVectorReductionOp
           return success();
         }
         generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
+            rewriter, srcOp, shiftIndex, srcOp.getVector());
         return success();
       }
       // Reduction add for float and bfloat16
