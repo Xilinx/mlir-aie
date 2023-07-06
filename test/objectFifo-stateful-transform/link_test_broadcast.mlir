@@ -61,12 +61,12 @@
 // CHECK:       %31 = AIE.dmaStart(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
 // CHECK:       AIE.useLock(%9, AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%6 : memref<48xi32>, 0, 16>, 0)
+// CHECK:       AIE.dmaBd(<%6 : memref<48xi32>, 0, 48>, 0)
 // CHECK:       AIE.useLock(%8, Release, 1)
 // CHECK:       AIE.nextBd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
 // CHECK:       AIE.useLock(%9, AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%7 : memref<48xi32>, 0, 16>, 0)
+// CHECK:       AIE.dmaBd(<%7 : memref<48xi32>, 0, 48>, 0)
 // CHECK:       AIE.useLock(%8, Release, 1)
 // CHECK:       AIE.nextBd ^bb4
 // CHECK:     ^bb6:  // pred: ^bb3

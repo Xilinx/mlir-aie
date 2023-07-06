@@ -18,8 +18,6 @@
 // CHECK: test start.
 // CHECK: PASS!
 
-// XFAIL: *
-
 module {
   AIE.device(xcve2802) {
     %tile13 = AIE.tile(1, 3)
@@ -35,9 +33,8 @@ module {
     func.func private @do_mac(%A: memref<256xi32>) -> ()
 
     %core13 = AIE.core(%tile13) {
-      AIE.useLock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
+      AIE.useLock(%lock13_3, AcquireGreaterEqual, 1) // acquire for read(e.g. input ping)
       func.call @do_mul(%buf13_0) : (memref<256xi32>) -> ()
-      AIE.useLock(%lock13_3, "Release", 0) // release for write
       AIE.end
     } { link_with="kernel.o" }
 
@@ -45,9 +42,8 @@ module {
   //    %val1 = arith.constant 7 : i32
   //    %idx1 = arith.constant 0 : index
   //    memref.store %val1, %buf14_0[%idx1] : memref<256xi32>
-      AIE.useLock(%lock23_7, "Acquire", 0) // acquire for write
       func.call @do_mac(%buf23_0) : (memref<256xi32>) -> ()
-      AIE.useLock(%lock23_7, "Release", 1) // release for read
+      AIE.useLock(%lock23_7, Release, 1) // release for read
       AIE.end
     } { link_with="kernel.o" }
   }

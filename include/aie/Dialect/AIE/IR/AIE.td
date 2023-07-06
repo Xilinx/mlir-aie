@@ -1372,8 +1372,13 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
   }];
 }
 
+<<<<<<< HEAD
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> {
   let summary = "Links two objectFifos through an intermediary tile's dma";
+=======
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", []> {
+  let summary = "Links two objectFifos through an intermediary tile's DMA";
+>>>>>>> 4f6b2e55f03e754feffcbf7f639dc22a7cba4319
   let description = [{
     The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
     one dataflow movement which is split accross multiple objectFifos. Specifically, during the objectFifo lowering there will
@@ -1386,7 +1391,11 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
     ```
       %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, {%t72}, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
       %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, {%t74}, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
+<<<<<<< HEAD
       AIE.objectFifo.link({%of_t70_t72}, {%of_t72_t74}) : (!AIE.objectFifo<memref<64xi16>>, !AIE.objectFifo<memref<64xi16>>)
+=======
+      AIE.objectFifo.link(%of_t70_t72, {%of_t72_t74}) : (!AIE.objectFifo<memref<64xi16>>, !AIE.objectFifo<memref<64xi16>>)
+>>>>>>> 4f6b2e55f03e754feffcbf7f639dc22a7cba4319
     ```
     This operation links two objectFifos which have tile %t72 as a link point.
 
@@ -1394,6 +1403,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
     To achieve a distribute pattern from the link tile, there should be multiple output objectFifos in the LinkOp. In this case,
     parts will be taken out of the input objectFifo's buffers based on the sizes of the output objectFifos, in the order they 
     were given in the LinkOp.
+<<<<<<< HEAD
     The join pattern is the exact inverse of the distribute one.
   }];
 
@@ -1405,11 +1415,23 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
 
   let assemblyFormat = [{
     attr-dict `(` `{` $fifoIns `}` `,` `{` $fifoOuts `}` `)` `:` `(` type($fifoIns) `,` type($fifoOuts) `)`
+=======
+  }];
+
+  let arguments = (
+    ins AIE_ObjectFifoType:$fifoIn,
+        Variadic<AIE_ObjectFifoType>:$fifoOuts
+  );
+
+  let assemblyFormat = [{
+    attr-dict `(` $fifoIn `,` `{` $fifoOuts `}` `)` `:` `(` type($fifoIn) `,` type($fifoOuts) `)`
+>>>>>>> 4f6b2e55f03e754feffcbf7f639dc22a7cba4319
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+<<<<<<< HEAD
     bool isJoin() {
       return getFifoIns().size() > 1;
     }
@@ -1419,6 +1441,16 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 }
 
+=======
+    bool isDistribute() {
+      return getFifoOuts().size() > 1;
+    }
+    mlir::Optional<Value> getOptionalSharedTile();
+  }];
+}
+
+
+>>>>>>> 4f6b2e55f03e754feffcbf7f639dc22a7cba4319
 def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
