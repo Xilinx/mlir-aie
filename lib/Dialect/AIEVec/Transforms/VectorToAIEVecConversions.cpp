@@ -1336,26 +1336,14 @@ struct LowerVectorReductionOp
     switch (kind) {
     // Reduction minimum
     case vector::CombiningKind::MINSI:
-      generateAIEVecOpsForReductionOp<aievec::MinOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
-      break;
     case vector::CombiningKind::MINUI:
-      generateAIEVecOpsForReductionOp<aievec::MinOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
-      break;
     case vector::CombiningKind::MINF:
       generateAIEVecOpsForReductionOp<aievec::MinOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
       break;
     // Reduction maximum
     case vector::CombiningKind::MAXSI:
-      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
-      break;
     case vector::CombiningKind::MAXUI:
-      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
-      break;
     case vector::CombiningKind::MAXF:
       generateAIEVecOpsForReductionOp<aievec::MaxOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
@@ -1389,6 +1377,8 @@ struct LowerVectorReductionOp
         } else {
           generateReductionOpForBFloat16(rewriter, srcOp, shiftIndex);
         }
+      } else {
+        return failure();
       }
       break;
     }
