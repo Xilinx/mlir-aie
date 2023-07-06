@@ -15,14 +15,14 @@
 // CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,0));
 // CHECK: XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,0),XAie_LockInit(0,1));
 // CHECK: XAie_DmaSetAddrLen(&([[bd0]]), {{.*}} mlir_aie_external_get_addr_myBuffer_20_0(), {{.*}} 16 * 4);
-// CHECK: XAie_DmaSetAxi(&([[bd0]]), {{.*}} 0, {{.*}} 4, {{.*}} 0 , {{.*}} 0, {{.*}} XAIE_ENABLE);
+// CHECK: XAie_DmaSetAxi(&([[bd0]]), {{.*}} 0, {{.*}} 4, {{.*}} 0, {{.*}} 0, {{.*}} XAIE_ENABLE);
 // CHECK: XAie_DmaSetNextBd(&([[bd0]]), {{.*}} 0, {{.*}} 1);
 // CHECK: XAie_DmaEnableBd(&([[bd0]]));
 // CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,0), {{.*}} 0);
 // CHECK: XAie_DmaDesc [[bd1:.*]];
 // CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,0));
 // CHECK: XAie_DmaSetAddrLen(&([[bd1]]), {{.*}} mlir_aie_external_get_addr_myBuffer_20_1(), {{.*}} 4 * 4);
-// CHECK: XAie_DmaSetAxi(&([[bd1]]), {{.*}} 0, {{.*}} 4, {{.*}} 0 , {{.*}} 0, {{.*}} XAIE_ENABLE);
+// CHECK: XAie_DmaSetAxi(&([[bd1]]), {{.*}} 0, {{.*}} 4, {{.*}} 0, {{.*}} 0, {{.*}} XAIE_ENABLE);
 // CHECK: XAie_DmaSetNextBd(&([[bd1]]), {{.*}} 1, {{.*}} 1);
 // CHECK: XAie_DmaEnableBd(&([[bd1]]));
 // CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,0), {{.*}} 1);
