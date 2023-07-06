@@ -266,92 +266,6 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
   return;
 }
 
-static void generateReductionOpForFloat(ConversionPatternRewriter &rewriter,
-                                        vector::ReductionOp srcOp,
-                                        int shiftIndex) {
-  assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
-         "shiftIndex must be power of 2");
-
-  Location loc = srcOp.getLoc();
-  Value curValue = srcOp.getVector();
-  VectorType vType = dyn_cast<VectorType>(curValue.getType());
-
-  Type scalarType = vType.getElementType();
-  aievec::CastOp curOp = nullptr;
-  unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-  assert(elWidth == 32 && "scalar type should be float");
-
-  for (int id = shiftIndex; id > 0; id /= 2) {
-    arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
-
-    auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-        loc, vType, curValue, curValue, constOp.getResult());
-
-    auto lCastOp = rewriter.create<aievec::CastOp>(loc, vType, curValue,
-                                                   /*isResAcc*/ true);
-    auto rCastOp =
-        rewriter.create<aievec::CastOp>(loc, vType, shiftBytesOp.getResult(),
-                                        /*isResAcc*/ true);
-    auto elemOp = rewriter.create<aievec::AddElemOp>(
-        loc, lCastOp.getResult().getType(), lCastOp.getResult(),
-        rCastOp.getResult());
-    curOp = rewriter.create<aievec::CastOp>(loc, vType, elemOp.getResult(),
-                                            /*isResAcc*/ false);
-
-    curValue = curOp.getResult();
-  }
-
-  arith::ConstantOp zeroConstOp =
-      rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-  rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
-                                                 zeroConstOp.getResult());
-}
-
-static void generateReductionOpForBFloat16(ConversionPatternRewriter &rewriter,
-                                           vector::ReductionOp srcOp,
-                                           int shiftIndex) {
-  assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
-         "shiftIndex must be power of 2");
-
-  Value curValue = srcOp.getVector();
-  VectorType vType = dyn_cast<VectorType>(curValue.getType());
-
-  Type scalarType = vType.getElementType();
-  Location loc = srcOp.getLoc();
-  Type accType = getVectorOpDestType(vType, /*AIEML =*/true);
-  unsigned accWidth =
-      dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
-
-  auto upsOp = rewriter.create<aievec::UPSOp>(loc, accType, srcOp.getVector());
-
-  curValue = upsOp.getResult();
-  unsigned laneSize = getVectorLaneSize(vType);
-
-  VectorType vecType = createVectorType(2 * laneSize, scalarType);
-  aievec::AddElemOp curOp = nullptr;
-
-  for (int id = shiftIndex; id > 0; id /= 2) {
-    arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
-    auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-        loc, accType, curValue, curValue, constOp, true);
-    curOp = rewriter.create<aievec::AddElemOp>(loc, accType, curValue,
-                                               shiftBytesOp.getResult());
-    curValue = curOp.getResult();
-  }
-
-  auto srsOp = rewriter.create<aievec::SRSOp>(loc, vType, curOp.getResult());
-  SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
-  auto concatOp =
-      rewriter.create<aievec::ConcatOp>(loc, vecType, concatSources);
-
-  arith::ConstantOp zeroConstOp =
-      rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-  rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, concatOp,
-                                                 zeroConstOp.getResult());
-}
-
 //===----------------------------------------------------------------------===//
 // Analyses
 //===----------------------------------------------------------------------===//
@@ -1300,91 +1214,222 @@ struct LowerVectorSelectOpToAIEVecSelOp
   }
 };
 
-struct LowerVectorReductionOp
+struct LowerVectorReductionMinOp
     : public OpConversionPattern<vector::ReductionOp> {
   using OpConversionPattern<vector::ReductionOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VectorType vType = dyn_cast<VectorType>(srcOp.getVector().getType());
-    if (!vType)
+    auto kind = srcOp.getKind();
+    if (kind != vector::CombiningKind::MINSI &&
+        kind != vector::CombiningKind::MINUI &&
+        kind != vector::CombiningKind::MINF)
       return failure();
 
-    // A set recording the vector lane size and element width we are
-    // supporting for aie-ml.
+    VectorType vType = cast<VectorType>(srcOp.getVector().getType());
+    Type scalarType = vType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(vType);
+
+    if (laneSize * elWidth != 512)
+      return failure();
+
+    int shiftIndex = laneSize / 2;
+    generateAIEVecOpsForReductionOp<aievec::MinOp>(rewriter, srcOp, shiftIndex,
+                                                   srcOp.getVector());
+    return success();
+  }
+};
+
+struct LowerVectorReductionMaxOp
+    : public OpConversionPattern<vector::ReductionOp> {
+  using OpConversionPattern<vector::ReductionOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto kind = srcOp.getKind();
+    if (kind != vector::CombiningKind::MAXSI &&
+        kind != vector::CombiningKind::MAXUI &&
+        kind != vector::CombiningKind::MAXF)
+      return failure();
+
+    VectorType vType = cast<VectorType>(srcOp.getVector().getType());
+    Type scalarType = vType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(vType);
+
+    if (laneSize * elWidth != 512)
+      return failure();
+
+    int shiftIndex = laneSize / 2;
+    generateAIEVecOpsForReductionOp<aievec::MaxOp>(rewriter, srcOp, shiftIndex,
+                                                   srcOp.getVector());
+    return success();
+  }
+};
+
+struct LowerVectorReductionAddIntOp
+    : public OpConversionPattern<vector::ReductionOp> {
+  using OpConversionPattern<vector::ReductionOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto kind = srcOp.getKind();
+    if (kind != vector::CombiningKind::ADD)
+      return failure();
+
+    VectorType vType = cast<VectorType>(srcOp.getVector().getType());
+    Type scalarType = vType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(vType);
     llvm::SmallSet<std::pair<unsigned, signed>, 16> laneSizeElWidthPairSet;
     laneSizeElWidthPairSet.insert({64, 8});
     laneSizeElWidthPairSet.insert({32, 16});
     laneSizeElWidthPairSet.insert({32, 32});
     laneSizeElWidthPairSet.insert({16, 32});
 
+    if (!isa<IntegerType>(scalarType) ||
+        !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))
+      return failure();
+
+    int shiftIndex = laneSize / 2;
+    if (laneSize == 32 && elWidth == 32) {
+      Location loc = srcOp.getLoc();
+      VectorType vecType = createVectorType(laneSize / 2, scalarType);
+
+      auto lExtOp =
+          rewriter.create<aievec::ExtOp>(loc, vecType, srcOp.getVector(), 0);
+      auto rExtOp =
+          rewriter.create<aievec::ExtOp>(loc, vecType, srcOp.getVector(), 1);
+      auto addElemOp = rewriter.create<aievec::AddElemOp>(
+          loc, lExtOp.getResult().getType(), lExtOp.getResult(),
+          rExtOp.getResult());
+      shiftIndex /= 2;
+      generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+          rewriter, srcOp, shiftIndex, addElemOp.getResult());
+    } else {
+      generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+          rewriter, srcOp, shiftIndex, srcOp.getVector());
+    }
+    return success();
+  }
+};
+
+struct LowerVectorReductionAddFloatOp
+    : public OpConversionPattern<vector::ReductionOp> {
+  using OpConversionPattern<vector::ReductionOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto kind = srcOp.getKind();
+    if (kind != vector::CombiningKind::ADD)
+      return failure();
+
+    VectorType vType = cast<VectorType>(srcOp.getVector().getType());
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
 
-    if (scalarType.isa<IntegerType>() &&
-        !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))
-      return failure();
-
-    if (scalarType.isa<FloatType>() && laneSize != 16 && laneSize != 32)
+    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 32)
       return failure();
 
     int shiftIndex = laneSize / 2;
+    assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
+           "shiftIndex must be power of 2");
+
+    Location loc = srcOp.getLoc();
+    Value curValue = srcOp.getVector();
+    aievec::CastOp curOp = nullptr;
+
+    for (int id = shiftIndex; id > 0; id /= 2) {
+      arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+          loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
+
+      auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
+          loc, vType, curValue, curValue, constOp.getResult());
+
+      auto lCastOp = rewriter.create<aievec::CastOp>(loc, vType, curValue,
+                                                     /*isResAcc*/ true);
+      auto rCastOp =
+          rewriter.create<aievec::CastOp>(loc, vType, shiftBytesOp.getResult(),
+                                          /*isResAcc*/ true);
+      auto elemOp = rewriter.create<aievec::AddElemOp>(
+          loc, lCastOp.getResult().getType(), lCastOp.getResult(),
+          rCastOp.getResult());
+      curOp = rewriter.create<aievec::CastOp>(loc, vType, elemOp.getResult(),
+                                              /*isResAcc*/ false);
+
+      curValue = curOp.getResult();
+    }
+
+    arith::ConstantOp zeroConstOp =
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
+                                                   zeroConstOp.getResult());
+    return success();
+  }
+};
+
+struct LowerVectorReductionAddBfloat16Op
+    : public OpConversionPattern<vector::ReductionOp> {
+  using OpConversionPattern<vector::ReductionOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     auto kind = srcOp.getKind();
-
-    switch (kind) {
-    // Reduction minimum
-    case vector::CombiningKind::MINSI:
-    case vector::CombiningKind::MINUI:
-    case vector::CombiningKind::MINF:
-      generateAIEVecOpsForReductionOp<aievec::MinOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
-      break;
-    // Reduction maximum
-    case vector::CombiningKind::MAXSI:
-    case vector::CombiningKind::MAXUI:
-    case vector::CombiningKind::MAXF:
-      generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-          rewriter, srcOp, shiftIndex, srcOp.getVector());
-      break;
-    // Reduction add for i32, i16 and i8 types
-    case vector::CombiningKind::ADD: {
-      if (isa<IntegerType>(scalarType)) {
-        if (laneSize == 32 && elWidth == 32) {
-          Location loc = srcOp.getLoc();
-          VectorType vecType = createVectorType(laneSize / 2, scalarType);
-
-          auto lExtOp = rewriter.create<aievec::ExtOp>(loc, vecType,
-                                                       srcOp.getVector(), 0);
-          auto rExtOp = rewriter.create<aievec::ExtOp>(loc, vecType,
-                                                       srcOp.getVector(), 1);
-          auto addElemOp = rewriter.create<aievec::AddElemOp>(
-              loc, lExtOp.getResult().getType(), lExtOp.getResult(),
-              rExtOp.getResult());
-          shiftIndex /= 2;
-          generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-              rewriter, srcOp, shiftIndex, addElemOp.getResult());
-        } else {
-          generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-              rewriter, srcOp, shiftIndex, srcOp.getVector());
-        }
-      }
-      // Reduction add for float and bfloat16
-      else if (isa<FloatType>(scalarType) && laneSize == 16) {
-        if (elWidth == 32) {
-          generateReductionOpForFloat(rewriter, srcOp, shiftIndex);
-        } else {
-          generateReductionOpForBFloat16(rewriter, srcOp, shiftIndex);
-        }
-      } else {
-        return failure();
-      }
-      break;
-    }
-    default:
+    if (kind != vector::CombiningKind::ADD)
       return failure();
+
+    VectorType vType = cast<VectorType>(srcOp.getVector().getType());
+    Type scalarType = vType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(vType);
+
+    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+      return failure();
+
+    int shiftIndex = laneSize / 2;
+    assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
+           "shiftIndex must be power of 2");
+
+    Value curValue = srcOp.getVector();
+    Location loc = srcOp.getLoc();
+    Type accType = getVectorOpDestType(vType, /*AIEML =*/true);
+    unsigned accWidth =
+        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
+
+    auto upsOp =
+        rewriter.create<aievec::UPSOp>(loc, accType, srcOp.getVector());
+
+    curValue = upsOp.getResult();
+
+    VectorType vecType = createVectorType(2 * laneSize, scalarType);
+    aievec::AddElemOp curOp = nullptr;
+
+    for (int id = shiftIndex; id > 0; id /= 2) {
+      arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+          loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
+      auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
+          loc, accType, curValue, curValue, constOp, true);
+      curOp = rewriter.create<aievec::AddElemOp>(loc, accType, curValue,
+                                                 shiftBytesOp.getResult());
+      curValue = curOp.getResult();
     }
+
+    auto srsOp = rewriter.create<aievec::SRSOp>(loc, vType, curOp.getResult());
+    SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
+    auto concatOp =
+        rewriter.create<aievec::ConcatOp>(loc, vecType, concatSources);
+
+    arith::ConstantOp zeroConstOp =
+        rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, concatOp,
+                                                   zeroConstOp.getResult());
     return success();
   }
 };
@@ -1447,7 +1492,9 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
       LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp, LowerVectorCmpFOpToAIEVecCmpOp,
-      LowerVectorSelectOpToAIEVecSelOp, LowerVectorReductionOp,
+      LowerVectorSelectOpToAIEVecSelOp, LowerVectorReductionMinOp,
+      LowerVectorReductionMaxOp, LowerVectorReductionAddIntOp,
+      LowerVectorReductionAddFloatOp, LowerVectorReductionAddBfloat16Op,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern>(
