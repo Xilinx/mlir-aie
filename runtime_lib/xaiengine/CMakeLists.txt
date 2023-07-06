@@ -44,7 +44,11 @@ if (${CMAKE_CROSSCOMPILING})
 
 else()
     message("Copying xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.") 
-    set(xaiengineIncludePath ${VITIS_ROOT}/aietools/include/drivers/aiengine)
+    set(xaiengineIncludePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
+    #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1 and can take this from aie-rt
+    set(xaiengineIncludePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src)
+    file(GLOB libheaders ${xaiengineIncludePathTmp}/*.h)
+    file(GLOB libheadersSub ${xaiengineIncludePathTmp}/*/*.h)
     set(xaiengineLibPath ${VITIS_ROOT}/aietools/lib/lnx64.o/libxaiengine.so)
 
     # copy header files into build area
@@ -59,8 +63,8 @@ else()
     add_custom_command(OUTPUT ${dest}
                     COMMAND ${CMAKE_COMMAND} -E copy ${xaiengineLibPath} ${dest})
 
-    install(DIRECTORY ${xaiengineIncludePath}
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
+    install(FILES ${libheaders} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
+    install(FILES ${libheadersSub} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include/xaiengine)
     install(FILES ${xaiengineLibPath}
             DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
 
