@@ -44,11 +44,6 @@ jobs:
           key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
 
-      - name: Get cmakeModules
-        id: clone-cmakeModules
-        run: git clone --depth 1 https://github.com/Xilinx/cmakeModules.git
-        shell: bash
-
       - name: Get LLVM
         id: clone-llvm
         run: utils/clone-llvm.sh
