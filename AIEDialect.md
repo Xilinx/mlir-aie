@@ -862,7 +862,7 @@ Links two objectFifos through an intermediary tile's DMA
 Syntax:
 
 ```
-operation ::= `AIE.objectFifo.link` attr-dict `(` $fifoIn `,` `{` $fifoOuts `}` `)` `:` `(` type($fifoIn) `,` type($fifoOuts) `)`
+operation ::= `AIE.objectFifo.link` `(` `{` $fifoIns `}` `,` `{` $fifoOuts `}` `)` attr-dict `:` `(` `{` type($fifoIns) `}` `,` `{` type($fifoOuts) `}` `)`
 ```
 
 The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
@@ -876,7 +876,7 @@ Example:
 ```
   %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, {%t72}, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
   %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, {%t74}, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
-  AIE.objectFifo.link(%of_t70_t72, {%of_t72_t74}) : (!AIE.objectFifo<memref<64xi16>>, !AIE.objectFifo<memref<64xi16>>)
+  AIE.objectFifo.link({%of_t70_t72}, {%of_t72_t74}) : ({!AIE.objectFifo<memref<64xi16>>}, {!AIE.objectFifo<memref<64xi16>>})
 ```
 This operation links two objectFifos which have tile %t72 as a link point.
 
@@ -884,12 +884,15 @@ To achieve a broadcast pattern through the link tile, the output objectFifo shou
 To achieve a distribute pattern from the link tile, there should be multiple output objectFifos in the LinkOp. In this case,
 parts will be taken out of the input objectFifo's buffers based on the sizes of the output objectFifos, in the order they 
 were given in the LinkOp.
+The join pattern is the exact inverse of the distribute one.
+
+Traits: AttrSizedOperandSegments
 
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `fifoIn` | AIE objectFifo type
+| `fifoIns` | AIE objectFifo type
 | `fifoOuts` | AIE objectFifo type
 
 ### `AIE.objectFifo.registerExternalBuffers` (::xilinx::AIE::ObjectFifoRegisterExternalBuffersOp)
