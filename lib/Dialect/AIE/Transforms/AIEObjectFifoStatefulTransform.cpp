@@ -307,7 +307,8 @@ struct AIEObjectFifoStatefulTransformPass
     bool linked = false;
     auto linkOp = getOptionalLinkOp(op);
     if (linkOp) {
-      auto fifoOut = linkOp->getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+      auto fifoOut =
+          linkOp->getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
       auto fifoIn = linkOp->getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
       linked = true;
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
@@ -328,7 +329,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         AIEObjectFifoType fifoOutType =
             linkOp->getFifoOuts()[0].getType().cast<AIEObjectFifoType>();
-        MemRefType elemOutType = fifoOutType.getElementType().cast<MemRefType>();
+        MemRefType elemOutType =
+            fifoOutType.getElementType().cast<MemRefType>();
         int outSize = getMemrefTypeSize(elemOutType);
 
         if (inSize >= outSize) {
@@ -631,11 +633,13 @@ struct AIEObjectFifoStatefulTransformPass
           } else {
             for (auto fifoIn : linkOp->getFifoIns()) {
               auto createOp = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
-              AIEObjectFifoType fifoType = createOp.getType().cast<AIEObjectFifoType>();
-              MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-              if (fifoIn == op.getFifo()) 
+              AIEObjectFifoType fifoType =
+                  createOp.getType().cast<AIEObjectFifoType>();
+              MemRefType elemType =
+                  fifoType.getElementType().cast<MemRefType>();
+              if (fifoIn == op.getFifo())
                 break;
-              else 
+              else
                 extraOffset += (int)elemType.getShape()[0];
             }
           }
@@ -654,7 +658,7 @@ struct AIEObjectFifoStatefulTransformPass
                   fifoType.getElementType().cast<MemRefType>();
               if (fifoOut == op.getFifo())
                 break;
-              else 
+              else
                 extraOffset += (int)elemType.getShape()[0];
             }
           }
@@ -1192,7 +1196,7 @@ struct AIEObjectFifoStatefulTransformPass
         if (linkOp)
           for (auto fifoIn : linkOp->getFifoIns()) {
             if (fifoIn == createOp.getFifo())
-              linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(), 
+              linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
                                                         consumerFifo.getFifo());
           }
       }

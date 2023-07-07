@@ -147,6 +147,6 @@ module @link_broadcast {
 
         %objFifo3 = AIE.objectFifo.createObjectFifo(%tile22, {%tile33}, 2 : i32) {sym_name = "skip_connection"} : !AIE.objectFifo<memref<16xi32>>
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : (!AIE.objectFifo<memref<48xi32>>, !AIE.objectFifo<memref<16xi32>>)
+        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<48xi32>>}, {!AIE.objectFifo<memref<16xi32>>})
     }
 }

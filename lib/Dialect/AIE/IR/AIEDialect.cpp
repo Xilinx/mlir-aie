@@ -432,15 +432,17 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 // ObjectFifoLinkOp
 LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   if (isJoin() && isDistribute())
-    return emitError("ObjectFifoLinkOp does not support 'join' and 'distribute' at the same time");
-  
+    return emitError("ObjectFifoLinkOp does not support 'join' and "
+                     "'distribute' at the same time");
+
   auto sharedTile = getOptionalSharedTile();
   if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
 
   if (isJoin()) {
-    ObjectFifoCreateOp fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    ObjectFifoCreateOp fifoOut =
+        getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
     AIEObjectFifoType fifoType = fifoOut.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int outputSize = (int)elemType.getShape()[0];
@@ -457,7 +459,8 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
                        "be equal to size of output objFifo");
 
   } else if (isDistribute()) {
-    ObjectFifoCreateOp fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    ObjectFifoCreateOp fifoIn =
+        getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
     AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int inputSize = (int)elemType.getShape()[0];
@@ -488,7 +491,8 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
   } else {
     auto fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
     for (auto fifoOut : getFifoOuts()) {
-      ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
+      ObjectFifoCreateOp fifoOutOp =
+          fifoOut.getDefiningOp<ObjectFifoCreateOp>();
       if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
         return {};
     }
