@@ -61,6 +61,8 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DAIE_RUNTIME_TARGET=${target}
           -DVITIS_ROOT=${VITIS_ROOT}
           -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
+          -DVitis_VERSION_MAJOR=${Vitis_VERSION_MAJOR}
+		      -DVitis_VERSION_MINOR=${Vitis_VERSION_MINOR}
           -DSysroot=${Sysroot}
       BUILD_ALWAYS true
       STEP_TARGETS clean build install test

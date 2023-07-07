@@ -6,15 +6,21 @@
 
 cmake_minimum_required(VERSION 3.20.1)
 
+#tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
+if(${Vitis_VERSION_MAJOR} EQUAL "2022")
+    set(aieRTIncludePath "${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src" CACHE STRING "AIE-RT include path")
+elseif(${Vitis_VERSION_MAJOR} EQUAL "2023")
+    set(aieRTIncludePath "${VITIS_AIETOOLS_DIR}/include/drivers/aiengine" CACHE STRING "AIE-RT include path")
+else()
+    message(FATAL_ERROR "Unsupported Vitis version: ${Vitis_VERSION_MAJOR}")
+endif()
+
 project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 
 if (${CMAKE_CROSSCOMPILING})
     message("Building xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.") 
-    set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
-    #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
-    set(xaienginePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src) 
-    file(GLOB libheaders ${xaienginePathTmp}/*.h)
-    file(GLOB libheadersSub ${xaienginePathTmp}/*/*.h)
+    file(GLOB libheaders ${aieRTIncludePath}/*.h)
+    file(GLOB libheadersSub ${aieRTIncludePath}/*/*.h)
 
     # copy header files into build area
     foreach(file ${libheaders})
@@ -47,8 +53,8 @@ else()
     set(xaiengineIncludePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
     #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1 and can take this from aie-rt
     set(xaiengineIncludePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src)
-    file(GLOB libheaders ${xaiengineIncludePathTmp}/*.h)
-    file(GLOB libheadersSub ${xaiengineIncludePathTmp}/*/*.h)
+    file(GLOB libheaders ${aieRTIncludePath}/*.h)
+    file(GLOB libheadersSub ${aieRTIncludePath}/*/*.h)
     set(xaiengineLibPath ${VITIS_ROOT}/aietools/lib/lnx64.o/libxaiengine.so)
 
     # copy header files into build area
