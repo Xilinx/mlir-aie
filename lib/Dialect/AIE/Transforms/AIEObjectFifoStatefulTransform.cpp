@@ -307,26 +307,34 @@ struct AIEObjectFifoStatefulTransformPass
     bool linked = false;
     auto linkOp = getOptionalLinkOp(op);
     if (linkOp) {
+      auto fifoOut =
+          linkOp->getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+      auto fifoIn = linkOp->getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
       linked = true;
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
         return; // elements have already been created
-      // if distribute, fifoIn has bigger size
-      if (linkOp->isDistribute()) {
-        if (linkOp->getFifoIn() != op)
+      if (linkOp->isJoin()) {
+        // if join, fifoOut has bigger size
+        if (op != fifoOut)
+          return;
+      } else if (linkOp->isDistribute()) {
+        // if distribute, fifoIn has bigger size
+        if (op != fifoIn)
           return;
       } else {
-        AIEObjectFifoType fifoIn =
-            linkOp->getFifoIn().getType().cast<AIEObjectFifoType>();
-        MemRefType elemInType = fifoIn.getElementType().cast<MemRefType>();
+        AIEObjectFifoType fifoInType =
+            linkOp->getFifoIns()[0].getType().cast<AIEObjectFifoType>();
+        MemRefType elemInType = fifoInType.getElementType().cast<MemRefType>();
         int inSize = getMemrefTypeSize(elemInType);
 
-        AIEObjectFifoType fifoOut =
+        AIEObjectFifoType fifoOutType =
             linkOp->getFifoOuts()[0].getType().cast<AIEObjectFifoType>();
-        MemRefType elemOutType = fifoOut.getElementType().cast<MemRefType>();
+        MemRefType elemOutType =
+            fifoOutType.getElementType().cast<MemRefType>();
         int outSize = getMemrefTypeSize(elemOutType);
 
         if (inSize >= outSize) {
-          if (linkOp->getFifoIn() != op)
+          if (op != fifoIn)
             return;
         } else {
           if (linkOp->getFifoOuts()[0] != op)
@@ -609,14 +617,34 @@ struct AIEObjectFifoStatefulTransformPass
     // identify size difference between input and output memrefs
     ObjectFifoCreateOp target = op;
     bool isDistribute = false;
-    int distribOffset = 0;
+    bool isJoin = false;
+    int extraOffset = 0;
     auto linkOp = getOptionalLinkOp(op);
     if (linkOp) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
 
-        // find offset based on order of this op in distribute list
-        if (linkOp->isDistribute()) {
+        if (linkOp->isJoin()) {
+          // find offset based on order of this op in join list
+          isJoin = true;
+          if (target == op) {
+            acqNum = linkOp->getFifoIns().size();
+            relNum = linkOp->getFifoIns().size();
+          } else {
+            for (auto fifoIn : linkOp->getFifoIns()) {
+              auto createOp = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
+              AIEObjectFifoType fifoType =
+                  createOp.getType().cast<AIEObjectFifoType>();
+              MemRefType elemType =
+                  fifoType.getElementType().cast<MemRefType>();
+              if (fifoIn == op.getFifo())
+                break;
+              else
+                extraOffset += (int)elemType.getShape()[0];
+            }
+          }
+        } else if (linkOp->isDistribute()) {
+          // find offset based on order of this op in distribute list
           isDistribute = true;
           if (target == op) {
             acqNum = linkOp->getFifoOuts().size();
@@ -631,7 +659,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoOut == op.getFifo())
                 break;
               else
-                distribOffset += getMemrefTypeSize(elemType);
+                extraOffset += (int)elemType.getShape()[0];
             }
           }
         } else {
@@ -697,8 +725,8 @@ struct AIEObjectFifoStatefulTransformPass
         succ = builder.createBlock(endBlock);
 
       builder.setInsertionPointToStart(curr);
-      if (isDistribute)
-        offset = distribOffset * bytes;
+      if (isDistribute || isJoin)
+        offset = extraOffset * bytes;
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                               buffersPerFifo[target][blockIndex], offset,
                               lenOut, channelDir, blockIndex, succ);
@@ -1166,9 +1194,11 @@ struct AIEObjectFifoStatefulTransformPass
         // update the linkOp if the split objFifo was originally its start point
         auto linkOp = getOptionalLinkOp(createOp);
         if (linkOp)
-          if (linkOp->getFifoIn() == createOp.getFifo())
-            linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
-                                                      consumerFifo.getFifo());
+          for (auto fifoIn : linkOp->getFifoIns()) {
+            if (fifoIn == createOp.getFifo())
+              linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
+                                                        consumerFifo.getFifo());
+          }
       }
 
       // identify external buffers that were registered to

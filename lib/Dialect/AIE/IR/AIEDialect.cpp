@@ -431,18 +431,40 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 
 // ObjectFifoLinkOp
 LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
+  if (isJoin() && isDistribute())
+    return emitError("ObjectFifoLinkOp does not support 'join' and "
+                     "'distribute' at the same time");
+
   auto sharedTile = getOptionalSharedTile();
   if (!sharedTile)
     return emitError("ObjectFifoLinkOp must have a link point, i.e., a "
                      "shared tile between objectFifos");
 
-  // if size of fifoOuts > 1, check that the sum of their datatypes = fifoIn
-  // datatype
-  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
-  AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
-  MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-  int inputSize = (int)elemType.getShape()[0];
-  if (getFifoOuts().size() > 1) {
+  if (isJoin()) {
+    ObjectFifoCreateOp fifoOut =
+        getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    AIEObjectFifoType fifoType = fifoOut.getType().cast<AIEObjectFifoType>();
+    MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+    int outputSize = (int)elemType.getShape()[0];
+
+    int inputSize = 0;
+    for (auto fifoIn : getFifoIns()) {
+      auto op = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
+      AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+      MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+      inputSize += (int)elemType.getShape()[0];
+    }
+    if (inputSize != outputSize)
+      return emitError("Total size of input objFifos in ObjectFifoLinkOp must "
+                       "be equal to size of output objFifo");
+
+  } else if (isDistribute()) {
+    ObjectFifoCreateOp fifoIn =
+        getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
+    MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+    int inputSize = (int)elemType.getShape()[0];
+
     int outputSize = 0;
     for (auto fifoOut : getFifoOuts()) {
       auto op = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
@@ -458,13 +480,25 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   return success();
 }
 std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
-  ObjectFifoCreateOp fifoIn = getFifoIn().getDefiningOp<ObjectFifoCreateOp>();
-  for (auto fifoOut : getFifoOuts()) {
-    ObjectFifoCreateOp fifoOutOp = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-    if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
-      return {};
+  if (isJoin()) {
+    auto fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    for (auto fifoIn : getFifoIns()) {
+      ObjectFifoCreateOp fifoInOp = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
+      if (fifoOut.getProducerTile() != fifoInOp.getConsumerTiles()[0])
+        return {};
+    }
+    return {fifoOut.getProducerTile()};
+  } else {
+    auto fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    for (auto fifoOut : getFifoOuts()) {
+      ObjectFifoCreateOp fifoOutOp =
+          fifoOut.getDefiningOp<ObjectFifoCreateOp>();
+      if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
+        return {};
+    }
+    return {fifoIn.getConsumerTiles()[0]};
   }
-  return {fifoIn.getConsumerTiles()[0]};
+  return {};
 }
 
 // ObjectFifoRegisterExternalBuffersOp
