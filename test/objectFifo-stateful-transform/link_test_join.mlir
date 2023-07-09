@@ -43,7 +43,7 @@
 // CHECK:     AIE.flow(%1, DMA : 0, %0, DMA : 0)
 // CHECK:     %22 = AIE.buffer(%1) {sym_name = "link5_buff_0"} : memref<512xi8>
 // CHECK:     %23 = AIE.buffer(%1) {sym_name = "link5_buff_1"} : memref<512xi8>
-// CHECK:     %24 = AIE.lock(%1, 0) {init = 2 : i32, sym_name = "link5_prod_lock"}
+// CHECK:     %24 = AIE.lock(%1, 0) {init = 8 : i32, sym_name = "link5_prod_lock"}
 // CHECK:     %25 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "link5_cons_lock"}
 // CHECK:     %26 = AIE.lock(%0, 0) {init = 1 : i32, sym_name = "link5_cons_prod_lock"}
 // CHECK:     %27 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "link5_cons_cons_lock"}

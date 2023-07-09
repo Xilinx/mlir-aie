@@ -370,6 +370,8 @@ struct AIEObjectFifoStatefulTransformPass
     if (linked) {
       if (linkOp->isDistribute())
         numElem *= linkOp->getFifoOuts().size();
+      else if (linkOp->isJoin())
+        numElem *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
     locks = createObjectFifoLocks(builder, lockAnalysis, op, numElem,
