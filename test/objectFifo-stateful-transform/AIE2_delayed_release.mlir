@@ -30,6 +30,97 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
+// CHECK: module @AIE2_delayed_release {
+// CHECK:   AIE.device(xcve2302) {
+// CHECK:     %[[tile0:.*]] = AIE.tile(2, 2)
+// CHECK:     %[[tile1:.*]] = AIE.tile(2, 3)
+// CHECK:     %[[buf23:.*]] = AIE.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
+// CHECK:     %[[fifo_buff_0:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_0"} : memref<i32>
+// CHECK:     %[[fifo_buff_1:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_1"} : memref<i32>
+// CHECK:     %[[fifo_buff_2:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_2"} : memref<i32>
+// CHECK:     %[[fifo_buff_3:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_3"} : memref<i32>
+// CHECK:     %[[fifo_prod_lock:.*]] = AIE.lock(%[[tile0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
+// CHECK:     %[[fifo_cons_lock:.*]] = AIE.lock(%[[tile0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     %[[core0:.*]] = AIE.core(%[[tile0]]) {
+// CHECK:       %c99_i32 = arith.constant 99 : i32
+// CHECK:       %c0 = arith.constant 0 : index
+// CHECK:       %c1 = arith.constant 1 : index
+// CHECK:       %c4 = arith.constant 4 : index
+
+// # Objects Held: 0     # Objects Requested: 1    # Acquired Needed: 1
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 1
+// CHECK:       memref.store %c99_i32, %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], Release, 1)
+// # Objects Held: 0   (After release)
+
+// # Objects Held: 0     # Objects Requested: 1    # Acquired Needed: 1
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 1
+// CHECK:       memref.store %c99_i32, %[[fifo_buff_1]][] : memref<i32>
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], Release, 1)
+// # Objects Held: 0   (After release)
+
+// # Objects Held: 0     # Objects Requested: 1    # Acquired Needed: 1
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 1
+// CHECK:       memref.store %c99_i32, %[[fifo_buff_2]][] : memref<i32>
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], Release, 1)
+// # Objects Held: 0   (After release)
+
+// # Objects Held: 0     # Objects Requested: 1    # Acquired Needed: 1
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 1
+// CHECK:       memref.store %c99_i32, %[[fifo_buff_3]][] : memref<i32>
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], Release, 1)
+// # Objects Held: 0   (After release)
+// CHECK:       AIE.end
+// CHECK:     }
+
+// CHECK:     %[[core1:.*]] = AIE.core(%[[tile1]]) {
+// CHECK:       %c0 = arith.constant 0 : index
+// CHECK:       %c1 = arith.constant 1 : index
+// CHECK:       %c2 = arith.constant 2 : index
+// CHECK:       %c3 = arith.constant 3 : index
+
+// -- Requested: 2 --
+// # Objects Held: 0     # Objects Requested: 2    # Acquired Needed: 2
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 1
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 2
+
+// CHECK:       %11 = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %11, %[[buf23]][%c0] : memref<4xi32>
+
+// -- Requested: 1 --
+// Since we already hold 2, we expect not to see any lock acquires here.
+// # Objects Held: 2     # Objects Requested: 1    # Acquired Needed: 0
+// CHECK:       %12 = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %12, %[[buf23]][%c1] : memref<4xi32>
+
+// -- Requested: 3 --
+// Since we already hold 2 and are requesting 3, we expect one acquire here.
+// # Objects Held: 2     # Objects Requested: 3    # Acquired Needed: 1
+// CHECK:       AIE.useLock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
+// # Objects Held: 3
+// CHECK:       %13 = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %13, %[[buf23]][%c2] : memref<4xi32>
+
+// -- Requested: 1 --
+// # Objects Held: 3     # Objects Requested: 1    # Acquired Needed: 0
+// CHECK:       %14 = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %14, %[[buf23]][%c3] : memref<4xi32>
+
+// These releases should all succeed.
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], Release, 1)
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], Release, 1)
+// CHECK:       AIE.useLock(%[[fifo_prod_lock]], Release, 1)
+// CHECK:       AIE.end
+// CHECK:     }
+// CHECK:   }
+// CHECK: }
+
 module @AIE2_delayed_release {
     AIE.device(xcve2302) {
         %tile22 = AIE.tile(2, 2)
