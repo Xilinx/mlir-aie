@@ -1,3 +1,13 @@
+//===- AIE2_cyclostatic_l1.mlir --------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // In this cyclostatic pattern, the producer produces one object at a time
 // and pushes them into L1 memory, shared with the adjacent consumer tile.
 // The consumer consumes {1, 2, 1} elements, in that order.

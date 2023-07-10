@@ -1,3 +1,13 @@
+//===- AIE2_delayed_release.mlir -------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // The expected semantics of objectFIFO aquire/releases are such that the most
 // recent acquire will always name the _total_ number of elements available
 // to the core. For example, an acquire(2) followed by an acquire(1) means that

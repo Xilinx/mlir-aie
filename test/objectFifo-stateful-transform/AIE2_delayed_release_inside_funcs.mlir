@@ -1,3 +1,13 @@
+//===- AIE2_delayed_release_inside_funcs.mlir ------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // This tests ensures that locks are acquired correctly to preserve the same
 // semantics as in the AIE2_delayed_release.mlir test, even if the acquires
 // and releases happen across function calls.

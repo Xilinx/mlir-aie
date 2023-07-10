@@ -1,3 +1,13 @@
+//===- AIE2_cyclostatic_dma.mlir -------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // In this test, data is exchanged the same as in AIE2_cyclostatic_l1, but
 // tiles are farther apart and have to use the network/DMAs to communicate.
 
