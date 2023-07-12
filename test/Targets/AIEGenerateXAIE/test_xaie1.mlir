@@ -11,14 +11,14 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: XAie_DmaDesc dma_tile33_bd0;
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile33_bd0), XAie_TileLoc(3,3));
-// CHECK: XAie_DmaSetLock(&(dma_tile33_bd0), XAie_LockInit(0,0),XAie_LockInit(0,1));
-// CHECK: XAie_DmaSetAddrLen(&(dma_tile33_bd0), {{.*}} 0x1400, {{.*}} 256 * 4);
-// CHECK: XAie_DmaSetNextBd(&(dma_tile33_bd0), {{.*}} 0, {{.*}} 0);
-// CHECK: XAie_DmaEnableBd(&(dma_tile33_bd0));
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &(dma_tile33_bd0), XAie_TileLoc(3,3), {{.*}} 0);
-// CHECK: XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}}0, {{.*}} DMA_MM2S, {{.*}}0);
-// CHECK: XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}} 0, /* dmaDir */ DMA_MM2S);
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &(dma_tile33_bd0), XAie_TileLoc(3,3)));
+// CHECK: __mlir_aie_try(XAie_DmaSetLock(&(dma_tile33_bd0), XAie_LockInit(0,0),XAie_LockInit(0,1)));
+// CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&(dma_tile33_bd0), {{.*}} 0x1400, {{.*}} 256 * 4));
+// CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&(dma_tile33_bd0), {{.*}} 0, {{.*}} 0));
+// CHECK: __mlir_aie_try(XAie_DmaEnableBd(&(dma_tile33_bd0)));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &(dma_tile33_bd0), XAie_TileLoc(3,3), {{.*}} 0));
+// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}}0, {{.*}} DMA_MM2S, {{.*}}0));
+// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}} 0, /* dmaDir */ DMA_MM2S));
 
 module @test_xaie1 {
  AIE.device(xcvc1902) {

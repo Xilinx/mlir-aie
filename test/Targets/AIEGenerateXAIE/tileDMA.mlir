@@ -13,14 +13,14 @@
 // AIE.end is not the last block.
 
 // CHECK: XAie_DmaDesc [[bd0:.*]];
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(8,3));
-// CHECK: XAie_DmaSetNextBd(&([[bd0]]), {{.*}} 0, {{.*}} 1);
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(8,3), {{.*}} 0);
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(8,3)));
+// CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]), {{.*}} 0, {{.*}} 1));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(8,3), {{.*}} 0));
 
 // CHECK: XAie_DmaDesc [[bd1:.*]];
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(8,3));
-// CHECK: XAie_DmaSetNextBd(&([[bd1]]), {{.*}} 1, {{.*}} 1);
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(8,3), {{.*}} 1);
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(8,3)));
+// CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd1]]), {{.*}} 1, {{.*}} 1));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(8,3), {{.*}} 1));
 
 
 module @aie_module  {

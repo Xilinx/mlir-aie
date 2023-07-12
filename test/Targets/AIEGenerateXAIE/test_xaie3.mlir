@@ -12,7 +12,7 @@
 
 // Test acquire with '1'.   Single BD.
 // CHECK: XAie_DmaDesc [[bd0:.*]];
-// CHECK: XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,1),XAie_LockInit(0,0));
+// CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,1),XAie_LockInit(0,0)));
 
 module @test_xaie3 {
  AIE.device(xcvc1902) {
