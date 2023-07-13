@@ -904,7 +904,7 @@ struct AIEObjectFifoStatefulTransformPass
 
             identifyDependencies(forLoop, operations, opIndex, dependencies);
 
-            if (num_iter <= unrollFactor) {
+            if ((num_iter <= unrollFactor)) {
               // duplicate loop body and remove loop
               num_unrolls = num_iter;
               builder.setInsertionPointAfter(forLoop);
@@ -982,26 +982,25 @@ struct AIEObjectFifoStatefulTransformPass
         acc[op] = (lockID + 1) % op.size(); // update to next objFifo elem
       }
     } else {
-      int lockMode = 1;
-      for (int i = 0; i < numLocks; i++) {
-        // search for the correct lock based on the port of the acq/rel
-        // operation e.g. acq as consumer is the read lock (second)
-        LockOp lock;
-        if (lockAction == LockAction::AcquireGreaterEqual) {
-          if (port == ObjectFifoPort::Produce)
-            lock = locksPerFifo[target][0];
-          else
-            lock = locksPerFifo[target][1];
-        } else {
-          if (port == ObjectFifoPort::Produce)
-            lock = locksPerFifo[target][1];
-          else
-            lock = locksPerFifo[target][0];
-        }
-        builder.create<UseLockOp>(builder.getUnknownLoc(), lock, lockMode,
-                                  lockAction);
-        acc[op] = (acc[op] + 1) % op.size(); // update to next objFifo elem
+      if (numLocks == 0)
+        return;
+      // search for the correct lock based on the port of the acq/rel
+      // operation e.g. acq as consumer is the read lock (second)
+      LockOp lock;
+      if (lockAction == LockAction::AcquireGreaterEqual) {
+        if (port == ObjectFifoPort::Produce)
+          lock = locksPerFifo[target][0];
+        else
+          lock = locksPerFifo[target][1];
+      } else {
+        if (port == ObjectFifoPort::Produce)
+          lock = locksPerFifo[target][1];
+        else
+          lock = locksPerFifo[target][0];
       }
+      builder.create<UseLockOp>(builder.getUnknownLoc(), lock, numLocks,
+                                lockAction);
+      acc[op] = (acc[op] + numLocks) % op.size(); // update to next objFifo elem
     }
   }
 
@@ -1194,11 +1193,10 @@ struct AIEObjectFifoStatefulTransformPass
         // update the linkOp if the split objFifo was originally its start point
         auto linkOp = getOptionalLinkOp(createOp);
         if (linkOp)
-          for (auto fifoIn : linkOp->getFifoIns()) {
+          for (auto fifoIn : linkOp->getFifoIns())
             if (fifoIn == createOp.getFifo())
               linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
                                                         consumerFifo.getFifo());
-          }
       }
 
       // identify external buffers that were registered to
