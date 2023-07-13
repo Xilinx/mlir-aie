@@ -904,7 +904,7 @@ struct AIEObjectFifoStatefulTransformPass
 
             identifyDependencies(forLoop, operations, opIndex, dependencies);
 
-            if ((num_iter <= unrollFactor)) {
+            if (num_iter <= unrollFactor) {
               // duplicate loop body and remove loop
               num_unrolls = num_iter;
               builder.setInsertionPointAfter(forLoop);
