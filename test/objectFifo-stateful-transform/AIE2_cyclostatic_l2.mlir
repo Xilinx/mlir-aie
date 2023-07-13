@@ -127,12 +127,10 @@
 // twice, meaning it has to be released twice before both acquires succeed;
 // this, again, meaning that the DMA has received two objects on the stream
 // and put them in the respective buffers.
-// CHECK:       AIE.useLock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       AIE.useLock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 2)
 // CHECK:       %[[load1:.*]] = memref.load %[[fifo1_cons_buff_1]][%c0] : memref<1xi32>
 // CHECK:       %[[load2:.*]] = memref.load %[[fifo1_cons_buff_2]][%c0] : memref<1xi32>
-// CHECK:       AIE.useLock(%[[fifo1_cons_prod_lock]], Release, 1)
-// CHECK:       AIE.useLock(%[[fifo1_cons_prod_lock]], Release, 1)
+// CHECK:       AIE.useLock(%[[fifo1_cons_prod_lock]], Release, 2)
 
 // Lastly, receive just one object:
 // CHECK:       AIE.useLock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 1)

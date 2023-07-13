@@ -33,12 +33,8 @@
 // CHECK:     %[[c1:.*]] = AIE.core(%[[t1]]) {
 // CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
 // CHECK:       AIE.useLock(%[[PL]], Release, 1)
-// CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-    // TODO: A single ACquireGreaterEqual, 2 might be nicer here.
-// CHECK:       AIE.useLock(%[[PL]], Release, 1)
-// CHECK:       AIE.useLock(%[[PL]], Release, 1)
-    // TODO: As above, a single Release, 2 might be nicer here.
+// CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 2)
+// CHECK:       AIE.useLock(%[[PL]], Release, 2)
 // CHECK:       AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
 // CHECK:       AIE.useLock(%[[PL]], Release, 1)
 // CHECK:       AIE.end

@@ -40,10 +40,8 @@
 // CHECK:     %[[c1:.*]] = AIE.core(%[[t1]]) {
 // CHECK:       AIE.useLock(%[[C_CL]], AcquireGreaterEqual, 1)
 // CHECK:       AIE.useLock(%[[C_PL]], Release, 1)
-// CHECK:       AIE.useLock(%[[C_CL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[C_CL]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.useLock(%[[C_PL]], Release, 1)
-// CHECK:       AIE.useLock(%[[C_PL]], Release, 1)
+// CHECK:       AIE.useLock(%[[C_CL]], AcquireGreaterEqual, 2)
+// CHECK:       AIE.useLock(%[[C_PL]], Release, 2)
 // CHECK:       AIE.useLock(%[[C_CL]], AcquireGreaterEqual, 1)
 // CHECK:       AIE.useLock(%[[C_PL]], Release, 1)
 // CHECK:       AIE.end

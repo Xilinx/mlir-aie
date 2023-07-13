@@ -33,26 +33,14 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:     %[[c1:.*]] = AIE.core(%[[t1]]) {
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-    // TODO: While this works, it might be nicer to have only one
-    // AcquireGreaterEqual, 2 call. If we change this, change the test here.
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-    // TODO: Same as above for acquire, it might be nicer to just have one
-    // Release, 2 call.
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
-// CHECK:         AIE.useLock(%[[PL]], Release, 1)
+// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 2)
+// CHECK:         AIE.useLock(%[[PL]], Release, 2)
+// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 2)
+// CHECK:         AIE.useLock(%[[PL]], Release, 2)
+// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 2)
+// CHECK:         AIE.useLock(%[[PL]], Release, 2)
+// CHECK:         AIE.useLock(%[[CL]], AcquireGreaterEqual, 2)
+// CHECK:         AIE.useLock(%[[PL]], Release, 2)
 // CHECK:       }
 // CHECK:       AIE.end
 // CHECK:     }
