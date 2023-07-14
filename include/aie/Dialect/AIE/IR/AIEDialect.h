@@ -65,67 +65,27 @@ class TileOp;
 /// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
 
+// Include dialect declarations such as parseAttributes, parseType
+#include "aie/Dialect/AIE/IR/AIEDialect.h.inc"
+
 namespace xilinx {
 namespace AIE {
 
 void registerAIETranslations();
 
-// FIXME: use this
-//#include "AIEDialect.h.inc"
-
-// The Dialect
-class AIEDialect : public mlir::Dialect {
-public:
-  explicit AIEDialect(mlir::MLIRContext *ctx);
-  static StringRef getDialectNamespace() { return "AIE"; }
-
-  /// Parse a type registered to this dialect. Overridding this method is
-  /// required for dialects that have custom types.
-  /// Technically this is only needed to be able to round-trip to textual IR.
-  mlir::Type parseType(DialectAsmParser &parser) const override;
-
-  /// Print a type registered to this dialect. Overridding this method is
-  /// only required for dialects that have custom types.
-  /// Technically this is only needed to be able to round-trip to textual IR.
-  void printType(mlir::Type type, DialectAsmPrinter &os) const override;
-};
+} // namespace AIE
+} // namespace xilinx
 
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Custom Types for the Dialect ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-// namespace detail {
-// struct AIEListTypeStorage;
-// }
+// Include generated TableGen-generated type definitions
+#define GET_TYPEDEF_CLASSES 1
+#include "aie/Dialect/AIE/IR/AIETypes.h.inc"
 
-// /// LLVM-style RTTI: one entry per subclass to allow dyn_cast/isa.
-// enum AIETypeKind {
-//   // The enum starts at the range reserved for this dialect.
-//   AIE_TYPE = mlir::Type::FIRST_PRIVATE_EXPERIMENTAL_0_TYPE,
-//   AIE_LIST,
-// };
-
-// /// Type for Toy arrays.
-// /// In MLIR Types are reference to immutable and uniqued objects owned by the
-// /// MLIRContext. As such `AIEListType` only wraps a pointer to an uniqued
-// /// instance of `AIEListTypeStorage` (defined in our implementation file) and
-// /// provides the public facade API to interact with the type.
-// class AIEListType : public mlir::Type::TypeBase<AIEListType, mlir::Type,
-//                                                  detail::AIEListTypeStorage>
-//                                                  {
-// public:
-//   using Base::Base;
-
-//   /// Return the type of individual elements in the array.
-//   mlir::Type getElementType();
-
-//   /// Get the unique instance of this Type from the context.
-//   static AIEListType get(mlir::Type elementType);
-
-//   /// Support method to enable LLVM-style RTTI type casting.
-//   static bool kindof(unsigned kind) { return kind == AIETypeKind::AIE_LIST; }
-// };
-
+namespace xilinx {
+namespace AIE {
 namespace detail {
 struct AIEObjectFifoTypeStorage;
 }
@@ -172,9 +132,24 @@ public:
   mlir::Type getElementType();
 };
 
+
+} // namespace AIE
+} // namespace AIE
+
+////////////////////////////////////////////////////////////////////////////////
+// Custom Attributes ///////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIE/IR/AIEAttrDefs.h.inc"
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
+
+namespace xilinx {
+namespace AIE {
 
 //#include "AIEOpInterfaces.h.inc"
 

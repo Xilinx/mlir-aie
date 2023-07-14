@@ -40,6 +40,7 @@ switch is referred to as `switchbox` to avoid confusion with the
 
   }];
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
   let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
@@ -843,15 +844,6 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     bool isB() { return (getAB() == 1); }
   }];
 
-  // let builders = [
-  //   OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
-  //     build($_builder, $_state,
-  //           buffer,
-  //           $_builder.getI32IntegerAttr(offset),
-  //           $_builder.getI32IntegerAttr(len),
-  //           $_builder.getI32IntegerAttr(AB));
-  //     }]>
-  // ];
 }
 
 def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,

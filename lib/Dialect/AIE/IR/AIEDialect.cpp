@@ -16,8 +16,14 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
+
+// Add TableGen'erated dialect definitions (including constructor)
+// We implement the initialize() function further below
+#include "aie/Dialect/AIE/IR/AIEDialect.cpp.inc"
+
 
 namespace {
 
@@ -330,16 +336,20 @@ void AIEDialect::printType(mlir::Type type,
   }
 }
 
-// FIXME: use Tablegen'd dialect class
-AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
-    : mlir::Dialect("AIE", ctx, ::mlir::TypeID::get<AIEDialect>()) {
-  // addTypes<AIEListType>();
-  addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
+void AIEDialect::initialize() {
+  addTypes<
+    #define GET_TYPE_LIST
+    #include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
+  >();
+  addAttributes<
+    #define GET_ATTRDEF_LIST
+    #include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"
+  >();
   addOperations<
-#define GET_OP_LIST
-#include "aie/Dialect/AIE/IR/AIE.cpp.inc"
-      >();
-  addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
+    #define GET_OP_LIST
+    #include "aie/Dialect/AIE/IR/AIE.cpp.inc"
+  >();
+  addInterfaces< AIEInlinerInterface, AIEDialectFoldInterface>();
 }
 
 } // namespace AIE
@@ -1206,3 +1216,7 @@ bool TileOp::isShimPLTile() {
 bool TileOp::isShimNOCorPLTile() { return isShimNOCTile() || isShimPLTile(); }
 } // namespace AIE
 } // namespace xilinx
+
+// Include implementations for custom attributes
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"

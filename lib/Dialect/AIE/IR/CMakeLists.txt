@@ -13,6 +13,7 @@ add_mlir_dialect_library(AIE
 
   DEPENDS
   MLIRAIEIncGen
+  MLIRAIEAttrDefsIncGen
   MLIRAIEEnumsIncGen
   MLIRAIEInterfacesIncGen
 
