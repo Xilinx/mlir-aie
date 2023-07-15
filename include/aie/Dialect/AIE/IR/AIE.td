@@ -798,6 +798,26 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
 
 }
 
+def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
+  let mnemonic = "DimTuple";
+  let summary = 
+    "Tuple encoding the stride and wrap of one dimension in an "
+    "AIE2 n-dimensional buffer descriptor";
+  let parameters = (ins
+    "uint32_t" : $stepsize,
+    "uint16_t" : $wrap
+  );
+  let assemblyFormat = "`<` $stepsize `,` $wrap `>`";
+}
+
+//def AIE_DimTupleArrayAttr : TypedArrayAttrBase<AIE_DimTupleAttr,
+//                                               "Array of AIE Dim Tuples"> {
+//  let constBuilderCall = [{
+//
+//  }];
+//}
+def AIE_DimTupleArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArray", "DimTupleArray", "::xilinx::AIE::DimTupleAttr">;
+
 def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   let summary = "Declare a dma block descriptor op";
   let description = [{
@@ -830,11 +850,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     ins AnyMemRef:$buffer,
         I32Attr:$offset,
         I32Attr:$len,
-        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB, // 0: A, 1: B
+        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensions
   );
 
+  let hasVerifier = 1;
+
   let assemblyFormat = [{
-    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB `)` attr-dict
+    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB (`,` $dimensions^ )? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -844,6 +867,17 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     bool isB() { return (getAB() == 1); }
   }];
 
+  let builders = [
+    OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+      build($_builder, $_state,
+            buffer,
+            $_builder.getI32IntegerAttr(offset),
+            $_builder.getI32IntegerAttr(len),
+            $_builder.getI32IntegerAttr(AB),
+            ::xilinx::AIE::DimTupleArrayAttr::get($_builder.getContext(), {})
+            );
+      }]>
+  ];
 }
 
 def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,

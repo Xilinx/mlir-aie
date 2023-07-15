@@ -997,6 +997,27 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
   return success();
 }
 
+// DMABDOp
+LogicalResult xilinx::AIE::DMABDOp::verify() {
+  if(getDimensions()) {
+    llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
+    if(dims.size() > 4) {
+      // TODO: Check for 3 dimensions in other tiles
+      return emitOpError() << "Cannot give more than four dimensions.";
+    }
+    uint64_t base_addr = getOffset();
+    int max_step = 0;
+    for(xilinx::AIE::DimTupleAttr dim : dims) {
+      if(dim.getStepsize() > max_step) {
+        max_step = dim.getStepsize();
+      }
+    }
+    // TODO: Add a check if base_addr + max_step > memref size ... probably not
+    // what the user wants to be doing
+  }
+  return success();
+}
+
 xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
