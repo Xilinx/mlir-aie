@@ -12,7 +12,7 @@ alignas(32) int32_t g_out0[OUT0_SIZE];
 alignas(32) int32_t g_out0Ref[OUT0_SIZE];
 
 int main(int argc, char *argv[]) {
-  // XXX Figure out how to use argv with xme_ca_udm_dbg -A
+  // XXX Figure out how to use argv with xca_udm_dbg --aiearch aie-ml -A
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
   std::generate(g_in0, g_in0 + IN0_SIZE,
