@@ -24,7 +24,6 @@ using namespace mlir;
 // We implement the initialize() function further below
 #include "aie/Dialect/AIE/IR/AIEDialect.cpp.inc"
 
-
 namespace {
 
 struct AIEInlinerInterface : public DialectInlinerInterface {
@@ -338,18 +337,18 @@ void AIEDialect::printType(mlir::Type type,
 
 void AIEDialect::initialize() {
   addTypes<
-    #define GET_TYPE_LIST
-    #include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
-  >();
+#define GET_TYPE_LIST
+#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
+      >();
   addAttributes<
-    #define GET_ATTRDEF_LIST
-    #include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"
-  >();
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"
+      >();
   addOperations<
-    #define GET_OP_LIST
-    #include "aie/Dialect/AIE/IR/AIE.cpp.inc"
-  >();
-  addInterfaces< AIEInlinerInterface, AIEDialectFoldInterface>();
+#define GET_OP_LIST
+#include "aie/Dialect/AIE/IR/AIE.cpp.inc"
+      >();
+  addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
 
 } // namespace AIE
@@ -634,9 +633,7 @@ const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
   return VC1902model;
 }
 
-LogicalResult xilinx::AIE::DeviceOp::verify() {
-  return success();
-}
+LogicalResult xilinx::AIE::DeviceOp::verify() { return success(); }
 
 LogicalResult xilinx::AIE::TileOp::verify() {
   const auto &target_model = getTargetModel(*this);
@@ -999,9 +996,9 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
 
 // DMABDOp
 LogicalResult xilinx::AIE::DMABDOp::verify() {
-  if(getDimensions()) {
+  if (getDimensions()) {
     ::mlir::MemRefType buffer = getBuffer().getType();
-    if(!buffer.getElementType().isInteger(32)) {
+    if (!buffer.getElementType().isInteger(32)) {
       // The AIE2 specification prescribes that multi-dimensional address
       // generation creates addresses to 32 bit words. Hence, stepSize and wrap
       // refer to 32 bit words. To avoid confusion, we disallow using multi-
@@ -1010,21 +1007,21 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
                               "supported for 32 bit integer elements.";
     }
     uint64_t base_addr = getOffset();
-    uint64_t memref_size = 1; 
-    for(int64_t memref_dim : buffer.getShape()) {
+    uint64_t memref_size = 1;
+    for (int64_t memref_dim : buffer.getShape()) {
       memref_size *= memref_dim;
     }
-    memref_size += 4*base_addr;
+    memref_size += 4 * base_addr;
     llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
-    if(dims.size() > 4) {
+    if (dims.size() > 4) {
       return emitOpError() << "Cannot give more than four dimensions.";
     }
-    for(xilinx::AIE::DimTupleAttr dim : dims) {
-      if(0 == dim.getStepsize()) {
-        return emitOpError() 
+    for (xilinx::AIE::DimTupleAttr dim : dims) {
+      if (0 == dim.getStepsize()) {
+        return emitOpError()
                << "Invalid step size; must be a positive integer.";
       }
-      if(dim.getStepsize() > memref_size) {
+      if (dim.getStepsize() > memref_size) {
         return emitOpError()
                << "Step size " << std::to_string(dim.getStepsize()) << " "
                << "exceeds memref size " << std::to_string(memref_size);

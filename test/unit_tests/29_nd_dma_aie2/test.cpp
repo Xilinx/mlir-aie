@@ -26,12 +26,12 @@ void populate_expected(int *buf) {
   const int stepsizes[3] = {2, 1, 16};
   const int wraps[3] = {8, 2, 8};
   int l = 0;
-  for(int i = 0; i < wraps[2]; i++) {
-    for(int j = 0; j < wraps[1]; j++) {
-      for(int k = 0; k < wraps[0]; k++) {
-        int i_ = i*stepsizes[2];
-        int j_ = j*stepsizes[1];
-        int k_ = k*stepsizes[0];
+  for (int i = 0; i < wraps[2]; i++) {
+    for (int j = 0; j < wraps[1]; j++) {
+      for (int k = 0; k < wraps[0]; k++) {
+        int i_ = i * stepsizes[2];
+        int j_ = j * stepsizes[1];
+        int k_ = k * stepsizes[0];
         buf[l] = i_ + j_ + k_;
         l++;
       }
@@ -40,15 +40,15 @@ void populate_expected(int *buf) {
 }
 
 void read_into(aie_libxaie_ctx_t *_xaie, int *buf) {
-  for(int i = 0; i < 128; i++) {
+  for (int i = 0; i < 128; i++) {
     buf[i] = mlir_aie_read_buffer_buf34(_xaie, i);
   }
 }
 
 void print_buf(int *buf) {
-  for(int i = 0; i < 128; i++) {
+  for (int i = 0; i < 128; i++) {
     printf("%3d ", buf[i]);
-    if(0 == (i+1) % 8) {
+    if (0 == (i + 1) % 8) {
       printf("\n");
     }
   }
@@ -76,13 +76,13 @@ int main(int argc, char *argv[]) {
 
   // Compare results.
   populate_expected(expected);
-  for(int i = 0; i < 128; i++) {
-    if(expected[i] != seen[i]) {
+  for (int i = 0; i < 128; i++) {
+    if (expected[i] != seen[i]) {
       errors = 1;
       printf("Mismatch at index %d: %d != %d.\n", i, expected[i], seen[i]);
     }
   }
-  if(0 == errors) {
+  if (0 == errors) {
     print_buf(seen);
     printf("PASS!\n");
   } else {

@@ -316,9 +316,10 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         output << "XAie_DmaTensor " << tensor << " = {};\n";
         output << tensor << ".NumDim = " 
                << std::to_string(ndims) << ";\n";
-        output << tensor << ".Dim ="
-                  "__mlir_aie_alloc_dim_desc(" << std::to_string(ndims) 
-               << ");\n";
+        output << tensor
+               << ".Dim ="
+                  "__mlir_aie_alloc_dim_desc("
+               << std::to_string(ndims) << ");\n";
         output << "if(NULL == " << tensor << ".Dim){\n"
                << "  return XAIE_ERR;\n"
                << "}\n";
@@ -330,7 +331,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                  << ", /* Wrap */ "
                  << std::to_string(dims[i].getWrap()) 
                  <<  "};\n";
-        } 
+        }
         output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
                << tileDMAInstRefStr(col, row, bdNum) << ", "
                << "&" << tensor << ", "
