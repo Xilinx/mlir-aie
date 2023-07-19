@@ -73,7 +73,7 @@ const char xaie_c_file_header[] =
     "\n"
     "static XAie_DmaDimDesc *__mlir_aie_alloc_dim_desc(size_t ndims) { \n"
     "  XAie_DmaDimDesc *ret = NULL;\n"
-    "  ret = calloc(sizeof(XAie_DmaDimDesc), ndims);\n"
+    "  ret = (XAie_DmaDimDesc *)calloc(sizeof(XAie_DmaDimDesc), ndims);\n"
     "  if(NULL == ret) { \n"
     "    __mlir_aie_print(fprintf(stderr, \n"
     "                             \"Allocating DmaDimDesc failed.\\n\"));\n"
@@ -317,9 +317,10 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         output << tensor << ".NumDim = " 
                << std::to_string(ndims) << ";\n";
         output << tensor << ".Dim ="
-                  "__mlir_aie_alloc_dims(" << std::to_string(ndims) << ");\n";
+                  "__mlir_aie_alloc_dim_desc(" << std::to_string(ndims) 
+               << ");\n";
         output << "if(NULL == " << tensor << ".Dim){\n"
-               << "  return 1;\n"
+               << "  return XAIE_ERR;\n"
                << "}\n";
         for(int i = 0; i < ndims; i++) {
           // Assume AIE-ML architecture; we assert this above
@@ -334,7 +335,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << tileDMAInstRefStr(col, row, bdNum) << ", "
                << "&" << tensor << ", "
                << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
-               << " /* len */ " << lenA << " * " << bytesA << "));\n"
+               << " /* len */ " << lenA << " * " << bytesA << "));\n";
         // TODO: Probably need special handling for NOC
         // TODO: Might need to adjust step sizes / wraps by -1 
       }
@@ -962,14 +963,14 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     if (!lock.hasName())
       return;
     std::string lockName(lock.name().getValue());
-    output << "int mlir_aie_acquire_" << lockName << "(" << ctx_p
+    output << "AieRC mlir_aie_acquire_" << lockName << "(" << ctx_p
            << ", int value, int timeout) {\n";
     output << "  const int id = " << lock.getLockIDValue() << ";\n";
     output << "  return XAie_LockAcquire(" << deviceInstRef << ", "
            << tileLocStr(col, row) << ", " << tileLockStr("id", "value")
            << ", timeout);\n";
     output << "}\n";
-    output << "int mlir_aie_release_" << lockName << "(" << ctx_p
+    output << "AieRC mlir_aie_release_" << lockName << "(" << ctx_p
            << ", int value, int timeout) {\n";
     output << "  const int id = " << lock.getLockIDValue() << ";\n";
     output << "  return XAie_LockRelease(" << deviceInstRef << ", "

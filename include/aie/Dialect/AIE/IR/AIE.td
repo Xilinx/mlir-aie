@@ -810,12 +810,6 @@ def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
   let assemblyFormat = "`<` $stepsize `,` $wrap `>`";
 }
 
-//def AIE_DimTupleArrayAttr : TypedArrayAttrBase<AIE_DimTupleAttr,
-//                                               "Array of AIE Dim Tuples"> {
-//  let constBuilderCall = [{
-//
-//  }];
-//}
 def AIE_DimTupleArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArray", "DimTupleArray", "::xilinx::AIE::DimTupleAttr">;
 
 def AIE_DMABDOp: AIE_Op<"dmaBd", []> {

@@ -1000,20 +1000,42 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
 // DMABDOp
 LogicalResult xilinx::AIE::DMABDOp::verify() {
   if(getDimensions()) {
-    llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
-    if(dims.size() > 4) {
-      // TODO: Check for 3 dimensions in other tiles
-      return emitOpError() << "Cannot give more than four dimensions.";
+    ::mlir::MemRefType buffer = getBuffer().getType();
+    if(!buffer.getElementType().isInteger(32)) {
+      // The AIE2 specification prescribes that multi-dimensional address
+      // generation creates addresses to 32 bit words. Hence, stepSize and wrap
+      // refer to 32 bit words. To avoid confusion, we disallow using multi-
+      // dimensional BDs with other memrefs.
+      return emitOpError() << "Multi-dimensional buffer descriptors are only "
+                              "supported for 32 bit integer elements.";
     }
     uint64_t base_addr = getOffset();
-    int max_step = 0;
-    for(xilinx::AIE::DimTupleAttr dim : dims) {
-      if(dim.getStepsize() > max_step) {
-        max_step = dim.getStepsize();
-      }
+    uint64_t memref_size = 1; 
+    for(int64_t memref_dim : buffer.getShape()) {
+      memref_size *= memref_dim;
     }
-    // TODO: Add a check if base_addr + max_step > memref size ... probably not
-    // what the user wants to be doing
+    memref_size += 4*base_addr;
+    llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
+    if(dims.size() > 4) {
+      return emitOpError() << "Cannot give more than four dimensions.";
+    }
+    for(xilinx::AIE::DimTupleAttr dim : dims) {
+      if(0 == dim.getStepsize()) {
+        return emitOpError() 
+               << "Invalid step size; must be a positive integer.";
+      }
+      if(dim.getStepsize() > memref_size) {
+        return emitOpError()
+               << "Step size " << std::to_string(dim.getStepsize()) << " "
+               << "exceeds memref size " << std::to_string(memref_size);
+      }
+      // TODO: There are more meaningful checks that could be added here,
+      // such as:
+      //   - limits on wrap; note that wrap refers to iterations of the previous
+      //     dimension
+      //   - last dimension wrap should be implicit from memref size and other
+      //     dimension;ensure it isset correctly
+    }
   }
   return success();
 }
