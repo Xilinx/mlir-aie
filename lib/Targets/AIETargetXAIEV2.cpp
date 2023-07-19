@@ -131,17 +131,6 @@ static std::string tileDMATensorStr(int col, int row, int bdNum) {
   return tileDMATensorStr(std::to_string(col), std::to_string(row),
                           std::to_string(bdNum));
 }
-static std::string tileDMATensorRefStr(StringRef col, StringRef row,
-                                       StringRef bdNum) {
-  std::string str;
-  llvm::raw_string_ostream rss(str);
-  rss << "&(" << tileDMATensorStr(col, row, bdNum) << ")";
-  return str;
-}
-static std::string tileDMATensorRefStr(int col, int row, int bdNum) {
-  return tileDMATensorRefStr(std::to_string(col), std::to_string(row),
-                             std::to_string(bdNum));
-}
 static std::string tileLockStr(StringRef id, StringRef val) {
   std::string str;
   llvm::raw_string_ostream rss(str);
