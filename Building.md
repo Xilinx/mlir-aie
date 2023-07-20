@@ -9,6 +9,7 @@ cmake 3.20.6
 ninja 1.8.2
 Xilinx Vitis 2022.2
 python 3.8.x and pip
+virtualenv
 pip3 install psutil rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 ```
@@ -32,9 +33,9 @@ In addition, the following optional packages may be useful:
 ```
 LibXAIE is a backend target used to execute designs in hardware: https://github.com/Xilinx/embeddedsw/tree/master/XilinxProcessorIPLib/drivers/aiengine
 ```
-Note that if you build one of the supported platforms like vck190_bare_prod, the generated sysroot 
-already contains the LibXAIE drivers so you do not need to download the embeddedsw repo or 
-define the LibXAIE_DIR cmake parameter.
+Note that if you build one of the supported platforms like `vck190_bare_prod`, the generated `sysroot`
+already contains the LibXAIE drivers so you do not need to download the `embeddedsw` repository or
+define the `LibXAIE_DIR` `cmake` parameter.
 
 Currently, the only supported target is the Xilinx VCK190 board, running Ubuntu-based Linux, however
 the tools are largely board and device independent and can be adapted to other environments.
@@ -42,38 +43,63 @@ the tools are largely board and device independent and can be adapted to other e
 
 ## Building on X86
 
-1. Clone the mlir-aie repo.
+1. Clone the `mlir-aie` repository with its sub-modules:
     ```
-    git clone https://github.com/Xilinx/mlir-aie.git
+    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
     cd mlir-aie
     ```
 
-    __All subsequent steps should be run from inside the top-level directory of the mlir-aie repo cloned above.__
+    __All subsequent steps should be run from inside the top-level
+    directory of the `mlir-aie` repository cloned above.__
 
-2. Run utils/setup_python_packages.sh to setup the prerequisite python packages. This script creates and installs the python packages listed in utils/requirements.txt in a virtual python environment called 'sandbox'.
+2. Source `utils/setup_python_packages.sh` to setup the prerequisite python
+    packages. This script creates and installs the python packages
+    listed in `utils/requirements.txt` in a virtual python environment
+    called 'sandbox', then it enters the sandbox:
     ```
     source utils/setup_python_packages.sh
     ```
 
-3. Clone and compile LLVM, with the ability to target AArch64 as a cross-compiler, and with MLIR 
-enabled: in addition, we make some common build optimizations to use a linker ('lld' or 'gold') other 
-than 'ld' (which tends to be quite slow on large link jobs) and to link against libLLVM.so and libClang
-so. You may find that other options are also useful. Note that due to changing MLIR APIs, only a
-particular revision is expected to work.  
+    If you need to exit the sandbox later, type `deactivate`.  If you
+    have a recent Linux distribution, you might not need this, as you
+    are able to have all the required packages from the distribution.
 
-    To clone llvm, run utils/clone-llvm.sh (see utils/clone-llvm.sh for the correct llvm commithash).
+3. Clone and compile LLVM, with the ability to target AArch64 as a
+   cross-compiler, and with MLIR enabled: in addition, we make some
+   common build optimizations to use a linker (`lld` or `gold`) other
+   than `ld` (which tends to be quite slow on large link jobs) and to
+   link against `libLLVM.so` and `libClang.so`. You may find that other
+   options are also useful. Note that due to changing MLIR APIs, only
+   a particular revision is expected to work.
+
+    To clone `llvm`, run `utils/clone-llvm.sh` (see
+    `utils/clone-llvm.sh` for the correct `llvm` commit hash):
     ```
     ./utils/clone-llvm.sh
     ```
-    To build (compile and install) llvm, run utils/build-llvm-local.sh in the directory that llvm and 
-    cmakeModules are cloned in. See build-llvm-local.sh for additional shell script arguments. 
-    Note that build-llvm.sh is a variation of the llvm build script used for CI on github.
-    ```
-    ./utils/build-llvm-local.sh 
-    ```
-    This will build llvm in llvm/build and install the llvm binaries under llvm/install.
 
-4. Build the mlir-aie tools by calling `utils/build-mlir-aie.sh` with the path to `llvm/build`. The Vitis enviroment will have to be set up for this to succeed. 
+    If you have already an LLVM repository, you can instead of cloning
+    just make a new worktree from it by using:
+    ````
+    ./utils/clone-llvm.sh --llvm-worktree <directory-of-existing-LLVM-repository>
+    ````
+
+    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory that `llvm` is cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
+    (Note that `build-llvm-local.sh` and `build-llvm.sh` are a
+    variation of the LLVM build script used for CI on GitHub and
+    looking at the continuous integration recipe
+    https://github.com/Xilinx/mlir-aie/blob/main/.github/workflows/buildAndTest.yml
+    and output https://github.com/Xilinx/mlir-aie/actions/ might help
+    in the case of compilation problem.)
+```
+    ./utils/build-llvm-local.sh
+    ```
+    This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
+
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` with
+    the path to the `llvm/build` directory. The Vitis environment will
+    have to be set up for this to succeed.
+
     ```
     source <Vitis Install Path>/settings64.sh
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
@@ -82,8 +108,8 @@ particular revision is expected to work.
 
     The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM processors.
 
-5. In order to run all the tools, it is necessary to add some paths into your environment. This can be 
-done by calling the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
+5. In order to run all the tools, it is necessary to add some paths into your environment. This can be
+done by sourcing the `utils/env_setup.sh` script with the paths to the install folders for mlir-aie
 and llvm.
     ```
     source utils/env_setup.sh <mlir-aie>/install <llvm dir>/install
