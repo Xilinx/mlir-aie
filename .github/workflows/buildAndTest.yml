@@ -19,7 +19,7 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 2
           submodules: "true"
@@ -35,7 +35,7 @@ jobs:
 
       - name: Get Submodule Hash
         id: get-submodule-hash
-        run: echo "::set-output name=hash::$(md5sum $(echo utils/clone-llvm.sh))"
+        run: echo "hash=$(md5sum $(echo utils/clone-llvm.sh))" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Ccache for C++ compilation
@@ -44,16 +44,11 @@ jobs:
           key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
 
-      - name: Get cmakeModules
-        id: clone-cmakeModules
-        run: git clone --depth 1 https://github.com/Xilinx/cmakeModules.git
-        shell: bash
-
       - name: Get LLVM
         id: clone-llvm
         run: utils/clone-llvm.sh
         shell: bash
-        
+
       - name: Rebuild and Install LLVM
         run: utils/build-llvm.sh
 
@@ -69,9 +64,9 @@ jobs:
             -DAIE_LINKER=NONE \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
-            -DCMAKE_MODULE_PATH=`pwd`/../cmakeModules \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm/ \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
+            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
             -DCMAKE_LINKER=lld \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
@@ -95,9 +90,9 @@ jobs:
             -DAIE_LINKER=NONE \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DCMAKE_MODULE_PATH=../cmakeModules \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm/ \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
+            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
             -DCMAKE_LINKER=lld \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
@@ -123,7 +118,7 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 2
           submodules: "true"
@@ -205,7 +200,7 @@ jobs:
       # Upload the format and tidy patches to an artifact (zip'd) associated
       # with the workflow run. Only run this on a failure.
       - name: Upload format and tidy patches
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         continue-on-error: true
         if: ${{ failure() }}
         with:

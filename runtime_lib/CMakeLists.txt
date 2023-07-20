@@ -17,11 +17,15 @@ project("runtime-libs")
 #add_custom_target(runtime-libs ALL)
 
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
-set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
-if(SysrootAarch64)
-set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake")
-else()
-set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/modulesXilinx/toolchain_vitis_crosscomp_arm.cmake")
+if(NOT x86_64_TOOLCHAIN_FILE)
+  set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
+endif()
+if(NOT aarch64_TOOLCHAIN_FILE)
+  if(SysrootAarch64)
+  set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake")
+  else()
+  set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/modulesXilinx/toolchain_vitis_crosscomp_arm.cmake")
+  endif()
 endif()
 
 foreach(target ${AIE_RUNTIME_TARGETS})
@@ -61,6 +65,8 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DAIE_RUNTIME_TARGET=${target}
           -DVITIS_ROOT=${VITIS_ROOT}
           -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
+          -DVitis_VERSION_MAJOR=${Vitis_VERSION_MAJOR}
+		      -DVitis_VERSION_MINOR=${Vitis_VERSION_MINOR}
           -DSysroot=${Sysroot}
       BUILD_ALWAYS true
       STEP_TARGETS clean build install test

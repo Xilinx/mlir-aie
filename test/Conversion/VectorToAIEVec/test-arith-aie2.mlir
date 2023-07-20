@@ -38,6 +38,20 @@ func.func @vecaddi_i16_i32(%arg0 : vector<32xi16>, %arg1 : vector<32xi16>) -> ve
   return %3 : vector<32xi32>
 }
 
+// CHECK-LABEL: func @vecaddi_i16_i32_2(
+// CHECK-SAME: %[[LHS:.*]]: vector<16xi16>,
+// CHECK-SAME: %[[RHS:.*]]: vector<16xi32>)
+func.func @vecaddi_i16_i32_2(%arg0 : vector<16xi16>, %arg1 : vector<16xi32>) -> vector<16xi32> {
+  // CHECK:  %[[LUPS:.*]] = aievec.ups %[[LHS]] {shift = 0 : i8} : vector<16xi16>, vector<16xi64>
+  // CHECK:  %[[RUPS:.*]] = aievec.ups %[[RHS]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
+  // CHECK:  %[[ADD:.*]] = aievec.add_elem %[[LUPS]], %[[RUPS]] : vector<16xi64>
+  // CHECK:  %[[SRS:.*]] = aievec.srs %[[ADD]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
+  %1 = arith.extsi %arg0 : vector<16xi16> to vector<16xi32>
+  %2 = arith.addi %1, %arg1 : vector<16xi32>
+  // CHECK: return %[[SRS]] : vector<16xi32>
+  return %2 : vector<16xi32>
+}
+
 // CHECK-LABEL: func @vecaddi_i8_i32(
 // CHECK-SAME: %[[LHS:.*]]: vector<32xi8>,
 // CHECK-SAME: %[[RHS:.*]]: vector<32xi8>)
