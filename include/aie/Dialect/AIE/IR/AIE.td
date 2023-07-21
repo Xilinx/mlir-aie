@@ -863,13 +863,10 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
 
   let builders = [
     OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
-      build($_builder, $_state,
-            buffer,
-            $_builder.getI32IntegerAttr(offset),
-            $_builder.getI32IntegerAttr(len),
-            $_builder.getI32IntegerAttr(AB),
-            ::xilinx::AIE::DimTupleArrayAttr::get($_builder.getContext(), {})
-            );
+      odsState.addOperands(buffer);
+      odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
+      odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
+      odsState.addAttribute(getABAttrName(odsState.name), $_builder.getI32IntegerAttr(AB));
       }]>
   ];
 }

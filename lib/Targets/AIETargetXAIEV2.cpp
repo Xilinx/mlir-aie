@@ -195,7 +195,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       }
     }
 
-    if(0 != ndims && AIEArch::AIE2 != target_model.getTargetArch()) {
+    if (0 != ndims && AIEArch::AIE2 != target_model.getTargetArch()) {
       return memOp.emitOpError("DMA contains at least one multi-dimensional "
                                "buffer descriptor. This is currently only "
                                "supported for AIE-ML devices.");
@@ -270,28 +270,27 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       if (0 == ndims) {
         if (target_model.isShimNOCTile(col, row)) {
           output << "__mlir_aie_try(XAie_DmaSetAddrLen("
-                << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
-                << "mlir_aie_external_get_addr_myBuffer_" << col << row << "_"
-                << bdNum << "(), "
-                << " /* len */ " << lenA << " * " << bytesA << "));\n";
+                 << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
+                 << "mlir_aie_external_get_addr_myBuffer_" << col << row << "_"
+                 << bdNum << "(), "
+                 << " /* len */ " << lenA << " * " << bytesA << "));\n";
           output << "__mlir_aie_try(XAie_DmaSetAxi("
-                << tileDMAInstRefStr(col, row, bdNum) << ", "
-                << "/* smid */ 0, "
-                << "/* burstlen */ 4, "
-                << "/* QoS */ 0, "
-                << "/* Cache */ 0, "
-                << "/* Secure */ " << enable << "));\n";
+                 << tileDMAInstRefStr(col, row, bdNum) << ", "
+                 << "/* smid */ 0, "
+                 << "/* burstlen */ 4, "
+                 << "/* QoS */ 0, "
+                 << "/* Cache */ 0, "
+                 << "/* Secure */ " << enable << "));\n";
         } else {
           output << "__mlir_aie_try(XAie_DmaSetAddrLen("
-                << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
-                << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
-                << " /* len */ " << lenA << " * " << bytesA << "));\n";
+                 << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
+                 << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
+                 << " /* len */ " << lenA << " * " << bytesA << "));\n";
         }
       } else {
         std::string tensor = tileDMATensorStr(col, row, bdNum);
         output << "XAie_DmaTensor " << tensor << " = {};\n";
-        output << tensor << ".NumDim = " 
-               << std::to_string(ndims) << ";\n";
+        output << tensor << ".NumDim = " << std::to_string(ndims) << ";\n";
         output << tensor
                << ".Dim ="
                   "__mlir_aie_alloc_dim_desc("
@@ -299,14 +298,12 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         output << "if(NULL == " << tensor << ".Dim){\n"
                << "  return 1;\n"
                << "}\n";
-        for(int i = 0; i < ndims; i++) {
+        for (int i = 0; i < ndims; i++) {
           // Assume AIE-ML architecture; we assert this above
           output << tensor << ".Dim[" << std::to_string(i) << "].AieMlDimDesc"
-                 << " = { /* StepSize */ " 
-                 << std::to_string(dims[i].getStepsize()) 
-                 << ", /* Wrap */ "
-                 << std::to_string(dims[i].getWrap()) 
-                 <<  "};\n";
+                 << " = { /* StepSize */ "
+                 << std::to_string(dims[i].getStepsize()) << ", /* Wrap */ "
+                 << std::to_string(dims[i].getWrap()) << "};\n";
         }
         output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
                << tileDMAInstRefStr(col, row, bdNum) << ", "
@@ -314,7 +311,7 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << "0x" << llvm::utohexstr(BaseAddrA + offsetA) << ", "
                << " /* len */ " << lenA << " * " << bytesA << "));\n";
         // TODO: Probably need special handling for NOC
-        // TODO: Might need to adjust step sizes / wraps by -1 
+        // TODO: Might need to adjust step sizes / wraps by -1
       }
 
       if (block.getNumSuccessors() > 0) {

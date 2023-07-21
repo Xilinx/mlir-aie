@@ -340,6 +340,7 @@ void AIEDialect::initialize() {
 #define GET_TYPE_LIST
 #include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
       >();
+  addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
   addAttributes<
 #define GET_ATTRDEF_LIST
 #include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"
