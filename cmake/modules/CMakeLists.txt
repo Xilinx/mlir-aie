@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# (c) Copyright 2023 Advanced Micro Devices Inc.
 
 # Generate a list of CMake library targets so that other CMake projects can
 # link against them. LLVM calls its version of this file LLVMExports.cmake, but
@@ -24,6 +25,14 @@ set(AIE_CONFIG_INCLUDE_DIRS
   "${PROJECT_BINARY_DIR}/include"
   )
 set(AIE_CONFIG_EXPORTS_FILE "\${AIE_CMAKE_DIR}/AIETargets.cmake")
+set(AIE_CONFIG_LibXAIE_x86_64_DIR)
+if ("x86_64" IN_LIST AIE_RUNTIME_TARGETS)
+  set(AIE_CONFIG_LibXAIE_x86_64_DIR "${PROJECT_BINARY_DIR}/runtime_lib/x86_64/xaiengine")
+endif()
+set(AIE_CONFIG_LibXAIE_aarch64_DIR)
+if ("aarch64" IN_LIST AIE_RUNTIME_TARGETS)
+  set(AIE_CONFIG_LibXAIE_aarch64_DIR "${PROJECT_BINARY_DIR}/runtime_lib/aarch64/xaiengine")
+endif()
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/AIEConfig.cmake.in
   ${aie_cmake_builddir}/AIEConfig.cmake
@@ -53,6 +62,15 @@ set(AIE_CONFIG_INCLUDE_DIRS
   "\${AIE_INSTALL_PREFIX}/include"
   )
 set(AIE_CONFIG_EXPORTS_FILE "\${AIE_CMAKE_DIR}/AIETargets.cmake")
+set(AIE_CONFIG_LibXAIE_x86_64_DIR)
+if ("x86_64" IN_LIST AIE_RUNTIME_TARGETS)
+  set(AIE_CONFIG_LibXAIE_x86_64_DIR "\${AIE_INSTALL_PREFIX}/runtime_lib/x86_64/xaiengine")
+endif()
+set(AIE_CONFIG_LibXAIE_aarch64_DIR)
+if ("aarch64" IN_LIST AIE_RUNTIME_TARGETS)
+  set(AIE_CONFIG_LibXAIE_aarch64_DIR "\${AIE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine")
+endif()
+
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/AIEConfig.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/AIEConfig.cmake
@@ -63,6 +81,9 @@ set(AIE_CONFIG_BINARY_DIR)
 set(AIE_CONFIG_TOOLS_BINARY_DIR)
 set(AIE_CONFIG_INCLUDE_DIRS)
 set(AIE_CONFIG_EXPORTS_FILE)
+set(AIE_CONFIG_LibXAIE_x86_64_DIR)
+set(AIE_CONFIG_LibXAIE_aarch64_DIR)
+
 
 # export targets for the install directory
 install(EXPORT AIETargets DESTINATION ${AIE_INSTALL_PACKAGE_DIR}

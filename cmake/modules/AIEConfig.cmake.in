@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# (c) Copyright 2023 Advanced Micro Devices Inc.
 
 # This file allows users to call find_package(AIE) and pick up our targets.
 
@@ -14,9 +15,13 @@ set(AIE_CMAKE_DIR "@AIE_CONFIG_CMAKE_DIR@")
 set(AIE_BINARY_DIR "@AIE_CONFIG_BINARY_DIR@")
 set(AIE_TOOLS_BINARY_DIR "@AIE_CONFIG_TOOLS_BINARY_DIR@")
 set(AIE_INCLUDE_DIRS "@AIE_CONFIG_INCLUDE_DIRS@")
+
+# Provide AIE configurations for users to inherit from.
 set(AIE_RUNTIME_TARGETS "@AIE_RUNTIME_TARGETS@")
 set(AIE_COMPILER "@AIE_COMPILER@")
 set(AIE_LINKER "@AIE_LINKER@")
+set(LibXAIE_x86_64_DIR "@AIE_CONFIG_LibXAIE_x86_64_DIR@")
+set(LibXAIE_aarch64_DIR "@AIE_CONFIG_LibXAIE_aarch64_DIR@")
 
 # Provide all our library targets to users.
 include("@AIE_CONFIG_EXPORTS_FILE@")
