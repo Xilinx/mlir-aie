@@ -129,12 +129,25 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       ShapedType bufferType =
           op.getBuffer().getType().template cast<::mlir::MemRefType>();
       if (op.isA() && !target_model.isShimNOCTile(col, row)) {
-        BaseAddrA = NL.getBufferBaseAddress(op.getBuffer().getDefiningOp());
+        BaseAddrA = op.getBufferOp().address();
+        int bufferCol = op.getBufferOp().getTileOp().colIndex();
+        int bufferRow = op.getBufferOp().getTileOp().rowIndex();
+
+        // Memtile DMAs can access neighboring tiles.
+        if (target_model.isMemTile(col, row)) {
+          if (target_model.isWest(col, row, bufferCol, bufferRow)) {
+            BaseAddrA += 0x0;
+          } else if (target_model.isInternal(col, row, bufferCol, bufferRow)) {
+            BaseAddrA += target_model.getMemTileSize() * 1;
+          } else if (target_model.isEast(col, row, bufferCol, bufferRow)) {
+            BaseAddrA += target_model.getMemTileSize() * 2;
+          }
+        }
       }
       if (op.isA() || target_model.isShimNOCTile(col, row)) {
         lenA = op.getLenValue();
         bytesA = bufferType.getElementTypeBitWidth() / 8;
-        offsetA = op.getOffsetValue();
+        offsetA = op.getOffsetValue() * bytesA;
         bufA = "XAIEDMA_TILE_BD_ADDRA";
         hasA = true;
       }
@@ -156,30 +169,36 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
     int acqValue = 0, relValue = 0;
     bool hasAcq = false, hasRel = false;
-    int acqLockID, relLockID;
+    int acqLockID = 0, relLockID = 0;
     for (auto op : block.template getOps<UseLockOp>()) {
       LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+      int lockCol = memOp.colIndex();
+      int lockRow = memOp.rowIndex();
+      int lockID = lock.getLockIDValue();
+      // Memtile DMAs can access neighboring tiles.
+      if (target_model.isMemTile(col, row)) {
+        if (target_model.isWest(col, row, lockCol, lockRow)) {
+          lockID += 0;
+        } else if (target_model.isInternal(col, row, lockCol, lockRow)) {
+          lockID += target_model.getNumLocks(lockCol, lockRow) * 1;
+        } else if (target_model.isEast(col, row, lockCol, lockRow)) {
+          lockID += target_model.getNumLocks(lockCol, lockRow) * 2;
+        }
+      }
       if (op.acquire() || op.acquire_ge()) {
         hasAcq = true;
-        acqLockID = lock.getLockIDValue();
+        acqLockID = lockID;
         acqValue = op.getLockValue();
         if (op.acquire_ge())
           acqValue = -acqValue;
       } else if (op.release()) {
         hasRel = true;
-        relLockID = lock.getLockIDValue();
+        relLockID = lockID;
         relValue = op.getLockValue();
       } else {
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");
       }
-    }
-
-    // FIXME: questionable assumption here that buffer is always local.
-    if (target_model.isMemTile(col, row)) {
-      acqLockID += 64;
-      relLockID += 64;
-      BaseAddrA += 0x80000;
     }
 
     for (auto op : block.template getOps<DMABDPACKETOp>()) {
@@ -487,9 +506,11 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         auto dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
+          if (dest->getSuccessors().size() < 1)
+            break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))
-            dest = nullptr;
+            break;
         }
       }
     }
@@ -805,8 +826,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         return; // Unsupported type
       }
 
-      output << "const int " << bufName
-             << "_offset = " << NL.getBufferBaseAddress(buf) << ";\n";
+      output << "const int " << bufName << "_offset = " << buf.address()
+             << ";\n";
       output << typestr << " mlir_aie_read_buffer_" << bufName << "(" << ctx_p
              << ", int index) {\n";
       output << "u32 value; auto rc = XAie_DataMemRdWord(" << deviceInstRef
