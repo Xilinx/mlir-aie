@@ -1294,7 +1294,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"ModuleOp">
     ```
       %tile00 = AIE.tile(0, 0)
       %tile02 = AIE.tile(0, 2)
-      %connect1 = AIE.objectFifo.createObjectFifo(%tile00, {%tile02}, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+      %connect1 = AIE.objectFifo.createObjectFifo(%tile00, { %tile02 }, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
@@ -1384,9 +1384,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
 
     Example:
     ```
-      %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, {%t72}, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
-      %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, {%t74}, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo.link({%of_t70_t72}, {%of_t72_t74}) : ({!AIE.objectFifo<memref<64xi16>>}, {!AIE.objectFifo<memref<64xi16>>})
+      %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, { %t72 }, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
+      %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, { %t74 }, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo.link({ %of_t70_t72 }, { %of_t72_t74 }) : ({!AIE.objectFifo<memref<64xi16>>}, {!AIE.objectFifo<memref<64xi16>>})
     ```
     This operation links two objectFifos which have tile %t72 as a link point.
 
