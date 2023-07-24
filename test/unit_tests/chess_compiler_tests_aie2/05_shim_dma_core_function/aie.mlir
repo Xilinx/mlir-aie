@@ -101,16 +101,8 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     %lock2_read = AIE.lock(%t70, 4) {sym_name = "output_lock_read" }
 
     // Shim DMA connection to kernel
-    AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-    AIE.flow(%t73, "DMA" : 1, %t71, "South" : 2)
-    %sw1  = AIE.switchbox(%t70) {
-      AIE.connect<"South" : 3, "North" : 3>
-      AIE.connect<"North" : 2, "South" : 2>
-    }
-    %mux1 = AIE.shimmux  (%t70) {
-      AIE.connect<"DMA"   : 0, "North" : 3>
-      AIE.connect<"North" : 2, "DMA" : 0>
-    }
+    AIE.flow(%t70, "DMA" : 3, %t73, "DMA" : 0)
+    AIE.flow(%t73, "DMA" : 1, %t70, "DMA" : 2)
 
     // Shim DMA loads large buffer to local memory
     %dma = AIE.shimDMA(%t70) {

@@ -21,10 +21,10 @@
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   AIE.device(xcve2802) {
-    %t73 = AIE.tile(7, 3)
-    %t72 = AIE.tile(7, 2)
-    %t71 = AIE.tile(7, 1)
-    %t70 = AIE.tile(7, 0)
+    %t73 = AIE.tile(3, 3)
+    %t72 = AIE.tile(3, 2)
+    %t71 = AIE.tile(3, 1)
+    %t70 = AIE.tile(3, 0)
 
     %buf_a_ping = AIE.buffer(%t73) {sym_name = "a_ping" } : memref<256xi32>
     %buf_a_pong = AIE.buffer(%t73) {sym_name = "a_pong" } : memref<256xi32>
@@ -42,7 +42,7 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     %m73 = AIE.mem(%t73) {
         %srcDma = AIE.dmaStart("S2MM", 0, ^bd0, ^dma0)
       ^dma0:
-        %dstDma = AIE.dmaStart("MM2S", 1, ^bd2, ^end)
+        %dstDma = AIE.dmaStart("MM2S", 0, ^bd2, ^end)
       ^bd0:
         AIE.useLock(%lock_a_write, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buf_a_ping : memref<256xi32>, 0, 256>, 0)
@@ -86,12 +86,12 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
         AIE.dmaStart(S2MM, 0, ^bd1, ^end)
       ^bd0:
         AIE.useLock(%lock1_read, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 512>, 0)
+        AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 8>, 0)
         AIE.useLock(%lock1_write, Release, 1)
         AIE.nextBd ^bd0
       ^bd1:
         AIE.useLock(%lock2_write, AcquireGreaterEqual, 1)
-        AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 512>, 0)
+        AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 8>, 0)
         AIE.useLock(%lock2_read, Release, 1)
         AIE.nextBd ^bd1
       ^end:

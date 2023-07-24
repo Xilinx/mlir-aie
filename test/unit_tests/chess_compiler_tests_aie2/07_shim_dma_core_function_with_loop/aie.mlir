@@ -11,10 +11,13 @@
 //  clang -O2 --target=aie -c %S/kernel.cc
 // REQUIRES: valid_xchess_license
 // RUN: xchesscc_wrapper aie2 -c %S/kernel.cc
-// RUN: aiecc.py --aiesim --chesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
+// RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
-// UN: aie.mlir.prj/aiesim.sh
-// XFAIL: *
+// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+
+// CHECK: AIE2 ISS
+// CHECK: test start.
+// CHECK: PASS!
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   AIE.device(xcve2802) {
@@ -28,10 +31,10 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     %buf_b_ping = AIE.buffer(%t73) {sym_name = "b_ping" } : memref<64xi32>
     %buf_b_pong = AIE.buffer(%t73) {sym_name = "b_pong" } : memref<64xi32>
 
-    %lock_a_ping = AIE.lock(%t73, 3) // a_ping
-    %lock_a_pong = AIE.lock(%t73, 4) // a_pong
-    %lock_b_ping = AIE.lock(%t73, 5) // b_ping
-    %lock_b_pong = AIE.lock(%t73, 6) // b_pong
+    %lock_a_write = AIE.lock(%t73, 3) { init = 1 : i32 }
+    %lock_a_read = AIE.lock(%t73, 4)
+    %lock_b_write = AIE.lock(%t73, 5) { init = 1 : i32 }
+    %lock_b_read = AIE.lock(%t73, 6)
 
     func.func private @func(%A: memref<64xi32>, %B: memref<64xi32>, %C: i32) -> ()
 
@@ -49,17 +52,17 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       %c64 = arith.constant 64 : index
       scf.for %iv = %lb to %ub step %step {
 
-        AIE.useLock(%lock_a_ping, "Acquire", 1) // acquire for read
-        AIE.useLock(%lock_b_ping, "Acquire", 0) // acquire for write
+        AIE.useLock(%lock_a_read, AcquireGreaterEqual, 1)
+        AIE.useLock(%lock_b_write, AcquireGreaterEqual, 1)
         func.call @func(%buf_a_ping, %buf_b_ping,%buffer_size) : (memref<64xi32>, memref<64xi32>,i32) -> ()
-        AIE.useLock(%lock_a_ping, "Release", 0) // release for write
-        AIE.useLock(%lock_b_ping, "Release", 1) // release for read
+        AIE.useLock(%lock_a_write, Release, 1)
+        AIE.useLock(%lock_b_read, Release, 1) 
 
-        AIE.useLock(%lock_a_pong, "Acquire", 1) // acquire for read
-        AIE.useLock(%lock_b_pong, "Acquire", 0) // acquire for write
+        AIE.useLock(%lock_a_read, AcquireGreaterEqual, 1)
+        AIE.useLock(%lock_b_write, AcquireGreaterEqual, 1)
         func.call @func(%buf_a_pong, %buf_b_pong,%buffer_size) : (memref<64xi32>, memref<64xi32>,i32) -> ()
-        AIE.useLock(%lock_a_pong, "Release", 0) // release for write
-        AIE.useLock(%lock_b_pong, "Release", 1) // release for read
+        AIE.useLock(%lock_a_write, Release, 1)
+        AIE.useLock(%lock_b_read, Release, 1) 
       }
 
       AIE.end
@@ -71,24 +74,24 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       ^dma0:
         %dstDma = AIE.dmaStart("MM2S", 1, ^bd2, ^end)
       ^bd0:
-        AIE.useLock(%lock_a_ping, "Acquire", 0)
+        AIE.useLock(%lock_a_write, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buf_a_ping : memref<64xi32>, 0, 64>, 0)
-        AIE.useLock(%lock_a_ping, "Release", 1)
+        AIE.useLock(%lock_a_read, Release, 1)
         AIE.nextBd ^bd1
       ^bd1:
-        AIE.useLock(%lock_a_pong, "Acquire", 0)
+        AIE.useLock(%lock_a_write, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buf_a_pong : memref<64xi32>, 0, 64>, 0)
-        AIE.useLock(%lock_a_pong, "Release", 1)
+        AIE.useLock(%lock_a_read, Release, 1)
         AIE.nextBd ^bd0
       ^bd2:
-        AIE.useLock(%lock_b_ping, "Acquire", 1)
+        AIE.useLock(%lock_b_read, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buf_b_ping : memref<64xi32>, 0, 64>, 0)
-        AIE.useLock(%lock_b_ping, "Release", 0)
+        AIE.useLock(%lock_b_write, Release, 1)
         AIE.nextBd ^bd3
       ^bd3:
-        AIE.useLock(%lock_b_pong, "Acquire", 1)
+        AIE.useLock(%lock_b_read, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buf_b_pong : memref<64xi32>, 0, 64>, 0)
-        AIE.useLock(%lock_b_pong, "Release", 0)
+        AIE.useLock(%lock_b_write, Release, 1)
         AIE.nextBd ^bd2
       ^end:
         AIE.end
@@ -97,20 +100,14 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
     // DDR buffer
     %buffer_in  = AIE.external_buffer {sym_name = "input_buffer" } : memref<512 x i32>
     %buffer_out = AIE.external_buffer {sym_name = "output_buffer" } : memref<512 x i32>
-    %lock1 = AIE.lock(%t70, 1) {sym_name = "input_lock" }
-    %lock2 = AIE.lock(%t70, 2) {sym_name = "output_lock" }
+    %lock1_write = AIE.lock(%t70, 1) {sym_name = "input_lock_write", init = 1 : i32 }
+    %lock1_read = AIE.lock(%t70, 2) {sym_name = "input_lock_read" }
+    %lock2_write = AIE.lock(%t70, 3) {sym_name = "output_lock_write", init = 1 : i32 }
+    %lock2_read = AIE.lock(%t70, 4) {sym_name = "output_lock_read" }
 
     // Shim DMA connection to kernel
-    AIE.flow(%t71, "South" : 3, %t73, "DMA" : 0)
-    AIE.flow(%t73, "DMA" : 1, %t71, "South" : 2)
-    %sw1  = AIE.switchbox(%t70) {
-      AIE.connect<"South" : 3, "North" : 3>
-      AIE.connect<"North" : 2, "South" : 2>
-    }
-    %mux1 = AIE.shimmux  (%t70) {
-      AIE.connect<"DMA"   : 0, "North" : 3>
-      AIE.connect<"North" : 2, "DMA" : 0>
-    }
+    AIE.flow(%t70, "DMA" : 3, %t73, "DMA" : 0)
+    AIE.flow(%t73, "DMA" : 1, %t70, "DMA" : 2)
 
     // Shim DMA loads large buffer to local memory
     %dma = AIE.shimDMA(%t70) {
@@ -118,14 +115,14 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       ^dma:
         AIE.dmaStart(S2MM, 0, ^bd1, ^end)
       ^bd0:
-        AIE.useLock(%lock1, Acquire, 1)
+        AIE.useLock(%lock1_read, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buffer_in : memref<512 x i32>, 0, 512>, 0)
-        AIE.useLock(%lock1, Release, 0)
+        AIE.useLock(%lock1_write, Release, 1)
         AIE.nextBd ^bd0
       ^bd1:
-        AIE.useLock(%lock2, Acquire, 1)
+        AIE.useLock(%lock2_read, AcquireGreaterEqual, 1)
         AIE.dmaBd(<%buffer_out : memref<512 x i32>, 0, 512>, 0)
-        AIE.useLock(%lock2, Release, 0)
+        AIE.useLock(%lock2_write, Release, 1)
         AIE.nextBd ^bd1
       ^end:
         AIE.end

@@ -31,18 +31,6 @@ int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
-  /*
-  XAieDma_Shim ShimDMAInst_7_0;
-  XAieDma_ShimInitialize(&(TileInst[7][0]), &ShimDMAInst_7_0);
-  XAieDma_ShimChResetAll(&ShimDMAInst_7_0);
-  XAieDma_ShimBdClearAll(&ShimDMAInst_7_0);
-
-  XAieDma_Tile TileDmaInst_7_3;
-  XAieDma_TileInitialize(&(TileInst[7][3]), &TileDmaInst_7_3);
-  XAieDma_TileBdClearAll(&TileDmaInst_7_3);
-  XAieDma_TileChResetAll(&TileDmaInst_7_3);
-  */
-
   mlir_aie_configure_cores(_xaie);
   mlir_aie_configure_switchboxes(_xaie);
   // mlir_aie_release_input_lock_read(_xaie, 1, 0);
@@ -76,14 +64,11 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_initialize_locks(_xaie);
 
-  u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before DMA config\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
   mlir_aie_configure_dmas(_xaie);
 
-  usleep(sleep_u);
   printf("after DMA config\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
@@ -115,8 +100,13 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(buf0);
   mlir_aie_sync_mem_dev(buf1);
 
-  mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
-  mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
+#ifdef __AIESIM__
+    mlir_aie_external_set_addr_input_buffer(buf0.physicalAddr);
+    mlir_aie_external_set_addr_output_buffer(buf1.physicalAddr);
+#else
+    mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
+    mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
+#endif
   mlir_aie_configure_shimdma_70(_xaie);
 
   mlir_aie_clear_tile_memory(_xaie, 7, 3);
@@ -151,14 +141,12 @@ int main(int argc, char *argv[]) {
      shimdma_stat_s2mm0);
   */
 
-  usleep(sleep_u);
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  usleep(sleep_u);
   printf("after core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
   mlir_aie_print_shimdma_status(_xaie, 7, 0);
@@ -166,15 +154,9 @@ int main(int argc, char *argv[]) {
   printf("Release lock for accessing DDR.\n");
   mlir_aie_release_input_lock_read(_xaie, 1, 0);
 
-  usleep(sleep_u);
-
   if (mlir_aie_acquire_output_lock_read(_xaie, -1, 0)) {
     errors++;
   }
-
-  printf("after lock release\n");
-  mlir_aie_print_tile_status(_xaie, 7, 3);
-  mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
   mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 3), 4, errors);
   mlir_aie_check("After", mlir_aie_read_buffer_a_pong(_xaie, 3), 256 + 4,
