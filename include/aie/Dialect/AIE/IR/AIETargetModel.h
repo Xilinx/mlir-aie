@@ -74,27 +74,35 @@ public:
   virtual llvm::Optional<TileID> getMemSouth(TileID src) const = 0;
 
   /// Return true if src is the internal memory of dst
-  virtual bool isInternal(int srcCol, int srcRow, int dstCol,
-                          int dstRow) const = 0;
+  bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return ((srcCol == dstCol) && (srcRow == dstRow));
+  }
   /// Return true if src is West of dst
-  virtual bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) const = 0;
+  bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return ((srcCol == dstCol + 1) && (srcRow == dstRow));
+  }
+  /// Return true if src is East of dst
+  bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return ((srcCol == dstCol - 1) && (srcRow == dstRow));
+  }
+  /// Return true if src is North of dst
+  bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return ((srcCol == dstCol) && (srcRow == dstRow - 1));
+  }
+  /// Return true if src is South of dst
+  bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const {
+    return ((srcCol == dstCol) && (srcRow == dstRow + 1));
+  }
+
   /// Return true if src has a memory tile which is West of dst
   virtual bool isMemWest(int srcCol, int srcRow, int dstCol,
                          int dstRow) const = 0;
-  /// Return true if src is East of dst
-  virtual bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) const = 0;
   /// Return true if src has a memory tile which is East of dst
   virtual bool isMemEast(int srcCol, int srcRow, int dstCol,
                          int dstRow) const = 0;
-  /// Return true if src is North of dst
-  virtual bool isNorth(int srcCol, int srcRow, int dstCol,
-                       int dstRow) const = 0;
   /// Return true if src has a memory tile which is North of dst
   virtual bool isMemNorth(int srcCol, int srcRow, int dstCol,
                           int dstRow) const = 0;
-  /// Return true if src is South of dst
-  virtual bool isSouth(int srcCol, int srcRow, int dstCol,
-                       int dstRow) const = 0;
   /// Return true if src has a memory tile which is South of dst
   virtual bool isMemSouth(int srcCol, int srcRow, int dstCol,
                           int dstRow) const = 0;
@@ -159,16 +167,10 @@ public:
   llvm::Optional<TileID> getMemNorth(TileID src) const override;
   llvm::Optional<TileID> getMemSouth(TileID src) const override;
 
-  bool isInternal(int srcCol, int srcRow, int dstCol,
-                  int dstRow) const override;
-  bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) const override;
-  bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) const override;
-  bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemNorth(int srcCol, int srcRow, int dstCol,
                   int dstRow) const override;
-  bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemSouth(int srcCol, int srcRow, int dstCol,
                   int dstRow) const override;
 
@@ -215,16 +217,10 @@ public:
   llvm::Optional<TileID> getMemNorth(TileID src) const override;
   llvm::Optional<TileID> getMemSouth(TileID src) const override;
 
-  bool isInternal(int srcCol, int srcRow, int dstCol,
-                  int dstRow) const override;
-  bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) const override;
-  bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) const override;
-  bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemNorth(int srcCol, int srcRow, int dstCol,
                   int dstRow) const override;
-  bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemSouth(int srcCol, int srcRow, int dstCol,
                   int dstRow) const override;
 
