@@ -92,8 +92,9 @@ jobs:
           echo "llvm-version: \"$(VER)\"," >> ../build_release/docs/build_info.json
           echo "}" > ../build_release/docs/build_info.json
 
-      - name: Publish to github-pages
-        uses: peaceiris/actions-gh-pages@v3.6.1
+      - name: Publish to GitHub-Pages
+        # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
+        uses: peaceiris/actions-gh-pages@v3.9.3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build_release/docs
