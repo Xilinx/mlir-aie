@@ -1,4 +1,4 @@
-name: Generate Github Pages
+name: Generate GitHub Pages
 
 on:
   push:
@@ -42,7 +42,8 @@ jobs:
         shell: bash
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@4687d037e4d7cf725512d9b819137a3af34d39b3
+        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
+        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
