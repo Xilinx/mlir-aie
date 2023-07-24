@@ -18,8 +18,6 @@
 // CHECK: test start.
 // CHECK: PASS!
 
-// XFAIL: *
-
 module @test_chess_02_deprecated_precompiled_kernel {
   AIE.device(xcve2802) {
     %tile13 = AIE.tile(1, 3)
