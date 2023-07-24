@@ -29,6 +29,9 @@ static int64_t assignAddress(AIE::BufferOp op, int64_t lastAddress,
 
   int64_t startAddr = lastAddress;
   int64_t endAddr = startAddr + op.getAllocationSize();
+  if (Op->getAttrOfType<IntegerAttr>("address")) {
+    Op->emitWarning("Overriding existing address");
+  }
   Op->setAttr("address", rewriter.getI32IntegerAttr(startAddr));
   // Fixme: alignment
   return endAddr;
