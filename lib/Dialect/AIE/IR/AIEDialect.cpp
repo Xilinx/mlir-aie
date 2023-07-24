@@ -995,8 +995,20 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
   return success();
 }
 
+
 // DMABDOp
+xilinx::AIE::BufferOp xilinx::AIE::DMABDOp::getBufferOp() {
+  return cast<xilinx::AIE::BufferOp>(getBuffer().getDefiningOp());
+}
+
 LogicalResult xilinx::AIE::DMABDOp::verify() {
+  if (auto memOp = getOperation()->getParentOfType<xilinx::AIE::MemOp>()) {
+    auto bufferOp = getBufferOp();
+    if (bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
+        bufferOp.getTileOp().rowIndex() != memOp.rowIndex())
+      return emitOpError("can only access a buffer in the same tile.");
+  }
+
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
     ::mlir::MemRefType buffer = getBuffer().getType();
@@ -1116,8 +1128,7 @@ LogicalResult xilinx::AIE::LockOp::verify() {
 struct UsesReachableLock {
   static LogicalResult verifyTrait(Operation *op) {
     auto useLock = dyn_cast<xilinx::AIE::UseLockOp>(op);
-    auto lock =
-        dyn_cast<xilinx::AIE::LockOp>(useLock.getLock().getDefiningOp());
+    auto lock = useLock.getLockOp();
     auto parent = dyn_cast<xilinx::AIE::TileElement>(useLock->getParentOp());
     auto tileID = parent.getTileID();
     const auto &target_model = xilinx::AIE::getTargetModel(op);
@@ -1165,6 +1176,19 @@ struct AcquireReleaseOneStateInDMABlock {
   }
 };
 
+struct AccessesLocalLocks {
+  static LogicalResult verifyTrait(Operation *op) {
+    if (auto memOp = op->getParentOfType<xilinx::AIE::MemOp>()) {
+      auto useLock = dyn_cast<xilinx::AIE::UseLockOp>(op);
+      auto lock = useLock.getLockOp();
+      if (lock.getTileOp().colIndex() != memOp.colIndex() ||
+          lock.getTileOp().rowIndex() != memOp.rowIndex())
+        return failure();
+    }
+    return success();
+  }
+};
+
 LogicalResult xilinx::AIE::UseLockOp::verify() {
   // AIE.useLock cannot be used at the top level
   if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
@@ -1193,6 +1217,10 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
       return (*this)->emitOpError(
           "acquires/releases the lock in a DMA block from/to multiple states.");
 
+    if (HasSomeParent<xilinx::AIE::MemOp>::verifyTrait(*this).succeeded()) {
+      if (AccessesLocalLocks::verifyTrait(*this).failed())
+        return (*this)->emitOpError("can only access a lock in the same tile");
+    }
     return success();
 
     // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
