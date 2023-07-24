@@ -19,14 +19,12 @@ extern int32_t b[256];
 #define LOCK_OFFSET 48
 
 extern "C" void core_1_3() {
-  acquire(LOCK_OFFSET + 3, 1);
-  acquire(LOCK_OFFSET + 5, 0);
+  acquire_greater_equal(LOCK_OFFSET + 3, 1);
   int val = a[3];
   int val2 = val + val;
   val2 += val;
   val2 += val;
   val2 += val;
   b[5] = val2;
-  release(LOCK_OFFSET + 3, 0);
   release(LOCK_OFFSET + 5, 1);
 }
