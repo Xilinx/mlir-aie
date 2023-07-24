@@ -18,7 +18,7 @@ jobs:
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
-      - name: Get repo
+      - name: Get the project repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
@@ -27,7 +27,7 @@ jobs:
       - name: Install libboost
         run: sudo apt-get install -y libboost-all-dev
 
-      - name: Install python packages
+      - name: Install Python packages
         run: sudo pip install psutil rich numpy pybind11
 
       - name: Install Ninja
@@ -228,4 +228,3 @@ jobs:
             cat clang-tidy.patch
             echo "================"
           fi
-
