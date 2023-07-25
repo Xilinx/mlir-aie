@@ -18,7 +18,7 @@ jobs:
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
-      - name: Get repo
+      - name: Get the project repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
@@ -27,11 +27,12 @@ jobs:
       - name: Install libboost
         run: sudo apt-get install -y libboost-all-dev
 
-      - name: Install python packages
+      - name: Install Python packages
         run: sudo pip install psutil rich numpy pybind11
 
       - name: Install Ninja
-        uses: llvm/actions/install-ninja@55d844821959226fab4911f96f37071c1d4c3268
+        # https://github.com/llvm/actions/tree/main/install-ninja
+        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
 
       - name: Get Submodule Hash
         id: get-submodule-hash
@@ -39,7 +40,8 @@ jobs:
         shell: bash
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@4687d037e4d7cf725512d9b819137a3af34d39b3
+        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
+        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
@@ -226,4 +228,3 @@ jobs:
             cat clang-tidy.patch
             echo "================"
           fi
-

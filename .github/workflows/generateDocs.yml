@@ -1,4 +1,4 @@
-name: Generate Github Pages
+name: Generate GitHub Pages
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
-      - name: Get repo
+      - name: Get the project repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
@@ -30,11 +30,12 @@ jobs:
       - name: Install packages
         run: sudo apt-get install -y libboost-all-dev graphviz
 
-      - name: Install psutil
+      - name: Install Python packages
         run: sudo pip install psutil rich numpy pybind11
 
       - name: Install Ninja
-        uses: llvm/actions/install-ninja@55d844821959226fab4911f96f37071c1d4c3268
+        # https://github.com/llvm/actions/tree/main/install-ninja
+        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
 
       - name: Get Submodule Hash
         id: get-submodule-hash
@@ -42,7 +43,8 @@ jobs:
         shell: bash
 
       - name: Ccache for C++ compilation
-        uses: hendrikmuhs/ccache-action@4687d037e4d7cf725512d9b819137a3af34d39b3
+        # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
+        uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
           key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
@@ -68,9 +70,9 @@ jobs:
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DCMAKE_MODULE_PATH=../cmakeModules \
-            -DMLIR_DIR=../llvm/install/lib/cmake/mlir/ \
-            -DLLVM_DIR=../llvm/install/lib/cmake/llvm/ \
+            -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
+            -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
+            -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
             -DCMAKE_LINKER=lld \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
@@ -90,8 +92,9 @@ jobs:
           echo "llvm-version: \"$(VER)\"," >> ../build_release/docs/build_info.json
           echo "}" > ../build_release/docs/build_info.json
 
-      - name: Publish to github-pages
-        uses: peaceiris/actions-gh-pages@v3.6.1
+      - name: Publish to GitHub-Pages
+        # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
+        uses: peaceiris/actions-gh-pages@v3.9.3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build_release/docs
