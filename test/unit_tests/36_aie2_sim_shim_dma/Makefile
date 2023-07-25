@@ -10,6 +10,7 @@ build/test : test.cpp aie.mlir
 		aiecc.py -j4 --xchesscc --xbridge --aiesim ../$(word 2,$^) \
 			-ggdb -I${AIE_RUNTIME_LIB}/x86_64/test_lib/include \
 			-L${AIE_RUNTIME_LIB}/x86_64/test_lib/lib -ltest_lib \
+			-D__AIESIM__ \
 			../$<
 
 clean:
