@@ -73,8 +73,13 @@ int main(int argc, char *argv[]) {
     // External buffer setup
     ping = mlir_aie_mem_alloc(buf0, 1);
     pong = mlir_aie_mem_alloc(buf1, 1);
+#ifdef __AIESIM__
+    mlir_aie_external_set_addr_extbuf0((uint64_t)buf0.physicalAddr);
+    mlir_aie_external_set_addr_extbuf1((uint64_t)buf1.physicalAddr);
+#else
     mlir_aie_external_set_addr_extbuf0((uint64_t)ping);
     mlir_aie_external_set_addr_extbuf1((uint64_t)pong);
+#endif
     mlir_aie_configure_shimdma_30(_xaie);
 
     // Start cores
@@ -98,10 +103,10 @@ int main(int argc, char *argv[]) {
         if((i+1) % 6 == 0) {
             printf("\n");
         }
-        //if(seen[i] != expected[i]) {
-        //    printf("\nFAIL at index %d: %d != %d.\n", i, seen[i], expected[i]);
-        //    return 1;
-        //}
+        if(seen[i] != expected[i]) {
+            printf("\nFAIL at index %d: %d != %d.\n", i, seen[i], expected[i]);
+            return 1;
+        }
     }
 
     printf("\nPASS!\n");   
