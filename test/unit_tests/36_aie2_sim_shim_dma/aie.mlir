@@ -8,8 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Pass through host DDR (via shim tile) -> Mem Tile (L2) -> AIE, with 
-// cyclostatic consumer pattern in AIE core.
+// Pass through host DDR (via shim tile) -> AIE.
 
 // Consumer pattern: {2, 3, 3, 2}
 
