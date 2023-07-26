@@ -15,6 +15,7 @@ add_mlir_dialect_library(AIEX
   MLIRAIEXEnumsIncGen
 
   LINK_LIBS PUBLIC
+  AIE
   MLIRIR
   MLIRSupport
   )

@@ -16,8 +16,13 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
+
+// Add TableGen'erated dialect definitions (including constructor)
+// We implement the initialize() function further below
+#include "aie/Dialect/AIE/IR/AIEDialect.cpp.inc"
 
 namespace {
 
@@ -330,11 +335,16 @@ void AIEDialect::printType(mlir::Type type,
   }
 }
 
-// FIXME: use Tablegen'd dialect class
-AIEDialect::AIEDialect(mlir::MLIRContext *ctx)
-    : mlir::Dialect("AIE", ctx, ::mlir::TypeID::get<AIEDialect>()) {
-  // addTypes<AIEListType>();
+void AIEDialect::initialize() {
+  addTypes<
+#define GET_TYPE_LIST
+#include "aie/Dialect/AIE/IR/AIETypes.cpp.inc"
+      >();
   addTypes<AIEObjectFifoType, AIEObjectFifoSubviewType>();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"
+      >();
   addOperations<
 #define GET_OP_LIST
 #include "aie/Dialect/AIE/IR/AIE.cpp.inc"
@@ -624,9 +634,7 @@ const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
   return VC1902model;
 }
 
-LogicalResult xilinx::AIE::DeviceOp::verify() {
-  return success();
-}
+LogicalResult xilinx::AIE::DeviceOp::verify() { return success(); }
 
 LogicalResult xilinx::AIE::TileOp::verify() {
   const auto &target_model = getTargetModel(*this);
@@ -987,6 +995,64 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
   return success();
 }
 
+// DMABDOp
+LogicalResult xilinx::AIE::DMABDOp::verify() {
+  // The following checks only apply if non-default strides/wraps are defined.
+  if (getDimensions()) {
+    ::mlir::MemRefType buffer = getBuffer().getType();
+    // We are restrictive about the type of the memref used as the input address
+    // to the DMABD when used with multi-dimensional strides/wraps. Since the
+    // BD will use the memref as a base address and copy from it in 32 bit
+    // chunks, while assuming the layout of the memref is contiguous, we
+    // disallow anything whose elemental size is not 32 bits, or where we
+    // cannot verify that the layout is contiguous.
+    if (!buffer.getElementType().isInteger(32) || buffer.getRank() > 1 ||
+        !buffer.getLayout().isIdentity()) {
+      return emitOpError() << "Specifying transfer step sizes and wraps is only"
+                              " supported for one-dimensional memrefs of 32 bit"
+                              " integer elements.";
+    }
+    uint64_t memref_size = 1; // in bytes
+    uint64_t max_idx = 0;
+    for (int64_t memref_dim : buffer.getShape()) {
+      memref_size *= 4 * memref_dim;
+    }
+    llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
+    size_t max_n_dims = 3;
+    if (isa_and_nonnull<xilinx::AIE::MemTileDMAOp>((*this)->getParentOp())) {
+      max_n_dims = 4;
+    }
+    if (dims.size() > max_n_dims) {
+      return emitOpError() << "Cannot give more than "
+                           << std::to_string(max_n_dims)
+                           << " dimensions for step sizes and wraps in this "
+                              " tile (got "
+                           << std::to_string(dims.size()) << " dimensions).";
+    }
+    for (xilinx::AIE::DimTupleAttr dim : dims) {
+      max_idx += dim.getStepsize() * (dim.getWrap() - 1);
+      if (0 == dim.getStepsize()) {
+        return emitOpError()
+               << "Invalid step size; must be a positive integer.";
+      }
+      if (dim.getStepsize() > memref_size) {
+        return emitOpError()
+               << "Step size " << std::to_string(dim.getStepsize() * 4) << " "
+               << "bytes exceeds memref size " << std::to_string(memref_size);
+      }
+    }
+    if (memref_size <= 4 * max_idx) {
+      return emitOpError() << "Specified stepsize(s) and wrap(s) result in out "
+                              "of bounds access in buffer, for index "
+                           << std::to_string(max_idx) << ", accessing at "
+                           << std::to_string(4 * max_idx)
+                           << " byte offset in memref of length "
+                           << std::to_string(memref_size) << ".";
+    }
+  }
+  return success();
+}
+
 xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
@@ -1206,3 +1272,7 @@ bool TileOp::isShimPLTile() {
 bool TileOp::isShimNOCorPLTile() { return isShimNOCTile() || isShimPLTile(); }
 } // namespace AIE
 } // namespace xilinx
+
+// Include implementations for custom attributes
+#define GET_ATTRDEF_CLASSES
+#include "aie/Dialect/AIE/IR/AIEAttrDefs.cpp.inc"

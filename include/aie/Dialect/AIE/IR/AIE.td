@@ -40,6 +40,7 @@ switch is referred to as `switchbox` to avoid confusion with the
 
   }];
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
   let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
@@ -797,6 +798,20 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
 
 }
 
+def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
+  let mnemonic = "DimTuple";
+  let summary = 
+    "Tuple encoding the stride and wrap of one dimension in an "
+    "AIE2 n-dimensional buffer descriptor";
+  let parameters = (ins
+    "uint32_t" : $stepsize,
+    "uint16_t" : $wrap
+  );
+  let assemblyFormat = "`<` $stepsize `,` $wrap `>`";
+}
+
+def AIE_DimTupleArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArray", "DimTupleArray", "::xilinx::AIE::DimTupleAttr">;
+
 def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   let summary = "Declare a dma block descriptor op";
   let description = [{
@@ -823,17 +838,44 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     ```
     A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
     There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
+
+    On AIE-ML devices, an optional argument can be used to specify an array of 
+    step sizes and wraps to move data in more advanced patterns. Strides and
+    wraps are specified as tuples `<stride, wrap>`, and up to three dimensions
+    can be specified (or up to four dimensions on memtiles). 
+
+    The first element of the array gives the _highest-dimension_ stride and
+    wrap, the last element of the array gives the lowest-dimension.
+
+    Example:
+
+    ```
+    AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<16, 8>, <1, 2>, <2, 8>])
+    ```
+
+    This corresponds to alternating between even and odd elements of the 
+    buffer/stream every 8 elements, like so, equivalent to nested loops like so:
+
+    ```
+    for(int i = 0; i < 8 /* wrap[0] */; i += 16 /* stepsize[0] */)
+      for(int j = 0; j < 2 /* wrap[1] */; j += 1 /* stepsize[1] */)
+        for(int k = 0; k < 8 /* wrap[2] */; k += 2 /* stepsize[2] */)
+          // access/store element at/to index (i + j + k)
+    ```
   }];
 
   let arguments = (
     ins AnyMemRef:$buffer,
         I32Attr:$offset,
         I32Attr:$len,
-        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB // 0: A, 1: B
+        ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$AB, // 0: A, 1: B
+        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensions
   );
 
+  let hasVerifier = 1;
+
   let assemblyFormat = [{
-    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB `)` attr-dict
+    `(` `<` $buffer  `:` type($buffer) `,` $offset `,` $len `>` `,` $AB (`,` $dimensions^ )? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -843,15 +885,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     bool isB() { return (getAB() == 1); }
   }];
 
-  // let builders = [
-  //   OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
-  //     build($_builder, $_state,
-  //           buffer,
-  //           $_builder.getI32IntegerAttr(offset),
-  //           $_builder.getI32IntegerAttr(len),
-  //           $_builder.getI32IntegerAttr(AB));
-  //     }]>
-  // ];
+  let builders = [
+    OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+      odsState.addOperands(buffer);
+      odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
+      odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
+      odsState.addAttribute(getABAttrName(odsState.name), $_builder.getI32IntegerAttr(AB));
+      }]>
+  ];
 }
 
 def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
