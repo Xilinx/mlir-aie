@@ -1331,7 +1331,7 @@ could produce the following allocation info (channel direction MM2S, channel ind
   AIE.shimDMAAllocation("of_in_0", MM2S, 1, 0)
 ```
 
-Traits: HasParent<ModuleOp>
+Traits: HasParent<DeviceOp>
 
 #### Attributes:
 
