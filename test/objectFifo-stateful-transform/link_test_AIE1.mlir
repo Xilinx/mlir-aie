@@ -29,6 +29,7 @@
 // CHECK:     %10 = AIE.lock(%2, 0) {init = 0 : i32, sym_name = "link2_cons_lock_0"}
 // CHECK:     %11 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "link2_cons_lock_1"}
 // CHECK:     %12 = AIE.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
+// CHECK:     AIE.shimDMAAllocation("link1", MM2S, 0, 2)
 // CHECK:     %13 = AIE.shimDMA(%0) {
 // CHECK:       %16 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -82,7 +83,6 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
-// CHECK:   AIE.shimDMAAllocation("link1", MM2S, 0, 2)
 // CHECK: }
 
 module @link_AIE1 {

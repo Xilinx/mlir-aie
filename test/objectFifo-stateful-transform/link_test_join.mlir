@@ -171,6 +171,7 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       AIE.end
 // CHECK:     }
+// CHECK:     AIE.shimDMAAllocation("link5", S2MM, 0, 2)
 // CHECK:     %34 = AIE.shimDMA(%0) {
 // CHECK:       %35 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -182,7 +183,6 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
-// CHECK:   AIE.shimDMAAllocation("link5", S2MM, 0, 2)
 // CHECK: }
      
 module @link_join {

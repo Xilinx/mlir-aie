@@ -1108,7 +1108,7 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to generate, from an objectFifo with a shimTile endpoint, a
-  /// shimDMAAllocationInfoOp containing the channelDir, channelIndex and
+  /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
                                       StringRef name, int colIndex,
@@ -1240,7 +1240,7 @@ struct AIEObjectFifoStatefulTransformPass
       createDMA(device, builder, producer, producerChan.first,
                 producerChan.second, 0);
       // generate objectFifo allocation info
-      builder.setInsertionPointAfter(device);
+      builder.setInsertionPoint(&device.getBody()->back());
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(builder, ctx,
                                        producer.name()->getValue(),
@@ -1254,7 +1254,7 @@ struct AIEObjectFifoStatefulTransformPass
         createDMA(device, builder, consumer, consumerChan.first,
                   consumerChan.second, 1);
         // generate objectFifo allocation info
-        builder.setInsertionPointAfter(device);
+        builder.setInsertionPoint(&device.getBody()->back());
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
               builder, ctx, producer.name()->getValue(),

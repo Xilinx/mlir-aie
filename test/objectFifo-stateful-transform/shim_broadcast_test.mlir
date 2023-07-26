@@ -36,6 +36,7 @@
 // CHECK:     %16 = AIE.lock(%1, 0) {init = 2 : i32, sym_name = "of_in_0_cons_prod_lock"}
 // CHECK:     %17 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "of_in_0_cons_cons_lock"}
 // CHECK:     %18 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
+// CHECK:     AIE.shimDMAAllocation("of_in", MM2S, 0, 2)
 // CHECK:     %19 = AIE.shimDMA(%0) {
 // CHECK:       %23 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -92,7 +93,6 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
-// CHECK:   AIE.shimDMAAllocation("of_in", MM2S, 0, 2)
 // CHECK: }
 
 module @shim_broadcast {
