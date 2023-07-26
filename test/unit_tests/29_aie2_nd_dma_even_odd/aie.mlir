@@ -8,6 +8,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+// This tests the multi-dimensional (n-D) address generation function of AIE2
+// buffer descriptors. 
+// core 14 generates the sequence 0, 1, 2, 3, 4, ... 126, 127, which is pushed
+// onto the DMA stream towards core 34. The data is pushed onto the stream in
+// the following order, reading from the buffer with <stride, wrap>s as:
+//
+// [<2, 8>, <1, 2>, <16, 8>]
+//
+// This corresponds to sending the first eight even elements from the buffer
+// into the stream, followed by the next eight odd elements, and alternating
+// so forth.
+//
+// The DMA receives this data and writes it to a buffer linearly, which is
+// checked from the host code to be correct.
+
 // RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test -L%aie_runtime_lib%/test_lib/lib -ltest_lib
 // RUN: %run_on_board ./test.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
@@ -17,7 +32,6 @@
 
 module @tutorial_2b {
     
-    //AIE.device(xcvc1902) {
     AIE.device(xcve2802) {
         %tile14 = AIE.tile(1, 4)
         %tile34 = AIE.tile(3, 4)
@@ -32,6 +46,9 @@ module @tutorial_2b {
         %lock34_wait = AIE.lock(%tile34, 0) { init = 1 : i32, sym_name = "lock34_wait" }
         %lock34_recv = AIE.lock(%tile34, 1) { init = 0 : i32, sym_name = "lock34_recv" }
 
+        // This core stores the sequence of numbers 0, 1, 2, 3, ... into 
+        // buffer buf14, s.t. buf14[i] == i.
+        // After the array has been written, lock14 signifies core14 is done.
         %core14 = AIE.core(%tile14) {
             %i0 = arith.constant 0 : index
             %i1 = arith.constant 1 : index
@@ -50,15 +67,24 @@ module @tutorial_2b {
             AIE.end
         }
 
+        // No code in this core; however, we do have a DMA that receives a
+        // data from the stream and stores it in a buffer.
         %core34 = AIE.core(%tile34) {
           AIE.end
         }
 
+        // When core (1, 4) is done (lock14 released), its DMA will push all
+        // of buffer14 onto the stream.
+        // The order in which the buffer is pushed onto the stream is defined
+        // by the new attribute at the end of the dmaBd operation.
         %mem14 = AIE.mem(%tile14) {
           %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
           ^bd0:
             AIE.useLock(%lock14_done, "AcquireGreaterEqual", 1)
+                                                             ////////// new //////////
             AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<2, 8>, <1, 2>, <16, 8>])
+                                                            // s, w    s, w    s,  w
+                                                            // dim 0,  dim 1,  dim 2
             AIE.useLock(%lock14_sent, "Release", 1)
             AIE.nextBd ^end
           ^end: 
