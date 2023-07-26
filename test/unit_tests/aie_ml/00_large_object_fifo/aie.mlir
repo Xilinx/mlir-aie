@@ -8,15 +8,23 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Data Movement: AIE Core -> DMA -> AIE Core
+// Pattern: Static
+
 // This tests an objectFifo with a large number of objects (objects themselves
-// are small).
+// are small), moved between two non-adjacent AIE cores 
+// (i.e. L1 -> DMA -> L1).
 
 // RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 
 // Currently, this test fails with a too large iteration number in core 28.
+// The way it fails is that it hangs indefinitely.
 // I believe this has to do with the object fifo loop unrolling.
+// The test passes for a lower number of loop iterations, or if fewer objectFifo
+// accesses are made within the loop.
+
 // XFAIL: *
 
 module @aie2_cyclostatic_dma {
@@ -65,6 +73,7 @@ module @aie2_cyclostatic_dma {
 
             scf.for %iter = %i0 to %i16 step %i1 {
                 
+                // consume 10
                 %subview0 = AIE.objectFifo.acquire<Consume>(%fifo : !AIE.objectFifo<memref<i32>>, 10) : !AIE.objectFifoSubview<memref<i32>>
                 %subview0_obj0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
                 %subview0_obj1 = AIE.objectFifo.subview.access %subview0[1] : !AIE.objectFifoSubview<memref<i32>> -> memref<i32>
