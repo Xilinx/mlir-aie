@@ -857,10 +857,10 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     buffer/stream every 8 elements, like so, equivalent to nested loops like so:
 
     ```
-    for(int i = 0; i < 8 /* wrap[0] */; i += 16 /* stepsize[0] */)
-      for(int j = 0; j < 2 /* wrap[1] */; j += 1 /* stepsize[1] */)
-        for(int k = 0; k < 8 /* wrap[2] */; k += 2 /* stepsize[2] */)
-          // access/store element at/to index (i + j + k)
+    for(int i = 0; i < 8 /* wrap[0] */; i++)
+      for(int j = 0; j < 2 /* wrap[1] */; j++)
+        for(int k = 0; k < 8 /* wrap[2] */; k++)
+          // access/store element at/to index (i * 16 + j * 1 + k * 2)
     ```
   }];
 
