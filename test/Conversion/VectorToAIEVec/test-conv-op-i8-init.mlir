@@ -35,8 +35,8 @@ func.func @conv2d(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<
 //      CHECK:    %[[T1:.*]] = aievec.shuffle %[[T0:.*]] {mode = 0 : i32} : vector<64xi8>, vector<64xi8>
 //      CHECK:    affine.for %[[A3:.*]] = 0 to 16 {
 //      CHECK:      affine.for %[[A4:.*]] = 0 to 256 step 32 {
-//      CHECK:        %[[T2:.*]] = aievec.upd %[[A2]][%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<16x256xi8>, vector<32xi8>
-//      CHECK:        %[[T3:.*]] = aievec.upd %[[A0]][%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
+//  CHECK-DAG:        %[[T2:.*]] = aievec.upd %[[A2]][%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<16x256xi8>, vector<32xi8>
+//  CHECK-DAG:        %[[T3:.*]] = aievec.upd %[[A0]][%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : si32} : memref<18x288xi8>, vector<64xi8>
 //      CHECK:        %[[T4:.*]] = aievec.ups %[[T2]] {shift = 0 : i8} : vector<32xi8>, vector<32xi32>
 //      CHECK:        %[[T5:.*]] = aievec.fma_conv %[[T3]], %[[T1]], %[[T4]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
 //      CHECK:        %[[T6:.*]] = aievec.srs %[[T5]] {shift = 0 : i8} : vector<32xi32>, vector<32xi8>
