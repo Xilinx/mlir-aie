@@ -997,42 +997,57 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
 
 // DMABDOp
 LogicalResult xilinx::AIE::DMABDOp::verify() {
+  // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
     ::mlir::MemRefType buffer = getBuffer().getType();
-    if (!buffer.getElementType().isInteger(32)) {
-      // The AIE2 specification prescribes that multi-dimensional address
-      // generation creates addresses to 32 bit words. Hence, stepSize and wrap
-      // refer to 32 bit words. To avoid confusion, we disallow using multi-
-      // dimensional BDs with other memrefs.
-      return emitOpError() << "Multi-dimensional buffer descriptors are only "
-                              "supported for 32 bit integer elements.";
+    // We are restrictive about the type of the memref used as the input address
+    // to the DMABD when used with multi-dimensional strides/wraps. Since the
+    // BD will use the memref as a base address and copy from it in 32 bit
+    // chunks, while assuming the layout of the memref is contiguous, we
+    // disallow anything whose elemental size is not 32 bits, or where we
+    // cannot verify that the layout is contiguous.
+    if (!buffer.getElementType().isInteger(32) || buffer.getRank() > 1 ||
+        !buffer.getLayout().isIdentity()) {
+      return emitOpError() << "Specifying transfer step sizes and wraps is only"
+                              " supported for one-dimensional memrefs of 32 bit"
+                              " integer elements.";
     }
-    uint64_t base_addr = getOffset();
-    uint64_t memref_size = 1;
+    uint64_t memref_size = 1; // in bytes
+    uint64_t max_idx = 0;
     for (int64_t memref_dim : buffer.getShape()) {
-      memref_size *= memref_dim;
+      memref_size *= 4 * memref_dim;
     }
-    memref_size += 4 * base_addr;
     llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
-    if (dims.size() > 4) {
-      return emitOpError() << "Cannot give more than four dimensions.";
+    size_t max_n_dims = 3;
+    if (isa_and_nonnull<xilinx::AIE::MemTileDMAOp>((*this)->getParentOp())) {
+      max_n_dims = 4;
+    }
+    if (dims.size() > max_n_dims) {
+      return emitOpError() << "Cannot give more than "
+                           << std::to_string(max_n_dims)
+                           << " dimensions for step sizes and wraps in this "
+                              " tile (got "
+                           << std::to_string(dims.size()) << " dimensions).";
     }
     for (xilinx::AIE::DimTupleAttr dim : dims) {
+      max_idx += dim.getStepsize() * (dim.getWrap() - 1);
       if (0 == dim.getStepsize()) {
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
       }
       if (dim.getStepsize() > memref_size) {
         return emitOpError()
-               << "Step size " << std::to_string(dim.getStepsize()) << " "
-               << "exceeds memref size " << std::to_string(memref_size);
+               << "Step size " << std::to_string(dim.getStepsize() * 4) << " "
+               << "bytes exceeds memref size " << std::to_string(memref_size);
       }
-      // TODO: There are more meaningful checks that could be added here,
-      // such as:
-      //   - limits on wrap; note that wrap refers to iterations of the previous
-      //     dimension
-      //   - last dimension wrap should be implicit from memref size and other
-      //     dimension;ensure it isset correctly
+    }
+    if (memref_size <= 4 * max_idx) {
+      return emitOpError() << "Specified stepsize(s) and wrap(s) result in out "
+                              "of bounds access in buffer, for index "
+                           << std::to_string(max_idx) << ", accessing at "
+                           << std::to_string(4 * max_idx)
+                           << " byte offset in memref of length "
+                           << std::to_string(memref_size) << ".";
     }
   }
   return success();

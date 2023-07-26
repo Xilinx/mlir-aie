@@ -299,8 +299,12 @@ mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << "  return 1;\n"
                << "}\n";
         for (int i = 0; i < ndims; i++) {
+          // Pass down dimensions in reverse order; in the MLIR, this allows us
+          // to specify step sizes/wraps in the same order as we would access a
+          // multi-dim C array, with the highest dimension first.
+          int j = ndims - i - 1;
           // Assume AIE-ML architecture; we assert this above
-          output << tensor << ".Dim[" << std::to_string(i) << "].AieMlDimDesc"
+          output << tensor << ".Dim[" << std::to_string(j) << "].AieMlDimDesc"
                  << " = { /* StepSize */ "
                  << std::to_string(dims[i].getStepsize()) << ", /* Wrap */ "
                  << std::to_string(dims[i].getWrap()) << "};\n";

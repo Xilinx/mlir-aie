@@ -9,8 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 // This tests the multi-dimensional (n-D) address generation function of AIE2
-// buffer descriptors.
+// buffer descriptors. 
 
+// REQUIRES: valid_xchess_license
 // RUN: aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test -L%aie_runtime_lib%/test_lib/lib -ltest_lib
 // RUN: %run_on_board ./test.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
@@ -60,11 +61,10 @@ module @tutorial_2b {
           %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
           ^bd0:
             AIE.useLock(%lock14_done, "AcquireGreaterEqual", 1)
-
-            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<1, 4>, <16, 2>, <4, 4>]) //, <128, 3>])
+                                                             ////////// new //////////
+            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<1, 2>, <1, 8>, <8, 8>])
                                                             // s, w    s, w    s,  w
                                                             // dim 0,  dim 1,  dim 2
-
             AIE.useLock(%lock14_sent, "Release", 1)
             AIE.nextBd ^end
           ^end: 

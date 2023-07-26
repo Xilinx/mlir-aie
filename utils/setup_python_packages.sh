@@ -18,7 +18,7 @@ python3 -m virtualenv sandbox
 if [ -r sandbox/local/bin/activate ]; then
   source sandbox/local/bin/activate
 else
-  source sandbox/local/activate
+  source sandbox/bin/activate
 fi
 python3 -m pip install --upgrade pip
 python3 -m pip install -r utils/requirements.txt
