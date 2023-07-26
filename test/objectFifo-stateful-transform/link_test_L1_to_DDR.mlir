@@ -72,6 +72,7 @@
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       AIE.end
 // CHECK:     }
+// CHECK:     AIE.shimDMAAllocation("from_memTile", S2MM, 0, 2)
 // CHECK:     %16 = AIE.shimDMA(%0) {
 // CHECK:       %17 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -83,7 +84,6 @@
 // CHECK:       AIE.end
 // CHECK:     }
 // CHECK:   }
-// CHECK:   AIE.shimDMAAllocation("from_memTile", S2MM, 0, 2)
 // CHECK: }
 
 module @link_L1_DDR {

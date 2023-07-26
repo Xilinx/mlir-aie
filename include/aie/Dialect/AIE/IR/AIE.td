@@ -1279,7 +1279,7 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"ModuleOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
