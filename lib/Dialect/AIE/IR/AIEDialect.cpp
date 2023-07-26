@@ -991,10 +991,65 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
         return allocOp.emitOpError()
                << "allocOp in MemTileDMAOp region should have an id attribute";
     }
+    if (auto startOp = dyn_cast<DMAStartOp>(bodyOp)) {
+      if (startOp.getChannelIndex() > 3) {
+        // Channels 4 and 5 in a memtile are restricted to only access local
+        // buffers and locks.
+
+        // Move this code to the dialect
+        // Set of blocks found to be reachable within a given region.
+        llvm::SmallSet<Block *, 16> reachable;
+        llvm::SmallVector<Block *, 16> worklist;
+        Block *firstBD = startOp.getSuccessor(0);
+        reachable.insert(firstBD);
+        worklist.push_back(firstBD);
+        while (!worklist.empty()) {
+          Block *block = worklist.pop_back_val();
+          if (block->empty())
+            continue;
+          auto successors = block->getTerminator()->getSuccessors();
+          for (auto i : successors) {
+            if (!reachable.contains(i)) {
+              reachable.insert(i);
+              worklist.push_back(i);
+            }
+          }
+        }
+        for (auto b : reachable) {
+          for (auto bd : b->getOps<xilinx::AIE::DMABDOp>()) {
+            auto bufferOp = bd.getBufferOp();
+            if (bufferOp.getTileOp().colIndex() != colIndex() ||
+                bufferOp.getTileOp().rowIndex() != rowIndex()) {
+              InFlightDiagnostic err =
+                  bd.emitOpError()
+                  << "is reachable from DMA channel "
+                  << startOp.getChannelIndex()
+                  << " and attempts to access a non-local buffer\n";
+              err.attachNote(startOp->getLoc()) << "channel";
+              err.attachNote(bufferOp->getLoc()) << "buffer";
+              return err;
+            }
+          }
+          for (auto useLock : b->getOps<xilinx::AIE::UseLockOp>()) {
+            auto lockOp = useLock.getLockOp();
+            if (lockOp.getTileOp().colIndex() != colIndex() ||
+                lockOp.getTileOp().rowIndex() != rowIndex()) {
+              InFlightDiagnostic err =
+                  useLock.emitOpError()
+                  << "is reachable from DMA channel "
+                  << startOp.getChannelIndex()
+                  << " and attempts to access a non-local lock\n";
+              err.attachNote(startOp->getLoc()) << "channel";
+              err.attachNote(lockOp->getLoc()) << "lock";
+              return err;
+            }
+          }
+        }
+      }
+    }
   }
   return success();
 }
-
 
 // DMABDOp
 xilinx::AIE::BufferOp xilinx::AIE::DMABDOp::getBufferOp() {
