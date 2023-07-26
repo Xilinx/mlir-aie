@@ -8,9 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Pass through host DDR (via shim tile) -> AIE.
+// Data Movement: DDR -> Shim Tile DMA -> Core DMA -> AIE Core
+// Pattern: Static
 
-// Consumer pattern: {2, 3, 3, 2}
+// Pass through host DDR (via shim tile) -> AIE.
 
 // RUN: make && ./build/aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: AIE2 ISS

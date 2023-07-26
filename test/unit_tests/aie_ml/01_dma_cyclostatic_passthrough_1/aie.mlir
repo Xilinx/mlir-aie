@@ -8,8 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This test is adapted from the FileCheck test here:
-// test/objectFifo-stateful-transform/AIE2_cyclostatic_dma.mlir
+// Data Movement: AIE Core -> DMA -> AIE Core
+// Pattern: Cyclostatic
+
+// In this test, data is passed through L1 -> DMA -> L1 via an objectFifo, with 
+// a cyclostatic pattern in the consumer.
 
 // Producer pattern: {1}
 // Consumer pattern: {1, 2, 1}

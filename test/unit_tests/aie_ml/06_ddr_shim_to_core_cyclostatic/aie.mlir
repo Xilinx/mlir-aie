@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+// Data Movement: DDR -> Shim Tile DMA -> Core DMA -> AIE Core
+// Pattern: Cyclostatic
+
 // Pass through host DDR (via shim tile) -> Mem Tile (L2) -> AIE, with 
 // cyclostatic consumer pattern in AIE core.
 
@@ -17,7 +20,7 @@
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 
-module @aie2_cyclostatic_passthrough_ddr_l2 {
+module @aie2_cyclostatic_passthrough_ddr_mem_l1 {
     AIE.device(xcve2802) {
 
         %tile30 = AIE.tile(3, 0)  // shim tile
@@ -28,9 +31,9 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
         %extbuf0 = AIE.external_buffer {sym_name = "extbuf0"} : memref<1xi32>
         %extbuf1 = AIE.external_buffer {sym_name = "extbuf1"} : memref<1xi32>
 
-        %fifo0 = AIE.objectFifo.createObjectFifo(%tile30, {%tile33}, 12 : i32) {sym_name = "fifo0"} : !AIE.objectFifo<memref<1xi32>>
-        //%fifo1 = AIE.objectFifo.createObjectFifo(%tile31, {%tile33}, 12 : i32) {sym_name = "fifo1"} : !AIE.objectFifo<memref<1xi32>>
-        //AIE.objectFifo.link({%fifo0}, {%fifo1}) : ({!AIE.objectFifo<memref<1xi32>>}, {!AIE.objectFifo<memref<1xi32>>})
+        %fifo0 = AIE.objectFifo.createObjectFifo(%tile30, {%tile31}, 12 : i32) {sym_name = "fifo0"} : !AIE.objectFifo<memref<1xi32>>
+        %fifo1 = AIE.objectFifo.createObjectFifo(%tile31, {%tile33}, 12 : i32) {sym_name = "fifo1"} : !AIE.objectFifo<memref<1xi32>>
+        AIE.objectFifo.link({%fifo0}, {%fifo1}) : ({!AIE.objectFifo<memref<1xi32>>}, {!AIE.objectFifo<memref<1xi32>>})
         AIE.objectFifo.registerExternalBuffers(%tile30, %fifo0 : !AIE.objectFifo<memref<1xi32>>, {%extbuf0, %extbuf1}) : (memref<1xi32>, memref<1xi32>)
 
         // Consumer core
@@ -50,18 +53,18 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
 
             scf.for %iter = %i0 to %i4 step %i1 {
                 
-                // 2
-                %subview0 = AIE.objectFifo.acquire<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 2) : !AIE.objectFifoSubview<memref<1xi32>>
+                // consume 2
+                %subview0 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 2) : !AIE.objectFifoSubview<memref<1xi32>>
                 %subview0_obj0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %subview0_obj1 = AIE.objectFifo.subview.access %subview0[1] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %v0_0 = memref.load %subview0_obj0[%i0] : memref<1xi32>
                 %v0_1 = memref.load %subview0_obj1[%i0] : memref<1xi32>
                 memref.store %v0_0, %buf33[%iter, %i0] : memref<4x10xi32>
                 memref.store %v0_1, %buf33[%iter, %i1] : memref<4x10xi32>
-                AIE.objectFifo.release<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 2)
+                AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 2)
 
-                // 3
-                %subview1 = AIE.objectFifo.acquire<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 3) : !AIE.objectFifoSubview<memref<1xi32>>
+                // consume 3
+                %subview1 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 3) : !AIE.objectFifoSubview<memref<1xi32>>
                 %subview1_obj0 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %subview1_obj1 = AIE.objectFifo.subview.access %subview1[1] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %subview1_obj2 = AIE.objectFifo.subview.access %subview1[2] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
@@ -71,10 +74,10 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
                 memref.store %v1_0, %buf33[%iter, %i2] : memref<4x10xi32>
                 memref.store %v1_1, %buf33[%iter, %i3] : memref<4x10xi32>
                 memref.store %v1_2, %buf33[%iter, %i4] : memref<4x10xi32>
-                AIE.objectFifo.release<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 3)
+                AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 3)
 
-                // 3
-                %subview2 = AIE.objectFifo.acquire<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 3) : !AIE.objectFifoSubview<memref<1xi32>>
+                // consume 3
+                %subview2 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 3) : !AIE.objectFifoSubview<memref<1xi32>>
                 %subview2_obj0 = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %subview2_obj1 = AIE.objectFifo.subview.access %subview2[1] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %subview2_obj2 = AIE.objectFifo.subview.access %subview2[2] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
@@ -84,17 +87,17 @@ module @aie2_cyclostatic_passthrough_ddr_l2 {
                 memref.store %v2_0, %buf33[%iter, %i5] : memref<4x10xi32>
                 memref.store %v2_1, %buf33[%iter, %i6] : memref<4x10xi32>
                 memref.store %v2_2, %buf33[%iter, %i7] : memref<4x10xi32>
-                AIE.objectFifo.release<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 3)
+                AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 3)
 
-                // 2
-                %subview3 = AIE.objectFifo.acquire<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 2) : !AIE.objectFifoSubview<memref<1xi32>>
+                // consume 2
+                %subview3 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 2) : !AIE.objectFifoSubview<memref<1xi32>>
                 %subview3_obj0 = AIE.objectFifo.subview.access %subview3[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %subview3_obj1 = AIE.objectFifo.subview.access %subview3[1] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
                 %v3_0 = memref.load %subview3_obj0[%i0] : memref<1xi32>
                 %v3_1 = memref.load %subview3_obj1[%i0] : memref<1xi32>
                 memref.store %v3_0, %buf33[%iter, %i8] : memref<4x10xi32>
                 memref.store %v3_1, %buf33[%iter, %i9] : memref<4x10xi32>
-                AIE.objectFifo.release<Consume>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 2)
+                AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 2)
 
             }
 
