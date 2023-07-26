@@ -1343,7 +1343,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
     ```
   }];
   let arguments = (
-    ins StrAttr:$sym_name,
+    ins FlatSymbolRefAttr:$sym_name,
         DMAChannelDir:$channelDir,
         I64Attr:$channelIndex,
         I64Attr:$col
@@ -1354,7 +1354,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
   }];
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", []> {
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
