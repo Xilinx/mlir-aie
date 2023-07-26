@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Data Movement: AIE Core -> Core DMA -> Shim Tile DMA -> DDR
+// Data Movement: AIE Core -> Core DMA -> Mem Tile -> Shim Tile DMA -> DDR
 // Pattern: Static
 
 // Producer AIE core sends data straight to host DDR via objectFifo.
@@ -17,14 +17,10 @@
 // CHECK: AIE2 ISS
 // CHECK: PASS!
 
-// This test currently fails, with the host code not being able to obtain the
-// lock to read from the objectFifo in the shim tile. Concretely, the first
-// attempt to acquire the fifo0_cons_cons_lock in test.cpp hangs.
-
-// The simulator also produces the following warning:
-// Warning: tl.aie_logical.aie_xtlm.ms_aximm_wr_stub_1: Ignoring Transaction received at stub model
-// In file: xtlm_aximm_target_stub.h:71
-// In process: tl.aie_logical.aie_xtlm.math_engine.shim.tile_3_0.dma.sync_process @ 160888 ps
+// This test currently does not pass. The necessary 
+//    mlir_aie_configure_shimdma_30(_xaie);
+// function does not get generated in aie_inc.cpp,
+// thus failing compilation of the host code.
 
 // XFAIL: *
 
@@ -32,13 +28,16 @@ module @aie2_l1_ddr {
     AIE.device(xcve2802) {
 
         %tile30 = AIE.tile(3, 0)  // shim tile
+        %tile31 = AIE.tile(3, 1)  // mem tile
         %tile33 = AIE.tile(3, 3)  // consumer tile
         %buf33  = AIE.buffer(%tile33) {sym_name = "buf33"} : memref<i32>   // iter_args workaround
         %lock33 = AIE.lock(%tile33, 0) { init = 0 : i32, sym_name = "lock33" }
         %extbuf0 = AIE.external_buffer {sym_name = "extbuf0"} : memref<1xi32>
         %extbuf1 = AIE.external_buffer {sym_name = "extbuf1"} : memref<1xi32>
 
-        %fifo0 = AIE.objectFifo.createObjectFifo(%tile33, {%tile30}, 12 : i32) {sym_name = "fifo0"} : !AIE.objectFifo<memref<1xi32>>
+        %fifo0 = AIE.objectFifo.createObjectFifo(%tile33, {%tile31}, 12 : i32) {sym_name = "fifo0"} : !AIE.objectFifo<memref<1xi32>>
+        %fifo1 = AIE.objectFifo.createObjectFifo(%tile31, {%tile30}, 12 : i32) {sym_name = "fifo1"} : !AIE.objectFifo<memref<1xi32>>
+        AIE.objectFifo.link({%fifo0}, {%fifo1}) : ({!AIE.objectFifo<memref<1xi32>>}, {!AIE.objectFifo<memref<1xi32>>})
         AIE.objectFifo.registerExternalBuffers(%tile30, %fifo0 : !AIE.objectFifo<memref<1xi32>>, {%extbuf0, %extbuf1}) : (memref<1xi32>, memref<1xi32>)
 
         // Producer core
