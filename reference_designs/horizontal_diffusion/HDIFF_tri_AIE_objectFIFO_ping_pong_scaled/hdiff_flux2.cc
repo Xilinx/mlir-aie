@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 
+
 #include "./include.h"
 #include "hdiff.h"
 #define kernel_load 14
@@ -36,7 +37,7 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
       v8int32 flux_sub;
       v8int32 flux_interm_sub;
 
-      ptr_forward = (v8int32 *)flux_inter1 + i;
+      ptr_forward = (v8int32 *)flux_inter1 + 2 * i;
       flux_sub = *ptr_forward++;
       flux_interm_sub = *ptr_forward;
 
@@ -49,8 +50,10 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
       v16int32 out_flx_inter1 = select16(
           flx_compare_imj, concat(flux_sub, undef_v8int32()), null_v16int32());
 
+      // still fly_ijm
+
       /////////////////////////////////////////////////////////////////////////////////////
-      ptr_forward = (v8int32 *)flux_inter2 + i;
+      ptr_forward = (v8int32 *)flux_inter2 + 2 * i;
       flux_sub = *ptr_forward++;
       flux_interm_sub = *ptr_forward;
 
@@ -64,7 +67,7 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
       // add fly_ij - fly_ijm
       v16int32 flx_out2 = sub16(out_flx_inter2, out_flx_inter1);
       /////////////////////////////////////////////////////////////////////////////////////
-      ptr_forward = (v8int32 *)flux_inter3 + i;
+      ptr_forward = (v8int32 *)flux_inter3 + 2 * i;
       flux_sub = *ptr_forward++;
       flux_interm_sub = *ptr_forward;
 
@@ -78,7 +81,7 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
       v16int32 flx_out3 =
           sub16(flx_out2, out_flx_inter3); // adds fly_ij - fly_ijm - flx_imj
       /////////////////////////////////////////////////////////////////////////////////////
-      ptr_forward = (v8int32 *)flux_inter4 + i;
+      ptr_forward = (v8int32 *)flux_inter4 + 2 * i;
       flux_sub = *ptr_forward++;
       flux_interm_sub = *ptr_forward;
 
@@ -92,7 +95,7 @@ void hdiff_flux2(int32_t *restrict flux_inter1, int32_t *restrict flux_inter2,
       v16int32 flx_out4 = add16(
           flx_out3, out_flx_inter4); // adds fly_ij - fly_ijm - flx_imj + flx_ij
 
-      ptr_forward = (v8int32 *)flux_inter5 + i;
+      ptr_forward = (v8int32 *)flux_inter5 + 2 * i;
       v8int32 tmp1 = *ptr_forward++;
       v8int32 tmp2 = *ptr_forward;
       data_buf2 = concat(tmp2, tmp1);

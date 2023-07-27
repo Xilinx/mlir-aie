@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 
+
 #include "./include.h"
 #include "hdiff.h"
 #define kernel_load 14
@@ -20,12 +21,6 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
                  int32_t *restrict flux_forward4, int32_t *restrict flux_inter1,
                  int32_t *restrict flux_inter2, int32_t *restrict flux_inter3,
                  int32_t *restrict flux_inter4, int32_t *restrict flux_inter5) {
-
-  alignas(32) int32_t weights1[8] = {1, 1, 1, 1, 1, 1, 1, 1};
-  alignas(32) int32_t flux_out[8] = {-7, -7, -7, -7, -7, -7, -7, -7};
-
-  v8int32 coeffs1 = *(v8int32 *)weights1; //  8 x int32 = 256b W vector
-  v8int32 flux_out_coeff = *(v8int32 *)flux_out;
 
   v8int32 *restrict ptr_forward = (v8int32 *)flux_forward1;
   v8int32 *ptr_out = (v8int32 *)flux_inter1;
@@ -58,13 +53,13 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
       acc_1 = lmsc8(acc_1, data_buf2, 1, 0x76543210, flux_sub, 0,
                     0x00000000); // (lap_ij - lap_ijm)*g - (lap_ij - lap_ijm)*f
 
-      ptr_out = (v8int32 *)flux_inter1 + i;
+      ptr_out = (v8int32 *)flux_inter1 + 2 * i;
       *ptr_out++ = flux_sub;
       *ptr_out = srs(acc_1, 0);
 
       /////////////////////////////////////////////////////////////////////////////////////
       ptr_forward = (v8int32 *)flux_forward2 + i;
-      flux_sub = *ptr_forward++;
+      flux_sub = *ptr_forward;
 
       acc_0 = lmul8(data_buf2, 3, 0x76543210, flux_sub, 0,
                     0x00000000); // (lap_ijp - lap_ij) * h
@@ -72,7 +67,7 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
           acc_0, data_buf2, 2, 0x76543210, flux_sub, 0,
           0x00000000); //  (lap_ijp - lap_ij) * h  - (lap_ijp - lap_ij) * g
 
-      ptr_out = (v8int32 *)flux_inter2 + i;
+      ptr_out = (v8int32 *)flux_inter2 + 2 * i;
       *ptr_out++ = flux_sub;
       *ptr_out = srs(acc_0, 0);
 
@@ -85,7 +80,7 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
           acc_1, data_buf1, 2, 0x76543210, flux_sub, 0,
           0x00000000); //    (lap_ij - lap_imj) * g  *  (lap_ij - lap_imj) * c
 
-      ptr_out = (v8int32 *)flux_inter3 + i;
+      ptr_out = (v8int32 *)flux_inter3 + 2 * i;
       *ptr_out++ = flux_sub;
       *ptr_out = srs(acc_1, 0);
 
@@ -104,7 +99,7 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
           lmsc8(acc_1, data_buf2, 2, 0x76543210, flux_sub, 0,
                 0x00000000); //  (lap_ipj - lap_ij) * k - (lap_ipj - lap_ij) * g
 
-      ptr_out = (v8int32 *)flux_inter4 + i;
+      ptr_out = (v8int32 *)flux_inter4 + 2 * i;
       *ptr_out++ = flux_sub;
       *ptr_out = srs(acc_1, 0);
 
@@ -113,7 +108,7 @@ void hdiff_flux1(int32_t *restrict row1, int32_t *restrict row2,
       data_buf1 = upd_w(data_buf1, 0, *(row1_ptr)++);
       data_buf1 = upd_w(data_buf1, 1, *(row1_ptr));
 
-      ptr_out = (v8int32 *)flux_inter5 + i;
+      ptr_out = (v8int32 *)flux_inter5 + 2 * i;
       *ptr_out++ = ext_w(data_buf2, 1);
       *ptr_out = ext_w(data_buf2, 0);
 

@@ -127,6 +127,7 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
       acc_1 = lmul8(data_buf2, 2, 0x76543210, coeffs_rest, 0, 0x00000000); // g
       acc_0 = lmul8(data_buf2, 2, 0x76543210, coeffs_rest, 0, 0x00000000); // g
 
+      // r2 = ptr_in + 0*COL/8 + i ;
       row0_ptr = ((v8int32 *)(row0)) + i;
       data_buf2 = upd_w(data_buf2, 0, *(row0_ptr)++);
       data_buf2 = upd_w(data_buf2, 1, *(row0_ptr));
@@ -138,6 +139,7 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
       acc_1 = lmac8(acc_1, data_buf2, 2, 0x76543210, coeffs_rest, 0,
                     0x00000000); // g, 4*c, b, a
 
+      // r2 = ptr_in + 4*COL/8 + i ;
       row4_ptr = ((v8int32 *)(row4)) + i;
       data_buf2 = upd_w(data_buf2, 0, *(row4_ptr)++);
       data_buf2 = upd_w(data_buf2, 1, *(row4_ptr));
@@ -163,6 +165,7 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
       acc_0 = lmsc8(acc_0, data_buf1, 2, 0x76543210, coeffs, 0,
                     0x00000000); // g, m , k * 4
 
+
       acc_0 = lmac8(acc_0, data_buf1, 1, 0x76543210, coeffs_rest, 0,
                     0x00000000); // g, m , k * 4, j
 
@@ -174,7 +177,6 @@ void hdiff_lap(int32_t *restrict row0, int32_t *restrict row1,
       acc_0 = lmac8(acc_0, data_buf1, 3, 0x76543210, coeffs_rest, 0,
                     0x00000000); // g, m , k * 4, j, l
 
-      //  flx_ij = lap_ipj - lap_ij
       flux_sub = sub16(concat(srs(acc_0, 0), undef_v8int32()), 0, 0x76543210,
                        0xFEDCBA98, concat(lap_ij, undef_v8int32()), 0,
                        0x76543210, 0xFEDCBA98);
