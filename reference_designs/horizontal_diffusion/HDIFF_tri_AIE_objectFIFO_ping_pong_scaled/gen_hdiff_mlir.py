@@ -1,8 +1,10 @@
-# (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-  
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# /scratch/gagandee/mlir-air/utils/mlir-aie/reference_designs/horizontal_diffusion/HDIFF_tri_AIE_objectFIFO_ping_pong_scaled/gen_hdiff_mlir.py -*- Python -*-
+#
+# (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+#
+# This file is licensed under the MIT License.
+# SPDX-License-Identifier: MIT
+# 
 
 import sys
 import re
@@ -12,7 +14,7 @@ import random
 noc_columns = [ 2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47]
 
 
-total_b_block= 32# only 1
+total_b_block= 5# only 1
 b_block_depth=4 #set how many rows
 input_rows=9 # data input per block row
 
@@ -47,11 +49,15 @@ def main():
     # declare tile, column by row
 
 
-    f.write("""// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET   
-    
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n\n\n""")
+    f.write("""//===- aie.mlir ------------------------------------------------*- MLIR -*-===//  
+//  
+// (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+//
+// This file is licensed under the MIT License.
+// SPDX-License-Identifier: MIT
+// 
+//
+//===----------------------------------------------------------------------===//\n\n\n""")
 
 
 
