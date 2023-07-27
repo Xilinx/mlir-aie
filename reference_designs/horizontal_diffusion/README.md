@@ -87,13 +87,21 @@ We develop a *bundle* or *B-block*-based design. A B-block is a cluster of AIE c
 
 As AIE architecture lacks support for automatically gathering and ordering of computed outputs, we use physical placement constraints to allow the AIE cores in the last column to access a single shared memory of a dedicated AIE core, enabling data gathering. We refer to this core as the *gather core*. The gather core is responsible for collecting data from all other cores, in addition to processing the results of its own lane. A single B-block operates on a single plane of the input data. Since two B-blocks can be connected to a single shimDMA, two planes can be served per shimDMA. This regular structure can then be repeated for all the shimDMA channels present on a Versal device. Our B-block-based design can be scaled to 384 AIE cores while utilizing all the available shimDMA channels without starving any AIE cores.
 
+## Prerequisites
+* [MLIR-AIE](https://github.com/Xilinx/mlir-aie)
 
 # Citation
+>Gagandeep Singh, Alireza Khodamoradi, Kristof Denolf, Jack Lo, Juan Gómez-Luna, Joseph Melber, Andra Bisca, Henk Corporaal, Onur Mutlu.
+[**"SPARTA: Spatial Acceleration for Efficient and Scalable Horizontal Diffusion Weather Stencil Computation"**](https://arxiv.org/pdf/2303.03509.pdf)
+In _Proceedings of the 37th International Conference on Supercomputing (ICS),_ Orlando, FL, USA, June 2023.
+
+Bibtex entry for citation:
+
 ```
 @inproceedings{singh2023sparta,
   title={{SPARTA: Spatial Acceleration for Efficient and Scalable Horizontal Diffusion Weather Stencil Computation}},
   author={Singh, Gagandeep and Khodamoradi, Alireza and Denolf, Kristof and Lo, Jack and G{\'o}mez-Luna, Juan and Melber, Joseph and Bisca, Andra and Corporaal, Henk and Mutlu, Onur},
-  booktitle={arxiv},
+  booktitle={ICS},
   year={2023}
 }
 ```
