@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -19,6 +18,9 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+
+#include "memory_allocator.h"
+#include "test_library.h"
 
 #include "aie_inc.cpp"
 
@@ -37,10 +39,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_acquire_lock_pc(_xaie, 0, 10000);
   mlir_aie_acquire_of_in_lock_0(_xaie, 0, 10000);
 
-  mlir_aie_init_mems(_xaie, 2);
-
-  int *mem_ptr_in_0 = mlir_aie_mem_alloc(_xaie, 0, 32);
-  int *mem_ptr_in_1 = mlir_aie_mem_alloc(_xaie, 1, 32);
+  ext_mem_model_t buf0, buf1;
+  int *mem_ptr_in_0 = mlir_aie_mem_alloc(buf0, 32);
+  int *mem_ptr_in_1 = mlir_aie_mem_alloc(buf1, 32);
 
   mlir_aie_external_set_addr_ext_buffer_in_0((u64)mem_ptr_in_0);
   mlir_aie_external_set_addr_ext_buffer_in_1((u64)mem_ptr_in_1);
@@ -74,7 +75,7 @@ int main(int argc, char *argv[]) {
     mlir_aie_acquire_of_in_lock_0(_xaie, 0, 10000);
     for (int j = 0; j < 32; j++)
       mem_ptr_in_0[j] = i;
-    mlir_aie_sync_mem_dev(_xaie, 0);
+    mlir_aie_sync_mem_dev(buf0);
     mlir_aie_release_of_in_lock_0(_xaie, 1, 0);
     i++;
 
@@ -82,7 +83,7 @@ int main(int argc, char *argv[]) {
     mlir_aie_acquire_of_in_lock_1(_xaie, 0, 10000);
     for (int j = 0; j < 32; j++)
       mem_ptr_in_1[j] = i;
-    mlir_aie_sync_mem_dev(_xaie, 1);
+    mlir_aie_sync_mem_dev(buf1);
     mlir_aie_release_of_in_lock_1(_xaie, 1, 0);
     i++;
   }
