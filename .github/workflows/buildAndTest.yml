@@ -8,10 +8,33 @@ on:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
 
+defaults:
+  run:
+    # This is already the default, except when running inside another Docker
+    # image, which is the case here. So set it up globally to avoid
+    # repeating elsewhere.
+    shell: bash
+
 jobs:
   build-repo:
     name: Build and Test
-    runs-on: ubuntu-20.04
+
+    # By latest GitHub means actually latest LTS only
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Run all the test even if there are some which fail
+      fail-fast: false
+
+      matrix:
+        ubuntu_version: [ 20.04, 22.04 ]
+
+    # Using a container instead of running native on public GitHub
+    # Action has also the advantage of having 2 CPU instead of 1, so
+    # it runs faster.
+    container:
+      image: docker://ubuntu:${{matrix.ubuntu_version}}
+
     steps:
       - name: Execution context information
         # Display a lot of information to help further development
@@ -24,7 +47,7 @@ jobs:
           echo "::group::env context"
           echo "${{ toJSON(env) }}"
           echo "::endgroup::"
-          echo "::group::vars context:"
+          echo "::group::vars context"
           echo "${{ toJSON(vars) }}"
           echo "::endgroup::"
           echo "::group::job context"
@@ -76,7 +99,6 @@ jobs:
       - name: Get Submodule Hash
         id: get-submodule-hash
         run: echo "hash=$(md5sum $(echo utils/clone-llvm.sh))" >> $GITHUB_OUTPUT
-        shell: bash
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
@@ -88,7 +110,6 @@ jobs:
       - name: Get LLVM
         id: clone-llvm
         run: utils/clone-llvm.sh
-        shell: bash
 
       - name: Rebuild and Install LLVM
         run: utils/build-llvm.sh
