@@ -860,6 +860,8 @@ Example:
 ```
 This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
 
+Interfaces: Symbol
+
 #### Attributes:
 
 | Attribute | MLIR Type | Description |
@@ -1362,7 +1364,7 @@ Traits: HasParent<DeviceOp>
 
 | Attribute | MLIR Type | Description |
 | :-------: | :-------: | ----------- |
-| `sym_name` | ::mlir::StringAttr | string attribute
+| `sym_name` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
 | `channelDir` | xilinx::AIE::DMAChannelDirAttr | DMA Channel direction
 | `channelIndex` | ::mlir::IntegerAttr | 64-bit signless integer attribute
 | `col` | ::mlir::IntegerAttr | 64-bit signless integer attribute
