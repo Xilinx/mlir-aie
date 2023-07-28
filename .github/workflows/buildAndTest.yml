@@ -13,6 +13,45 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-20.04
     steps:
+      - name: Execution context information
+        # Display a lot of information to help further development
+        # https://docs.github.com/en/actions/learn-github-actions/variables
+        # https://docs.github.com/en/enterprise-cloud@latest/actions/learn-github-actions/contexts
+        run: |
+          echo "::group::github context"
+          echo "${{ toJSON(github) }}"
+          echo "::endgroup::"
+          echo "::group::env context"
+          echo "${{ toJSON(env) }}"
+          echo "::endgroup::"
+          echo "::group::vars context:"
+          echo "${{ toJSON(vars) }}"
+          echo "::endgroup::"
+          echo "::group::job context"
+          echo "${{ toJSON(job) }}"
+          echo "::endgroup::"
+          echo "::group::steps context"
+          echo "${{ toJSON(steps) }}"
+          echo "::endgroup::"
+          echo "::group::runner context"
+          echo "${{ toJSON(runner) }}"
+          echo "::endgroup::"
+          echo "::group::strategy context"
+          echo "${{ toJSON(strategy) }}"
+          echo "::endgroup::"
+          echo "::group::matrix context"
+          echo "${{ toJSON(matrix) }}"
+          echo "::endgroup::"
+          echo "::group::needs context"
+          echo "${{ toJSON(needs) }}"
+          echo "::endgroup::"
+          echo "::group::inputs context"
+          echo "${{ toJSON(inputs) }}"
+          echo "::endgroup::"
+          echo "::group::Shell environment variables"
+          env
+          echo "::endgroup::"
+
       - name: Configure Environment
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
 
