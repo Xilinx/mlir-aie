@@ -1111,11 +1111,10 @@ struct AIEObjectFifoStatefulTransformPass
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      StringRef name, int colIndex,
+                                      FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
                                       int channelIndex) {
-    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
-                                        builder.getStringAttr(name.str()),
+    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex));
@@ -1128,9 +1127,9 @@ struct AIEObjectFifoStatefulTransformPass
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
     auto ctx = device->getContext();
 
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     // Create objectFifos
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
@@ -1230,9 +1229,9 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     for (auto &[producer, consumers] : splitFifos) {
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
@@ -1242,10 +1241,10 @@ struct AIEObjectFifoStatefulTransformPass
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
       if (producer.getProducerTileOp().isShimTile())
-        createObjectFifoAllocationInfo(builder, ctx,
-                                       producer.name()->getValue(),
-                                       producer.getProducerTileOp().colIndex(),
-                                       producerChan.first, producerChan.second);
+        createObjectFifoAllocationInfo(
+            builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
+            producer.getProducerTileOp().colIndex(), producerChan.first,
+            producerChan.second);
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
@@ -1257,7 +1256,7 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPoint(&device.getBody()->back());
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
-              builder, ctx, producer.name()->getValue(),
+              builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.first,
               consumerChan.second);
 
@@ -1270,14 +1269,14 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     // Unroll for loops
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     unrollForLoops(device, builder, objectFifoTiles);
 
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     // Replace ops
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     for (auto coreOp : device.getOps<CoreOp>()) {
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
@@ -1296,9 +1295,9 @@ struct AIEObjectFifoStatefulTransformPass
           relPerFifo; // maps each objFifo to its next index to release within
                       // this CoreOp
 
-      //===----------------------------------------------------------------------===//
+      //===----------------------------------------------------------------===//
       // Replace objectFifo.release ops
-      //===----------------------------------------------------------------------===//
+      //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         // if objectFifo was split, replace with correct child
         checkSplitFifo<ObjectFifoReleaseOp>(
@@ -1333,9 +1332,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
       });
 
-      //===----------------------------------------------------------------------===//
+      //===----------------------------------------------------------------===//
       // Replace objectFifo.acquire ops
-      //===----------------------------------------------------------------------===//
+      //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         // if objectFifo was split, replace with correct child
         checkSplitFifo<ObjectFifoAcquireOp>(
@@ -1457,9 +1456,9 @@ struct AIEObjectFifoStatefulTransformPass
         acquiresPerFifo[op] = acquiredIndices;
       });
 
-      //===----------------------------------------------------------------------===//
+      //===----------------------------------------------------------------===//
       // Replace subview.access ops
-      //===----------------------------------------------------------------------===//
+      //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         ObjectFifoAcquireOp acqOp =
             accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
@@ -1478,9 +1477,22 @@ struct AIEObjectFifoStatefulTransformPass
       });
     }
 
-    //===----------------------------------------------------------------------===//
+    // make global symbols to replace the to be erased ObjectFifoCreateOps
+    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+      OpBuilder b(createOp);
+      auto sym_name = createOp.getName();
+      createOp->setAttr(mlir::SymbolTable::getSymbolAttrName(),
+                        b.getStringAttr("__erase_" + sym_name));
+      auto memrefType = cast<MemRefType>(
+          cast<AIEObjectFifoType>(createOp.getType()).getElementType());
+      b.create<memref::GlobalOp>(b.getUnknownLoc(), sym_name,
+                                 b.getStringAttr("public"), memrefType, nullptr,
+                                 false, nullptr);
+    }
+
+    //===------------------------------------------------------------------===//
     // Remove old ops
-    //===----------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEOpRemoval<ObjectFifoCreateOp>>(device.getContext());

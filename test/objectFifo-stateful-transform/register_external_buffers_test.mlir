@@ -39,7 +39,7 @@
 // CHECK:       AIE.useLock(%6, Release, 0)
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation("ext_of", MM2S, 0, 7)
+// CHECK:     AIE.shimDMAAllocation(@ext_of, MM2S, 0, 7)
 // CHECK:     %11 = AIE.shimDMA(%1) {
 // CHECK:       %13 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1

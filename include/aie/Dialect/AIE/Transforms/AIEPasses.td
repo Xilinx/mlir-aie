@@ -191,6 +191,7 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "scf::SCFDialect",
     "func::FuncDialect",
     "arith::ArithDialect",
+    "memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
