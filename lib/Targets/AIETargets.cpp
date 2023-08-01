@@ -33,8 +33,6 @@
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 
 using namespace mlir;
 using namespace mlir::vector;
@@ -549,6 +547,18 @@ SECTIONS
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
+  TranslateFromMLIRRegistration registrationLinAlgToADF(
+      "linalg-to-adf", "Translate LinAlg dialect to C++ ADF graph (POC)",
+      [](ModuleOp module, raw_ostream &output) {
+        return TranslateLinalgToADF(module, output);
+      },
+      [](DialectRegistry &registry) {
+        registry.insert<arith::ArithDialect, linalg::LinalgDialect,
+                        bufferization::BufferizationDialect, LLVM::LLVMDialect,
+                        math::MathDialect, memref::MemRefDialect,
+                        func::FuncDialect, tensor::TensorDialect,
+                        cf::ControlFlowDialect, scf::SCFDialect>();
+      });
 }
 } // namespace AIE
 } // namespace xilinx

@@ -13,6 +13,8 @@ add_mlir_library(AIETargets
   AIETargetSimulationFiles.cpp
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
+  TranslateLinalgToADF.cpp
+  BufferDescriptorAnalysis.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
