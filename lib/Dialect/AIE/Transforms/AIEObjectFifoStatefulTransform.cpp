@@ -959,9 +959,10 @@ struct AIEObjectFifoStatefulTransformPass
   /// Updates acc.
   void createUseLocks(OpBuilder &builder, ObjectFifoCreateOp op,
                       ObjectFifoPort port,
-                      DenseMap<ObjectFifoCreateOp, int> &acc, int numLocks,
-                      LockAction lockAction) {
+                      DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc, 
+                      int numLocks, LockAction lockAction) {
     ObjectFifoCreateOp target = op;
+    auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
     auto linkOp = getOptionalLinkOp(op);
     if (linkOp)
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
@@ -977,11 +978,11 @@ struct AIEObjectFifoStatefulTransformPass
            lockAction == LockAction::Acquire))
         lockMode = 1;
       for (int i = 0; i < numLocks; i++) {
-        int lockID = acc[op];
+        int lockID = acc[{op, portNum}];
         builder.create<UseLockOp>(builder.getUnknownLoc(),
                                   locksPerFifo[target][lockID], lockMode,
                                   lockAction);
-        acc[op] = (lockID + 1) % op.size(); // update to next objFifo elem
+        acc[{op, portNum}] = (lockID + 1) % op.size(); // update to next objFifo elem
       }
     } else {
       if (numLocks == 0)
@@ -1002,20 +1003,20 @@ struct AIEObjectFifoStatefulTransformPass
       }
       builder.create<UseLockOp>(builder.getUnknownLoc(), lock, numLocks,
                                 lockAction);
-      acc[op] = (acc[op] + numLocks) % op.size(); // update to next objFifo elem
+      acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) % op.size(); // update to next objFifo elem
     }
   }
 
   /// Function used to check whether op is already contained in map.
   /// If it is then return the associated int, if not create new entry and
   /// return 0.
-  int updateAndReturnIndex(DenseMap<ObjectFifoCreateOp, int> &map,
-                           ObjectFifoCreateOp op) {
-    if (map.find(op) == map.end()) {
-      map[op] = 0;
+  int updateAndReturnIndex(DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &map,
+                           std::pair<ObjectFifoCreateOp, int> pair) {
+    if (map.find(pair) == map.end()) {
+      map[pair] = 0;
       return 0;
     }
-    return map[op];
+    return map[pair];
   }
 
   /// Function used to add an external buffer to the externalBuffersPerFifo map.
@@ -1281,17 +1282,17 @@ struct AIEObjectFifoStatefulTransformPass
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
                     // are created by AcquireOps)
-      DenseMap<ObjectFifoCreateOp, std::vector<int>>
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, std::vector<int>>
           acquiresPerFifo; // maps each objFifo to indices of buffers acquired
                            // in latest subview of that objFifo (useful to
                            // cascade acquired elements to next AcquireOp)
-      DenseMap<ObjectFifoCreateOp, std::vector<ObjectFifoReleaseOp>>
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, std::vector<ObjectFifoReleaseOp>>
           releaseOps; // useful to check which ReleaseOp has taken place before
                       // an AcquireOp per objFifo
-      DenseMap<ObjectFifoCreateOp, int>
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
           acqPerFifo; // maps each objFifo to its next index to acquire within
                       // this CoreOp
-      DenseMap<ObjectFifoCreateOp, int>
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
           relPerFifo; // maps each objFifo to its next index to release within
                       // this CoreOp
 
@@ -1307,6 +1308,7 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp op =
             releaseOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
         auto port = releaseOp.getPort();
+        auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
@@ -1316,7 +1318,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         // update index of next element to release for this objectFifo
-        updateAndReturnIndex(relPerFifo, op);
+        updateAndReturnIndex(relPerFifo, {op, portNum});
 
         // release locks
         int numLocks = releaseOp.relNumber();
@@ -1324,11 +1326,11 @@ struct AIEObjectFifoStatefulTransformPass
                        LockAction::Release);
 
         // register release op
-        if (releaseOps.find(op) != releaseOps.end())
-          releaseOps[op].push_back(releaseOp);
+        if (releaseOps.find({op, portNum}) != releaseOps.end())
+          releaseOps[{op, portNum}].push_back(releaseOp);
         else {
           std::vector<ObjectFifoReleaseOp> release = {releaseOp};
-          releaseOps[op] = release;
+          releaseOps[{op, portNum}] = release;
         }
       });
 
@@ -1339,11 +1341,11 @@ struct AIEObjectFifoStatefulTransformPass
         // if objectFifo was split, replace with correct child
         checkSplitFifo<ObjectFifoAcquireOp>(
             acquireOp, coreOp.getTile().getDefiningOp<TileOp>());
-
-        builder.setInsertionPointAfter(acquireOp);
-        auto port = acquireOp.getPort();
         ObjectFifoCreateOp op =
             acquireOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+        builder.setInsertionPointAfter(acquireOp);
+        auto port = acquireOp.getPort();
+        auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
@@ -1355,12 +1357,12 @@ struct AIEObjectFifoStatefulTransformPass
         // index of next element to acquire for this objectFifo
         int start = updateAndReturnIndex(
             acqPerFifo,
-            op); // useful for keeping track of which indices are acquired
+            {op, portNum}); // useful for keeping track of which indices are acquired
 
         // check how many elements have been released in between this AcquireOp
         // and the previous one
         int numRel = 0;
-        for (auto relOp : releaseOps[op]) {
+        for (auto relOp : releaseOps[{op, portNum}]) {
           ObjectFifoCreateOp otherOp =
               relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
           // TODO: operations may not be in the same block: currently only
@@ -1369,8 +1371,9 @@ struct AIEObjectFifoStatefulTransformPass
             if (acquireOp.getOperation()->getBlock() ==
                 relOp.getOperation()->getBlock()) {
               if (!acquireOp->isBeforeInBlock(relOp)) {
-                releaseOps[op].erase(
-                    releaseOps[op].begin()); // to ensure that we do not account
+                releaseOps[{op, portNum}].erase(
+                    releaseOps[{op, portNum}].begin()); 
+                                             // to ensure that we do not account
                                              // the ReleaseOps again later,
                                              // after the subview is created
                 numRel += relOp.relNumber();
@@ -1381,8 +1384,8 @@ struct AIEObjectFifoStatefulTransformPass
               if (relOp.getOperation()->getBlock() ==
                   acqBlockDefOp->getBlock()) {
                 if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
-                  releaseOps[op].erase(
-                      releaseOps[op]
+                  releaseOps[{op, portNum}].erase(
+                      releaseOps[{op, portNum}]
                           .begin()); // to ensure that we do not account
                                      // the ReleaseOps again later, after
                                      // the subview is created
@@ -1394,8 +1397,8 @@ struct AIEObjectFifoStatefulTransformPass
                 if (acquireOp.getOperation()->getBlock() ==
                     relBlockDefOp->getBlock()) {
                   if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
-                    releaseOps[op].erase(
-                        releaseOps[op]
+                    releaseOps[{op, portNum}].erase(
+                        releaseOps[{op, portNum}]
                             .begin()); // to ensure that we do not account
                                        // the ReleaseOps again later,
                                        // after the subview is created
@@ -1409,10 +1412,10 @@ struct AIEObjectFifoStatefulTransformPass
 
         // track indices of elements to acquire
         std::vector<int> acquiredIndices;
-        if (acquiresPerFifo[op].size() != 0) {
+        if (acquiresPerFifo[{op, portNum}].size() != 0) {
           // take into account what has already been acquired by previous
           // AcquireOp in program order
-          acquiredIndices = acquiresPerFifo[op];
+          acquiredIndices = acquiresPerFifo[{op, portNum}];
           // take into account what has been released in-between
           assert((size_t)numRel <= acquiredIndices.size() &&
                  "Cannot release more elements than are already acquired.");
@@ -1453,7 +1456,7 @@ struct AIEObjectFifoStatefulTransformPass
           subviewRefs.push_back(&buffersPerFifo[target][index]);
 
         subviews[acquireOp] = subviewRefs;
-        acquiresPerFifo[op] = acquiredIndices;
+        acquiresPerFifo[{op, portNum}] = acquiredIndices;
       });
 
       //===----------------------------------------------------------------===//
@@ -1464,14 +1467,12 @@ struct AIEObjectFifoStatefulTransformPass
             accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
         ObjectFifoCreateOp op =
             acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
-
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
           accessOp->emitOpError("currently cannot access objectFifo used in "
                                 "ObjectFifoLinkOp");
           return;
         }
-
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
       });
