@@ -498,7 +498,7 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
         return {};
     }
     return {fifoOut.getProducerTile()};
-  } else {
+  } else if (isDistribute()) {
     auto fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
     for (auto fifoOut : getFifoOuts()) {
       ObjectFifoCreateOp fifoOutOp =
@@ -507,6 +507,13 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
         return {};
     }
     return {fifoIn.getConsumerTiles()[0]};
+  } else {
+    auto fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    auto fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    for (auto consumerIn : fifoIn.getConsumerTiles())
+      if (consumerIn == fifoOut.getProducerTile())
+        return {fifoOut.getProducerTile()};
+    return {};
   }
   return {};
 }

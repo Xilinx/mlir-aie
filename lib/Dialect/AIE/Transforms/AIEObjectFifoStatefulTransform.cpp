@@ -66,7 +66,6 @@ public:
     for (auto lockOp : device.getOps<LockOp>()) {
       auto tile = lockOp.getTile();
       auto lockID = lockOp.getLockIDValue();
-
       locksPerTile[std::make_pair(tile, lockID)] = 1;
     }
   }
@@ -101,11 +100,10 @@ public:
       Region &r = memOp.getBody();
       for (auto &bl : r.getBlocks()) {
         for (auto op : bl.getOps<DMAStartOp>()) {
-          if (op.isSend()) {
+          if (op.isSend())
             getMasterDMAChannel(memOp.getTile());
-          } else {
+          else
             getSlaveDMAChannel(memOp.getTile());
-          }
         }
       }
     }
@@ -210,13 +208,31 @@ struct AIEObjectFifoStatefulTransformPass
     return leftShared || rightShared;
   }
 
+  /// Function to multiply all dimensions of a memref.
+  int64_t getMemrefTypeSize(MemRefType memref) {
+    int64_t size = 1;
+    for (auto dim : memref.getShape())
+      size *= dim;
+    return size;
+  }
+
+  /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
+  /// if it belongs to one.
+  std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
+    std::optional<ObjectFifoLinkOp> link = {};
+    for (auto user : op.getOperation()->getUsers())
+      if (isa<ObjectFifoLinkOp>(user))
+        link = {dyn_cast<ObjectFifoLinkOp>(user)};
+    return link;
+  }
+
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
                                       Value prodTile, Value consTile,
-                                      std::vector<Attribute> depth) {
+                                      Attribute depth) {
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), datatype, prodTile, consTile,
-        builder.getArrayAttr(ArrayRef(depth)));
+        depth);
     return fifo;
   }
 
@@ -267,24 +283,6 @@ struct AIEObjectFifoStatefulTransformPass
       locks.push_back(consLock);
     }
     return locks;
-  }
-
-  /// Function to multiply all dimensions of a memref.
-  int64_t getMemrefTypeSize(MemRefType memref) {
-    int64_t size = 1;
-    for (auto dim : memref.getShape())
-      size *= dim;
-    return size;
-  }
-
-  /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
-  /// if it belongs to one.
-  std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
-    std::optional<ObjectFifoLinkOp> link = {};
-    for (auto user : op.getOperation()->getUsers())
-      if (isa<ObjectFifoLinkOp>(user))
-        link = {dyn_cast<ObjectFifoLinkOp>(user)};
-    return link;
   }
 
   /// Function used to create objectFifo elements and their locks.
@@ -384,10 +382,9 @@ struct AIEObjectFifoStatefulTransformPass
   /// that contains the AIEEndOp.
   Block *findEndOpBlock(Region *r) {
     Block *endBlock = nullptr;
-    for (auto &bl : r->getBlocks()) {
+    for (auto &bl : r->getBlocks())
       if (!bl.getOps<EndOp>().empty())
         endBlock = &bl;
-    }
     return endBlock;
   }
 
@@ -513,11 +510,11 @@ struct AIEObjectFifoStatefulTransformPass
     Block *curr = bdBlock;
     int blockIndex = 0;
     for (int i = 0; i < numBlocks; i++) {
-      if (i == numBlocks - 1) {
+      if (i == numBlocks - 1)
         succ = bdBlock;
-      } else {
+      else
         succ = builder.createBlock(endBlock);
-      }
+       
       builder.setInsertionPointToStart(curr);
       createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                               buffersPerFifo[target][blockIndex], offset, len,
@@ -581,11 +578,11 @@ struct AIEObjectFifoStatefulTransformPass
     Block *curr = bdBlock;
     int blockIndex = 0;
     for (int i = 0; i < numBlocks; i++) {
-      if (i == numBlocks - 1) {
+      if (i == numBlocks - 1)
         succ = bdBlock;
-      } else {
+      else
         succ = builder.createBlock(endBlock);
-      }
+      
       MemRefType buffer = externalBuffersPerFifo[op][blockIndex].getType();
       int len = getMemrefTypeSize(buffer);
       builder.setInsertionPointToStart(curr);
@@ -770,9 +767,8 @@ struct AIEObjectFifoStatefulTransformPass
           dependencyIndex = LOOP_VAR_DEPENDENCY;
         } else {
           auto definingOp = operand.getDefiningOp();
-          if (definingOp->getBlock()->getParentOp() == forLoop) {
+          if (definingOp->getBlock()->getParentOp() == forLoop)
             dependencyIndex = opIndex[definingOp];
-          }
         }
         dependecyIndices.push_back(dependencyIndex);
       }
@@ -814,12 +810,12 @@ struct AIEObjectFifoStatefulTransformPass
                          // multiple results?
           } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
             int64_t increment_value = 0;
-            if (inLoop) {
+            if (inLoop)
               // +1 because we do not duplicate original loop body
               increment_value = (i + 1) * step;
-            } else {
+            else
               increment_value = i * step;
-            }
+            
             arith::ConstantOp increment = builder.create<arith::ConstantOp>(
                 builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
                 builder.getIndexType());
@@ -829,7 +825,6 @@ struct AIEObjectFifoStatefulTransformPass
             clone->setOperand(operandIndex, sum->getResult(0));
           }
         }
-
         builder.insert(clone);
         duplicatedOperations.push_back(clone);
         originalIndex++;
@@ -853,8 +848,6 @@ struct AIEObjectFifoStatefulTransformPass
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
             if (acqOp.getOperation()->getParentOp() == forLoop) {
-              checkSplitFifo<ObjectFifoAcquireOp>(
-                  acqOp, coreOp.getTile().getDefiningOp<TileOp>());
               found = true;
               ObjectFifoCreateOp op =
                   acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
@@ -1040,22 +1033,30 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  /// Function used to check whether objectFifo accessed by op has been split.
-  /// If yes, it replaces the parent objectFifo with the correct consumer
-  /// child based on the tile it is on.
-  template <typename MyOp> void checkSplitFifo(MyOp op, TileOp tile) {
-    ObjectFifoCreateOp parentFifo =
-        op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
-    for (auto &[producer, consumers] : splitFifos) {
-      if (producer == parentFifo) {
-        if (op.getPort() == ObjectFifoPort::Consume) {
-          for (auto splitFifo : consumers) {
-            if (splitFifo.getProducerTile() == tile.getResult())
-              op->replaceUsesOfWith(parentFifo, splitFifo);
-          }
-        }
-      }
+  /// Function used to replace uses of split objectFifos.
+  void replaceSplitFifo(ObjectFifoCreateOp original, 
+                        ObjectFifoCreateOp split) {
+    ObjectFifoPort port;
+    CoreOp core;
+    std::vector<Operation*> replaces;
+    for (auto user : original->getUsers()) {
+      if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(user)) {
+        core = acqOp->getParentOfType<CoreOp>();
+        port = acqOp.getPort();
+        if (core.getTile() == split.getConsumerTiles()[0])
+          if (port == ObjectFifoPort::Consume)
+              replaces.push_back(acqOp.getOperation());
+      } else if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(user)) {
+        core = relOp->getParentOfType<CoreOp>();
+        port = relOp.getPort();
+        if (core.getTile() == split.getConsumerTiles()[0])
+          if (port == ObjectFifoPort::Consume)
+              replaces.push_back(relOp.getOperation());
+      } else
+        continue;
     }
+    for (auto r : replaces)
+      r->replaceUsesOfWith(original.getFifo(), split.getFifo());
   }
 
   /// Function used to find the size of an objectFifo after split based on
@@ -1066,12 +1067,6 @@ struct AIEObjectFifoStatefulTransformPass
                          ObjectFifoCreateOp objFifo) {
     if (objFifo.size() == 0)
       return 0;
-
-    // if objFifo was part of a link, new size should remain the same
-    for (auto user : objFifo.getOperation()->getUsers()) {
-      if (isa<ObjectFifoLinkOp>(user))
-        return objFifo.size();
-    }
 
     // if memTile, size is equal to objFifo size
     if (tile.getDefiningOp<TileOp>().isMemTile())
@@ -1097,9 +1092,8 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     if (maxAcquire > 0) {
-      if ((maxAcquire == 1) && (objFifo.size() == 1)) {
+      if ((maxAcquire == 1) && (objFifo.size() == 1))
         return 1;
-      }
       return maxAcquire + 1;
       // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
       // for prefetching: simplest case scenario is at least a ping-pong buffer
@@ -1167,11 +1161,11 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
             createOp.getType().cast<AIEObjectFifoType>();
-        std::vector<Attribute> consumerObjFifoSize = {
-            builder.getI32IntegerAttr(consumerDepth)};
+        auto consumerObjFifoSize = 
+            builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerTile, consumerTile, consumerObjFifoSize);
-        // rename split objectFifo
+        // rename and replace split objectFifo
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifo.getOperation()->setAttr(
               SymbolTable::getSymbolAttrName(),
@@ -1183,6 +1177,7 @@ struct AIEObjectFifoStatefulTransformPass
               SymbolTable::getSymbolAttrName(),
               builder.getStringAttr(createOp.name()->getValue() + "_cons"));
         }
+        replaceSplitFifo(createOp, consumerFifo);
 
         // identify external buffers that were registered to
         // the consumer objectFifo
@@ -1197,8 +1192,9 @@ struct AIEObjectFifoStatefulTransformPass
         if (linkOp)
           for (auto fifoIn : linkOp->getFifoIns())
             if (fifoIn == createOp.getFifo())
-              linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
-                                                        consumerFifo.getFifo());
+              if (consumerTile == *(linkOp->getOptionalSharedTile()))
+                linkOp->getOperation()->replaceUsesOfWith(createOp.getFifo(),
+                                                          consumerFifo.getFifo());
       }
 
       // identify external buffers that were registered to
@@ -1213,10 +1209,8 @@ struct AIEObjectFifoStatefulTransformPass
                                  share_direction);
       } else {
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
-          std::vector<Attribute> objFifoSize = {
-              builder.getI32IntegerAttr(createOp.size())};
           createOp->setAttr("elemNumber",
-                            builder.getArrayAttr(ArrayRef(objFifoSize)));
+                            builder.getI32IntegerAttr(createOp.size()));
         } else {
           int prodMaxAcquire = findObjectFifoSize(
               device, createOp.getProducerTileOp(), createOp);
@@ -1300,20 +1294,18 @@ struct AIEObjectFifoStatefulTransformPass
       // Replace objectFifo.release ops
       //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
-        // if objectFifo was split, replace with correct child
-        checkSplitFifo<ObjectFifoReleaseOp>(
-            releaseOp, coreOp.getTile().getDefiningOp<TileOp>());
-
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op =
             releaseOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
         auto port = releaseOp.getPort();
         auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
+        auto core = releaseOp->getParentOfType<CoreOp>();
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
-          releaseOp->emitOpError("currently cannot access objectFifo used in "
-                                 "ObjectFifoLinkOp");
+          if (core.getTile() == *(linkOp->getOptionalSharedTile()))
+            releaseOp->emitOpError("currently cannot access objectFifo used in "
+                                   "ObjectFifoLinkOp");
           return;
         }
 
@@ -1338,19 +1330,18 @@ struct AIEObjectFifoStatefulTransformPass
       // Replace objectFifo.acquire ops
       //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
-        // if objectFifo was split, replace with correct child
-        checkSplitFifo<ObjectFifoAcquireOp>(
-            acquireOp, coreOp.getTile().getDefiningOp<TileOp>());
         ObjectFifoCreateOp op =
             acquireOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
         builder.setInsertionPointAfter(acquireOp);
         auto port = acquireOp.getPort();
         auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
+        auto core = acquireOp->getParentOfType<CoreOp>();
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
-          acquireOp->emitOpError("currently cannot access objectFifo used in "
-                                 "ObjectFifoLinkOp");
+          if (core.getTile() == *(linkOp->getOptionalSharedTile()))
+            acquireOp->emitOpError("currently cannot access objectFifo used in "
+                                   "ObjectFifoLinkOp");
           return;
         }
 
