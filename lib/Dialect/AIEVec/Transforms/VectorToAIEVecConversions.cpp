@@ -94,9 +94,24 @@ extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
     mulOp = dyn_cast<arith::MulIOp>(rhsDefOp);
     acc = addLhs;
   }
-  if (!mulOp)
-    return {};
-  return std::make_tuple(mulOp.getLhs(), mulOp.getRhs(), acc);
+  if (mulOp)
+    return std::make_tuple(mulOp.getLhs(), mulOp.getRhs(), acc);
+
+  // If the MulIOp has been already translated to aievec::MulOp:
+  aievec::SRSOp lhsSrsOp = addLhs.getDefiningOp<aievec::SRSOp>();
+  aievec::SRSOp rhsSrsOp = addRhs.getDefiningOp<aievec::SRSOp>();
+  aievec::MulOp aieMulOp = nullptr;
+  if (lhsSrsOp) {
+    aieMulOp = lhsSrsOp.getSource().getDefiningOp<aievec::MulOp>();
+    acc = addRhs;
+  }
+  if (!aieMulOp && rhsSrsOp) {
+    aieMulOp = rhsSrsOp.getSource().getDefiningOp<aievec::MulOp>();
+    acc = addLhs;
+  }
+  if (aieMulOp)
+    return std::make_tuple(aieMulOp.getLhs(), aieMulOp.getRhs(), acc);
+  return {};
 }
 
 // Create MulElemOp for i8 and bf16 types in aie-ml. The corresponding intrinsic
@@ -737,15 +752,13 @@ struct FoldBroadcastToFMAOp : public OpConversionPattern<aievec::FMAOp> {
 };
 
 struct ConvertMulAddToAIEVecFMAOpPattern
-    : public OpConversionPattern<arith::AddIOp> {
-  using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
+    : public OpConversionPattern<aievec::AddOp> {
+  using OpConversionPattern<aievec::AddOp>::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(arith::AddIOp addOp, OpAdaptor adaptor,
+  matchAndRewrite(aievec::AddOp addOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VectorType vecType = dyn_cast<VectorType>(addOp.getType());
-    if (!vecType)
-      return failure();
+    VectorType vecType = cast<VectorType>(addOp.getType());
 
     auto res =
         extractMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
@@ -892,14 +905,30 @@ struct LowerVectorAddIOpToAIEVecAddOp
 
 using LowerVectorAddFOpToAIEVecAddOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::AddFOp, aievec::AddOp>;
-using LowerVectorMulIOpToAIEVecMulOp =
-    OneToOneVectorOpToAIEVecOpPattern<arith::MulIOp, aievec::MulOp>;
 using LowerVectorMulFOpToAIEVecMulOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::MulFOp, aievec::MulOp>;
 using LowerVectorSubIOpToAIEVecSubOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::SubIOp, aievec::SubOp>;
 using LowerVectorSubFOpToAIEVecSubOp =
     OneToOneVectorOpToAIEVecOpPattern<arith::SubFOp, aievec::SubOp>;
+
+struct LowerVectorMulIOpToAIEVecMulOp
+    : public OpConversionPattern<arith::MulIOp> {
+  using OpConversionPattern<arith::MulIOp>::OpConversionPattern;
+  LogicalResult
+  matchAndRewrite(arith::MulIOp mulOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resTy = dyn_cast<VectorType>(mulOp.getType());
+    if (!resTy)
+      return failure();
+    auto accTy = getVectorOpDestType(resTy, /*AIEML =*/false);
+    auto newMulOp = rewriter.create<aievec::MulOp>(
+        mulOp.getLoc(), accTy, adaptor.getLhs(), adaptor.getRhs());
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(mulOp, resTy,
+                                               newMulOp.getResult());
+    return success();
+  }
+};
 
 template <typename SrcOpTy, typename DstOpTy>
 struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
@@ -1689,31 +1718,47 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), am, 128,
                                                 512, 128, 256);
-  patterns
-      .add<LowerVectorAddFOpToAIEVecAddOp, LowerVectorSubIOpToAIEVecSubOp,
-           LowerVectorSubFOpToAIEVecSubOp, ConvertMulAddToAIEVecFMAOpPattern,
-           FoldBroadcastToFMAOp, LowerVectorAddIOpToAIEVecAddOp,
-           LowerVectorExtractStridedSliceOpAIEv1Pattern>(patterns.getContext());
+  // clang-format off
+  patterns.add<LowerVectorAddIOpToAIEVecAddOp,
+               LowerVectorSubIOpToAIEVecSubOp,
+               LowerVectorMulIOpToAIEVecMulOp,
+               LowerVectorAddFOpToAIEVecAddOp,
+               LowerVectorSubFOpToAIEVecSubOp,
+               LowerVectorMulFOpToAIEVecMulOp,
+               ConvertMulAddToAIEVecFMAOpPattern,
+               FoldBroadcastToFMAOp,
+               LowerVectorExtractStridedSliceOpAIEv1Pattern>(patterns.getContext());
+  // clang-format on
 }
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
   patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), am, 128,
                                                 1024, 256, 1024);
-
+  // clang-format off
   patterns.add<
-      LowerVectorAddIOpToAIEVecAddElemOp, LowerVectorAddFOpToAIEVecAddElemOp,
-      LowerVectorSubIOpToAIEVecSubElemOp, LowerVectorSubFOpToAIEVecSubElemOp,
-      LowerVectorMinSIOpToAIEVecMinOp, LowerVectorMaxSIOpToAIEVecMaxOp,
-      LowerVectorMinFOpToAIEVecMinOp, LowerVectorMaxFOpToAIEVecMaxOp,
-      LowerVectorCmpIOpToAIEVecCmpOp, LowerVectorCmpFOpToAIEVecCmpOp,
-      LowerVectorSelectOpToAIEVecSelOp, LowerVectorReductionMinOp,
-      LowerVectorReductionMaxOp, LowerVectorReductionAddIntOp,
-      LowerVectorReductionAddFloatOp, LowerVectorReductionAddBfloat16Op,
+      LowerVectorAddIOpToAIEVecAddElemOp,
+      LowerVectorSubIOpToAIEVecSubElemOp,
+      ConvertMulIToAIEVecMulElemOpPattern,
+      LowerVectorAddFOpToAIEVecAddElemOp,
+      LowerVectorSubFOpToAIEVecSubElemOp,
+      ConvertMulFToAIEVecMulElemOpPattern,
+      LowerVectorMinSIOpToAIEVecMinOp,
+      LowerVectorMinFOpToAIEVecMinOp,
+      LowerVectorMaxSIOpToAIEVecMaxOp,
+      LowerVectorMaxFOpToAIEVecMaxOp,
+      LowerVectorCmpIOpToAIEVecCmpOp,
+      LowerVectorCmpFOpToAIEVecCmpOp,
+      LowerVectorSelectOpToAIEVecSelOp,
+      LowerVectorReductionMinOp,
+      LowerVectorReductionMaxOp,
+      LowerVectorReductionAddIntOp,
+      LowerVectorReductionAddFloatOp,
+      LowerVectorReductionAddBfloat16Op,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
-      ConvertMulIToAIEVecMulElemOpPattern, ConvertMulFToAIEVecMulElemOpPattern,
       LowerVectorExtractStridedSliceOpAIEMLPattern>(patterns.getContext());
+  // clang-format on
 }
 
 //===----------------------------------------------------------------------===//
@@ -1738,6 +1783,10 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
 static void configureAIEVecV1Legalizations(ConversionTarget &target,
                                            AnalysisManager &am) {
+  target.addDynamicallyLegalOp<arith::MulIOp>(
+      [](arith::MulIOp op) { return !isa<VectorType>(op.getType()); });
+  target.addDynamicallyLegalOp<arith::MulFOp>(
+      [](arith::MulFOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<aievec::FMAOp>([](xilinx::aievec::FMAOp op) {
     auto lhsDefOp = op.getLhs().getDefiningOp();
     aievec::ConcatOp concatOp = nullptr;
@@ -1761,6 +1810,12 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
         return !isa<vector::ExtractOp>(srcOp);
     }
     return true;
+  });
+  target.addDynamicallyLegalOp<aievec::AddOp>([](aievec::AddOp op) {
+    auto lSrsOp = op.getLhs().getDefiningOp<aievec::SRSOp>();
+    auto rSrsOp = op.getRhs().getDefiningOp<aievec::SRSOp>();
+    return (!lSrsOp || !lSrsOp.getSource().getDefiningOp<aievec::MulOp>()) &&
+           (!rSrsOp || !rSrsOp.getSource().getDefiningOp<aievec::MulOp>());
   });
   target.addLegalDialect<memref::MemRefDialect>();
 }

@@ -39,3 +39,35 @@ func.func @vecsubf(%arg0: vector<16xf32>, %arg1: vector<16xf32>) -> vector<16xf3
   // CHECK: return %[[RES]] : vector<16xf32>
   return %0 : vector<16xf32>
 }
+
+// CHECK-LABEL: func @vecmuli16(
+// CHECK-SAME: %[[LHS:.*]]: vector<16xi16>,
+// CHECK-SAME: %[[RHS:.*]]: vector<16xi16>)
+func.func @vecmuli16(%arg0: vector<16xi16>, %arg1: vector<16xi16>) -> vector<16xi16> {
+  // CHECK: %[[MUL:.*]] = aievec.mul %[[LHS]], %[[RHS]] : vector<16xi16>, vector<16xi16>, vector<16xi48>
+  // CHECK: %[[RES:.*]] = aievec.srs %[[MUL]] {shift = 0 : i8} : vector<16xi48>, vector<16xi16>
+  %0 = arith.muli %arg0, %arg1 : vector<16xi16>
+  // CHECK: return %[[RES]] : vector<16xi16>
+  return %0 : vector<16xi16>
+}
+
+// CHECK-LABEL: func @vecmuli32(
+// CHECK-SAME: %[[LHS:.*]]: vector<16xi32>,
+// CHECK-SAME: %[[RHS:.*]]: vector<16xi32>)
+func.func @vecmuli32(%arg0: vector<16xi32>, %arg1: vector<16xi32>) -> vector<16xi32> {
+  // CHECK: %[[MUL:.*]] = aievec.mul %[[LHS]], %[[RHS]] : vector<16xi32>, vector<16xi32>, vector<16xi80>
+  // CHECK: %[[RES:.*]] = aievec.srs %[[MUL]] {shift = 0 : i8} : vector<16xi80>, vector<16xi32>
+  %0 = arith.muli %arg0, %arg1 : vector<16xi32>
+  // CHECK: return %[[RES]] : vector<16xi32>
+  return %0 : vector<16xi32>
+}
+
+// CHECK-LABEL: func @vecmulf(
+// CHECK-SAME: %[[LHS:.*]]: vector<16xf32>,
+// CHECK-SAME: %[[RHS:.*]]: vector<16xf32>)
+func.func @vecmulf(%arg0: vector<16xf32>, %arg1: vector<16xf32>) -> vector<16xf32> {
+  // CHECK: %[[RES:.*]] = aievec.mul %[[LHS]], %[[RHS]] : vector<16xf32>, vector<16xf32>, vector<16xf32>
+  %0 = arith.mulf %arg0, %arg1 : vector<16xf32>
+  // CHECK: return %[[RES]] : vector<16xf32>
+  return %0 : vector<16xf32>
+}
