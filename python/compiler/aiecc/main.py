@@ -1,4 +1,3 @@
-#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -685,32 +684,60 @@ class FlowRunner:
                     cmd += [f"--gcc-toolchain={opts.sysroot}/usr"]
 
             install_path = aie.compiler.aiecc.configure.install_path()
+
+            # Setting everything up if linking against HSA
+            if opts.link_against_hsa:
+                cmd += ["-DHSA_RUNTIME"]
+                arch_name = opts.host_target.split("-")[0] + "-hsa"
+                hsa_path = os.path.join(aie.compiler.aiecc.configure.hsa_dir)
+                hsa_include_path = os.path.join(hsa_path, "..", "..", "..", "include")
+                hsa_lib_path = os.path.join(hsa_path, "..", "..")
+                hsa_so_path = os.path.join(hsa_lib_path, "libhsa-runtime64.so.1.9.0")
+            else:
+                arch_name = opts.host_target.split("-")[0]
+
+            # Getting a pointer to the libxaie include and library
             runtime_xaiengine_path = os.path.join(
-                install_path, "runtime_lib", opts.host_target.split("-")[0], "xaiengine"
+                install_path, "runtime_lib", arch_name, "xaiengine"
             )
             xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
             xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
+
+            # Getting a pointer to the library test_lib
             runtime_testlib_path = os.path.join(
                 install_path,
                 "runtime_lib",
-                opts.host_target.split("-")[0],
+                arch_name,
                 "test_lib",
                 "lib",
             )
-            memory_allocator = os.path.join(
-                runtime_testlib_path, "libmemory_allocator_ion.a"
-            )
+
+            # Linking against the correct memory allocator
+            if opts.link_against_hsa:
+                memory_allocator = os.path.join(
+                    runtime_testlib_path, "libmemory_allocator_hsa.a"
+                )
+            else:
+                memory_allocator = os.path.join(
+                    runtime_testlib_path, "libmemory_allocator_ion.a"
+                )
 
             cmd += [
                 memory_allocator,
                 "-I" + xaiengine_include_path,
                 "-L" + xaiengine_lib_path,
                 "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
+                "-Wl,-R" + xaiengine_lib_path,
                 "-I" + self.tmpdirname,
                 "-fuse-ld=lld",
                 "-lm",
                 "-lxaiengine",
             ]
+            # Linking against HSA
+            if opts.link_against_hsa:
+                cmd += [hsa_so_path]
+                cmd += ["-I%s" % hsa_include_path]
+                cmd += ["-Wl,-rpath,%s" % hsa_lib_path]
 
             cmd += aie_target_defines(aie_target)
 

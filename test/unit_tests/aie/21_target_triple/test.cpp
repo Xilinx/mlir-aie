@@ -48,12 +48,17 @@ int main(int argc, char *argv[]) {
   mlir_aie_check("After memory writes: ", mlir_aie_read_buffer_a(_xaie, 0), 11,
                  errors);
 
+  int res = 0;
   if (!errors) {
     printf("PASS!\n");
-    return 0;
+    res = 0;
   } else {
     printf("Fail!\n");
-    return -1;
+    res = -1;
   }
+
+  mlir_aie_deinit_libxaie(_xaie);
   printf("test done.\n");
+
+  return res;
 }

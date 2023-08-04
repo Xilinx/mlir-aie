@@ -14,6 +14,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef HSA_RUNTIME
+#include "hsa/hsa.h"
+#include "hsa/hsa_ext_amd.h"
+#include "hsa_ext_air.h"
+#endif
+
 extern "C" {
 
 #define mlir_aie_check(s, r, v, errors)                                        \
@@ -109,12 +115,18 @@ private:
  ******************************************************************************
  */
 
+// This is a more elegant solution
+#ifdef HSA_RUNTIME
+hsa_status_t air_packet_req_translation(hsa_agent_dispatch_packet_t *pkt,
+                                        uint64_t va);
+#endif
+
 /// @brief  Initialize libXAIE and allocate a new context object.
 /// @return A pointer to the context
 aie_libxaie_ctx_t *mlir_aie_init_libxaie();
 void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *);
 
-int mlir_aie_init_device(aie_libxaie_ctx_t *ctx);
+int mlir_aie_init_device(aie_libxaie_ctx_t *ctx, uint32_t device_id = 0);
 
 int mlir_aie_acquire_lock(aie_libxaie_ctx_t *ctx, int col, int row, int lockid,
                           int lockval, int timeout);
