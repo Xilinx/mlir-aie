@@ -6,4 +6,5 @@
 	url = https://github.com/Xilinx/cmakeModules.git
 [submodule "runtime_lib/xaiengine/aie-rt"]
 	path = runtime_lib/xaiengine/aie-rt
-	url = https://github.com/stephenneuendorffer/aie-rt.git
+	url = https://github.com/eddierichter-amd/aie-rt.git
+	branch = converged-aie-rt
