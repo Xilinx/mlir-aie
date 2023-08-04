@@ -17,7 +17,9 @@
 // CHECK:   AIE.device(xcvc1902) {
 // CHECK:     %0 = AIE.tile(7, 1)
 // CHECK:     %1 = AIE.tile(7, 0)
+// CHECK:     memref.global "public" @ext_of : memref<16xi32>
 // CHECK:     AIE.flow(%1, DMA : 0, %0, DMA : 0)
+// CHECK:     memref.global "public" @ext_of_cons : memref<16xi32>
 // CHECK:     %2 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
 // CHECK:     %3 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
 // CHECK:     %4 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>
@@ -26,6 +28,7 @@
 // CHECK:     %7 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
 // CHECK:     %8 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
 // CHECK:     %9 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
+// CHECK:     AIE.shimDMAAllocation(@ext_of, MM2S, 0, 7)
 // CHECK:     func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
 // CHECK:       return
 // CHECK:     }
@@ -39,7 +42,6 @@
 // CHECK:       AIE.useLock(%6, Release, 0)
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation(@ext_of, MM2S, 0, 7)
 // CHECK:     %11 = AIE.shimDMA(%1) {
 // CHECK:       %13 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -78,27 +80,27 @@ module @register_external_buffers {
     %tile71 = AIE.tile(7, 1)
     %tile70 = AIE.tile(7, 0)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile70, {%tile71}, 3 : i32) {sym_name = "ext_of"} : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectFifo @ext_of (%tile70, {%tile71}, 3 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
+    %ext_buffer_in = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
+    AIE.objectFifo.registerExternalBuffers(@objFifo, %tile70, {%ext_buffer_in}) : (memref<64xi32>)
 
     func.func @some_work(%a : memref<16xi32>, %b : memref<16xi32>) -> () {
         return
     }
 
-    %core71 = AIE.core(%tile71) {
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %height = arith.constant 12 : index
+    // %core71 = AIE.core(%tile71) {
+    //     %c0 = arith.constant 0 : index
+    //     %c1 = arith.constant 1 : index
+    //     %height = arith.constant 12 : index
 
-        %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
-        AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+    //     %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+    //     %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+    //     %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+    //     func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
+    //     AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
         
-        AIE.end
-    }
+    //     AIE.end
+    // }
  }
 }

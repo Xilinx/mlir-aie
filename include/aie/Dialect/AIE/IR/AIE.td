@@ -51,6 +51,17 @@ def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
   let cppNamespace = "xilinx::AIE";
 }
 
+def ObjectFifoInterface : OpInterface<"ObjectFifoInterface"> {
+  let description = [{
+    Interface for AIE objectFifo ops.
+  }];
+  let cppNamespace = "xilinx::AIE";
+  let methods = [
+    InterfaceMethod<"description",
+    "StringRef", "getObjFifoName"
+    >,
+  ];
+}
 
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
@@ -1354,13 +1365,14 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
   }];
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
     more consumers, which are `aie.tile` operations. The aie.createObjectFifo instantiates the given number of 
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
-    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
+    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo or, more specifically,
+    of its object pool.
 
     For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
     take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
@@ -1370,15 +1382,34 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
-    Example:
+    1-to-1 tile example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
+    This operation creates an objectFifo between %tile12 and %tile13 of 4 elements, each a buffer of 16 32-bit integers.
+    Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile13, 
+    then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
+    highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.
+ 
+    1-to-2 tiles broadcast example:
+    ```
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+    ```
+    This operation creates an objectFifo between %tile12 and tiles %tile13, %tile23 of 4 elements, each a buffer of x16 
+    32-bit integers.
+
+    1-to-2 tiles broadcast with explicit sizes example:
+    ```
+      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
+    ```
+    This operation creates an objectFifo between %tile12, %tile13 and %tile23. The depths of the objectFifo object pool 
+    at each tile are respectively 2, 3 and 4 for tiles %tile12, %tile13 and %tile23. This overrides the depth analysis 
+    specified in the first example.
   }];
 
   let arguments = (
-    ins Index:$producerTile,
+    ins SymbolNameAttr:$sym_name,
+        Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber
   );
@@ -1386,7 +1417,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
   let results = (outs AIE_ObjectFifoType:$fifo);
 
   let assemblyFormat = [{
-    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
+    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
   }];
   
   let hasVerifier = 1;
@@ -1461,7 +1492,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [ObjectFifoInterface, TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
@@ -1482,21 +1513,18 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 
   let arguments = (
     ins Index:$tile,
-    AIE_ObjectFifoType:$fifo,
+    FlatSymbolRefAttr:$objFifo_name,
     Variadic<AnyMemRef>:$externalBuffers
   );
 
   let assemblyFormat = [{
-    attr-dict `(` $tile `,` $fifo `:` type($fifo) `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+    attr-dict `(` $objFifo_name `,` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     TileOp getTileOp();
-    AIEObjectFifoType getFifoType() {
-      return getFifo().getType().cast<AIEObjectFifoType>();
-    }
   }];
 }
 

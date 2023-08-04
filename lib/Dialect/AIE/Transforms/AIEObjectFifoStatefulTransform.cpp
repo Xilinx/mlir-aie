@@ -210,12 +210,29 @@ struct AIEObjectFifoStatefulTransformPass
     return leftShared || rightShared;
   }
 
+  /// Get objectFifo declaration through symbol.
+  ObjectFifoCreateOp
+  getObjectFifoThroughSymbol(ObjectFifoInterface op) {
+    Operation *parent = op;
+    while (parent = parent->getParentOp()) {
+      if (parent->hasTrait<OpTrait::SymbolTable>()) {
+        auto st = mlir::SymbolTable::lookupSymbolIn(parent, op.getObjFifoName());
+        if (st && isa<ObjectFifoCreateOp>(st)) {
+          return dyn_cast<ObjectFifoCreateOp>(st);
+        }
+      }
+    }
+    return ObjectFifoCreateOp();
+  }
+
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
+                                      std::string name,
                                       Value prodTile, Value consTile,
                                       std::vector<Attribute> depth) {
+    auto ofName = builder.getStringAttr(name);
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), datatype, prodTile, consTile,
+        builder.getUnknownLoc(), datatype, ofName, prodTile, consTile,
         builder.getArrayAttr(ArrayRef(depth)));
     return fifo;
   }
@@ -1032,7 +1049,8 @@ struct AIEObjectFifoStatefulTransformPass
   void detectExternalBuffers(DeviceOp &device, ObjectFifoCreateOp parent,
                              ObjectFifoCreateOp child, Value tile) {
     for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-      if (regOp.getTile() == tile && regOp.getFifo() == parent) {
+      auto objFifo = getObjectFifoThroughSymbol(regOp);
+      if (regOp.getTile() == tile && objFifo == parent) {
         for (auto extBuff : regOp.getExternalBuffers())
           addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
       }
@@ -1079,7 +1097,8 @@ struct AIEObjectFifoStatefulTransformPass
     // if shimTile, size is equal to number of external buffers
     if (tile.getDefiningOp<TileOp>().isShimTile()) {
       for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-        if (regOp.getTile() == tile && regOp.getFifo() == objFifo)
+        auto objFifo = getObjectFifoThroughSymbol(regOp);
+        if (regOp.getTile() == tile && objFifo == objFifo)
           return regOp.getExternalBuffers().size();
       }
     }
@@ -1168,20 +1187,18 @@ struct AIEObjectFifoStatefulTransformPass
             createOp.getType().cast<AIEObjectFifoType>();
         std::vector<Attribute> consumerObjFifoSize = {
             builder.getI32IntegerAttr(consumerDepth)};
-        ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerTile, consumerTile, consumerObjFifoSize);
         // rename split objectFifo
+        std::string consumerFifoName;
         if (createOp.getConsumerTiles().size() > 1) {
-          consumerFifo.getOperation()->setAttr(
-              SymbolTable::getSymbolAttrName(),
-              builder.getStringAttr(createOp.name()->getValue() + "_" +
-                                    std::to_string(consumerIndex) + "_cons"));
+          consumerFifoName = createOp.name()->getValue().str() + "_" +
+                                std::to_string(consumerIndex) + "_cons";
           consumerIndex++;
         } else {
-          consumerFifo.getOperation()->setAttr(
-              SymbolTable::getSymbolAttrName(),
-              builder.getStringAttr(createOp.name()->getValue() + "_cons"));
+          consumerFifoName = createOp.name()->getValue().str() + "_cons";
         }
+        ObjectFifoCreateOp consumerFifo = createObjectFifo(
+            builder, datatype, consumerFifoName, consumerTile, consumerTile, 
+            consumerObjFifoSize);
 
         // identify external buffers that were registered to
         // the consumer objectFifo
