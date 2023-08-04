@@ -1,15 +1,29 @@
+//===-VectorToVectorConversions.cpp - Conversions within Vector -*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+// This file contains conversions and rewrites to the Vector dialect to make
+// it compatible with the available vector instructions in AIE architectures
+//===----------------------------------------------------------------------===//
+
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h" // ???
-#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"         // ???
+#include "aie/Dialect/AIEVec/Utils/Utils.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"                   // ???
-#include "mlir/Dialect/SCF/IR/SCF.h"                         // ???
-#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h" // ???
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
@@ -31,50 +45,6 @@ using namespace xilinx::aievec;
 //============================================================================//
 //================== Common AIE canonicalization analysis ====================//
 //============================================================================//
-
-// Return the offset of a given transfer read operation with regards to the
-// specified vector type. If the read is aligned to the specified alignment
-// parameter (in bits), then the offset is 0. Otherwise, the offset is the
-// number of elements past the immediately preceding aligned vector length.
-template <
-    typename TransferReadLikeOp,
-    typename = std::enable_if_t<
-        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp> ||
-        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp::Adaptor>>>
-static int64_t getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
-                                              VectorType vType,
-                                              int64_t alignment) {
-  // TODO: Add support for cases where the index is not comming from an
-  // TODO: `affine.apply` op or when the affine map has more than one
-  // TODO: dimension. We also need to address the case where the index is an
-  // TODO: induction variable.
-  auto innerMostIndex = readOp.getIndices().back();
-  auto vectorLength = vType.getShape().back();
-  auto idxDefOp = innerMostIndex.getDefiningOp();
-  if (!idxDefOp)
-    return 0L;
-  int64_t vectorLengthAlignmentOffset =
-      TypeSwitch<Operation *, int64_t>(idxDefOp)
-          .Case<arith::ConstantOp>([&](auto constantOp) {
-            return cast<IntegerAttr>(constantOp.getValue()).getInt() %
-                   vectorLength;
-          })
-          .template Case<AffineApplyOp>([&](auto applyOp) {
-            if (applyOp.getAffineMap().getNumDims() == 1)
-              return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
-                     vectorLength;
-            return 0L;
-          })
-          .Default([&](auto) {
-            // XXX: If we can't determine the offset, we assume the access is
-            // XXX: aligned.
-            return 0L;
-          });
-  int64_t absoluteAlignmentOffset = alignment / getElementSizeInBits(vType);
-  if (vectorLengthAlignmentOffset % absoluteAlignmentOffset)
-    return vectorLengthAlignmentOffset;
-  return 0;
-}
 
 //============================================================================//
 //============ Common AIE canonicalization conversion patterns ===============//

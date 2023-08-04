@@ -1,3 +1,17 @@
+//===-VectorToAIEVecConversions.cpp - Vector to AIEVec convs. ---*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+// This file contains conversions from the Vector dialect into the AIEVec
+// dialect. Conversions assume that the Vector dialect has been rectricted
+// to ops that can be translated to a sequence of valid AIEVec ops.
+//===----------------------------------------------------------------------===//
+
 #include <algorithm>
 #include <bitset>
 #include <optional>
@@ -6,6 +20,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -33,50 +48,6 @@ using namespace xilinx::aievec;
 //===----------------------------------------------------------------------===//
 // Utility functions
 //===----------------------------------------------------------------------===//
-
-// Return the offset of a given transfer read operation with regards to the
-// specified vector type. If the read is aligned to the specified alignment
-// parameter (in bits), then the offset is 0. Otherwise, the offset is the
-// number of elements past the immediately preceding aligned vector length.
-template <
-    typename TransferReadLikeOp,
-    typename = std::enable_if_t<
-        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp> ||
-        std::is_same_v<TransferReadLikeOp, vector::TransferReadOp::Adaptor>>>
-static int64_t getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
-                                              VectorType vType,
-                                              int64_t alignment) {
-  // TODO: Add support for cases where the index is not comming from an
-  // TODO: `affine.apply` op or when the affine map has more than one
-  // TODO: dimension. We also need to address the case where the index is an
-  // TODO: induction variable.
-  auto innerMostIndex = readOp.getIndices().back();
-  auto vectorLength = vType.getShape().back();
-  auto idxDefOp = innerMostIndex.getDefiningOp();
-  if (!idxDefOp)
-    return 0L;
-  int64_t vectorLengthAlignmentOffset =
-      TypeSwitch<Operation *, int64_t>(idxDefOp)
-          .Case<arith::ConstantOp>([&](auto constantOp) {
-            return cast<IntegerAttr>(constantOp.getValue()).getInt() %
-                   vectorLength;
-          })
-          .template Case<AffineApplyOp>([&](auto applyOp) {
-            if (applyOp.getAffineMap().getNumDims() == 1)
-              return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
-                     vectorLength;
-            return 0L;
-          })
-          .Default([&](auto) {
-            // XXX: If we can't determine the offset, we assume the access is
-            // XXX: aligned.
-            return 0L;
-          });
-  int64_t absoluteAlignmentOffset = alignment / getElementSizeInBits(vType);
-  if (vectorLengthAlignmentOffset % absoluteAlignmentOffset)
-    return vectorLengthAlignmentOffset;
-  return 0;
-}
 
 // Given the LHS and RHS of an `arith::AddIOp`, if one of them is defined by an
 // `arith::MulIOp`, return a tuple with the `lhs`, `rhs`, and `acc` of the MAC
