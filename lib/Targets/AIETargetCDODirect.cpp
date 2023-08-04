@@ -413,7 +413,6 @@ struct AIEControl {
     //		macro. In future, the same macro will be expanded to allocate
     //		more memory from the user application for resource management.
     XAie_InstDeclare(_devInst, &configPtr);
-
     devInst = _devInst;
     // TODO(max): what is the "partition"?
     TRY_XAIE_API_FATAL_ERROR(XAie_SetupPartitionConfig, &devInst,
