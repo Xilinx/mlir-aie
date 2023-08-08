@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% %S/test.cpp -o test.elf -L%aie_runtime_lib%/test_lib/lib -ltest_lib
+// RUN: %run_on_board ./test.elf
 
 module @test4_row_shared_memory {
   %tile13 = AIE.tile(1, 3)
@@ -42,7 +43,7 @@ module @test4_row_shared_memory {
   %core23 = AIE.core(%tile23) {
     AIE.useLock(%lock13_5, "Acquire", 1) // acquire for read(e.g. input ping)
     AIE.useLock(%lock23_7, "Acquire", 0) // acquire for write
-    %idx1 = arith.constant 3 : index
+    %idx1 = arith.constant 5 : index
     %val1 = memref.load %buf13_1[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
     %3 = arith.addi %2, %val1 : i32
