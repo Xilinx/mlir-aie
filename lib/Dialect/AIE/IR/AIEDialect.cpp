@@ -517,6 +517,18 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
   }
   return {};
 }
+std::vector<xilinx::AIE::ObjectFifoCreateOp>
+xilinx::AIE::ObjectFifoLinkOp::getInputObjectFifos() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto device = dyn_cast<DeviceOp>(parent)) {
+      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+        if (objFifo.name() == getObjFifoName())
+          return objFifo;
+    }
+  }
+  return ObjectFifoCreateOp();
+}
 
 // ObjectFifoRegisterExternalBuffersOp
 LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {

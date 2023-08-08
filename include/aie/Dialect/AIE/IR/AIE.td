@@ -1356,7 +1356,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
   }];
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [Symbol]> {
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
@@ -1435,7 +1435,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [Symbol]> {
   }];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> {
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">, AttrSizedOperandSegments]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
@@ -1461,18 +1461,20 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 
   let arguments = (
-    ins Variadic<AIE_ObjectFifoType>:$fifoIns,
-        Variadic<AIE_ObjectFifoType>:$fifoOuts
+    ins Variadic<FlatSymbolRefAttr>:$fifoIns,
+        Variadic<FlatSymbolRefAttr>:$fifoOuts
   );
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    `(` `{` $fifoIns `}` `,` `{` $fifoOuts `}` `)` attr-dict `:` `(` `{` type($fifoIns) `}` `,` `{` type($fifoOuts) `}` `)`
+    `(` `{` $fifoIns `}` `,` `{` $fifoOuts `}` `)` attr-dict
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    std::vector<ObjectFifoCreateOp> getInputObjectFifos();
+    std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
     bool isJoin() {
       return getFifoIns().size() > 1;
     }
@@ -1483,7 +1485,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [HasParent<"DeviceOp">, TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 

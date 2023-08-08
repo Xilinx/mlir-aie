@@ -91,12 +91,12 @@ module @link_AIE1 {
         %tile22 = AIE.tile(2, 2)
         %tile24 = AIE.tile(2, 4)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<16xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile24}, 2 : i32) {sym_name = "link2"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo.create @link1 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo.create @link2 (%tile22, {%tile24}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<16xi32>>}, {!AIE.objectFifo<memref<16xi32>>})
+        AIE.objectFifo.link({@link1}, {@link2})
 
         %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"}: memref<16xi32> 
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buff_in}) : (memref<16xi32>)
+        AIE.objectFifo.registerExternalBuffers(@link1, %tile20, {%ext_buff_in}) : (memref<16xi32>)
     }
 }

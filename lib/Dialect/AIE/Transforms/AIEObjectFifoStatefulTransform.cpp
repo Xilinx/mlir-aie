@@ -1039,28 +1039,16 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to replace uses of split objectFifos.
-  void replaceSplitFifo(ObjectFifoCreateOp original, ObjectFifoCreateOp split) {
-    ObjectFifoPort port;
-    CoreOp core;
-    std::vector<Operation *> replaces;
-    for (auto user : original->getUsers()) {
-      if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(user)) {
-        core = acqOp->getParentOfType<CoreOp>();
-        port = acqOp.getPort();
-        if (core.getTile() == split.getConsumerTiles()[0])
-          if (port == ObjectFifoPort::Consume)
-            replaces.push_back(acqOp.getOperation());
-      } else if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(user)) {
-        core = relOp->getParentOfType<CoreOp>();
-        port = relOp.getPort();
-        if (core.getTile() == split.getConsumerTiles()[0])
-          if (port == ObjectFifoPort::Consume)
-            replaces.push_back(relOp.getOperation());
-      } else
-        continue;
-    }
-    for (auto r : replaces)
-      r->replaceUsesOfWith(original.getFifo(), split.getFifo());
+  void replaceSplitFifo(ObjectFifoCreateOp originalOp, 
+                        ObjectFifoCreateOp newOp, 
+                        TileOp tile) {
+    auto original = originalOp->getAttrOfType<StringAttr>(
+        SymbolTable::getSymbolAttrName());
+    auto newSymbol = newOp->getAttrOfType<StringAttr>(
+        SymbolTable::getSymbolAttrName());
+    for (auto user : tile->getUsers())
+      if (auto coreOp = dyn_cast<CoreOp>(user))
+        mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
   }
 
   /// Function used to find the size of an objectFifo after split based on
@@ -1181,7 +1169,7 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile, 
             consumerObjFifoSize);
-        replaceSplitFifo(createOp, consumerFifo);
+        replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to
         // the consumer objectFifo
@@ -1472,15 +1460,15 @@ struct AIEObjectFifoStatefulTransformPass
 
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      OpBuilder b(createOp);
+      builder.setInsertionPointToStart(&(device.getBodyRegion().front()));
       auto sym_name = createOp.getName();
       createOp->setAttr(mlir::SymbolTable::getSymbolAttrName(),
-                        b.getStringAttr("__erase_" + sym_name));
+                        builder.getStringAttr("__erase_" + sym_name));
       auto memrefType = cast<MemRefType>(
           cast<AIEObjectFifoType>(createOp.getType()).getElementType());
-      b.create<memref::GlobalOp>(b.getUnknownLoc(), sym_name,
-                                 b.getStringAttr("public"), memrefType, nullptr,
-                                 false, nullptr);
+      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
+                                       builder.getStringAttr("public"), 
+                                       memrefType, nullptr, false, nullptr);
     }
 
     //===------------------------------------------------------------------===//
