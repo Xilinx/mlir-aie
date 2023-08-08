@@ -37,7 +37,7 @@ main(int argc, char *argv[])
     int errors = 0;
 
     // This should timeout and return an error condition.
-    if (mlir_aie_acquire_lock1(_xaie, 1, 0)) {
+    if (!mlir_aie_acquire_lock1(_xaie, 1, 0)) {
       // Succeeded!  Which is an error.
       printf("Error: Lock acquired successfully in wrong state!\n");
       errors++;
@@ -106,6 +106,7 @@ main(int argc, char *argv[])
       res = 0;
     } else {
       printf("Fail!\n");
+      printf("%d Errors\n", errors);
       res = -1;
     }
     mlir_aie_deinit_libxaie(_xaie);
