@@ -30,62 +30,20 @@ int main(int argc, char *argv[]) {
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
-
-  /*
-  XAieDma_Shim ShimDMAInst_7_0;
-  XAieDma_ShimInitialize(&(TileInst[7][0]), &ShimDMAInst_7_0);
-  XAieDma_ShimChResetAll(&ShimDMAInst_7_0);
-  XAieDma_ShimBdClearAll(&ShimDMAInst_7_0);
-
-  XAieDma_Tile TileDmaInst_7_3;
-  XAieDma_TileInitialize(&(TileInst[7][3]), &TileDmaInst_7_3);
-  XAieDma_TileBdClearAll(&TileDmaInst_7_3);
-  XAieDma_TileChResetAll(&TileDmaInst_7_3);
-  */
-
-  mlir_aie_configure_cores(_xaie);
+  //  mlir_aie_configure_cores(_xaie);
   mlir_aie_configure_switchboxes(_xaie);
-  // mlir_aie_release_input_lock_read(_xaie, 1, 0);
-  // mlir_aie_release_output_lock_write(_xaie, 1, 0);
-
-  for (int bd = 0; bd < 16; bd++) {
-    // Take no prisoners.  No regerts
-    // Overwrites the DMA_BDX_Control registers
-    for (int ofst = 0; ofst < 0x14; ofst += 0x4) {
-      u32 rb = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
-                                          0x0001D000 + (bd * 0x14) + ofst);
-      if (rb != 0) {
-        printf("Before : bd%d_%x control is %08X\n", bd, ofst, rb);
-      }
-      // mlir_aie_write32(TileInst[7][0].TileAddr +
-      // 0x0001D000+(bd*0x14)+ofst, 0x0);
-    }
-  }
-
-  for (int dma = 0; dma < 4; dma++) {
-    for (int ofst = 0; ofst < 0x8; ofst += 0x4) {
-      u32 rb = mlir_aie_read32(_xaie, mlir_aie_get_tile_addr(_xaie, 7, 0) +
-                                          0x0001D140 + (dma * 0x8) + ofst);
-      if (rb != 0) {
-        printf("Before : dma%d_%x control is %08X\n", dma, ofst, rb);
-      }
-      // mlir_aie_write32(TileInst[7][0].TileAddr +
-      // 0x0001D140+(dma*0x8)+ofst, 0x0);
-    }
-  }
-
   mlir_aie_initialize_locks(_xaie);
 
   u32 sleep_u = 100000;
-  usleep(sleep_u);
   printf("before DMA config\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
 
   mlir_aie_configure_dmas(_xaie);
 
-  usleep(sleep_u);
   printf("after DMA config\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
+  mlir_aie_print_dma_status(_xaie, 7, 3);
+  mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
   int errors = 0;
 
@@ -104,24 +62,30 @@ int main(int argc, char *argv[]) {
           }
       }
   */
-#define DMA_COUNT 512
+  mlir_aie_acquire_input_lock_write(_xaie, -1, 10);
+
+#define DMA_COUNT 32
   ext_mem_model_t buf0, buf1;
   int *ddr_ptr_in = mlir_aie_mem_alloc(buf0, DMA_COUNT);
   int *ddr_ptr_out = mlir_aie_mem_alloc(buf1, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(ddr_ptr_in + i) = i + 1;
-    *(ddr_ptr_out + i) = 0;
+    *(ddr_ptr_out + i) = i + 2;
   }
   mlir_aie_sync_mem_dev(buf0);
   mlir_aie_sync_mem_dev(buf1);
 
+#ifdef __AIESIM__
+  mlir_aie_external_set_addr_input_buffer(buf0.physicalAddr);
+  mlir_aie_external_set_addr_output_buffer(buf1.physicalAddr);
+#else
   mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
   mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
+#endif
   mlir_aie_configure_shimdma_70(_xaie);
 
-  mlir_aie_clear_tile_memory(_xaie, 7, 3);
+  // mlir_aie_clear_tile_memory(_xaie, 7, 3);
 
-  mlir_aie_acquire_input_lock_write(_xaie, -1, 0);
   // Set iteration to 2 TODO: fix this
   // XAieTile_DmWriteWord(&(TileInst[7][3]), 5120 , 2);
 
@@ -151,37 +115,46 @@ int main(int argc, char *argv[]) {
      shimdma_stat_s2mm0);
   */
 
-  usleep(sleep_u);
   printf("before core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
+  mlir_aie_print_dma_status(_xaie, 7, 3);
+  mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
   printf("Start cores\n");
   mlir_aie_start_cores(_xaie);
 
-  usleep(sleep_u);
   printf("after core start\n");
   mlir_aie_print_tile_status(_xaie, 7, 3);
+  mlir_aie_print_dma_status(_xaie, 7, 3);
   mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
   printf("Release lock for accessing DDR.\n");
-  mlir_aie_release_input_lock_read(_xaie, 1, 0);
+  mlir_aie_release_input_lock_read(_xaie, 1, 10);
 
-  usleep(sleep_u);
+  // usleep(sleep_u);
 
-  if (mlir_aie_acquire_output_lock_read(_xaie, -1, 0)) {
+  if (mlir_aie_acquire_output_lock_read(_xaie, -1, 20)) {
     errors++;
   }
 
-  printf("after lock release\n");
+  printf("after lock release %d errors\n", errors);
   mlir_aie_print_tile_status(_xaie, 7, 3);
+  mlir_aie_print_dma_status(_xaie, 7, 3);
   mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
+  mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 0), 1, errors);
+  mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 1), 2, errors);
+  mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 2), 3, errors);
   mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 3), 4, errors);
-  mlir_aie_check("After", mlir_aie_read_buffer_a_pong(_xaie, 3), 256 + 4,
+  // mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 127), 128,
+  // errors); mlir_aie_check("After", mlir_aie_read_buffer_a_ping(_xaie, 255),
+  // 16, errors);
+  mlir_aie_check("After", mlir_aie_read_buffer_a_pong(_xaie, 3), 16 + 4,
                  errors);
   mlir_aie_check("After", mlir_aie_read_buffer_b_ping(_xaie, 5), 20, errors);
-  mlir_aie_check("After", mlir_aie_read_buffer_b_pong(_xaie, 5), (256 + 4) * 5,
+  mlir_aie_check("After", mlir_aie_read_buffer_b_pong(_xaie, 5), (16 + 4) * 5,
                  errors);
+  printf("after lock release2\n");
 
   /*
       // Dump contents of ddr_ptr_out
@@ -193,41 +166,7 @@ int main(int argc, char *argv[]) {
   */
   mlir_aie_sync_mem_cpu(buf1);
   mlir_aie_check("DDR out", ddr_ptr_out[5], 20, errors);
-  mlir_aie_check("DDR out", ddr_ptr_out[256 + 5], (256 + 4) * 5, errors);
-
-  /*
-  XAieDma_Shim ShimDmaInst1;
-  XAieDma_ShimSoftInitialize(&(TileInst[7][0]), &ShimDmaInst1);
-  XAieDma_ShimBdClearAll((&ShimDmaInst1));
-  XAieDma_ShimChControl((&ShimDmaInst1), XAIEDMA_SHIM_CHNUM_MM2S0, XAIE_DISABLE,
-  XAIE_DISABLE, XAIE_DISABLE); XAieDma_ShimChControl((&ShimDmaInst1),
-  XAIEDMA_SHIM_CHNUM_S2MM0, XAIE_DISABLE, XAIE_DISABLE, XAIE_DISABLE);
-  */
-  for (int bd = 0; bd < 16; bd++) {
-    // Take no prisoners.  No regerts
-    // Overwrites the DMA_BDX_Control registers
-    for (int ofst = 0; ofst < 0x14; ofst += 0x4) {
-      // u32 rb = mlir_aie_read32(TileInst[7][0].TileAddr +
-      // 0x0001D000+(bd*0x14)+ofst); printf("Before : bd%d_%x control is
-      // %08X\n", bd, ofst, rb);
-      mlir_aie_write32(_xaie,
-                       mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x0001D000 +
-                           (bd * 0x14) + ofst,
-                       0x0);
-    }
-  }
-
-  for (int dma = 0; dma < 4; dma++) {
-    for (int ofst = 0; ofst < 0x8; ofst += 0x4) {
-      // u32 rb = mlir_aie_read32(TileInst[7][0].TileAddr +
-      // 0x0001D140+(dma*0x8)+ofst); printf("Before : dma%d_%x control is
-      // %08X\n", dma, ofst, rb);
-      mlir_aie_write32(_xaie,
-                       mlir_aie_get_tile_addr(_xaie, 7, 0) + 0x0001D140 +
-                           (dma * 0x8) + ofst,
-                       0x0);
-    }
-  }
+  mlir_aie_check("DDR out", ddr_ptr_out[16 + 5], (16 + 4) * 5, errors);
 
   int res = 0;
   if (!errors) {

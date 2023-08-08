@@ -21,7 +21,6 @@ extern int32_t b_pong[256];
 #define A_READ (LOCK_OFFSET + 4)
 #define B_WRITE (LOCK_OFFSET + 5)
 #define B_READ (LOCK_OFFSET + 6)
-#define DONE (LOCK_OFFSET + 7)
 
 inline void func(int32_t *a, int32_t *b) {
   int val = a[3];
@@ -36,16 +35,15 @@ extern "C" void core_7_3() {
   int bounds = 2; // iter;
 
   while (bounds > 0) {
-    acquire_greater_equal(A_READ, 1);
-    acquire_greater_equal(B_WRITE, 1);
-    if ((bounds & 0x1) == 0) {
-      func(a_ping, b_ping);
-    } else {
-      func(a_pong, b_pong);
-    }
-    release(A_WRITE, 1);
-    release(B_READ, 1);
+    // acquire_greater_equal(A_READ, 1);
+    // acquire_greater_equal(B_WRITE, 1);
+    // if ((bounds & 0x1) == 0) {
+    //   func(a_ping, b_ping);
+    // } else {
+    //   func(a_pong, b_pong);
+    // }
+    // release(A_WRITE, 1);
+    // release(B_READ, 1);
     bounds--;
   }
-  acquire_equal(DONE, 1);
 }

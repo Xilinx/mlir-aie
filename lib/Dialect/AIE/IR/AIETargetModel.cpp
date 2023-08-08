@@ -64,26 +64,11 @@ Optional<TileID> AIE1TargetModel::getMemSouth(TileID src) const {
   return ret;
 }
 
-bool AIE1TargetModel::isInternal(int srcCol, int srcRow, int dstCol,
-                                 int dstRow) const {
-  return ((srcCol == dstCol) && (srcRow == dstRow));
-}
-
-bool AIE1TargetModel::isWest(int srcCol, int srcRow, int dstCol,
-                             int dstRow) const {
-  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
-}
-
 bool AIE1TargetModel::isMemWest(int srcCol, int srcRow, int dstCol,
                                 int dstRow) const {
   bool IsEvenRow = ((srcRow % 2) == 0);
   return (IsEvenRow && isInternal(srcCol, srcRow, dstCol, dstRow)) ||
          (!IsEvenRow && isWest(srcCol, srcRow, dstCol, dstRow));
-}
-
-bool AIE1TargetModel::isEast(int srcCol, int srcRow, int dstCol,
-                             int dstRow) const {
-  return ((srcCol == dstCol - 1) && (srcRow == dstRow));
 }
 
 bool AIE1TargetModel::isMemEast(int srcCol, int srcRow, int dstCol,
@@ -93,19 +78,9 @@ bool AIE1TargetModel::isMemEast(int srcCol, int srcRow, int dstCol,
          (IsEvenRow && isEast(srcCol, srcRow, dstCol, dstRow));
 }
 
-bool AIE1TargetModel::isNorth(int srcCol, int srcRow, int dstCol,
-                              int dstRow) const {
-  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
-}
-
 bool AIE1TargetModel::isMemNorth(int srcCol, int srcRow, int dstCol,
                                  int dstRow) const {
   return isNorth(srcCol, srcRow, dstCol, dstRow);
-}
-
-bool AIE1TargetModel::isSouth(int srcCol, int srcRow, int dstCol,
-                              int dstRow) const {
-  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
 }
 
 bool AIE1TargetModel::isMemSouth(int srcCol, int srcRow, int dstCol,
@@ -314,24 +289,9 @@ Optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
   return ret;
 }
 
-bool AIE2TargetModel::isInternal(int srcCol, int srcRow, int dstCol,
-                                 int dstRow) const {
-  return ((srcCol == dstCol) && (srcRow == dstRow));
-}
-
-bool AIE2TargetModel::isWest(int srcCol, int srcRow, int dstCol,
-                             int dstRow) const {
-  return ((srcCol == dstCol + 1) && (srcRow == dstRow));
-}
-
 bool AIE2TargetModel::isMemWest(int srcCol, int srcRow, int dstCol,
                                 int dstRow) const {
   return isWest(srcCol, srcRow, dstCol, dstRow);
-}
-
-bool AIE2TargetModel::isEast(int srcCol, int srcRow, int dstCol,
-                             int dstRow) const {
-  return isInternal(srcCol, srcRow, dstCol, dstRow);
 }
 
 bool AIE2TargetModel::isMemEast(int srcCol, int srcRow, int dstCol,
@@ -339,19 +299,9 @@ bool AIE2TargetModel::isMemEast(int srcCol, int srcRow, int dstCol,
   return isInternal(srcCol, srcRow, dstCol, dstRow);
 }
 
-bool AIE2TargetModel::isNorth(int srcCol, int srcRow, int dstCol,
-                              int dstRow) const {
-  return ((srcCol == dstCol) && (srcRow == dstRow - 1));
-}
-
 bool AIE2TargetModel::isMemNorth(int srcCol, int srcRow, int dstCol,
                                  int dstRow) const {
   return isNorth(srcCol, srcRow, dstCol, dstRow);
-}
-
-bool AIE2TargetModel::isSouth(int srcCol, int srcRow, int dstCol,
-                              int dstRow) const {
-  return ((srcCol == dstCol) && (srcRow == dstRow + 1));
 }
 
 bool AIE2TargetModel::isMemSouth(int srcCol, int srcRow, int dstCol,
@@ -368,8 +318,9 @@ bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
   bool IsMemSouth = isMemSouth(coreCol, coreRow, memCol, memRow);
 
   if (isMemTile(coreCol, coreRow))
-    return IsMemSouth || (IsMemNorth && isMemTile(memCol, memRow)) ||
-           IsMemWest || IsMemEast;
+    return isEast(coreCol, coreRow, memCol, memRow) ||
+           isInternal(coreCol, coreRow, memCol, memRow) ||
+           isWest(coreCol, coreRow, memCol, memRow);
   else
     return (IsMemSouth && !isMemTile(memCol, memRow)) || IsMemNorth ||
            IsMemWest || IsMemEast;

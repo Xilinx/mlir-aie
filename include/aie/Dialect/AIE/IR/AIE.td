@@ -878,12 +878,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   }];
 
   let extraClassDeclaration = [{
+    BufferOp getBufferOp();
     int getOffsetValue() { return getOffset(); }
     int getLenValue() { return getLen(); }
     bool isA() { return (getAB() == 0); }
     bool isB() { return (getAB() == 1); }
   }];
 
+  let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
       odsState.addOperands(buffer);
@@ -1167,6 +1169,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     bool release() { return (getAction() == LockAction::Release); }
     int getLockValue() { return getValue(); }
     int getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
+    LockOp getLockOp() { return dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp()); }
   }];
 }
 

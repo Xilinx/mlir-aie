@@ -143,6 +143,9 @@ void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row);
 /// Print the status of a dma represented by the given tile.
 void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row);
 
+/// Print the status of a memtiledma represented by the given location.
+void mlir_aie_print_memtiledma_status(aie_libxaie_ctx_t *ctx, int col, int row);
+
 /// Print the status of a shimdma represented by the given location (row = 0).
 void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row);
 
