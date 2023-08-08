@@ -210,21 +210,6 @@ struct AIEObjectFifoStatefulTransformPass
     return leftShared || rightShared;
   }
 
-  /// Get objectFifo declaration through symbol.
-  ObjectFifoCreateOp
-  getObjectFifoThroughSymbol(ObjectFifoInterface op) {
-    Operation *parent = op;
-    while (parent = parent->getParentOp()) {
-      if (parent->hasTrait<OpTrait::SymbolTable>()) {
-        auto st = mlir::SymbolTable::lookupSymbolIn(parent, op.getObjFifoName());
-        if (st && isa<ObjectFifoCreateOp>(st)) {
-          return dyn_cast<ObjectFifoCreateOp>(st);
-        }
-      }
-    }
-    return ObjectFifoCreateOp();
-  }
-
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
                                       std::string name,
@@ -873,8 +858,7 @@ struct AIEObjectFifoStatefulTransformPass
               checkSplitFifo<ObjectFifoAcquireOp>(
                   acqOp, coreOp.getTile().getDefiningOp<TileOp>());
               found = true;
-              ObjectFifoCreateOp op =
-                  acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+              ObjectFifoCreateOp op = acqOp.getObjectFifo();
               objFifoSizes.insert(op.size());
             }
           }
@@ -1049,7 +1033,7 @@ struct AIEObjectFifoStatefulTransformPass
   void detectExternalBuffers(DeviceOp &device, ObjectFifoCreateOp parent,
                              ObjectFifoCreateOp child, Value tile) {
     for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-      auto objFifo = getObjectFifoThroughSymbol(regOp);
+      auto objFifo = regOp.getObjectFifo();
       if (regOp.getTile() == tile && objFifo == parent) {
         for (auto extBuff : regOp.getExternalBuffers())
           addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
@@ -1061,8 +1045,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// If yes, it replaces the parent objectFifo with the correct consumer
   /// child based on the tile it is on.
   template <typename MyOp> void checkSplitFifo(MyOp op, TileOp tile) {
-    ObjectFifoCreateOp parentFifo =
-        op.getFifo().template getDefiningOp<ObjectFifoCreateOp>();
+    ObjectFifoCreateOp parentFifo = op.getObjectFifo();
     for (auto &[producer, consumers] : splitFifos) {
       if (producer == parentFifo) {
         if (op.getPort() == ObjectFifoPort::Consume) {
@@ -1090,14 +1073,14 @@ struct AIEObjectFifoStatefulTransformPass
         return objFifo.size();
     }
 
-    // if memTile, size is equal to objFifo size
+    // if memTile, size is equal to objFifo size0
     if (tile.getDefiningOp<TileOp>().isMemTile())
       return objFifo.size();
 
     // if shimTile, size is equal to number of external buffers
     if (tile.getDefiningOp<TileOp>().isShimTile()) {
       for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-        auto objFifo = getObjectFifoThroughSymbol(regOp);
+        auto objFifo = regOp.getObjectFifo();
         if (regOp.getTile() == tile && objFifo == objFifo)
           return regOp.getExternalBuffers().size();
       }
@@ -1107,7 +1090,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (coreOp.getTile() == tile) {
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-          if (acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>() == objFifo)
+          auto createOp = acqOp.getObjectFifo();
+          if (createOp == objFifo)
             if (acqOp.acqNumber() > maxAcquire)
               maxAcquire = acqOp.acqNumber();
         });
@@ -1321,8 +1305,7 @@ struct AIEObjectFifoStatefulTransformPass
             releaseOp, coreOp.getTile().getDefiningOp<TileOp>());
 
         builder.setInsertionPointAfter(releaseOp);
-        ObjectFifoCreateOp op =
-            releaseOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+        ObjectFifoCreateOp op = releaseOp.getObjectFifo();
         auto port = releaseOp.getPort();
 
         auto linkOp = getOptionalLinkOp(op);
@@ -1359,8 +1342,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         builder.setInsertionPointAfter(acquireOp);
         auto port = acquireOp.getPort();
-        ObjectFifoCreateOp op =
-            acquireOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+        ObjectFifoCreateOp op = acquireOp.getObjectFifo();
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
@@ -1378,8 +1360,7 @@ struct AIEObjectFifoStatefulTransformPass
         // and the previous one
         int numRel = 0;
         for (auto relOp : releaseOps[op]) {
-          ObjectFifoCreateOp otherOp =
-              relOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+          ObjectFifoCreateOp otherOp = relOp.getObjectFifo();
           // TODO: operations may not be in the same block: currently only
           // support one block level of difference
           if (op == otherOp) {
@@ -1479,8 +1460,7 @@ struct AIEObjectFifoStatefulTransformPass
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         ObjectFifoAcquireOp acqOp =
             accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        ObjectFifoCreateOp op =
-            acqOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+        ObjectFifoCreateOp op = acqOp.getObjectFifo();
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {

@@ -51,18 +51,6 @@ def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
   let cppNamespace = "xilinx::AIE";
 }
 
-def ObjectFifoInterface : OpInterface<"ObjectFifoInterface"> {
-  let description = [{
-    Interface for AIE objectFifo ops.
-  }];
-  let cppNamespace = "xilinx::AIE";
-  let methods = [
-    InterfaceMethod<"description",
-    "StringRef", "getObjFifoName"
-    >,
-  ];
-}
-
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
@@ -1492,7 +1480,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [ObjectFifoInterface, TileElement, IsShimNOCTile]> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
@@ -1512,9 +1500,9 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   }];
 
   let arguments = (
-    ins Index:$tile,
-    FlatSymbolRefAttr:$objFifo_name,
-    Variadic<AnyMemRef>:$externalBuffers
+    ins FlatSymbolRefAttr:$objFifo_name,
+        Index:$tile,
+        Variadic<AnyMemRef>:$externalBuffers
   );
 
   let assemblyFormat = [{
@@ -1525,6 +1513,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 
   let extraClassDeclaration = [{
     TileOp getTileOp();
+    ObjectFifoCreateOp getObjectFifo();
   }];
 }
 
@@ -1552,23 +1541,20 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
   let arguments = (
     ins ObjectFifoPort:$port,
-        AIE_ObjectFifoType:$fifo,
+        FlatSymbolRefAttr:$objFifo_name,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+    attr-dict `<` $port `>` `(` $objFifo_name `,` $size `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    Value getAIEObjectFifo() { return getFifo(); }
-    AIEObjectFifoType getAIEObjectFifoType() {
-      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
-    }
+    ObjectFifoCreateOp getObjectFifo();
     int acqNumber() { return getSize(); }
   }];
 }
@@ -1591,21 +1577,18 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
 
   let arguments = (
     ins ObjectFifoPort:$port,
-        AIE_ObjectFifoType:$fifo,
+        FlatSymbolRefAttr:$objFifo_name,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` 
+    attr-dict `<` $port `>` `(` $objFifo_name `,` $size `)` 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    Value getAIEObjectFifo() { return getFifo(); }
-    AIEObjectFifoType getAIEObjectFifoType() {
-      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
-    }
+    ObjectFifoCreateOp getObjectFifo();
     int relNumber() { return getSize(); }
   }];
 }
@@ -1672,7 +1655,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
 
   let arguments = (
     ins ObjectFifoPort:$port,
-        AIE_ObjectFifoType:$fifo,
+        FlatSymbolRefAttr:$objFifo_name,
         I32Tensor:$acquirePatternTensor,
         I32Tensor:$releasePatternTensor,
         FlatSymbolRefAttr:$callee,
@@ -1680,12 +1663,13 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
+    attr-dict `<` $port `>` `(` $objFifo_name `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    ObjectFifoCreateOp getObjectFifo();
     DenseIntElementsAttr getAcquirePattern() { return getAcquirePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     DenseIntElementsAttr getReleasePattern() { return getReleasePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     int getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }

@@ -522,6 +522,18 @@ xilinx::AIE::TileOp
 xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto device = dyn_cast<DeviceOp>(parent)) {
+      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+        if (objFifo.name() == getObjFifoName())
+          return objFifo;
+    }
+  }
+  return ObjectFifoCreateOp();
+}
 
 // ObjectFifoAcquireOp
 LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
@@ -533,7 +545,7 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
     return emitOpError("must be called from inside a CoreOp");
 
   auto coreTile = parent.getTile();
-  auto objFifo = getAIEObjectFifo().getDefiningOp<ObjectFifoCreateOp>();
+  auto objFifo = getObjectFifo();
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
@@ -555,6 +567,17 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
 
   return success();
 }
+xilinx::AIE::ObjectFifoCreateOp xilinx::AIE::ObjectFifoAcquireOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto device = dyn_cast<DeviceOp>(parent)) {
+      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+        if (objFifo.name() == getObjFifoName())
+          return objFifo;
+    }
+  }
+  return ObjectFifoCreateOp();
+}
 
 // ObjectFifoReleaseOp
 LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
@@ -566,7 +589,7 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
     return emitOpError("must be called from inside a CoreOp");
 
   auto coreTile = parent.getTile();
-  auto objFifo = getAIEObjectFifo().getDefiningOp<ObjectFifoCreateOp>();
+  auto objFifo = getObjectFifo();
   if (getPort() == ObjectFifoPort::Produce) {
     if (coreTile != objFifo.getProducerTile())
       return parent.emitOpError(
@@ -587,6 +610,17 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   }
 
   return success();
+}
+xilinx::AIE::ObjectFifoCreateOp xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto device = dyn_cast<DeviceOp>(parent)) {
+      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+        if (objFifo.name() == getObjFifoName())
+          return objFifo;
+    }
+  }
+  return ObjectFifoCreateOp();
 }
 
 // ObjectFifoSubviewAccessOp
@@ -620,6 +654,18 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   }
 
   return success();
+}
+xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (auto device = dyn_cast<DeviceOp>(parent)) {
+      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+        if (objFifo.name() == getObjFifoName())
+          return objFifo;
+    }
+  }
+  return ObjectFifoCreateOp();
 }
 
 const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
