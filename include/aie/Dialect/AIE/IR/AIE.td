@@ -1421,21 +1421,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
     }
     TileOp getProducerTileOp();
-    bool hasName() {
-       return name().has_value();
-     }
-    mlir::Optional<StringAttr> name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
-        return {attr};
-      } else {
-        return {};
-      }
-      llvm_unreachable("unreachable");
+    StringAttr name() {
+      auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+      return attr;
     }
   }];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">, AttrSizedOperandSegments]> {
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
@@ -1461,13 +1454,13 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">, Attr
   }];
 
   let arguments = (
-    ins Variadic<FlatSymbolRefAttr>:$fifoIns,
-        Variadic<FlatSymbolRefAttr>:$fifoOuts
+    ins ArrayAttr:$fifoIns,
+        ArrayAttr:$fifoOuts
   );
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    `(` `{` $fifoIns `}` `,` `{` $fifoOuts `}` `)` attr-dict
+    `(` $fifoIns `,` $fifoOuts `)` attr-dict
   }];
 
   let hasVerifier = 1;

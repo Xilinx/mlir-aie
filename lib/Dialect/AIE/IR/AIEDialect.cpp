@@ -423,9 +423,6 @@ xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 
 // ObjectFifoCreateOp
 LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
-  if (!hasName())
-    return emitOpError("does not have a sym_name.");
-
   if (isa<ArrayAttr>(getElemNumber())) {
     size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
     if (numDepths != (getConsumerTiles().size() + 1)) // +1 for producer depth
@@ -451,16 +448,14 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
                      "shared tile between objectFifos");
 
   if (isJoin()) {
-    ObjectFifoCreateOp fifoOut =
-        getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     AIEObjectFifoType fifoType = fifoOut.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int outputSize = (int)elemType.getShape()[0];
 
     int inputSize = 0;
-    for (auto fifoIn : getFifoIns()) {
-      auto op = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
-      AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+    for (auto fifoIn : getInputObjectFifos()) {
+      AIEObjectFifoType fifo = fifoIn.getType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       inputSize += (int)elemType.getShape()[0];
     }
@@ -469,16 +464,14 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
                        "be equal to size of output objFifo");
 
   } else if (isDistribute()) {
-    ObjectFifoCreateOp fifoIn =
-        getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
+    ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int inputSize = (int)elemType.getShape()[0];
 
     int outputSize = 0;
-    for (auto fifoOut : getFifoOuts()) {
-      auto op = fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-      AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+    for (auto fifoOut : getOutputObjectFifos()) {
+      AIEObjectFifoType fifo = fifoOut.getType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       outputSize += (int)elemType.getShape()[0];
     }
@@ -491,25 +484,22 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 }
 std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
   if (isJoin()) {
-    auto fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
-    for (auto fifoIn : getFifoIns()) {
-      ObjectFifoCreateOp fifoInOp = fifoIn.getDefiningOp<ObjectFifoCreateOp>();
-      if (fifoOut.getProducerTile() != fifoInOp.getConsumerTiles()[0])
+    auto fifoOut = getOutputObjectFifos()[0];
+    for (auto fifoIn : getInputObjectFifos())
+      if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
         return {};
-    }
     return {fifoOut.getProducerTile()};
+
   } else if (isDistribute()) {
-    auto fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
-    for (auto fifoOut : getFifoOuts()) {
-      ObjectFifoCreateOp fifoOutOp =
-          fifoOut.getDefiningOp<ObjectFifoCreateOp>();
-      if (fifoIn.getConsumerTiles()[0] != fifoOutOp.getProducerTile())
+    auto fifoIn = getInputObjectFifos()[0];
+    for (auto fifoOut : getOutputObjectFifos())
+      if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
         return {};
-    }
     return {fifoIn.getConsumerTiles()[0]};
+    
   } else {
-    auto fifoIn = getFifoIns()[0].getDefiningOp<ObjectFifoCreateOp>();
-    auto fifoOut = getFifoOuts()[0].getDefiningOp<ObjectFifoCreateOp>();
+    auto fifoIn = getInputObjectFifos()[0];
+    auto fifoOut = getOutputObjectFifos()[0];
     for (auto consumerIn : fifoIn.getConsumerTiles())
       if (consumerIn == fifoOut.getProducerTile())
         return {fifoOut.getProducerTile()};
@@ -519,15 +509,35 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
 }
 std::vector<xilinx::AIE::ObjectFifoCreateOp>
 xilinx::AIE::ObjectFifoLinkOp::getInputObjectFifos() {
+  std::vector<ObjectFifoCreateOp> inputObjFifos;
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
-    if (auto device = dyn_cast<DeviceOp>(parent)) {
-      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-        if (objFifo.name() == getObjFifoName())
-          return objFifo;
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      for (auto sym : getFifoIns()) {
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        auto st = mlir::SymbolTable::lookupSymbolIn(parent, name);
+        if (st && isa<ObjectFifoCreateOp>(st))
+          inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+      }
     }
   }
-  return ObjectFifoCreateOp();
+  return inputObjFifos;
+}
+std::vector<xilinx::AIE::ObjectFifoCreateOp>
+xilinx::AIE::ObjectFifoLinkOp::getOutputObjectFifos() {
+  std::vector<ObjectFifoCreateOp> outputObjFifos;
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      for (auto sym : getFifoOuts()) {
+        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        auto st = mlir::SymbolTable::lookupSymbolIn(parent, name);
+        if (st && isa<ObjectFifoCreateOp>(st))
+          outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+      }
+    }
+  }
+  return outputObjFifos;
 }
 
 // ObjectFifoRegisterExternalBuffersOp
@@ -545,14 +555,26 @@ xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
-    if (auto device = dyn_cast<DeviceOp>(parent)) {
-      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-        if (objFifo.name() == getObjFifoName())
-          return objFifo;
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      if (st && isa<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
   return ObjectFifoCreateOp();
 }
+// xilinx::AIE::ObjectFifoCreateOp 
+// xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
+//   Operation *parent = getOperation();
+//   while ((parent = parent->getParentOp())) {
+//     if (auto device = dyn_cast<DeviceOp>(parent)) {
+//       for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+//         if (objFifo.name() == getObjFifoName())
+//           return objFifo;
+//     }
+//   }
+//   return ObjectFifoCreateOp();
+// }
 
 // ObjectFifoAcquireOp
 LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
@@ -586,13 +608,14 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
 
   return success();
 }
-xilinx::AIE::ObjectFifoCreateOp xilinx::AIE::ObjectFifoAcquireOp::getObjectFifo() {
+xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
-    if (auto device = dyn_cast<DeviceOp>(parent)) {
-      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-        if (objFifo.name() == getObjFifoName())
-          return objFifo;
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      if (st && isa<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
   return ObjectFifoCreateOp();
@@ -630,17 +653,29 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
 
   return success();
 }
-xilinx::AIE::ObjectFifoCreateOp xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
+xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
-    if (auto device = dyn_cast<DeviceOp>(parent)) {
-      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-        if (objFifo.name() == getObjFifoName())
-          return objFifo;
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      if (st && isa<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
   return ObjectFifoCreateOp();
 }
+// xilinx::AIE::ObjectFifoCreateOp xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
+//   Operation *parent = getOperation();
+//   while ((parent = parent->getParentOp())) {
+//     if (auto device = dyn_cast<DeviceOp>(parent)) {
+//       for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+//         if (objFifo.name() == getObjFifoName())
+//           return objFifo;
+//     }
+//   }
+//   return ObjectFifoCreateOp();
+// }
 
 // ObjectFifoSubviewAccessOp
 LogicalResult xilinx::AIE::ObjectFifoSubviewAccessOp::verify() {
@@ -678,14 +713,26 @@ xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
-    if (auto device = dyn_cast<DeviceOp>(parent)) {
-      for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-        if (objFifo.name() == getObjFifoName())
-          return objFifo;
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      if (st && isa<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
   return ObjectFifoCreateOp();
 }
+// xilinx::AIE::ObjectFifoCreateOp 
+// xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
+//   Operation *parent = getOperation();
+//   while ((parent = parent->getParentOp())) {
+//     if (auto device = dyn_cast<DeviceOp>(parent)) {
+//       for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
+//         if (objFifo.name() == getObjFifoName())
+//           return objFifo;
+//     }
+//   }
+//   return ObjectFifoCreateOp();
+// }
 
 const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
   switch (getDevice()) {
