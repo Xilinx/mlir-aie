@@ -327,8 +327,9 @@ void BufferDescriptorAnalysis::visitOperandCopy(memref::CopyOp copyOp,
     // 1. multiply the loop tripcount to the BD's length
     // 2. insert the constant step to BD's steps (constant step is analyzed in
     // visiting reintcast)
-    LLVM_DEBUG(llvm::dbgs() << "loopTripCount = " << loopTripCount
-                 << ", state.constantStep = " << *state.constantStep << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << "loopTripCount = " << loopTripCount
+               << ", state.constantStep = " << *state.constantStep << "\n");
     state.lengthInt.push_back(loopTripCount);
     state.stepsInt.push_back(*state.constantStep);
 
@@ -380,7 +381,8 @@ void BufferDescriptorAnalysis::visitOperand(Value operand,
     visitOperandCast(op, state);
   } else {
     operand.getDefiningOp()->dump();
-    LLVM_DEBUG(llvm::dbgs()
+    LLVM_DEBUG(
+        llvm::dbgs()
         << "encountered addptr operand produced by an unsupported operation\n");
     // llvm_unreachable("encountered addptr operand produced by an "
     //                  "unsupported operation");
