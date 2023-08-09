@@ -79,7 +79,7 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
 
       - name: Install git
-        run: sudo apt-get install -y git
+        run: apt-get install -y git
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
@@ -90,10 +90,10 @@ jobs:
           submodules: "true"
 
       - name: Install libboost
-        run: sudo apt-get install -y libboost-all-dev
+        run: apt-get install -y libboost-all-dev
 
       - name: Install Python packages
-        run: sudo pip install psutil rich numpy pybind11
+        run: pip install psutil rich numpy pybind11
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
@@ -176,8 +176,8 @@ jobs:
       # We'll be running clang-tidy later in this flow.
       - name: Install clang-tidy
         run: |
-          sudo apt-get install -y clang-tidy-12
-          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
+          apt-get install -y clang-tidy-12
+          update-alternatives --install /usr/bin/clang-tidy clang-tidy \
             /usr/bin/clang-tidy-12 100
 
       # Clone the repo and its submodules. Do shallow clone to save clone
