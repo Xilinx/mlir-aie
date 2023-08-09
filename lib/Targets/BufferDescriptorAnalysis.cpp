@@ -292,7 +292,7 @@ void BufferDescriptorAnalysis::visitOperandCopy(memref::CopyOp copyOp,
     if (auto forOp = dyn_cast<scf::ForOp>(parentOp)) {
       forOp->emitWarning("memref.copy in the scf::ForOp");
 
-      auto inductionVar = forOp.getInductionVar();
+      // auto inductionVar = forOp.getInductionVar();
       auto lowerBound = forOp.getLowerBound();
       auto upperBound = forOp.getUpperBound();
       auto step = forOp.getStep();
