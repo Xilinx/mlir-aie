@@ -1337,11 +1337,11 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
     ```
       %tile00 = AIE.tile(0, 0)
       %tile02 = AIE.tile(0, 2)
-      %connect1 = AIE.objectFifo.createObjectFifo(%tile00, { %tile02 }, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectFifo<memref<64xi16>>
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
-      AIE.shimDMAAllocation("of_in_0", MM2S, 1, 0)
+      AIE.shimDMAAllocation @of_in_0 (MM2S, 1, 0)
     ```
   }];
   let arguments = (
@@ -1352,7 +1352,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
   );
   let results = (outs);
   let assemblyFormat = [{
-    `(` $sym_name `,` $channelDir `,` $channelIndex `,` $col `)` attr-dict  
+    $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict  
   }];
 }
 
@@ -1375,7 +1375,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
 
     1-to-1 tile example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of1 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
     This operation creates an objectFifo between %tile12 and %tile13 of 4 elements, each a buffer of 16 32-bit integers.
     Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile13, 
@@ -1384,14 +1384,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
  
     1-to-2 tiles broadcast example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of2 (%tile12, {%tile13, %tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
     This operation creates an objectFifo between %tile12 and tiles %tile13, %tile23 of 4 elements, each a buffer of x16 
     32-bit integers.
 
     1-to-2 tiles broadcast with explicit sizes example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile13, %tile23}, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of3 (%tile12, {%tile13, %tile23}, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
     ```
     This operation creates an objectFifo between %tile12, %tile13 and %tile23. The depths of the objectFifo object pool 
     at each tile are respectively 2, 3 and 4 for tiles %tile12, %tile13 and %tile23. This overrides the depth analysis 
@@ -1460,7 +1460,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    `(` $fifoIns `,` $fifoOuts `)` attr-dict
+    `[` $fifoIns `]` `-` `>` `[` $fifoOuts `]` `(` `)` attr-dict
   }];
 
   let hasVerifier = 1;
@@ -1504,7 +1504,7 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   );
 
   let assemblyFormat = [{
-    attr-dict `(` $objFifo_name `,` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+    attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
   }];
 
   let hasVerifier = 1;
@@ -1546,7 +1546,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $objFifo_name `,` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `<` $port `>` `(` $size `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
@@ -1580,7 +1580,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $objFifo_name `,` $size `)` 
+    attr-dict $objFifo_name `<` $port `>` `(` $size `)` 
   }];
 
   let hasVerifier = 1;
@@ -1661,7 +1661,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $objFifo_name `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
+    attr-dict $objFifo_name `<` $port `>` `(` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
   }];
 
   let hasVerifier = 1;
