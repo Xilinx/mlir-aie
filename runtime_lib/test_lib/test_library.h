@@ -10,9 +10,9 @@
 #ifndef AIE_TEST_LIBRARY_H
 #define AIE_TEST_LIBRARY_H
 
+#include "target.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <xaiengine.h>
 
 extern "C" {
 
@@ -26,11 +26,6 @@ extern "C" {
     printf("ERROR %s: %s expected %f, but was %f!\n", s, #r, v, r);            \
     errors++;                                                                  \
   }
-
-struct aie_libxaie_ctx_t {
-  XAie_Config AieConfigPtr;
-  XAie_DevInst DevInst;
-};
 
 // class for using events and PF cpounters
 class EventMonitor {

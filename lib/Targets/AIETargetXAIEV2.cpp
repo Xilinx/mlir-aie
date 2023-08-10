@@ -418,11 +418,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   output << xaie_c_file_header;
   output << "aie_libxaie_ctx_t* mlir_aie_init_libxaie() {\n";
-  output << "  aie_libxaie_ctx_t *ctx = (aie_libxaie_ctx_t "
-            "*)malloc(sizeof(aie_libxaie_ctx_t));\n";
+  output << "  aie_libxaie_ctx_t *ctx = new aie_libxaie_ctx_t;\n";
   output << "  if (!ctx)\n";
   output << "    return 0;\n";
-
   auto arch = target_model.getTargetArch();
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
   std::string AIE2_device("XAIE_DEV_GEN_AIEML");
@@ -633,11 +631,13 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
              << " = false;\n";
 
       output << "void mlir_aie_external_set_addr_" << op.name().getValue()
-             << "(u64 addr) {\n"
+             << "(" << ctx_p << ", u64 VA) {\n"
+             << "  u64 device_address = mlir_aie_get_device_address(ctx, (void "
+                "*)VA);\n"
              << "    _mlir_aie_external_set_" << op.name().getValue()
              << " = true;\n"
              << "    _mlir_aie_external_" << op.name().getValue()
-             << " = addr;\n"
+             << " = device_address;\n"
              << "}\n";
     }
   }

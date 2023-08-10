@@ -64,8 +64,8 @@ int main(int argc, char *argv[]) {
   */
 #define DMA_COUNT 32
   ext_mem_model_t buf0, buf1;
-  int *ddr_ptr_in = mlir_aie_mem_alloc(buf0, DMA_COUNT);
-  int *ddr_ptr_out = mlir_aie_mem_alloc(buf1, DMA_COUNT);
+  int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
+  int *ddr_ptr_out = mlir_aie_mem_alloc(_xaie, buf1, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(ddr_ptr_in + i) = i + 1;
     *(ddr_ptr_out + i) = i + 2;
@@ -73,13 +73,8 @@ int main(int argc, char *argv[]) {
   mlir_aie_sync_mem_dev(buf0);
   mlir_aie_sync_mem_dev(buf1);
 
-#ifdef __AIESIM__
-  mlir_aie_external_set_addr_input_buffer(buf0.physicalAddr);
-  mlir_aie_external_set_addr_output_buffer(buf1.physicalAddr);
-#else
-  mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
-  mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
-#endif
+  mlir_aie_external_set_addr_input_buffer(_xaie, (u64)ddr_ptr_in);
+  mlir_aie_external_set_addr_output_buffer(_xaie, (u64)ddr_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie);
 
   // mlir_aie_clear_tile_memory(_xaie, 7, 3);

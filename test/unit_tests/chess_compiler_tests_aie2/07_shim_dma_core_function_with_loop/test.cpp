@@ -46,8 +46,8 @@ int main(int argc, char *argv[]) {
   int errors = 0;
   mlir_aie_init_mems(_xaie, 2);
 #define DMA_COUNT 512
-  int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
-  int *ddr_ptr_out = mlir_aie_mem_alloc(_xaie, 1, DMA_COUNT);
+  int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, _xaie, 0, DMA_COUNT);
+  int *ddr_ptr_out = mlir_aie_mem_alloc(_xaie, _xaie, 1, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(ddr_ptr_in + i) = i;
     *(ddr_ptr_out + i) = 0;
@@ -57,8 +57,8 @@ int main(int argc, char *argv[]) {
 
   mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
-  mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
-  mlir_aie_external_set_addr_output_buffer((u64)ddr_ptr_out);
+  mlir_aie_external_set_addr_input_buffer(_xaie, (u64)ddr_ptr_in);
+  mlir_aie_external_set_addr_output_buffer(_xaie, (u64)ddr_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie);
 
   mlir_aie_clear_tile_memory(_xaie, 7, 3);

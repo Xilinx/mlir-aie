@@ -35,11 +35,11 @@ int main(int argc, char *argv[]) {
   mlir_aie_initialize_locks(_xaie);
 
   ext_mem_model_t buf0, buf1;
-  int *mem_ptr_in = mlir_aie_mem_alloc(buf0, 256);
-  int *mem_ptr_out = mlir_aie_mem_alloc(buf1, 256);
+  int *mem_ptr_in = mlir_aie_mem_alloc(_xaie, buf0, 256);
+  int *mem_ptr_out = mlir_aie_mem_alloc(_xaie, buf1, 256);
 
-  mlir_aie_external_set_addr_ddr_test_buffer_in((u64)mem_ptr_in);
-  mlir_aie_external_set_addr_ddr_test_buffer_out((u64)mem_ptr_out);
+  mlir_aie_external_set_addr_ddr_test_buffer_in(_xaie, (u64)mem_ptr_in);
+  mlir_aie_external_set_addr_ddr_test_buffer_out(_xaie, (u64)mem_ptr_out);
   mlir_aie_configure_shimdma_70(_xaie);
 
   int errors = 0;
