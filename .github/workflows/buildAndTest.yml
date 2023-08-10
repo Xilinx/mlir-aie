@@ -26,7 +26,9 @@ jobs:
       # Run all the test even if there are some which fail
       fail-fast: false
 
+      # Run the tests on the Cartesian product of the following
       matrix:
+        build_type: [ Assert, Release ]
         ubuntu_version: [ 20.04, 22.04 ]
 
     # Using a container instead of running native on public GitHub
@@ -132,6 +134,7 @@ jobs:
 
       # Build the repo test target in debug mode to build and test.
       - name: Build and test (Assert)
+        if: matrix.build_type == 'Assert'
         run: |
           mkdir build_assert
           cd build_assert
@@ -159,6 +162,7 @@ jobs:
 
       # Build the repo test target in release mode to build and test.
       - name: Build and test (Release)
+        if: matrix.build_type == 'Release'
         run: |
           mkdir build_release
           cd build_release
