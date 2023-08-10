@@ -119,8 +119,8 @@ jobs:
         run: apt-get install -y ninja-build
 
         # Because the build requires to use explicitly this compiler
-      - name: Install Clang & Clang++
-        run: apt-get install -y clang
+      - name: Install Clang & Clang++ and linker
+        run: apt-get install -y clang lld
 
       - name: Get Submodule Hash
         id: get-submodule-hash
