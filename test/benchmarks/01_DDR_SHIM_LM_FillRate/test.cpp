@@ -47,13 +47,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_dmas(_xaie);
 
     ext_mem_model_t buf0;
-<<<<<<< HEAD
-    int *ddr_ptr = mlir_aie_mem_alloc(buf0, DMA_COUNT);
-    for(int i=0; i<DMA_COUNT; i++) {
-=======
     int *ddr_ptr = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
     for (int i = 0; i < DMA_COUNT; i++) {
->>>>>>> 0df6dfa7... fixup! dos2unix
       *(ddr_ptr + i) = i + 1;
     }
     mlir_aie_sync_mem_dev(buf0);
@@ -74,7 +69,7 @@ int main(int argc, char *argv[]) {
     // 0, /* dmaDir */ DMA_MM2S);
     // XAie_EnableShimDmaToAieStrmPort(&(_xaie->DevInst), XAie_TileLoc(7,0), 3);
 
-    mlir_aie_external_set_addr_buffer((u64)ddr_ptr);
+    mlir_aie_external_set_addr_buffer(_xaie, (u64)ddr_ptr);
     mlir_aie_configure_shimdma_70(_xaie);
 
     mlir_aie_start_cores(_xaie);

@@ -21,9 +21,9 @@
 #include <stdio.h>
 #include <sys/mman.h>
 
-extern "C" {
-extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
-}
+// extern "C" {
+// extern aie_libxaie_ctx_t *ctx /* = nullptr*/;
+// }
 
 // namespace aie_device {
 //}

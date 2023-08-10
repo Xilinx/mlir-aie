@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 // This code is heavily based on aienginev2_v3_0/src/io_backend/ext/xaie_linux.c
-// Current version of this library no longer implement memory allocation, so we
+// Current version of this library no longer implements memory allocation, so we
 // have to do it ourselves.
 
 /***************************** Include Files *********************************/
@@ -28,20 +28,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-// #include "xlnx-ai-engine.h"
 #include "ion.h"
 #include "memory_allocator.h"
 
-// #include "xaie_helper.h"
-// #include "xaie_io.h"
-// #include "xaie_io_common.h"
-// #include "xaie_npi.h"
-
 /***************************** Macro Definitions *****************************/
 #define XAIE_128BIT_ALIGN_MASK 0xFF
-
-#define XAIE_ERROR(...)
-#define XAIE_DBG(...)
 
 /**
  * This is the memory function to allocate a memory
@@ -51,7 +42,8 @@
  *
  * @return	Pointer to the allocated memory instance.
  *******************************************************************************/
-int *mlir_aie_mem_alloc(ext_mem_model_t &handle, int size) {
+int *mlir_aie_mem_alloc(struct aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
+                        int size) {
   int RC;
   int Fd, Ret;
   uint32_t HeapNum;
@@ -59,6 +51,7 @@ int *mlir_aie_mem_alloc(ext_mem_model_t &handle, int size) {
   struct ion_allocation_data AllocArgs;
   struct ion_heap_query Query;
   struct ion_heap_data *Heaps;
+  u64 DevAddr = 0;
 
   Fd = open("/dev/ion", O_RDONLY);
   if (Fd < 0) {
@@ -127,20 +120,16 @@ int *mlir_aie_mem_alloc(ext_mem_model_t &handle, int size) {
   handle.virtualAddr = VAddr;
   handle.size = size;
 
-  // We don't really have
-  // Ret = ioctl(IOInst->PartitionFd, AIE_ATTACH_DMABUF_IOCTL,
-  // 		handle.fd);
-  // if(Ret != 0) {
-  // 	XAIE_ERROR("Failed to attach to dmabuf\n");
-  // 	free(MemInst);
-  // 	goto free_meminst;
-  // }
+  // Map the memory
+  if (XAie_MemAttach(&(ctx->DevInst), &(handle.MemInst), DevAddr, (u64)VAddr,
+                     size, XAIE_MEM_NONCACHEABLE, handle.fd) != XAIE_OK) {
+    XAIE_ERROR("dmabuf map failed\n");
+    goto error_map;
+  }
 
   close(Fd);
   return (int *)VAddr;
 
-// free_meminst:
-// 	free(LinuxMemInst);
 error_map:
   munmap(VAddr, size);
 error_alloc_fd:
@@ -262,6 +251,10 @@ void mlir_aie_sync_mem_dev(ext_mem_model_t &handle) {
   }
 
   //	return XAIE_OK;
+}
+
+u64 mlir_aie_get_device_address(struct aie_libxaie_ctx_t *_xaie, void *VA) {
+  return (u64)VA; // LibXAIE will take care of converting this for us.
 }
 
 /** @} */

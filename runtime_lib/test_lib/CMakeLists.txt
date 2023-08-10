@@ -17,7 +17,7 @@ target_include_directories(test_lib PRIVATE
 )
 
 # copy header and source files into build area
-set(headers test_library.h memory_allocator.h)
+set(headers target.h test_library.h memory_allocator.h)
 foreach(basefile ${headers})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
@@ -50,7 +50,11 @@ set_target_properties(memory_allocator_ion PROPERTIES PUBLIC_HEADER "memory_allo
 find_program(UNAME_EXEC uname)
 execute_process(COMMAND ${UNAME_EXEC} -r OUTPUT_VARIABLE KERNEL_RELEASE OUTPUT_STRIP_TRAILING_WHITESPACE)
 find_path(LINUX_HEADERS_PATH NAMES "linux/dma-buf.h" PATHS "/usr/src/kernels/${KERNEL_RELEASE}/include" REQUIRED)
-target_include_directories(memory_allocator_ion PRIVATE ${LINUX_HEADERS_PATH}/uapi ${LINUX_HEADERS_PATH})
+target_include_directories(memory_allocator_ion PRIVATE
+        ${LINUX_HEADERS_PATH}/uapi
+        ${LINUX_HEADERS_PATH}
+        ${LibXAIE_INC_DIR}
+)
 target_compile_options(memory_allocator_ion PRIVATE -fPIC)
 target_compile_definitions(memory_allocator_ion PRIVATE)
 

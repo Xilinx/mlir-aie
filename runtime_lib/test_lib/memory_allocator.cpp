@@ -11,9 +11,11 @@
 
 #include "memory_allocator.h"
 #include "xioutils.h"
+#include <assert.h>
 #include <iostream>
 
-int *mlir_aie_mem_alloc(ext_mem_model_t &handle, int size) {
+int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
+                        int size) {
   int size_bytes = size * sizeof(int);
   handle.virtualAddr = std::malloc(size_bytes);
   if (handle.virtualAddr) {
@@ -29,11 +31,12 @@ int *mlir_aie_mem_alloc(ext_mem_model_t &handle, int size) {
     printf("ExtMemModel: Failed to allocate %d memory.\n", size_bytes);
   }
 
-  std::cout << "ExtMemModel constructor: virtual address " << std::hex
-            << handle.virtualAddr << ", physical address "
+  _xaie->allocations.push_back(handle);
+
+  std::cout << "ExtMemModel constructor: " << _xaie << " virtual address "
+            << std::hex << handle.virtualAddr << ", physical address "
             << handle.physicalAddr << ", size " << std::dec << handle.size
             << std::endl;
-
   return (int *)handle.virtualAddr;
 }
 
@@ -43,4 +46,20 @@ void mlir_aie_sync_mem_cpu(ext_mem_model_t &handle) {
 
 void mlir_aie_sync_mem_dev(ext_mem_model_t &handle) {
   aiesim_WriteGM(handle.physicalAddr, handle.virtualAddr, handle.size);
+}
+
+u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *_xaie, void *VA) {
+  std::cout << "get_device_address: " << _xaie << " VA " << std::hex << VA
+            << std::dec << "\n";
+  for (auto i : _xaie->allocations) {
+    std::cout << "get_device_address: virtual address " << std::hex
+              << i.virtualAddr << ", physical address " << i.physicalAddr
+              << ", size " << std::dec << i.size << std::endl;
+
+    if (i.virtualAddr == VA)
+      return i.physicalAddr;
+  }
+  printf("ERROR: cannot get device address for allocation!\n");
+  assert(false);
+  return 0;
 }

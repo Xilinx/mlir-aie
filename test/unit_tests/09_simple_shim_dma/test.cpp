@@ -38,10 +38,11 @@ main(int argc, char *argv[])
 
 #define DMA_COUNT 512
   ext_mem_model_t buf0;
-  int *mem_ptr = mlir_aie_mem_alloc(buf0, DMA_COUNT);
+  int *mem_ptr = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(mem_ptr + i) = i + 1;
   }
+
   mlir_aie_sync_mem_dev(buf0);
 
   // We're going to stamp over the memory
@@ -49,7 +50,9 @@ main(int argc, char *argv[])
     mlir_aie_write_buffer_buf72_0(_xaie, i, 0xdeadbeef);
   }
 
-  mlir_aie_external_set_addr_buffer((u64)mem_ptr);
+  mlir_aie_external_set_addr_buffer(_xaie, (u64)mem_ptr);
+
+  printf("\nBefore configure shimDMAs:\n");
   mlir_aie_configure_shimdma_70(_xaie);
 
   printf("\nAfter configure shimDMAs:\n");

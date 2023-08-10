@@ -40,13 +40,13 @@ int main(int argc, char *argv[]) {
 
 #define DMA_COUNT 512
   ext_mem_model_t buf0;
-  int *ddr_ptr_in = mlir_aie_mem_alloc(buf0, DMA_COUNT);
+  int *ddr_ptr_in = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
   for (int i = 0; i < DMA_COUNT; i++) {
     *(ddr_ptr_in + i) = i + 1;
   }
   mlir_aie_sync_mem_dev(buf0);
 
-  mlir_aie_external_set_addr_input_buffer((u64)ddr_ptr_in);
+  mlir_aie_external_set_addr_input_buffer(_xaie, (u64)ddr_ptr_in);
   mlir_aie_configure_shimdma_70(_xaie);
 
   // We're going to stamp over the memory

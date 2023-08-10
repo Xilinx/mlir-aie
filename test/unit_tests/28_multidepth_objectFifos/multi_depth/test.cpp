@@ -40,11 +40,11 @@ int main(int argc, char *argv[]) {
   mlir_aie_acquire_of_in_lock_0(_xaie, 0, 10000);
 
   ext_mem_model_t buf0, buf1;
-  int *mem_ptr_in_0 = mlir_aie_mem_alloc(buf0, 32);
-  int *mem_ptr_in_1 = mlir_aie_mem_alloc(buf1, 32);
+  int *mem_ptr_in_0 = mlir_aie_mem_alloc(_xaie, buf0, 32);
+  int *mem_ptr_in_1 = mlir_aie_mem_alloc(_xaie, buf1, 32);
 
-  mlir_aie_external_set_addr_ext_buffer_in_0((u64)mem_ptr_in_0);
-  mlir_aie_external_set_addr_ext_buffer_in_1((u64)mem_ptr_in_1);
+  mlir_aie_external_set_addr_ext_buffer_in_0(_xaie, (u64)mem_ptr_in_0);
+  mlir_aie_external_set_addr_ext_buffer_in_1(_xaie, (u64)mem_ptr_in_1);
   mlir_aie_configure_shimdma_20(_xaie);
 
   int errors = 0;

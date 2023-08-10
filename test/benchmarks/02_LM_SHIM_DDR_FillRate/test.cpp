@@ -76,7 +76,7 @@ int main(int argc, char *argv[]) {
     // 0, /* dmaDir */ DMA_S2MM);
     // XAie_EnableAieToShimDmaStrmPort(&(_xaie->DevInst), XAie_TileLoc(7,0), 2);
 
-    mlir_aie_external_set_addr_buffer((u64)ddr_ptr);
+    mlir_aie_external_set_addr_buffer(_xaie, (u64)ddr_ptr);
     mlir_aie_configure_shimdma_70(_xaie);
 
     mlir_aie_start_cores(_xaie);
