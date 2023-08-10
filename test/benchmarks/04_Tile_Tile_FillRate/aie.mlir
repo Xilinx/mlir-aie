@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
-// REQUIRES: xaiev1
 
 module @test04_tile_tiledma {
   %tile13 = AIE.tile(1, 3)
@@ -27,12 +26,12 @@ module @test04_tile_tiledma {
 
 
   %mem13 = AIE.mem(%tile13) {
-    %dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
+    %dma0 = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock13_5, "Acquire", 1)
       AIE.dmaBd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%lock13_5, "Release", 0)
-      br ^end // point to the next BD, or termination
+      AIE.nextBd ^end // point to the next BD, or termination
     ^end:
       AIE.end
   }
@@ -43,12 +42,12 @@ module @test04_tile_tiledma {
   %buf14_1 = AIE.buffer(%tile14) { sym_name = "b14" } : memref<256xi32>
 
   %mem14 = AIE.mem(%tile14) {
-    %dma0 = AIE.dmaStart("S2MM1", ^bd0, ^end)
+    %dma0 = AIE.dmaStart(S2MM, 1, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock14_6, "Acquire", 0)
       AIE.dmaBd(<%buf14_0: memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%lock14_6, "Release", 1)
-      br ^end // point to the next BD, or termination
+      AIE.nextBd ^end // point to the next BD, or termination
     ^end:
       AIE.end
   }

@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
-// REQUIRES: xaiev1
 
 module @benchmark_02_LM2DDR {
   %t70 = AIE.tile(7, 0)
@@ -20,13 +19,16 @@ module @benchmark_02_LM2DDR {
 
   %buf71_0 = AIE.buffer(%t71) {sym_name = "buf71_0" } : memref<7168xi32>
 
- %m71 = AIE.mem(%t71) {
-      %srcDma = AIE.dmaStart("MM2S1", ^bd0, ^end)
+  //Declare the buffers
+  %buffer_out = AIE.external_buffer {sym_name = "buffer" } : memref<7168xi32>
+
+  %m71 = AIE.mem(%t71) {
+      %srcDma = AIE.dmaStart(MM2S, 1, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock_a_ping, "Acquire", 0)
       AIE.dmaBd(<%buf71_0 : memref<7168xi32>, 0, 7168>, 0)
       AIE.useLock(%lock_a_ping, "Release", 1)
-      br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -34,13 +36,13 @@ module @benchmark_02_LM2DDR {
   %dma = AIE.shimDMA(%t70) {
     %lock1 = AIE.lock(%t70, 2)
 
-    AIE.dmaStart(S2MM0, ^bd0, ^end)
+    AIE.dmaStart(S2MM, 0, ^bd0, ^end)
 
     ^bd0:
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer_out : memref<7168xi32>, 0, 7168>, 0)
       AIE.useLock(%lock1, Release, 0)
-      br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
@@ -56,10 +58,5 @@ module @benchmark_02_LM2DDR {
   %mux1 = AIE.shimmux  (%t70) {
     AIE.connect<"North" : 2, "DMA" : 0>
   }
-
-  //Declare the buffers
-  %buffer_out = AIE.external_buffer : memref<7168xi32>
-
-
 
 }
