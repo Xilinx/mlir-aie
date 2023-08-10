@@ -182,8 +182,9 @@ jobs:
       # We'll be running clang-tidy later in this flow.
       - name: Install clang-tidy
         run: |
-          apt-get install -y clang-tidy-12
-          update-alternatives --install /usr/bin/clang-tidy clang-tidy \
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-12
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
             /usr/bin/clang-tidy-12 100
 
       # Clone the repo and its submodules. Do shallow clone to save clone
