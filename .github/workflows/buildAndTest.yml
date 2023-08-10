@@ -102,8 +102,12 @@ jobs:
           pip install psutil rich numpy pybind11
 
       - name: Install Ninja
+        # Can not use the following since it wants to use `sudo` not
+        # available in the case of Docker execution
         # https://github.com/llvm/actions/tree/main/install-ninja
-        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
+        # uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
+        # So just use the specific implementation instead:
+        run: apt-get install -y ninja-build
 
       - name: Get Submodule Hash
         id: get-submodule-hash
