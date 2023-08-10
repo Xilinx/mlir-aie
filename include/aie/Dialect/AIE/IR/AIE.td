@@ -1402,13 +1402,12 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
     ins SymbolNameAttr:$sym_name,
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
-        AIE_ObjectFifo_Depth:$elemNumber
+        AIE_ObjectFifo_Depth:$elemNumber,
+        TypeAttrOf<AIE_ObjectFifoType>:$elem_type
   );
 
-  let results = (outs AIE_ObjectFifoType:$fifo);
-
   let assemblyFormat = [{
-    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
+    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` $elem_type
   }];
   
   let hasVerifier = 1;

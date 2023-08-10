@@ -449,13 +449,13 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    AIEObjectFifoType fifoType = fifoOut.getType().cast<AIEObjectFifoType>();
+    AIEObjectFifoType fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int outputSize = (int)elemType.getShape()[0];
 
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
-      AIEObjectFifoType fifo = fifoIn.getType().cast<AIEObjectFifoType>();
+      AIEObjectFifoType fifo = fifoIn.getElemType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       inputSize += (int)elemType.getShape()[0];
     }
@@ -465,13 +465,13 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    AIEObjectFifoType fifoType = fifoIn.getType().cast<AIEObjectFifoType>();
+    AIEObjectFifoType fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int inputSize = (int)elemType.getShape()[0];
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      AIEObjectFifoType fifo = fifoOut.getType().cast<AIEObjectFifoType>();
+      AIEObjectFifoType fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       outputSize += (int)elemType.getShape()[0];
     }

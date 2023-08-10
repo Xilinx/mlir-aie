@@ -134,7 +134,7 @@ struct AIEObjectFifoRegisterProcessPass
       builder.setInsertionPointToEnd(device.getBody());
       ObjectFifoCreateOp objFifo = registerOp.getObjectFifo();
       auto elementType =
-          objFifo.getType().dyn_cast<AIEObjectFifoType>().getElementType();
+          objFifo.getElemType().dyn_cast<AIEObjectFifoType>().getElementType();
 
       if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {
         std::queue<Value> consumers;

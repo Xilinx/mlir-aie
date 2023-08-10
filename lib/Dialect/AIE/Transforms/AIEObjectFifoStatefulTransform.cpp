@@ -238,8 +238,8 @@ struct AIEObjectFifoStatefulTransformPass
                                       Attribute depth) {
     auto ofName = builder.getStringAttr(name);
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), datatype, ofName, prodTile, consTile, 
-        depth);
+        builder.getUnknownLoc(), ofName, prodTile, consTile, depth,
+        datatype);
     return fifo;
   }
 
@@ -301,7 +301,7 @@ struct AIEObjectFifoStatefulTransformPass
 
     std::vector<BufferOp> buffers;
     std::vector<LockOp> locks;
-    AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+    AIEObjectFifoType fifo = op.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
@@ -327,12 +327,12 @@ struct AIEObjectFifoStatefulTransformPass
           return;
       } else {
         AIEObjectFifoType fifoInType =
-            linkOp->getInputObjectFifos()[0].getType().cast<AIEObjectFifoType>();
+            linkOp->getInputObjectFifos()[0].getElemType().cast<AIEObjectFifoType>();
         MemRefType elemInType = fifoInType.getElementType().cast<MemRefType>();
         int inSize = getMemrefTypeSize(elemInType);
 
         AIEObjectFifoType fifoOutType =
-            linkOp->getOutputObjectFifos()[0].getType().cast<AIEObjectFifoType>();
+            linkOp->getOutputObjectFifos()[0].getElemType().cast<AIEObjectFifoType>();
         MemRefType elemOutType =
             fifoOutType.getElementType().cast<MemRefType>();
         int outSize = getMemrefTypeSize(elemOutType);
@@ -464,7 +464,7 @@ struct AIEObjectFifoStatefulTransformPass
     int relNum = 1;
     int offset = 0;
 
-    AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+    AIEObjectFifoType fifo = op.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
     int len = getMemrefTypeSize(elemType);
 
@@ -611,7 +611,7 @@ struct AIEObjectFifoStatefulTransformPass
       return;
 
     int offset = 0;
-    AIEObjectFifoType fifo = op.getType().cast<AIEObjectFifoType>();
+    AIEObjectFifoType fifo = op.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifo.getElementType().cast<MemRefType>();
     int lenOut = getMemrefTypeSize(elemType);
     int bytes = elemType.getElementTypeBitWidth() / 8;
@@ -638,7 +638,7 @@ struct AIEObjectFifoStatefulTransformPass
           } else {
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
               AIEObjectFifoType fifoType =
-                  fifoIn.getType().cast<AIEObjectFifoType>();
+                  fifoIn.getElemType().cast<AIEObjectFifoType>();
               MemRefType elemType =
                   fifoType.getElementType().cast<MemRefType>();
               if (fifoIn.name() == op.name())
@@ -656,7 +656,7 @@ struct AIEObjectFifoStatefulTransformPass
           } else {
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
               AIEObjectFifoType fifoType =
-                  fifoOut.getType().cast<AIEObjectFifoType>();
+                  fifoOut.getElemType().cast<AIEObjectFifoType>();
               MemRefType elemType =
                   fifoType.getElementType().cast<MemRefType>();
               if (fifoOut.name() == op.name())
@@ -668,7 +668,7 @@ struct AIEObjectFifoStatefulTransformPass
         } else {
           if (target != op) {
             AIEObjectFifoType targetFifo =
-                target.getType().cast<AIEObjectFifoType>();
+                target.getElemType().cast<AIEObjectFifoType>();
             MemRefType targetElemType =
                 targetFifo.getElementType().cast<MemRefType>();
             lenOut = getMemrefTypeSize(targetElemType);
@@ -1156,7 +1156,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         builder.setInsertionPointAfter(createOp);
         AIEObjectFifoType datatype =
-            createOp.getType().cast<AIEObjectFifoType>();
+            createOp.getElemType().cast<AIEObjectFifoType>();
         auto consumerObjFifoSize =
             builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         // rename and replace split objectFifo
@@ -1468,7 +1468,7 @@ struct AIEObjectFifoStatefulTransformPass
       createOp->setAttr(mlir::SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));
       auto memrefType = cast<MemRefType>(
-          cast<AIEObjectFifoType>(createOp.getType()).getElementType());
+          cast<AIEObjectFifoType>(createOp.getElemType()).getElementType());
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
                                        builder.getStringAttr("public"), 
                                        memrefType, nullptr, false, nullptr);
