@@ -253,7 +253,7 @@ class flow_runner:
       file_inc_cpp = os.path.join(self.tmpdirname, 'aie_inc.cpp')
       await self.do_call(task, ['aie-translate', '--aie-generate-xaie', file_physical, '-o', file_inc_cpp])
 
-      cmd = ['clang','-std=c++11']
+      cmd = ['clang++','-std=c++11']
       if(opts.host_target):
         cmd += ['--target=%s' % opts.host_target]
         if(opts.aiesim and opts.host_target != aiecc.configure.host_architecture):
