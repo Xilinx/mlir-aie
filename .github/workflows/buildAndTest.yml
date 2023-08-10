@@ -114,6 +114,10 @@ jobs:
         # So just use the specific implementation instead:
         run: apt-get install -y ninja-build
 
+        # Because the build requires to use explicitly this compiler
+      - name: Install Clang & Clang++
+        run: apt-get install -y clang
+
       - name: Get Submodule Hash
         id: get-submodule-hash
         run: echo "hash=$(md5sum $(echo utils/clone-llvm.sh))" >> $GITHUB_OUTPUT
