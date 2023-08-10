@@ -79,7 +79,9 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
 
       - name: Install git
-        run: apt-get install -y git
+        run: |
+          apt-get update
+          apt-get install -y git
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
