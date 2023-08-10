@@ -41,11 +41,11 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_cores(_xaie);
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
-    mlir_configure_dmas(_xaie);
+    mlir_aie_configure_dmas(_xaie);
 
     EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
-                 XAIE_EVENT_CORE_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
-                 XAOE_CORE_MOD);
+                 XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
+                 XAIE_CORE_MOD);
 
     pc0.set();
 

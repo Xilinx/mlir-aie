@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
-// REQUIRES: xaiev1
 
 module @benchmark01_DDR_SHIM_fill_rate {
 
@@ -18,7 +17,7 @@ module @benchmark01_DDR_SHIM_fill_rate {
   %t71 = AIE.tile(7, 1)
   //%t72 = AIE.tile(7, 2)
 
-  %buffer = AIE.external_buffer : memref<7168xi32>
+  %buffer = AIE.external_buffer {sym_name = "buffer" } : memref<7168xi32>
 
   // Fixup
   %sw = AIE.switchbox(%t70) {
@@ -35,13 +34,13 @@ module @benchmark01_DDR_SHIM_fill_rate {
   %dma = AIE.shimDMA(%t70) {
     %lock1 = AIE.lock(%t70, 1)
 
-    AIE.dmaStart(MM2S0, ^bd0, ^end)
+    AIE.dmaStart(MM2S, 0, ^bd0, ^end)
 
     ^bd0:
       AIE.useLock(%lock1, Acquire, 1)
       AIE.dmaBd(<%buffer : memref<7168xi32>, 0, 7168>, 0)
       AIE.useLock(%lock1, Release, 0)
-      br ^bd0
+      AIE.nextBd ^bd0
     ^end:
       AIE.end
   }
@@ -52,12 +51,12 @@ module @benchmark01_DDR_SHIM_fill_rate {
   %l71_1 = AIE.lock(%t71, 1)
 
   %m71 = AIE.mem(%t71) {
-    %srcDma = AIE.dmaStart("S2MM0", ^bd0, ^end)
+    %srcDma = AIE.dmaStart(S2MM, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%l71_0, "Acquire", 0)
       AIE.dmaBd(<%buf71_0 : memref< 7168xi32>, 0, 7168>, 0)
       AIE.useLock(%l71_0, "Release", 1)
-      br ^end
+      AIE.nextBd ^end
     ^end:
       AIE.end
    }

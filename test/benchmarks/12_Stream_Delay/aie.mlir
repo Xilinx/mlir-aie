@@ -8,9 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc.py --sysroot=%VITIS_SYSROOT% %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf
+// RUN: aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
-// REQUIRES: xaiev1
 
 module @test12_stream_delay {
   %tile13 = AIE.tile(1, 3)
@@ -32,12 +31,12 @@ module @test12_stream_delay {
 
 
   %mem13 = AIE.mem(%tile13) {
-    %dma0 = AIE.dmaStart("MM2S0", ^bd0, ^end)
+    %dma0 = AIE.dmaStart(MM2S, 0, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock13_5, "Acquire", 1)
       AIE.dmaBd(<%buf13_0 : memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%lock13_5, "Release", 0)
-      br ^end 
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }
@@ -50,12 +49,12 @@ module @test12_stream_delay {
   %mem43 = AIE.mem(%tile43) {
 
 
-     %dma0 = AIE.dmaStart("S2MM1", ^bd0, ^end)
+     %dma0 = AIE.dmaStart(S2MM, 1, ^bd0, ^end)
     ^bd0:
       AIE.useLock(%lock43_6, "Acquire", 0)
       AIE.dmaBd(<%buf43_0: memref<512xi32>, 0, 512>, 0)
       AIE.useLock(%lock43_6, "Release", 1)
-      br ^end 
+      AIE.nextBd ^end
     ^end:
       AIE.end
   }

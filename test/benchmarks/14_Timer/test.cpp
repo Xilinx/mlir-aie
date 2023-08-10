@@ -24,19 +24,7 @@
 #define XAIE_NUM_COLS 50
 #define XAIE_ADDR_ARRAY_OFF 0x800
 
-namespace {
-
-XAieGbl_Config *AieConfigPtr; /**< AIE configuration pointer */
-XAieGbl AieInst;              /**< AIE global instance */
-XAieGbl_HwCfg AieConfig;      /**< AIE HW configuration instance */
-XAieGbl_Tile TileInst[XAIE_NUM_COLS][XAIE_NUM_ROWS +
-                                     1]; /**< Instantiates AIE array of
-                                            [XAIE_NUM_COLS] x [XAIE_NUM_ROWS] */
-XAieDma_Tile TileDMAInst[XAIE_NUM_COLS][XAIE_NUM_ROWS + 1];
-
 #include "aie_inc.cpp"
-
-} // namespace
 
 int main(int argc, char *argv[]) {
   int n = 1;
@@ -46,33 +34,22 @@ int main(int argc, char *argv[]) {
 
   int total_errors = 0;
 
-  // soft reset hack initially
-  devmemRW32(0xF70A000C, 0xF9E8D7C6, true);
-  devmemRW32(0xF70A0000, 0x04000000, true);
-  devmemRW32(0xF70A0004, 0x040381B1, true);
-  devmemRW32(0xF70A0000, 0x04000000, true);
-  devmemRW32(0xF70A0004, 0x000381B1, true);
-  devmemRW32(0xF70A000C, 0x12341234, true);
-
   auto col = 7;
 
-  size_t aie_base = XAIE_ADDR_ARRAY_OFF << 14;
-  XAIEGBL_HWCFG_SET_CONFIG((&AieConfig), XAIE_NUM_ROWS, XAIE_NUM_COLS,
-                           XAIE_ADDR_ARRAY_OFF);
-  XAieGbl_HwInit(&AieConfig);
-  AieConfigPtr = XAieGbl_LookupConfig(XPAR_AIE_DEVICE_ID);
-  XAieGbl_CfgInitialize(&AieInst, &TileInst[0][0], AieConfigPtr);
+  aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
+  mlir_aie_init_device(_xaie);
 
   for (int iters = 0; iters < n; iters++) {
 
-    mlir_configure_cores();
-    mlir_configure_switchboxes();
-    mlir_initialize_locks();
-    mlir_configure_dmas();
+    mlir_aie_configure_cores(_xaie);
+    mlir_aie_configure_switchboxes(_xaie);
+    mlir_aie_initialize_locks(_xaie);
+    mlir_aie_configure_dmas(_xaie);
 
-    u_int32_t timer1 = XAieGbl_Read32(TileInst[7][3].TileAddr + 0x000340F8);
-    mlir_start_cores();
-    u_int32_t timer2 = XAieGbl_Read32(TileInst[7][3].TileAddr + 0x000340F8);
+    u64 tileAddr = mlir_aie_get_tile_addr(_xaie, 7, 3);
+    u_int32_t timer1 = mlir_aie_read32(_xaie, tileAddr + 0x000340F8);
+    mlir_aie_start_cores(_xaie);
+    u_int32_t timer2 = mlir_aie_read32(_xaie, tileAddr + 0x000340F8);
 
     printf("\n Timer for Starting the Core: %d\n", timer2 - timer1);
   }

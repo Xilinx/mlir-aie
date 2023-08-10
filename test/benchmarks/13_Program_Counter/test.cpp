@@ -33,14 +33,6 @@ int main(int argc, char *argv[]) {
 
   int total_errors = 0;
 
-  // soft reset hack initially
-  // devmemRW32(0xF70A000C, 0xF9E8D7C6, true);
-  // devmemRW32(0xF70A0000, 0x04000000, true);
-  // devmemRW32(0xF70A0004, 0x040381B1, true);
-  // devmemRW32(0xF70A0000, 0x04000000, true);
-  // devmemRW32(0xF70A0004, 0x000381B1, true);
-  // devmemRW32(0xF70A000C, 0x12341234, true);
-
   auto col = 7;
 
   for (int iters = 0; iters < n; iters++) {
@@ -56,10 +48,8 @@ int main(int argc, char *argv[]) {
     // XAIETILE_EVENT_CORE_DISABLED, XAIETILE_EVENT_CORE_NONE, MODE_CORE);
     // pc0.set();
 
-    XAieTileCore_EventPCEvent(&TileInst[7][3], XAIETILE_EVENT_CORE_PC_EVENT0,
-                              0x00, 1);
-    XAieTileCore_EventPCEvent(&TileInst[7][3], XAIETILE_EVENT_CORE_PC_EVENT1,
-                              0x088, 1);
+    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(7,3), 0, 0x00);
+    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(7,3), 1, 0x088);
 
     EventMonitor pc1(_xaie, 7, 3, 1, XAIE_EVENT_PC_0_CORE,
                  XAIE_EVENT_PC_1_CORE,
@@ -70,10 +60,10 @@ int main(int argc, char *argv[]) {
   
     mlir_aie_start_cores(_xaie);
 
-    u_int32_t pc0_reg = XAieGbl_Read32(TileInst[7][3].TileAddr + 0x32020);
-    u_int32_t pc1_reg = XAieGbl_Read32(TileInst[7][3].TileAddr + 0x32024);
-
-    u_int32_t event_status = XAieGbl_Read32(TileInst[7][3].TileAddr + 0x34200);
+    u64 tileAddr = mlir_aie_get_tile_addr(_xaie, 7, 3);
+    u_int32_t pc0_reg = mlir_aie_read32(_xaie, tileAddr + 0x32020);
+    u_int32_t pc1_reg = mlir_aie_read32(_xaie, tileAddr + 0x32024);
+    u_int32_t event_status = mlir_aie_read32(_xaie, tileAddr + 0x34200);
 
     // printf("\n PC0 and PC1: %x, %x \n", pc0_reg, pc1_reg);
     printf("\n Event Status: %x\n", event_status);

@@ -44,7 +44,6 @@ int main(int argc, char *argv[]) {
     mlir_aie_acquire_input_lock(_xaie, 0, 0);
 
     mlir_aie_configure_dmas(_xaie);
-    mlir_aie_init_mems(_xaie, 1);
 
     mlir_aie_clear_tile_memory(_xaie, 1, 3);
     mlir_aie_clear_tile_memory(_xaie, 1, 4);

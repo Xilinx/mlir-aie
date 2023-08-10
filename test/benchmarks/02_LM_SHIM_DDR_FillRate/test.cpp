@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
+#include "memory_allocator.h"
 #include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
@@ -46,13 +47,13 @@ int main(int argc, char *argv[]) {
 
     // printf("Acquired before\n");
     mlir_aie_configure_dmas(_xaie);
-    mlir_aie_init_mems(_xaie, 1);
 
-    int *ddr_ptr = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
+    ext_mem_model_t buf0;
+    int *ddr_ptr = mlir_aie_mem_alloc(buf0, DMA_COUNT);
     for(int i=0; i<DMA_COUNT; i++) {
       *(ddr_ptr + i) = 0xdeadbeef;
     }
-    mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+    mlir_aie_sync_mem_dev(buf0);
 
     // printf("Start address of ddr buffer = %p\n", ddr_ptr);
 
@@ -72,7 +73,7 @@ int main(int argc, char *argv[]) {
     // XAie_DmaChannelEnable(&(_xaie->DevInst), XAie_TileLoc(7,0), /* ChNum */ 0, /* dmaDir */ DMA_S2MM);
     // XAie_EnableAieToShimDmaStrmPort(&(_xaie->DevInst), XAie_TileLoc(7,0), 2);
 
-    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr);
+    mlir_aie_external_set_addr_buffer((u64)ddr_ptr);
     mlir_aie_configure_shimdma_70(_xaie);
 
     mlir_aie_start_cores(_xaie);
@@ -99,7 +100,7 @@ int main(int argc, char *argv[]) {
     // printf("After Lock Release \n");
     // mlir_aie_print_tile_status(_xaie, 7, 1);
 
-    mlir_aie_sync_mem_cpu(_xaie, 0); // only used in libaiev2
+    mlir_aie_sync_mem_cpu(buf0);
 
     for (int i = 0; i < DMA_COUNT; i++) {
       // int i = 0

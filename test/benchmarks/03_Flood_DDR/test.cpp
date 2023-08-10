@@ -19,7 +19,9 @@
 #include <thread>
 #include <unistd.h>
 #include <xaiengine.h>
+#include <vector>
 
+#include "memory_allocator.h"
 #include "aie_inc.cpp"
 
 #define DMA_COUNT 7168
@@ -62,12 +64,12 @@ int main(int argc, char *argv[]) {
     mlir_aie_acquire_lock(_xaie, 7, 1, 3, 0, 0); 
 
     mlir_aie_configure_dmas(_xaie);
-    mlir_aie_init_mems(_xaie, 1);
 
-    int *ddr_ptr = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT * 16);
+    ext_mem_model_t buf0;
+    int *ddr_ptr = mlir_aie_mem_alloc(buf0, DMA_COUNT);
     // int *ddr_ptr7 = mlir_aie_mem_alloc(_xaie, 0, DMA_COUNT);
     // int *phy_addr_ptr = (int*)XAie_MemGetPAddr(_xaie->buffers[0]);
-    printf("virtual addr is %x\n", (u64)ddr_ptr);
+    printf("virtual addr is %lx\n", (u64)ddr_ptr);
 
     int *ddr_ptr2  = ddr_ptr;
     int *ddr_ptr3  = ddr_ptr + 1*DMA_COUNT;
@@ -122,39 +124,39 @@ int main(int argc, char *argv[]) {
       *(ddr_ptr47 + i) = i + 1;
     }
 
-    mlir_aie_sync_mem_dev(_xaie, 0); // only used in libaiev2
+    mlir_aie_sync_mem_dev(buf0);
 
-    mlir_aie_external_set_addr_myBuffer_20_0((u64)ddr_ptr2);
+    mlir_aie_external_set_addr_buffer_out_20((u64)ddr_ptr2);
     mlir_aie_configure_shimdma_20(_xaie);
-    mlir_aie_external_set_addr_myBuffer_30_0((u64)ddr_ptr3);
+    mlir_aie_external_set_addr_buffer_out_30((u64)ddr_ptr3);
     mlir_aie_configure_shimdma_30(_xaie);
-    mlir_aie_external_set_addr_myBuffer_60_0((u64)ddr_ptr6);
+    mlir_aie_external_set_addr_buffer_out_60((u64)ddr_ptr6);
     mlir_aie_configure_shimdma_60(_xaie);
-    mlir_aie_external_set_addr_myBuffer_70_0((u64)ddr_ptr7);
+    mlir_aie_external_set_addr_buffer_out_70((u64)ddr_ptr7);
     mlir_aie_configure_shimdma_70(_xaie);
-    mlir_aie_external_set_addr_myBuffer_100_0((u64)ddr_ptr10);
+    mlir_aie_external_set_addr_buffer_out_100((u64)ddr_ptr10);
     mlir_aie_configure_shimdma_100(_xaie);
-    mlir_aie_external_set_addr_myBuffer_110_0((u64)ddr_ptr11);
+    mlir_aie_external_set_addr_buffer_out_110((u64)ddr_ptr11);
     mlir_aie_configure_shimdma_110(_xaie);
-    mlir_aie_external_set_addr_myBuffer_180_0((u64)ddr_ptr18);
+    mlir_aie_external_set_addr_buffer_out_180((u64)ddr_ptr18);
     mlir_aie_configure_shimdma_180(_xaie);
-    mlir_aie_external_set_addr_myBuffer_190_0((u64)ddr_ptr19);
+    mlir_aie_external_set_addr_buffer_out_190((u64)ddr_ptr19);
     mlir_aie_configure_shimdma_190(_xaie);
-    mlir_aie_external_set_addr_myBuffer_260_0((u64)ddr_ptr26);
+    mlir_aie_external_set_addr_buffer_out_260((u64)ddr_ptr26);
     mlir_aie_configure_shimdma_260(_xaie);
-    mlir_aie_external_set_addr_myBuffer_270_0((u64)ddr_ptr27);
+    mlir_aie_external_set_addr_buffer_out_270((u64)ddr_ptr27);
     mlir_aie_configure_shimdma_270(_xaie);
-    mlir_aie_external_set_addr_myBuffer_340_0((u64)ddr_ptr34);
+    mlir_aie_external_set_addr_buffer_out_340((u64)ddr_ptr34);
     mlir_aie_configure_shimdma_340(_xaie);
-    mlir_aie_external_set_addr_myBuffer_350_0((u64)ddr_ptr35);
+    mlir_aie_external_set_addr_buffer_out_350((u64)ddr_ptr35);
     mlir_aie_configure_shimdma_350(_xaie);
-    mlir_aie_external_set_addr_myBuffer_420_0((u64)ddr_ptr42);
+    mlir_aie_external_set_addr_buffer_out_420((u64)ddr_ptr42);
     mlir_aie_configure_shimdma_420(_xaie);
-    mlir_aie_external_set_addr_myBuffer_430_0((u64)ddr_ptr43);
+    mlir_aie_external_set_addr_buffer_out_430((u64)ddr_ptr43);
     mlir_aie_configure_shimdma_430(_xaie);
-    mlir_aie_external_set_addr_myBuffer_460_0((u64)ddr_ptr46);
+    mlir_aie_external_set_addr_buffer_out_460((u64)ddr_ptr46);
     mlir_aie_configure_shimdma_460(_xaie);
-    mlir_aie_external_set_addr_myBuffer_470_0((u64)ddr_ptr47);
+    mlir_aie_external_set_addr_buffer_out_470((u64)ddr_ptr47);
     mlir_aie_configure_shimdma_470(_xaie);
 
 
