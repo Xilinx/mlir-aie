@@ -101,6 +101,9 @@ jobs:
           apt-get install -y pip
           pip install psutil rich numpy pybind11
 
+      - name: Install CMake
+        run: apt-get install -y cmake
+
       - name: Install Ninja
         # Can not use the following since it wants to use `sudo` not
         # available in the case of Docker execution
