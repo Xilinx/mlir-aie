@@ -1440,9 +1440,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
 
     Example:
     ```
-      %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, { %t72 }, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
-      %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, { %t74 }, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo.link({ %of_t70_t72 }, { %of_t72_t74 }) : ({!AIE.objectFifo<memref<64xi16>>}, {!AIE.objectFifo<memref<64xi16>>})
+      AIE.objectFifo @of1 (%t70, { %t72 }, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo @of2 (%t72, { %t74 }, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo.link [@of1] -> [@of2] ())
     ```
     This operation links two objectFifos which have tile %t72 as a link point.
 
@@ -1489,10 +1489,10 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 
     Example:
     ```
-      %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo @of1 (%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
       %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
       %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-      AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+      AIE.objectFifo.registerExternalBuffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
     This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
   }];
@@ -1532,9 +1532,10 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
     ```
-    This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
+    This operation acquires the locks of the next two objects in the objectFifo named @of1 from its consumer 
+    port and returns a subview of the acquired objects.
   }];
 
   let arguments = (
@@ -1546,7 +1547,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `<` $port `>` `(` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
@@ -1568,9 +1569,9 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
 
     Example:
     ```
-      AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+      AIE.objectFifo.release @of1 (Produce, 1)
     ```
-    This operation releases the lock of the next object in objFifo from producer port.
+    This operation releases the lock of the next object in the objectFifo named @of1 from producer port.
   }];
 
   let arguments = (
@@ -1580,7 +1581,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `<` $port `>` `(` $size `)` 
+    attr-dict $objFifo_name `(` $port `,` $size `)` 
   }];
 
   let hasVerifier = 1;
@@ -1598,10 +1599,10 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire @of1 (Produce, 3) : !AIE.objectFifoSubview<memref<16xi32>>
       %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
     ```
-    In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
+    In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of 
     the objectFifo if other acquire operations took place beforehand.
 
   }];
@@ -1637,15 +1638,16 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
 
     Example:
     ```
+      AIE.objectFifo @of1 (%t72, %t73, 2) : !AIE.objectFifo<memref<16xi32>>
       %length = arith.constant 10 : index
       %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
       func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
 
-      AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+      AIE.objectFifo.registerProcess @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```
-    This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
-    @producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
+    This operation registers function @producer_work and associated patterns to the produce end of @of1. 
+    @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
 
     If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
     If the input patterns are cyclo-static then they must be of the same size.
@@ -1661,7 +1663,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `<` $port `>` `(` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
+    attr-dict $objFifo_name `(` $port `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
   }];
 
   let hasVerifier = 1;
