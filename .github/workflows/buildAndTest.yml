@@ -15,6 +15,12 @@ defaults:
     # repeating elsewhere.
     shell: bash
 
+env:
+  # Run apt package manager in the CI in non-interactive mode.
+  # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
+  # freezes libboost installation.
+  DEBIAN_FRONTEND: noninteractive
+
 jobs:
   build-repo:
     name: Build and Test
