@@ -592,7 +592,7 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
     // XAie_Read32(&(ctx->DevInst), underflowAddr, &underflow);
     printf(" overflow?:%x underflow?:%x\n", overflow, underflow);
   } else {
-    XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001EF00, &locks);
+    XAie_Read32(&(ctx->DevInst), tileAddr + 0x00014F00, &locks);
     printf("ShimDMA [%d, %d] AIE1 locks are %08X\n", col, row, locks);
     for (int lock = 0; lock < 16; lock++) {
       u32 two_bits = (locks >> (lock * 2)) & 0x3;
