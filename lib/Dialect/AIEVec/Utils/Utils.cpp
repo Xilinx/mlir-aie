@@ -18,56 +18,81 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
-#include <optional>
 
 #define DEBUG_TYPE "aievec-utils"
 
 using namespace mlir;
 
 namespace xilinx::aievec {
+
+static std::optional<int64_t> getLowerBoundValue(Value idx) {
+  if (auto blkArg = dyn_cast<BlockArgument>(idx)) {
+    auto parentOp = blkArg.getOwner()->getParentOp();
+    return TypeSwitch<Operation *, std::optional<int64_t>>(parentOp)
+        .Case<AffineForOp>([&blkArg](AffineForOp forOp) {
+          if (forOp.getInductionVar() == blkArg &&
+              forOp.hasConstantLowerBound())
+            return std::optional<int64_t>(forOp.getConstantLowerBound());
+          // If it's an iteration argument or the lower bound is an
+          // affine expression.
+          // TODO: Compute the value of the lower bound affine expression
+          // TODO: if it's constant.
+          return std::optional<int64_t>();
+        })
+        .Default([](auto) { return std::optional<int64_t>(); });
+  }
+  return TypeSwitch<Operation *, std::optional<int64_t>>(idx.getDefiningOp())
+      .Case<arith::ConstantOp>([](auto constantOp) {
+        return std::optional<int64_t>(
+            cast<IntegerAttr>(constantOp.getValue()).getInt());
+      })
+      .Case<AffineApplyOp>([](auto applyOp) {
+        if (applyOp.getAffineMap().getNumResults() == 1) {
+          SmallVector<int64_t, 4> srcIndices;
+          for (auto index : applyOp.getMapOperands()) {
+            std::optional<int64_t> lbv = getLowerBoundValue(index);
+            // XXX: We assume block arguments to either have well-defined
+            // XXX: compile-time values, or to be aligned.
+            if (!lbv && !isa<BlockArgument>(index))
+              return std::optional<int64_t>();
+            srcIndices.push_back(lbv.value_or(0L));
+          }
+          return std::optional<int64_t>(
+              applyOp.getAffineMap().compose(srcIndices)[0]);
+        }
+        return std::optional<int64_t>();
+      })
+      .Default([&](auto) { return std::optional<int64_t>(); });
+}
+
 // Return the offset of a given transfer read operation with regards to the
 // specified vector type. If the read is aligned to the specified alignment
 // parameter (in bits), then the offset is 0. Otherwise, the offset is the
 // number of elements past the immediately preceding aligned vector length.
 template <typename TransferReadLikeOp, typename>
-int64_t getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
-                                       VectorType vType, int64_t alignment) {
+std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
+                                                      VectorType vType,
+                                                      int64_t alignment) {
   // TODO: Add support for cases where the index is not comming from an
   // TODO: `affine.apply` op or when the affine map has more than one
   // TODO: dimension. We also need to address the case where the index is an
   // TODO: induction variable.
   auto innerMostIndex = readOp.getIndices().back();
   auto vectorLength = vType.getShape().back();
-  auto idxDefOp = innerMostIndex.getDefiningOp();
-  if (!idxDefOp)
-    return 0L;
-  int64_t vectorLengthAlignmentOffset =
-      TypeSwitch<Operation *, int64_t>(idxDefOp)
-          .Case<arith::ConstantOp>([&](auto constantOp) {
-            return cast<IntegerAttr>(constantOp.getValue()).getInt() %
-                   vectorLength;
-          })
-          .template Case<AffineApplyOp>([&](auto applyOp) {
-            if (applyOp.getAffineMap().getNumDims() == 1)
-              return applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0] %
-                     vectorLength;
-            return 0L;
-          })
-          .Default([&](auto) {
-            // XXX: If we can't determine the offset, we assume the access is
-            // XXX: aligned.
-            return 0L;
-          });
+  std::optional<int64_t> lbv = getLowerBoundValue(innerMostIndex);
+  if (!lbv)
+    return std::nullopt;
+  int64_t vectorLengthAlignmentOffset = lbv.value() % vectorLength;
   int64_t absoluteAlignmentOffset = alignment / vType.getElementTypeBitWidth();
   if (vectorLengthAlignmentOffset % absoluteAlignmentOffset)
     return vectorLengthAlignmentOffset;
   return 0;
 }
 
-template int64_t getTransferReadAlignmentOffset(vector::TransferReadOp readOp,
-                                                VectorType vType,
-                                                int64_t alignment);
-template int64_t
+template std::optional<int64_t>
+getTransferReadAlignmentOffset(vector::TransferReadOp readOp, VectorType vType,
+                               int64_t alignment);
+template std::optional<int64_t>
 getTransferReadAlignmentOffset(vector::TransferReadOp::Adaptor readOp,
                                VectorType vType, int64_t alignment);
 
