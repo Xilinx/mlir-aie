@@ -48,16 +48,15 @@ int main(int argc, char *argv[]) {
     // XAIETILE_EVENT_CORE_DISABLED, XAIETILE_EVENT_CORE_NONE, MODE_CORE);
     // pc0.set();
 
-    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(7,3), 0, 0x00);
-    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(7,3), 1, 0x088);
+    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(7, 3), 0, 0x00);
+    XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(7, 3), 1, 0x088);
 
-    EventMonitor pc1(_xaie, 7, 3, 1, XAIE_EVENT_PC_0_CORE,
-                 XAIE_EVENT_PC_1_CORE,
-                 XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
+    EventMonitor pc1(_xaie, 7, 3, 1, XAIE_EVENT_PC_0_CORE, XAIE_EVENT_PC_1_CORE,
+                     XAIE_EVENT_NONE_CORE, XAIE_CORE_MOD);
     pc1.set();
 
     mlir_aie_print_tile_status(_xaie, 7, 3);
-  
+
     mlir_aie_start_cores(_xaie);
 
     u64 tileAddr = mlir_aie_get_tile_addr(_xaie, 7, 3);
@@ -72,7 +71,7 @@ int main(int argc, char *argv[]) {
     // printf("PC0: %x ", pc0.diff());
     pc1_times[iters] = pc1.diff();
 
-    mlir_aie_deinit_libxaie(_xaie); 
+    mlir_aie_deinit_libxaie(_xaie);
   }
 
   computeStats(pc1_times, n);

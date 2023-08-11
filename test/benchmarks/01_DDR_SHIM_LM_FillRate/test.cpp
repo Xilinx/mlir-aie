@@ -20,8 +20,8 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#include "memory_allocator.h"
 #include "aie_inc.cpp"
+#include "memory_allocator.h"
 
 int main(int argc, char *argv[]) {
   int n = 100;
@@ -42,27 +42,36 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
 
-    #define DMA_COUNT 7168
+#define DMA_COUNT 7168
 
     mlir_aie_configure_dmas(_xaie);
 
     ext_mem_model_t buf0;
+<<<<<<< HEAD
     int *ddr_ptr = mlir_aie_mem_alloc(buf0, DMA_COUNT);
     for(int i=0; i<DMA_COUNT; i++) {
+=======
+    int *ddr_ptr = mlir_aie_mem_alloc(_xaie, buf0, DMA_COUNT);
+    for (int i = 0; i < DMA_COUNT; i++) {
+>>>>>>> 0df6dfa7... fixup! dos2unix
       *(ddr_ptr + i) = i + 1;
     }
     mlir_aie_sync_mem_dev(buf0);
 
     // XAie_DmaDesc dma_tile70_bd0;
-    // XAie_DmaDescInit(&(_xaie->DevInst), &(dma_tile70_bd0), XAie_TileLoc(7,0));
-    // XAie_DmaSetLock(&(dma_tile70_bd0), XAie_LockInit(1,1),XAie_LockInit(1,0));
-    // XAie_DmaSetAddrLen(&(dma_tile70_bd0),  /* addr */ (u64)(ddr_ptr),  /* len */ 7168 * 4);
-    // XAie_DmaSetAxi(&(dma_tile70_bd0), /* smid */ 0, /* burstlen */ 16, /* QoS */ 0 , /* Cache */ 1, /* Secure */ XAIE_DISABLE);
-    // XAie_DmaSetNextBd(&(dma_tile70_bd0),  /* nextbd */ 0,  /* enableNextBd */ 0);
-    // XAie_DmaEnableBd(&(dma_tile70_bd0));
-    // XAie_DmaWriteBd(&(_xaie->DevInst), &(dma_tile70_bd0), XAie_TileLoc(7,0),  /* bd */ 0);
-    // XAie_DmaChannelPushBdToQueue(&(_xaie->DevInst), XAie_TileLoc(7,0), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */0);
-    // XAie_DmaChannelEnable(&(_xaie->DevInst), XAie_TileLoc(7,0), /* ChNum */ 0, /* dmaDir */ DMA_MM2S);
+    // XAie_DmaDescInit(&(_xaie->DevInst), &(dma_tile70_bd0),
+    // XAie_TileLoc(7,0)); XAie_DmaSetLock(&(dma_tile70_bd0),
+    // XAie_LockInit(1,1),XAie_LockInit(1,0));
+    // XAie_DmaSetAddrLen(&(dma_tile70_bd0),  /* addr */ (u64)(ddr_ptr),  /* len
+    // */ 7168 * 4); XAie_DmaSetAxi(&(dma_tile70_bd0), /* smid */ 0, /* burstlen
+    // */ 16, /* QoS */ 0 , /* Cache */ 1, /* Secure */ XAIE_DISABLE);
+    // XAie_DmaSetNextBd(&(dma_tile70_bd0),  /* nextbd */ 0,  /* enableNextBd */
+    // 0); XAie_DmaEnableBd(&(dma_tile70_bd0));
+    // XAie_DmaWriteBd(&(_xaie->DevInst), &(dma_tile70_bd0), XAie_TileLoc(7,0),
+    // /* bd */ 0); XAie_DmaChannelPushBdToQueue(&(_xaie->DevInst),
+    // XAie_TileLoc(7,0), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */0);
+    // XAie_DmaChannelEnable(&(_xaie->DevInst), XAie_TileLoc(7,0), /* ChNum */
+    // 0, /* dmaDir */ DMA_MM2S);
     // XAie_EnableShimDmaToAieStrmPort(&(_xaie->DevInst), XAie_TileLoc(7,0), 3);
 
     mlir_aie_external_set_addr_buffer((u64)ddr_ptr);
@@ -75,22 +84,23 @@ int main(int argc, char *argv[]) {
       mlir_aie_write_buffer_buf71_0(_xaie, i, 0xdeadbeef);
     }
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), 
-                        /*XAie_ModuleType*/ XAIE_PL_MOD, /*u8 BroadcastId*/ 2, 
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 0),
+                        /*XAie_ModuleType*/ XAIE_PL_MOD, /*u8 BroadcastId*/ 2,
                         /*XAie_Events*/ XAIE_EVENT_LOCK_1_ACQUIRED_PL);
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), 
-                        /*XAie_ModuleType*/ XAIE_PL_MOD, /*u8 BroadcastId*/ 3, 
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 0),
+                        /*XAie_ModuleType*/ XAIE_PL_MOD, /*u8 BroadcastId*/ 3,
                         /*XAie_Events*/ XAIE_EVENT_LOCK_1_RELEASED_PL);
 
     EventMonitor pc2(_xaie, 7, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc2.set();
 
     // iterate over the buffer
     usleep(1000);
-    mlir_aie_release_lock(_xaie, 7, 0, 1, 1, 0); // Release lock for reading from DDR
+    mlir_aie_release_lock(_xaie, 7, 0, 1, 1,
+                          0); // Release lock for reading from DDR
 
     usleep(2000);
 

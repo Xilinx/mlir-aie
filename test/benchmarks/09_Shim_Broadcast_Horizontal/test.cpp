@@ -49,31 +49,29 @@ int main(int argc, char *argv[]) {
 
     mlir_aie_configure_dmas(_xaie);
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(6,0), 
-                        XAIE_PL_MOD, 2,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(6, 0), XAIE_PL_MOD, 2,
                         XAIE_EVENT_DMA_S2MM_ERROR_PL); // Start
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), 
-                        XAIE_PL_MOD, 3,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 0), XAIE_PL_MOD, 3,
                         XAIE_EVENT_LOCK_0_RELEASED_PL); // Stop
 
     // Track time between two broadcast events in destination tiles (7,3) and
     // (7,4)
     EventMonitor pc0(_xaie, 5, 0, 0, XAIE_EVENT_BROADCAST_A_2_PL,
-                 XAIE_EVENT_BROADCAST_A_3_PL, XAIE_EVENT_NONE_PL,
-                 XAIE_PL_MOD);
+                     XAIE_EVENT_BROADCAST_A_3_PL, XAIE_EVENT_NONE_PL,
+                     XAIE_PL_MOD);
     pc0.set();
 
     EventMonitor pc1(_xaie, 7, 0, 1, XAIE_EVENT_BROADCAST_A_2_PL,
-                 XAIE_EVENT_LOCK_0_RELEASED_PL, XAIE_EVENT_NONE_PL,
-                 XAIE_PL_MOD);
+                     XAIE_EVENT_LOCK_0_RELEASED_PL, XAIE_EVENT_NONE_PL,
+                     XAIE_PL_MOD);
     pc1.set();
 
     // Start Test by generating events in Source Tile
-    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(6,0),
-                       XAIE_PL_MOD, XAIE_EVENT_DMA_S2MM_0_ERROR_PL);
-    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7,0),
-                       XAIE_PL_MOD, XAIE_EVENT_LOCK_0_RELEASED_PL);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(6, 0), XAIE_PL_MOD,
+                       XAIE_EVENT_DMA_S2MM_0_ERROR_PL);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7, 0), XAIE_PL_MOD,
+                       XAIE_EVENT_LOCK_0_RELEASED_PL);
 
     usleep(200);
 

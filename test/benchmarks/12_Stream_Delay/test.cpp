@@ -58,26 +58,25 @@ int main(int argc, char *argv[]) {
 
     // Destination Tile
     EventMonitor pc0(_xaie, 4, 3, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_DMA_S2MM_1_FINISHED_BD_MEM,
-                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
+                     XAIE_EVENT_DMA_S2MM_1_FINISHED_BD_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc0.set();
     EventMonitor pc1(_xaie, 4, 3, 1, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_LOCK_6_REL_MEM,
-                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_6_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc1.set();
 
     // Source Tile
     EventMonitor pc2(_xaie, 1, 3, 0, XAIE_EVENT_LOCK_5_ACQ_MEM,
-                 XAIE_EVENT_DMA_MM2S_0_FINISHED_BD_MEM,
-                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
+                     XAIE_EVENT_DMA_MM2S_0_FINISHED_BD_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc2.set();
     EventMonitor pc3(_xaie, 1, 3, 1, XAIE_EVENT_LOCK_5_ACQ_MEM,
-                 XAIE_EVENT_LOCK_5_REL_MEM,
-                 XAIE_EVENT_NONE_MEM, XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_5_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc3.set();
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(1,3), 
-                        XAIE_MEM_MOD, 2,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(1, 3), XAIE_MEM_MOD, 2,
                         XAIE_EVENT_LOCK_5_ACQ_MEM); // Start
 
     mlir_aie_release_input_lock(_xaie, 1, 0);

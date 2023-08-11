@@ -18,11 +18,11 @@
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
-#include <xaiengine.h>
 #include <vector>
+#include <xaiengine.h>
 
-#include "memory_allocator.h"
 #include "aie_inc.cpp"
+#include "memory_allocator.h"
 
 #define DMA_COUNT 7168
 
@@ -60,8 +60,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_switchboxes(_xaie);
     mlir_aie_initialize_locks(_xaie);
 
-    mlir_aie_acquire_lock(_xaie, 7, 0, 2, 0, 0); 
-    mlir_aie_acquire_lock(_xaie, 7, 1, 3, 0, 0); 
+    mlir_aie_acquire_lock(_xaie, 7, 0, 2, 0, 0);
+    mlir_aie_acquire_lock(_xaie, 7, 1, 3, 0, 0);
 
     mlir_aie_configure_dmas(_xaie);
 
@@ -71,22 +71,22 @@ int main(int argc, char *argv[]) {
     // int *phy_addr_ptr = (int*)XAie_MemGetPAddr(_xaie->buffers[0]);
     printf("virtual addr is %lx\n", (u64)ddr_ptr);
 
-    int *ddr_ptr2  = ddr_ptr;
-    int *ddr_ptr3  = ddr_ptr + 1*DMA_COUNT;
-    int *ddr_ptr6  = ddr_ptr + 2*DMA_COUNT;
-    int *ddr_ptr7  = ddr_ptr + 3*DMA_COUNT;
-    int *ddr_ptr10 = ddr_ptr + 4*DMA_COUNT;
-    int *ddr_ptr11 = ddr_ptr + 5*DMA_COUNT;
-    int *ddr_ptr18 = ddr_ptr + 6*DMA_COUNT;
-    int *ddr_ptr19 = ddr_ptr + 7*DMA_COUNT;
-    int *ddr_ptr26 = ddr_ptr + 8*DMA_COUNT;
-    int *ddr_ptr27 = ddr_ptr + 9*DMA_COUNT;
-    int *ddr_ptr34 = ddr_ptr + 10*DMA_COUNT;
-    int *ddr_ptr35 = ddr_ptr + 11*DMA_COUNT;
-    int *ddr_ptr42 = ddr_ptr + 12*DMA_COUNT;
-    int *ddr_ptr43 = ddr_ptr + 13*DMA_COUNT;
-    int *ddr_ptr46 = ddr_ptr + 14*DMA_COUNT;
-    int *ddr_ptr47 = ddr_ptr + 15*DMA_COUNT;
+    int *ddr_ptr2 = ddr_ptr;
+    int *ddr_ptr3 = ddr_ptr + 1 * DMA_COUNT;
+    int *ddr_ptr6 = ddr_ptr + 2 * DMA_COUNT;
+    int *ddr_ptr7 = ddr_ptr + 3 * DMA_COUNT;
+    int *ddr_ptr10 = ddr_ptr + 4 * DMA_COUNT;
+    int *ddr_ptr11 = ddr_ptr + 5 * DMA_COUNT;
+    int *ddr_ptr18 = ddr_ptr + 6 * DMA_COUNT;
+    int *ddr_ptr19 = ddr_ptr + 7 * DMA_COUNT;
+    int *ddr_ptr26 = ddr_ptr + 8 * DMA_COUNT;
+    int *ddr_ptr27 = ddr_ptr + 9 * DMA_COUNT;
+    int *ddr_ptr34 = ddr_ptr + 10 * DMA_COUNT;
+    int *ddr_ptr35 = ddr_ptr + 11 * DMA_COUNT;
+    int *ddr_ptr42 = ddr_ptr + 12 * DMA_COUNT;
+    int *ddr_ptr43 = ddr_ptr + 13 * DMA_COUNT;
+    int *ddr_ptr46 = ddr_ptr + 14 * DMA_COUNT;
+    int *ddr_ptr47 = ddr_ptr + 15 * DMA_COUNT;
 
     // int pos = 1;
     // int *ddr_ptr3  = ddr_ptr + pos*DMA_COUNT;
@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
     // int *ddr_ptr46 = ddr_ptr + pos*DMA_COUNT;
     // int *ddr_ptr47 = ddr_ptr + pos*DMA_COUNT;
 
-    for(int i=0; i<DMA_COUNT; i++) {
+    for (int i = 0; i < DMA_COUNT; i++) {
       *(ddr_ptr2 + i) = i + 1;
       *(ddr_ptr3 + i) = i + 1;
       *(ddr_ptr6 + i) = i + 1;
@@ -159,10 +159,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_external_set_addr_buffer_out_470((u64)ddr_ptr47);
     mlir_aie_configure_shimdma_470(_xaie);
 
-
     // printf("Start cores\n");
     mlir_aie_start_cores(_xaie);
-
 
     // We're going to stamp over the memory
     for (int i = 0; i < DMA_COUNT; i++) {
@@ -184,78 +182,78 @@ int main(int argc, char *argv[]) {
       mlir_aie_write_buffer_buf471_0(_xaie, i, 0xdeadbeef);
     }
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(2,0), XAIE_PL_MOD, 2,
-                               XAIE_EVENT_LOCK_1_ACQUIRED_PL); // Start
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(2, 0), XAIE_PL_MOD, 2,
+                        XAIE_EVENT_LOCK_1_ACQUIRED_PL); // Start
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,0), XAIE_PL_MOD, 2,
-                               XAIE_EVENT_LOCK_1_ACQUIRED_PL); // Start
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 0), XAIE_PL_MOD, 2,
+                        XAIE_EVENT_LOCK_1_ACQUIRED_PL); // Start
 
     std::vector<int> shim_cols = {2,  3,  6,  7,  10, 11, 18,
                                   19, 26, 27, 34, 35, 42, 46};
 
     EventMonitor pc2(_xaie, 2, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc2.set();
     EventMonitor pc3(_xaie, 3, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc3.set();
     EventMonitor pc6(_xaie, 6, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc6.set();
     EventMonitor pc7(_xaie, 7, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc7.set();
     EventMonitor pc10(_xaie, 10, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc10.set();
     EventMonitor pc11(_xaie, 11, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc11.set();
     EventMonitor pc18(_xaie, 18, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc18.set();
     EventMonitor pc19(_xaie, 19, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc19.set();
     EventMonitor pc26(_xaie, 26, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc26.set();
     EventMonitor pc27(_xaie, 27, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc27.set();
     EventMonitor pc34(_xaie, 34, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc34.set();
     EventMonitor pc35(_xaie, 35, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc35.set();
     EventMonitor pc42(_xaie, 42, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc42.set();
     EventMonitor pc43(_xaie, 43, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc43.set();
     EventMonitor pc46(_xaie, 46, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc46.set();
     EventMonitor pc47(_xaie, 47, 1, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                  XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
-                  XAIE_MEM_MOD);
+                      XAIE_EVENT_LOCK_0_REL_MEM, XAIE_EVENT_NONE_MEM,
+                      XAIE_MEM_MOD);
     pc47.set();
 
     // iterate over the buffer
