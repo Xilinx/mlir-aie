@@ -27,11 +27,11 @@ set(AIE_CONFIG_INCLUDE_DIRS
 set(AIE_CONFIG_EXPORTS_FILE "\${AIE_CMAKE_DIR}/AIETargets.cmake")
 set(AIE_CONFIG_LibXAIE_x86_64_DIR)
 if ("x86_64" IN_LIST AIE_RUNTIME_TARGETS)
-  set(AIE_CONFIG_LibXAIE_x86_64_DIR "${LibXAIE_x86_64_DIR}")
+  set(AIE_CONFIG_LibXAIE_x86_64_DIR "${PROJECT_BINARY_DIR}/runtime_lib/x86_64/xaiengine")
 endif()
 set(AIE_CONFIG_LibXAIE_aarch64_DIR)
 if ("aarch64" IN_LIST AIE_RUNTIME_TARGETS)
-  set(AIE_CONFIG_LibXAIE_aarch64_DIR "${LibXAIE_aarch64_DIR}")
+  set(AIE_CONFIG_LibXAIE_aarch64_DIR "${PROJECT_BINARY_DIR}/runtime_lib/aarch64/xaiengine")
 endif()
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/AIEConfig.cmake.in
@@ -62,6 +62,14 @@ set(AIE_CONFIG_INCLUDE_DIRS
   "\${AIE_INSTALL_PREFIX}/include"
   )
 set(AIE_CONFIG_EXPORTS_FILE "\${AIE_CMAKE_DIR}/AIETargets.cmake")
+set(AIE_CONFIG_LibXAIE_x86_64_DIR)
+if ("x86_64" IN_LIST AIE_RUNTIME_TARGETS)
+  set(AIE_CONFIG_LibXAIE_x86_64_DIR "\${AIE_INSTALL_PREFIX}/runtime_lib/x86_64/xaiengine")
+endif()
+set(AIE_CONFIG_LibXAIE_aarch64_DIR)
+if ("aarch64" IN_LIST AIE_RUNTIME_TARGETS)
+  set(AIE_CONFIG_LibXAIE_aarch64_DIR "\${AIE_INSTALL_PREFIX}/runtime_lib/aarch64/xaiengine")
+endif()
 
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/AIEConfig.cmake.in
