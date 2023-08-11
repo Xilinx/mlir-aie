@@ -110,9 +110,4 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       TEST_EXCLUDE_FROM_MAIN true
     )
   endif()
-
-  # Export newly built libxaie
-  if (NOT DEFINED LibXAIE_${target}_DIR)
-    set(LibXAIE_${target}_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine PARENT_SCOPE)
-  endif()
 endforeach()
