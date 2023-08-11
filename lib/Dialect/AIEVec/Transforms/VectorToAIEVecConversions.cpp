@@ -780,7 +780,8 @@ struct LowerVectorTransferReadToAIEUPD
 
     // Misaligned accesses
     auto vType = readOp.getVectorType();
-    if (getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment) != 0)
+    if (getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment)
+            .value_or(0) != 0)
       return failure();
 
     // Invalid vector size.

@@ -34,7 +34,7 @@ namespace aievec {
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEVec/Analysis/Passes.h.inc"
 
-std::unique_ptr<Pass> createAIEVecConvolutionAnalysisPass();
+std::unique_ptr<mlir::Pass> createAIEVecConvolutionAnalysisPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

@@ -74,7 +74,8 @@ struct SplitUnalignedTransferReadPattern
     // Check if the transfer is unaligned.
     auto vType = readOp.getVectorType();
     int64_t offset =
-        getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment);
+        getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment)
+            .value_or(0);
     if (offset == 0)
       return failure();
 
@@ -89,23 +90,14 @@ struct SplitUnalignedTransferReadPattern
     // TODO: Add support for cases where the offset is greater than the
     // TODO: vector length.
     auto loc = readOp.getLoc();
-    auto newInnerMostIdx =
-        TypeSwitch<Operation *, Value>(
-            adaptor.getIndices().back().getDefiningOp())
-            .Case<AffineApplyOp>(
-                [&](auto applyOp) { return applyOp.getMapOperands()[0]; })
-            .Case<arith::ConstantOp>([&](auto constantOp) {
-              auto cstValue = cast<IntegerAttr>(constantOp.getValue()).getInt();
-              auto newCstValue = cstValue - offset;
-              auto newConstantIdxOp = rewriter.create<arith::ConstantOp>(
-                  loc,
-                  rewriter.getIntegerAttr(constantOp.getType(), newCstValue));
-              return newConstantIdxOp.getResult();
-            })
-            .Default([&](auto) {
-              llvm_unreachable("Unexpected index type");
-              return nullptr;
-            });
+    Value oldInnerMostIdx = adaptor.getIndices().back();
+    auto offsetCorrectionMap =
+        AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
+    Value newInnerMostIdx =
+        rewriter
+            .create<AffineApplyOp>(readOp.getLoc(), offsetCorrectionMap,
+                                   SmallVector<Value, 1>({oldInnerMostIdx}))
+            .getResult();
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
     alignedIdx[alignedIdx.size() - 1] = newInnerMostIdx;
@@ -263,7 +255,8 @@ static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 128) == 0;
+               getTransferReadAlignmentOffset(op, op.getVectorType(), 128)
+                       .value_or(0) == 0;
       });
 }
 
@@ -294,7 +287,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 256) == 0;
+               getTransferReadAlignmentOffset(op, op.getVectorType(), 256)
+                       .value_or(0) == 0;
       });
 }
 
