@@ -7,6 +7,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -2016,7 +2017,7 @@ struct LowerVectorToAIEVec
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AffineDialect, xilinx::aievec::AIEVecDialect,
                     arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
-                    vector::VectorDialect>();
+                    vector::VectorDialect, emitc::EmitCDialect>();
   }
 
   Option<std::string> aieTarget{
