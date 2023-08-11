@@ -47,8 +47,8 @@ int main(int argc, char *argv[]) {
     XAie_EventPCEnable(&(_xaie->DevInst), XAie_TileLoc(1, 3), 1, 240);
 
     EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
-                 XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
-                 XAIE_CORE_MOD);
+                     XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
+                     XAIE_CORE_MOD);
 
     pc0.set();
 

@@ -44,8 +44,8 @@ int main(int argc, char *argv[]) {
     mlir_aie_configure_dmas(_xaie);
 
     EventMonitor pc0(_xaie, 1, 3, 0, XAIE_EVENT_ACTIVE_CORE,
-                 XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
-                 XAIE_CORE_MOD);
+                     XAIE_EVENT_DISABLED_CORE, XAIE_EVENT_NONE_CORE,
+                     XAIE_CORE_MOD);
 
     pc0.set();
 
@@ -57,9 +57,9 @@ int main(int argc, char *argv[]) {
 
     int errors = 0;
 
-    mlir_aie_check("After memory writes. Check [3]=14", mlir_aie_read_buffer_a(_xaie, 3), 7,
-               errors);
-    mlir_aie_deinit_libxaie(_xaie);         
+    mlir_aie_check("After memory writes. Check [3]=14",
+                   mlir_aie_read_buffer_a(_xaie, 3), 7, errors);
+    mlir_aie_deinit_libxaie(_xaie);
   }
   computeStats(pc0_times, n);
 }

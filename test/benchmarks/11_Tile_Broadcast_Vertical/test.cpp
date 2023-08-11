@@ -45,47 +45,41 @@ int main(int argc, char *argv[]) {
     mlir_aie_initialize_locks(_xaie);
     mlir_aie_configure_dmas(_xaie);
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,3), 
-                        XAIE_CORE_MOD, 2,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 3), XAIE_CORE_MOD, 2,
                         XAIE_EVENT_FP_OVERFLOW_CORE); // Start
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,4), 
-                        XAIE_PL_MOD, 3,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 4), XAIE_PL_MOD, 3,
                         XAIE_EVENT_FP_UNDERFLOW_CORE); // Stop
-
 
     // Track time between two broadcast events in destination tiles (7,3) and
     // (7,4)
     EventMonitor pc0(_xaie, 7, 4, 0, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_BROADCAST_3_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_BROADCAST_3_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc0.set();
 
     EventMonitor pc1(_xaie, 7, 2, 1, XAIE_EVENT_BROADCAST_2_MEM,
-                 XAIE_EVENT_BROADCAST_3_MEM, XAIE_EVENT_NONE_MEM,
-                 XAIE_MEM_MOD);
+                     XAIE_EVENT_BROADCAST_3_MEM, XAIE_EVENT_NONE_MEM,
+                     XAIE_MEM_MOD);
     pc1.set();
 
     usleep(100);
 
     // Start Test by generating events in Source Tile
-    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7,3),
-                       XAIE_CORE_MOD, XAIE_EVENT_FP_OVERFLOW_CORE);
-    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7,4),
-                       XAIE_CORE_MOD, XAIE_EVENT_FP_UNDERFLOW_CORE);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7, 3), XAIE_CORE_MOD,
+                       XAIE_EVENT_FP_OVERFLOW_CORE);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7, 4), XAIE_CORE_MOD,
+                       XAIE_EVENT_FP_UNDERFLOW_CORE);
 
     mlir_aie_print_tile_status(_xaie, 7, 3);
 
     pc0_times[iters] = pc0.diff();
     pc1_times[iters] = pc1.diff();
 
-    mlir_aie_deinit_libxaie(_xaie); 
+    mlir_aie_deinit_libxaie(_xaie);
   }
   printf("\nTime of First Signal: ");
   computeStats(pc1_times, n);
   printf("\nTime of Second Signal: ");
   computeStats(pc0_times, n);
 }
-
-
-

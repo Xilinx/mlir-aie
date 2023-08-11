@@ -45,31 +45,29 @@ int main(int argc, char *argv[]) {
     mlir_aie_initialize_locks(_xaie);
     mlir_aie_configure_dmas(_xaie);
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7,3), 
-                        XAIE_CORE_MOD, 2,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(7, 3), XAIE_CORE_MOD, 2,
                         XAIE_EVENT_FP_OVERFLOW_CORE); // Start
 
-    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(8,3), 
-                        XAIE_CORE_MOD, 3,
+    XAie_EventBroadcast(&(_xaie->DevInst), XAie_TileLoc(8, 3), XAIE_CORE_MOD, 3,
                         XAIE_EVENT_FP_UNDERFLOW_CORE); // Stop
 
     EventMonitor pc0(_xaie, 6, 3, 0, XAIE_EVENT_BROADCAST_2_CORE,
-                 XAIE_EVENT_BROADCAST_3_CORE, XAIE_EVENT_NONE_CORE,
-                 XAIE_CORE_MOD);
+                     XAIE_EVENT_BROADCAST_3_CORE, XAIE_EVENT_NONE_CORE,
+                     XAIE_CORE_MOD);
     pc0.set();
 
     EventMonitor pc1(_xaie, 8, 3, 0, XAIE_EVENT_BROADCAST_2_CORE,
-                 XAIE_EVENT_BROADCAST_3_CORE, XAIE_EVENT_NONE_CORE,
-                 XAIE_CORE_MOD);
+                     XAIE_EVENT_BROADCAST_3_CORE, XAIE_EVENT_NONE_CORE,
+                     XAIE_CORE_MOD);
     pc1.set();
 
     usleep(100);
 
     // Start Test by generating events in Source Tile
-    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7,3),
-                       XAIE_CORE_MOD, XAIE_EVENT_FP_OVERFLOW_CORE);
-    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(8,3),
-                       XAIE_CORE_MOD, XAIE_EVENT_FP_UNDERFLOW_CORE);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(7, 3), XAIE_CORE_MOD,
+                       XAIE_EVENT_FP_OVERFLOW_CORE);
+    XAie_EventGenerate(&(_xaie->DevInst), XAie_TileLoc(8, 3), XAIE_CORE_MOD,
+                       XAIE_EVENT_FP_UNDERFLOW_CORE);
 
     mlir_aie_print_tile_status(_xaie, 7, 3);
 
