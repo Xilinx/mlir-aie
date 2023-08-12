@@ -43,14 +43,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS "Build the LLVM tools. If OFF, just generate build targets." ON)
 
-set(ENABLE_CHESS_TESTS ON CACHE BOOL "Enable backend tests using xchesscc")
-if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL aarch64)
-  set(DEFAULT_ENABLE_BOARD_TESTS ON)
-else()
-  set(DEFAULT_ENABLE_BOARD_TESTS OFF)
-endif()
-option(ENABLE_BOARD_TESTS "Enable board tests" ${DEFAULT_ENABLE_BOARD_TESTS})
-
 find_package(MLIR REQUIRED CONFIG)
 
 message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
@@ -62,6 +54,20 @@ set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 find_package(Python3 COMPONENTS Interpreter)
+
+if(Vitis_FOUND)
+  set(DEFAULT_ENABLE_CHESS_TESTS ON)
+else()
+  set(DEFAULT_ENABLE_CHESS_TESTS OFF)
+endif()
+option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ${DEFAULT_ENABLE_CHESS_TESTS})
+
+if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL aarch64)
+  set(DEFAULT_ENABLE_BOARD_TESTS ON)
+else()
+  set(DEFAULT_ENABLE_BOARD_TESTS OFF)
+endif()
+option(ENABLE_BOARD_TESTS "Enable board tests" ${DEFAULT_ENABLE_BOARD_TESTS})
 
 # Look for LibXAIE
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
