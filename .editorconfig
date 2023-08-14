@@ -1,0 +1,33 @@
+# Configure globally editors and IDE according to this file
+# https://EditorConfig.org
+
+# This is the top-most EditorConfig file for this project, to avoid
+# being influenced by higher such files, for example if this project
+# is a submodule or subproject of an other project.
+root = true
+
+# For every file
+[*]
+# Set default charset
+charset = utf-8
+
+# Use Unix-style newlines
+end_of_line = lf
+
+# Every file should end with a newline
+insert_final_newline = true
+
+# 2 space indentation
+indent_style = space
+indent_size = 2
+
+# Remove useless spaces at the end of the line.
+# In some special case it is always possible to override it on a file.
+trim_trailing_whitespace = true
+
+# Keep short lines to allow more editor windo in column on the screen
+max_line_length = 80
+
+# Makefiles requires a Tab indentation
+[Makefile]
+indent_style = tab
