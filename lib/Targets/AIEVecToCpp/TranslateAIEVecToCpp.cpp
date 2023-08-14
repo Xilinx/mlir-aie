@@ -2008,7 +2008,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CallOp callOp) {
   raw_ostream &os = emitter.ostream();
   Operation &op = *callOp.getOperation();
 
-  if (failed(emitter.emitAssignPrefix(op)))
+  if (failed(emitter.emitAssignPrefix(op, /*isAcc*/ true)))
     return failure();
   os << callOp.getCallee();
 
@@ -2070,10 +2070,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_ostream &os = emitter.ostream();
 
   os << "#include ";
-  if (includeOp.getIsStandardIncludeAttrName())
-    os << "<" << includeOp.getIncludeAttrName() << ">";
+  if (includeOp.getIsStandardInclude())
+    os << "<" << includeOp.getInclude() << ">";
   else
-    os << "\"" << includeOp.getIncludeAttrName() << "\"";
+    os << "\"" << includeOp.getInclude() << "\"";
 
   return success();
 }
