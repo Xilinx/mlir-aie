@@ -96,15 +96,15 @@
 // CHECK: }
 
 module @shim_broadcast {
- AIE.device(xcve2302) {
-    %tile20 = AIE.tile(2, 0)
-    %tile22 = AIE.tile(2, 2)
-    %tile23 = AIE.tile(2, 3)
-    %tile33 = AIE.tile(3, 3)
+   AIE.device(xcve2302) {
+      %tile20 = AIE.tile(2, 0)
+      %tile22 = AIE.tile(2, 2)
+      %tile23 = AIE.tile(2, 3)
+      %tile33 = AIE.tile(3, 3)
 
-    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile20, {%tile22, %tile23, %tile33}, 2 : i32) {sym_name = "of_in"} : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectFifo @of_in (%tile20, {%tile22, %tile23, %tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo_in : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
- }
+      %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
+      AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo_in : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
+   }
 }

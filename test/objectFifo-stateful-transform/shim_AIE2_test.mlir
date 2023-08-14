@@ -82,16 +82,16 @@
 // CHECK: }
 
 module @shim_AIE2 {
- AIE.device(xcve2302) {
-    %tile22 = AIE.tile(2, 2)
-    %tile20 = AIE.tile(2, 0)
+   AIE.device(xcve2302) {
+      %tile22 = AIE.tile(2, 2)
+      %tile20 = AIE.tile(2, 0)
 
-    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2 : i32) {sym_name = "of_in"} : !AIE.objectFifo<memref<16xi32>>
-    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile22, {%tile20}, 2 : i32) {sym_name = "of_out"} : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectFifo @of_in (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+      AIE.objectFifo @of_out (%tile22, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-    %ext_buffer_out  = AIE.external_buffer {sym_name = "ext_buffer_out"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo_in : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
-    AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo_out : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_out}) : (memref<64xi32>)
- }
+      %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
+      %ext_buffer_out  = AIE.external_buffer {sym_name = "ext_buffer_out"}: memref<64xi32>
+      AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo_in : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
+      AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo_out : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_out}) : (memref<64xi32>)
+   }
 }

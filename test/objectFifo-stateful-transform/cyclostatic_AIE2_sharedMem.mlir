@@ -97,7 +97,7 @@ module @cyclostatic {
         %tile12 = AIE.tile(1, 2)
         %tile23 = AIE.tile(2, 2)
 
-        %fifo0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile23}, 4 : i32) {sym_name = "fifo0"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @fifo0 (%tile12, {%tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
 
         %core12 = AIE.core(%tile12) {
             %v11 = arith.constant 11 : i32

@@ -142,10 +142,10 @@ module @link_broadcast {
         %tile22 = AIE.tile(2, 2)
         %tile33 = AIE.tile(3, 3)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile20, {%tile21}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<48xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile21, {%tile22, %tile33}, [2, 2, 3]) {sym_name = "link2"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
+        AIE.objectFifo @link2 (%tile21, {%tile22, %tile33}, [2, 2, 3]) : !AIE.objectFifo<memref<16xi32>>
 
-        %objFifo3 = AIE.objectFifo.createObjectFifo(%tile22, {%tile33}, 2 : i32) {sym_name = "skip_connection"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @skip_connection (%tile22, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
         AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<48xi32>>}, {!AIE.objectFifo<memref<16xi32>>})
     }

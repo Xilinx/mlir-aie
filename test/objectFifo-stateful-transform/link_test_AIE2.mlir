@@ -189,8 +189,8 @@ module @link_AIE2 {
         %tile02 = AIE.tile(0, 2)
         %tile03 = AIE.tile(0, 3)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile00, {%tile02, %tile01}, [2,2,7]) {sym_name = "mem_in"} : !AIE.objectFifo<memref<3000xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile01, {%tile03}, 7 : i32) {sym_name = "mem_out"} : !AIE.objectFifo<memref<3000xi32>>
+        AIE.objectFifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !AIE.objectFifo<memref<3000xi32>>
+        AIE.objectFifo @mem_out (%tile01, {%tile03}, 7 : i32) : !AIE.objectFifo<memref<3000xi32>>
         AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<3000xi32>>}, {!AIE.objectFifo<memref<3000xi32>>})
 
         %core02 = AIE.core(%tile02) {

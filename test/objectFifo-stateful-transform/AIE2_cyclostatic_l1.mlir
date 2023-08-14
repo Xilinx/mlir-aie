@@ -51,7 +51,7 @@ module @aie2_cyclostatic_l1 {
 
         // ObjectFifo that can hold 4 memref<i32>s, populated by tile22 and
         // consumed by tile23
-        %fifo = AIE.objectFifo.createObjectFifo(%tile22, {%tile23}, 4 : i32) {sym_name = "fifo"} : !AIE.objectFifo<memref<i32>>
+        AIE.objectFifo @fifo (%tile22, {%tile23}, 4 : i32) : !AIE.objectFifo<memref<i32>>
 
         // Producer core
         %core22 = AIE.core(%tile22) {

@@ -165,7 +165,7 @@ module @aie2_dynamic_locks {
     AIE.device(xcve2302) {
         %tile22 = AIE.tile(2, 2)  // producer tile
         %tile43 = AIE.tile(4, 3)  // consumer tile
-        %fifo = AIE.objectFifo.createObjectFifo(%tile22, {%tile43}, 1 : i32) {sym_name = "fifo"} : !AIE.objectFifo<memref<i64>>
+        AIE.objectFifo @fifo (%tile22, {%tile43}, 1 : i32) : !AIE.objectFifo<memref<i64>>
 
         // Producer core
         %core22 = AIE.core(%tile22) {

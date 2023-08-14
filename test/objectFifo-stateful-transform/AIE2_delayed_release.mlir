@@ -123,7 +123,7 @@ module @AIE2_delayed_release {
         %tile23 = AIE.tile(2, 3)
         %buf23 = AIE.buffer(%tile23) {sym_name = "buf23"} : memref<4xi32>
 
-        %fifo = AIE.objectFifo.createObjectFifo(%tile22, {%tile23}, 4 : i32) {sym_name = "fifo"} : !AIE.objectFifo<memref<i32>>
+        AIE.objectFifo @fifo (%tile22, {%tile23}, 4 : i32) : !AIE.objectFifo<memref<i32>>
 
         // Producer -- produces one element at a time
         %core22 = AIE.core(%tile22) {

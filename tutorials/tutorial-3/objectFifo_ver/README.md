@@ -16,7 +16,7 @@ This abstraction consists of several `AIE.objectFifo` operations which are gradu
 
 Firstly, an objectFifo is created between tiles (1,4) and (2,4) with the operation:
 ```
-AIE.objectFifo.createObjectFifo(producerTile, {list of consumerTiles}, depth) : elemDatatype`
+AIE.objectFifo @name (producerTile, {list of consumerTiles}, depth) : elemDatatype`
 ```
 The objectFifo describes both the data allocation and its movement. An objectFifo has a depth, or size, which represents a number of pre-allocated objects of the specified datatype that can be synchronously accessed by actors, which we separate into consumers and producers. In this tutorial, tile (1,4) is the producer tile and tile (2,4) is the consumer tile and the objectFifo established between them has one object of type `memref<256xi32>`. This is shown in the diagram below.
 

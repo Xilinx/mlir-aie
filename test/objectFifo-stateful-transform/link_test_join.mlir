@@ -194,10 +194,10 @@ module @link_join {
         %tile23 = AIE.tile(2, 3)
         %tile33 = AIE.tile(3, 3)
 
-        %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile21}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<128xi8>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile21}, 2 : i32) {sym_name = "link2"} : !AIE.objectFifo<memref<128xi8>>
-        %objFifo3 = AIE.objectFifo.createObjectFifo(%tile23, {%tile21}, 2 : i32) {sym_name = "link3"} : !AIE.objectFifo<memref<128xi8>>
-        %objFifo4 = AIE.objectFifo.createObjectFifo(%tile33, {%tile21}, 2 : i32) {sym_name = "link4"} : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link1 (%tile12, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link2 (%tile22, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link3 (%tile23, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link4 (%tile33, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
 
         %objFifoOut = AIE.objectFifo.createObjectFifo(%tile21, {%tile20}, 2 : i32) {sym_name = "link5"} : !AIE.objectFifo<memref<512xi8>>
 

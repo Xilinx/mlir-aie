@@ -45,7 +45,7 @@ module @same_core {
     AIE.device(xcve2302) {
         %tile12 = AIE.tile(1, 2)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile12}, 3 : i32) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @of (%tile12, {%tile12}, 3 : i32) : !AIE.objectFifo<memref<16xi32>>
 
         func.func @some_work(%line_in:memref<16xi32>) -> () {
             return

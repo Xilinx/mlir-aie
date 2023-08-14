@@ -11,8 +11,8 @@ module @hdiff_single_AIE_fp32{
   
   %lock71_14 = AIE.lock(%t71, 14) { sym_name = "lock71_14" }
 
-  %obj_fifo_in = AIE.objectFifo.createObjectFifo(%t70, {%t71}, 5 : i32) {sym_name = "obj_in" }: !AIE.objectFifo<memref<256xf32>>
-  %obj_fifo_out = AIE.objectFifo.createObjectFifo(%t71, {%t70}, 1 : i32){sym_name = "obj_out" } : !AIE.objectFifo<memref<256xf32>>
+  AIE.objectFifo @obj_in (%t70, {%t71}, 5 : i32) : !AIE.objectFifo<memref<256xf32>>
+  AIE.objectFifo @obj_out (%t71, {%t70}, 1 : i32) : !AIE.objectFifo<memref<256xf32>>
 
    // DDR buffer
   %ext_buffer_in0  = AIE.external_buffer  {sym_name = "ddr_test_buffer_in0"}: memref<1536 x f32>
