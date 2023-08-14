@@ -51,15 +51,15 @@ module @idct {
     %c64 = arith.constant 64 : index
 
     scf.for %iv = %lb to %ub step %step {
-      %inputSubview = AIE.objectFifo.acquire<Consume>(%of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
+      %inputSubview = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
-      %outputSubview = AIE.objectFifo.acquire<Produce>(%of_t73_t74 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
+      %outputSubview = AIE.objectFifo.acquire @of_dequant_horizontal (Produce, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
 
       func.call @dequant_8x8(%input, %output) : (memref<64xi16>, memref<64xi16>) -> ()
       
-      AIE.objectFifo.release<Consume>(%of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, 1)
-      AIE.objectFifo.release<Produce>(%of_t73_t74 : !AIE.objectFifo<memref<64xi16>>, 1)
+      AIE.objectFifo.release @of_in (Consume, 1)
+      AIE.objectFifo.release @of_dequant_horizontal (Produce, 1)
     }
 
     AIE.end
@@ -77,15 +77,15 @@ module @idct {
     %c64 = arith.constant 64 : index
 
     scf.for %iv = %lb to %ub step %step {
-      %inputSubview = AIE.objectFifo.acquire<Consume>(%of_t73_t74 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
+      %inputSubview = AIE.objectFifo.acquire @of_dequant_horizontal (Consume, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
-      %outputSubview = AIE.objectFifo.acquire<Produce>(%of_t74_t75 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
+      %outputSubview = AIE.objectFifo.acquire @of_horizontal_vertical (Produce, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
 
       func.call @idct_8x8_mmult_h(%input, %output) : (memref<64xi16>, memref<64xi16>) -> ()
       
-      AIE.objectFifo.release<Consume>(%of_t73_t74 : !AIE.objectFifo<memref<64xi16>>, 1)
-      AIE.objectFifo.release<Produce>(%of_t74_t75 : !AIE.objectFifo<memref<64xi16>>, 1)  
+      AIE.objectFifo.release @of_dequant_horizontal (Consume, 1)
+      AIE.objectFifo.release @of_horizontal_vertical (Produce, 1)  
     }
 
     AIE.end
@@ -103,15 +103,15 @@ module @idct {
     %c64 = arith.constant 64 : index
 
     scf.for %iv = %lb to %ub step %step {
-      %inputSubview = AIE.objectFifo.acquire<Consume>(%of_t74_t75 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
+      %inputSubview = AIE.objectFifo.acquire @of_horizontal_vertical <Consume>(Consume, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
-      %outputSubview = AIE.objectFifo.acquire<Produce>(%of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, 1) : !AIE.objectFifoSubview<memref<64xi16>>
+      %outputSubview = AIE.objectFifo.acquire @of_out (Produce, 1) : !AIE.objectFifoSubview<memref<64xi16>>
       %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<64xi16>> -> memref<64xi16>
 
       func.call @idct_8x8_mmult_v(%input, %output) : (memref<64xi16>, memref<64xi16>) -> ()
       
-      AIE.objectFifo.release<Consume>(%of_t74_t75 : !AIE.objectFifo<memref<64xi16>>, 1)
-      AIE.objectFifo.release<Produce>(%of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, 1)   
+      AIE.objectFifo.release @of_horizontal_vertical <Consume>(Consume, 1)
+      AIE.objectFifo.release @of_out (Produce, 1)   
     }
 
     AIE.end

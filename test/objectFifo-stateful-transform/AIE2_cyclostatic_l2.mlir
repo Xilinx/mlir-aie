@@ -292,28 +292,28 @@ module @aie2_cyclostatic_l2 {
             %c88 = arith.constant 88 : i32
             
             // Push 55
-            %subview0 = AIE.objectFifo.acquire<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview0 = AIE.objectFifo.acquire @fifo0 (Produce, 1) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview0_obj = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             memref.store %c55, %subview0_obj[%i0] : memref<1xi32>
-            AIE.objectFifo.release<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1)
+            AIE.objectFifo.release @fifo0 (Produce, 1)
 
             // Push 66
-            %subview1 = AIE.objectFifo.acquire<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview1 = AIE.objectFifo.acquire @fifo0 (Produce, 1) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview1_obj = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             memref.store %c66, %subview1_obj[%i0] : memref<1xi32>
-            AIE.objectFifo.release<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1)
+            AIE.objectFifo.release @fifo0 (Produce, 1)
 
             // Push 77
-            %subview2 = AIE.objectFifo.acquire<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview2 = AIE.objectFifo.acquire @fifo0 (Produce, 1) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview2_obj = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             memref.store %c77, %subview2_obj[%i0] : memref<1xi32>
-            AIE.objectFifo.release<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1)
+            AIE.objectFifo.release @fifo0 (Produce, 1)
 
             // Push 88
-            %subview3 = AIE.objectFifo.acquire<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview3 = AIE.objectFifo.acquire @fifo0 (Produce, 1) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview3_obj = AIE.objectFifo.subview.access %subview3[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             memref.store %c88, %subview3_obj[%i0] : memref<1xi32>
-            AIE.objectFifo.release<Produce>(%fifo0 : !AIE.objectFifo<memref<1xi32>>, 1)
+            AIE.objectFifo.release @fifo0 (Produce, 1)
 
             AIE.end
         }
@@ -327,28 +327,28 @@ module @aie2_cyclostatic_l2 {
             %i3 = arith.constant 3 : index
 
             // Pop 1 object off queue
-            %subview0 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 1) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview0 = AIE.objectFifo.acquire @fifo1 (Consume, 1) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview0_obj = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             %v55 = memref.load %subview0_obj[%i0] : memref<1xi32>
             memref.store %v55, %buf83[%i0] : memref<1xi32>
-            AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 1)
+            AIE.objectFifo.release @fifo1 (Consume, 1)
 
             // Pop 2 objects off queue
-            %subview1 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 2) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview1 = AIE.objectFifo.acquire @fifo1 (Consume, 2) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview1_obj0 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             %subview1_obj1 = AIE.objectFifo.subview.access %subview1[1] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             %v66 = memref.load %subview1_obj0[%i0] : memref<1xi32>
             %v77 = memref.load %subview1_obj1[%i0] : memref<1xi32>
             memref.store %v66, %buf83[%i1] : memref<1xi32>
             memref.store %v77, %buf83[%i2] : memref<1xi32>
-            AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 2)
+            AIE.objectFifo.release @fifo1 (Consume, 2)
 
             // Pop 1 object off queue
-            %subview2 = AIE.objectFifo.acquire<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 1) : !AIE.objectFifoSubview<memref<1xi32>>
+            %subview2 = AIE.objectFifo.acquire @fifo1 (Consume, 1) : !AIE.objectFifoSubview<memref<1xi32>>
             %subview2_obj = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<1xi32>> -> memref<1xi32>
             %v88 = memref.load %subview2_obj[%i0] : memref<1xi32>
             memref.store %v88, %buf83[%i3] : memref<1xi32>
-            AIE.objectFifo.release<Consume>(%fifo1 : !AIE.objectFifo<memref<1xi32>>, 1)
+            AIE.objectFifo.release @fifo1 (Consume, 1)
 
             AIE.end
         }

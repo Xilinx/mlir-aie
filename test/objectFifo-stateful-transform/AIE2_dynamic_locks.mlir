@@ -177,7 +177,7 @@ module @aie2_dynamic_locks {
             %c1 = arith.constant 1 : i64
 
             // Acquire one element.
-            %subview0  = AIE.objectFifo.acquire<Produce>(%fifo : !AIE.objectFifo<memref<i64>>, 1) : !AIE.objectFifoSubview<memref<i64>>
+            %subview0  = AIE.objectFifo.acquire @fifo (Produce, 1) : !AIE.objectFifoSubview<memref<i64>>
 
             scf.for %idx = %i_c0 to %i_c3 step %i_c1 {
                 // Acquire one element (again). In the first iteration of the
@@ -186,14 +186,13 @@ module @aie2_dynamic_locks {
                 // just above the loop. In the second iteration, that object
                 // has been released, and now a lock acquire 1 would be 
                 // required.
-                %subview = AIE.objectFifo.acquire<Produce>(%fifo : !AIE.objectFifo<memref<i64>>, 1) : !AIE.objectFifoSubview<memref<i64>>
+                %subview = AIE.objectFifo.acquire @fifo (Produce, 1) : !AIE.objectFifoSubview<memref<i64>>
                 %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<i64>> -> memref<i64>
                 memref.store %c1, %elem[] : memref<i64>
-                AIE.objectFifo.release<Produce>(%fifo : !AIE.objectFifo<memref<i64>>, 1)
+                AIE.objectFifo.release @fifo (Produce, 1)
             }
 
             AIE.end
         }
-
     }
 }

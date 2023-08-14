@@ -12,7 +12,7 @@
 
 // RUN: not aie-opt --aie-objectFifo-stateful-transform %s |& FileCheck %s
 
-// CHECK:   error: 'AIE.objectFifo.createObjectFifo' op does not have enough depths specified for producer and for each consumer.
+// CHECK:   error: 'AIE.objectFifo' op does not have enough depths specified for producer and for each consumer.
 
 module @broadcast_error {
     AIE.device(xcvc1902) {

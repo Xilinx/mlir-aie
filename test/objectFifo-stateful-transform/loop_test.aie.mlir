@@ -104,23 +104,23 @@ module @loop  {
         %c4 = arith.constant 4 : index
         %c21 = arith.constant 21 : index
 
-        %subviewTop0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+        %subviewTop0 = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
         %elemTop0 = AIE.objectFifo.subview.access %subviewTop0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         func.call @some_work(%elemTop0, %c0) : (memref<16xi32>,index) -> ()
-        AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+        AIE.objectFifo.release @loop_of (Produce, 1)
 
         scf.for %indexInHeight = %c1 to %c21 step %c2 { 
-            %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            AIE.objectFifo.release @loop_of (Produce, 1)
         }
 
         scf.for %indexInHeight = %c1 to %c4 step %c1 { 
-            %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            AIE.objectFifo.release @loop_of (Produce, 1)
         }
         
         AIE.end

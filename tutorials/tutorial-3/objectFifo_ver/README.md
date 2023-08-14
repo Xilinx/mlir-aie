@@ -24,7 +24,7 @@ The objectFifo describes both the data allocation and its movement. An objectFif
 
 To achieve deadlock-free communication, actors must acquire and release objects from the objectFifo. In this example, there is only one object to acquire. The operation, 
 ```
-AIE.objectFifo.acquire<port>(objectFifo, numberElem) : subviewType
+AIE.objectFifo.acquire @name (port, numberElem) : subviewType
 ```
 returns a subview of the objectFifo containing the specified number of elements. Individual elements can then be accessed in an array-like fashion with the operation: 
 ```
@@ -32,7 +32,7 @@ AIE.objectFifo.subview.access(subview, index) : elemDatatype
 ```
 When an object is no longer required for computation, the actor which acquired it should release it with the operation:
 ```
-AIE.objectFifo.release<port>(objectFifo, numberElem)
+AIE.objectFifo.release @name (port, numberElem)
 ``` 
 such that other actors may acquire it in the future. The acquire and release operations both take an additional port attribute which can be either "Produce" or "Consume". The use of this attribute will be further described in the `Object FIFO Lowering` section.
 
@@ -40,8 +40,8 @@ such that other actors may acquire it in the future. The acquire and release ope
 
 The objects of an objectFifo each lower into a lock and buffer pair. As such, the `AIE.objectFifo.acquire` and `AIE.objectFifo.release` operations are lowered into `useLock` operations. Both these operations take a port attribute which can be either "Produce" or "Consume". This attribute is used to determine the lock values to give to the `useLock` operations in order to achieve the desired synchronisation. For example:
 ```
-AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
-AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<256xi32>>, 1)
+AIE.objectFifo.acquire @objFifo (Produce, 1)
+AIE.objectFifo.acquire @objFifo (Consume, 1)
 ```
 are each lowered into,
 ```

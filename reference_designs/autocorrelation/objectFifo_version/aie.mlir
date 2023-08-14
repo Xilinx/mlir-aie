@@ -58,8 +58,8 @@ module @autocorrelation {
     }
 
     AIE.core(%tile0_1) {
-        %subviewIn = AIE.objectFifo.acquire<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
-        %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifoOut : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewOut = AIE.objectFifo.acquire @of_out (Produce, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         
         %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
         %output = AIE.objectFifo.subview.access %subviewOut[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
@@ -68,10 +68,10 @@ module @autocorrelation {
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectFifo.release @of_in (Consume, 1)
 
         // Append the prior results, block of 16.
-        %subviewIn2 = AIE.objectFifo.acquire<Consume>(%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn2 = AIE.objectFifo.acquire @of_in (%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         %input2 = AIE.objectFifo.subview.access %subviewIn2[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
 
         %1 = memref.subview %input2[0][64][1] : memref<1024xi32> to memref<64xi32>
@@ -80,13 +80,13 @@ module @autocorrelation {
         
         AIE.objectFifo.release<Consume>(%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1)
 
-        AIE.objectFifo.release<Produce>(%objFifoOut : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectFifo.release @of_out (Produce, 1)
         
         AIE.end
     }
 
     AIE.core(%tile0_2) {
-        %subviewIn = AIE.objectFifo.acquire<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifo_02_01 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         
         %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
@@ -96,7 +96,7 @@ module @autocorrelation {
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectFifo.release @of_in (Consume, 1)
 
         // Append the prior results, block of 16.
         %subviewIn3 = AIE.objectFifo.acquire<Consume>(%objFifo_03_02 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
@@ -114,7 +114,7 @@ module @autocorrelation {
     }
 
     AIE.core(%tile0_3) {
-        %subviewIn = AIE.objectFifo.acquire<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifo_03_02 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         
         %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
@@ -124,7 +124,7 @@ module @autocorrelation {
 
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
-        AIE.objectFifo.release<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectFifo.release @of_in (Consume, 1)
 
         // Append the prior results, block of 16.
         %subviewIn4 = AIE.objectFifo.acquire<Consume>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
@@ -142,7 +142,7 @@ module @autocorrelation {
     }
 
     AIE.core(%tile0_4) {
-        %subviewIn = AIE.objectFifo.acquire<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
+        %subviewIn = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
         %subviewOut = AIE.objectFifo.acquire<Produce>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1) : !AIE.objectFifoSubview<memref<1024xi32>>
 
         %input = AIE.objectFifo.subview.access %subviewIn[0] : !AIE.objectFifoSubview<memref<1024xi32>> -> memref<1024xi32>
@@ -153,7 +153,7 @@ module @autocorrelation {
         func.call @autocorrelate(%input, %output, %offset, %blocksize) : (memref<1024xi32>, memref<1024xi32>, index, index) -> ()
 
         AIE.objectFifo.release<Produce>(%objFifo_04_03 : !AIE.objectFifo<memref<1024xi32>>, 1)
-        AIE.objectFifo.release<Consume>(%objFifoIn : !AIE.objectFifo<memref<1024xi32>>, 1)
+        AIE.objectFifo.release @of_in (Consume, 1)
         
         AIE.end
     }

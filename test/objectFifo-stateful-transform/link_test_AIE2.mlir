@@ -197,7 +197,7 @@ module @link_AIE2 {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<3000xi32>>, 1) : !AIE.objectFifoSubview<memref<3000xi32>>
+            %subview = AIE.objectFifo.acquire @mem_in (Consume, 1) : !AIE.objectFifoSubview<memref<3000xi32>>
             %subview_obj = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<3000xi32>> -> memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             AIE.end
@@ -207,7 +207,7 @@ module @link_AIE2 {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = AIE.objectFifo.acquire<Consume>(%objFifo2 : !AIE.objectFifo<memref<3000xi32>>, 3) : !AIE.objectFifoSubview<memref<3000xi32>>
+            %subview = AIE.objectFifo.acquire @mem_out (Consume, 3) : !AIE.objectFifoSubview<memref<3000xi32>>
             %subview_obj = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<3000xi32>> -> memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             AIE.end

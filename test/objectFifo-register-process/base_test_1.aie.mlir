@@ -37,19 +37,19 @@
 // CHECK:  }
 
 module @registerPatterns  {
- AIE.device(xcvc1902) {
-    %tile12 = AIE.tile(1, 2)
-    %tile13 = AIE.tile(1, 3)
+    AIE.device(xcvc1902) {
+        %tile12 = AIE.tile(1, 2)
+        %tile13 = AIE.tile(1, 3)
 
-    AIE.objectFifo @objfifo (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @objfifo (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    %acquirePattern = arith.constant dense<[1]> : tensor<1xi32>
-    %releasePattern = arith.constant dense<[1]> : tensor<1xi32>
-    %length = arith.constant 10 : index
-    func.func @producer_work() -> () { 
-        return
+        %acquirePattern = arith.constant dense<[1]> : tensor<1xi32>
+        %releasePattern = arith.constant dense<[1]> : tensor<1xi32>
+        %length = arith.constant 10 : index
+        func.func @producer_work() -> () { 
+            return
+        }
+
+        AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<1xi32>, %releasePattern : tensor<1xi32>, @producer_work, %length) 
     }
-
-    AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<1xi32>, %releasePattern : tensor<1xi32>, @producer_work, %length) 
- }
 }

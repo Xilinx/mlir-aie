@@ -51,8 +51,8 @@ module @tutorial_5 {
         // This is equivalent to acquiring an AIE lock before accessing an AIE buffer.
         // This core acquires objects both as a Consumer of one object FIFO and as a Producer of another: 
         // this impacts the acquire values of the locks that are generated through the object FIFO lowering
-        %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
-        %outputSubview = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+        %inputSubview = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+        %outputSubview = AIE.objectFifo.acquire @of_out (Produce, 1) : !AIE.objectFifoSubview<memref<256xi32>>
         
         // Access the first, and only, element of each subview.
         %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
@@ -72,8 +72,8 @@ module @tutorial_5 {
         // This is equivalent to releasing an AIE lock after accessing an AIE buffer.
         // This core releases objects both as a Consumer of one object FIFO and as a Producer of another: 
         // this impacts the release values of the locks that are generated through the object FIFO lowering.
-        AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1)
-        AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1)
+        AIE.objectFifo.release @of_in (Consume, 1)
+        AIE.objectFifo.release @of_out (Produce, 1)
         AIE.end
     } 
 }
