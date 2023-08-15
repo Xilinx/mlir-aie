@@ -1049,8 +1049,9 @@ struct AIEObjectFifoStatefulTransformPass
         newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     for (auto user : tile->getUsers())
       if (auto coreOp = dyn_cast<CoreOp>(user)) {
-        auto res = mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
-        if (res.failed()) 
+        auto res =
+            mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
+        if (res.failed())
           llvm_unreachable("unreachable");
       }
   }
@@ -1189,10 +1190,10 @@ struct AIEObjectFifoStatefulTransformPass
           for (auto fifoIn : linkOp->getInputObjectFifos())
             if (fifoIn.name() == createOp.name())
               if (consumerTile == *(linkOp->getOptionalSharedTile())) {
-                auto res = mlir::SymbolTable::replaceAllSymbolUses(createOp.name(),
-                                                        consumerFifo.name(),
-                                                        linkOp->getOperation());
-                if (res.failed()) 
+                auto res = mlir::SymbolTable::replaceAllSymbolUses(
+                    createOp.name(), consumerFifo.name(),
+                    linkOp->getOperation());
+                if (res.failed())
                   llvm_unreachable("unreachable");
               }
       }
