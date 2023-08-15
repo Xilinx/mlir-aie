@@ -281,7 +281,7 @@ module @aie2_cyclostatic_l2 {
         // consumed by tile23
         AIE.objectFifo @fifo0 (%tile22, {%memtile}, 4 : i32) : !AIE.objectFifo<memref<1xi32>>
         AIE.objectFifo @fifo1 (%memtile, {%tile83}, [4, 4]) : !AIE.objectFifo<memref<1xi32>>
-        AIE.objectFifo.link({%fifo0}, {%fifo1}) : ({!AIE.objectFifo<memref<1xi32>>}, {!AIE.objectFifo<memref<1xi32>>})
+        AIE.objectFifo.link [@fifo0] to [@fifo1] ()
 
         // Producer core
         %core22 = AIE.core(%tile22) {

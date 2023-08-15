@@ -28,7 +28,7 @@
 // CHECK:     %7 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
 // CHECK:     %8 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
 // CHECK:     %9 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
-// CHECK:     AIE.shimDMAAllocation(@ext_of, MM2S, 0, 7)
+// CHECK:     AIE.shimDMAAllocation @ext_of(MM2S, 0, 7)
 // CHECK:     func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
 // CHECK:       return
 // CHECK:     }

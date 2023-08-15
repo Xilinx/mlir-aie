@@ -54,7 +54,7 @@
 // CHECK:       memref.store %c11_i32, %15[%c0] : memref<3000xi32>
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation(@mem_in, MM2S, 0, 0)
+// CHECK:     AIE.shimDMAAllocation @mem_in(MM2S, 0, 0)
 // CHECK:     %26 = AIE.core(%3) {
 // CHECK:       %c11_i32 = arith.constant 11 : i32
 // CHECK:       %c0 = arith.constant 0 : index
@@ -191,7 +191,7 @@ module @link_AIE2 {
 
         AIE.objectFifo @mem_in (%tile00, {%tile02, %tile01}, [2,2,7]) : !AIE.objectFifo<memref<3000xi32>>
         AIE.objectFifo @mem_out (%tile01, {%tile03}, 7 : i32) : !AIE.objectFifo<memref<3000xi32>>
-        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<3000xi32>>}, {!AIE.objectFifo<memref<3000xi32>>})
+        AIE.objectFifo.link [@mem_in] to [@mem_out] ()
 
         %core02 = AIE.core(%tile02) {
             %v11 = arith.constant 11 : i32

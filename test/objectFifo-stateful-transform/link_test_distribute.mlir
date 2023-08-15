@@ -42,7 +42,7 @@
 // CHECK:     %21 = AIE.lock(%4, 0) {init = 2 : i32, sym_name = "link4_cons_prod_lock"}
 // CHECK:     %22 = AIE.lock(%4, 1) {init = 0 : i32, sym_name = "link4_cons_cons_lock"}
 // CHECK:     %23 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<48xi32>
-// CHECK:     AIE.shimDMAAllocation(@link1, MM2S, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @link1(MM2S, 0, 2)
 // CHECK:     %24 = AIE.shimDMA(%0) {
 // CHECK:       %29 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -168,6 +168,6 @@ module @link_distribute {
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
         AIE.objectFifo.registerExternalBuffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2, %objFifo3, %objFifo4}) : ({!AIE.objectFifo<memref<48xi32>>}, {!AIE.objectFifo<memref<16xi32>>, !AIE.objectFifo<memref<20xi32>>, !AIE.objectFifo<memref<12xi32>>})
+        AIE.objectFifo.link [@link1] to [@link2, @link3, @link4] ()
     }
 }

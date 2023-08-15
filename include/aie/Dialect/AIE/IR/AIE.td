@@ -1441,7 +1441,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
     ```
       AIE.objectFifo @of1 (%t70, { %t72 }, 2) : !AIE.objectFifo<memref<64xi16>>
       AIE.objectFifo @of2 (%t72, { %t74 }, 2) : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo.link [@of1] > [@of2] ())
+      AIE.objectFifo.link [@of1] > [@of2] ()
     ```
     This operation links two objectFifos which have tile %t72 as a link point.
 
@@ -1459,7 +1459,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    `[` $fifoIns `]` `>` `[` $fifoOuts `]` `(` `)` attr-dict
+    $fifoIns `to` $fifoOuts `(` `)` attr-dict
   }];
 
   let hasVerifier = 1;

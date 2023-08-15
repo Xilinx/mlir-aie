@@ -440,7 +440,7 @@ module @objectFIFO  {
     AIE.objectFifo @of1 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 	AIE.objectFifo @of2 (%tile22, {%tile24}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-	AIE.objectFifo.link [@of1] to [@of2]
+	AIE.objectFifo.link [@of1] to [@of2] ()
 }
 ```
 

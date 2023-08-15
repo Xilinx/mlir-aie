@@ -32,7 +32,7 @@
 // CHECK:     %13 = AIE.lock(%1, 3) {init = 0 : i32, sym_name = "of_out_cons_cons_lock"}
 // CHECK:     %14 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
 // CHECK:     %15 = AIE.external_buffer {sym_name = "ext_buffer_out"} : memref<64xi32>
-// CHECK:     AIE.shimDMAAllocation(@of_in, MM2S, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @of_in(MM2S, 0, 2)
 // CHECK:     %16 = AIE.shimDMA(%1) {
 // CHECK:       %18 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -50,7 +50,7 @@
 // CHECK:     ^bb4:  // pred: ^bb2
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation(@of_out, S2MM, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @of_out(S2MM, 0, 2)
 // CHECK:     %17 = AIE.mem(%0) {
 // CHECK:       %18 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
