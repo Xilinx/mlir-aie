@@ -15,7 +15,7 @@
 // CHECK: module @registerPatterns  {
 // CHECK:    %0 = AIE.tile(1, 2)
 // CHECK:    %1 = AIE.tile(1, 3)
-// CHECK:    AIE.objectFifo @objfifo (%0, {%1}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+// CHECK:    AIE.objectFifo @objfifo(%0, {%1}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
 // CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %cst_0 = arith.constant dense<1> : tensor<1xi32>
 // CHECK:    %c10 = arith.constant 10 : index
@@ -27,10 +27,10 @@
 // CHECK:      %c10_1 = arith.constant 10 : index
 // CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      scf.for %arg0 = %c0 to %c10_1 step %c1 {
-// CHECK:        %3 = AIE.objectFifo.acquire<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:        %3 = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:        %4 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        func.call @producer_work() : () -> ()
-// CHECK:        AIE.objectFifo.release<Produce> (%2 : !AIE.objectFifo<memref<16xi32>>, 1)
+// CHECK:        AIE.objectFifo.release @objfifo(Produce, 1)
 // CHECK:      }
 // CHECK:      AIE.end
 // CHECK:    }
@@ -50,6 +50,6 @@ module @registerPatterns  {
             return
         }
 
-        AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePattern : tensor<1xi32>, %releasePattern : tensor<1xi32>, @producer_work, %length) 
+        AIE.objectFifo.registerProcess @objfifo (Produce, %acquirePattern : tensor<1xi32>, %releasePattern : tensor<1xi32>, @producer_work, %length) 
     }
 }
