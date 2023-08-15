@@ -28,7 +28,7 @@
 // CHECK:      %c1 = arith.constant 1 : index
 // CHECK:      scf.for %arg0 = %c0 to %c10_1 step %c1 {
 // CHECK:        %3 = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK:        %4 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:        %4 = AIE.objectFifo.subview.access %3[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:        func.call @producer_work() : () -> ()
 // CHECK:        AIE.objectFifo.release @objfifo(Produce, 1)
 // CHECK:      }

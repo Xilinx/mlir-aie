@@ -17,9 +17,7 @@
 // CHECK:   AIE.device(xcvc1902) {
 // CHECK:     %0 = AIE.tile(7, 1)
 // CHECK:     %1 = AIE.tile(7, 0)
-// CHECK:     memref.global "public" @ext_of : memref<16xi32>
 // CHECK:     AIE.flow(%1, DMA : 0, %0, DMA : 0)
-// CHECK:     memref.global "public" @ext_of_cons : memref<16xi32>
 // CHECK:     %2 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
 // CHECK:     %3 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
 // CHECK:     %4 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>

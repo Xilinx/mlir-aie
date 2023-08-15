@@ -18,12 +18,10 @@
 // CHECK:     %1 = AIE.tile(0, 1)
 // CHECK:     %2 = AIE.tile(0, 2)
 // CHECK:     %3 = AIE.tile(0, 3)
-// CHECK:     memref.global "public" @mem_in : memref<3000xi32>
 // CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
 // CHECK:     AIE.flow(%0, DMA : 0, %2, DMA : 0)
 // CHECK:     %4 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "mem_in_prod_lock"}
 // CHECK:     %5 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "mem_in_cons_lock"}
-// CHECK:     memref.global "public" @mem_in_1_cons : memref<3000xi32>
 // CHECK:     %6 = AIE.buffer(%1) {sym_name = "mem_in_1_cons_buff_0"} : memref<3000xi32>
 // CHECK:     %7 = AIE.buffer(%1) {sym_name = "mem_in_1_cons_buff_1"} : memref<3000xi32>
 // CHECK:     %8 = AIE.buffer(%1) {sym_name = "mem_in_1_cons_buff_2"} : memref<3000xi32>
@@ -33,14 +31,11 @@
 // CHECK:     %12 = AIE.buffer(%1) {sym_name = "mem_in_1_cons_buff_6"} : memref<3000xi32>
 // CHECK:     %13 = AIE.lock(%1, 0) {init = 7 : i32, sym_name = "mem_in_1_cons_prod_lock"}
 // CHECK:     %14 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "mem_in_1_cons_cons_lock"}
-// CHECK:     memref.global "public" @mem_in_0_cons : memref<3000xi32>
 // CHECK:     %15 = AIE.buffer(%2) {sym_name = "mem_in_0_cons_buff_0"} : memref<3000xi32>
 // CHECK:     %16 = AIE.buffer(%2) {sym_name = "mem_in_0_cons_buff_1"} : memref<3000xi32>
 // CHECK:     %17 = AIE.lock(%2, 0) {init = 2 : i32, sym_name = "mem_in_0_cons_prod_lock"}
 // CHECK:     %18 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "mem_in_0_cons_cons_lock"}
-// CHECK:     memref.global "public" @mem_out : memref<3000xi32>
 // CHECK:     AIE.flow(%1, DMA : 0, %3, DMA : 0)
-// CHECK:     memref.global "public" @mem_out_cons : memref<3000xi32>
 // CHECK:     %19 = AIE.buffer(%3) {sym_name = "mem_out_cons_buff_0"} : memref<3000xi32>
 // CHECK:     %20 = AIE.buffer(%3) {sym_name = "mem_out_cons_buff_1"} : memref<3000xi32>
 // CHECK:     %21 = AIE.buffer(%3) {sym_name = "mem_out_cons_buff_2"} : memref<3000xi32>

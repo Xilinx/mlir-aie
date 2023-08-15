@@ -40,10 +40,10 @@
 // CHECK:     %c10_7 = arith.constant 10 : index
 // CHECK:     %c1 = arith.constant 1 : index
 // CHECK:     scf.for %arg0 = %c0 to %c10_7 step %c1 {
-// CHECK:       %6 = AIE.objectFifo.acquire @objfifo(Produce 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:       %6 = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:       %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:       func.call @producer_work() : () -> ()
-// CHECK:       AIE.objectFifo.release @objfifo(Produce 1)
+// CHECK:       AIE.objectFifo.release @objfifo(Produce, 1)
 // CHECK:     }
 // CHECK:     AIE.end
 // CHECK:   }
@@ -52,10 +52,10 @@
 // CHECK:     %c10_7 = arith.constant 10 : index
 // CHECK:     %c1 = arith.constant 1 : index
 // CHECK:     scf.for %arg0 = %c0 to %c10_7 step %c1 {
-// CHECK:       %6 = AIE.objectFifo.acquire @objfifo(Consume 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:       %6 = AIE.objectFifo.acquire @objfifo(Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:       %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:       func.call @consumer_work1() : () -> ()
-// CHECK:       AIE.objectFifo.release @objfifo(Consume 1)
+// CHECK:       AIE.objectFifo.release @objfifo(Consume, 1)
 // CHECK:     }
 // CHECK:     AIE.end
 // CHECK:   }
@@ -64,10 +64,10 @@
 // CHECK:     %c10_7 = arith.constant 10 : index
 // CHECK:     %c1 = arith.constant 1 : index
 // CHECK:     scf.for %arg0 = %c0 to %c10_7 step %c1 {
-// CHECK:       %6 = AIE.objectFifo.acquire @objfifo(Consume 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:       %6 = AIE.objectFifo.acquire @objfifo(Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
 // CHECK:       %7 = AIE.objectFifo.subview.access %6[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 // CHECK:       func.call @consumer_work2() : () -> ()
-// CHECK:       AIE.objectFifo.release @objfifo(Consume 1)
+// CHECK:       AIE.objectFifo.release @objfifo(Consume, 1)
 // CHECK:     }
 // CHECK:     AIE.end
 // CHECK:   }
