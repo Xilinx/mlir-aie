@@ -1048,8 +1048,11 @@ struct AIEObjectFifoStatefulTransformPass
     auto newSymbol =
         newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     for (auto user : tile->getUsers())
-      if (auto coreOp = dyn_cast<CoreOp>(user))
-        mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
+      if (auto coreOp = dyn_cast<CoreOp>(user)) {
+        auto res = mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
+        if (res.failed()) 
+          llvm_unreachable("unreachable");
+      }
   }
 
   /// Function used to find the size of an objectFifo after split based on
@@ -1185,10 +1188,13 @@ struct AIEObjectFifoStatefulTransformPass
         if (linkOp)
           for (auto fifoIn : linkOp->getInputObjectFifos())
             if (fifoIn.name() == createOp.name())
-              if (consumerTile == *(linkOp->getOptionalSharedTile()))
-                mlir::SymbolTable::replaceAllSymbolUses(createOp.name(),
+              if (consumerTile == *(linkOp->getOptionalSharedTile())) {
+                auto res = mlir::SymbolTable::replaceAllSymbolUses(createOp.name(),
                                                         consumerFifo.name(),
                                                         linkOp->getOperation());
+                if (res.failed()) 
+                  llvm_unreachable("unreachable");
+              }
       }
 
       // identify external buffers that were registered to
