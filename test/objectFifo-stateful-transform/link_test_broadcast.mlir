@@ -147,6 +147,6 @@ module @link_broadcast {
 
         AIE.objectFifo @skip_connection (%tile22, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-        AIE.objectFifo.link [@link1] to [@link2] ()
+        AIE.objectFifo.link [@link1] -> [@link2] ()
     }
 }

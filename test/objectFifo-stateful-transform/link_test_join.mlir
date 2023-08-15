@@ -203,6 +203,6 @@ module @link_join {
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<512xi8>
         AIE.objectFifo.registerExternalBuffers @link5 (%tile20, {%ext_buffer_in}) : (memref<512xi8>)
 
-        AIE.objectFifo.link [@link1, @link2, @link3, @link4] to [@link5] ()
+        AIE.objectFifo.link [@link1, @link2, @link3, @link4] -> [@link5] ()
     }
 }

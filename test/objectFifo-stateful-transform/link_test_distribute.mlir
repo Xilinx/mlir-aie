@@ -168,6 +168,6 @@ module @link_distribute {
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
         AIE.objectFifo.registerExternalBuffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
 
-        AIE.objectFifo.link [@link1] to [@link2, @link3, @link4] ()
+        AIE.objectFifo.link [@link1] -> [@link2, @link3, @link4] ()
     }
 }
