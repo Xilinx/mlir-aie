@@ -48,6 +48,9 @@ jobs:
       - name: Display environment variables
         run: env
 
+      - name: User and group ids
+        run: id -a
+
       - name: Execution context information
         # Display a lot of information to help further development
         # https://docs.github.com/en/actions/learn-github-actions/variables
