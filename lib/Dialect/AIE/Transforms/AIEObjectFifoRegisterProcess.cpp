@@ -114,7 +114,7 @@ struct AIEObjectFifoRegisterProcessPass
     // releases
     if (relNumber.getInt() > 0) {
       auto relOp = builder.create<ObjectFifoReleaseOp>(
-          builder.getUnknownLoc(), regOp.getPortAttr(), 
+          builder.getUnknownLoc(), regOp.getPortAttr(),
           SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);
       builder.setInsertionPointAfter(relOp);
     }

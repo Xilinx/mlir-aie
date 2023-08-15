@@ -233,13 +233,11 @@ struct AIEObjectFifoStatefulTransformPass
 
   ObjectFifoCreateOp createObjectFifo(OpBuilder &builder,
                                       AIEObjectFifoType datatype,
-                                      std::string name,
-                                      Value prodTile, Value consTile,
-                                      Attribute depth) {
+                                      std::string name, Value prodTile,
+                                      Value consTile, Attribute depth) {
     auto ofName = builder.getStringAttr(name);
     ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
-        builder.getUnknownLoc(), ofName, prodTile, consTile, depth,
-        datatype);
+        builder.getUnknownLoc(), ofName, prodTile, consTile, depth, datatype);
     return fifo;
   }
 
@@ -326,13 +324,15 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        AIEObjectFifoType fifoInType =
-            linkOp->getInputObjectFifos()[0].getElemType().cast<AIEObjectFifoType>();
+        AIEObjectFifoType fifoInType = linkOp->getInputObjectFifos()[0]
+                                           .getElemType()
+                                           .cast<AIEObjectFifoType>();
         MemRefType elemInType = fifoInType.getElementType().cast<MemRefType>();
         int inSize = getMemrefTypeSize(elemInType);
 
-        AIEObjectFifoType fifoOutType =
-            linkOp->getOutputObjectFifos()[0].getElemType().cast<AIEObjectFifoType>();
+        AIEObjectFifoType fifoOutType = linkOp->getOutputObjectFifos()[0]
+                                            .getElemType()
+                                            .cast<AIEObjectFifoType>();
         MemRefType elemOutType =
             fifoOutType.getElementType().cast<MemRefType>();
         int outSize = getMemrefTypeSize(elemOutType);
@@ -1041,13 +1041,12 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to replace uses of split objectFifos.
-  void replaceSplitFifo(ObjectFifoCreateOp originalOp, 
-                        ObjectFifoCreateOp newOp, 
+  void replaceSplitFifo(ObjectFifoCreateOp originalOp, ObjectFifoCreateOp newOp,
                         TileOp tile) {
-    auto original = originalOp->getAttrOfType<StringAttr>(
-        SymbolTable::getSymbolAttrName());
-    auto newSymbol = newOp->getAttrOfType<StringAttr>(
-        SymbolTable::getSymbolAttrName());
+    auto original =
+        originalOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    auto newSymbol =
+        newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     for (auto user : tile->getUsers())
       if (auto coreOp = dyn_cast<CoreOp>(user))
         mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
@@ -1163,14 +1162,14 @@ struct AIEObjectFifoStatefulTransformPass
         std::string consumerFifoName;
         if (createOp.getConsumerTiles().size() > 1) {
           consumerFifoName = createOp.name().str() + "_" +
-                                std::to_string(consumerIndex) + "_cons";
+                             std::to_string(consumerIndex) + "_cons";
           consumerIndex++;
         } else {
           consumerFifoName = createOp.name().str() + "_cons";
         }
-        ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerFifoName, consumerTile, consumerTile, 
-            consumerObjFifoSize);
+        ObjectFifoCreateOp consumerFifo =
+            createObjectFifo(builder, datatype, consumerFifoName, consumerTile,
+                             consumerTile, consumerObjFifoSize);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to
@@ -1187,8 +1186,8 @@ struct AIEObjectFifoStatefulTransformPass
           for (auto fifoIn : linkOp->getInputObjectFifos())
             if (fifoIn.name() == createOp.name())
               if (consumerTile == *(linkOp->getOptionalSharedTile()))
-                mlir::SymbolTable::replaceAllSymbolUses(createOp.name(), 
-                                                        consumerFifo.name(), 
+                mlir::SymbolTable::replaceAllSymbolUses(createOp.name(),
+                                                        consumerFifo.name(),
                                                         linkOp->getOperation());
       }
 
@@ -1470,7 +1469,7 @@ struct AIEObjectFifoStatefulTransformPass
       auto memrefType = cast<MemRefType>(
           cast<AIEObjectFifoType>(createOp.getElemType()).getElementType());
       builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
-                                       builder.getStringAttr("public"), 
+                                       builder.getStringAttr("public"),
                                        memrefType, nullptr, false, nullptr);
     }
 

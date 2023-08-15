@@ -449,7 +449,8 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    AIEObjectFifoType fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
+    AIEObjectFifoType fifoType =
+        fifoOut.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int outputSize = (int)elemType.getShape()[0];
 
@@ -496,7 +497,7 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
       if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
         return {};
     return {fifoIn.getConsumerTiles()[0]};
-    
+
   } else {
     auto fifoIn = getInputObjectFifos()[0];
     auto fifoOut = getOutputObjectFifos()[0];
@@ -551,7 +552,7 @@ xilinx::AIE::TileOp
 xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
-xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
@@ -563,7 +564,7 @@ xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   }
   return ObjectFifoCreateOp();
 }
-// xilinx::AIE::ObjectFifoCreateOp 
+// xilinx::AIE::ObjectFifoCreateOp
 // xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
 //   Operation *parent = getOperation();
 //   while ((parent = parent->getParentOp())) {
@@ -608,7 +609,7 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
 
   return success();
 }
-xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
@@ -653,7 +654,7 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
 
   return success();
 }
-xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
@@ -665,7 +666,8 @@ xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
   }
   return ObjectFifoCreateOp();
 }
-// xilinx::AIE::ObjectFifoCreateOp xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
+// xilinx::AIE::ObjectFifoCreateOp
+// xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
 //   Operation *parent = getOperation();
 //   while ((parent = parent->getParentOp())) {
 //     if (auto device = dyn_cast<DeviceOp>(parent)) {
@@ -709,7 +711,7 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
 
   return success();
 }
-xilinx::AIE::ObjectFifoCreateOp 
+xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
@@ -721,7 +723,7 @@ xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
   }
   return ObjectFifoCreateOp();
 }
-// xilinx::AIE::ObjectFifoCreateOp 
+// xilinx::AIE::ObjectFifoCreateOp
 // xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
 //   Operation *parent = getOperation();
 //   while ((parent = parent->getParentOp())) {
