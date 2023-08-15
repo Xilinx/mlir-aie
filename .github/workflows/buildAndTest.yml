@@ -45,43 +45,60 @@ jobs:
       image: docker://ubuntu:${{matrix.ubuntu_version}}
 
     steps:
+      - name: Display environment variables
+        run: env
+
       - name: Execution context information
         # Display a lot of information to help further development
         # https://docs.github.com/en/actions/learn-github-actions/variables
         # https://docs.github.com/en/enterprise-cloud@latest/actions/learn-github-actions/contexts
+        # The problem is that echo-ing directly ${{ toJSON(github) }}
+        # in the shell is not escaped and for example '&' breaks
+        # things or can lead to server-side script injection. :-(
+        # So, use environment setting and display the environment
+        # variable in the shell between "" to avoid unsafe
+        # interpretation.
+        env:
+          execution_context_var_github: ${{ toJSON(github) }}
+          execution_context_var_env: ${{ toJSON(env) }}
+          execution_context_var_vars: ${{ toJSON(vars) }}
+          execution_context_var_job: ${{ toJSON(job) }}
+          execution_context_var_steps: ${{ toJSON(steps) }}
+          execution_context_var_runner: ${{ toJSON(runner) }}
+          execution_context_var_strategy: ${{ toJSON(strategy) }}
+          execution_context_var_matrix: ${{ toJSON(matrix) }}
+          execution_context_var_needs: ${{ toJSON(needs) }}
+          execution_context_var_inputs: ${{ toJSON(inputs) }}
         run: |
           echo "::group::github context"
-          echo "${{ toJSON(github) }}"
+          echo "$execution_context_var_github"
           echo "::endgroup::"
           echo "::group::env context"
-          echo "${{ toJSON(env) }}"
+          echo "$execution_context_var_env"
           echo "::endgroup::"
           echo "::group::vars context"
-          echo "${{ toJSON(vars) }}"
+          echo "$execution_context_var_vars"
           echo "::endgroup::"
           echo "::group::job context"
-          echo "${{ toJSON(job) }}"
+          echo "$execution_context_var_job"
           echo "::endgroup::"
           echo "::group::steps context"
-          echo "${{ toJSON(steps) }}"
+          echo "$execution_context_var_steps"
           echo "::endgroup::"
           echo "::group::runner context"
-          echo "${{ toJSON(runner) }}"
+          echo "$execution_context_var_runner"
           echo "::endgroup::"
           echo "::group::strategy context"
-          echo "${{ toJSON(strategy) }}"
+          echo "$execution_context_var_strategy"
           echo "::endgroup::"
           echo "::group::matrix context"
-          echo "${{ toJSON(matrix) }}"
+          echo "$execution_context_var_matrix"
           echo "::endgroup::"
           echo "::group::needs context"
-          echo "${{ toJSON(needs) }}"
+          echo "$execution_context_var_needs"
           echo "::endgroup::"
           echo "::group::inputs context"
-          echo "${{ toJSON(inputs) }}"
-          echo "::endgroup::"
-          echo "::group::Shell environment variables"
-          env
+          echo "$execution_context_var_inputs"
           echo "::endgroup::"
 
       - name: Configure Environment
