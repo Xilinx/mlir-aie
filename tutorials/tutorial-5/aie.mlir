@@ -41,8 +41,8 @@ module @tutorial_5 {
     AIE.objectFifo @of_out (%tile34, {%tile70}, 1 : i32) : !AIE.objectFifo<memref<256xi32>>
 
     // Register the external memory pointers to the object FIFOs.
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_out}) : (memref<256xi32>)
+    AIE.objectFifo.registerExternalBuffers @of_in (%tile70, {%ext_buf70_in}) : (memref<256xi32>)
+    AIE.objectFifo.registerExternalBuffers @of_out (%tile70, {%ext_buf70_out}) : (memref<256xi32>)
 
     // Define core algorithm for tile(3,4) which reads value set by tile(1,4)
     // buf[5] = buf[3] + 100

@@ -87,43 +87,43 @@
 // CHECK: }
 
 module @loop  {
- AIE.device(xcvc1902) {
-    %tile12 = AIE.tile(1, 2)
-    %tile13 = AIE.tile(1, 3)
+    AIE.device(xcvc1902) {
+        %tile12 = AIE.tile(1, 2)
+        %tile13 = AIE.tile(1, 3)
 
-    AIE.objectFifo @loop_of (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @loop_of (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    func.func @some_work(%line_in:memref<16xi32>, %index:index) -> () {
-        return
-    }
-
-    %core12 = AIE.core(%tile12) {
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %c2 = arith.constant 2 : index
-        %c4 = arith.constant 4 : index
-        %c21 = arith.constant 21 : index
-
-        %subviewTop0 = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-        %elemTop0 = AIE.objectFifo.subview.access %subviewTop0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-        func.call @some_work(%elemTop0, %c0) : (memref<16xi32>,index) -> ()
-        AIE.objectFifo.release @loop_of (Produce, 1)
-
-        scf.for %indexInHeight = %c1 to %c21 step %c2 { 
-            %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-            AIE.objectFifo.release @loop_of (Produce, 1)
+        func.func @some_work(%line_in:memref<16xi32>, %index:index) -> () {
+            return
         }
 
-        scf.for %indexInHeight = %c1 to %c4 step %c1 { 
-            %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
+        %core12 = AIE.core(%tile12) {
+            %c0 = arith.constant 0 : index
+            %c1 = arith.constant 1 : index
+            %c2 = arith.constant 2 : index
+            %c4 = arith.constant 4 : index
+            %c21 = arith.constant 21 : index
+
+            %subviewTop0 = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %elemTop0 = AIE.objectFifo.subview.access %subviewTop0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+            func.call @some_work(%elemTop0, %c0) : (memref<16xi32>,index) -> ()
             AIE.objectFifo.release @loop_of (Produce, 1)
+
+            scf.for %indexInHeight = %c1 to %c21 step %c2 { 
+                %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
+                AIE.objectFifo.release @loop_of (Produce, 1)
+            }
+
+            scf.for %indexInHeight = %c1 to %c4 step %c1 { 
+                %subview = AIE.objectFifo.acquire @loop_of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
+                AIE.objectFifo.release @loop_of (Produce, 1)
+            }
+            
+            AIE.end
         }
-        
-        AIE.end
     }
- }
 }

@@ -23,8 +23,8 @@ module @hdiff_tri_AIE {
   %ext_buffer_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"} : memref<512 x i32>
       
   // Register the external memory pointers to the object FIFOs.
-  AIE.objectFifo.registerExternalBuffers(%t70, %obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buffer_in0}) : (memref<1536xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t70, %obj_fifo_out_flux : !AIE.objectFifo<memref<256xi32>>, {%ext_buffer_out}) : (memref<512xi32>)
+  AIE.objectFifo.registerExternalBuffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xi32>)
+  AIE.objectFifo.registerExternalBuffers @obj_out_flux (%t70, {%ext_buffer_out}) : (memref<512xi32>)
 
   func.func private @hdiff_lap(%AL: memref<256xi32>,%BL: memref<256xi32>, %CL:  memref<256xi32>, %DL: memref<256xi32>, %EL:  memref<256xi32>,  %OLL1: memref<256xi32>,  %OLL2: memref<256xi32>,  %OLL3: memref<256xi32>,  %OLL4: memref<256xi32>) -> ()
   func.func private @hdiff_flux1(%AF: memref<256xi32>,%BF: memref<256xi32>, %CF:  memref<256xi32>,   %OLF1: memref<256xi32>,  %OLF2: memref<256xi32>,  %OLF3: memref<256xi32>,  %OLF4: memref<256xi32>,  %OFI1: memref<512xi32>,  %OFI2: memref<512xi32>,  %OFI3: memref<512xi32>,  %OFI4: memref<512xi32>,  %OFI5: memref<512xi32>) -> ()

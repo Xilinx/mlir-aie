@@ -31,8 +31,8 @@ module @idct {
   %buffer_in  = AIE.external_buffer { sym_name = "buffer_in" }  : memref<512xi16>
   %buffer_out = AIE.external_buffer { sym_name = "buffer_out" }  : memref<512xi16>
 
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {%buffer_in}) : (memref<512xi16>)
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_t75_t70 : !AIE.objectFifo<memref<64xi16>>, {%buffer_out}) : (memref<512xi16>)
+  AIE.objectFifo.registerExternalBuffers @of_in (%t70, {%buffer_in}) : (memref<512xi16>)
+  AIE.objectFifo.registerExternalBuffers @of_out (%t70, {%buffer_out}) : (memref<512xi16>)
 
   func.func private @dequant_8x8(%A: memref<64xi16>, %B: memref<64xi16>) -> ()
   func.func private @idct_8x8_mmult_h(%A: memref<64xi16>, %B: memref<64xi16>) -> ()

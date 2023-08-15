@@ -36,7 +36,7 @@ While the shim DMA itself is not present in the design, the `AIE.external_buffer
 
 As for now, the `objectFifo` lowering only instantiates memory elements in L1, i.e., in local memory. In order to make the objectFifo aware of external memory regions that are part of its data movement, the external buffers are registered to the objectFifo with the operation:
 ```
-AIE.objectFifo.registerExternalBuffers(shimTile, objectFifo, {list of external buffers to register}) : (list of external buffer datatypes)
+AIE.objectFifo.registerExternalBuffers @name (shimTile, {list of external buffers to register}) : (list of external buffer datatypes)
 ``` 
 
 ## <ins>Tutorial 5 Lab </ins>

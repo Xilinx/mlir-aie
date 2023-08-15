@@ -98,6 +98,6 @@ module @link_DDR_L1 {
         AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<16xi32>>}, {!AIE.objectFifo<memref<16xi32>>})
 
         %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"}: memref<16xi32> 
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buff_in}) : (memref<16xi32>)
+        AIE.objectFifo.registerExternalBuffers @to_memTile (%tile20, {%ext_buff_in}) : (memref<16xi32>)
     }
 }

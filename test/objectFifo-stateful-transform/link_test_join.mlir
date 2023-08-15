@@ -198,11 +198,10 @@ module @link_join {
         AIE.objectFifo @link2 (%tile22, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
         AIE.objectFifo @link3 (%tile23, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
         AIE.objectFifo @link4 (%tile33, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
-
-        %objFifoOut = AIE.objectFifo.createObjectFifo(%tile21, {%tile20}, 2 : i32) {sym_name = "link5"} : !AIE.objectFifo<memref<512xi8>>
+        AIE.objectFifo @link5 (%tile21, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<512xi8>>
 
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<512xi8>
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifoOut : !AIE.objectFifo<memref<512xi8>>, {%ext_buffer_in}) : (memref<512xi8>)
+        AIE.objectFifo.registerExternalBuffers @link5 (%tile20, {%ext_buffer_in}) : (memref<512xi8>)
 
         AIE.objectFifo.link({%objFifo1, %objFifo2, %objFifo3, %objFifo4}, {%objFifoOut}) : ({!AIE.objectFifo<memref<128xi8>>, !AIE.objectFifo<memref<128xi8>>, !AIE.objectFifo<memref<128xi8>>, !AIE.objectFifo<memref<128xi8>>}, {!AIE.objectFifo<memref<512xi8>>})
     }

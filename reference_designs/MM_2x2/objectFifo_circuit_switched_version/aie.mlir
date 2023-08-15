@@ -48,16 +48,16 @@ module @MM_2x2 {
   %buffer6 = AIE.external_buffer {sym_name = "Out_tile0"} : memref<1024 x i32>     //Out_tile0
   %buffer7 = AIE.external_buffer {sym_name = "Out_tile1"} : memref<1024 x i32>     //Out_tile1
 
-  AIE.objectFifo.registerExternalBuffers(%t60, %of_LHS0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer0}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t60, %of_LHS1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer1}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t60, %of_Out0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer6}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t60, %of_Out1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer7}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_LHS0 (%t60, {%buffer0}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_LHS1 (%t60, {%buffer1}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_out0 (%t60, {%buffer6}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_out1 (%t60, {%buffer7}) : (memref<1024xi32>)
 
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_RHS0 : !AIE.objectFifo<memref<1024xi32>>, {%buffer2}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t70, %of_RHS1 : !AIE.objectFifo<memref<1024xi32>>, {%buffer3}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_RHS0 (%t70, {%buffer2}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_RHS1 (%t70, {%buffer3}) : (memref<1024xi32>)
 
-  AIE.objectFifo.registerExternalBuffers(%t100, %of_RHS2 : !AIE.objectFifo<memref<1024xi32>>, {%buffer4}) : (memref<1024xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t100, %of_RHS3 : !AIE.objectFifo<memref<1024xi32>>, {%buffer5}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_RHS2 (%t100, {%buffer4}) : (memref<1024xi32>)
+  AIE.objectFifo.registerExternalBuffers @of_RHS3 (%t100, {%buffer5}) : (memref<1024xi32>)
 
   %buf63 = AIE.buffer(%t63) {sym_name = "buf63"} : memref<1024xi32>  //Accumulator0
   %buf73 = AIE.buffer(%t73) {sym_name = "buf73"} : memref<1024xi32>  //Accumulator1

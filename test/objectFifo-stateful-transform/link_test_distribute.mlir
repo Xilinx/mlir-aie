@@ -161,13 +161,12 @@ module @link_distribute {
         %tile33 = AIE.tile(3, 3)
 
         AIE.objectFifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
-
         AIE.objectFifo @link2 (%tile21, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
         AIE.objectFifo @link3 (%tile21, {%tile23}, 2 : i32) : !AIE.objectFifo<memref<20xi32>>
         AIE.objectFifo @link4 (%tile21, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<12xi32>>
 
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<48xi32>>, {%ext_buffer_in}) : (memref<48xi32>)
+        AIE.objectFifo.registerExternalBuffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
 
         AIE.objectFifo.link({%objFifo}, {%objFifo2, %objFifo3, %objFifo4}) : ({!AIE.objectFifo<memref<48xi32>>}, {!AIE.objectFifo<memref<16xi32>>, !AIE.objectFifo<memref<20xi32>>, !AIE.objectFifo<memref<12xi32>>})
     }

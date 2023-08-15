@@ -18,8 +18,8 @@ module @hdiff_single_AIE {
   %ext_buffer_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<512 x i32>
       
   // Register the external memory pointers to the object FIFOs.
-  AIE.objectFifo.registerExternalBuffers(%t70, %obj_fifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buffer_in0}) : (memref<1536xi32>)
-  AIE.objectFifo.registerExternalBuffers(%t70, %obj_fifo_out : !AIE.objectFifo<memref<256xi32>>, {%ext_buffer_out}) : (memref<512xi32>)
+  AIE.objectFifo.registerExternalBuffers @obj_in (%t70, {%ext_buffer_in0}) : (memref<1536xi32>)
+  AIE.objectFifo.registerExternalBuffers @obj_out (%t70, {%ext_buffer_out}) : (memref<512xi32>)
 
   func.func private @vec_hdiff(%A: memref<256xi32>, %B: memref<256xi32>, %C:  memref<256xi32>, %D: memref<256xi32>, %E:  memref<256xi32>,  %O: memref<256xi32>) -> ()
 
