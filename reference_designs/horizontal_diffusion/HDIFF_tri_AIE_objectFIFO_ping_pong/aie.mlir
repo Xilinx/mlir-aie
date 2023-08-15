@@ -43,14 +43,14 @@ module @hdiff_tri_AIE {
       %row3 = AIE.objectFifo.subview.access %obj_in_subview[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %row4 = AIE.objectFifo.subview.access %obj_in_subview[4] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
-      %obj_out_subview_lap = AIE.objectFifo.acquire @obj_out_lap (Produce 4 ) : !AIE.objectFifoSubview<memref<256xi32>>
+      %obj_out_subview_lap = AIE.objectFifo.acquire @obj_out_lap (Produce, 4 ) : !AIE.objectFifoSubview<memref<256xi32>>
       %obj_out_lap1 = AIE.objectFifo.subview.access %obj_out_subview_lap[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %obj_out_lap2 = AIE.objectFifo.subview.access %obj_out_subview_lap[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %obj_out_lap3 = AIE.objectFifo.subview.access %obj_out_subview_lap[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %obj_out_lap4 = AIE.objectFifo.subview.access %obj_out_subview_lap[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
       func.call @hdiff_lap(%row0,%row1,%row2,%row3,%row4,%obj_out_lap1,%obj_out_lap2,%obj_out_lap3,%obj_out_lap4) : (memref<256xi32>,memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>,  memref<256xi32>,  memref<256xi32>,  memref<256xi32>,  memref<256xi32>) -> ()
-      AIE.objectFifo.release @obj_out_lap (Produce 4)
+      AIE.objectFifo.release @obj_out_lap (Produce, 4)
       AIE.objectFifo.release @obj_in (Consume, 1)
     }
     AIE.objectFifo.release @obj_in (Consume, 4)
@@ -69,7 +69,7 @@ module @hdiff_tri_AIE {
       %row2 = AIE.objectFifo.subview.access %obj_in_subview[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %row3 = AIE.objectFifo.subview.access %obj_in_subview[3] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
 
-      %obj_out_subview_lap = AIE.objectFifo.acquire @obj_out_lap (Consume 4) : !AIE.objectFifoSubview<memref<256xi32>>
+      %obj_out_subview_lap = AIE.objectFifo.acquire @obj_out_lap (Consume, 4) : !AIE.objectFifoSubview<memref<256xi32>>
       %obj_out_lap1 = AIE.objectFifo.subview.access %obj_out_subview_lap[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %obj_out_lap2 = AIE.objectFifo.subview.access %obj_out_subview_lap[1] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
       %obj_out_lap3 = AIE.objectFifo.subview.access %obj_out_subview_lap[2] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
@@ -84,7 +84,7 @@ module @hdiff_tri_AIE {
       %obj_out_flux_inter5 = AIE.objectFifo.subview.access %obj_out_subview_flux1[4] : !AIE.objectFifoSubview<memref<512xi32>> -> memref<512xi32>
 
       func.call @hdiff_flux1(%row1,%row2,%row3,%obj_out_lap1,%obj_out_lap2,%obj_out_lap3,%obj_out_lap4, %obj_out_flux_inter1 , %obj_out_flux_inter2, %obj_out_flux_inter3, %obj_out_flux_inter4, %obj_out_flux_inter5) : (memref<256xi32>,memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>, memref<256xi32>,  memref<256xi32>,  memref<512xi32>,  memref<512xi32>,  memref<512xi32>,  memref<512xi32>,  memref<512xi32>) -> ()
-      AIE.objectFifo.release @obj_out_lap (Consume 4)
+      AIE.objectFifo.release @obj_out_lap (Consume, 4)
       AIE.objectFifo.release @obj_out_flux_inter1 (Produce, 5)
       AIE.objectFifo.release @obj_in (Consume, 1)
     }
