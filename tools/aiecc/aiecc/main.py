@@ -223,7 +223,7 @@ class flow_runner:
         if(not opts.unified):
           file_core_llvmir_stripped = self.tmpcorefile(core, "stripped.ll")
           await self.do_call(task, ['opt', '--passes=default<O2>,strip', '-S', file_core_llvmir, '-o', file_core_llvmir_stripped])
-          await self.do_call(task, ['llc', file_core_llvmir_stripped, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', file_core_obj])
+          await self.do_call(task, ['llc', file_core_llvmir_stripped, '-O2', '--march=%s' % self.aie_target.lower(), '--function-sections', '--filetype=obj', '-o', file_core_obj])
         else:
           file_core_obj = self.file_obj
         if(opts.link and opts.xbridge):
@@ -458,7 +458,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
             await self.do_call(progress_bar.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 
-            await self.do_call(progress_bar.task, ['llc', self.file_llvmir_opt, '-O2', '--march=aie', '--function-sections', '--filetype=obj', '-o', self.file_obj])
+            await self.do_call(progress_bar.task, ['llc', self.file_llvmir_opt, '-O2', '--march=%s' % self.aie_target.lower(), '--function-sections', '--filetype=obj', '-o', self.file_obj])
 
         progress_bar.update(progress_bar.task,advance=0,visible=False)
         progress_bar.task_completed = progress_bar.add_task("[green] AIE Compilation:", total=len(cores)+1, command="%d Workers" % nworkers)
