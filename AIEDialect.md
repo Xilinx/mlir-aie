@@ -853,7 +853,7 @@ not adjacent.
 
 1-to-1 tile example:
 ```
-  AIE.objectFifo @of1 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+  AIE.objectFifo @of1 (%tile12, { %tile13 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
 ```
 This operation creates an objectFifo between %tile12 and %tile13 of 4 elements, each a buffer of 16 32-bit integers.
 Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile13, 
@@ -862,14 +862,14 @@ highest number of acquired elements (+1 for prefetching) will be used instead, t
 
 1-to-2 tiles broadcast example:
 ```
-  AIE.objectFifo @of2 (%tile12, {%tile13, %tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+  AIE.objectFifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
 ```
 This operation creates an objectFifo between %tile12 and tiles %tile13, %tile23 of 4 elements, each a buffer of x16 
 32-bit integers.
 
 1-to-2 tiles broadcast with explicit sizes example:
 ```
-  AIE.objectFifo @of3 (%tile12, {%tile13, %tile23}, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
+  AIE.objectFifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
 ```
 This operation creates an objectFifo between %tile12, %tile13 and %tile23. The depths of the objectFifo object pool 
 at each tile are respectively 2, 3 and 4 for tiles %tile12, %tile13 and %tile23. This overrides the depth analysis 
