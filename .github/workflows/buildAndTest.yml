@@ -244,7 +244,7 @@ jobs:
       # will only be on the PR triggered flow). If it's not, then compare
       # against the last commit.
       - name: choose-commit
-        if: ${{ always() }}
+        if: always()
         env:
           # Base ref is the target branch, in text form (not hash)
           PR_BASE: ${{ github.base_ref }}
@@ -275,7 +275,7 @@ jobs:
       # Run 'git clang-format', comparing against the target commit hash. If
       # clang-format fixed anything, fail and output a patch.
       - name: clang-format
-        if: ${{ always() }}
+        if: always()
         run: |
           # Run clang-format
           git clang-format-12 $DIFF_COMMIT
@@ -293,7 +293,7 @@ jobs:
       # Run clang-tidy against only the changes. The 'clang-tidy-diff' script
       # does this if supplied with the diff.
       - name: clang-tidy
-        if: ${{ always() }}
+        if: always()
         run: |
           git diff -U0 $DIFF_COMMIT | \
             clang-tidy-diff-12.py -path build_assert -p1 -fix
@@ -313,7 +313,7 @@ jobs:
       - name: Upload format and tidy patches
         uses: actions/upload-artifact@v3
         continue-on-error: true
-        if: ${{ failure() }}
+        if: failure()
         with:
           name: clang-format-tidy-patches
           path: clang-*.patch
@@ -321,7 +321,7 @@ jobs:
       # Unfortunately, artifact uploads are always zips so display the diff as
       # well to provide feedback at a glance.
       - name: clang format and tidy patches display
-        if: ${{ failure() }}
+        if: failure()
         continue-on-error: true
         run: |
           # Display patches
