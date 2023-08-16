@@ -39,7 +39,7 @@
 // CHECK:       AIE.useLock(%6, Release, 0)
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation(@ext_of, MM2S, 0, 7)
+// CHECK:     AIE.shimDMAAllocation @ext_of(MM2S, 0, 7)
 // CHECK:     %11 = AIE.shimDMA(%1) {
 // CHECK:       %13 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -78,10 +78,10 @@ module @register_external_buffers {
     %tile71 = AIE.tile(7, 1)
     %tile70 = AIE.tile(7, 0)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile70, {%tile71}, 3 : i32) {sym_name = "ext_of"} : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectFifo @ext_of (%tile70, {%tile71}, 3 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buffer_in}) : (memref<64xi32>)
+    %ext_buffer_in = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<64xi32>
+    AIE.objectFifo.registerExternalBuffers @ext_of (%tile70, {%ext_buffer_in}) : (memref<64xi32>)
 
     func.func @some_work(%a : memref<16xi32>, %b : memref<16xi32>) -> () {
         return
@@ -92,11 +92,11 @@ module @register_external_buffers {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+        %subview = AIE.objectFifo.acquire @ext_of (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
         %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
         func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
-        AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+        AIE.objectFifo.release @ext_of (Consume, 1)
         
         AIE.end
     }

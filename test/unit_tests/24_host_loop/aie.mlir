@@ -28,11 +28,11 @@ module @host_loop {
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32> 
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<256xi32> 
 
-    %objFifo_in = AIE.objectFifo.createObjectFifo(%tile70, {%tile34}, 1) {sym_name = "of_in"} : !AIE.objectFifo<memref<256xi32>>
-    %objFifo_out = AIE.objectFifo.createObjectFifo(%tile34, {%tile70}, 1) {sym_name = "of_out"} : !AIE.objectFifo<memref<256xi32>>
+    AIE.objectFifo @of_in (%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<256xi32>>
+    AIE.objectFifo @of_out (%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<256xi32>>
 
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_in : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_in}) : (memref<256xi32>)
-    AIE.objectFifo.registerExternalBuffers(%tile70, %objFifo_out : !AIE.objectFifo<memref<256xi32>>, {%ext_buf70_out}) : (memref<256xi32>)
+    AIE.objectFifo.registerExternalBuffers @of_in (%tile70, {%ext_buf70_in}) : (memref<256xi32>)
+    AIE.objectFifo.registerExternalBuffers @of_out (%tile70, {%ext_buf70_out}) : (memref<256xi32>)
  
     %core34 = AIE.core(%tile34) {
         %c0 = arith.constant 0 : index
@@ -47,8 +47,8 @@ module @host_loop {
             ^bb0(%arg2: i32):
             %next = func.call @payload(%arg2) : (i32) -> i32
 
-            %inputSubview = AIE.objectFifo.acquire<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
-            %outputSubview = AIE.objectFifo.acquire<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+            %inputSubview = AIE.objectFifo.acquire @of_in (Consume, 1) : !AIE.objectFifoSubview<memref<256xi32>>
+            %outputSubview = AIE.objectFifo.acquire @of_out (Produce, 1) : !AIE.objectFifoSubview<memref<256xi32>>
             
             %input = AIE.objectFifo.subview.access %inputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
             %output = AIE.objectFifo.subview.access %outputSubview[0] : !AIE.objectFifoSubview<memref<256xi32>> -> memref<256xi32>
@@ -58,8 +58,8 @@ module @host_loop {
                 memref.store %d1, %output[%indexInHeight] : memref<256xi32> 
             }
             
-            AIE.objectFifo.release<Consume>(%objFifo_in : !AIE.objectFifo<memref<256xi32>>, 1)
-            AIE.objectFifo.release<Produce>(%objFifo_out : !AIE.objectFifo<memref<256xi32>>, 1)
+            AIE.objectFifo.release @of_in (Consume, 1)
+            AIE.objectFifo.release @of_out (Produce, 1)
             
             scf.yield %next : i32
         }

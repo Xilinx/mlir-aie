@@ -72,7 +72,7 @@
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation(@from_memTile, S2MM, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @from_memTile(S2MM, 0, 2)
 // CHECK:     %16 = AIE.shimDMA(%0) {
 // CHECK:       %17 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -92,12 +92,12 @@ module @link_L1_DDR {
         %tile21 = AIE.tile(2, 1)
         %tile22 = AIE.tile(2, 2)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile22, {%tile21}, 2 : i32) {sym_name = "to_memTile"} : !AIE.objectFifo<memref<16xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile21, {%tile20}, 2 : i32) {sym_name = "from_memTile"} : !AIE.objectFifo<memref<48xi32>>
+        AIE.objectFifo @to_memTile (%tile22, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @from_memTile (%tile21, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<16xi32>>}, {!AIE.objectFifo<memref<48xi32>>})
+        AIE.objectFifo.link [@to_memTile] -> [@from_memTile] ()
 
         %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"}: memref<48xi32> 
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo2 : !AIE.objectFifo<memref<48xi32>>, {%ext_buff_in}) : (memref<48xi32>)
+        AIE.objectFifo.registerExternalBuffers @from_memTile (%tile20, {%ext_buff_in}) : (memref<48xi32>)
     }
 }

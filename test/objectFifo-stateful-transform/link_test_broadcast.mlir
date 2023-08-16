@@ -45,7 +45,7 @@
 // CHECK:     %24 = AIE.buffer(%3) {sym_name = "skip_connection_cons_buff_1"} : memref<16xi32>
 // CHECK:     %25 = AIE.lock(%3, 2) {init = 2 : i32, sym_name = "skip_connection_cons_prod_lock"}
 // CHECK:     %26 = AIE.lock(%3, 3) {init = 0 : i32, sym_name = "skip_connection_cons_cons_lock"}
-// CHECK:     AIE.shimDMAAllocation(@link1, MM2S, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @link1(MM2S, 0, 2)
 // CHECK:     %27 = AIE.memTileDMA(%1) {
 // CHECK:       %30 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -142,11 +142,11 @@ module @link_broadcast {
         %tile22 = AIE.tile(2, 2)
         %tile33 = AIE.tile(3, 3)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile20, {%tile21}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<48xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile21, {%tile22, %tile33}, [2, 2, 3]) {sym_name = "link2"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
+        AIE.objectFifo @link2 (%tile21, {%tile22, %tile33}, [2, 2, 3]) : !AIE.objectFifo<memref<16xi32>>
 
-        %objFifo3 = AIE.objectFifo.createObjectFifo(%tile22, {%tile33}, 2 : i32) {sym_name = "skip_connection"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @skip_connection (%tile22, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<48xi32>>}, {!AIE.objectFifo<memref<16xi32>>})
+        AIE.objectFifo.link [@link1] -> [@link2] ()
     }
 }

@@ -42,7 +42,7 @@
 // CHECK:     %21 = AIE.lock(%4, 0) {init = 2 : i32, sym_name = "link4_cons_prod_lock"}
 // CHECK:     %22 = AIE.lock(%4, 1) {init = 0 : i32, sym_name = "link4_cons_cons_lock"}
 // CHECK:     %23 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<48xi32>
-// CHECK:     AIE.shimDMAAllocation(@link1, MM2S, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @link1(MM2S, 0, 2)
 // CHECK:     %24 = AIE.shimDMA(%0) {
 // CHECK:       %29 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -160,15 +160,14 @@ module @link_distribute {
         %tile23 = AIE.tile(2, 3)
         %tile33 = AIE.tile(3, 3)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile20, {%tile21}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<48xi32>>
-
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile21, {%tile22}, 2 : i32) {sym_name = "link2"} : !AIE.objectFifo<memref<16xi32>>
-        %objFifo3 = AIE.objectFifo.createObjectFifo(%tile21, {%tile23}, 2 : i32) {sym_name = "link3"} : !AIE.objectFifo<memref<20xi32>>
-        %objFifo4 = AIE.objectFifo.createObjectFifo(%tile21, {%tile33}, 2 : i32) {sym_name = "link4"} : !AIE.objectFifo<memref<12xi32>>
+        AIE.objectFifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
+        AIE.objectFifo @link2 (%tile21, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @link3 (%tile21, {%tile23}, 2 : i32) : !AIE.objectFifo<memref<20xi32>>
+        AIE.objectFifo @link4 (%tile21, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<12xi32>>
 
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<48xi32>
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<48xi32>>, {%ext_buffer_in}) : (memref<48xi32>)
+        AIE.objectFifo.registerExternalBuffers @link1 (%tile20, {%ext_buffer_in}) : (memref<48xi32>)
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2, %objFifo3, %objFifo4}) : ({!AIE.objectFifo<memref<48xi32>>}, {!AIE.objectFifo<memref<16xi32>>, !AIE.objectFifo<memref<20xi32>>, !AIE.objectFifo<memref<12xi32>>})
+        AIE.objectFifo.link [@link1] -> [@link2, @link3, @link4] ()
     }
 }

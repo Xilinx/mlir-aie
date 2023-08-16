@@ -45,7 +45,7 @@ module @same_core {
     AIE.device(xcve2302) {
         %tile12 = AIE.tile(1, 2)
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile12}, 3 : i32) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @of (%tile12, {%tile12}, 3 : i32) : !AIE.objectFifo<memref<16xi32>>
 
         func.func @some_work(%line_in:memref<16xi32>) -> () {
             return
@@ -53,27 +53,27 @@ module @same_core {
 
         %core12 = AIE.core(%tile12) {
             // this acquires 2 elements
-            %subview0 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+            %subview0 = AIE.objectFifo.acquire @of (Produce, 2) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem00 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem01 = AIE.objectFifo.subview.access %subview0[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             func.call @some_work(%elem01) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            AIE.objectFifo.release @of (Produce, 1)
 
-            %subview1 = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %subview1 = AIE.objectFifo.acquire @of (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem10 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem10) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            AIE.objectFifo.release @of (Consume, 1)
 
-            %subview2 = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %subview2 = AIE.objectFifo.acquire @of (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem20 = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem20) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            AIE.objectFifo.release @of (Produce, 1)
 
-            %subview3 = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+            %subview3 = AIE.objectFifo.acquire @of (Consume, 1) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem30 = AIE.objectFifo.subview.access %subview3[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             func.call @some_work(%elem30) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            AIE.objectFifo.release @of (Consume, 1)
 
             AIE.end
         }

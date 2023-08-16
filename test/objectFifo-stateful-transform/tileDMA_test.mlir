@@ -103,59 +103,59 @@
 // CHECK: }
 
 module @tileDMA_channels {
- AIE.device(xcvc1902) {
-    %tile12 = AIE.tile(1, 2)
-    %tile33 = AIE.tile(3, 3)
+    AIE.device(xcvc1902) {
+        %tile12 = AIE.tile(1, 2)
+        %tile33 = AIE.tile(3, 3)
 
-    %buff0 = AIE.buffer(%tile12) : memref<16xi32>
-    %lock0 = AIE.lock(%tile12, 0)
-    %buff1 = AIE.buffer(%tile12) : memref<16xi32>
-    %lock1 = AIE.lock(%tile12, 1)
-    %buff2 = AIE.buffer(%tile12) : memref<16xi32>
-    %lock2 = AIE.lock(%tile12, 2)
+        %buff0 = AIE.buffer(%tile12) : memref<16xi32>
+        %lock0 = AIE.lock(%tile12, 0)
+        %buff1 = AIE.buffer(%tile12) : memref<16xi32>
+        %lock1 = AIE.lock(%tile12, 1)
+        %buff2 = AIE.buffer(%tile12) : memref<16xi32>
+        %lock2 = AIE.lock(%tile12, 2)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2 : i32) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    func.func @some_work(%lineOut : memref<16xi32>) -> () {
-        return
-    }
-
-    %core12 = AIE.core(%tile12) {
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %height = arith.constant 12 : index
-
-        scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+        func.func @some_work(%lineOut : memref<16xi32>) -> () {
+            return
         }
-        
-        AIE.end
-    }
 
-    %mem12 = AIE.mem(%tile12) {
-        %dma1 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
-    ^bb1:
-        AIE.useLock(%lock0, Acquire, 1)
-        AIE.dmaBd(<%buff0 : memref<16xi32>, 0, 16>, 0)
-        AIE.useLock(%lock0, Release, 0)
-        AIE.nextBd ^bb2
-    ^bb2:
-        AIE.useLock(%lock1, Acquire, 1)
-        AIE.dmaBd(<%buff1 : memref<16xi32>, 0, 16>, 0)
-        AIE.useLock(%lock1, Release, 0)
-        AIE.nextBd ^bb1
-    ^bb3:
-        %dma2 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
-    ^bb4:
-        AIE.useLock(%lock2, Acquire, 0)
-        AIE.dmaBd(<%buff2 : memref<16xi32>, 0, 16>, 0)
-        AIE.useLock(%lock2, Release, 1)
-        AIE.nextBd ^bb4
-    ^bb5:
-        AIE.end
+        %core12 = AIE.core(%tile12) {
+            %c0 = arith.constant 0 : index
+            %c1 = arith.constant 1 : index
+            %height = arith.constant 12 : index
+
+            scf.for %indexInHeight = %c0 to %height step %c1 {
+                %subview = AIE.objectFifo.acquire @objfifo (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+                AIE.objectFifo.release @objfifo (Produce, 1)
+            }
+            
+            AIE.end
+        }
+
+        %mem12 = AIE.mem(%tile12) {
+            %dma1 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+        ^bb1:
+            AIE.useLock(%lock0, Acquire, 1)
+            AIE.dmaBd(<%buff0 : memref<16xi32>, 0, 16>, 0)
+            AIE.useLock(%lock0, Release, 0)
+            AIE.nextBd ^bb2
+        ^bb2:
+            AIE.useLock(%lock1, Acquire, 1)
+            AIE.dmaBd(<%buff1 : memref<16xi32>, 0, 16>, 0)
+            AIE.useLock(%lock1, Release, 0)
+            AIE.nextBd ^bb1
+        ^bb3:
+            %dma2 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
+        ^bb4:
+            AIE.useLock(%lock2, Acquire, 0)
+            AIE.dmaBd(<%buff2 : memref<16xi32>, 0, 16>, 0)
+            AIE.useLock(%lock2, Release, 1)
+            AIE.nextBd ^bb4
+        ^bb5:
+            AIE.end
+        }
     }
- }
 }

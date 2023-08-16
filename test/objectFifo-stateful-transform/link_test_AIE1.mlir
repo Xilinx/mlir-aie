@@ -18,18 +18,18 @@
 // CHECK:     %1 = AIE.tile(2, 2)
 // CHECK:     %2 = AIE.tile(2, 4)
 // CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
-// CHECK:     %3 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "link1_lock_0"}
-// CHECK:     %4 = AIE.buffer(%1) {sym_name = "link1_cons_buff_0"} : memref<16xi32>
-// CHECK:     %5 = AIE.buffer(%1) {sym_name = "link1_cons_buff_1"} : memref<16xi32>
-// CHECK:     %6 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "link1_cons_lock_0"}
-// CHECK:     %7 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "link1_cons_lock_1"}
+// CHECK:     %3 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "of1_lock_0"}
+// CHECK:     %4 = AIE.buffer(%1) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK:     %5 = AIE.buffer(%1) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
+// CHECK:     %6 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK:     %7 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "of1_cons_lock_1"}
 // CHECK:     AIE.flow(%1, DMA : 0, %2, DMA : 0)
-// CHECK:     %8 = AIE.buffer(%2) {sym_name = "link2_cons_buff_0"} : memref<16xi32>
-// CHECK:     %9 = AIE.buffer(%2) {sym_name = "link2_cons_buff_1"} : memref<16xi32>
-// CHECK:     %10 = AIE.lock(%2, 0) {init = 0 : i32, sym_name = "link2_cons_lock_0"}
-// CHECK:     %11 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "link2_cons_lock_1"}
+// CHECK:     %8 = AIE.buffer(%2) {sym_name = "of2_cons_buff_0"} : memref<16xi32>
+// CHECK:     %9 = AIE.buffer(%2) {sym_name = "of2_cons_buff_1"} : memref<16xi32>
+// CHECK:     %10 = AIE.lock(%2, 0) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
+// CHECK:     %11 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "of2_cons_lock_1"}
 // CHECK:     %12 = AIE.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32>
-// CHECK:     AIE.shimDMAAllocation(@link1, MM2S, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @of1(MM2S, 0, 2)
 // CHECK:     %13 = AIE.shimDMA(%0) {
 // CHECK:       %16 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -90,13 +90,13 @@ module @link_AIE1 {
         %tile20 = AIE.tile(2, 0)
         %tile22 = AIE.tile(2, 2)
         %tile24 = AIE.tile(2, 4)
+        
+        AIE.objectFifo @of1 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @of2 (%tile22, {%tile24}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-        %objFifo = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<16xi32>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile24}, 2 : i32) {sym_name = "link2"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo.link [@of1] -> [@of2] ()
 
-        AIE.objectFifo.link({%objFifo}, {%objFifo2}) : ({!AIE.objectFifo<memref<16xi32>>}, {!AIE.objectFifo<memref<16xi32>>})
-
-        %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"}: memref<16xi32> 
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifo : !AIE.objectFifo<memref<16xi32>>, {%ext_buff_in}) : (memref<16xi32>)
+        %ext_buff_in = AIE.external_buffer {sym_name = "ext_buff_in"} : memref<16xi32> 
+        AIE.objectFifo.registerExternalBuffers @of1 (%tile20, {%ext_buff_in}) : (memref<16xi32>)
     }
 }

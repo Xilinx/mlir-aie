@@ -114,46 +114,46 @@
 // CHECK: }
 
 module @non_adjacency {
- AIE.device(xcvc1902) {
-    %tile12 = AIE.tile(1, 2)
-    %tile33 = AIE.tile(3, 3)
+    AIE.device(xcvc1902) {
+        %tile12 = AIE.tile(1, 2)
+        %tile33 = AIE.tile(3, 3)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2 : i32) {sym_name = "objfifo"} : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @objfifo (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    func.func @some_work(%lineOut : memref<16xi32>) -> () {
-        return
-    }
-
-    %core12 = AIE.core(%tile12) {
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %height = arith.constant 12 : index
-
-        scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+        func.func @some_work(%lineOut : memref<16xi32>) -> () {
+            return
         }
-        
-        AIE.end
-    }
 
-    %core33 = AIE.core(%tile33) {
-        %c0 = arith.constant 0 : index
-        %c1 = arith.constant 1 : index
-        %height = arith.constant 12 : index
+        %core12 = AIE.core(%tile12) {
+            %c0 = arith.constant 0 : index
+            %c1 = arith.constant 1 : index
+            %height = arith.constant 12 : index
 
-        scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
-            %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            %elem2 = AIE.objectFifo.subview.access %subview[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            AIE.objectFifo.release<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+            scf.for %indexInHeight = %c0 to %height step %c1 {
+                %subview = AIE.objectFifo.acquire @objfifo (Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+                AIE.objectFifo.release @objfifo (Produce, 1)
+            }
+            
+            AIE.end
         }
-        
-        AIE.end
+
+        %core33 = AIE.core(%tile33) {
+            %c0 = arith.constant 0 : index
+            %c1 = arith.constant 1 : index
+            %height = arith.constant 12 : index
+
+            scf.for %indexInHeight = %c0 to %height step %c1 {
+                %subview = AIE.objectFifo.acquire @objfifo (Consume, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+                %elem0 = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %elem1 = AIE.objectFifo.subview.access %subview[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                %elem2 = AIE.objectFifo.subview.access %subview[2] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+                func.call @some_work(%elem0) : (memref<16xi32>) -> ()
+                AIE.objectFifo.release @objfifo (Consume, 1)
+            }
+            
+            AIE.end
+        }
     }
- }
 }

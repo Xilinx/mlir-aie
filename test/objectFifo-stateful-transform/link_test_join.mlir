@@ -171,7 +171,7 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       AIE.end
 // CHECK:     }
-// CHECK:     AIE.shimDMAAllocation(@link5, S2MM, 0, 2)
+// CHECK:     AIE.shimDMAAllocation @link5(S2MM, 0, 2)
 // CHECK:     %34 = AIE.shimDMA(%0) {
 // CHECK:       %35 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -194,16 +194,15 @@ module @link_join {
         %tile23 = AIE.tile(2, 3)
         %tile33 = AIE.tile(3, 3)
 
-        %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile21}, 2 : i32) {sym_name = "link1"} : !AIE.objectFifo<memref<128xi8>>
-        %objFifo2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile21}, 2 : i32) {sym_name = "link2"} : !AIE.objectFifo<memref<128xi8>>
-        %objFifo3 = AIE.objectFifo.createObjectFifo(%tile23, {%tile21}, 2 : i32) {sym_name = "link3"} : !AIE.objectFifo<memref<128xi8>>
-        %objFifo4 = AIE.objectFifo.createObjectFifo(%tile33, {%tile21}, 2 : i32) {sym_name = "link4"} : !AIE.objectFifo<memref<128xi8>>
-
-        %objFifoOut = AIE.objectFifo.createObjectFifo(%tile21, {%tile20}, 2 : i32) {sym_name = "link5"} : !AIE.objectFifo<memref<512xi8>>
+        AIE.objectFifo @link1 (%tile12, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link2 (%tile22, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link3 (%tile23, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link4 (%tile33, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<128xi8>>
+        AIE.objectFifo @link5 (%tile21, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<512xi8>>
 
         %ext_buffer_in  = AIE.external_buffer {sym_name = "ext_buffer_in"}: memref<512xi8>
-        AIE.objectFifo.registerExternalBuffers(%tile20, %objFifoOut : !AIE.objectFifo<memref<512xi8>>, {%ext_buffer_in}) : (memref<512xi8>)
+        AIE.objectFifo.registerExternalBuffers @link5 (%tile20, {%ext_buffer_in}) : (memref<512xi8>)
 
-        AIE.objectFifo.link({%objFifo1, %objFifo2, %objFifo3, %objFifo4}, {%objFifoOut}) : ({!AIE.objectFifo<memref<128xi8>>, !AIE.objectFifo<memref<128xi8>>, !AIE.objectFifo<memref<128xi8>>, !AIE.objectFifo<memref<128xi8>>}, {!AIE.objectFifo<memref<512xi8>>})
+        AIE.objectFifo.link [@link1, @link2, @link3, @link4] -> [@link5] ()
     }
 }

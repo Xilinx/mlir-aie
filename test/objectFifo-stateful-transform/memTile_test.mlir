@@ -60,10 +60,10 @@
 // CHECK: }
 
 module @memTile {
- AIE.device(xcve2302) {
-    %tile11 = AIE.tile(2, 1)
-    %tile12 = AIE.tile(2, 2)
+   AIE.device(xcve2302) {
+      %tile11 = AIE.tile(2, 1)
+      %tile12 = AIE.tile(2, 2)
 
-    %objFifo = AIE.objectFifo.createObjectFifo(%tile11, {%tile12}, 2 : i32) {sym_name = "of"} : !AIE.objectFifo<memref<16xi32>>
- }
+      AIE.objectFifo @of (%tile11, {%tile12}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+   }
 }

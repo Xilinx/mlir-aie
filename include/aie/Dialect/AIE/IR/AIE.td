@@ -51,7 +51,6 @@ def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
   let cppNamespace = "xilinx::AIE";
 }
 
-
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
@@ -1338,11 +1337,11 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
     ```
       %tile00 = AIE.tile(0, 0)
       %tile02 = AIE.tile(0, 2)
-      %connect1 = AIE.objectFifo.createObjectFifo(%tile00, { %tile02 }, 2) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectFifo<memref<64xi16>>
     ```
     could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
     ```
-      AIE.shimDMAAllocation("of_in_0", MM2S, 1, 0)
+      AIE.shimDMAAllocation @of_in_0 (MM2S, 1, 0)
     ```
   }];
   let arguments = (
@@ -1353,17 +1352,18 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
   );
   let results = (outs);
   let assemblyFormat = [{
-    `(` $sym_name `,` $channelDir `,` $channelIndex `,` $col `)` attr-dict  
+    $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict  
   }];
 }
 
-def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
+def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
     more consumers, which are `aie.tile` operations. The aie.createObjectFifo instantiates the given number of 
     buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
-    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo.
+    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo or, more specifically,
+    of its object pool.
 
     For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
     take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
@@ -1373,23 +1373,41 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
     locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
-    Example:
+    1-to-1 tile example:
     ```
-      %objFifo = AIE.objectFifo.createObjectFifo(%tile12, {tile13, tile23}, 4) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of1 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between %tile12, %tile13 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
+    This operation creates an objectFifo between %tile12 and %tile13 of 4 elements, each a buffer of 16 32-bit integers.
+    Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile13, 
+    then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
+    highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.
+ 
+    1-to-2 tiles broadcast example:
+    ```
+      AIE.objectFifo @of2 (%tile12, {%tile13, %tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+    ```
+    This operation creates an objectFifo between %tile12 and tiles %tile13, %tile23 of 4 elements, each a buffer of x16 
+    32-bit integers.
+
+    1-to-2 tiles broadcast with explicit sizes example:
+    ```
+      AIE.objectFifo @of3 (%tile12, {%tile13, %tile23}, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
+    ```
+    This operation creates an objectFifo between %tile12, %tile13 and %tile23. The depths of the objectFifo object pool 
+    at each tile are respectively 2, 3 and 4 for tiles %tile12, %tile13 and %tile23. This overrides the depth analysis 
+    specified in the first example.
   }];
 
   let arguments = (
-    ins Index:$producerTile,
+    ins SymbolNameAttr:$sym_name,
+        Index:$producerTile,
         Variadic<Index>:$consumerTiles,
-        AIE_ObjectFifo_Depth:$elemNumber
+        AIE_ObjectFifo_Depth:$elemNumber,
+        TypeAttrOf<AIE_ObjectFifoType>:$elem_type
   );
 
-  let results = (outs AIE_ObjectFifoType:$fifo);
-
   let assemblyFormat = [{
-    `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` type($fifo)
+    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` $elem_type
   }];
   
   let hasVerifier = 1;
@@ -1402,21 +1420,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo.createObjectFifo", [Symbol]> {
         return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
     }
     TileOp getProducerTileOp();
-    bool hasName() {
-       return name().has_value();
-     }
-    mlir::Optional<StringAttr> name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
-        return {attr};
-      } else {
-        return {};
-      }
-      llvm_unreachable("unreachable");
+    StringAttr name() {
+      auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+      return attr;
     }
   }];
 }
 
-def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> {
+def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
     The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
@@ -1428,9 +1439,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
 
     Example:
     ```
-      %of_t70_t72 = AIE.objectFifo.createObjectFifo(%t70, { %t72 }, 2) {sym_name = "of0"} : !AIE.objectFifo<memref<64xi16>>
-      %of_t72_t74 = AIE.objectFifo.createObjectFifo(%t72, { %t74 }, 2) {sym_name = "of1"} : !AIE.objectFifo<memref<64xi16>>
-      AIE.objectFifo.link({ %of_t70_t72 }, { %of_t72_t74 }) : ({!AIE.objectFifo<memref<64xi16>>}, {!AIE.objectFifo<memref<64xi16>>})
+      AIE.objectFifo @of1 (%t70, { %t72 }, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo @of2 (%t72, { %t74 }, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo.link [@of1] -> [@of2] ()
     ```
     This operation links two objectFifos which have tile %t72 as a link point.
 
@@ -1442,18 +1453,20 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 
   let arguments = (
-    ins Variadic<AIE_ObjectFifoType>:$fifoIns,
-        Variadic<AIE_ObjectFifoType>:$fifoOuts
+    ins ArrayAttr:$fifoIns,
+        ArrayAttr:$fifoOuts
   );
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
-    `(` `{` $fifoIns `}` `,` `{` $fifoOuts `}` `)` attr-dict `:` `(` `{` type($fifoIns) `}` `,` `{` type($fifoOuts) `}` `)`
+    $fifoIns `->` $fifoOuts `(` `)` attr-dict
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    std::vector<ObjectFifoCreateOp> getInputObjectFifos();
+    std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
     bool isJoin() {
       return getFifoIns().size() > 1;
     }
@@ -1464,7 +1477,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [AttrSizedOperandSegments]> 
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [TileElement, IsShimNOCTile]> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [HasParent<"DeviceOp">, TileElement, IsShimNOCTile]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
@@ -1475,31 +1488,29 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
 
     Example:
     ```
-      %of_t70_t73 = AIE.objectFifo.createObjectFifo(%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
+      AIE.objectFifo @of1 (%t70, %t73, 2) : !AIE.objectFifo<memref<64xi16>>
       %buffer_in_0  = AIE.external_buffer : memref<512 x i16>
       %buffer_in_1  = AIE.external_buffer : memref<512 x i16>
-      AIE.objectFifo.registerExternalBuffers(%t70, %of_t70_t73 : !AIE.objectFifo<memref<64xi16>>, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
+      AIE.objectFifo.registerExternalBuffers @of1 (%t70, {buffer_in_0, buffer_in_1}) : (memref<512 x i16>, memref<512 x i16>)
     ```
     This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use in the shimDMA of shimTile %t70.
   }];
 
   let arguments = (
-    ins Index:$tile,
-    AIE_ObjectFifoType:$fifo,
-    Variadic<AnyMemRef>:$externalBuffers
+    ins FlatSymbolRefAttr:$objFifo_name,
+        Index:$tile,
+        Variadic<AnyMemRef>:$externalBuffers
   );
 
   let assemblyFormat = [{
-    attr-dict `(` $tile `,` $fifo `:` type($fifo) `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
+    attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     TileOp getTileOp();
-    AIEObjectFifoType getFifoType() {
-      return getFifo().getType().cast<AIEObjectFifoType>();
-    }
+    ObjectFifoCreateOp getObjectFifo();
   }];
 }
 
@@ -1520,30 +1531,28 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire<Consume>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
     ```
-    This operation acquires the locks of the next two objects in objFifo from its consumer port and returns a subview of the acquired objects.
+    This operation acquires the locks of the next two objects in the objectFifo named @of1 from its consumer 
+    port and returns a subview of the acquired objects.
   }];
 
   let arguments = (
     ins ObjectFifoPort:$port,
-        AIE_ObjectFifoType:$fifo,
+        FlatSymbolRefAttr:$objFifo_name,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    Value getAIEObjectFifo() { return getFifo(); }
-    AIEObjectFifoType getAIEObjectFifoType() {
-      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
-    }
+    ObjectFifoCreateOp getObjectFifo();
     int acqNumber() { return getSize(); }
   }];
 }
@@ -1559,28 +1568,25 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
 
     Example:
     ```
-      AIE.objectFifo.release<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 1)
+      AIE.objectFifo.release @of1 (Produce, 1)
     ```
-    This operation releases the lock of the next object in objFifo from producer port.
+    This operation releases the lock of the next object in the objectFifo named @of1 from producer port.
   }];
 
   let arguments = (
     ins ObjectFifoPort:$port,
-        AIE_ObjectFifoType:$fifo,
+        FlatSymbolRefAttr:$objFifo_name,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$size
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $size `)` 
+    attr-dict $objFifo_name `(` $port `,` $size `)` 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    Value getAIEObjectFifo() { return getFifo(); }
-    AIEObjectFifoType getAIEObjectFifoType() {
-      return getAIEObjectFifo().getType().cast<AIEObjectFifoType>();
-    }
+    ObjectFifoCreateOp getObjectFifo();
     int relNumber() { return getSize(); }
   }];
 }
@@ -1592,10 +1598,10 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
     Example:
     ```
-      %subview = AIE.objectFifo.acquire<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, 3) : !AIE.objectFifoSubview<memref<16xi32>>
+      %subview = AIE.objectFifo.acquire @of1 (Produce, 3) : !AIE.objectFifoSubview<memref<16xi32>>
       %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
     ```
-    In this example, elem is the first object of the subview. Note that this may not correspond to the first element of 
+    In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of 
     the objectFifo if other acquire operations took place beforehand.
 
   }];
@@ -1631,15 +1637,16 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
 
     Example:
     ```
+      AIE.objectFifo @of1 (%t72, %t73, 2) : !AIE.objectFifo<memref<16xi32>>
       %length = arith.constant 10 : index
       %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
       %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
       func @producer_work(%input : !AIE.objectFifoSubview<memref<16xi32>>) -> () { ... }
 
-      AIE.objectFifo.registerProcess<Produce>(%objFifo : !AIE.objectFifo<memref<16xi32>>, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
+      AIE.objectFifo.registerProcess @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
     ```
-    This operation registers function @producer_work and associated patterns to the produce end of %objFifo. 
-    @producer_work will be called with the subviews produced when acquiring elements from %objFifo following the acquire pattern.
+    This operation registers function @producer_work and associated patterns to the produce end of @of1. 
+    @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
 
     If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
     If the input patterns are cyclo-static then they must be of the same size.
@@ -1647,7 +1654,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
 
   let arguments = (
     ins ObjectFifoPort:$port,
-        AIE_ObjectFifoType:$fifo,
+        FlatSymbolRefAttr:$objFifo_name,
         I32Tensor:$acquirePatternTensor,
         I32Tensor:$releasePatternTensor,
         FlatSymbolRefAttr:$callee,
@@ -1655,12 +1662,13 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict `<` $port `>` `(` $fifo `:` type($fifo) `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
+    attr-dict $objFifo_name `(` $port `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)` 
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    ObjectFifoCreateOp getObjectFifo();
     DenseIntElementsAttr getAcquirePattern() { return getAcquirePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     DenseIntElementsAttr getReleasePattern() { return getReleasePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     int getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }

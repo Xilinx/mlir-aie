@@ -75,6 +75,7 @@ struct AIEObjectFifoRegisterProcessPass
   void createPattern(OpBuilder &builder, DeviceOp &device,
                      ObjectFifoRegisterProcessOp regOp, mlir::Type elementType,
                      IntegerAttr acqNumber, IntegerAttr relNumber, int length) {
+    auto ctx = device->getContext();
     // create for loop
     mlir::scf::ForOp forLoop;
     if (length > 1) {
@@ -88,7 +89,7 @@ struct AIEObjectFifoRegisterProcessPass
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = builder.create<ObjectFifoAcquireOp>(
           builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
-          regOp.getFifo(), acqNumber);
+          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);
 
       // subview accesses
       ObjectFifoSubviewAccessOp acc;
@@ -113,8 +114,8 @@ struct AIEObjectFifoRegisterProcessPass
     // releases
     if (relNumber.getInt() > 0) {
       auto relOp = builder.create<ObjectFifoReleaseOp>(
-          builder.getUnknownLoc(), regOp.getPortAttr(), regOp.getFifo(),
-          relNumber);
+          builder.getUnknownLoc(), regOp.getPortAttr(),
+          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);
       builder.setInsertionPointAfter(relOp);
     }
 
@@ -131,10 +132,9 @@ struct AIEObjectFifoRegisterProcessPass
     //===----------------------------------------------------------------------===//
     for (auto registerOp : device.getOps<ObjectFifoRegisterProcessOp>()) {
       builder.setInsertionPointToEnd(device.getBody());
-      ObjectFifoCreateOp objFifo =
-          registerOp.getFifo().getDefiningOp<ObjectFifoCreateOp>();
+      ObjectFifoCreateOp objFifo = registerOp.getObjectFifo();
       auto elementType =
-          objFifo.getType().dyn_cast<AIEObjectFifoType>().getElementType();
+          objFifo.getElemType().dyn_cast<AIEObjectFifoType>().getElementType();
 
       if (consumersPerFifo.find(objFifo) == consumersPerFifo.end()) {
         std::queue<Value> consumers;

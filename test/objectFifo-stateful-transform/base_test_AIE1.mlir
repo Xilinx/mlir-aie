@@ -69,16 +69,16 @@
 // CHECK: }
 
 module @elementGenerationAIE1 {
- AIE.device(xcvc1902) {
-    %tile12 = AIE.tile(1, 2)
-    %tile13 = AIE.tile(1, 3)
-    %tile33 = AIE.tile(3, 3)
+   AIE.device(xcvc1902) {
+      %tile12 = AIE.tile(1, 2)
+      %tile13 = AIE.tile(1, 3)
+      %tile33 = AIE.tile(3, 3)
 
-    // In the shared memory case, the number of elements does not change.
-    %objFifo0 = AIE.objectFifo.createObjectFifo(%tile12, {%tile13}, 4 : i32) {sym_name = "of0"} : !AIE.objectFifo<memref<16xi32>>
+      // In the shared memory case, the number of elements does not change.
+      AIE.objectFifo @of0 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
 
-    // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
-    // the processes running on each core (here nothing is specified so it cannot be derived).
-    %objFifo1 = AIE.objectFifo.createObjectFifo(%tile12, {%tile33}, 2 : i32) {sym_name = "of1"} : !AIE.objectFifo<memref<16xi32>>
- }
+      // In the non-adjacent memory case, the number of elements depends on the max amount acquired by
+      // the processes running on each core (here nothing is specified so it cannot be derived).
+      AIE.objectFifo @of1 (%tile12, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+   }
 }

@@ -21,10 +21,10 @@
 // CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
 // CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
 // CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
-// CHECK:     AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
-// CHECK:     AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
-// CHECK:     AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
-// CHECK:     AIE.shimDMAAllocation({{.*}}, {{.*}}, {{.*}}, 2)
+// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
+// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
+// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
+// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
 // CHECK:   }
 // CHECK: }
 
@@ -34,10 +34,10 @@ module @alloc {
         %tile22 = AIE.tile(2, 2)
         %tile23 = AIE.tile(2, 3)
 
-        %connect1 = AIE.objectFifo.createObjectFifo(%tile20, {%tile22}, 2 : i32) {sym_name = "of_in_0"} : !AIE.objectFifo<memref<64xi16>>
-        %connect2 = AIE.objectFifo.createObjectFifo(%tile22, {%tile20}, 2 : i32) {sym_name = "of_out_0"} : !AIE.objectFifo<memref<64xi16>>
+        AIE.objectFifo @of_in_0 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
+        AIE.objectFifo @of_out_0 (%tile22, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
 
-        %connect3 = AIE.objectFifo.createObjectFifo(%tile20, {%tile23}, 2 : i32) {sym_name = "of_in_1"} : !AIE.objectFifo<memref<64xi16>>
-        %connect4 = AIE.objectFifo.createObjectFifo(%tile23, {%tile20}, 2 : i32) {sym_name = "of_out_1"} : !AIE.objectFifo<memref<64xi16>>
+        AIE.objectFifo @of_in_1 (%tile20, {%tile23}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
+        AIE.objectFifo @of_out_1 (%tile23, {%tile20}, 2 : i32) : !AIE.objectFifo<memref<64xi16>>
     }
 }
