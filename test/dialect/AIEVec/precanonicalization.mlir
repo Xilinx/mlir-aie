@@ -49,3 +49,20 @@ func.func @unaligned_transfer_read(%m : memref<1024xi32>, %pos : index) -> vecto
     // CHECK: return %[[AV]] : vector<8xi32>
     return %v : vector<8xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @rank_zero_transfer_read(
+// CHECK-SAME: %[[MEM:.*]]: memref<i16>
+func.func @rank_zero_transfer_read(%m : memref<i16>) -> vector<16xi16> {
+    %c0_i16 = arith.constant 0 : i16
+    // CHECK-DAG: %[[C0idx:.*]] = arith.constant 0 : index
+    // CHECK-DAG: %[[C0i16:.*]] = arith.constant 0 : i16
+    // CHECK-DAG: %[[EXPMEM:.*]] = memref.expand_shape %[[MEM]] [] : memref<i16> into memref<1xi16>
+    // CHECK: %[[LV:.*]] = vector.transfer_read %[[EXPMEM]][%[[C0idx]]], %[[C0i16]] : memref<1xi16>, vector<16xi16>
+    // CHECK: %[[E:.*]] = vector.extract %[[LV]][0] : vector<16xi16>
+    // CHECK: %[[S:.*]] = vector.broadcast %[[E]] : i16 to vector<16xi16>
+    %v = vector.transfer_read %m[], %c0_i16 {permutation_map = affine_map<()->(0)>} : memref<i16>, vector<16xi16>
+    // CHECK: return %[[S]] : vector<16xi16>
+    return %v : vector<16xi16>
+}

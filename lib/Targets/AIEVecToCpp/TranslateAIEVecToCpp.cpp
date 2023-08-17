@@ -1878,6 +1878,26 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Print an expand shape by forwarding the value to the next op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::ExpandShapeOp expandShapeOp) {
+  Value source = expandShapeOp.getSrc();
+
+  // If the memref being outputted is not already emitted,
+  // error out
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  if (failed(emitter.emitAssignPrefix(*expandShapeOp)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << emitter.getOrCreateName(source);
+
+  return success();
+}
+
 static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
                                      Attribute value) {
   OpResult result = operation->getResult(0);
@@ -2855,6 +2875,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
               [&](auto op) { return printOperation(*this, op); })
           // Memref ops.
           .Case<memref::StoreOp>(
+              [&](auto op) { return printOperation(*this, op); })
+          .Case<memref::ExpandShapeOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
                 aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
