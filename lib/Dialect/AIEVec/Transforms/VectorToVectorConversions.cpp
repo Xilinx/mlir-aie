@@ -145,20 +145,32 @@ struct ConvertSplatTransferReadToBroadcastPattern
     if (!map.isConstant())
       return failure();
 
-    // If the innermost index comes from an `affine.apply` op, take the base
-    // as the new innermost index for the new `vector.transfer_read`, and the
-    // offset as the index for the `aievec.broadcast` op.
+    Value srcMemRef = adaptor.getSource();
     SmallVector<Value, 8> indices;
-    indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
-    Value innerMostIdx = indices[indices.size() - 1];
-    Value newIdx = innerMostIdx;
+    Value newIdx;
     int64_t offset = 0;
-    if (auto defOp = innerMostIdx.getDefiningOp())
-      if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
+    // If it's a zero-rank memory access
+    if (cast<MemRefType>(srcMemRef.getType()).getRank() == 0) {
+      srcMemRef = rewriter
+                      .create<memref::ExpandShapeOp>(
+                          readOp.getLoc(), SmallVector<int64_t, 1>({1}),
+                          srcMemRef, SmallVector<ReassociationIndices, 1>({}))
+                      .getResult();
+      newIdx = rewriter.create<arith::ConstantOp>(readOp.getLoc(),
+                                                  rewriter.getIndexAttr(0L));
+      indices.push_back(newIdx);
+    } else {
+      indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
+      newIdx = indices[indices.size() - 1];
+      // If the innermost index comes from an `affine.apply` op, take the base
+      // as the new innermost index for the new `vector.transfer_read`, and the
+      // offset as the index for the `aievec.broadcast` op.
+      if (auto applyOp = newIdx.getDefiningOp<AffineApplyOp>())
         if (applyOp.getAffineMap().getNumDims() == 1) {
           newIdx = applyOp.getMapOperands()[0];
           offset = applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0];
         }
+    }
     // XXX: We assume we are reading 1D vectors
     int64_t vlen = readOp.getVector().getType().getShape()[0];
     if (offset >= vlen) {
@@ -175,8 +187,8 @@ struct ConvertSplatTransferReadToBroadcastPattern
     }
     indices[indices.size() - 1] = newIdx;
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVector().getType(), adaptor.getSource(),
-        indices, adaptor.getPadding());
+        readOp.getLoc(), readOp.getVector().getType(), srcMemRef, indices,
+        adaptor.getPadding());
     auto extractOp = rewriter.create<vector::ExtractOp>(
         readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
     rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
@@ -232,10 +244,9 @@ struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
 //============================================================================//
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addLegalDialect<AffineDialect>();
-  target.addLegalDialect<aievec::AIEVecDialect>();
-  target.addLegalDialect<vector::VectorDialect>();
+  target.addLegalDialect<arith::ArithDialect, AffineDialect,
+                         aievec::AIEVecDialect, memref::MemRefDialect,
+                         vector::VectorDialect>();
 }
 
 static void
@@ -325,11 +336,14 @@ struct CanonicalizeVectorForAIEVecPass
   StringRef getArgument() const final {
     return "test-canonicalize-vector-for-aievec";
   }
+
   StringRef getDescription() const final {
     return "Canonicalize vector operations for AIEVec conversion";
   }
+
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, vector::VectorDialect>();
+    registry.insert<arith::ArithDialect, memref::MemRefDialect,
+                    vector::VectorDialect>();
   }
 
   Option<std::string> aieTarget{
