@@ -1403,11 +1403,16 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elem_type
+        TypeAttrOf<AIE_ObjectFifoType>:$elem_type,
+        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensionsToStream,
+        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensionsFromStream
   );
 
   let assemblyFormat = [{
-    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` $elem_type
+    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber 
+      (`,` `toStream` $dimensionsToStream^)?
+      (`,` `fromStream` $dimensionsFromStream^)?
+    `)` attr-dict `:` $elem_type
   }];
   
   let hasVerifier = 1;
@@ -1425,6 +1430,17 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
       return attr;
     }
   }];
+
+  let builders = [
+    OpBuilder<(ins "StringAttr":$sym_name, "Value":$producerTile, "ValueRange":$consumerTiles, "Attribute":$elemNumber, "Type":$elem_type), [{
+      printf("Non additional attribute builder called.\n");
+      odsState.addOperands(producerTile);
+      odsState.addOperands(consumerTiles);
+      odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
+      odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
+      odsState.addAttribute(getElemTypeAttrName(odsState.name), ::mlir::TypeAttr::get(elem_type));
+      }]>
+  ];
 }
 
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
