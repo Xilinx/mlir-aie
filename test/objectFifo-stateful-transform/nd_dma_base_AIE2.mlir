@@ -48,34 +48,34 @@
 // CHECK:       %26 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb5)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
 // CHECK:       AIE.useLock(%[[of0_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_buff_0]] : memref<256xi32>, 0, 256>, 0, [<1, 16>, <16, 16>, <1, 1>])
+// CHECK:       AIE.dmaBd(<%[[of0_buff_0]] : memref<256xi32>, 0, 256>, 0, [<16, 1>, <16, 16>, <1, 1>])
 // CHECK:       AIE.useLock(%[[of0_prod_lock]], Release, 1)
 // CHECK:       AIE.nextBd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       AIE.useLock(%[[of0_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_buff_1]] : memref<256xi32>, 0, 256>, 0, [<1, 16>, <16, 16>, <1, 1>])
+// CHECK:       AIE.dmaBd(<%[[of0_buff_1]] : memref<256xi32>, 0, 256>, 0, [<16, 1>, <16, 16>, <1, 1>])
 // CHECK:       AIE.useLock(%[[of0_prod_lock]], Release, 1)
 // CHECK:       AIE.nextBd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
 // CHECK:       AIE.useLock(%[[of0_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_buff_2]] : memref<256xi32>, 0, 256>, 0, [<1, 16>, <16, 16>, <1, 1>])
+// CHECK:       AIE.dmaBd(<%[[of0_buff_2]] : memref<256xi32>, 0, 256>, 0, [<16, 1>, <16, 16>, <1, 1>])
 // CHECK:       AIE.useLock(%[[of0_prod_lock]], Release, 1)
 // CHECK:       AIE.nextBd ^bb4
 // CHECK:     ^bb4:  // pred: ^bb3
 // CHECK:       AIE.useLock(%[[of0_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of0_buff_3]] : memref<256xi32>, 0, 256>, 0, [<1, 16>, <16, 16>, <1, 1>])
+// CHECK:       AIE.dmaBd(<%[[of0_buff_3]] : memref<256xi32>, 0, 256>, 0, [<16, 1>, <16, 16>, <1, 1>])
 // CHECK:       AIE.useLock(%[[of0_prod_lock]], Release, 1)
 // CHECK:       AIE.nextBd ^bb1
 // CHECK:     ^bb5:  // pred: ^bb0
 // CHECK:       %27 = AIE.dmaStart(MM2S, 1, ^bb6, ^bb8)
 // CHECK:     ^bb6:  // 2 preds: ^bb5, ^bb7
 // CHECK:       AIE.useLock(%[[of1_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of1_buff_0]] : memref<256xi32>, 0, 256>, 0, [<2, 128>])
+// CHECK:       AIE.dmaBd(<%[[of1_buff_0]] : memref<256xi32>, 0, 256>, 0, [<128, 2>])
 // CHECK:       AIE.useLock(%[[of1_prod_lock]], Release, 1)
 // CHECK:       AIE.nextBd ^bb7
 // CHECK:     ^bb7:  // pred: ^bb6
 // CHECK:       AIE.useLock(%[[of1_cons_lock]], AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%[[of1_buff_1]] : memref<256xi32>, 0, 256>, 0, [<2, 128>])
+// CHECK:       AIE.dmaBd(<%[[of1_buff_1]] : memref<256xi32>, 0, 256>, 0, [<128, 2>])
 // CHECK:       AIE.useLock(%[[of1_prod_lock]], Release, 1)
 // CHECK:       AIE.nextBd ^bb6
 // CHECK:     ^bb8:  // pred: ^bb5
@@ -134,10 +134,10 @@ module @ndDMAObjFifoAIE2 {
     // this case between two adjacent tiles, we need to use DMAs if a data
     // layout transformation with toStream and fromStream was specified.
     AIE.objectFifo @of0 (%tile12, {%tile13}, 4 : i32,
-                         toStream [<1, 16>, <16, 16>, <1, 1>], // transpose
+                         toStream [<16, 1>, <16, 16>, <1, 1>], // transpose
                          fromStream [<1, 1>]) : !AIE.objectFifo<memref<256xi32>>
 
     AIE.objectFifo @of1 (%tile12, {%tile33}, 2 : i32,
-                         toStream [<2, 128>]) : !AIE.objectFifo<memref<256xi32>>
+                         toStream [<128, 2>]) : !AIE.objectFifo<memref<256xi32>>
  }
 }

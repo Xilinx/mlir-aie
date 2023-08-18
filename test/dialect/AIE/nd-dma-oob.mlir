@@ -30,7 +30,7 @@ module @tutorial_2b {
             // attempt an access at index 128, which is OOB for a 128xi32 
             // memref.
             // expected-error@+1 {{Specified stepsize(s) and wrap(s) result in out of bounds access}}
-            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<128, 2>])
+            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<2, 128>])
             AIE.nextBd ^end
           ^end: 
             AIE.end

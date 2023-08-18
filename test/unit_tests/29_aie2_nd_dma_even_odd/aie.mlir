@@ -83,9 +83,9 @@ module @tutorial_2b {
           ^bd0:
             AIE.useLock(%lock14_done, "AcquireGreaterEqual", 1)
                                                              ////////// new //////////
-            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<16, 8>, <1, 2>, <2, 8>])
-                                                            // s, w    s, w    s,  w
-                                                            // dim 0,  dim 1,  dim 2
+            AIE.dmaBd(<%buf14 : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
+                                                            // w, s    w, s    w,  s
+                                                            // dim 2,  dim 1,  dim 0
             AIE.useLock(%lock14_sent, "Release", 1)
             AIE.nextBd ^end
           ^end: 

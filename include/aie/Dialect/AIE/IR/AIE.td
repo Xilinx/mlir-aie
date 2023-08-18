@@ -806,7 +806,7 @@ def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
     "uint32_t" : $stepsize,
     "uint16_t" : $wrap
   );
-  let assemblyFormat = "`<` $stepsize `,` $wrap `>`";
+  let assemblyFormat = "`<` $wrap `,` $stepsize `>`";
 }
 
 def AIE_DimTupleArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArray", "DimTupleArray", "::xilinx::AIE::DimTupleAttr">;
