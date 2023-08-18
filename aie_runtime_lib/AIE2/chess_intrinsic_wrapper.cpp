@@ -25,3 +25,5 @@ extern "C" void llvm___aie___lock___acquire___reg(unsigned id, unsigned val) {
 extern "C" void llvm___aie___lock___release___reg(unsigned id, unsigned val) {
   release(id, val);
 }
+extern "C" void llvm___aie___event0() { event0(); }
+extern "C" void llvm___aie___event1() { event1(); }
