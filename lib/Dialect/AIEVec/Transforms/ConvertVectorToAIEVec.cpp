@@ -38,6 +38,7 @@ namespace xilinx::aievec {
 } // namespace xilinx::aievec
 
 using namespace mlir;
+using namespace mlir::affine;
 using namespace arith;
 using namespace vector;
 using namespace xilinx;
@@ -93,7 +94,8 @@ struct RedundantLoadStoreOptimizationPass
         patterns.getContext());
 
     (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
-    transferOpflowOpt(funcOp);
+    IRRewriter rewriter(&getContext());
+    vector::transferOpflowOpt(rewriter, funcOp);
   }
 };
 

@@ -385,7 +385,7 @@ struct UPDOpEffectiveAccessSizeAnalysis {
   UPDOpEffectiveAccessSizeAnalysis(aievec::UPDOp updOp) {
     auto vecType = cast<VectorType>(updOp.getResult().getType());
     unsigned sizeInBits =
-        cast<ShapedType>(vecType).getSizeInBits() - updOp.getOffset();
+        cast<ShapedType>(vecType).getElementTypeBitWidth() - updOp.getOffset();
     for (Operation *user : updOp->getUsers()) {
       auto userUpdOp = dyn_cast<xilinx::aievec::UPDOp>(user);
       if (userUpdOp)
@@ -1568,7 +1568,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
   LogicalResult
   matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto vType = extractOp.getVectorType();
+    auto vType = extractOp.getVector().getType();
     if (vType.getRank() != 1)
       return failure();
 

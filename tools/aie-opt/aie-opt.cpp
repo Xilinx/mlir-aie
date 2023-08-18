@@ -56,6 +56,5 @@ int main(int argc, char **argv) {
   registry.insert<mlir::LLVM::LLVMDialect>();
 
   return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
-                            registry,
-                            /*preloadDialectsInContext=*/false));
+                            registry));
 }

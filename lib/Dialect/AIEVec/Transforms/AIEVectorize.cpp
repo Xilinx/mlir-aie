@@ -2607,7 +2607,8 @@ static void redundantLoadStoreOptimization(ModuleOp module) {
     });
     // Now that all the transfer ops are marked inbound, remove redundant
     // vector loads/stores
-    transferOpflowOpt(func);
+    IRRewriter rewriter(module.getContext());
+    vector::transferOpflowOpt(rewriter, func);
   }
 }
 

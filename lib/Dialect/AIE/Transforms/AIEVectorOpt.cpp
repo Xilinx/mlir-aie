@@ -11,6 +11,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
@@ -34,7 +35,8 @@ struct AIEVectorOptPass : public AIEVectorOptBase<AIEVectorOptPass> {
     func::FuncOp f = getOperation();
 
     // Initial store->load forwarding
-    vector::transferOpflowOpt(f);
+    IRRewriter rewriter(&getContext());
+    vector::transferOpflowOpt(rewriter, f);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<memref::MemRefDialect>();

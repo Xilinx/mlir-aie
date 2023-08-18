@@ -820,8 +820,7 @@ struct AIEObjectFifoStatefulTransformPass
           increment_value = currentDuplication * step;
 
         arith::ConstantOp increment = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
-            builder.getIndexType());
+            builder.getUnknownLoc(), builder.getIndexAttr(increment_value));
         arith::AddIOp sum = builder.create<arith::AddIOp>(
             builder.getUnknownLoc(), builder.getIndexType(), base,
             increment->getResult(0));
@@ -955,13 +954,11 @@ struct AIEObjectFifoStatefulTransformPass
                     new_step_value;
                 arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
                     builder.getUnknownLoc(),
-                    builder.getIndexAttr(new_upper_bound),
-                    old_upper_bound.getType());
+                    builder.getIndexAttr(new_upper_bound));
                 forLoop.setUpperBound(uBound);
               }
               arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
-                  builder.getUnknownLoc(), builder.getIndexAttr(new_step_value),
-                  old_upper_bound.getType());
+                  builder.getUnknownLoc(), builder.getIndexAttr(new_step_value));
               forLoop.setStep(new_step);
 
               // duplicate loop body, insert before terminator operation
