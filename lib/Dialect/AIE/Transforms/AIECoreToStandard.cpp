@@ -338,7 +338,7 @@ struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
   ModuleOp &module;
 
   AIEEventOpToStdLowering(MLIRContext *context, ModuleOp &m,
-                             PatternBenefit benefit = 1)
+                          PatternBenefit benefit = 1)
       : OpConversionPattern<EventOp>(context, benefit), module(m) {}
 
   LogicalResult
@@ -349,7 +349,7 @@ struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
     if (!eventFunc)
       return module.emitOpError("Could not find the intrinsic function!");
     auto eventCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                    eventFunc, ValueRange({}));
+                                                   eventFunc, ValueRange({}));
     rewriter.eraseOp(op);
     return success();
   }
@@ -413,16 +413,14 @@ struct AIECoreToStandardPass
 
     // llvm.func @llvm.aie.event0() -> ()
     builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.event0",
-            FunctionType::get(builder.getContext(), {}, {}))
+        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.event0",
+                              FunctionType::get(builder.getContext(), {}, {}))
         .setPrivate();
 
     // llvm.func @llvm.aie.event1() -> ()
     builder
-        .create<func::FuncOp>(
-            builder.getUnknownLoc(), "llvm.aie.event1",
-            FunctionType::get(builder.getContext(), {}, {}))
+        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.event1",
+                              FunctionType::get(builder.getContext(), {}, {}))
         .setPrivate();
 
     // llvm.func @llvm.aie.put.ms(%channel: !llvm.i1, %stream_val: !llvm.i32) ->
@@ -514,8 +512,7 @@ struct AIECoreToStandardPass
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
-                 AIEEventOpToStdLowering>(
-        m.getContext(), m);
+                 AIEEventOpToStdLowering>(m.getContext(), m);
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, mapper);
     patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
