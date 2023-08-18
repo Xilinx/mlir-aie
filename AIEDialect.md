@@ -429,6 +429,25 @@ A generic terminator operation for AIE ops' regions.
 
 Traits: Terminator
 
+### `AIE.event` (::xilinx::AIE::EventOp)
+
+Event instruction
+
+
+Syntax:
+
+```
+operation ::= `AIE.event` `(` $val `)` attr-dict
+```
+
+Event instruction.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `val` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1
+
 ### `AIE.external_buffer` (::xilinx::AIE::ExternalBufferOp)
 
 Declare a buffer in external memory
