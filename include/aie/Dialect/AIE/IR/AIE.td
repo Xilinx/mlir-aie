@@ -1263,6 +1263,17 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
   }];
 }
 
+def AIE_EventOp: AIE_Op<"event", []> {
+  let summary = "Event instruction";
+  let description = [{
+    Event instruction.
+  }];
+  let arguments = (ins ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$val);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $val `)` attr-dict
+  }];
+}
 
 def AIE_GetStreamOp: AIE_Op<"getStream", [HasParent<"CoreOp">]>,
                  Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {

@@ -332,6 +332,29 @@ template <typename OpTy> void outlineOps(AIE::DeviceOp device) {
     op->moveBefore(device);
 }
 
+// Lower AIE.event to llvm.aie.event intrinsic
+struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
+  using OpConversionPattern<EventOp>::OpConversionPattern;
+  ModuleOp &module;
+
+  AIEEventOpToStdLowering(MLIRContext *context, ModuleOp &m,
+                             PatternBenefit benefit = 1)
+      : OpConversionPattern<EventOp>(context, benefit), module(m) {}
+
+  LogicalResult
+  matchAndRewrite(EventOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    std::string funcName = "llvm.aie.event" + std::to_string(op.getVal());
+    auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
+    if (!eventFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
+    auto eventCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
+                                                    eventFunc, ValueRange({}));
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 struct AIECoreToStandardPass
     : public AIECoreToStandardBase<AIECoreToStandardPass> {
   void runOnOperation() override {
@@ -386,6 +409,20 @@ struct AIECoreToStandardPass
         .create<func::FuncOp>(
             builder.getUnknownLoc(), "debug_i32",
             FunctionType::get(builder.getContext(), {int32Type}, {}))
+        .setPrivate();
+
+    // llvm.func @llvm.aie.event0() -> ()
+    builder
+        .create<func::FuncOp>(
+            builder.getUnknownLoc(), "llvm.aie.event0",
+            FunctionType::get(builder.getContext(), {}, {}))
+        .setPrivate();
+
+    // llvm.func @llvm.aie.event1() -> ()
+    builder
+        .create<func::FuncOp>(
+            builder.getUnknownLoc(), "llvm.aie.event1",
+            FunctionType::get(builder.getContext(), {}, {}))
         .setPrivate();
 
     // llvm.func @llvm.aie.put.ms(%channel: !llvm.i1, %stream_val: !llvm.i32) ->
@@ -476,7 +513,8 @@ struct AIECoreToStandardPass
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering>(
+                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
+                 AIEEventOpToStdLowering>(
         m.getContext(), m);
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, mapper);
