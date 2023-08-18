@@ -348,8 +348,8 @@ struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)
       return module.emitOpError("Could not find the intrinsic function!");
-    auto eventCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                   eventFunc, ValueRange({}));
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc,
+                                  ValueRange({}));
     rewriter.eraseOp(op);
     return success();
   }
