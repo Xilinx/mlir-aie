@@ -1308,6 +1308,12 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
                << "Step size " << std::to_string(dim.getStepsize() * 4) << " "
                << "bytes exceeds memref size " << std::to_string(memref_size);
       }
+      if (dim.getWrap() >= (1UL << 9) + 1) {
+        return emitOpError() << "Wrap may not exceed 1023.";
+      }
+      if (dim.getStepsize() >= (1UL << 19)) {
+        return emitOpError() << "Stepsize may not exceed " << (1 << 20);
+      }
     }
     if (memref_size <= 4 * max_idx) {
       return emitOpError() << "Specified stepsize(s) and wrap(s) result in out "
