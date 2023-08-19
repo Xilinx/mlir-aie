@@ -811,6 +811,8 @@ def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
 
 def AIE_DimTupleArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArray", "DimTupleArray", "::xilinx::AIE::DimTupleAttr">;
 
+def AIE_DimTupleArrayArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArrayArray", "DimTupleArrayArray", "::xilinx::AIE::DimTupleArrayAttr">;
+
 def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   let summary = "Declare a dma block descriptor op";
   let description = [{
@@ -1421,7 +1423,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
     can be applied for an objectFifo: one on the producer side, given by a
     `toStream` attribute, and one transformation on the consumer side, given by
     a `fromStream` attribute. See the `DMABDOp` documentation for a description
-    of strides and wraps.
+    of strides and wraps. The `toStream` and `fromStream` optional attributes
+    are given directly following the producer or consumer tile declaration. 
+    Different transformations can be specified for each consumer. See example
+    below.
 
     Note that using data layout transformations will cause the DMA be used even
     between adjacent tiles whose objectFifos would otherwise use shared memory.
@@ -1433,13 +1438,16 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
 
     The following example shows an objectFifo which transposes a 16x16 matrix of 
     `i32`s on the producer side using strides and wraps. No transformation is
-    applied on the consumer side (in this case the `fromStream` attribute may
-    also be left off):
+    applied on the consumer side of %tile13 (in this case the `fromStream` 
+    attribute may also be left off), and a transformation on %tile23 first gives
+    all even indices from the stream, followed by all odd indices:
 
     ```
-      AIE.objectFifo @of4 (%tile12, {%tile13}, 2 : i32,
-                           toStream [<16, 1>, <16, 16>, <1, 1>],
-                           fromStream []) : !AIE.objectFifo<memref<256xi32>>
+      AIE.objectFifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>], 
+                           {%tile13 fromStream [],
+                            %tile23 fromStream [<2, 1>, <128, 2>]}, 
+                           2 : i32
+                          ) : !AIE.objectFifo<memref<256xi32>>
     ```
   }];
 
@@ -1449,14 +1457,19 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elem_type,
-        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensionsToStream,
-        OptionalAttr<AIE_DimTupleArrayAttr>:$dimensionsFromStream
+        AIE_DimTupleArrayAttr:$dimensionsToStream,
+        AIE_DimTupleArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
 
   let assemblyFormat = [{
-    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber 
-      (`,` `toStream` $dimensionsToStream^)?
-      (`,` `fromStream` $dimensionsFromStream^)?
+    $sym_name 
+    `(` 
+        custom<ObjectFifoProducerTile>($producerTile, $dimensionsToStream) `,` 
+        `{` 
+          custom<ObjectFifoConsumerTiles>($consumerTiles, $dimensionsFromStreamPerConsumer) 
+        `}` 
+        `,` 
+        $elemNumber 
     `)` attr-dict `:` $elem_type
   }];
   
