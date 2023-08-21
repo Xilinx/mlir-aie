@@ -78,7 +78,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       TEST_EXCLUDE_FROM_MAIN true
       )
   else()
-    message(sTATUS "LibXAIE_${target}_DIR not specified and Vitis not found.  LibXAIE not built.")
+    message(STATUS "LibXAIE_${target}_DIR not specified and Vitis not found.  LibXAIE not built.")
   endif()
 
   # test_lib
