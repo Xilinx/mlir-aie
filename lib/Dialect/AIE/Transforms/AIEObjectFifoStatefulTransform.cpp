@@ -208,35 +208,44 @@ struct AIEObjectFifoStatefulTransformPass
     return leftShared || rightShared;
   }
 
-  // Return true if an objectFifo between createOp and consumerTileOp requries
-  // a DMA to be set up. This is the case if the tiles are not adjacent (no
-  // shared memory), or if they want to use the multi-dimensional address
-  // genreation features of the DMA.
-  bool requiresDMAs(ObjectFifoCreateOp createOp, TileOp consumerTileOp,
-                    int &share_direction) {
-    bool requiresDMAs = true;
+  // Return true if the objectFifo created by createOp requires a DMA to be set
+  // up. This is the case if the tiles are not adjacent (no shared memory), if
+  // the objectFifo broadcasts to multiple tiles, or if one of the consumers
+  // or the producer wants to use the multi-dimensional address generation
+  // features of the DMA.
+  bool requiresDMAs(ObjectFifoCreateOp createOp, int &share_direction) {
+    bool hasSharedMemory = false;
+    bool atLeastOneConsumerWantsTransform = false;
+
     if (createOp.getConsumerTiles().size() == 1 &&
         (createOp.getDimensionsToStream().size() == 0)) {
-      // Even if just one of the consumers in the list of consumers wants to
-      // perform a memory transform, we need to use DMAs. (Or do a split
-      // shared memory / DMA solution, which we do not do for now.)
-      bool oneConsumerWantsTransform = false;
-      for (DimTupleArrayAttr dims :
-           createOp.getDimensionsFromStreamPerConsumer()) {
-        if (dims.size() > 0) {
-          oneConsumerWantsTransform = true;
-          break;
-        }
-      }
-      if (!oneConsumerWantsTransform) {
+
+      // Test for shared memory
+      for (auto consumerTile : createOp.getConsumerTiles()) {
+        TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
         bool memoryAdjacent = isSharedMemory(createOp.getProducerTileOp(),
                                              consumerTileOp, &share_direction);
         if (memoryAdjacent) {
-          requiresDMAs = false;
+          hasSharedMemory = true;
         }
       }
     }
-    return requiresDMAs;
+
+    // Only test for use of data layout transformations if we are in the shared
+    // memory case; otherwise, we will return `true` in any case.
+    if (hasSharedMemory) {
+      // Even if just one of the consumers in the list of consumers wants to
+      // perform a memory transform, we need to use DMAs.
+      for (DimTupleArrayAttr dims :
+           createOp.getDimensionsFromStreamPerConsumer()) {
+        if (dims.size() > 0) {
+          atLeastOneConsumerWantsTransform = true;
+          break;
+        }
+      }
+    }
+
+    return !hasSharedMemory || atLeastOneConsumerWantsTransform;
   }
 
   /// Function to multiply all dimensions of a memref.
@@ -1187,11 +1196,14 @@ struct AIEObjectFifoStatefulTransformPass
       ArrayRef<DimTupleArrayAttr> consumerDims =
           createOp.getDimensionsFromStreamPerConsumer();
 
+      // Only FIFOs using DMA are split into two ends;
+      // skip in shared memory case
+      if (!requiresDMAs(createOp, share_direction)) {
+        continue;
+      }
+
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-        if (!requiresDMAs(createOp, consumerTileOp, share_direction)) {
-          break;
-        }
 
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
@@ -1219,6 +1231,7 @@ struct AIEObjectFifoStatefulTransformPass
             builder.getContext(), {consumerDims[consumerIndex]});
         DimTupleArrayArrayAttr fromStreamDims = DimTupleArrayArrayAttr::get(
             builder.getContext(), singletonFromStreamDims);
+
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
@@ -1261,16 +1274,15 @@ struct AIEObjectFifoStatefulTransformPass
     //   the acquires/releases (uses of the FIFO).
     //===------------------------------------------------------------------===//
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      objectFifoTiles.insert(createOp.getProducerTileOp());
-      bool shared = false;
       int share_direction = 0;
+      bool shared = !requiresDMAs(createOp, share_direction);
+
+      // add all tiles that contain an objectFifo to objectFifoTiles for later
+      // loop unrolling pass
+      objectFifoTiles.insert(createOp.getProducerTileOp());
       for (auto consumerTile : createOp.getConsumerTiles()) {
         TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
         objectFifoTiles.insert(consumerTileOp);
-        if (!requiresDMAs(createOp, consumerTileOp, share_direction)) {
-          shared = true;
-          break;
-        }
       }
 
       // identify external buffers that were registered to

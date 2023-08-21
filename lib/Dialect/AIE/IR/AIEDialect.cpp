@@ -485,7 +485,7 @@ void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
     if (parser.parseOperand(tiles.emplace_back(), true)) {
       return ::mlir::failure();
     }
-    // By default, create empty dimensions array for each customer; this way,
+    // By default, create empty dimensions array for each consumer; this way,
     // we can be certain to have as many entries in the dimensions array as
     // there are customer
     DimTupleArrayAttr dimAttr = DimTupleArrayAttr::get(parser.getContext(), {});
@@ -511,13 +511,16 @@ void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
 void printObjectFifoConsumerTiles(::mlir::OpAsmPrinter &_odsPrinter,
                                   Operation *op, OperandRange tiles,
                                   DimTupleArrayArrayAttr dimsPerTileAttr) {
-  int tileIdx = 0;
+  size_t tileIdx = 0;
   for (auto tile : tiles) {
     _odsPrinter << tile;
-    if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size()
-        && dimsPerTileAttr[tileIdx] && dimsPerTileAttr[tileIdx].size() > 0) {
+    if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size() &&
+        dimsPerTileAttr[tileIdx] && dimsPerTileAttr[tileIdx].size() > 0) {
       _odsPrinter << " fromStream ";
       _odsPrinter.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
+    }
+    if (tileIdx < dimsPerTileAttr.size() - 1) {
+      _odsPrinter << ", ";
     }
     tileIdx++;
   }
