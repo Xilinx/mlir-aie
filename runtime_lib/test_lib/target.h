@@ -11,14 +11,14 @@
 #ifndef AIE_TARGET_H
 #define AIE_TARGET_H
 
-#include <xaiengine.h>
 #include <list>
+#include <xaiengine.h>
 
 struct ext_mem_model_t {
   void *virtualAddr;
   uint64_t physicalAddr;
   size_t size;
-  int fd; // The file descriptor used during allocation
+  int fd;               // The file descriptor used during allocation
   XAie_MemInst MemInst; // LibXAIE handle if necessary.  This should go away.
 };
 
