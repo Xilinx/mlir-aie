@@ -1568,7 +1568,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
   LogicalResult
   matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto vType = extractOp.getVector().getType();
+    auto vType = extractOp.getSourceVectorType();
     if (vType.getRank() != 1)
       return failure();
 
