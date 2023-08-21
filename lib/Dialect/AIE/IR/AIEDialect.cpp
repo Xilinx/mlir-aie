@@ -465,9 +465,9 @@ parseObjectFifoProducerTile(::mlir::OpAsmParser &parser,
 
 void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
                                  Operation *op, Value operand,
-                                 Attribute dimensions) {
+                                 DimTupleArrayAttr dimensions) {
   _odsPrinter << operand;
-  if (dimensions) {
+  if (dimensions && dimensions.size() > 0) {
     _odsPrinter << " toStream ";
     _odsPrinter.printStrippedAttrOrType(dimensions);
   }
@@ -510,13 +510,16 @@ void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
 
 void printObjectFifoConsumerTiles(::mlir::OpAsmPrinter &_odsPrinter,
                                   Operation *op, OperandRange tiles,
-                                  Attribute dimensions) {
+                                  DimTupleArrayArrayAttr dimsPerTileAttr) {
+  int tileIdx = 0;
   for (auto tile : tiles) {
     _odsPrinter << tile;
-    if (dimensions) {
+    if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size()
+        && dimsPerTileAttr[tileIdx] && dimsPerTileAttr[tileIdx].size() > 0) {
       _odsPrinter << " fromStream ";
-      _odsPrinter.printStrippedAttrOrType(dimensions);
+      _odsPrinter.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
     }
+    tileIdx++;
   }
 }
 
