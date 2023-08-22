@@ -15,14 +15,16 @@
 // RUN: aiecc.py --no-unified --compile --no-link --no-xchesscc -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
 // RUN: aiecc.py --no-unified --no-compile --no-link -nv --sysroot=%VITIS_SYSROOT% --host-target=aarch64-linux-gnu %s -I%aie_runtime_lib% %aie_runtime_lib%/test_library.cpp %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
 
+// Note that llc determines the architecture from the llvm IR.
+
 // XCHESSCC-NOT: {{^llc}}
 // XCHESSCC: xchesscc_wrapper aie
 // XCHESSCC-NOT: {{^llc}}
-// PEANO-NOT: xchesscc_wrapper aie
+// PEANO-NOT: xchesscc_wrapper
 // PEANO: {{^llc}}
 // PEANO-SAME: --march=aie
-// PEANO-NOT: xchesscc_wrapper aie
-// NOCOMPILE-NOT: xchesscc_wrapper aie
+// PEANO-NOT: xchesscc_wrapper
+// NOCOMPILE-NOT: xchesscc_wrapper
 // NOCOMPILE-NOT: {{^llc}}
 
 module {
