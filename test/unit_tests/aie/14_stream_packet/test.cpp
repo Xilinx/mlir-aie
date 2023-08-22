@@ -8,23 +8,21 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <thread>
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/mman.h>
+#include <thread>
+#include <unistd.h>
 #include <xaiengine.h>
-#include "test_library.h"
 
 #include "aie_inc.cpp"
 
-int
-main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   auto col = 7;
 
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
@@ -59,7 +57,7 @@ main(int argc, char *argv[])
   int count = 256;
 
   // We're going to stamp over the memory
-  for (int i=0; i<count; i++) {
+  for (int i = 0; i < count; i++) {
     mlir_aie_write_buffer_buf73(_xaie, i, 73);
     mlir_aie_write_buffer_buf71(_xaie, i, 71);
     mlir_aie_write_buffer_buf62(_xaie, i, 1);
@@ -72,7 +70,7 @@ main(int argc, char *argv[])
   mlir_aie_release_lock71(_xaie, 0, 0); // Release lock
 
   int errors = 0;
-  for (int i=0; i<count; i++) {
+  for (int i = 0; i < count; i++) {
     uint32_t d73 = mlir_aie_read_buffer_buf62(_xaie, i);
     uint32_t d71 = mlir_aie_read_buffer_buf62(_xaie, i + count);
     if (d73 != 73)

@@ -29,7 +29,7 @@ this frame buffer can be read by a separate core (such as \ref
 npi64_frame_buffer_output) to display the images.
  */
 
-//#include <stdio.h>
+// #include <stdio.h>
 #include <stdint.h>
 
 /** Video lines are separated by this many 4-byte words in a frame buffer. */
@@ -37,12 +37,12 @@ npi64_frame_buffer_output) to display the images.
 
 // liveout.
 int error;
-//unsigned int count;
-// struct pipe_state {
-// 	int zr, zi;
-// 	unsigned8_t color;
-//    bool done;
-// };
+// unsigned int count;
+//  struct pipe_state {
+//  	int zr, zi;
+//  	unsigned8_t color;
+//     bool done;
+//  };
 
 #define NUM_BITS 16
 #define MAX_ITER 128
@@ -124,47 +124,45 @@ int error;
 // 	}
 // }
 
-const int cols=64;
-const int lines=64;
+const int cols = 64;
+const int lines = 64;
 
-void do_line(unsigned *line_start_address,
-	     int cr, int ci, int Im) {
-	int MinRe = 0xFFFE0000, MaxRe = 0x00020000;
-	int index = 0;
-	int Re = MinRe;
-	int x;
-	for (x=0; x < cols /*Re <= MaxRe*/; x++) {
-		unsigned color;
-		int done = 0;
-		// struct pipe_state p = {};
-		int zr = Re, zi = Im;
-		Re+= (MaxRe-MinRe)/cols;
-		int n;
-        color = 0xBEEF;
-        for (n = 0; n < MAX_ITER && !done; n++) {
-          int a, b;
+void do_line(unsigned *line_start_address, int cr, int ci, int Im) {
+  int MinRe = 0xFFFE0000, MaxRe = 0x00020000;
+  int index = 0;
+  int Re = MinRe;
+  int x;
+  for (x = 0; x < cols /*Re <= MaxRe*/; x++) {
+    unsigned color;
+    int done = 0;
+    // struct pipe_state p = {};
+    int zr = Re, zi = Im;
+    Re += (MaxRe - MinRe) / cols;
+    int n;
+    color = 0xBEEF;
+    for (n = 0; n < MAX_ITER && !done; n++) {
+      int a, b;
 
-          int64_t x;
-          a = ((int64_t)zr * (int64_t)zr) >> NUM_BITS;
-          b = ((int64_t)zi * (int64_t)zi) >> NUM_BITS;
-          if (((a + b) > 0x40000) && (done == 0)) {
-            done = 1;
-          }
-          zi = ((int64_t)zr * (int64_t)zi) >> NUM_BITS;
-          zi = zi * 2 + ci;
-          zr = a - b + cr;
-        }
-        if (n > MAX_ITER) {
-          color = 0xff;
-        } else {
-          color = n * (256 * 2 / MAX_ITER);
-        }
-        line_start_address[x] = color;
-        }
+      int64_t x;
+      a = ((int64_t)zr * (int64_t)zr) >> NUM_BITS;
+      b = ((int64_t)zi * (int64_t)zi) >> NUM_BITS;
+      if (((a + b) > 0x40000) && (done == 0)) {
+        done = 1;
+      }
+      zi = ((int64_t)zr * (int64_t)zi) >> NUM_BITS;
+      zi = zi * 2 + ci;
+      zr = a - b + cr;
+    }
+    if (n > MAX_ITER) {
+      color = 0xff;
+    } else {
+      color = n * (256 * 2 / MAX_ITER);
+    }
+    line_start_address[x] = color;
+  }
 }
 
-void julia(unsigned *framebuffer, int cr, int ci)
-{
+void julia(unsigned *framebuffer, int cr, int ci) {
   // Fractal Julia code
   unsigned *line_start_address;
   int MinIm = 0xFFFE0000, MaxIm = 0x00020000;

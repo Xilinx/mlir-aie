@@ -12,11 +12,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <thread>
-#include <stdlib.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/mman.h>
+#include <thread>
+#include <unistd.h>
 #include <xaiengine.h>
 
 #include "memory_allocator.h"
@@ -24,9 +24,7 @@
 
 #include "aie_inc.cpp"
 
-int
-main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
   aie_libxaie_ctx_t *_xaie = mlir_aie_init_libxaie();
   mlir_aie_init_device(_xaie);
 
@@ -46,7 +44,7 @@ main(int argc, char *argv[])
   mlir_aie_sync_mem_dev(buf0);
 
   // We're going to stamp over the memory
-  for (int i=0; i<DMA_COUNT; i++) {
+  for (int i = 0; i < DMA_COUNT; i++) {
     mlir_aie_write_buffer_buf72_0(_xaie, i, 0xdeadbeef);
   }
 
@@ -72,13 +70,13 @@ main(int argc, char *argv[])
   mlir_aie_print_shimdma_status(_xaie, 7, 0);
 
   int errors = 0;
-  for (int i=0; i<DMA_COUNT; i++) {
+  for (int i = 0; i < DMA_COUNT; i++) {
     uint32_t d = 0;
     if (i < DMA_COUNT / 2)
       d = mlir_aie_read_buffer_buf72_0(_xaie, i);
     else
       d = mlir_aie_read_buffer_buf72_1(_xaie, i - DMA_COUNT / 2);
-    if (d != (i+1)) {
+    if (d != (i + 1)) {
       errors++;
       printf("mismatch %x != 1 + %d\n", d, i);
     }
