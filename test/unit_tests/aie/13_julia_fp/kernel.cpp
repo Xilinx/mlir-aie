@@ -40,55 +40,54 @@ int error;
 #define NUM_BITS 16
 #define MAX_ITER 128
 
-const int cols=64;
-const int lines=64;
+const int cols = 64;
+const int lines = 64;
 
-void do_line(unsigned *line_start_address,
-	     float cr, float ci, float Im) {
-	float MinRe = -2.0f, MaxRe = 2.0f;
-	int index = 0;
-	float Re = MinRe;
-	int x;
-	for (x=0; x < cols /*Re <= MaxRe*/; x++) {
-		unsigned color;
-		int done = 0;
-		// struct pipe_state p = {};
-	    float zr = Re, zi = Im;
-		Re+= (MaxRe-MinRe)/cols;
-		int n;
-        color = 0xBEEF;
-		for (n = 0; n < MAX_ITER && !done; n++) {
-			float a, b;
+void do_line(unsigned *line_start_address, float cr, float ci, float Im) {
+  float MinRe = -2.0f, MaxRe = 2.0f;
+  int index = 0;
+  float Re = MinRe;
+  int x;
+  for (x = 0; x < cols /*Re <= MaxRe*/; x++) {
+    unsigned color;
+    int done = 0;
+    // struct pipe_state p = {};
+    float zr = Re, zi = Im;
+    Re += (MaxRe - MinRe) / cols;
+    int n;
+    color = 0xBEEF;
+    for (n = 0; n < MAX_ITER && !done; n++) {
+      float a, b;
 
-			float x;
-			a=zr*zr;
-			b=zi*zi;
-			if (((a+b) > 2.0f) && (done == 0)) {
-				done = 1;
-			}
-			zi = zr*zi;
-			zi = zi*2.0f + ci;
-			zr = a-b + cr;
-		}
-		if(n > MAX_ITER) {
-			color = 0xff;
-		} else {
-			color = n*(256*2/MAX_ITER);
-		}
-		line_start_address[x] = color;
-	}
+      float x;
+      a = zr * zr;
+      b = zi * zi;
+      if (((a + b) > 2.0f) && (done == 0)) {
+        done = 1;
+      }
+      zi = zr * zi;
+      zi = zi * 2.0f + ci;
+      zr = a - b + cr;
+    }
+    if (n > MAX_ITER) {
+      color = 0xff;
+    } else {
+      color = n * (256 * 2 / MAX_ITER);
+    }
+    line_start_address[x] = color;
+  }
 }
 
-void julia(unsigned *framebuffer, float cr, float ci)
-{
+void julia(unsigned *framebuffer, float cr, float ci) {
   // Fractal Julia code
   unsigned *line_start_address;
   float MinIm = -2.0f, MaxIm = 2.0f;
   line_start_address = framebuffer;
   float Im = MaxIm;
-  for (int y=0; y < lines /*Im >= MinIm*/; Im -= (MaxIm-MinIm)/lines, y++) {
-	  do_line(line_start_address, cr, ci, Im);
-	  line_start_address += VIDEO_LINE_WORDS;
+  for (int y = 0; y < lines /*Im >= MinIm*/;
+       Im -= (MaxIm - MinIm) / lines, y++) {
+    do_line(line_start_address, cr, ci, Im);
+    line_start_address += VIDEO_LINE_WORDS;
   }
 }
 
