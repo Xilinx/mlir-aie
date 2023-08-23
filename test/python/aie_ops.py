@@ -1,7 +1,7 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: python %s | FileCheck %s
+# RUN: python3 %s | FileCheck %s
 
 import aie
 from aie.mlir.ir import *
