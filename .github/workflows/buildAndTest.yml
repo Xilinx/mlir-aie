@@ -8,13 +8,109 @@ on:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
 
+defaults:
+  run:
+    # This is already the default, except when running inside another Docker
+    # image, which is the case here. So set it up globally to avoid
+    # repeating elsewhere.
+    shell: bash
+
+env:
+  # Run apt package manager in the CI in non-interactive mode.
+  # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
+  # freezes libboost installation.
+  DEBIAN_FRONTEND: noninteractive
+
 jobs:
   build-repo:
     name: Build and Test
-    runs-on: ubuntu-20.04
+
+    # By latest GitHub means actually latest LTS only
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Run all the test even if there are some which fail
+      fail-fast: false
+
+      # Run the tests on the Cartesian product of the following
+      matrix:
+        build_type: [ Assert, Release ]
+        ubuntu_version: [ 20.04, 22.04 ]
+
+    # Using a container instead of running native on public GitHub
+    # Action has also the advantage of having 2 CPU instead of 1, so
+    # it runs faster. But these images have quite less software
+    # installed compared to the GitHub Ubuntu distribution for example.
+    container:
+      image: docker://ubuntu:${{matrix.ubuntu_version}}
+
     steps:
+      - name: Display environment variables
+        run: env
+
+      - name: User and group ids
+        run: id -a
+
+      - name: Execution context information
+        # Display a lot of information to help further development
+        # https://docs.github.com/en/actions/learn-github-actions/variables
+        # https://docs.github.com/en/enterprise-cloud@latest/actions/learn-github-actions/contexts
+        # The problem is that echo-ing directly ${{ toJSON(github) }}
+        # in the shell is not escaped and for example '&' breaks
+        # things or can lead to server-side script injection. :-(
+        # So, use environment setting and display the environment
+        # variable in the shell between "" to avoid unsafe
+        # interpretation.
+        env:
+          execution_context_var_github: ${{ toJSON(github) }}
+          execution_context_var_env: ${{ toJSON(env) }}
+          execution_context_var_vars: ${{ toJSON(vars) }}
+          execution_context_var_job: ${{ toJSON(job) }}
+          execution_context_var_steps: ${{ toJSON(steps) }}
+          execution_context_var_runner: ${{ toJSON(runner) }}
+          execution_context_var_strategy: ${{ toJSON(strategy) }}
+          execution_context_var_matrix: ${{ toJSON(matrix) }}
+          execution_context_var_needs: ${{ toJSON(needs) }}
+          execution_context_var_inputs: ${{ toJSON(inputs) }}
+        run: |
+          echo "::group::github context"
+          echo "$execution_context_var_github"
+          echo "::endgroup::"
+          echo "::group::env context"
+          echo "$execution_context_var_env"
+          echo "::endgroup::"
+          echo "::group::vars context"
+          echo "$execution_context_var_vars"
+          echo "::endgroup::"
+          echo "::group::job context"
+          echo "$execution_context_var_job"
+          echo "::endgroup::"
+          echo "::group::steps context"
+          echo "$execution_context_var_steps"
+          echo "::endgroup::"
+          echo "::group::runner context"
+          echo "$execution_context_var_runner"
+          echo "::endgroup::"
+          echo "::group::strategy context"
+          echo "$execution_context_var_strategy"
+          echo "::endgroup::"
+          echo "::group::matrix context"
+          echo "$execution_context_var_matrix"
+          echo "::endgroup::"
+          echo "::group::needs context"
+          echo "$execution_context_var_needs"
+          echo "::endgroup::"
+          echo "::group::inputs context"
+          echo "$execution_context_var_inputs"
+          echo "::endgroup::"
+
       - name: Configure Environment
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
+
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
@@ -25,19 +121,30 @@ jobs:
           submodules: "true"
 
       - name: Install libboost
-        run: sudo apt-get install -y libboost-all-dev
+        run: apt-get install -y libboost-all-dev
 
-      - name: Install Python packages
-        run: sudo pip install psutil rich numpy pybind11
+      - name: Install Python and other packages
+        # Install cmake here to get the latest version to compile
+        # LLVM. The Ubuntu 20.04 cmake version is only 3.16.3
+        run: |
+          apt-get install -y pip
+          pip install cmake numpy psutil pybind11 rich
 
       - name: Install Ninja
+        # Can not use the following since it wants to use `sudo` not
+        # available in the case of Docker execution
         # https://github.com/llvm/actions/tree/main/install-ninja
-        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
+        # uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
+        # So just use the specific implementation instead:
+        run: apt-get install -y ninja-build
+
+        # Because the build requires to use explicitly this compiler
+      - name: Install Clang & Clang++ and linker
+        run: apt-get install -y clang lld
 
       - name: Get Submodule Hash
         id: get-submodule-hash
         run: echo "hash=$(md5sum $(echo utils/clone-llvm.sh))" >> $GITHUB_OUTPUT
-        shell: bash
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
@@ -49,13 +156,13 @@ jobs:
       - name: Get LLVM
         id: clone-llvm
         run: utils/clone-llvm.sh
-        shell: bash
 
       - name: Rebuild and Install LLVM
         run: utils/build-llvm.sh
 
       # Build the repo test target in debug mode to build and test.
       - name: Build and test (Assert)
+        if: matrix.build_type == 'Assert'
         run: |
           mkdir build_assert
           cd build_assert
@@ -83,6 +190,7 @@ jobs:
 
       # Build the repo test target in release mode to build and test.
       - name: Build and test (Release)
+        if: matrix.build_type == 'Release'
         run: |
           mkdir build_release
           cd build_release
@@ -113,6 +221,7 @@ jobs:
       # We'll be running clang-tidy later in this flow.
       - name: Install clang-tidy
         run: |
+          sudo apt-get update
           sudo apt-get install -y clang-tidy-12
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
             /usr/bin/clang-tidy-12 100
@@ -135,7 +244,7 @@ jobs:
       # will only be on the PR triggered flow). If it's not, then compare
       # against the last commit.
       - name: choose-commit
-        if: ${{ always() }}
+        if: always()
         env:
           # Base ref is the target branch, in text form (not hash)
           PR_BASE: ${{ github.base_ref }}
@@ -166,7 +275,7 @@ jobs:
       # Run 'git clang-format', comparing against the target commit hash. If
       # clang-format fixed anything, fail and output a patch.
       - name: clang-format
-        if: ${{ always() }}
+        if: always()
         run: |
           # Run clang-format
           git clang-format-12 $DIFF_COMMIT
@@ -184,7 +293,7 @@ jobs:
       # Run clang-tidy against only the changes. The 'clang-tidy-diff' script
       # does this if supplied with the diff.
       - name: clang-tidy
-        if: ${{ always() }}
+        if: always()
         run: |
           git diff -U0 $DIFF_COMMIT | \
             clang-tidy-diff-12.py -path build_assert -p1 -fix
@@ -204,7 +313,7 @@ jobs:
       - name: Upload format and tidy patches
         uses: actions/upload-artifact@v3
         continue-on-error: true
-        if: ${{ failure() }}
+        if: failure()
         with:
           name: clang-format-tidy-patches
           path: clang-*.patch
@@ -212,7 +321,7 @@ jobs:
       # Unfortunately, artifact uploads are always zips so display the diff as
       # well to provide feedback at a glance.
       - name: clang format and tidy patches display
-        if: ${{ failure() }}
+        if: failure()
         continue-on-error: true
         run: |
           # Display patches
