@@ -87,15 +87,15 @@ def prepend_path(path):
     llvm_config.config.environment['PATH'] = os.pathsep.join(paths)
 
 # Setup the path.
-prepend_path(config.llvm_tools_dir)
-prepend_path(config.peano_tools_dir)
-prepend_path(config.aie_tools_dir)
-#llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
-#llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
 if(config.vitis_root):
   config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
   prepend_path(config.vitis_aietools_bin)
   llvm_config.with_environment('VITIS', config.vitis_root)
+  #llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
+  #llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
+prepend_path(config.llvm_tools_dir)
+prepend_path(config.peano_tools_dir)
+prepend_path(config.aie_tools_dir)
 
 # Test to see if we have the peano backend.
 try:
