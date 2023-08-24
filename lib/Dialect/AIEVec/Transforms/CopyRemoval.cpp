@@ -17,6 +17,32 @@ using namespace MemoryEffects;
 namespace {
 
 //===----------------------------------------------------------------------===//
+// TODO: this pass once existed in the upstream MLIR and was removed at
+// https://reviews.llvm.org/D99172. This CopyRemoval pass was removed due to the
+// introduction of memref.clone (now bufferization.clone). bufferization.clone
+// is essentially memref.alloc+copy ops and is mostly created in
+// buffer-deallocation pass. It is introduced for better memory deallocation and
+// optimization. The canonicalization pass can optimize out some of the
+// bufferization.clone+memref.dealloc ops. If the bufferization.clone still
+// exists in the end of bufferization pass, we should call
+// "-convert-bufferization-to-memref" pass to convert it back to
+// memref.alloc+memref.copy.  Hence, the original CopyRemoval pass (which
+// removes memref.alloc/copy/dealloc) is replaced by the canonicalization of
+// bufferization.clone+memref.dealloc op. However, in our case, memref.alloc()
+// is from the tensor.empty() after bufferization, memref.copy() is added in
+// buffer-results-to-out-params pass, and memref.dealloc() is added in
+// buffer-deallocation pass, which creates a pattern that the existing
+// canonicalizer cannot support. As a result, we recover this CopyRemoval pass
+// back into the canonicalization pass for Vector before lowering to AIEVec and
+// help eliminate unnecessary memory allocation after the bufferization. Note
+// that we can also try to remove copy op before the bufferization. This will
+// require the function to be converted to destination-passing style code at
+// tensor level, which isn't fully supported in the existing MLIR environment
+// yet. Once the upstream MLIR has a mature support on this, removing copy op
+// before bufferization can be another direction to pursue.
+//===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
 // CopyRemovalPass
 //===----------------------------------------------------------------------===//
 
