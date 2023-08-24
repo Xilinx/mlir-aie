@@ -104,7 +104,7 @@ jobs:
           echo "$execution_context_var_inputs"
           echo "::endgroup::"
 
-      - name: Configure Environment
+      - name: Configure environment
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
 
       - name: Install git
@@ -142,11 +142,15 @@ jobs:
       - name: Install Clang & Clang++ and linker
         run: apt-get install -y clang lld
 
-      - name: Get related-LLVM Submodule Hash
-        id: get-submodule-hash
-        # Instead of using the git hash of LLVM, just use the good-enough hash
-        # of the cloning script file which has the hash in a textual form in it
-        run: echo "hash=$(md5sum utils/clone-llvm.sh)" >> $GITHUB_OUTPUT
+      - name: Get LLVM
+        id: clone-llvm
+        run: utils/clone-llvm.sh
+
+      - name: Get LLVM commit hash
+        id: get-llvm-commit-hash
+        # Get the LLVM commit hash to be used in the ccache database key to
+        # avoid mixing different binaries compiled by different LLVM versions
+        run: echo "hash=$(cd llvm ; git log -1 --format='%H')" >> $GITHUB_OUTPUT
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
@@ -154,14 +158,10 @@ jobs:
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition
-          key: clang-${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-submodule-hash.outputs.hash }}
+          key: clang-${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}
           max-size: 1G
 
-      - name: Get LLVM
-        id: clone-llvm
-        run: utils/clone-llvm.sh
-
-      - name: Rebuild and Install LLVM
+      - name: Build and install LLVM
         run: utils/build-llvm.sh
 
       # Build the repo test target in debug mode to build and test.
