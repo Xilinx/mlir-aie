@@ -142,15 +142,19 @@ jobs:
       - name: Install Clang & Clang++ and linker
         run: apt-get install -y clang lld
 
-      - name: Get Submodule Hash
+      - name: Get related-LLVM Submodule Hash
         id: get-submodule-hash
-        run: echo "hash=$(md5sum $(echo utils/clone-llvm.sh))" >> $GITHUB_OUTPUT
+        # Instead of using the git hash of LLVM, just use the good-enough hash
+        # of the cloning script file which has the hash in a textual form in it
+        run: echo "hash=$(md5sum utils/clone-llvm.sh)" >> $GITHUB_OUTPUT
 
       - name: Ccache for C++ compilation
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
-          key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
+          # Since there are now several compilation jobs running in parallel,
+          # use a different key per job to avoid a ccache writing race condition
+          key: clang-${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
 
       - name: Get LLVM
