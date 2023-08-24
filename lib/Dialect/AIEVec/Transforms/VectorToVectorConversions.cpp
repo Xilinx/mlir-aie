@@ -12,15 +12,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
@@ -193,52 +190,13 @@ struct ConvertSplatTransferReadToBroadcastPattern
 //============ AIEML canonicalization conversion patterns ===============//
 //============================================================================//
 
-struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
-  using OpConversionPattern<math::ExpOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-
-    if (!srcType) {
-      return failure();
-    }
-
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return failure();
-
-    StringRef includeName = "exp_lut.h";
-    ModuleOp moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
-    rewriter.setInsertionPointToStart(
-        &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
-
-    SmallVector<Value> expOperands = {adaptor.getOperand()};
-
-    rewriter.setInsertionPoint(expOp);
-    Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
-    auto funcOp = rewriter.create<emitc::CallOp>(
-        expOp.getLoc(), TypeRange{accType}, "getExpBf16", nullptr, nullptr,
-        expOperands);
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(expOp, srcType,
-                                               funcOp.getResult(0));
-
-    return success();
-  }
-};
-
 //============================================================================//
 //================ Common AIE canonicalization configuration =================//
 //============================================================================//
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
   target.addLegalDialect<arith::ArithDialect, AffineDialect,
-                         aievec::AIEVecDialect, memref::MemRefDialect,
-                         vector::VectorDialect>();
+                         memref::MemRefDialect, vector::VectorDialect>();
 }
 
 static void
@@ -271,19 +229,6 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //============================================================================//
 
 static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<emitc::EmitCDialect>();
-  target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
-    VectorType srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
-    if (!srcType) {
-      return true;
-    }
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return true;
-    return false;
-  });
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
@@ -294,7 +239,6 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
 
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<ComputeExpOpByLUTPattern>(patterns.getContext());
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
                                                   1024, 256);
 }
