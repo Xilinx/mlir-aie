@@ -1,7 +1,7 @@
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -convert-vector-to-aievec | aie-translate -aievec-to-cpp -o kernel.tmp.cc
 // RUN: echo "#include <cstdint>" > kernel.cc && cat kernel.tmp.cc >> kernel.cc
-// RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. -I%aietools/include -D__AIENGINE__ kernel.cc %S/helplib.cc %S/main.cc
+// RUN: xchesscc_wrapper aie -f -g +s +w work +o work -I%S -I. -I%aietools/include -D__AIENGINE__ -D__AIEARCH__=10 kernel.cc %S/helplib.cc %S/main.cc
 // RUN: xca_udm_dbg -qf -T -P %aietools/data/versal_prod/lib -t "%S/../../profiling.tcl ./work/a.out" | FileCheck %s
 
 func.func private @printv16xi16(%v : vector<16xi16>)
