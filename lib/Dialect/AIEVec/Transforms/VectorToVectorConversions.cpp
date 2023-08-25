@@ -186,6 +186,79 @@ struct ConvertSplatTransferReadToBroadcastPattern
   }
 };
 
+// This pattern moves cast operations as close as possible to the source of
+// the data. This helps to simplify dealing with patterns that may vary only
+// by these sorts of casts between data manipulation operations and arithmetic
+// ops.
+// TODO: Generalize this op and instantiate for different types of cast ops.
+struct HoistCastOpToDataSourcePattern : public RewritePattern {
+  HoistCastOpToDataSourcePattern(MLIRContext *context)
+      : RewritePattern(arith::ExtSIOp::getOperationName(), /*benefit=*/1,
+                       context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    arith::ExtSIOp extOp = cast<arith::ExtSIOp>(op);
+    Operation *defOp = extOp.getIn().getDefiningOp();
+    // If it's a data source op, we're done.
+    if (!defOp ||
+        isa<vector::TransferReadOp, memref::LoadOp, AffineLoadOp, func::CallOp>(
+            defOp))
+      return failure();
+
+    // At the moment, we only accept ops we know we can swap with cast.
+    if (!isa<vector::BroadcastOp, vector::ExtractOp,
+             vector::ExtractStridedSliceOp>(defOp))
+      return failure();
+
+    Type extOpInTy = extOp.getIn().getType();
+    SmallVector<Value, 4> inputs;
+    for (Value operand : defOp->getOperands()) {
+      Type operandTy = operand.getType();
+      VectorType extOpInVecTy = dyn_cast<VectorType>(extOpInTy);
+      VectorType operandVecTy = dyn_cast<VectorType>(operandTy);
+      if (operandTy == extOpInTy) {
+        Type outTy = extOp.getOut().getType();
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else if (extOpInVecTy && extOpInVecTy.getElementType() == operandTy) {
+        // Promote from vector to scalar -> scalar conversion for this operand
+        Type outTy =
+            cast<VectorType>(extOp.getOut().getType()).getElementType();
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else if (operandVecTy && operandVecTy.getElementType() == extOpInTy) {
+        // Promote from scalar to vector -> vector conversion for this operand
+        Type outTy =
+            VectorType::get(operandVecTy.getShape(), extOp.getOut().getType());
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else if (extOpInVecTy && operandVecTy &&
+                 (extOpInVecTy.getElementType() ==
+                  operandVecTy.getElementType())) {
+        // Hoist through a vector shape change
+        Type outTy = VectorType::get(
+            operandVecTy.getShape(),
+            cast<VectorType>(extOp.getOut().getType()).getElementType());
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else {
+        inputs.push_back(operand);
+      }
+    }
+
+    auto newOp =
+        rewriter.create(extOp->getLoc(), defOp->getName().getIdentifier(),
+                        inputs, {extOp.getOut().getType()}, defOp->getAttrs());
+    rewriter.replaceOp(extOp, newOp->getResult(0));
+    return success();
+  }
+};
+
 //============================================================================//
 //============ AIEML canonicalization conversion patterns ===============//
 //============================================================================//
@@ -281,7 +354,7 @@ struct CanonicalizeVectorForAIEVecPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect>();
+                    vector::VectorDialect, AffineDialect>();
   }
 
   Option<std::string> aieTarget{
@@ -329,6 +402,24 @@ static std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass(
   return std::make_unique<CanonicalizeVectorForAIEVecPass>(options);
 }
 
+struct HoistCastOpToDataSourcePass
+    : public PassWrapper<HoistCastOpToDataSourcePass,
+                         OperationPass<func::FuncOp>> {
+  void runOnOperation() override {
+    func::FuncOp funcOp = getOperation();
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+
+    patterns.add<HoistCastOpToDataSourcePattern>(patterns.getContext());
+
+    (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+  }
+};
+
+static std::unique_ptr<::mlir::Pass> createHoistCastOpToDataSourcePass() {
+  return std::make_unique<HoistCastOpToDataSourcePass>();
+}
+
 //============================================================================//
 //=============== Main Vector2Vector Pipeline Configuration ==================//
 //============================================================================//
@@ -340,4 +431,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
+
+  pm.addPass(createHoistCastOpToDataSourcePass());
 }
