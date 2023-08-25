@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
   writeData(g_out0Ref, OUT0_SIZE, dataDir + "/out0_ref.txt");
 
   bool ok = true;
-  ok &= checkData(g_out0, g_out0Ref, OUT0_SIZE, 1);
+  ok &= checkData(g_out0, g_out0Ref, OUT0_SIZE);
 
   if (ok)
     printf("TEST PASSED\n");
