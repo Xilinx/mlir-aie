@@ -9,7 +9,11 @@ cmake_minimum_required(VERSION 3.21)
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
 add_library(test_lib STATIC test_library.cpp)
-set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "test_library.h")
+set(TEST_LIB_PUBLIC_HEADERS
+    test_library.h
+    target.h
+)
+set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "${TEST_LIB_PUBLIC_HEADERS}")
 target_compile_options(test_lib PRIVATE -fPIC)
 
 target_include_directories(test_lib PRIVATE
