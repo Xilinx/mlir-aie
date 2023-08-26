@@ -338,5 +338,6 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
+  pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
 }
