@@ -1,3 +1,16 @@
+//===---  exp_lut.cpp - exponential loopup tables ---===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2023 Xilinx Inc.
+//
+//
+//===----------------------------------------------------------------------===//
+// These are exponential lookup tables for bfloat16 type
+//===----------------------------------------------------------------------===//
+
 #include "aie_api/aie.hpp"
 
 // The tables _ab and _cd are copies of each other
