@@ -1,7 +1,6 @@
-#ifndef __EXP_LUT_H__
-#define __EXP_LUT_H__
 #include "adf.h"
 #include "aie_api/aie.hpp"
+#include "exp_lut.h"
 
 // The tables _ab and _cd are copies of each other
 // Also, each table has a copy of data seperated by 128-bit
@@ -242,5 +241,3 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   exp_val = aie::mul(I_val_vec, F_val_vec);
   return v16accfloat(exp_val);
 }
-
-#endif //__EXP_LUT_H__
