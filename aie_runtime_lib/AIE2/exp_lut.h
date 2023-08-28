@@ -8,8 +8,8 @@
 //
 //
 //===----------------------------------------------------------------------===//
-//This is the implementation of getting exponential values for a bfloat16 vector
-//from exponential lookup tables.
+// This is the implementation of getting exponential values for a bfloat16
+// vector from exponential lookup tables.
 //===----------------------------------------------------------------------===//
 #ifndef __EXP_LUT_H__
 #define __EXP_LUT_H__

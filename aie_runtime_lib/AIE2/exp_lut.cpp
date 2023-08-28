@@ -1,6 +1,6 @@
+#include "exp_lut.h"
 #include "adf.h"
 #include "aie_api/aie.hpp"
-#include "exp_lut.h"
 
 // The tables _ab and _cd are copies of each other
 // Also, each table has a copy of data seperated by 128-bit
