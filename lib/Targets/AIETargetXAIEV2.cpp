@@ -404,7 +404,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   DenseMap<Operation *, SwitchboxOp> switchboxes;
 
   if (module.getOps<DeviceOp>().empty()) {
-    module.emitOpError("expected AIE.device operation at toplevel");
+    return module.emitOpError("expected AIE.device operation at toplevel");
   }
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
   const auto &target_model = targetOp.getTargetModel();
