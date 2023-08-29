@@ -786,29 +786,34 @@ void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
     }
   }
 
-  const char *core_status_strings[] = {"Enabled",
-                                       "In Reset",
-                                       "Memory Stall S",
-                                       "Memory Stall W",
-                                       "Memory Stall N",
-                                       "Memory Stall E",
-                                       "Lock Stall S",
-                                       "Lock Stall W",
-                                       "Lock Stall N",
-                                       "Lock Stall E",
-                                       "Stream Stall S",
-                                       "Stream Stall W",
-                                       "Stream Stall N",
-                                       "Stream Stall E",
-                                       "Cascade Stall Master",
-                                       "Cascade Stall Slave",
-                                       "Debug Halt",
-                                       "ECC Error",
-                                       "ECC Scrubbing",
-                                       "Error Halt",
-                                       "Core Done"};
+  // Note that not all strings are valid for all architectures
+  const char *core_status_strings[] = {
+      "Enabled",
+      "In Reset",
+      "Memory Stall S",
+      "Memory Stall W",
+      "Memory Stall N",
+      "Memory Stall E",
+      "Lock Stall S",
+      "Lock Stall W",
+      "Lock Stall N",
+      "Lock Stall E",
+      "Stream Stall SS0",
+      "Stream Stall SS1", // AIE1 only
+      "Stream Stall MS0",
+      "Stream Stall MS1", // AIE1 only
+      "Cascade Stall Slave",
+      "Cascade Stall Master",
+      "Debug Halt",
+      "ECC Error",
+      "ECC Scrubbing",
+      "Error Halt",
+      "Core Done",
+      "Core Processor Bus Stall", // AIE2 only
+  };
+
   printf("Core Status: ");
-  for (int i = 0; i <= 20; i++) {
+  for (int i = 0; i <= 21; i++) {
     if ((status >> i) & 0x1)
       printf("%s ", core_status_strings[i]);
   }
