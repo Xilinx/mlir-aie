@@ -96,7 +96,6 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
     else
       funcName += "ms";
 
-    llvm::dbgs() << "FINDING: " << funcName << "\n";
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMSFunc)
       return module.emitOpError("Could not find the intrinsic function!");

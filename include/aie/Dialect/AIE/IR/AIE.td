@@ -1304,7 +1304,7 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
   let assemblyFormat = [{
-    `(` $streamValue `:` type($streamValue) `,` $channel `:` type($channel) `)` attr-dict
+    `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
   }];
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
