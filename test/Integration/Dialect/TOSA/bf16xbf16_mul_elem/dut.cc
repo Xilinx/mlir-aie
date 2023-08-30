@@ -1,3 +1,4 @@
+// clang-format off
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2, bfloat16 *restrict v3) {
   size_t v4 = 16;
   size_t v5 = 1024;
@@ -17,3 +18,4 @@ void dut(bfloat16 *restrict v1, bfloat16 *restrict v2, bfloat16 *restrict v3) {
     }
   return;
 }
+// clang-format on

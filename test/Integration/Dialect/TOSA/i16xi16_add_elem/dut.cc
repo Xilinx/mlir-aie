@@ -1,3 +1,4 @@
+// clang-format off
 void dut(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
   size_t v4 = 0;
   size_t v5 = 1024;
@@ -13,5 +14,4 @@ void dut(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
   }
   return;
 }
-
-
+// clang-format on
