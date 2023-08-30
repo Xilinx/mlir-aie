@@ -8,7 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "memory_allocator.h"
 #include "test_library.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -22,7 +24,6 @@
 #include <xaiengine.h>
 
 #include "aie_inc.cpp"
-#include "memory_allocator.h"
 
 #define DMA_COUNT 7168
 
