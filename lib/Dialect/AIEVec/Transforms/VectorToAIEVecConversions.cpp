@@ -99,14 +99,9 @@ static aievec::MulElemOp createMulElemAieML(ConversionPatternRewriter &rewriter,
       createVectorType(512 / bitWidth, srcType.getElementType());
 
   arith::ConstantOp zeroConstOp = nullptr;
-  if (bitWidth == 8) {
-    zeroConstOp = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getIntegerAttr(srcType.getElementType(), 0));
-  } else {
-    zeroConstOp = rewriter.create<arith::ConstantOp>(
-        loc, srcType.getElementType(),
-        rewriter.getZeroAttr(srcType.getElementType()));
-  }
+  zeroConstOp = rewriter.create<arith::ConstantOp>(
+      loc, srcType.getElementType(),
+      rewriter.getZeroAttr(srcType.getElementType()));
   auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
       loc, vecType, zeroConstOp->getResult(0));
   auto extOp = rewriter.create<aievec::ExtOp>(loc, srcType,
