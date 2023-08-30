@@ -20,6 +20,7 @@ alignas(aie::vector_decl_align) extern int16 softmax_ilut_ab[512];
 alignas(aie::vector_decl_align) extern int16 softmax_ilut_cd[512];
 alignas(aie::vector_decl_align) extern int16 softmax_flut_ab[512];
 alignas(aie::vector_decl_align) extern int16 softmax_flut_cd[512];
+alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
@@ -57,5 +58,25 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   F_val_vec = lookup_f.fetch(input.cast_to<uint16>());
   exp_val = aie::mul(I_val_vec, F_val_vec);
   return v16accfloat(exp_val);
+}
+
+__attribute__((always_inline)) bfloat16 getInvBf16(float x) {
+  unsigned int *B_x;
+  unsigned int exp_mask = 0x7F800000;
+  unsigned int mantissa_mask = 0x007FFFFF;
+  unsigned int mantissa_Q = 0x00008000;
+  unsigned char exponent, mantissa;
+  unsigned inv_exponent;
+  unsigned short inv_x_val;
+  unsigned int B_Q;
+  bfloat16 *inv_x;
+  B_x = (unsigned int *)&x;
+  B_Q = *B_x + mantissa_Q;
+  exponent = (B_Q & exp_mask) >> 23;
+  mantissa = (B_Q & mantissa_mask) >> 16;
+  inv_exponent = (mantissa == 0) + (253 - exponent);
+  inv_x_val = (inv_exponent << 7) + m_inv_lut[mantissa];
+  inv_x = (bfloat16 *)&inv_x_val;
+  return *inv_x;
 }
 #endif //__EXP_LUT_H__
