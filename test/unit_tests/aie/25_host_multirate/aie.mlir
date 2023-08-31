@@ -11,7 +11,7 @@
 // RUN: aiecc.py -j4 %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%host_runtime_lib%/test_lib/include %extraAieCcFlags% -L%host_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 
-module @host_multirate {
+AIE.device(xcvc1902) {
     %tile34 = AIE.tile(3, 4)
     %tile70 = AIE.tile(7, 0)
 
@@ -30,8 +30,8 @@ module @host_multirate {
     %ext_buf70_in  = AIE.external_buffer {sym_name = "ddr_test_buffer_in"}: memref<256xi32>
     %ext_buf70_out = AIE.external_buffer {sym_name = "ddr_test_buffer_out"}: memref<64xi32>
 
-    AIE.objectFifo @of_in (%tile70, {%tile34}, 1) : !AIE.objectFifo<memref<64xi32>>
-    AIE.objectFifo @of_out (%tile34, {%tile70}, 1) : !AIE.objectFifo<memref<64xi32>>
+    AIE.objectFifo @of_in (%tile70, {%tile34}, 1 : i32) : !AIE.objectFifo<memref<64xi32>>
+    AIE.objectFifo @of_out (%tile34, {%tile70}, 1 : i32) : !AIE.objectFifo<memref<64xi32>>
 
     AIE.objectFifo.registerExternalBuffers @of_in (%tile70, {%ext_buf70_in}) : (memref<256xi32>)
     AIE.objectFifo.registerExternalBuffers @of_out (%tile70, {%ext_buf70_out}) : (memref<64xi32>)

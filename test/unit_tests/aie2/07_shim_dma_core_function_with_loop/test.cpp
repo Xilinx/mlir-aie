@@ -8,7 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "memory_allocator.h"
 #include "test_library.h"
+
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -21,7 +23,6 @@
 #include <xaiengine.h>
 
 #include "aie_inc.cpp"
-#include "memory_allocator.h"
 
 int main(int argc, char *argv[]) {
   printf("test start.\n");
