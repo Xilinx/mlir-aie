@@ -11,26 +11,26 @@
 // This is the implementation of getting exponential values for a bfloat16
 // vector from exponential lookup tables.
 //===----------------------------------------------------------------------===//
-#ifndef __EXP_LUT_H__
-#define __EXP_LUT_H__
+#ifndef __LUT_BASED_OPS_H__
+#define __LUT_BASED_OPS_H__
 
 #include "aie_api/aie.hpp"
 
-alignas(aie::vector_decl_align) extern int16 softmax_ilut_ab[512];
-alignas(aie::vector_decl_align) extern int16 softmax_ilut_cd[512];
-alignas(aie::vector_decl_align) extern int16 softmax_flut_ab[512];
-alignas(aie::vector_decl_align) extern int16 softmax_flut_cd[512];
+alignas(aie::vector_decl_align) extern int16 exp_ilut_ab[512];
+alignas(aie::vector_decl_align) extern int16 exp_ilut_cd[512];
+alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
+alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
 alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
-      (bfloat16 __aie_dm_resource_a *)softmax_ilut_ab;
+      (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
   bfloat16 __aie_dm_resource_b *ilut_cd =
-      (bfloat16 __aie_dm_resource_b *)softmax_ilut_cd;
+      (bfloat16 __aie_dm_resource_b *)exp_ilut_cd;
   bfloat16 __aie_dm_resource_a *flut_ab =
-      (bfloat16 __aie_dm_resource_a *)softmax_flut_ab;
+      (bfloat16 __aie_dm_resource_a *)exp_flut_ab;
   bfloat16 __aie_dm_resource_b *flut_cd =
-      (bfloat16 __aie_dm_resource_b *)softmax_flut_cd;
+      (bfloat16 __aie_dm_resource_b *)exp_flut_cd;
 
   using lut_type = aie::lut<4, bfloat16, bfloat16>;
   const int LUT_elems = 256;
@@ -79,4 +79,4 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
   inv_x = (bfloat16 *)&inv_x_val;
   return *inv_x;
 }
-#endif //__EXP_LUT_H__
+#endif //__LUT_BASED_OPS_H__

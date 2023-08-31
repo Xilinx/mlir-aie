@@ -1738,7 +1738,7 @@ struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return failure();
 
-    StringRef includeName = "exp_lut.h";
+    StringRef includeName = "lut_based_ops.h";
     ModuleOp moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
@@ -1794,7 +1794,7 @@ struct ComputeInvOpByLUTPattern : public OpConversionPattern<arith::DivFOp> {
       return failure();
     }
 
-    StringRef includeName = "exp_lut.h";
+    StringRef includeName = "lut_based_ops.h";
     ModuleOp moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());

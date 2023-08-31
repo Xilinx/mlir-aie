@@ -1,4 +1,4 @@
-#include "exp_lut.h"
+#include "lut_based_ops.h"
 void dut(bfloat16 *restrict v1, float v2, bfloat16 *restrict v3) {
   bfloat16 v4 = 0.0e+00;
   bfloat16 v5 = getInvBf16(v2);
