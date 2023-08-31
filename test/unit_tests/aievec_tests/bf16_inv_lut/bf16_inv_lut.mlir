@@ -10,12 +10,16 @@
 // CHECK: TEST PASSED
 
 module {
-  func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<1024xbf16>) {
+  func.func @dut(%arg0: memref<1024xbf16>, %arg1: f32, %arg2: memref<1024xbf16>) {
+    %cst = arith.constant 1.000000e+00 : f32
+    %0 = arith.divf %cst, %arg1 : f32
+    %1 = arith.truncf %0 : f32 to bf16
     affine.for %arg3 = 0 to 1024 {
-      %0 = affine.load %arg0[%arg3] : memref<1024xbf16>
-      %1 = math.exp %0 : bf16
-      affine.store %1, %arg1[%arg3] : memref<1024xbf16>
+      %2 = affine.load %arg0[%arg3] : memref<1024xbf16>
+      %3 = arith.mulf %1, %2 : bf16
+      affine.store %3, %arg2[%arg3] : memref<1024xbf16>
     }
     return
   }
 }
+
