@@ -88,7 +88,6 @@ set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 find_package(Vitis 2022.2 COMPONENTS AIE AIE2)
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
-find_package(Python3 COMPONENTS Interpreter)
 
 # Set up default Vitis Sysroot as sysroot when testing on aarch64
 list(FIND AIE_RUNTIME_TARGETS "aarch64" indexAarch64)
@@ -159,13 +158,8 @@ if(NOT AIE_PYTHON_INSTALL_DIR)
 endif()
 
 # setup python
-find_package(
-  Python3
-  COMPONENTS Interpreter Development
-  REQUIRED)
 include(MLIRDetectPythonEnv)
-mlir_detect_pybind11_install()
-find_package(pybind11 2.6 REQUIRED)
+mlir_configure_python_dev_packages()
 
 add_subdirectory(include)
 add_subdirectory(lib)
