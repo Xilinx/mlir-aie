@@ -62,6 +62,7 @@ set(AIE_CONFIG_INCLUDE_DIRS
   "\${AIE_INSTALL_PREFIX}/include"
   )
 set(AIE_CONFIG_EXPORTS_FILE "\${AIE_CMAKE_DIR}/AIETargets.cmake")
+set(MLIR_CONFIG_INCLUDE_EXPORTS_FILE "\${AIE_CMAKE_DIR}/MLIRTargets.cmake")
 set(AIE_CONFIG_LibXAIE_x86_64_DIR)
 if ("x86_64" IN_LIST AIE_RUNTIME_TARGETS)
   set(AIE_CONFIG_LibXAIE_x86_64_DIR "\${AIE_INSTALL_PREFIX}/runtime_lib/x86_64/xaiengine")
@@ -87,6 +88,8 @@ set(AIE_CONFIG_LibXAIE_aarch64_DIR)
 
 # export targets for the install directory
 install(EXPORT AIETargets DESTINATION ${AIE_INSTALL_PACKAGE_DIR}
+        COMPONENT aie-cmake-exports)
+install(EXPORT MLIRTargets DESTINATION ${AIE_INSTALL_PACKAGE_DIR}
         COMPONENT aie-cmake-exports)
 install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/AIEConfig.cmake
