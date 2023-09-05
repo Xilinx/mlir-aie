@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-from aiecc.main import main
+from aie.compiler.aiecc.main import main
 
 if __name__ == '__main__':
     main()

@@ -11,9 +11,11 @@ import shlex
 import sys
 import shutil
 
-from aiecc.configure import *
+from aie.compiler.aiecc.configure import *
 
-def parse_args():
+def parse_args(args=None):
+    if (args is None):
+        args = sys.argv[1:]
     parser = argparse.ArgumentParser(prog='aiecc')
     parser.add_argument('filename',
             metavar="file",
@@ -139,9 +141,7 @@ def parse_args():
             action='store_true',
             help='Show progress visualization')
 
-
-    opts = parser.parse_args(sys.argv[1:])
-
+    opts = parser.parse_args(args)
     return opts
 
 def strip_host_args_for_aiesim(args):
