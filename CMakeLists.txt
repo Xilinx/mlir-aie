@@ -1,19 +1,17 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions. See
-# https://llvm.org/LICENSE.txt for license information. SPDX-License-Identifier:
-# Apache-2.0 WITH LLVM-exception
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-# optional parameters -DTOOLCHAINFILES_PATH: path to cross compilation toolchain
-# files, default: <mlir-aie-root-dir>/cmake/toolchainFiles -DLibXAIE_x86_64_DIR:
-# search path for x86_64 libxaiengine -DLibXAIE_aarch64_DIR: search path for
-# aarch64 libxaiengine -DSysrootAarch64: sysroot for aarch crosscompile, if not
-# specified and aarch64 in AIE_RUNTIME_TARGETS then default to  Vitis aarch64
-# sysroot -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build
-# runtime libs for, default: x86_64; cross compilation for aarch64 against
-# default Vitis Sysroot -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64
-# or aarch64) used for running unit test and tutorials, default x86_64
+# optional parameters
+#  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
+#  -DLibXAIE_x86_64_DIR: search path for x86_64 libxaiengine
+#  -DLibXAIE_aarch64_DIR: search path for aarch64 libxaiengine
+#  -DSysrootAarch64: sysroot for aarch crosscompile, if not specified and aarch64 in AIE_RUNTIME_TARGETS then default to  Vitis aarch64 sysroot
+#  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64; cross compilation for aarch64 against default Vitis Sysroot
+#  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
 cmake_minimum_required(VERSION 3.21)
 
