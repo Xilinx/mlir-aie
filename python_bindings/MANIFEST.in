@@ -1,0 +1,10 @@
+recursive-include mlir *.so*
+recursive-include mlir *.dll*
+recursive-include mlir *.lib*
+recursive-include mlir *.dylib*
+recursive-include mlir *.pyd*
+recursive-include mlir *.pyi*
+recursive-include mlir *.h
+recursive-include mlir *.td
+
+recursive-include mlir *mlir_float16_utils*

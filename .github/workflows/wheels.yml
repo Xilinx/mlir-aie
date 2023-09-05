@@ -1,0 +1,191 @@
+name: Wheels
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+
+  build_wheels:
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+
+    continue-on-error: true
+
+    runs-on: ${{ matrix.OS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: x86_64
+
+          - OS: macos-11
+            ARCH: x86_64
+
+          - OS: macos-11
+            ARCH: arm64
+
+          - OS: windows-2019
+            ARCH: AMD64
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: ilammy/msvc-dev-cmd@v1.4.1
+      if: ${{ matrix.OS == 'windows-2019' }}
+
+    - name: Set up Visual Studio shell
+      if: ${{ matrix.OS == 'windows-2019' }}
+      uses: egor-tensin/vs-shell@v2
+      with:
+        arch: x64
+
+    - name: MS Build
+      if: ${{ matrix.OS == 'windows-2019' }}
+      uses: microsoft/setup-msbuild@v1.1
+
+    - name: Free disk space
+      if: contains(matrix.OS, 'ubuntu')
+      uses: jlumbroso/free-disk-space@76866dbe54312617f00798d1762df7f43def6e5c # v1.2.0
+      with:
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        swap-storage: false # This frees space on the wrong partition.
+        tool-cache: false # This includes Python, which we need.
+
+    - name: ccache
+      uses: hendrikmuhs/ccache-action@v1.2.9
+      with:
+        key: ${{ github.job }}-${{ matrix.OS }}-${{ matrix.ARCH }}  # Make cache specific to OS
+        max-size: "5G"
+
+    - name: Configure ccache dir on host
+      id: configure_ccache_dir_on_host
+      if: ${{ matrix.OS == 'ubuntu-20.04' }}
+      run: |
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        mkdir -p $HOST_CCACHE_DIR
+        echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_OUTPUT
+
+    - name: Configure ccache
+      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
+      shell: bash
+      run: |
+        
+        if [ x"${{ matrix.OS }}" == x"macos-11" ]; then
+          echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
+        else
+          echo "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin" >> $GITHUB_PATH
+        fi
+
+    - name: Install Ninja
+      uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
+
+# https://stackoverflow.com/a/73467112
+    - name: Split os
+      shell: bash
+      env:
+        OS: ${{ matrix.OS }}
+      id: split
+      run: echo "platform_version=${OS##*-}" | tee -a $GITHUB_OUTPUT
+
+    - name: Install boost
+      if: ${{ matrix.OS == 'windows-2019' || matrix.OS == 'macos-11' }}
+      uses: MarkusJx/install-boost@v2.4.4
+      id: install-boost
+      with:
+        boost_version: 1.72.0
+        platform_version: ${{ steps.split.outputs.platform_version }}
+
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: cibuildwheel
+      shell: bash
+      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      run: |
+        pip install cibuildwheel
+        
+        cp -R scripts python_bindings/scripts
+        cp requirements.txt python_bindings
+        pushd python_bindings
+        
+        BOOST_ROOT=${{ steps.install-boost.outputs.BOOST_ROOT }} \
+        CIBW_ARCHS=${{ matrix.ARCH }} \
+        CMAKE_GENERATOR="Ninja" \
+        HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
+        MATRIX_OS=${{ matrix.OS }} \
+        MLIR_COMMIT="17.0.0.2023083019+35ca6498" \
+        PARALLEL_LEVEL=${{ matrix.OS == 'windows-2019' && '2' || '2' }} \
+        cibuildwheel --output-dir ../wheelhouse
+        
+        popd
+
+    - name: Download cache from container ubuntu
+      if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      shell: bash
+      run: |
+        
+        ccache -s
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        rm -rf $HOST_CCACHE_DIR
+        mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+        ls -la $HOST_CCACHE_DIR
+        ccache -s
+
+    - name: Upload wheels
+      if: success() || failure()
+      uses: actions/upload-artifact@v3
+      with:
+        path: wheelhouse/*.whl
+        name: build_artifact
+
+  upload_wheels:
+
+    name: Upload wheels
+
+    needs: [build_wheels]
+
+    runs-on: ubuntu-latest
+#    environment: pypi
+#    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          # unpacks default artifact into dist/
+          # if `name: artifact` is omitted, the action will create extra parent dir
+          name: build_artifact
+          path: dist
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: "dist/*.whl,dist/*.tar.xz"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: "latest"
+          name: "latest"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
+
+      - name: Release current commit
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          owner: makslevental
+          repo: wheels
+          artifacts: "dist/*.whl"
+          token: "${{ secrets.WHEELS_REPO }}"
+          tag: "i"
+          name: "i"
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: true
