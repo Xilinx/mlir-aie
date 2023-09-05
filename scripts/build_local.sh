@@ -40,7 +40,6 @@ if [ x"$CIBW_ARCHS" == x"aarch64" ]; then
   export PIP_NO_BUILD_ISOLATION="false"
   pip install -r $HERE/../requirements.txt
   $HERE/../scripts/pip_install_mlir.sh
-  $HERE/../scripts/apply_patches.sh
 
   CMAKE_GENERATOR=Ninja \
   pip wheel $HERE/.. -v -w $HERE/../wheelhouse
