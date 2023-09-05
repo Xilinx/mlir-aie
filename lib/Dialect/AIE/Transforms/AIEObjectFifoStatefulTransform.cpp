@@ -785,24 +785,24 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if op was a nested for-loop, also keep track of dependencies inside it
       if (auto nestedLoop = dyn_cast<mlir::scf::ForOp>(op))
-        index = identifyDependencies(outerLoop, nestedLoop, operations, opIndex, dependencies, index);
+        index = identifyDependencies(outerLoop, nestedLoop, operations, opIndex,
+                                     dependencies, index);
     }
     return index;
   }
 
-  // Replace operands of cloned operation with results from other 
-  // duplicated operations based on the index of the original 
+  // Replace operands of cloned operation with results from other
+  // duplicated operations based on the index of the original
   // operation and its dependencies.
-  void replaceOperands(OpBuilder &builder, Operation* clone, 
-                       int originalOpIndex, mlir::Value base, 
-                       int64_t step, bool inLoop, int currentDuplication,
+  void replaceOperands(OpBuilder &builder, Operation *clone,
+                       int originalOpIndex, mlir::Value base, int64_t step,
+                       bool inLoop, int currentDuplication,
                        std::vector<std::vector<int>> &dependencies,
                        std::vector<Operation *> &duplicatedOperations) {
     auto numOperands = clone->getNumOperands();
     for (int operandIndex = 0; (unsigned)operandIndex < numOperands;
-          operandIndex++) {
-      int originalDependencyIndex =
-          dependencies[originalOpIndex][operandIndex];
+         operandIndex++) {
+      int originalDependencyIndex = dependencies[originalOpIndex][operandIndex];
 
       if (originalDependencyIndex >= 0) {
         // replace the operand with the result of operation with
@@ -847,17 +847,18 @@ struct AIEObjectFifoStatefulTransformPass
         // for each operand, check whether there was a dependecy
         auto op = operations[opIndex];
         auto clone = op->clone();
-        replaceOperands(builder, clone, opIndex, base, step, 
-            inLoop, i, dependencies, duplicatedOperations);
+        replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
+                        dependencies, duplicatedOperations);
         builder.insert(clone);
-        
+
         if (auto nestedLoop = dyn_cast<mlir::scf::ForOp>(clone)) {
           Block *body = nestedLoop.getBody();
           auto withoutTerminator = --body->end();
-          for (auto loopOp = body->begin(); loopOp != withoutTerminator; loopOp++) {
+          for (auto loopOp = body->begin(); loopOp != withoutTerminator;
+               loopOp++) {
             opIndex++;
-            replaceOperands(builder, &(*loopOp), opIndex, base, step, 
-              inLoop, i, dependencies, duplicatedOperations);
+            replaceOperands(builder, &(*loopOp), opIndex, base, step, inLoop, i,
+                            dependencies, duplicatedOperations);
           }
         }
       }
@@ -928,7 +929,8 @@ struct AIEObjectFifoStatefulTransformPass
             int64_t num_unrolls =
                 0; // number of times to unroll loop, not counting original body
 
-            identifyDependencies(forLoop, forLoop, operations, opIndex, dependencies, 0);
+            identifyDependencies(forLoop, forLoop, operations, opIndex,
+                                 dependencies, 0);
 
             if (num_iter <= unrollFactor) {
               // duplicate loop body and remove loop
@@ -1404,7 +1406,7 @@ struct AIEObjectFifoStatefulTransformPass
             } else {
               Operation *acqBlockDefOp =
                   acquireOp.getOperation()->getBlock()->getParentOp();
-              
+
               // else, check if releaseOp happened before the block region
               // with the acquireOp
               if (relOp.getOperation()->getBlock() ==
@@ -1418,13 +1420,13 @@ struct AIEObjectFifoStatefulTransformPass
                   numRel += relOp.relNumber();
                 }
 
-              // else, check if the block region with releaseOp happened
-              // before...
+                // else, check if the block region with releaseOp happened
+                // before...
               } else {
                 Operation *relBlockDefOp =
                     relOp.getOperation()->getBlock()->getParentOp();
-                
-                // ...the acquireOp 
+
+                // ...the acquireOp
                 if (acquireOp.getOperation()->getBlock() ==
                     relBlockDefOp->getBlock()) {
                   if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
@@ -1435,9 +1437,9 @@ struct AIEObjectFifoStatefulTransformPass
                                        // after the subview is created
                     numRel += relOp.relNumber();
                   }
-                
-                // ...the block region with the acquireOp
-                } else if (acqBlockDefOp->getBlock() == 
+
+                  // ...the block region with the acquireOp
+                } else if (acqBlockDefOp->getBlock() ==
                            relBlockDefOp->getBlock()) {
                   if (!acqBlockDefOp->isBeforeInBlock(relBlockDefOp)) {
                     releaseOps[{op, portNum}].erase(
@@ -1446,7 +1448,7 @@ struct AIEObjectFifoStatefulTransformPass
                                        // the ReleaseOps again later,
                                        // after the subview is created
                     numRel += relOp.relNumber();
-                  } 
+                  }
                 }
               }
             }
@@ -1484,7 +1486,7 @@ struct AIEObjectFifoStatefulTransformPass
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
                          LockAction::AcquireGreaterEqual);
 
-        // if objFifo was linked with others, find which objFifos 
+        // if objFifo was linked with others, find which objFifos
         // elements to use
         ObjectFifoCreateOp target = op;
         if (linkOp)
