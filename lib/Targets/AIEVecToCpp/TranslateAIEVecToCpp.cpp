@@ -1878,17 +1878,17 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
-// Print an expand shape by forwarding the value to the next op
-static LogicalResult printOperation(CppEmitter &emitter,
-                                    memref::ExpandShapeOp expandShapeOp) {
-  Value source = expandShapeOp.getSrc();
+// Print an operation by forwarding the value to the next op
+template <typename OpTy>
+static LogicalResult printValueForwardOperation(CppEmitter &emitter, OpTy op) {
+  Value source = op.getSrc();
 
   // If the memref being outputted is not already emitted,
   // error out
   if (!emitter.hasValueInScope(source))
     return failure();
 
-  if (failed(emitter.emitAssignPrefix(*expandShapeOp)))
+  if (failed(emitter.emitAssignPrefix(*op)))
     return failure();
 
   raw_indented_ostream &os = emitter.ostream();
@@ -1896,6 +1896,20 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << emitter.getOrCreateName(source);
 
   return success();
+}
+
+// Print an expand shape by forwarding the value to the next op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::ExpandShapeOp expandShapeOp) {
+  return printValueForwardOperation<memref::ExpandShapeOp>(emitter,
+                                                           expandShapeOp);
+}
+
+// Print a collapse shape by forwarding the value to the next op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::CollapseShapeOp collapseShapeOp) {
+  return printValueForwardOperation<memref::CollapseShapeOp>(emitter,
+                                                             collapseShapeOp);
 }
 
 static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
@@ -2874,9 +2888,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<vector::TransferWriteOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Memref ops.
-          .Case<memref::StoreOp>(
-              [&](auto op) { return printOperation(*this, op); })
-          .Case<memref::ExpandShapeOp>(
+          .Case<memref::StoreOp, memref::ExpandShapeOp,
+                memref::CollapseShapeOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
                 aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
