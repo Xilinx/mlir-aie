@@ -1370,26 +1370,27 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
-    The `aie.createObjectFifo` operation creates a circular buffer established between a producer and one or 
-    more consumers, which are `aie.tile` operations. The aie.createObjectFifo instantiates the given number of 
-    buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
-    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo or, more specifically,
-    of its object pool.
+    The `aie.objectFifo` operation creates a circular buffer established between a producer and one or 
+    more consumers, which are `aie.tile` operations. The aie.objectFifo instantiates the given number of 
+    buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after 
+    lowering, based on tile-adjacency. These elements represent the conceptual depth of the objectFifo or, 
+    more specifically, of its object pool.
 
-    For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
-    take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
-    size will be applied. If a single size is specified, it will be applied to both producer and consumers.
+    For the producer and for each consumer, a different size (i.e., element number) can be specified as an 
+    array of integer values. This will take effect in the case of consumers placed on tiles non-adjacent to 
+    the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be 
+    applied to both producer and consumers.
 
-    This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
-    locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
+    This operation is then converted by the AIEObjectFifoStatefulTransformPass into aie.buffers and their associated 
+    aie.locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
     1-to-1 tile example:
     ```
-      AIE.objectFifo @of1 (%tile12, { %tile13 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between %tile12 and %tile13 of 4 elements, each a buffer of 16 32-bit integers.
-    Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile13, 
+    This operation creates an objectFifo between %tile12 and %tile23 of 4 elements, each a buffer of 16 32-bit integers.
+    Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile23, 
     then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
     highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.
  
