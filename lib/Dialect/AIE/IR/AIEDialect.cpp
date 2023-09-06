@@ -1431,6 +1431,7 @@ bool TileOp::isShimPLTile() {
   return target_model.isShimPLTile(getCol(), getRow());
 }
 bool TileOp::isShimNOCorPLTile() { 
+  const auto &target_model = getTargetModel(*this);
   return target_model.isShimNOCorPLTile(getCol(), getRow()); 
 }
 } // namespace AIE
