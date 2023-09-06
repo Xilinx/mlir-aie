@@ -75,31 +75,20 @@ class CMakeBuild(build_ext):
 
         cmake_args = [
             f"-G {cmake_generator}",
-            f"-DCMAKE_PREFIX_PATH={MLIR_AIE_INSTALL_ABS_PATH}",
+            "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
+            "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
             f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir'}",
             f"-DAIE_DIR={MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie'}",
             f"-DCMAKE_INSTALL_PREFIX={install_dir}",
-            "-DLLVM_CCACHE_BUILD=ON",
-            "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             f"-DPython3_EXECUTABLE={sys.executable}",
             # not used on MSVC, but no harm
             f"-DCMAKE_BUILD_TYPE={cfg}",
         ]
         if platform.system() == "Windows":
             cmake_args += [
-                "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
-                "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
-                # https://stackoverflow.com/a/43188057
-                "-DCMAKE_C_USE_RESPONSE_FILE_FOR_OBJECTS=ON",
-                "-DCMAKE_CXX_USE_RESPONSE_FILE_FOR_OBJECTS=ON",
-                "-DCMAKE_C_RESPONSE_FILE_LINK_FLAG=@",
-                "-DCMAKE_CXX_RESPONSE_FILE_LINK_FLAG=@",
-                "-DCMAKE_NINJA_FORCE_RESPONSE_FILE=ON",
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
-                "-DCMAKE_C_FLAGS=/MT",
-                "-DCMAKE_CXX_FLAGS=/MT",
             ]
 
         cmake_args_dict = get_cross_cmake_args()
@@ -173,10 +162,14 @@ setup(
     author="",
     name="aie",
     include_package_data=True,
-    author_email="maksim.levental@gmail.com",
     long_description_content_type="text/markdown",
     ext_modules=[CMakeExtension("_aie", sourcedir=".")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     python_requires=">=3.10",
+    entry_points={
+        "console_scripts": [
+            "aiecc=aie.compiler.aiecc.main:main",
+        ],
+    },
 )

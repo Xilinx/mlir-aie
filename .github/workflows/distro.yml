@@ -36,12 +36,36 @@ on:
 
 jobs:
 
+  set_datetime:
+
+    name: Set canonical datetime
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      DATETIME: ${{ steps.set_datetime.outputs.DATETIME }}
+
+    steps:
+      - name: set datetime
+        id: set_datetime
+        shell: bash
+        run: |
+          DATETIME=$(date +"%Y%m%d%H")
+          echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
+
   build_wheels:
+
+    needs: [set_datetime]
+
     name: ${{ matrix.OS }} ${{ matrix.ARCH }}
 
     continue-on-error: true
 
     runs-on: ${{ matrix.OS }}
+
+    outputs:
+      MLIR_AIE_WHEEL_VERSION: ${{ steps.get_wheel_version.outputs.MLIR_AIE_WHEEL_VERSION }}
+
     strategy:
       fail-fast: false
       matrix:
@@ -144,11 +168,6 @@ jobs:
         sudo apt-get install -y binutils-aarch64-linux-gnu \
           g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
 
-    - name: set datetime
-      shell: bash
-      run: |
-        DATETIME=$(date +"%Y%m%d%H")
-        echo "DATETIME=${DATETIME}" | tee -a $GITHUB_ENV
 
 # https://stackoverflow.com/a/73467112
     - name: Split os
@@ -172,8 +191,8 @@ jobs:
       run: |
         
         pip install cibuildwheel
-         
-        APPLY_PATCHES=true \
+        
+        PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
         BOOST_ROOT="${{ steps.install-boost.outputs.BOOST_ROOT }}" \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
@@ -188,9 +207,8 @@ jobs:
       if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
       run: |
         
-        export APPLY_PATCHES="true"
         export PIP_NO_BUILD_ISOLATION="false"
-        export PIP_FIND_LINKS="https://makslevental.github.io/wheels"
+        export PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels"
         export CIBW_ARCHS=${{ matrix.ARCH }}
         export MLIR_COMMIT="17.0.0.2023083019+35ca6498"
         export BOOST_ROOT="${{ steps.install-boost.outputs.BOOST_ROOT }}"
@@ -201,6 +219,16 @@ jobs:
         
         CMAKE_GENERATOR=Ninja \
         pip wheel . -v -w wheelhouse --no-build-isolation
+
+    - name: Get wheel version
+      id: get_wheel_version
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        pip install pkginfo
+        WHL=$(ls wheelhouse/mlir_aie-*whl)
+        echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; print(pkginfo.Wheel('$WHL').version)")" | tee -a $GITHUB_OUTPUT
 
     - name: rename
       shell: bash
@@ -221,6 +249,16 @@ jobs:
       if: ${{ matrix.OS == 'windows-2019' }}
       run: |
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
+
+    - name: Reset datetime ccache
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+    
+        ccache -s
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        find $HOST_CCACHE_DIR -exec touch -a -m -t "${{ needs.set_datetime.outputs.DATETIME }}00" {} \;
+        ccache -s
 
     - name: Download cache from container ubuntu
       if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
@@ -275,9 +313,11 @@ jobs:
           makeLatest: true
 
   call-build-python-bindings:
-    needs: [upload_distro_wheels]
+    needs: [build_wheels, upload_distro_wheels]
     uses: Xilinx/mlir-aie/.github/workflows/wheels.yml@wheels2
     permissions:
       contents: write
       id-token: write
     secrets: inherit # pass all secrets
+    with:
+      MLIR_AIE_WHEEL_VERSION: ${{ needs.build_wheels.outputs.MLIR_AIE_WHEEL_VERSION }}

@@ -1,5 +1,5 @@
 [tool.cibuildwheel]
-environment = { PIP_FIND_LINKS = "https://makslevental.github.io/wheels/", PIP_NO_BUILD_ISOLATION = "false" }
+environment = { PIP_NO_BUILD_ISOLATION = "false" }
 build-verbosity = 3
 build = "cp310-* cp311-*"
 

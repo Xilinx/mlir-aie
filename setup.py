@@ -203,7 +203,6 @@ class CMakeBuild(build_ext):
             cwd=build_temp,
             check=True,
         )
-        shutil.rmtree(install_dir / "python", ignore_errors=True)
 
 
 commit_hash = None

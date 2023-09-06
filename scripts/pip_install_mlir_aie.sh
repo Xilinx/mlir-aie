@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -xe
 
-export PIP_FIND_LINKS="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels"
-
 SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
 
 if [ ! -z "$MLIR_AIE_COMMIT" ]; then

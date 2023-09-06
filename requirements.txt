@@ -1,10 +1,12 @@
 cmake>=3.12
 dataclasses
 importlib_metadata
-mlir-native-tools==17.0.0.2023083015+35ca6498
 ninja
 numpy
 pip
 pybind11[global]>=2.10.4
+rich
 setuptools>=42
 wheel
+
+mlir-native-tools==17.0.0.2023083015+35ca6498

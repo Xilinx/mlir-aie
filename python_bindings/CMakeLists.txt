@@ -51,7 +51,6 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
-set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
@@ -68,21 +67,15 @@ add_definitions(${LLVM_DEFINITIONS})
 
 include(MLIRDetectPythonEnv)
 include(AddMLIRPython)
-mlir_detect_pybind11_install()
 mlir_configure_python_dev_packages()
 
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.mlir.")
 
-add_mlir_python_common_capi_library(
-  AieAggregateCAPI
-  INSTALL_COMPONENT
-  AieMLIRPythonModules
-  INSTALL_DESTINATION
-  aie/mlir/_mlir_libs
-  OUTPUT_DIRECTORY
-  "${MLIR_BINARY_DIR}/aie/mlir/_mlir_libs"
-  RELATIVE_INSTALL_ROOT
-  "../../../.."
+add_mlir_python_common_capi_library(AieAggregateCAPI
+  INSTALL_COMPONENT AieMLIRPythonModules
+  INSTALL_DESTINATION aie/mlir/_mlir_libs
+  OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/aie/mlir/_mlir_libs
+  RELATIVE_INSTALL_ROOT ../../../..
   DECLARED_SOURCES
     MLIRPythonSources
     MLIRPythonExtension.Core
@@ -95,7 +88,8 @@ add_mlir_python_common_capi_library(
 # Custom targets.
 # ##############################################################################
 
-_flatten_mlir_python_targets(aie_python_sources_deps AiePythonSources)
+_flatten_mlir_python_targets(aie_python_sources_deps AiePythonSources
+                             AieCompilerPythonSources)
 add_custom_target("aie-python-sources" DEPENDS ${aie_python_sources_deps})
 if(NOT LLVM_ENABLE_IDE)
   add_llvm_install_targets(install-aie-python-sources DEPENDS
@@ -107,8 +101,8 @@ endif()
 # ##############################################################################
 
 add_mlir_python_modules(AieMLIRPythonModules
-  ROOT_PREFIX "${MLIR_BINARY_DIR}/aie/mlir"
-  INSTALL_PREFIX "aie/mlir"
+  ROOT_PREFIX ${CMAKE_BINARY_DIR}/aie/mlir
+  INSTALL_PREFIX aie/mlir
   DECLARED_SOURCES
     MLIRPythonSources
     MLIRPythonExtension.Core
@@ -117,14 +111,26 @@ add_mlir_python_modules(AieMLIRPythonModules
     AiePythonExtensions
   COMMON_CAPI_LINK_LIBS
     AieAggregateCAPI
-    AIECAPI
-  )
+    AIECAPI)
 
 add_mlir_python_modules(AiePythonModules
-  ROOT_PREFIX "${MLIR_BINARY_DIR}/aie"
-  INSTALL_PREFIX "aie"
+  ROOT_PREFIX ${CMAKE_BINARY_DIR}/aie
+  INSTALL_PREFIX aie
   DECLARED_SOURCES
     AiePythonSources
   COMMON_CAPI_LINK_LIBS
-    AieAggregateCAPI
-)
+    AieAggregateCAPI)
+
+configure_file(
+  ${AIE_DIR}/../../../python/aie/compiler/aiecc/configure.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/aiecc/configure.py)
+
+declare_mlir_python_sources(AieCompilerPythonSources.Configure
+  ADD_TO_PARENT AieCompilerPythonSources
+  SOURCES aiecc/configure.py)
+
+add_mlir_python_modules(AieCompilerPythonModules
+  ROOT_PREFIX ${CMAKE_BINARY_DIR}/aie/compiler
+  INSTALL_PREFIX aie/compiler
+  DECLARED_SOURCES
+    AieCompilerPythonSources)

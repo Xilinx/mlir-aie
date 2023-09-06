@@ -13,8 +13,6 @@ case "${unameOut}" in
 esac
 echo "${machine}"
 
-export APPLY_PATCHES=true
-export PIP_FIND_LINKS="https://makslevental.github.io/wheels"
 export MLIR_COMMIT="17.0.0.2023083017+35ca6498"
 
 if [ "$machine" == "linux" ]; then
@@ -35,18 +33,21 @@ ccache --print-stats
 ccache --show-config
 
 export HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+#export CIBW_CONTAINER_ENGINE="docker; create_args : --network=\"host\""
+export PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels"
 
-if [ x"$CIBW_ARCHS" == x"aarch64" ]; then
-  export PIP_NO_BUILD_ISOLATION="false"
-  pip install -r $HERE/../requirements.txt
-  $HERE/../scripts/pip_install_mlir.sh
-
-  CMAKE_GENERATOR=Ninja \
-  pip wheel $HERE/.. -v -w $HERE/../wheelhouse
-else
-  cibuildwheel "$HERE"/.. --platform "$machine"
-fi
+#if [ x"$CIBW_ARCHS" == x"aarch64" ]; then
+#  export PIP_NO_BUILD_ISOLATION="false"
+#  pip install -r $HERE/../requirements.txt
+#  $HERE/../scripts/pip_install_mlir.sh
+#
+#  CMAKE_GENERATOR=Ninja \
+#  pip wheel $HERE/.. -v -w $HERE/../wheelhouse
+#else
+#  cibuildwheel "$HERE"/.. --platform "$machine"
+#fi
 
 cp -a $HERE/../scripts $HERE/../python_bindings/
 cp -a $HERE/../requirements.txt $HERE/../python_bindings/
+
 cibuildwheel "$HERE/../python_bindings" --platform linux --output-dir $HERE/../wheelhouse

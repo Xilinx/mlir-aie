@@ -4,7 +4,7 @@ build = "cp311-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
 
 [tool.cibuildwheel.linux]
-environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH", PIP_FIND_LINKS = "https://makslevental.github.io/wheels", PIP_NO_BUILD_ISOLATION = "false" }
+environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH", PIP_NO_BUILD_ISOLATION = "false" }
 before-all = [
     "yum -y install libxml2 ncurses-devel",
     "{project}/scripts/docker_prepare_ccache.sh",
@@ -28,11 +28,11 @@ environment-pass = [
     "PIP_NO_BUILD_ISOLATION",
 ]
 repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel} --exclude libcuda.so.1 --exclude libvulkan.so.1 --exclude libomp.so --exclude libompd.so"
+    "auditwheel repair -w {dest_dir} {wheel}"
 ]
 
 [tool.cibuildwheel.macos]
-environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH", PIP_FIND_LINKS = "https://makslevental.github.io/wheels", PIP_NO_BUILD_ISOLATION = "false" }
+environment = { PATH = "/usr/local/opt/ccache/libexec:$PATH", PIP_NO_BUILD_ISOLATION = "false" }
 before-all = [
     "rm -rf {project}/build",
     "rm -rf *egg*",
@@ -42,11 +42,11 @@ before-build = [
     "{project}/scripts/pip_install_mlir.sh",
 ]
 repair-wheel-command = [
-    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel} --ignore-missing-dependencies"
+    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
 ]
 
 [tool.cibuildwheel.windows]
-environment = { PIP_FIND_LINKS = "https://makslevental.github.io/wheels", PIP_NO_BUILD_ISOLATION = "false" }
+environment = { PIP_NO_BUILD_ISOLATION = "false" }
 before-build = [
     "pip install -r requirements.txt",
     "bash {project}\\scripts\\pip_install_mlir.sh",
