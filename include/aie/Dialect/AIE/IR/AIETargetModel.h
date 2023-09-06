@@ -269,6 +269,9 @@ public:
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
   }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  }
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
@@ -289,6 +292,9 @@ public:
   }
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
+  }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
   uint32_t getNumMemTileRows() const override { return 1; }
 };
@@ -314,6 +320,9 @@ public:
   }
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
+  }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
   uint32_t getNumMemTileRows() const override { return 2; }
 };
