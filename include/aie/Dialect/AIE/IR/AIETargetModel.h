@@ -54,7 +54,8 @@ public:
   /// not contain any memory.
   virtual bool isShimPLTile(int col, int row) const = 0;
 
-  /// Return true if the given tile is either a Shim NOC or a Shim PL interface tile.
+  /// Return true if the given tile is either a Shim NOC or a Shim PL interface
+  /// tile.
   virtual bool isShimNOCorPLTile(int col, int row) const = 0;
 
   /// Return true if the given tile ID is valid.

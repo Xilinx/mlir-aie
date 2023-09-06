@@ -1430,9 +1430,9 @@ bool TileOp::isShimPLTile() {
   const auto &target_model = getTargetModel(*this);
   return target_model.isShimPLTile(getCol(), getRow());
 }
-bool TileOp::isShimNOCorPLTile() { 
+bool TileOp::isShimNOCorPLTile() {
   const auto &target_model = getTargetModel(*this);
-  return target_model.isShimNOCorPLTile(getCol(), getRow()); 
+  return target_model.isShimNOCorPLTile(getCol(), getRow());
 }
 } // namespace AIE
 } // namespace xilinx
