@@ -118,7 +118,8 @@ public:
       assert([&] {
         TileOp tileOp = tile.getDefiningOp<TileOp>();
         const auto &target_model = getTargetModel(tileOp);
-        int numChannels = target_model.getNumSourceSwitchboxConnections(WireBundle::DMA);
+        int numChannels =
+            target_model.getNumSourceSwitchboxConnections(WireBundle::DMA);
         if (masterChannelsPerTile[tile] >= (numChannels - 1)) {
           printf("All tile DMA master channels are already in use.\n");
           return false;
@@ -140,7 +141,8 @@ public:
       assert([&] {
         TileOp tileOp = tile.getDefiningOp<TileOp>();
         const auto &target_model = getTargetModel(tileOp);
-        int numChannels = target_model.getNumDestSwitchboxConnections(WireBundle::DMA);
+        int numChannels =
+            target_model.getNumDestSwitchboxConnections(WireBundle::DMA);
         if (slaveChannelsPerTile[tile] >= (numChannels - 1)) {
           printf("All tile DMA slave channels are already in use.\n");
           return false;
