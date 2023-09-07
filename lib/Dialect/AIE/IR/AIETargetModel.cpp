@@ -216,7 +216,7 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
 uint32_t
 AIE1TargetModel::getNumDestShimMuxConnections(int col, int row,
                                               WireBundle bundle) const {
-  if (isShimNOCTile(col, row))
+  if (isShimNOCorPLTile(col, row))
     switch (bundle) {
     case WireBundle::DMA:
       return 2;
@@ -462,7 +462,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
 uint32_t
 AIE2TargetModel::getNumDestShimMuxConnections(int col, int row,
                                               WireBundle bundle) const {
-  if (isShimNOCTile(col, row))
+  if (isShimNOCorPLTile(col, row))
     switch (bundle) {
     case WireBundle::DMA:
       return 2;

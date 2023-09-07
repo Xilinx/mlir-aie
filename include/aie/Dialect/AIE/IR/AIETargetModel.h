@@ -54,6 +54,10 @@ public:
   /// not contain any memory.
   virtual bool isShimPLTile(int col, int row) const = 0;
 
+  /// Return true if the given tile is either a Shim NOC or a Shim PL interface
+  /// tile.
+  virtual bool isShimNOCorPLTile(int col, int row) const = 0;
+
   /// Return true if the given tile ID is valid.
   virtual bool isValidTile(TileID src) const {
     return (src.first >= 0) && (src.first < columns()) && (src.second >= 0) &&
@@ -269,6 +273,9 @@ public:
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
   }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  }
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
@@ -289,6 +296,9 @@ public:
   }
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
+  }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
   uint32_t getNumMemTileRows() const override { return 1; }
 };
@@ -314,6 +324,9 @@ public:
   }
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
+  }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
   uint32_t getNumMemTileRows() const override { return 2; }
 };

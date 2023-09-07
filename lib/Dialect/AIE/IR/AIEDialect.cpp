@@ -564,18 +564,6 @@ xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   }
   return ObjectFifoCreateOp();
 }
-// xilinx::AIE::ObjectFifoCreateOp
-// xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
-//   Operation *parent = getOperation();
-//   while ((parent = parent->getParentOp())) {
-//     if (auto device = dyn_cast<DeviceOp>(parent)) {
-//       for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-//         if (objFifo.name() == getObjFifoName())
-//           return objFifo;
-//     }
-//   }
-//   return ObjectFifoCreateOp();
-// }
 
 // ObjectFifoAcquireOp
 LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
@@ -666,18 +654,6 @@ xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
   }
   return ObjectFifoCreateOp();
 }
-// xilinx::AIE::ObjectFifoCreateOp
-// xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
-//   Operation *parent = getOperation();
-//   while ((parent = parent->getParentOp())) {
-//     if (auto device = dyn_cast<DeviceOp>(parent)) {
-//       for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-//         if (objFifo.name() == getObjFifoName())
-//           return objFifo;
-//     }
-//   }
-//   return ObjectFifoCreateOp();
-// }
 
 // ObjectFifoSubviewAccessOp
 LogicalResult xilinx::AIE::ObjectFifoSubviewAccessOp::verify() {
@@ -723,18 +699,6 @@ xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
   }
   return ObjectFifoCreateOp();
 }
-// xilinx::AIE::ObjectFifoCreateOp
-// xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
-//   Operation *parent = getOperation();
-//   while ((parent = parent->getParentOp())) {
-//     if (auto device = dyn_cast<DeviceOp>(parent)) {
-//       for (auto objFifo : device.getOps<ObjectFifoCreateOp>())
-//         if (objFifo.name() == getObjFifoName())
-//           return objFifo;
-//     }
-//   }
-//   return ObjectFifoCreateOp();
-// }
 
 const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
   switch (getDevice()) {
@@ -1466,7 +1430,10 @@ bool TileOp::isShimPLTile() {
   const auto &target_model = getTargetModel(*this);
   return target_model.isShimPLTile(getCol(), getRow());
 }
-bool TileOp::isShimNOCorPLTile() { return isShimNOCTile() || isShimPLTile(); }
+bool TileOp::isShimNOCorPLTile() {
+  const auto &target_model = getTargetModel(*this);
+  return target_model.isShimNOCorPLTile(getCol(), getRow());
+}
 } // namespace AIE
 } // namespace xilinx
 
