@@ -41,59 +41,18 @@ jobs:
             ARCH: AMD64
 
     steps:
-    - uses: actions/checkout@v3
-
-    - uses: ilammy/msvc-dev-cmd@v1.4.1
-      if: ${{ matrix.OS == 'windows-2019' }}
-
-    - name: Set up Visual Studio shell
-      if: ${{ matrix.OS == 'windows-2019' }}
-      uses: egor-tensin/vs-shell@v2
+    - uses: makslevental/mlir-wheels/.github/actions/setup_base@main
+      id: setup_base
       with:
-        arch: x64
+        # required
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
 
-    - name: MS Build
-      if: ${{ matrix.OS == 'windows-2019' }}
-      uses: microsoft/setup-msbuild@v1.1
-
-    - name: Free disk space
-      if: contains(matrix.OS, 'ubuntu')
-      uses: jlumbroso/free-disk-space@76866dbe54312617f00798d1762df7f43def6e5c # v1.2.0
+    - uses: makslevental/mlir-wheels/.github/actions/setup_ccache@main
+      id: setup_ccache
       with:
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        swap-storage: false # This frees space on the wrong partition.
-        tool-cache: false # This includes Python, which we need.
-
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1.2.9
-      with:
-        key: ${{ github.job }}-${{ matrix.OS }}-${{ matrix.ARCH }}  # Make cache specific to OS
-        max-size: "5G"
-
-    - name: Configure ccache dir on host
-      id: configure_ccache_dir_on_host
-      if: ${{ matrix.OS == 'ubuntu-20.04' }}
-      run: |
-        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-        mkdir -p $HOST_CCACHE_DIR
-        echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_OUTPUT
-
-    - name: Configure ccache
-      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
-      shell: bash
-      run: |
-        
-        if [ x"${{ matrix.OS }}" == x"macos-11" ]; then
-          echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
-        else
-          echo "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin" >> $GITHUB_PATH
-        fi
-
-    - name: Install Ninja
-      uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
 
 # https://stackoverflow.com/a/73467112
     - name: Split os
@@ -118,6 +77,7 @@ jobs:
     - name: cibuildwheel
       shell: bash
       if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
         pip install cibuildwheel
         
@@ -138,8 +98,8 @@ jobs:
         popd
 
     - name: Reset datetime ccache
-      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       shell: bash
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
         
         ccache -s
@@ -151,6 +111,7 @@ jobs:
     - name: Download cache from container ubuntu
       if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       shell: bash
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
         
         ccache -s
@@ -164,7 +125,7 @@ jobs:
       if: success() || failure()
       uses: actions/upload-artifact@v3
       with:
-        path: wheelhouse/*.whl
+        path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
   upload_wheels:

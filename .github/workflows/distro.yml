@@ -86,88 +86,33 @@ jobs:
             ARCH: AMD64
 
     steps:
-    # Enable tmate debugging of manually-triggered workflows if the input option was provided
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
-      if: ${{ inputs.DEBUG_ENABLED && inputs.DEBUG_OS == matrix.OS && inputs.DEBUG_ARCH == matrix.ARCH }}
+    - uses: makslevental/mlir-wheels/.github/actions/setup_base@main
+      id: setup_base
       with:
-        limit-access-to-actor: true
-        detached: ${{ inputs.DEBUG_DETACHED }}
+        # optional
+        DEBUG_ENABLED: ${{ inputs.DEBUG_ENABLED }}
+        DEBUG_OS: ${{ inputs.DEBUG_OS }}
+        DEBUG_ARCH: ${{ inputs.DEBUG_ARCH }}
+        DEBUG_DETACHED: ${{ inputs.DEBUG_DETACHED }}
+        # required
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
 
-    - uses: actions/checkout@v3
-
-    - uses: actions/checkout@v3
+    - uses: makslevental/mlir-wheels/.github/actions/setup_ccache@main
+      id: setup_ccache
       with:
-        repository: Xilinx/mlir-aie
-        ref: ${{ inputs.AIE_COMMIT != '' && inputs.AIE_COMMIT || 'main' }}
-        submodules: recursive
-        path: mlir-aie
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
 
-    - uses: ilammy/msvc-dev-cmd@v1.4.1
-      if: ${{ matrix.OS == 'windows-2019' }}
-
-    - name: Set up Visual Studio shell
-      if: ${{ matrix.OS == 'windows-2019' }}
-      uses: egor-tensin/vs-shell@v2
-      with:
-        arch: x64
-
-    - name: MS Build
-      if: ${{ matrix.OS == 'windows-2019' }}
-      uses: microsoft/setup-msbuild@v1.1
-
-    - name: Free disk space
-      if: contains(matrix.OS, 'ubuntu')
-      uses: jlumbroso/free-disk-space@76866dbe54312617f00798d1762df7f43def6e5c # v1.2.0
-      with:
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        swap-storage: false # This frees space on the wrong partition.
-        tool-cache: false # This includes Python, which we need.
-
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-
-    - name: ccache
-      uses: hendrikmuhs/ccache-action@v1.2.9
-      with:
-        key: ${{ github.job }}-${{ matrix.OS }}-${{ matrix.ARCH }}  # Make cache specific to OS
-        max-size: "5G"
-
-    - name: Configure ccache dir on host
-      id: configure_ccache_dir_on_host
-      if: ${{ matrix.OS == 'ubuntu-20.04' }}
-      run: |
-        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-        mkdir -p $HOST_CCACHE_DIR
-        echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_ENV
-        echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_OUTPUT
-
-    - name: Configure ccache
-      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-11' }}
+    - name: Checkout
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
         
-        if [ x"${{ matrix.OS }}" == x"macos-11" ]; then
-          echo "/usr/local/opt/ccache/libexec" >> $GITHUB_PATH
-        else
-          echo "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin" >> $GITHUB_PATH
+        git clone --recursive https://github.com/Xilinx/mlir-aie.git
+        if [ x"${{ matrix.AIE_COMMIT }}" != x"" ]; then
+          pushd mlir-aie && git reset --hard ${{ matrix.AIE_COMMIT }} && popd
         fi
-
-
-    - name: Install Ninja
-      uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
-
-    - name: Install cross-compilation toolchain
-      if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y binutils-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
-
 
 # https://stackoverflow.com/a/73467112
     - name: Split os
@@ -187,6 +132,7 @@ jobs:
 
     - name: cibuildwheel
       if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
         
@@ -205,6 +151,7 @@ jobs:
     - name: build aarch ubuntu wheel
       shell: bash
       if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
         
         export PIP_NO_BUILD_ISOLATION="false"
@@ -247,6 +194,7 @@ jobs:
 
     - name: rename
       if: ${{ matrix.OS == 'windows-2019' }}
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
@@ -263,6 +211,7 @@ jobs:
     - name: Download cache from container ubuntu
       if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       shell: bash
+      working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
         
         ccache -s
@@ -276,7 +225,7 @@ jobs:
       if: success() || failure()
       uses: actions/upload-artifact@v3
       with:
-        path: wheelhouse/*.whl
+        path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
   upload_distro_wheels:
