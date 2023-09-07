@@ -1025,12 +1025,6 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
           unsigned rBitWidth =
               rSrcType.getElementType().getIntOrFloatBitWidth();
 
-          if ((lBitWidth != 8 || rBitWidth != 8) &&
-              (lBitWidth != 16 || rBitWidth != 16)) {
-            return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                     resultType, srcOp);
-          }
-
           Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
           auto lUpsOp =
               rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
