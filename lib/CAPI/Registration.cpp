@@ -6,10 +6,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie-c/Registration.h"
+
 #include "aie/InitialAllDialect.h"
 
+#include "aie/Dialect/AIEVec/Analysis/Passes.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Transforms/Passes.h"
+
 #include "mlir/CAPI/IR.h"
-// #include "mlir/InitAllPasses.h"
 
 void aieRegisterAllDialects(MlirContext context) {
   mlir::DialectRegistry registry;
@@ -17,5 +21,9 @@ void aieRegisterAllDialects(MlirContext context) {
 }
 
 void aieRegisterAllPasses() {
-  // xilinx::AIE::registerAllPasses();
+  xilinx::AIE::registerAIEPasses();
+  xilinx::AIEX::registerAIEXPasses();
+  xilinx::aievec::registerAIEVecAnalysisPasses();
+  xilinx::aievec::registerAIEVecPasses();
+  xilinx::aievec::registerAIEVecPipelines();
 }
