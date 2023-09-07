@@ -15,7 +15,8 @@
 
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIE, aie, xilinx::AIE::AIEDialect)
 MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEX, aiex, xilinx::AIEX::AIEXDialect)
-MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEVec, aievec, xilinx::aievec::AIEVecDialect)
+MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIEVec, aievec,
+                                      xilinx::aievec::AIEVecDialect)
 
 //===---------------------------------------------------------------------===//
 // ObjectFifoType
