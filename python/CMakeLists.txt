@@ -36,12 +36,34 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME AIE
 )
 
+declare_mlir_dialect_python_bindings(
+  ADD_TO_PARENT AiePythonSources.Dialects
+  ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
+  TD_FILE dialects/AiexBinding.td
+  SOURCES
+    dialects/aiex/__init__.py
+    dialects/_AIEX_ops_ext.py
+  DIALECT_NAME AIEX
+)
+
 ################################################################################
 # Extensions
 ################################################################################
 
 declare_mlir_python_extension(AiePythonExtensions.MLIR
   MODULE_NAME _aieMlir
+  ADD_TO_PARENT AiePythonExtensions
+  ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+  SOURCES
+    AIEMLIRModule.cpp
+  EMBED_CAPI_LINK_LIBS
+    AIECAPI
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+)
+
+declare_mlir_python_extension(AiexPythonExtensions.MLIR
+  MODULE_NAME _aiexMlir
   ADD_TO_PARENT AiePythonExtensions
   ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
   SOURCES
