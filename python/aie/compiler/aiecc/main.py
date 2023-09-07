@@ -24,19 +24,19 @@ import aie.compiler.aiecc.configure
 import rich.progress as progress
 
 aie_opt_passes = [
-    "--aie-normalize-address-spaces",
-    "--canonicalize",
-    "--cse",
-    "--convert-vector-to-llvm",
-    "--expand-strided-metadata",
-    "--lower-affine",
-    "--convert-math-to-llvm",
-    "--convert-arith-to-llvm",
-    "--convert-memref-to-llvm",
-    "--convert-func-to-llvm=use-bare-ptr-memref-call-conv",
-    "--convert-cf-to-llvm",
-    "--canonicalize",
-    "--cse",
+                "--aie-normalize-address-spaces",
+                "--canonicalize",
+                "--cse",
+                "--convert-vector-to-llvm",
+                "--expand-strided-metadata",
+                "--lower-affine",
+                "--convert-math-to-llvm",
+                "--convert-arith-to-llvm",
+                "--convert-memref-to-llvm",
+                "--convert-func-to-llvm=use-bare-ptr-memref-call-conv",
+                "--convert-cf-to-llvm",
+                "--canonicalize",
+                "--cse",
 ]
 
 

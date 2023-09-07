@@ -17,7 +17,7 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(AIE, aie, xilinx::AIE::AIEDialect)
 //===---------------------------------------------------------------------===//
 
 bool aieTypeIsObjectFifoType(MlirType type) {
-  return unwrap(type).isa<xilinx::AIE::AIEObjectFifoType>();
+            return unwrap(type).isa<xilinx::AIE::AIEObjectFifoType>();
 }
 
 MlirType aieObjectFifoTypeGet(MlirType type) {
