@@ -444,7 +444,8 @@ static AffineExpr constructLinearizedAffineExpr(TransferReadOp readOp,
     // If the access is a map via affine apply op (e.g., A[i+2], where the map
     // is d0 -> d0+2), push in the map after replacing all the dims with unique
     // index identifiers (e.g., let the unique identifier for index i be k0).
-    if (affine::AffineApplyOp apOf = value.getDefiningOp<affine::AffineApplyOp>()) {
+    if (affine::AffineApplyOp apOf =
+            value.getDefiningOp<affine::AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
       assert(map.getNumResults() == 1 &&
              "Failed to create linearized affineExpr for complicated index");
@@ -1078,7 +1079,8 @@ generateUPDOp(TransferReadOp readOp,
       // If the transfer_read has some apply operations, then they also need to
       // be hoisted.
       for (auto &value : indices) {
-        if (affine::AffineApplyOp apOf = value.getDefiningOp<affine::AffineApplyOp>()) {
+        if (affine::AffineApplyOp apOf =
+                value.getDefiningOp<affine::AffineApplyOp>()) {
           // Skip hoisting if already above in lexicographical order
           if (apOf->getBlock() == readOp->getBlock() &&
               apOf->isBeforeInBlock(updOp))
@@ -2440,7 +2442,8 @@ static void generateAIEAddOrSubOpsInFunc(func::FuncOp func, VectState *state) {
 // and then insert them in the front bb of that for op's region.
 static void insertUPDOpsInLoop(affine::AffineForOp forOp, VectState *state) {
   // Recursively generate UPD ops in the nested for op's.
-  for (affine::AffineForOp nestedOp : forOp.getRegion().getOps<affine::AffineForOp>())
+  for (affine::AffineForOp nestedOp :
+       forOp.getRegion().getOps<affine::AffineForOp>())
     insertUPDOpsInLoop(nestedOp, state);
 
   // A map from an interval to the UPD op. The key gives the interval that
@@ -2641,7 +2644,8 @@ static void
 computeEnclosingLoopsPerBlock(affine::AffineForOp forOp, VectState *state,
                               SmallVector<Operation *, 8> &enclosingLoops) {
   // Form the loop band for nested for ops
-  for (affine::AffineForOp nestedOp : forOp.getRegion().getOps<affine::AffineForOp>()) {
+  for (affine::AffineForOp nestedOp :
+       forOp.getRegion().getOps<affine::AffineForOp>()) {
     enclosingLoops.push_back(nestedOp);
     computeEnclosingLoopsPerBlock(nestedOp, state, enclosingLoops);
     enclosingLoops.pop_back();

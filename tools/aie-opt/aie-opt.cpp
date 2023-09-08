@@ -55,6 +55,6 @@ int main(int argc, char **argv) {
   registry.insert<xilinx::ADF::ADFDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
 
-  return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
-                            registry));
+  return failed(
+      MlirOptMain(argc, argv, "MLIR modular optimizer driver\n", registry));
 }

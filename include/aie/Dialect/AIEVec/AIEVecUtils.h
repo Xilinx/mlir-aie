@@ -149,7 +149,8 @@ inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
   llvm::SmallDenseMap<Value, AffineExpr, 8> indexToExprDimMap;
   for (auto idxAndValue : llvm::enumerate(updOp.getIndices())) {
     auto value = idxAndValue.value();
-    if (affine::AffineApplyOp apOf = value.getDefiningOp<affine::AffineApplyOp>()) {
+    if (affine::AffineApplyOp apOf =
+            value.getDefiningOp<affine::AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
       // Cannot create linearized affineExpr for complicated index.
       if (map.getNumResults() != 1) {
