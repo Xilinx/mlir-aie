@@ -1016,20 +1016,7 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
         if (lhsExt && rhsExt) {
           auto lval = lhsExt->getOperand(0);
           auto rval = rhsExt->getOperand(0);
-
           VectorType lSrcType = cast<VectorType>(lval.getType());
-          VectorType rSrcType = cast<VectorType>(rval.getType());
-
-          unsigned lBitWidth =
-              lSrcType.getElementType().getIntOrFloatBitWidth();
-          unsigned rBitWidth =
-              rSrcType.getElementType().getIntOrFloatBitWidth();
-
-          if ((lBitWidth != 8 || rBitWidth != 8) &&
-              (lBitWidth != 16 || rBitWidth != 16)) {
-            return genAddElemAieML<SrcOpTy, DstOpTy>(rewriter, lhs, rhs,
-                                                     resultType, srcOp);
-          }
 
           Type accType = getVectorOpDestType(lSrcType, /*AIEML =*/true);
           auto lUpsOp =
