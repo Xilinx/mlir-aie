@@ -1350,7 +1350,7 @@ An op to write to a stream channel/port of a switchbox
 Syntax:
 
 ```
-operation ::= `AIE.putStream` `(` $streamValue `:` type($streamValue) `,` $channel `:` type($channel) `)` attr-dict
+operation ::= `AIE.putStream` `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
 ```
 
 An op to write to a stream channel/port of a switchbox.
