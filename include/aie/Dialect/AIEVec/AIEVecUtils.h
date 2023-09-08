@@ -20,8 +20,6 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include <assert.h>
 
-using namespace mlir::affine;
-
 namespace xilinx {
 namespace aievec {
 
@@ -45,7 +43,7 @@ inline VectorType createVectorType(unsigned lanes, Type elementType) {
 
 // Return the size (in bits) of the underlying element type of the vector
 inline int32_t getElementSizeInBits(VectorType type) {
-  return type.cast<ShapedType>().getElementTypeBitWidth() / type.getNumElements();
+  return type.cast<ShapedType>().getElementTypeBitWidth();
 }
 
 // Return the number of lanes along the vectorized dimension for the vector
@@ -151,7 +149,7 @@ inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
   llvm::SmallDenseMap<Value, AffineExpr, 8> indexToExprDimMap;
   for (auto idxAndValue : llvm::enumerate(updOp.getIndices())) {
     auto value = idxAndValue.value();
-    if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
+    if (affine::AffineApplyOp apOf = value.getDefiningOp<affine::AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
       // Cannot create linearized affineExpr for complicated index.
       if (map.getNumResults() != 1) {

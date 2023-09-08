@@ -38,7 +38,6 @@ namespace xilinx::aievec {
 } // namespace xilinx::aievec
 
 using namespace mlir;
-using namespace mlir::affine;
 using namespace arith;
 using namespace vector;
 using namespace xilinx;

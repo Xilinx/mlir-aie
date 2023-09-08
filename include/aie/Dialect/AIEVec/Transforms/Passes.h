@@ -58,6 +58,8 @@ class FuncOp;
 namespace xilinx {
 namespace aievec {
 
+using mlir::affine::AffineDialect;
+
 #define GEN_PASS_DECL
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"

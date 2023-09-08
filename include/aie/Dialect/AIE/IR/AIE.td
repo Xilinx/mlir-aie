@@ -8,22 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
+#ifndef AIE_OPS
+#define AIE_OPS
 
+include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
-
-#ifdef AIE_OPS
-#else
-#define AIE_OPS
-#endif
-
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 
 def AIE_Dialect : Dialect {
@@ -982,14 +976,9 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, Is
     int maxSizeInBytes() { return 32768; }
     // CallableOpInterface
     Region *getCallableRegion();
-    ArrayRef<Type> getCallableResults();
+    ArrayRef<Type> getArgumentTypes() { return getOperand().getType(); }
+    ArrayRef<Type> getResultTypes() { return getType(); }
     static StringRef getDefaultDialect() { return "AIE"; }
-    ::mlir::ArrayAttr getCallableArgAttrs() {
-      return nullptr;
-    }
-    ::mlir::ArrayAttr getCallableResAttrs() {
-      return nullptr;
-    }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile), [{
@@ -1039,14 +1028,9 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableO
     TileOp getTileOp();
     // CallableOpInterface
     Region *getCallableRegion();
-    ArrayRef<Type> getCallableResults();
+    ArrayRef<Type> getArgumentTypes() { return getOperand().getType(); }
+    ArrayRef<Type> getResultTypes() { return getType(); }
     static StringRef getDefaultDialect() { return "AIE"; }
-    ::mlir::ArrayAttr getCallableArgAttrs() {
-      return nullptr;
-    }
-    ::mlir::ArrayAttr getCallableResAttrs() {
-      return nullptr;
-    }
   }];
   let builders = [
     OpBuilder<(ins "Value":$tile), [{
@@ -1697,3 +1681,5 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
     int getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
   }];
 }
+
+#endif // AIE_OPS

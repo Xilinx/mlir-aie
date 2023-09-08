@@ -419,7 +419,7 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
 
     auto src = extOp.getVector();
     auto pos = extOp.getPosition();
-    int64_t posVal = cast<IntegerAttr>(pos[0]).getInt();
+    int64_t posVal = pos[0];
     VectorType srcVecType = cast<VectorType>(src.getType());
     VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
     if (srcVecType != resultType) {
@@ -749,7 +749,7 @@ struct FoldBroadcastToFMAOp : public OpConversionPattern<aievec::FMAOp> {
             .getResult();
     // XXX: We assume a 1D vector
     auto pos = extOp.getPosition();
-    int64_t zstart = cast<IntegerAttr>(pos[0]).getInt();
+    int64_t zstart = pos[0];
     auto fmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, zstart);
     rewriter.replaceOpWithNewOp<aievec::FMAOp>(
         fmaOp, TypeRange({fmaOp.getResult().getType()}),
