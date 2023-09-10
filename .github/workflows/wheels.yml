@@ -91,7 +91,7 @@ jobs:
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_COMMIT="17.0.0.2023083019+35ca6498" \
+        MLIR_COMMIT="18.0.0.2023091015+780b046b" \
         PARALLEL_LEVEL=${{ matrix.OS == 'windows-2019' && '2' || '2' }} \
         cibuildwheel --output-dir ../wheelhouse
         
