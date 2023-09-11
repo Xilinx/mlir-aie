@@ -117,7 +117,7 @@ class flow_runner:
       llvmir_chesslinked = llvmir + "chesslinked.ll"
       # Note that chess-clang comes from a time before opaque pointers
       #await self.do_call(task, ['clang', "-Xclang -no-opaque-pointers", llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-emit-llvm', '-o', llvmir_chesslinked])
-      await self.do_call(task, ['llvm-link', '--opaque-pointers=0', llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-o', llvmir_chesslinked])
+      await self.do_call(task, ['llvm-link', '--opaque-pointers=1', llvmir_chesshack, self.chess_intrinsic_wrapper, '-S', '-o', llvmir_chesslinked])
       await self.do_call(task, ['sed', '-i', 's/noundef//', llvmir_chesslinked])
       # Formal function argument names not used in older LLVM
       await self.do_call(task, ['sed', '-i', '-E', '/define .*@/ s/%[0-9]*//g', llvmir_chesslinked])
@@ -136,6 +136,7 @@ class flow_runner:
       await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: readwrite, inaccessiblemem: readwrite\)/inaccessiblemem_or_argmemonly/g', llvmir_chesslinked])
       await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: read, inaccessiblemem: read\)/inaccessiblemem_or_argmemonly readonly/g', llvmir_chesslinked])
       await self.do_call(task, ['sed', '-i', '-E', 's/memory\(argmem: write, inaccessiblemem: write\)/inaccessiblemem_or_argmemonly writeonly/g', llvmir_chesslinked])
+      await self.do_call(task, ['sed', '-i', '-E', 's/target triple = \"aie.*\"/target triple = "pdarch-unknown-unknown-elf"/g', llvmir_chesslinked])
       return llvmir_chesslinked
 
   async def prepare_for_chesshack(self, task):
@@ -195,7 +196,7 @@ class flow_runner:
         await self.do_call(task, ['aie-translate', self.file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
       if(not self.opts.unified):
         file_core_llvmir = self.tmpcorefile(core, "ll")
-        await self.do_call(task, ['aie-translate', '--opaque-pointers=0', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
+        await self.do_call(task, ['aie-translate', '--opaque-pointers=1', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
         file_core_obj = self.tmpcorefile(core, "o")
 
       file_core_elf = elf_file if elf_file else self.corefile(".", core, "elf")
@@ -448,7 +449,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                               self.file_with_addresses, '-o', self.file_opt_with_addresses])
 
           self.file_llvmir = os.path.join(self.tmpdirname, 'input.ll')
-          await self.do_call(progress_bar.task, ['aie-translate', '--opaque-pointers=0', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
+          await self.do_call(progress_bar.task, ['aie-translate', '--opaque-pointers=1', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
 
           self.file_obj = os.path.join(self.tmpdirname, 'input.o')
           if(opts.compile and opts.xchesscc):
@@ -456,7 +457,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
             await self.do_call(progress_bar.task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
           elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
-            await self.do_call(progress_bar.task, ['opt', '--opaque-pointers=0', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
+            await self.do_call(progress_bar.task, ['opt', '--opaque-pointers=1', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 
             await self.do_call(progress_bar.task, ['llc', self.file_llvmir_opt, '-O2', '--march=%s' % self.aie_target.lower(), '--function-sections', '--filetype=obj', '-o', self.file_obj])
 
