@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
 
 void dut_ref(bfloat16 *in0, bfloat16 *out0) {
   float sum = 0.0f;
- 
+
   for (unsigned k = 0; k < IN0_SIZE; ++k) {
     float in = in0[k];
     float out = exp(in);
