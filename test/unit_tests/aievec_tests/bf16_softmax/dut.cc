@@ -1,4 +1,4 @@
-//TODO: Remove the redundent include oeration
+//TODO: Remove the redundant include oeration
 // clang-format off
 #include "lut_based_ops.h"
 #include "lut_based_ops.h"
