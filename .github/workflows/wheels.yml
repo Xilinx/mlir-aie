@@ -18,7 +18,7 @@ on:
 
 jobs:
 
-  build_wheels:
+  build_x86_wheels:
     name: ${{ matrix.OS }} ${{ matrix.ARCH }}
 
     continue-on-error: true
@@ -54,45 +54,26 @@ jobs:
         MATRIX_OS: ${{ matrix.OS }}
         MATRIX_ARCH: ${{ matrix.ARCH }}
 
-# https://stackoverflow.com/a/73467112
-    - name: Split os
-      shell: bash
-      env:
-        OS: ${{ matrix.OS }}
-      id: split
-      run: echo "platform_version=${OS##*-}" | tee -a $GITHUB_OUTPUT
-
-    - name: Install boost
-      if: ${{ matrix.OS == 'windows-2019' || matrix.OS == 'macos-11' }}
-      uses: MarkusJx/install-boost@v2.4.4
-      id: install-boost
-      with:
-        boost_version: 1.72.0
-        platform_version: ${{ steps.split.outputs.platform_version }}
-
     - uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
     - name: cibuildwheel
       shell: bash
-      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
       working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
-        pip install cibuildwheel
         
         cp -R scripts python_bindings/scripts
         cp requirements.txt python_bindings
         pushd python_bindings
         
         PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
-        BOOST_ROOT=${{ steps.install-boost.outputs.BOOST_ROOT }} \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_COMMIT="18.0.0.2023091015+780b046b" \
-        PARALLEL_LEVEL=${{ matrix.OS == 'windows-2019' && '2' || '2' }} \
+        MLIR_WHEEL_VERSION="18.0.0.2023091015+780b046b" \
+        PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir ../wheelhouse
         
         popd
@@ -109,7 +90,7 @@ jobs:
         ccache -s
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: matrix.OS == 'ubuntu-20.04' && (success() || failure())
       shell: bash
       working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
@@ -128,11 +109,99 @@ jobs:
         path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact
 
+  build_aarch64_wheels:
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+
+    continue-on-error: true
+
+    runs-on: ${{ matrix.OS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-20.04
+            ARCH: aarch64
+
+    steps:
+      - uses: makslevental/mlir-wheels/.github/actions/setup_base@main
+        id: setup_base
+        with:
+          # required
+          MATRIX_OS: ${{ matrix.OS }}
+          MATRIX_ARCH: ${{ matrix.ARCH }}
+
+      - uses: makslevental/mlir-wheels/.github/actions/setup_ccache@main
+        id: setup_ccache
+        with:
+          MATRIX_OS: ${{ matrix.OS }}
+          MATRIX_ARCH: ${{ matrix.ARCH }}
+
+      - name: Set up QEMU
+        if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: ${{ matrix.ARCH }}
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: cibuildwheel
+        shell: bash
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        run: |
+          
+          cp -R scripts python_bindings/scripts
+          cp requirements.txt python_bindings
+          pushd python_bindings
+          
+          PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
+          CIBW_ARCHS=${{ matrix.ARCH }} \
+          CMAKE_GENERATOR="Ninja" \
+          HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
+          MATRIX_OS=${{ matrix.OS }} \
+          MLIR_WHEEL_VERSION="18.0.0.2023091015+780b046b" \
+          PARALLEL_LEVEL=2 \
+          cibuildwheel --output-dir ../wheelhouse
+          
+          popd
+
+      - name: Reset datetime ccache
+        shell: bash
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        run: |
+          
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          DATETIME=$(date +"%Y%m%d%H")
+          find $HOST_CCACHE_DIR -exec touch -a -m -t "$DATETIME""00" {} \;
+          ccache -s
+
+      - name: Download cache from container ubuntu
+        if: success() || failure()
+        shell: bash
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        run: |
+          
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          rm -rf $HOST_CCACHE_DIR
+          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+          ls -la $HOST_CCACHE_DIR
+          ccache -s
+
+      - name: Upload wheels
+        if: success() || failure()
+        uses: actions/upload-artifact@v3
+        with:
+          path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+          name: build_artifact
+
   upload_wheels:
 
     name: Upload wheels
 
-    needs: [build_wheels]
+    needs: [build_aarch64_wheels, build_x86_wheels]
 
     runs-on: ubuntu-latest
 #    environment: pypi

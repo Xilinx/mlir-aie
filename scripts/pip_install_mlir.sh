@@ -3,8 +3,8 @@ set -xe
 
 SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
 
-if [ ! -z "$MLIR_COMMIT" ]; then
-  MLIR_COMMIT="==$MLIR_COMMIT"
+if [ ! -z "$MLIR_WHEEL_VERSION" ]; then
+  MLIR_WHEEL_VERSION="==$MLIR_WHEEL_VERSION"
 fi
 
 if [ x"$CIBW_ARCHS" == x"arm64" ] || [ x"$CIBW_ARCHS" == x"aarch64" ]; then
@@ -13,7 +13,7 @@ if [ x"$CIBW_ARCHS" == x"arm64" ] || [ x"$CIBW_ARCHS" == x"aarch64" ]; then
   elif [ x"$MATRIX_OS" == x"ubuntu-20.04" ] && [ x"$CIBW_ARCHS" == x"aarch64" ]; then
     PLAT=linux_aarch64
   fi
-  pip install mlir$MLIR_COMMIT --platform $PLAT --only-binary=:all: --target $SITE_PACKAGES  --no-deps --force -U
+  pip install mlir$MLIR_WHEEL_VERSION --platform $PLAT --only-binary=:all: --target $SITE_PACKAGES  --no-deps --force -U
 else
-  pip install mlir$MLIR_COMMIT --force -U
+  pip install mlir$MLIR_WHEEL_VERSION --force -U
 fi

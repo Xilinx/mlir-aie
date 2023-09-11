@@ -13,7 +13,7 @@ case "${unameOut}" in
 esac
 echo "${machine}"
 
-export MLIR_COMMIT="17.0.0.2023083017+35ca6498"
+export MLIR_WHEEL_VERSION="17.0.0.2023083017+35ca6498"
 
 if [ "$machine" == "linux" ]; then
   export CIBW_ARCHS=${CIBW_ARCHS:-x86_64}

@@ -22,7 +22,7 @@ environment-pass = [
     "DATETIME",
     "HOST_CCACHE_DIR",
     "MATRIX_OS",
-    "MLIR_COMMIT",
+    "MLIR_WHEEL_VERSION",
     "PARALLEL_LEVEL",
     "PIP_FIND_LINKS",
     "PIP_NO_BUILD_ISOLATION",

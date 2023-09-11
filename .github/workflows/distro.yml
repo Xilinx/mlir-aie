@@ -146,7 +146,7 @@ jobs:
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_COMMIT="18.0.0.2023091015+780b046b" \
+        MLIR_WHEEL_VERSION="18.0.0.2023091015+780b046b" \
         PARALLEL_LEVEL=${{ matrix.OS == 'windows-2019' && '2' || '4' }} \
         cibuildwheel --output-dir wheelhouse
 
@@ -159,7 +159,7 @@ jobs:
         export PIP_NO_BUILD_ISOLATION="false"
         export PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels"
         export CIBW_ARCHS=${{ matrix.ARCH }}
-        export MLIR_COMMIT="18.0.0.2023091015+780b046b"
+        export MLIR_WHEEL_VERSION="18.0.0.2023091015+780b046b"
         export BOOST_ROOT="${{ steps.install-boost.outputs.BOOST_ROOT }}"
         export MATRIX_OS=${{ matrix.OS }}
         
