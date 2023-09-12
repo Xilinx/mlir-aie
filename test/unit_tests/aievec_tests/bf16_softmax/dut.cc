@@ -1,8 +1,5 @@
-// TODO: Remove the redundant include oeration
-// clang-format off
 #include "lut_based_ops.h"
-#include "lut_based_ops.h"
-// clang-format on
+
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2) {
   int32_t v3 = 0;
   int32_t v4 = 4;
