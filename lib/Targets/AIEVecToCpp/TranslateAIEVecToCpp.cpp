@@ -2876,7 +2876,6 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<emitc::IncludeOp>([&](auto op) {
             StringRef name = op.getInclude();
             if (!includeNames.count(name)) {
-
               includeNames.insert(name);
               return printOperation(*this, op);
             }
