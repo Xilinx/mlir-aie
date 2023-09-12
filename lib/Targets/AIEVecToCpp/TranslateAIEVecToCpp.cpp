@@ -27,8 +27,10 @@
 #include "mlir/Support/IndentedOstream.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -213,6 +215,8 @@ private:
   /// names of values in a scope.
   std::stack<int64_t> valueInScopeCount;
   std::stack<int64_t> labelInScopeCount;
+
+  llvm::SmallSet<StringRef, 16> includeNames;
 };
 } // namespace
 
@@ -2867,9 +2871,16 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   LogicalResult status =
       llvm::TypeSwitch<Operation *, LogicalResult>(&op)
           // EmitC ops.
-          .Case<emitc::ApplyOp, emitc::CallOp, emitc::ConstantOp,
-                emitc::IncludeOp>(
+          .Case<emitc::ApplyOp, emitc::CallOp, emitc::ConstantOp>(
               [&](auto op) { return printOperation(*this, op); })
+          .Case<emitc::IncludeOp>([&](auto op) {
+            StringRef name = op.getInclude();
+            if (!includeNames.count(name)) {
+              includeNames.insert(name);
+              return printOperation(*this, op);
+            }
+            return success();
+          })
           // SCF ops.
           .Case<scf::ForOp, scf::IfOp, scf::YieldOp>(
               [&](auto op) { return printOperation(*this, op); })
