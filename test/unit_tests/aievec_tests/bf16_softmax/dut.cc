@@ -1,3 +1,4 @@
+// Cycle count: 3245
 #include "lut_based_ops.h"
 
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2) {
