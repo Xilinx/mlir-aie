@@ -385,7 +385,7 @@ struct UPDOpEffectiveAccessSizeAnalysis {
   UPDOpEffectiveAccessSizeAnalysis(aievec::UPDOp updOp) {
     auto vecType = cast<VectorType>(updOp.getResult().getType());
     unsigned sizeInBits =
-        cast<ShapedType>(vecType).getSizeInBits() - updOp.getOffset();
+        cast<ShapedType>(vecType).getElementTypeBitWidth() - updOp.getOffset();
     for (Operation *user : updOp->getUsers()) {
       auto userUpdOp = dyn_cast<xilinx::aievec::UPDOp>(user);
       if (userUpdOp)
@@ -419,7 +419,7 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
 
     auto src = extOp.getVector();
     auto pos = extOp.getPosition();
-    int64_t posVal = cast<IntegerAttr>(pos[0]).getInt();
+    int64_t posVal = pos[0];
     VectorType srcVecType = cast<VectorType>(src.getType());
     VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
     if (srcVecType != resultType) {
@@ -749,7 +749,7 @@ struct FoldBroadcastToFMAOp : public OpConversionPattern<aievec::FMAOp> {
             .getResult();
     // XXX: We assume a 1D vector
     auto pos = extOp.getPosition();
-    int64_t zstart = cast<IntegerAttr>(pos[0]).getInt();
+    int64_t zstart = pos[0];
     auto fmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, zstart);
     rewriter.replaceOpWithNewOp<aievec::FMAOp>(
         fmaOp, TypeRange({fmaOp.getResult().getType()}),
@@ -1568,7 +1568,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
   LogicalResult
   matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto vType = extractOp.getVectorType();
+    auto vType = extractOp.getSourceVectorType();
     if (vType.getRank() != 1)
       return failure();
 
