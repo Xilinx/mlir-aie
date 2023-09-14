@@ -490,16 +490,16 @@ struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
     markAllAnalysesPreserved();
     AnalysisManager am = getAnalysisManager();
     LongestConvMACChainAnalysis::am = &am;
-    func::FuncOp func = getOperation();
+    Operation *op = getOperation();
 
     // Compute all the chains
-    func.walk([&](arith::AddIOp addOp) {
+    op->walk([&](arith::AddIOp addOp) {
       if (isa<VectorType>(addOp.getResult().getType()))
         am.getChildAnalysis<LongestConvMACChainAnalysis>(addOp);
     });
 
     // Sort the chains, ready to split by group
-    func.walk([&](arith::AddIOp addOp) {
+    op->walk([&](arith::AddIOp addOp) {
       if (isa<VectorType>(addOp.getResult().getType())) {
         auto &analysis =
             am.getChildAnalysis<LongestConvMACChainAnalysis>(addOp);
@@ -509,7 +509,7 @@ struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
     });
 
     if (printResult) {
-      func.walk([&](arith::AddIOp addOp) {
+      op->walk([&](arith::AddIOp addOp) {
         if (isa<VectorType>(addOp.getResult().getType())) {
           auto &macChainAnalysis =
               am.getChildAnalysis<LongestConvMACChainAnalysis>(addOp);

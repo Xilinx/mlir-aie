@@ -82,19 +82,19 @@ using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
 //===----------------------------------------------------------------------===//
 
 struct RedundantLoadStoreOptimizationPass
-    : public PassWrapper<RedundantLoadStoreOptimizationPass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<RedundantLoadStoreOptimizationPass, OperationPass<>> {
+
   void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
     patterns.add<SetInboundsToReadOp, SetInboundsToWriteOp>(
         patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
     IRRewriter rewriter(&getContext());
-    vector::transferOpflowOpt(rewriter, funcOp);
+    vector::transferOpflowOpt(rewriter, op);
   }
 };
 

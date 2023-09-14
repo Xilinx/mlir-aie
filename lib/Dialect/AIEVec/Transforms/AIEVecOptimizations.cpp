@@ -234,8 +234,7 @@ configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
 // Lowering passes
 //===----------------------------------------------------------------------===//
 struct AIEVecTransformationPass
-    : public PassWrapper<AIEVecTransformationPass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<AIEVecTransformationPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AIEVecTransformationPass)
 
   AIEVecTransformationPass() = default;
@@ -267,7 +266,7 @@ struct AIEVecTransformationPass
       llvm::cl::init("aie")};
 
   void runOnOperation() override {
-    auto func = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -277,7 +276,7 @@ struct AIEVecTransformationPass
       if (target == "aieml") {
         aieVersion = AIEArch::AIE_ML;
       } else if (target != "aie") {
-        func.emitError() << "unknown AIE target '" << aieTarget << "'";
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
         return;
       }
@@ -290,7 +289,7 @@ struct AIEVecTransformationPass
       configureAIEVecV2TransformationLegalizations(target);
     }
 
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -302,8 +301,7 @@ createAIEVecTransformationPass(const OptimizeAIEVecOptions &options) {
 }
 
 struct AIEVecConvOpTransformationPass
-    : public PassWrapper<AIEVecConvOpTransformationPass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<AIEVecConvOpTransformationPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AIEVecConvOpTransformationPass)
 
   AIEVecConvOpTransformationPass() = default;
@@ -343,7 +341,7 @@ struct AIEVecConvOpTransformationPass
       llvm::cl::init(0)};
 
   void runOnOperation() override {
-    auto func = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -353,7 +351,7 @@ struct AIEVecConvOpTransformationPass
       if (target == "aieml") {
         aieVersion = AIEArch::AIE_ML;
       } else if (target != "aie") {
-        func.emitError() << "unknown AIE target '" << aieTarget << "'";
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
         return;
       }
@@ -365,7 +363,7 @@ struct AIEVecConvOpTransformationPass
       configureAIEVecConvOpTransformationLegalizations(target, am);
     }
 
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
