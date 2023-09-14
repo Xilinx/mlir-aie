@@ -2183,7 +2183,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 /// Lower incoming vector operations into their corresponding AIE vector
 /// intrinsics.
 struct LowerVectorToAIEVec
-    : public PassWrapper<LowerVectorToAIEVec, OperationPass<func::FuncOp>> {
+    : public PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerVectorToAIEVec)
 
   LowerVectorToAIEVec() = default;
@@ -2213,7 +2213,7 @@ struct LowerVectorToAIEVec
       llvm::cl::init("aie")};
 
   void runOnOperation() override {
-    auto func = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -2223,7 +2223,7 @@ struct LowerVectorToAIEVec
       if (target == "aieml") {
         aieVersion = AIEArch::AIE_ML;
       } else if (target != "aie") {
-        func.emitError() << "unknown AIE target '" << aieTarget << "'";
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
         return;
       }
@@ -2239,7 +2239,7 @@ struct LowerVectorToAIEVec
       configureAIEVecV2Legalizations(target, am);
     }
 
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -2259,7 +2259,8 @@ createLowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options) {
 // additional common subexpressions with UPDs generated from unaligned
 // `transfer_read` ops.
 struct ExtendUPDOpsPass
-    : public PassWrapper<ExtendUPDOpsPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<ExtendUPDOpsPass, OperationPass<>> {
+
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
@@ -2272,8 +2273,8 @@ struct ExtendUPDOpsPass
              llvm::all_of(op->getUsers(),
                           [](Operation *op) { return isa<aievec::ExtOp>(op); });
     });
-    auto func = getOperation();
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    auto op = getOperation();
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -2285,7 +2286,8 @@ struct ExtendUPDOpsPass
 // TODO: a single ext op of the top half, which might be a good opportunity to
 // TODO: further optimize wide UPDs.
 struct SimplifyUPDOpsPass
-    : public PassWrapper<SimplifyUPDOpsPass, OperationPass<func::FuncOp>> {
+    : public PassWrapper<SimplifyUPDOpsPass, OperationPass<>> {
+
   void runOnOperation() override {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
@@ -2297,8 +2299,8 @@ struct SimplifyUPDOpsPass
       return !defOp || !isa<aievec::UPDOp>(defOp) || !defOp->hasOneUse() ||
              op.getIndex() != 0;
     });
-    auto func = getOperation();
-    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
+    auto op = getOperation();
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

@@ -15,7 +15,7 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AIEVecConvAnalysis : Pass<"aievec-convolution-analysis", "mlir::func::FuncOp"> {
+def AIEVecConvAnalysis : Pass<"aievec-convolution-analysis"> {
   let summary = "Find MAC chains that can be replaced by convolution ops in "
                 "AIE-ML";
   let constructor = "xilinx::aievec::createAIEVecConvolutionAnalysisPass()";
