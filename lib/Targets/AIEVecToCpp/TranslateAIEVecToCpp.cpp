@@ -2997,34 +2997,22 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
       return failure();
 
     unsigned dimSize = tType.getDimSize(tType.getRank() - 1);
+    os << "v" << std::to_string(dimSize);
 
-    if (eltType.isa<IntegerType>()) {
-      os << "v" << std::to_string(dimSize);
-      auto iType = eltType.cast<IntegerType>();
-      unsigned width = iType.getWidth();
-      if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32)) {
-        if (isAcc) {
+    if (AIEML && isAcc) {
+      if (eltType.isa<IntegerType>()) {
+        // AIE-ML has `ups_to_v16acc32`, `ups_to_v16acc64`, `ups_to_v32acc32`
+        // intrinsics
+        unsigned width = eltType.cast<IntegerType>().getWidth();
+        if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32) ||
+            (dimSize == 16 && width == 32)) {
           return (os << "acc" << width), success();
         } else {
-          return (os << "int" << width), success();
+          return failure();
         }
-      }
-    } else if (eltType.isa<FloatType>()) {
-      if (AIEML) {
-        if (isAcc) {
-          return (os << "v16accfloat"), success();
-        } else {
-          auto fType = eltType.cast<FloatType>();
-          unsigned width = fType.getWidth();
-          if (width == 16) {
-            return (os << "v" << std::to_string(dimSize) << "bfloat16"),
-                   success();
-          } else {
-            return (os << "v" << std::to_string(dimSize) << "float"), success();
-          }
-        }
-      } else {
-        os << "v" << std::to_string(dimSize);
+      } else if (eltType.isa<FloatType>()) {
+        // AIE-ML only has a `ups_to_v16accfloat` intrinsic
+        return (os << "accfloat"), success();
       }
     }
 
