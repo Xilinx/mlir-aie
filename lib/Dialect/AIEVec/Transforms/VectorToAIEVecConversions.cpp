@@ -1955,32 +1955,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return false;
   });
 
-  target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divOp) {
-    Type srcType = divOp.getLhs().getType();
-    if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
-        !isa<FloatType>(srcType)) {
-      return true;
-    }
-
-    if (!isa<arith::TruncFOp>(*divOp->getUsers().begin())) {
-      return true;
-    }
-
-    FloatType fType = cast<FloatType>(srcType);
-
-    if (fType.getWidth() != 32) {
-      return true;
-    }
-
-    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
-    if (!constOp ||
-        constOp.getValue().cast<FloatAttr>().getValue().convertToDouble() !=
-            1.0f) {
-      return true;
-    }
-    return false;
-  });
-
   target.addDynamicallyLegalOp<arith::AddIOp>(
       [](arith::AddIOp op) { return !isa<VectorType>(op.getType()); });
   target.addDynamicallyLegalOp<arith::AddFOp>(
