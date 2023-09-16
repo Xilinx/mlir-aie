@@ -34,7 +34,9 @@ function(add_aie_runtime_libs arch)
   set(INSTALLS
       chess_intrinsic_wrapper.cpp
       lut_based_ops.cpp
-      lut_based_ops.h)
+      lut_based_ops.h
+      tanh.h
+      tanh.cpp)
 
   foreach(file ${INSTALLS})
       add_custom_target(aie-copy-${arch}-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})

@@ -1791,14 +1791,49 @@ struct ComputeInvOpByLUTPattern : public OpConversionPattern<arith::DivFOp> {
     arith::TruncFOp truncOp = cast<arith::TruncFOp>(*divOp->getUsers().begin());
 
     rewriter.setInsertionPoint(truncOp);
-    auto funcOp = rewriter.replaceOpWithNewOp<emitc::CallOp>(
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
         truncOp, TypeRange{truncOp.getResult().getType()}, "getInvBf16",
         nullptr, nullptr, invOperands);
     rewriter.eraseOp(divOp);
-    moduleOp = funcOp->getParentOfType<mlir::ModuleOp>();
     return success();
   }
 };
+
+// Convert math.tanh to a function call to compute tanh(x) by look up tables
+struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
+  using OpConversionPattern<math::TanhOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return failure();
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || laneSize != 16) {
+      return failure();
+    }
+
+    StringRef includeName = "tanh.h";
+    ModuleOp moduleOp = tanhOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(tanhOp);
+    SmallVector<Value> tanhOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        tanhOp, TypeRange{tanhOp.getResult().getType()}, "getTanhBf16", nullptr,
+        nullptr, tanhOperands);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -1830,6 +1865,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorSubIOpToAIEVecSubElemOp,
       ComputeExpOpByLUTPattern,
       ComputeInvOpByLUTPattern,
+      ComputeTanhOpByLUTPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -1874,6 +1910,48 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return true;
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divOp) {
+    Type srcType = divOp.getLhs().getType();
+    if (!divOp->hasOneUse() || isa<VectorType>(srcType) ||
+        !isa<FloatType>(srcType)) {
+      return true;
+    }
+
+    if (!isa<arith::TruncFOp>(*divOp->getUsers().begin())) {
+      return true;
+    }
+
+    FloatType fType = cast<FloatType>(srcType);
+
+    if (fType.getWidth() != 32) {
+      return true;
+    }
+
+    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
+    if (!constOp ||
+        constOp.getValue().cast<FloatAttr>().getValue().convertToDouble() !=
+            1.0f) {
+      return true;
+    }
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
+    VectorType srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth != 16 || laneSize != 16) {
+      return true;
+    }
+
     return false;
   });
 
