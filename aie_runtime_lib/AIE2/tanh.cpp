@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Xilinx Inc.
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //
 //===----------------------------------------------------------------------===//
@@ -13,7 +13,7 @@
 
 // Divides into 32 segments between [-4,4], bank size: (32*2*2*4)*2=1k, one
 // lut=512B
-float chess_storage(% chess_alignof(v32int8)) tanh_lut_ab[2048] = {
+float chess_storage(% chess_alignof(v32int8)) tanh_lut_ab[128] = {
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
     0.00283813476562500000000000000000, -0.98828125000000000000000000000000,
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
@@ -80,7 +80,7 @@ float chess_storage(% chess_alignof(v32int8)) tanh_lut_ab[2048] = {
     0.00000000000000000000000000000000, 1.00000000000000000000000000000000,
 };
 
-float chess_storage(% chess_alignof(v32int8)) tanh_lut_cd[2048] = {
+float chess_storage(% chess_alignof(v32int8)) tanh_lut_cd[128] = {
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
     0.00283813476562500000000000000000, -0.98828125000000000000000000000000,
     0.00000000000000000000000000000000, -1.00000000000000000000000000000000,
