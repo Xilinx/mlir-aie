@@ -16,5 +16,4 @@
 #ifndef __TANH__
 #define __TANH__
 
-
 #endif //__TANH__
