@@ -328,8 +328,7 @@ populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //    2) Split unaligned transfer reads into a wider aligned transfer read
 //       followed by a `vector.extract_strided_slice` operation.
 struct CanonicalizeVectorForAIEVecPass
-    : public PassWrapper<CanonicalizeVectorForAIEVecPass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<CanonicalizeVectorForAIEVecPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeVectorForAIEVecPass)
 
   CanonicalizeVectorForAIEVecPass() = default;
@@ -364,7 +363,7 @@ struct CanonicalizeVectorForAIEVecPass
       llvm::cl::init("aie")};
 
   void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -375,7 +374,7 @@ struct CanonicalizeVectorForAIEVecPass
       if (target == "aieml") {
         aieVersion = AIEArch::AIE_ML;
       } else if (target != "aie") {
-        funcOp.emitError() << "unknown AIE target '" << aieTarget << "'";
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
         return;
       }
@@ -391,7 +390,7 @@ struct CanonicalizeVectorForAIEVecPass
       configureAIEMLCanonicalizeLegalizations(target);
     }
 
-    if (failed(applyPartialConversion(funcOp, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -403,16 +402,16 @@ static std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass(
 }
 
 struct HoistCastOpToDataSourcePass
-    : public PassWrapper<HoistCastOpToDataSourcePass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<HoistCastOpToDataSourcePass, OperationPass<>> {
+
   void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
     patterns.add<HoistCastOpToDataSourcePattern>(patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
   }
 };
 
