@@ -87,28 +87,51 @@ extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
   return {};
 }
 
-// Prepare input of MulElemOp for i8 and bf16 types in aie-ml. The corresponding
-// intrinsics are mul_elem_32_2, and mul_elem_16_2, respectivly. We need to
-// concatenate zero vectors for operands before creating MulElemOp.
-static Value prepareInputForMulElemAieML(ConversionPatternRewriter &rewriter,
-                                         Value inputVal, VectorType srcType,
-                                         unsigned bitWidth, Location loc) {
-  VectorType vecType =
-      createVectorType(512 / bitWidth, srcType.getElementType());
+// Convert a input value to a target vector type. This function can insert
+// multiple aievec ops depends on the combination of input and output vector
+// type.
+static std::optional<Value>
+convertValueToTargetTypeAieML(ConversionPatternRewriter &rewriter, Location loc,
+                              Value inputVal, VectorType tgtType) {
+  VectorType srcType = cast<VectorType>(inputVal.getType());
+  auto srcElemType = srcType.getElementType();
+  unsigned srcBitWidth = srcElemType.getIntOrFloatBitWidth();
+  unsigned srcLaneSize = getVectorLaneSize(srcType);
 
-  auto zeroConstOp = rewriter.create<arith::ConstantOp>(
-      loc, srcType.getElementType(),
-      rewriter.getZeroAttr(srcType.getElementType()));
-  auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
-      loc, vecType, zeroConstOp->getResult(0));
-  auto extOp = rewriter.create<aievec::ExtOp>(loc, srcType,
-                                              broadcastZeroOp->getResult(0), 0);
+  auto tgtElemType = tgtType.getElementType();
+  unsigned tgtBitWidth = tgtElemType.getIntOrFloatBitWidth();
+  unsigned tgtLaneSize = getVectorLaneSize(tgtType);
 
-  SmallVector<Value> inputSources = {inputVal, extOp->getResult(0)};
-  aievec::ConcatOp concatOp =
-      rewriter.create<aievec::ConcatOp>(loc, vecType, inputSources);
+  if (srcType == tgtType)
+    return inputVal;
 
-  return concatOp.getResult();
+  if ((srcElemType == tgtElemType) && (srcLaneSize != tgtLaneSize)) {
+    // TODO: relax the condition below?
+    if ((srcLaneSize == 16 && tgtLaneSize == 32 &&
+         isa<FloatType>(srcElemType)) ||
+        (srcLaneSize == 32 && tgtLaneSize == 64 &&
+         isa<IntegerType>(srcElemType))) {
+      VectorType vecType =
+          createVectorType(512 / srcBitWidth, srcType.getElementType());
+
+      auto zeroConstOp = rewriter.create<arith::ConstantOp>(
+          loc, srcType.getElementType(),
+          rewriter.getZeroAttr(srcType.getElementType()));
+      auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
+          loc, vecType, zeroConstOp->getResult(0));
+      auto extOp = rewriter.create<aievec::ExtOp>(
+          loc, srcType, broadcastZeroOp->getResult(0), 0);
+
+      SmallVector<Value> inputSources = {inputVal, extOp->getResult(0)};
+      aievec::ConcatOp concatOp =
+          rewriter.create<aievec::ConcatOp>(loc, vecType, inputSources);
+
+      return concatOp.getResult();
+    }
+  } else if ((srcElemType != tgtElemType) && (srcLaneSize == tgtLaneSize)) {
+  }
+
+  return std::nullopt;
 }
 
 // Return the list of attributes that configure an `aievec.select` op to
@@ -581,14 +604,22 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     }
 
     // Prepare lhr/rhs for the aievec.mul_elem op
-    lval = prepareInputForMulElemAieML(rewriter, lval, lSrcType, lBitWidth,
-                                       mulOp.getLoc());
-    rval = prepareInputForMulElemAieML(rewriter, rval, rSrcType, rBitWidth,
-                                       mulOp.getLoc());
+    VectorType targetInputType =
+        createVectorType(512 / lBitWidth, lSrcType.getElementType());
+    if (rBitWidth > lBitWidth) {
+      targetInputType =
+          createVectorType(512 / rBitWidth, rSrcType.getElementType());
+    }
+    auto lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                       lval, targetInputType);
+    auto rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                       rval, targetInputType);
+    if (!lValConverted || !rValConverted)
+      return failure();
 
     // Create an aievec.mul_elem op
-    aievec::MulElemOp mulElemOp =
-        rewriter.create<aievec::MulElemOp>(mulOp.getLoc(), accType, lval, rval);
+    aievec::MulElemOp mulElemOp = rewriter.create<aievec::MulElemOp>(
+        mulOp.getLoc(), accType, *lValConverted, *rValConverted);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -662,19 +693,22 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     }
 
     // Prepare lhr/rhs for the aievec.mul_elem op
-    // TODO: improve condition and support more cases
-    if (lBitWidth == 8) {
-      lval = prepareInputForMulElemAieML(rewriter, lval, lSrcType, lBitWidth,
-                                         mulOp.getLoc());
+    VectorType targetInputType =
+        createVectorType(512 / lBitWidth, lSrcType.getElementType());
+    if (rBitWidth > lBitWidth) {
+      targetInputType =
+          createVectorType(512 / rBitWidth, rSrcType.getElementType());
     }
-    if (rBitWidth == 8) {
-      rval = prepareInputForMulElemAieML(rewriter, rval, rSrcType, rBitWidth,
-                                         mulOp.getLoc());
-    }
+    auto lValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                       lval, targetInputType);
+    auto rValConverted = convertValueToTargetTypeAieML(rewriter, mulOp.getLoc(),
+                                                       rval, targetInputType);
+    if (!lValConverted || !rValConverted)
+      return failure();
 
     // Create an aievec.mul_elem op
-    aievec::MulElemOp mulElemOp =
-        rewriter.create<aievec::MulElemOp>(mulOp.getLoc(), accType, lval, rval);
+    aievec::MulElemOp mulElemOp = rewriter.create<aievec::MulElemOp>(
+        mulOp.getLoc(), accType, *lValConverted, *rValConverted);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
