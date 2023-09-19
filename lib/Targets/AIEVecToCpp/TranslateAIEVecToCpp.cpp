@@ -1499,7 +1499,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*add_elemOp, true)))
+  // FIXME: move the logic to the op creation and add isAcc to the op attribute
+  bool isAcc = false;
+  VectorType resType = cast<VectorType>(add_elemOp.getResult().getType());
+  auto resElemType = resType.getElementType();
+  unsigned resBitWidth = resElemType.getIntOrFloatBitWidth();
+  unsigned resLaneSize = getVectorLaneSize(resType);
+  if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
+    isAcc = true;
+
+  if (failed(emitter.emitAssignPrefix(*add_elemOp, /*isAcc=*/isAcc)))
     return failure();
 
   os << "add(";
@@ -1527,7 +1536,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*sub_elemOp, true)))
+  // FIXME: move the logic to the op creation and add isAcc to the op attribute
+  bool isAcc = false;
+  VectorType resType = cast<VectorType>(sub_elemOp.getResult().getType());
+  auto resElemType = resType.getElementType();
+  unsigned resBitWidth = resElemType.getIntOrFloatBitWidth();
+  unsigned resLaneSize = getVectorLaneSize(resType);
+  if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
+    isAcc = true;
+
+  if (failed(emitter.emitAssignPrefix(*sub_elemOp, isAcc)))
     return failure();
 
   os << "sub(";
