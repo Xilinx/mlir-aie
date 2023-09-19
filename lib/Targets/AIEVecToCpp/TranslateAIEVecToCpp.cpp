@@ -679,6 +679,27 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate the unpack intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::UnpackOp unpackOp) {
+
+  // The source should have already been emitted
+  Value source = unpackOp.getSource();
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*unpackOp, /*isAcc=*/false)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "unpack(";
+  os << emitter.getOrCreateName(source);
+  os << ")";
+  return success();
+}
+
 // Generate the srs intrinsic
 static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   Value source = srsOp.getSource();
@@ -2928,7 +2949,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
                 aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp,
-                aievec::ExtElemOp>(
+                aievec::ExtElemOp, aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
