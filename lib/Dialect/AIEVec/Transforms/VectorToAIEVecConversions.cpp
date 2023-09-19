@@ -607,11 +607,11 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     // Decide the accType for aievec.mul_elem based on mulOp's lhs & rhs
     auto lval = adaptor.getLhs();
     auto rval = adaptor.getRhs();
-    if (auto lhsExt = dyn_cast<arith::ExtFOp>(lval.getDefiningOp())) {
-      lval = lhsExt->getOperand(0);
+    if (lval.getDefiningOp() && isa<arith::ExtFOp>(lval.getDefiningOp())) {
+      lval = lval.getDefiningOp()->getOperand(0);
     }
-    if (auto rhsExt = dyn_cast<arith::ExtFOp>(rval.getDefiningOp())) {
-      rval = rhsExt->getOperand(0);
+    if (rval.getDefiningOp() && isa<arith::ExtFOp>(rval.getDefiningOp())) {
+      rval = rval.getDefiningOp()->getOperand(0);
     }
     VectorType lSrcType = cast<VectorType>(lval.getType());
     VectorType rSrcType = cast<VectorType>(rval.getType());
@@ -704,11 +704,11 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     // Decide the accType for aievec.mul_elem based on mulOp's lhs & rhs
     auto lval = adaptor.getLhs();
     auto rval = adaptor.getRhs();
-    if (auto lhsExt = dyn_cast<arith::ExtSIOp>(lval.getDefiningOp())) {
-      lval = lhsExt->getOperand(0);
+    if (lval.getDefiningOp() && isa<arith::ExtSIOp>(lval.getDefiningOp())) {
+      lval = lval.getDefiningOp()->getOperand(0);
     }
-    if (auto rhsExt = dyn_cast<arith::ExtSIOp>(rval.getDefiningOp())) {
-      rval = rhsExt->getOperand(0);
+    if (rval.getDefiningOp() && isa<arith::ExtSIOp>(rval.getDefiningOp())) {
+      rval = rval.getDefiningOp()->getOperand(0);
     }
     VectorType lSrcType = cast<VectorType>(lval.getType());
     VectorType rSrcType = cast<VectorType>(rval.getType());
