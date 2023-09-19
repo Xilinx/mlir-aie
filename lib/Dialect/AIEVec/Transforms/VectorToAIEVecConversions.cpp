@@ -111,24 +111,51 @@ convertValueToTargetTypeAieML(ConversionPatternRewriter &rewriter, Location loc,
          isa<FloatType>(srcElemType)) ||
         (srcLaneSize == 32 && tgtLaneSize == 64 &&
          isa<IntegerType>(srcElemType))) {
-      VectorType vecType =
-          createVectorType(512 / srcBitWidth, srcType.getElementType());
-
       auto zeroConstOp = rewriter.create<arith::ConstantOp>(
           loc, srcType.getElementType(),
           rewriter.getZeroAttr(srcType.getElementType()));
       auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
-          loc, vecType, zeroConstOp->getResult(0));
+          loc, tgtType, zeroConstOp->getResult(0));
       auto extOp = rewriter.create<aievec::ExtOp>(
           loc, srcType, broadcastZeroOp->getResult(0), 0);
 
       SmallVector<Value> inputSources = {inputVal, extOp->getResult(0)};
       aievec::ConcatOp concatOp =
-          rewriter.create<aievec::ConcatOp>(loc, vecType, inputSources);
+          rewriter.create<aievec::ConcatOp>(loc, tgtType, inputSources);
 
       return concatOp.getResult();
     }
-  } else if ((srcElemType != tgtElemType) && (srcLaneSize == tgtLaneSize)) {
+  } else if ((srcElemType != tgtElemType) && (srcLaneSize == tgtLaneSize) &&
+             isa<IntegerType>(srcElemType) && isa<IntegerType>(tgtElemType)) {
+    if (srcBitWidth == 16 && tgtBitWidth == 32 && srcLaneSize == 16) {
+      // Case 1: vector<16xi16> to vector<16xi32> conversion by aievec.ups +
+      // aievec.cast
+      auto accType = getVectorOpDestType(srcType, /*AIEML =*/true);
+      auto upsOp = rewriter.create<aievec::UPSOp>(loc, accType, inputVal);
+      auto castOp = rewriter.create<aievec::CastOp>(
+          loc, tgtType, upsOp.getResult(), /*isResAcc*/ false);
+      return castOp.getResult();
+    } else if (srcBitWidth == 8 && tgtBitWidth == 32 && srcLaneSize == 16) {
+      // Case 2: vector<16xi8> to vector<16xi32> conversion by aievec.concat +
+      // aievec.ups + aievec.cast + aievec.ext
+      // FIXME: Should use undef_xxx() for the second input of concat
+      auto concatOutType = createVectorType(32, srcElemType);
+      auto concatOp = rewriter.create<aievec::ConcatOp>(
+          loc, concatOutType, SmallVector<Value>({inputVal, inputVal}));
+      auto accType = getVectorOpDestType(concatOutType, /*AIEML =*/true);
+      auto upsOp =
+          rewriter.create<aievec::UPSOp>(loc, accType, concatOp.getResult());
+      auto castType = createVectorType(32, tgtElemType);
+      auto castOp = rewriter.create<aievec::CastOp>(
+          loc, castType, upsOp.getResult(), /*isResAcc*/ false);
+      auto extOp =
+          rewriter.create<aievec::ExtOp>(loc, tgtType, castOp.getResult(), 0);
+      return extOp.getResult();
+    } else if (srcBitWidth == 8 && tgtBitWidth == 16 && srcLaneSize == 32) {
+      // Case 3: vector<32xi8> to vector<32xi16> conversion by aievec.unpack
+      auto unpackOp = rewriter.create<aievec::UnpackOp>(loc, tgtType, inputVal);
+      return unpackOp.getResult();
+    }
   }
 
   return std::nullopt;
