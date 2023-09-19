@@ -1566,7 +1566,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
     isAcc = true;
 
-  if (failed(emitter.emitAssignPrefix(*sub_elemOp, isAcc)))
+  if (failed(emitter.emitAssignPrefix(*sub_elemOp, /*isAcc=*/isAcc)))
     return failure();
 
   os << "sub(";

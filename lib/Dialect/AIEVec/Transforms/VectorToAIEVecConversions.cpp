@@ -88,8 +88,8 @@ extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
 }
 
 // Convert a input value to a target vector type. This function can insert
-// multiple aievec ops depends on the combination of input and output vector
-// type.
+// multiple aievec ops depending on the combination of input and output vector
+// types.
 static std::optional<Value>
 convertValueToTargetTypeAieML(ConversionPatternRewriter &rewriter, Location loc,
                               Value inputVal, VectorType tgtType) {
@@ -607,11 +607,11 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     // Decide the accType for aievec.mul_elem based on mulOp's lhs & rhs
     auto lval = adaptor.getLhs();
     auto rval = adaptor.getRhs();
-    if (lval.getDefiningOp() && isa<arith::ExtFOp>(lval.getDefiningOp())) {
-      lval = lval.getDefiningOp()->getOperand(0);
+    if (auto lvalExtOp = lval.getDefiningOp<arith::ExtFOp>()) {
+      lval = lvalExtOp->getOperand(0);
     }
-    if (rval.getDefiningOp() && isa<arith::ExtFOp>(rval.getDefiningOp())) {
-      rval = rval.getDefiningOp()->getOperand(0);
+    if (auto rvalExtOp = rval.getDefiningOp<arith::ExtFOp>()) {
+      rval = rvalExtOp->getOperand(0);
     }
     VectorType lSrcType = cast<VectorType>(lval.getType());
     VectorType rSrcType = cast<VectorType>(rval.getType());
@@ -704,11 +704,11 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     // Decide the accType for aievec.mul_elem based on mulOp's lhs & rhs
     auto lval = adaptor.getLhs();
     auto rval = adaptor.getRhs();
-    if (lval.getDefiningOp() && isa<arith::ExtSIOp>(lval.getDefiningOp())) {
-      lval = lval.getDefiningOp()->getOperand(0);
+    if (auto lvalExtOp = lval.getDefiningOp<arith::ExtSIOp>()) {
+      lval = lvalExtOp->getOperand(0);
     }
-    if (rval.getDefiningOp() && isa<arith::ExtSIOp>(rval.getDefiningOp())) {
-      rval = rval.getDefiningOp()->getOperand(0);
+    if (auto rvalExtOp = rval.getDefiningOp<arith::ExtSIOp>()) {
+      rval = rvalExtOp->getOperand(0);
     }
     VectorType lSrcType = cast<VectorType>(lval.getType());
     VectorType rSrcType = cast<VectorType>(rval.getType());
