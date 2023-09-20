@@ -1834,6 +1834,42 @@ struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
   }
 };
 
+// Convert math.sqrt to a function call to compute sqrt(x) for v16bfloat16 and
+// v32bfloat16 types
+struct ComputeSqrtOpByLUTPattern : public OpConversionPattern<math::SqrtOp> {
+  using OpConversionPattern<math::SqrtOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::SqrtOp sqrtOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(sqrtOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return failure();
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return failure();
+    }
+
+    StringRef includeName = "sqrt.h";
+    ModuleOp moduleOp = sqrtOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(sqrtOp);
+    SmallVector<Value> sqrtOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        sqrtOp, TypeRange{sqrtOp.getResult().getType()}, "getSqrtBf16", nullptr,
+        nullptr, sqrtOperands);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -1866,6 +1902,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeExpOpByLUTPattern,
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
+      ComputeSqrtOpByLUTPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -1949,6 +1986,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     if (elWidth != 16 || laneSize != 16) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::SqrtOp>([](math::SqrtOp sqrtOp) {
+    VectorType srcType = dyn_cast<VectorType>(sqrtOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
       return true;
     }
 
