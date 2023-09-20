@@ -679,6 +679,27 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Generate the unpack intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::UnpackOp unpackOp) {
+
+  // The source should have already been emitted
+  Value source = unpackOp.getSource();
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*unpackOp, /*isAcc=*/false)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "unpack(";
+  os << emitter.getOrCreateName(source);
+  os << ")";
+  return success();
+}
+
 // Generate the srs intrinsic
 static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   Value source = srsOp.getSource();
@@ -1499,7 +1520,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*add_elemOp, true)))
+  // FIXME: move the logic to the op creation and add isAcc to the op attribute
+  bool isAcc = false;
+  VectorType resType = cast<VectorType>(add_elemOp.getResult().getType());
+  auto resElemType = resType.getElementType();
+  unsigned resBitWidth = resElemType.getIntOrFloatBitWidth();
+  unsigned resLaneSize = getVectorLaneSize(resType);
+  if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
+    isAcc = true;
+
+  if (failed(emitter.emitAssignPrefix(*add_elemOp, /*isAcc=*/isAcc)))
     return failure();
 
   os << "add(";
@@ -1527,7 +1557,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*sub_elemOp, true)))
+  // FIXME: move the logic to the op creation and add isAcc to the op attribute
+  bool isAcc = false;
+  VectorType resType = cast<VectorType>(sub_elemOp.getResult().getType());
+  auto resElemType = resType.getElementType();
+  unsigned resBitWidth = resElemType.getIntOrFloatBitWidth();
+  unsigned resLaneSize = getVectorLaneSize(resType);
+  if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
+    isAcc = true;
+
+  if (failed(emitter.emitAssignPrefix(*sub_elemOp, /*isAcc=*/isAcc)))
     return failure();
 
   os << "sub(";
@@ -2915,7 +2954,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
                 aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp,
-                aievec::ExtElemOp>(
+                aievec::ExtElemOp, aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -3002,34 +3041,22 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
       return failure();
 
     unsigned dimSize = tType.getDimSize(tType.getRank() - 1);
+    os << "v" << std::to_string(dimSize);
 
-    if (eltType.isa<IntegerType>()) {
-      os << "v" << std::to_string(dimSize);
-      auto iType = eltType.cast<IntegerType>();
-      unsigned width = iType.getWidth();
-      if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32)) {
-        if (isAcc) {
+    if (AIEML && isAcc) {
+      if (eltType.isa<IntegerType>()) {
+        // AIE-ML has `ups_to_v16acc32`, `ups_to_v16acc64`, `ups_to_v32acc32`
+        // intrinsics
+        unsigned width = eltType.cast<IntegerType>().getWidth();
+        if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32) ||
+            (dimSize == 16 && width == 32)) {
           return (os << "acc" << width), success();
         } else {
-          return (os << "int" << width), success();
+          return failure();
         }
-      }
-    } else if (eltType.isa<FloatType>()) {
-      if (AIEML) {
-        if (isAcc) {
-          return (os << "v16accfloat"), success();
-        } else {
-          auto fType = eltType.cast<FloatType>();
-          unsigned width = fType.getWidth();
-          if (width == 16) {
-            return (os << "v" << std::to_string(dimSize) << "bfloat16"),
-                   success();
-          } else {
-            return (os << "v" << std::to_string(dimSize) << "float"), success();
-          }
-        }
-      } else {
-        os << "v" << std::to_string(dimSize);
+      } else if (eltType.isa<FloatType>()) {
+        // AIE-ML only has a `ups_to_v16accfloat` intrinsic
+        return (os << "accfloat"), success();
       }
     }
 

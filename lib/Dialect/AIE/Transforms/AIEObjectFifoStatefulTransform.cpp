@@ -647,7 +647,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoIn.name() == op.name())
                 break;
               else
-                extraOffset += (int)elemType.getShape()[0];
+                extraOffset += (int)getMemrefTypeSize(elemType);
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -665,7 +665,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoOut.name() == op.name())
                 break;
               else
-                extraOffset += (int)elemType.getShape()[0];
+                extraOffset += (int)getMemrefTypeSize(elemType);
             }
           }
         } else {
