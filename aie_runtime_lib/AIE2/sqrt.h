@@ -17,7 +17,7 @@
 
 #include "aie_api/aie.hpp"
 
-__attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
+inline __attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::accum<accfloat, 32> x2 =
       aie::mul(x, bfloat16(0.5f)); // x2 = number * 0.5F;
@@ -38,7 +38,7 @@ __attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
   return (v32bfloat16)out;
 }
 
-__attribute__((always_inline)) v16bfloat16 getSqrtBf16(v16bfloat16 in) {
+inline __attribute__((always_inline)) v16bfloat16 getSqrtBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> x = in;
   aie::accum<accfloat, 16> x2 =
       aie::mul(x, bfloat16(0.5f)); // x2 = number * 0.5F;
