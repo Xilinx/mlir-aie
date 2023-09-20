@@ -452,13 +452,18 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
     AIEObjectFifoType fifoType =
         fifoOut.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-    int outputSize = (int)elemType.getShape()[0];
+    int64_t outputSize = 1;
+    for (auto dim : elemType.getShape())
+      outputSize *= dim;
 
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
       AIEObjectFifoType fifo = fifoIn.getElemType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
-      inputSize += (int)elemType.getShape()[0];
+      int64_t nextInputSize = 1;
+      for (auto dim : elemType.getShape())
+        nextInputSize *= dim;
+      inputSize += nextInputSize;
     }
     if (inputSize != outputSize)
       return emitError("Total size of input objFifos in ObjectFifoLinkOp must "
@@ -468,13 +473,18 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     AIEObjectFifoType fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
-    int inputSize = (int)elemType.getShape()[0];
+    int64_t inputSize = 1;
+    for (auto dim : elemType.getShape())
+      inputSize *= dim;
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
       AIEObjectFifoType fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
-      outputSize += (int)elemType.getShape()[0];
+      int64_t nextOutputSize = 1;
+      for (auto dim : elemType.getShape())
+        nextOutputSize *= dim;
+      outputSize += nextOutputSize;
     }
     if (outputSize != inputSize)
       return emitError("Total size of output objFifos in ObjectFifoLinkOp must "

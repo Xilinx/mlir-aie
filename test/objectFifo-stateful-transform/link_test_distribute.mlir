@@ -27,8 +27,8 @@
 // CHECK:     %9 = AIE.lock(%1, 0) {init = 6 : i32, sym_name = "link1_cons_prod_lock"}
 // CHECK:     %10 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "link1_cons_cons_lock"}
 // CHECK:     AIE.flow(%1, DMA : 0, %2, DMA : 0)
-// CHECK:     %11 = AIE.buffer(%2) {sym_name = "link2_cons_buff_0"} : memref<16xi32>
-// CHECK:     %12 = AIE.buffer(%2) {sym_name = "link2_cons_buff_1"} : memref<16xi32>
+// CHECK:     %11 = AIE.buffer(%2) {sym_name = "link2_cons_buff_0"} : memref<4x4xi32>
+// CHECK:     %12 = AIE.buffer(%2) {sym_name = "link2_cons_buff_1"} : memref<4x4xi32>
 // CHECK:     %13 = AIE.lock(%2, 0) {init = 2 : i32, sym_name = "link2_cons_prod_lock"}
 // CHECK:     %14 = AIE.lock(%2, 1) {init = 0 : i32, sym_name = "link2_cons_cons_lock"}
 // CHECK:     AIE.flow(%1, DMA : 1, %3, DMA : 0)
@@ -108,12 +108,12 @@
 // CHECK:       %29 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       AIE.useLock(%13, AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%11 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.dmaBd(<%11 : memref<4x4xi32>, 0, 16>, 0)
 // CHECK:       AIE.useLock(%14, Release, 1)
 // CHECK:       AIE.nextBd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       AIE.useLock(%13, AcquireGreaterEqual, 1)
-// CHECK:       AIE.dmaBd(<%12 : memref<16xi32>, 0, 16>, 0)
+// CHECK:       AIE.dmaBd(<%12 : memref<4x4xi32>, 0, 16>, 0)
 // CHECK:       AIE.useLock(%14, Release, 1)
 // CHECK:       AIE.nextBd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
@@ -161,7 +161,7 @@ module @link_distribute {
         %tile33 = AIE.tile(3, 3)
 
         AIE.objectFifo @link1 (%tile20, {%tile21}, 2 : i32) : !AIE.objectFifo<memref<48xi32>>
-        AIE.objectFifo @link2 (%tile21, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+        AIE.objectFifo @link2 (%tile21, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<4x4xi32>>
         AIE.objectFifo @link3 (%tile21, {%tile23}, 2 : i32) : !AIE.objectFifo<memref<20xi32>>
         AIE.objectFifo @link4 (%tile21, {%tile33}, 2 : i32) : !AIE.objectFifo<memref<12xi32>>
 
