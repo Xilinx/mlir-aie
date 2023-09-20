@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
   std::generate(g_in0, g_in0 + IN0_SIZE,
-                [&]() { return fabs(random_bfloat16(-3, 3, 2)); });
+                [&]() { return fabs(random_bfloat16(-3, 3, 5)); });
 
   writeData(g_in0, IN0_SIZE, dataDir + "/in0.txt");
 

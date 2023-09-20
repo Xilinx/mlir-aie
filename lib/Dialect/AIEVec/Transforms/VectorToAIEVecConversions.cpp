@@ -1836,7 +1836,7 @@ struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
 
 // Convert math.sqrt to a function call to compute sqrt(x) for v16bfloat16 and
 // v32bfloat16 types
-struct ComputeSqrtOpByLUTPattern : public OpConversionPattern<math::SqrtOp> {
+struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
   using OpConversionPattern<math::SqrtOp>::OpConversionPattern;
 
   LogicalResult
@@ -1902,7 +1902,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeExpOpByLUTPattern,
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
-      ComputeSqrtOpByLUTPattern,
+      ComputeSqrtOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,

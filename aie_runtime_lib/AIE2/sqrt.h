@@ -16,10 +16,8 @@
 #define __SQRT_H__
 
 #include "aie_api/aie.hpp"
-#include <aie_api/aie_adf.hpp>
-#include <aie_api/utils.hpp>
 
-v32bfloat16 getSqrtBf16(v32bfloat16 in) {
+__attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::accum<accfloat, 32> x2 =
       aie::mul(x, bfloat16(0.5f)); // x2 = number * 0.5F;
@@ -32,15 +30,15 @@ v32bfloat16 getSqrtBf16(v32bfloat16 in) {
   x2 = aie::mul(x2.to_vector<bfloat16>(), y); // x2 * y * y
   const aie::vector<bfloat16, 32> threeHalfs =
       aie::broadcast<bfloat16, 32>(1.5f);
-  auto t = aie::sub(threeHalfs,
-                    x2.to_vector<bfloat16>()); // threehalfs - (x2 * y * y)
+  // threehalfs - (x2 * y * y)
+  auto t = aie::sub(threeHalfs, x2.to_vector<bfloat16>());
   x2 = aie::mul(t, y); // y * (threehalfs - (x2 * y * y) )
   x2 = aie::mul(x2.to_vector<bfloat16>(), x);
   aie::vector<bfloat16, 32> out = x2.to_vector<bfloat16>();
   return (v32bfloat16)out;
 }
 
-v16bfloat16 getSqrtBf16(v16bfloat16 in) {
+__attribute__((always_inline)) v16bfloat16 getSqrtBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> x = in;
   aie::accum<accfloat, 16> x2 =
       aie::mul(x, bfloat16(0.5f)); // x2 = number * 0.5F;
@@ -53,8 +51,8 @@ v16bfloat16 getSqrtBf16(v16bfloat16 in) {
   x2 = aie::mul(x2.to_vector<bfloat16>(), y); // x2 * y * y
   const aie::vector<bfloat16, 16> threeHalfs =
       aie::broadcast<bfloat16, 16>(1.5f);
-  auto t = aie::sub(threeHalfs,
-                    x2.to_vector<bfloat16>()); // threehalfs - (x2 * y * y)
+  // threehalfs - (x2 * y * y)
+  auto t = aie::sub(threeHalfs, x2.to_vector<bfloat16>());
   x2 = aie::mul(t, y); // y * (threehalfs - (x2 * y * y) )
   x2 = aie::mul(x2.to_vector<bfloat16>(), x);
   aie::vector<bfloat16, 16> out = x2.to_vector<bfloat16>();

@@ -3,12 +3,12 @@
 
 // REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=32" --convert-vector-to-aievec="aie-target=aieml" -lower-affine | aie-translate -aieml=true --aievec-to-cpp -o dut.cc
-// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I%aie_runtime_lib%/AIE2 %aie_runtime_lib%/AIE2/lut_based_ops.cpp -I %aietools/include -D__AIEARCH__=20 -D__AIENGINE__ -I. %S/testbench.cc dut.cc
+// RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I%aie_runtime_lib%/AIE2 %aie_runtime_lib%/AIE2/lut_based_ops.cpp -I %aietools/include -D__AIE_ARCH__=20 -D__AIENGINE__ -I. %S/testbench.cc dut.cc
 // RUN: mkdir -p data
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
-// Cycle count: 2814
+// Cycle count: 2122
 
 module {
   func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<1024xbf16>) {
