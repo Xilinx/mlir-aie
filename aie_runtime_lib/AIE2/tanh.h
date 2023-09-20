@@ -23,7 +23,8 @@
 extern float tanh_lut_ab[];
 extern float tanh_lut_cd[];
 
-v16bfloat16 __attribute__((always_inline)) getTanhBf16(v16bfloat16 vInput) {
+inline __attribute__((always_inline)) v16bfloat16
+getTanhBf16(v16bfloat16 vInput) {
   aie::vector<bfloat16, 16> input = vInput;
 
   int step_bits = -2;

@@ -2084,7 +2084,8 @@ static LogicalResult printOperation(CppEmitter &emitter, func::CallOp callOp) {
 static LogicalResult printOperation(CppEmitter &emitter, emitc::CallOp callOp) {
   raw_ostream &os = emitter.ostream();
   Operation &op = *callOp.getOperation();
-  if (callOp.getCallee() == "getTanhBf16") {
+  if (callOp.getCallee() == "getTanhBf16" ||
+      callOp.getCallee() == "getSqrtBf16") {
     if (failed(emitter.emitAssignPrefix(op, /*isAcc*/ false)))
       return failure();
   } else {
