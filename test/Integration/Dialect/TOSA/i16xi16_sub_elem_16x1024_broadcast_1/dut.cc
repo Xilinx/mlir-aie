@@ -2,7 +2,7 @@
 void dut(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
   size_t v4 = 0;
   int16_t * restrict v5 = v2;
-  v32int16 v6 = *(v32int16 *)(v5 + v4);
+  v32int16 v6 = *(v32int16 *)(v5 + v4+v4);
   v32int16 v7 = broadcast_elem(v6, 0);
   size_t v8 = 0;
   size_t v9 = 16;
