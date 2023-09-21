@@ -17,6 +17,24 @@
 
 #include "aie_api/aie.hpp"
 
+// This function implements the computation of square root by the fast inverse
+// square root implementation from Quake III Arena. We can solve square root
+// just by multiplying the inverse square to the original number.
+// float Q_rsqrt( float number )
+//{
+//	long i;
+//	float x2, y;
+//	const float threehalfs = 1.5F;
+//
+//	x2 = number * 0.5F;
+//	y  = number;
+//	i  = * ( long * ) &y;
+//	i  = 0x5f3759df - ( i >> 1 );
+//	y  = * ( float * ) &i;
+//	y  = y * ( threehalfs - ( x2 * y * y ) );
+//
+//	return y;
+//}
 inline __attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::accum<accfloat, 32> x2 =
