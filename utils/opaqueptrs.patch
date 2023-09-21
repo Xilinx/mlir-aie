@@ -1,0 +1,268 @@
+diff --git a/llvm/include/llvm/IR/DerivedTypes.h b/llvm/include/llvm/IR/DerivedTypes.h
+index 203a73067edc..bfc2fb91cdb9 100644
+--- a/llvm/include/llvm/IR/DerivedTypes.h
++++ b/llvm/include/llvm/IR/DerivedTypes.h
+@@ -23,6 +23,7 @@
+ #include "llvm/IR/Type.h"
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/Compiler.h"
++#include "llvm/Support/Process.h"
+ #include "llvm/Support/TypeSize.h"
+ #include <cassert>
+ #include <cstdint>
+@@ -641,7 +642,9 @@ inline ElementCount VectorType::getElementCount() const {
+ 
+ /// Class to represent pointers.
+ class PointerType : public Type {
++  explicit PointerType(Type *ElType, unsigned AddrSpace);
+   explicit PointerType(LLVMContext &C, unsigned AddrSpace);
++  Type *PointeeTy;
+ 
+ public:
+   PointerType(const PointerType &) = delete;
+@@ -674,11 +677,26 @@ public:
+   [[deprecated("Use PointerType::get() with LLVMContext argument instead")]]
+   static PointerType *getWithSamePointeeType(PointerType *PT,
+                                              unsigned AddressSpace) {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers) {
++      if (PT->isOpaque())
++        return get(PT->getContext(), AddressSpace);
++      return get(PT->PointeeTy, AddressSpace);
++    }
+     return get(PT->getContext(), AddressSpace);
+   }
+ 
+   [[deprecated("Always returns true")]]
+-  bool isOpaque() const { return true; }
++  bool isOpaque() const {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers)
++      return !PointeeTy;
++    return true;
++  }
+ 
+   /// Return true if the specified type is valid as a element type.
+   static bool isValidElementType(Type *ElemTy);
+@@ -694,7 +712,12 @@ public:
+   /// operands are valid types. Will be useless after non-opaque pointers are
+   /// removed.
+   [[deprecated("Always returns true")]]
+-  bool isOpaqueOrPointeeTypeMatches(Type *) {
++  bool isOpaqueOrPointeeTypeMatches(Type *Ty) {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers)
++      return isOpaque() || PointeeTy == Ty;
+     return true;
+   }
+ 
+@@ -704,6 +727,11 @@ public:
+   /// TODO: Remove after opaque pointer transition is complete.
+   [[deprecated("Always returns true")]]
+   bool hasSameElementTypeAs(PointerType *Other) {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers)
++      return PointeeTy == Other->PointeeTy;
+     return true;
+   }
+ 
+diff --git a/llvm/include/llvm/IR/Type.h b/llvm/include/llvm/IR/Type.h
+index c12e899d58fa..2c5761aac4fb 100644
+--- a/llvm/include/llvm/IR/Type.h
++++ b/llvm/include/llvm/IR/Type.h
+@@ -19,6 +19,7 @@
+ #include "llvm/Support/Casting.h"
+ #include "llvm/Support/Compiler.h"
+ #include "llvm/Support/ErrorHandling.h"
++#include "llvm/Support/Process.h"
+ #include "llvm/Support/TypeSize.h"
+ #include <cassert>
+ #include <cstdint>
+@@ -413,6 +414,15 @@ public:
+   /// pointers transition.
+   [[deprecated("Pointers no longer have element types")]]
+   Type *getNonOpaquePointerElementType() const {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers) {
++      assert(getTypeID() == PointerTyID);
++      assert(NumContainedTys &&
++                 "Attempting to get element type of opaque pointer");
++      return ContainedTys[0];
++    }
+     llvm_unreachable("Pointers no longer have element types");
+   }
+ 
+diff --git a/llvm/lib/IR/AsmWriter.cpp b/llvm/lib/IR/AsmWriter.cpp
+index e190d8212790..aa340447afb4 100644
+--- a/llvm/lib/IR/AsmWriter.cpp
++++ b/llvm/lib/IR/AsmWriter.cpp
+@@ -71,6 +71,7 @@
+ #include "llvm/Support/ErrorHandling.h"
+ #include "llvm/Support/Format.h"
+ #include "llvm/Support/FormattedStream.h"
++#include "llvm/Support/Process.h"
+ #include "llvm/Support/SaveAndRestore.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include <algorithm>
+@@ -595,9 +596,19 @@ void TypePrinting::print(Type *Ty, raw_ostream &OS) {
+   }
+   case Type::PointerTyID: {
+     PointerType *PTy = cast<PointerType>(Ty);
+-    OS << "ptr";
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (PTy->isOpaque() || !noUseOpaquePointers) {
++      OS << "ptr";
++      if (unsigned AddressSpace = PTy->getAddressSpace())
++        OS << " addrspace(" << AddressSpace << ')';
++      return;
++    }
++    print(PTy->getNonOpaquePointerElementType(), OS);
+     if (unsigned AddressSpace = PTy->getAddressSpace())
+       OS << " addrspace(" << AddressSpace << ')';
++    OS << '*';
+     return;
+   }
+   case Type::ArrayTyID: {
+@@ -1594,7 +1605,14 @@ static void WriteConstantInternal(raw_ostream &Out, const Constant *CV,
+ 
+     std::optional<unsigned> InRangeOp;
+     if (const GEPOperator *GEP = dyn_cast<GEPOperator>(CE)) {
+-      WriterCtx.TypePrinter->print(GEP->getSourceElementType(), Out);
++      auto noUseOpaquePointers =
++          llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++          "0";
++      auto *PTy = dyn_cast<PointerType>(GEP->getPointerOperandType());
++      if (PTy->isOpaque() || !noUseOpaquePointers) {
++        WriterCtx.TypePrinter->print(GEP->getSourceElementType(), Out);
++      } else
++        WriterCtx.TypePrinter->print(PTy->getNonOpaquePointerElementType(), Out);
+       Out << ", ";
+       InRangeOp = GEP->getInRangeIndex();
+       if (InRangeOp)
+diff --git a/llvm/lib/IR/Type.cpp b/llvm/lib/IR/Type.cpp
+index 97febcd99b41..1ec9b16c6978 100644
+--- a/llvm/lib/IR/Type.cpp
++++ b/llvm/lib/IR/Type.cpp
+@@ -737,6 +737,18 @@ PointerType *PointerType::get(Type *EltTy, unsigned AddressSpace) {
+   assert(EltTy && "Can't get a pointer to <null> type!");
+   assert(isValidElementType(EltTy) && "Invalid type for pointer element!");
+ 
++  auto noUseOpaquePointers =
++      llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++      "0";
++  if (noUseOpaquePointers) {
++    LLVMContextImpl *CImpl = EltTy->getContext().pImpl;
++
++    PointerType *&Entry =
++        CImpl->LegacyPointerTypes[std::make_pair(EltTy, AddressSpace)];
++    if (!Entry)
++      Entry = new (CImpl->Alloc) PointerType(EltTy, AddressSpace);
++    return Entry;
++  }
+   // Automatically convert typed pointers to opaque pointers.
+   return get(EltTy->getContext(), AddressSpace);
+ }
+@@ -753,8 +765,15 @@ PointerType *PointerType::get(LLVMContext &C, unsigned AddressSpace) {
+   return Entry;
+ }
+ 
++PointerType::PointerType(Type *E, unsigned AddrSpace)
++  : Type(E->getContext(), PointerTyID), PointeeTy(E) {
++  ContainedTys = &PointeeTy;
++  NumContainedTys = 1;
++  setSubclassData(AddrSpace);
++}
++
+ PointerType::PointerType(LLVMContext &C, unsigned AddrSpace)
+-    : Type(C, PointerTyID) {
++    : Type(C, PointerTyID), PointeeTy(nullptr) {
+   setSubclassData(AddrSpace);
+ }
+ 
+diff --git a/mlir/lib/Conversion/LLVMCommon/LoweringOptions.cpp b/mlir/lib/Conversion/LLVMCommon/LoweringOptions.cpp
+index 3ffbbafd0f23..42ffc9fb5594 100644
+--- a/mlir/lib/Conversion/LLVMCommon/LoweringOptions.cpp
++++ b/mlir/lib/Conversion/LLVMCommon/LoweringOptions.cpp
+@@ -10,12 +10,19 @@
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/Interfaces/DataLayoutInterfaces.h"
+ 
++#include "llvm/Support/Process.h"
++
+ using namespace mlir;
+ 
+ mlir::LowerToLLVMOptions::LowerToLLVMOptions(MLIRContext *ctx)
+-    : LowerToLLVMOptions(ctx, DataLayout()) {}
++    : LowerToLLVMOptions(ctx, DataLayout()) {
++  useOpaquePointers =
++      llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") == "0";
++}
+ 
+ mlir::LowerToLLVMOptions::LowerToLLVMOptions(MLIRContext *ctx,
+                                              const DataLayout &dl) {
+   indexBitwidth = dl.getTypeSizeInBits(IndexType::get(ctx));
++  useOpaquePointers =
++      llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") == "0";
+ }
+diff --git a/mlir/lib/Target/LLVMIR/TypeFromLLVM.cpp b/mlir/lib/Target/LLVMIR/TypeFromLLVM.cpp
+index a4db95820775..1387539440c1 100644
+--- a/mlir/lib/Target/LLVMIR/TypeFromLLVM.cpp
++++ b/mlir/lib/Target/LLVMIR/TypeFromLLVM.cpp
+@@ -97,6 +97,17 @@ private:
+ 
+   /// Translates the given pointer type.
+   Type translate(llvm::PointerType *type) {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers) {
++      if (type->isOpaque())
++        return LLVM::LLVMPointerType::get(&context, type->getAddressSpace());
++
++      return LLVM::LLVMPointerType::get(
++          translateType(type->getNonOpaquePointerElementType()),
++          type->getAddressSpace());
++    }
+     return LLVM::LLVMPointerType::get(&context, type->getAddressSpace());
+   }
+ 
+diff --git a/mlir/lib/Target/LLVMIR/TypeToLLVM.cpp b/mlir/lib/Target/LLVMIR/TypeToLLVM.cpp
+index 6d8b415ff09d..dccf615da7fd 100644
+--- a/mlir/lib/Target/LLVMIR/TypeToLLVM.cpp
++++ b/mlir/lib/Target/LLVMIR/TypeToLLVM.cpp
+@@ -15,6 +15,7 @@
+ #include "llvm/IR/DataLayout.h"
+ #include "llvm/IR/DerivedTypes.h"
+ #include "llvm/IR/Type.h"
++#include "llvm/Support/Process.h"
+ 
+ using namespace mlir;
+ 
+@@ -106,6 +107,15 @@ private:
+ 
+   /// Translates the given pointer type.
+   llvm::Type *translate(LLVM::LLVMPointerType type) {
++    auto noUseOpaquePointers =
++        llvm::sys::Process::GetEnv("NO_USE_OPAQUE_POINTERS").value_or("0") !=
++        "0";
++    if (noUseOpaquePointers) {
++      if (type.isOpaque())
++        return llvm::PointerType::get(context, type.getAddressSpace());
++      return llvm::PointerType::get(translateType(type.getElementType()),
++                                    type.getAddressSpace());
++    }
+     return llvm::PointerType::get(context, type.getAddressSpace());
+   }
+ 

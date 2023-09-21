@@ -38,4 +38,6 @@ else
     git fetch --depth=1 origin $commithash
     git checkout $commithash
   )
+  # assumes $here == mlir-aie root
+  git apply --ignore-space-change --ignore-whitespace --directory llvm utils/opaqueptrs.patch
 fi
