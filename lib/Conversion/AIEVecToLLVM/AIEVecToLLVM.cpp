@@ -15,6 +15,7 @@
 #include "mlir/IR/TypeUtilities.h"
 
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
@@ -118,6 +119,35 @@ public:
   }
 };
 
+// Return the intrinsic declaration for the given intrinsic name
+// If the intrinsic hasn't been declared, it will declare it at the top
+// of the scope of the specified operation.
+static LLVM::LLVMFuncOp getIntrFuncDecl(std::string intrName,
+                                        PatternRewriter &rewriter,
+                                        Operation *op,
+                                        LLVM::LLVMFunctionType funcType) {
+  MLIRContext *context = rewriter.getContext();
+  auto device = op->getParentOfType<AIE::DeviceOp>();
+  auto module = op->getParentOfType<ModuleOp>();
+  LLVM::LLVMFuncOp func;
+  if (device)
+    func = device.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrName));
+  else
+    func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrName));
+  if (!func) {
+    OpBuilder::InsertionGuard guard(rewriter);
+    if (device)
+      rewriter.setInsertionPointToStart(device.getBody());
+    else
+      rewriter.setInsertionPointToStart(module.getBody());
+    func = rewriter.create<LLVM::LLVMFuncOp>(rewriter.getUnknownLoc(), intrName,
+                                             funcType);
+  }
+  return func;
+}
+
 class FMAOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::FMAOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::FMAOp>::ConvertOpToLLVMPattern;
@@ -125,33 +155,24 @@ public:
   LogicalResult
   matchAndRewrite(aievec::FMAOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
 
     auto startType = IntegerType::get(context, 32);
     auto offsetsType = VectorType::get({2}, IntegerType::get(context, 32));
     auto confType = VectorType::get({2}, IntegerType::get(context, 32));
 
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getMulOrFMAIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(
-              op.getResult().getType(),
-              {op.getLhs().getType(), op.getRhs().getType(),
-               op.getAcc().getType(), startType, /* xstart */
-               startType,                        /* ystart */
-               startType,                        /* zstart */
-               offsetsType,                      /* xoffsets */
-               offsetsType,                      /* zoffsets */
-               confType}));
-    }
+    // Obtain intrinsic declaration
+    auto func =
+        getIntrFuncDecl(getMulOrFMAIntrinsicName(op), rewriter, op,
+                        LLVM::LLVMFunctionType::get(
+                            op.getResult().getType(),
+                            {op.getLhs().getType(), op.getRhs().getType(),
+                             op.getAcc().getType(), startType, /* xstart */
+                             startType,                        /* ystart */
+                             startType,                        /* zstart */
+                             offsetsType,                      /* xoffsets */
+                             offsetsType,                      /* zoffsets */
+                             confType}));
 
     // Parse the string attribute values
     BufferParams x = {};
@@ -202,33 +223,24 @@ public:
   LogicalResult
   matchAndRewrite(aievec::MulOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
 
     auto startType = IntegerType::get(context, 32);
     auto offsetsType = VectorType::get({2}, IntegerType::get(context, 32));
     auto confType = VectorType::get({2}, IntegerType::get(context, 32));
 
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getMulOrFMAIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getLhs().getType(),
-                                       op.getRhs().getType(),
-                                       startType,   /* xstart */
-                                       startType,   /* ystart */
-                                       startType,   /* zstart */
-                                       offsetsType, /* xoffsets */
-                                       offsetsType, /* zoffsets */
-                                       confType}));
-    }
+    // Obtain intrinsic declaration
+    auto func =
+        getIntrFuncDecl(getMulOrFMAIntrinsicName(op), rewriter, op,
+                        LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                                    {op.getLhs().getType(),
+                                                     op.getRhs().getType(),
+                                                     startType,   /* xstart */
+                                                     startType,   /* ystart */
+                                                     startType,   /* zstart */
+                                                     offsetsType, /* xoffsets */
+                                                     offsetsType, /* zoffsets */
+                                                     confType}));
 
     // Parse the string attribute values
     BufferParams x = {};
@@ -276,11 +288,48 @@ class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::UPSOp>::ConvertOpToLLVMPattern;
 
+  static std::string getIntrinsicName(aievec::UPSOp op) {
+    std::stringstream ss;
+    ss << "llvm.aie.";
+
+    // Determine the prefix
+    auto sourceType = cast<VectorType>(op.getSource().getType());
+    auto resultType = cast<VectorType>(op.getResult().getType());
+    auto sourceElType = cast<IntegerType>(sourceType.getElementType());
+    auto resultElType = cast<IntegerType>(resultType.getElementType());
+
+    auto sourceElWidth = sourceElType.getWidth();
+    auto resultElWidth = resultElType.getWidth();
+
+    if (sourceElWidth == 8 && resultElWidth == 48) {
+      ss << (sourceElType.getSignedness() == IntegerType::Unsigned ? 'u' : 'b');
+    } else if ((sourceElWidth == 32 && resultElWidth == 48) ||
+               (sourceElWidth == 64 && resultElWidth == 80)) {
+      ss << 'l';
+    }
+    ss << "ups." << getVectorTypeString(resultType, false, true) << "."
+       << getVectorTypeString(sourceType, true);
+
+    return ss.str();
+  }
+
   LogicalResult
   matchAndRewrite(aievec::UPSOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    op.emitWarning() << "aie.ups conversion is not implemented\n";
-    return failure();
+    MLIRContext *context = rewriter.getContext();
+    // Obtain intrinsic declaration
+    auto shiftType = IntegerType::get(context, 32);
+    auto func = getIntrFuncDecl(
+        getIntrinsicName(op), rewriter, op,
+        LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                    {op.getSource().getType(), shiftType}));
+
+    // Create a constant for the shift value
+    auto shiftVal = rewriter.create<LLVM::ConstantOp>(
+        op->getLoc(), shiftType, rewriter.getI32IntegerAttr(op.getShift()));
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, func, ValueRange{op.getSource(), shiftVal});
+    return success();
   }
 };
 
@@ -316,22 +365,13 @@ public:
   LogicalResult
   matchAndRewrite(aievec::SRSOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
+    // Obtain intrinsic declaration
     auto shiftType = IntegerType::get(context, 32);
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getSource().getType(), shiftType}));
-    }
+    auto func = getIntrFuncDecl(
+        getIntrinsicName(op), rewriter, op,
+        LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                    {op.getSource().getType(), shiftType}));
 
     // Create a constant for the shift value
     auto shiftVal = rewriter.create<LLVM::ConstantOp>(
@@ -360,9 +400,6 @@ public:
   LogicalResult
   matchAndRewrite(aievec::UPDOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
-
     // A bit more complicated: load the vector, then update result vector
     // AIE1 is capable of 128-bit on one bank and 256-bit loads on even-odd
     // banks Identify size of update
@@ -412,20 +449,10 @@ public:
       auto loadValue =
           rewriter.create<LLVM::LoadOp>(op->getLoc(), castedPtr, 1);
 
-      // Get set up for the intrinsic
-      std::string intrinsicName = getIntrinsicName(op, loadSize);
-
-      // If the intrinsic declaration doesn't exist, create it
-      auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-          StringAttr::get(context, intrinsicName));
-
-      if (!func) {
-        OpBuilder::InsertionGuard guard(rewriter);
-        rewriter.setInsertionPointToStart(module.getBody());
-        func = rewriter.create<LLVM::LLVMFuncOp>(
-            rewriter.getUnknownLoc(), intrinsicName,
-            LLVM::LLVMFunctionType::get(resultType, {resultType, loadType}));
-      }
+      // Obtain intrinsic declaration
+      auto func = getIntrFuncDecl(
+          getIntrinsicName(op, loadSize), rewriter, op,
+          LLVM::LLVMFunctionType::get(resultType, {resultType, loadType}));
 
       // Determine what the destination is
       Value destValue;
@@ -443,17 +470,10 @@ public:
         std::stringstream ss;
         ss << "llvm.aie." << getVectorTypeString(resultType) << ".undef";
         std::string intrinsicName = ss.str();
-
-        auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-            StringAttr::get(rewriter.getContext(), intrinsicName));
-
-        if (!func) {
-          OpBuilder::InsertionGuard guard(rewriter);
-          rewriter.setInsertionPointToStart(module.getBody());
-          func = rewriter.create<LLVM::LLVMFuncOp>(
-              rewriter.getUnknownLoc(), intrinsicName,
-              LLVM::LLVMFunctionType::get(resultType, {}));
-        }
+        // Obtain intrinsic declaration
+        auto func =
+            getIntrFuncDecl(intrinsicName, rewriter, op,
+                            LLVM::LLVMFunctionType::get(resultType, {}));
         destValue =
             rewriter.create<LLVM::CallOp>(op->getLoc(), func, ValueRange{})
                 ->getOpResult(0);
@@ -484,25 +504,13 @@ public:
   LogicalResult
   matchAndRewrite(aievec::ConcatOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
-
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
+    // Obtain intrinsic declaration
     // TODO: support for more than 2 vector concat
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(
-              op.getResult().getType(),
-              {op.getSources()[0].getType(), op.getSources()[1].getType()}));
-    }
-
+    auto func = getIntrFuncDecl(
+        getIntrinsicName(op), rewriter, op,
+        LLVM::LLVMFunctionType::get(
+            op.getResult().getType(),
+            {op.getSources()[0].getType(), op.getSources()[1].getType()}));
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, func, ValueRange{op.getSources()[0], op.getSources()[1]});
     return success();
@@ -529,22 +537,11 @@ public:
   LogicalResult
   matchAndRewrite(aievec::ExtOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
-
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getSource().getType()}));
-    }
+    // Obtain intrinsic declaration
+    auto func = getIntrFuncDecl(
+        getIntrinsicName(op), rewriter, op,
+        LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                    {op.getSource().getType()}));
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func,
                                               ValueRange{op.getSource()});
@@ -567,7 +564,6 @@ public:
   LogicalResult
   matchAndRewrite(aievec::SelectOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
     MLIRContext *context = rewriter.getContext();
 
     auto selectType = IntegerType::get(context, 32);
@@ -575,24 +571,16 @@ public:
     auto offsetsType = VectorType::get({2}, IntegerType::get(context, 32));
     auto confType = VectorType::get({2}, IntegerType::get(context, 32));
 
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getXbuff().getType(), selectType,
-                                       startType,   /* xstart */
-                                       startType,   /* ystart */
-                                       offsetsType, /* xoffsets */
-                                       offsetsType, /* yoffsets */
-                                       confType}));
-    }
+    // Obtain intrinsic declaration
+    auto func = getIntrFuncDecl(
+        getIntrinsicName(op), rewriter, op,
+        LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                    {op.getXbuff().getType(), selectType,
+                                     startType,   /* xstart */
+                                     startType,   /* ystart */
+                                     offsetsType, /* xoffsets */
+                                     offsetsType, /* yoffsets */
+                                     confType}));
 
     // Parse the string attribute values
     uint32_t select = 0;
@@ -653,22 +641,11 @@ public:
   LogicalResult
   matchAndRewrite(aievec::PackOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto module = op->getParentOfType<ModuleOp>();
-    MLIRContext *context = rewriter.getContext();
-
-    // If the intrinsic declaration doesn't exist, create it
-    std::string intrinsicName = getIntrinsicName(op);
-    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
-        StringAttr::get(context, intrinsicName));
-
-    if (!func) {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(module.getBody());
-      func = rewriter.create<LLVM::LLVMFuncOp>(
-          rewriter.getUnknownLoc(), intrinsicName,
-          LLVM::LLVMFunctionType::get(op.getResult().getType(),
-                                      {op.getSource().getType()}));
-    }
+    // Obtain intrinsic declaration
+    auto func = getIntrFuncDecl(
+        getIntrinsicName(op), rewriter, op,
+        LLVM::LLVMFunctionType::get(op.getResult().getType(),
+                                    {op.getSource().getType()}));
 
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(op, func,
                                               ValueRange{op.getSource()});
