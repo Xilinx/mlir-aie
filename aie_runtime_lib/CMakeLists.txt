@@ -37,7 +37,8 @@ function(add_aie_runtime_libs arch)
       lut_based_ops.h
       tanh.h
       tanh.cpp
-      sqrt.h)
+      sqrt.h
+      erf.h)
 
   foreach(file ${INSTALLS})
       add_custom_target(aie-copy-${arch}-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})
