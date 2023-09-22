@@ -476,8 +476,41 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
                                        rewriter.getI8IntegerAttr(half))
                 .getResult();
     }
-    rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType, src,
-                                                     posVal);
+
+    unsigned elWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    if (laneSize * elWidth == 512) {
+      // Common use case for the broadcast_elem intrinsic
+      rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType, src,
+                                                       posVal);
+    } else if (laneSize * elWidth == 256) {
+      // e.g. need v16bf16 due to the subsequent v16accfloat operation
+      VectorType aievecBcastType =
+          createVectorType(512 / elWidth, resultType.getElementType());
+      auto concatOp = rewriter.create<aievec::ConcatOp>(
+          bcastOp.getLoc(), aievecBcastType, SmallVector<Value>({src, src}));
+      auto aieBcastOp = rewriter.create<aievec::BroadcastOp>(
+          bcastOp.getLoc(), aievecBcastType, concatOp.getResult(), posVal);
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(bcastOp, resultType,
+                                                 aieBcastOp.getResult(), 0);
+    } else if (laneSize * elWidth == 1024) {
+      // e.g. need v32int32 due to the subsequent v32acc32 operation
+      VectorType aievecBcastType =
+          createVectorType(512 / elWidth, resultType.getElementType());
+      int8_t half = static_cast<int8_t>(posVal / resultType.getNumElements());
+      posVal -= half * resultType.getNumElements();
+      auto extOp =
+          rewriter.create<aievec::ExtOp>(bcastOp.getLoc(), aievecBcastType, src,
+                                         rewriter.getI8IntegerAttr(half));
+      auto aieBcastOp = rewriter.create<aievec::BroadcastOp>(
+          bcastOp.getLoc(), aievecBcastType, extOp.getResult(), posVal);
+      rewriter.replaceOpWithNewOp<aievec::ConcatOp>(
+          bcastOp, resultType,
+          SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
+    } else {
+      return failure();
+    }
 
     return success();
   }
@@ -497,6 +530,10 @@ struct ConvertBroadcastToAIEBroadcast
     if (extOp)
       return failure();
 
+    // Only support broadcasting a single element for now
+    if (bcastOp.getResultVectorType().getRank() == 0)
+      return failure();
+
     VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
     Type scalarType = resultType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
@@ -507,14 +544,20 @@ struct ConvertBroadcastToAIEBroadcast
       rewriter.replaceOpWithNewOp<aievec::BroadcastScalarOp>(bcastOp,
                                                              resultType, src);
       return success();
-    }
-
-    if (laneSize * elWidth == 256) {
+    } else if (laneSize * elWidth == 256) {
       VectorType vecType = createVectorType(512 / elWidth, scalarType);
       auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
           bcastOp.getLoc(), vecType, src);
       rewriter.replaceOpWithNewOp<aievec::ExtOp>(bcastOp, resultType,
                                                  aieBcastOp.getResult(), 0);
+      return success();
+    } else if (laneSize * elWidth == 1024) {
+      VectorType vecType = createVectorType(512 / elWidth, scalarType);
+      auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
+          bcastOp.getLoc(), vecType, src);
+      rewriter.replaceOpWithNewOp<aievec::ConcatOp>(
+          bcastOp, resultType,
+          SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
       return success();
     }
 
