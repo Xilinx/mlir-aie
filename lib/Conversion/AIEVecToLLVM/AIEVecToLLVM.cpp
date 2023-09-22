@@ -689,6 +689,32 @@ public:
   }
 };
 
+class BroadcastOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::BroadcastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::BroadcastOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    op.emitWarning() << "aie.broadcast conversion is not implemented\n";
+    return failure();
+  }
+};
+
+class FMAElemOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::FMAElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::FMAElemOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FMAElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    op.emitWarning() << "aie.mac_elem conversion is not implemented\n";
+    return failure();
+  }
+};
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -703,7 +729,9 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                ExtOpConversion,
                SelectOpConversion,
                PackOpConversion,
-               UnpackOpConversion>(converter);
+               UnpackOpConversion,
+               BroadcastOpConversion,
+               FMAElemOpConversion>(converter);
   // clang-format on
 }
 
