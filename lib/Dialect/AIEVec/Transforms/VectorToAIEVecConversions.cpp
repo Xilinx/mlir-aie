@@ -531,7 +531,7 @@ struct ConvertBroadcastToAIEBroadcast
       return failure();
 
     // Only support broadcasting a single element for now
-    if (bcastOp.getResultVectorType().getRank() == 0)
+    if (!isa<IntegerType, IndexType, FloatType>(adaptor.getSource().getType()))
       return failure();
 
     VectorType resultType = cast<VectorType>(bcastOp.getResult().getType());
