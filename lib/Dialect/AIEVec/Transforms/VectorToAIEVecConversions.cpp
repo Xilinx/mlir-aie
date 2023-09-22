@@ -524,10 +524,7 @@ struct ConvertBroadcastToAIEBroadcast
   matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto extOp =
-        dyn_cast<vector::ExtractOp>(adaptor.getSource().getDefiningOp());
-
-    if (extOp)
+    if (auto extOp = adaptor.getSource().getDefiningOp<vector::ExtractOp>())
       return failure();
 
     // Only support broadcasting a single element for now
