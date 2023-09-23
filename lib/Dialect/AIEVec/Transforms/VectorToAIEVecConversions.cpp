@@ -12,7 +12,6 @@
 // to ops that can be translated to a sequence of valid AIEVec ops.
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <bitset>
 #include <optional>
 #include <tuple>
@@ -21,9 +20,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -31,7 +28,6 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -71,8 +67,8 @@ extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
     return std::make_tuple(mulOp.getLhs(), mulOp.getRhs(), acc);
 
   // If the MulIOp has been already translated to aievec::MulOp:
-  aievec::SRSOp lhsSrsOp = addLhs.getDefiningOp<aievec::SRSOp>();
-  aievec::SRSOp rhsSrsOp = addRhs.getDefiningOp<aievec::SRSOp>();
+  auto lhsSrsOp = addLhs.getDefiningOp<aievec::SRSOp>();
+  auto rhsSrsOp = addRhs.getDefiningOp<aievec::SRSOp>();
   aievec::MulOp aieMulOp = nullptr;
   if (lhsSrsOp) {
     aieMulOp = lhsSrsOp.getSource().getDefiningOp<aievec::MulOp>();
@@ -120,7 +116,7 @@ convertValueToTargetTypeAieML(ConversionPatternRewriter &rewriter, Location loc,
           loc, srcType, broadcastZeroOp->getResult(0), 0);
 
       SmallVector<Value> inputSources = {inputVal, extOp->getResult(0)};
-      aievec::ConcatOp concatOp =
+      auto concatOp =
           rewriter.create<aievec::ConcatOp>(loc, tgtType, inputSources);
 
       return concatOp.getResult();
@@ -224,8 +220,9 @@ buildAttributeListForRotationSelectOp(PatternRewriter &rewriter, VectorType vTy,
          {yoffsetsAttrName, attr0},
          {ysquareAttrName, attr0},
          {ystartAttrName, attr0}});
+  default:
+    return {};
   }
-  return {};
 }
 
 namespace xilinx {
@@ -286,8 +283,9 @@ SmallVector<NamedAttribute> buildFMAOpSplatAttrForElemTy(aievec::FMAOp fmaOp,
          {fmaOp.getZstepAttrName(), fmaOp.getZstepAttr()},
          {fmaOp.getZsquareAttrName(), fmaOp.getZsquareAttr()},
          {fmaOp.getFmsubAttrName(), fmaOp.getFmsubAttr()}});
+  default:
+    return {};
   }
-  return {};
 }
 
 } // namespace aievec
@@ -375,7 +373,8 @@ static aievec::CmpOp createCmpOpAieML(ConversionPatternRewriter &rewriter,
 template <typename DstOpTy>
 static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                             vector::ReductionOp srcOp,
-                                            int shiftIndex, Value curValue) {
+                                            unsigned shiftIndex,
+                                            Value curValue) {
   assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
          "shiftIndex must be power of 2");
 
@@ -387,8 +386,8 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
   DstOpTy curOp = nullptr;
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-  for (int id = shiftIndex; id > 0; id /= 2) {
-    arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+  for (unsigned id = shiftIndex; id > 0; id /= 2) {
+    auto constOp = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
 
     auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
@@ -400,46 +399,11 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
     curValue = curOp.getResult();
   }
 
-  arith::ConstantOp zeroConstOp =
+  auto zeroConstOp =
       rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
   rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
                                                  zeroConstOp.getResult());
-  return;
 }
-
-//===----------------------------------------------------------------------===//
-// Analyses
-//===----------------------------------------------------------------------===//
-
-// Calculates the effective size of the load operation (in bits).
-// If a long UPD is followed by another one with an offset, we count
-// its effective size as the number of bits loaded up to that offset.
-// E.g.:
-//  As is, the effective size of:
-//     %0 = aievec.upd %m[%i] {index = 0 : i8, offset = 0 : si32}
-//                            : memref<256xi32>, vector<32xi32>
-//  would be `8 * sizeof(i32) * 32` (i.e: 1024 bits).
-//  On the other, for two arranged like so:
-//     %0 = aievec.upd %m[%i] {index = 0 : i8, offset = 0 : si32}
-//                            : memref<256xi32>, vector<32xi32>
-//     %1 = aievec.upd %m[%i], %1 {index = 1 : i8, offset = 512 : si32}
-//                                : memref<256xi32>, vector<32xi32>
-// it would be `8 * sizeof(i32) * 32 - 512` (i.e.: 512 bits) each.
-struct UPDOpEffectiveAccessSizeAnalysis {
-  UPDOpEffectiveAccessSizeAnalysis(aievec::UPDOp updOp) {
-    auto vecType = cast<VectorType>(updOp.getResult().getType());
-    unsigned sizeInBits =
-        cast<ShapedType>(vecType).getElementTypeBitWidth() - updOp.getOffset();
-    for (Operation *user : updOp->getUsers()) {
-      auto userUpdOp = dyn_cast<xilinx::aievec::UPDOp>(user);
-      if (userUpdOp)
-        sizeInBits -= userUpdOp.getOffset();
-    }
-    effectiveSize = sizeInBits;
-  }
-
-  unsigned effectiveSize;
-};
 
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
@@ -469,7 +433,7 @@ struct FoldVectorExtractAndBroadcastToAIEBroadcast
     if (srcVecType != resultType) {
       if (srcVecType.getNumElements() != 2 * resultType.getNumElements())
         return failure();
-      int8_t half = static_cast<int8_t>(posVal / resultType.getNumElements());
+      auto half = static_cast<int8_t>(posVal / resultType.getNumElements());
       posVal -= half * resultType.getNumElements();
       src = rewriter
                 .create<aievec::ExtOp>(extOp.getLoc(), resultType, src,
@@ -528,8 +492,8 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
     : public OpConversionPattern<arith::AddIOp> {
   using OpConversionPattern<arith::AddIOp>::OpConversionPattern;
 
-  ConvertMulAddToAIEVecFMAElemOpPattern(MLIRContext *context,
-                                        unsigned shiftParam = 0)
+  explicit ConvertMulAddToAIEVecFMAElemOpPattern(MLIRContext *context,
+                                                 unsigned shiftParam = 0)
       : OpConversionPattern<arith::AddIOp>(context), shiftParam(shiftParam) {}
 
   LogicalResult
@@ -578,8 +542,8 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     : public OpConversionPattern<arith::MulFOp> {
   using OpConversionPattern<arith::MulFOp>::OpConversionPattern;
 
-  ConvertMulFToAIEVecMulElemOpPattern(MLIRContext *context,
-                                      unsigned shiftParam = 0)
+  explicit ConvertMulFToAIEVecMulElemOpPattern(MLIRContext *context,
+                                               unsigned shiftParam = 0)
       : OpConversionPattern<arith::MulFOp>(context), shiftParam(shiftParam) {}
 
   LogicalResult
@@ -645,7 +609,7 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       return failure();
 
     // Create an aievec.mul_elem op
-    aievec::MulElemOp mulElemOp = rewriter.create<aievec::MulElemOp>(
+    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
         mulOp.getLoc(), accType, *lValConverted, *rValConverted);
 
     // Create an aievec.cast or an aievec.srs op
@@ -675,8 +639,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     : public OpConversionPattern<arith::MulIOp> {
   using OpConversionPattern<arith::MulIOp>::OpConversionPattern;
 
-  ConvertMulIToAIEVecMulElemOpPattern(MLIRContext *context,
-                                      unsigned shiftParam = 0)
+  explicit ConvertMulIToAIEVecMulElemOpPattern(MLIRContext *context,
+                                               unsigned shiftParam = 0)
       : OpConversionPattern<arith::MulIOp>(context), shiftParam(shiftParam) {}
 
   LogicalResult
@@ -734,7 +698,7 @@ struct ConvertMulIToAIEVecMulElemOpPattern
       return failure();
 
     // Create an aievec.mul_elem op
-    aievec::MulElemOp mulElemOp = rewriter.create<aievec::MulElemOp>(
+    auto mulElemOp = rewriter.create<aievec::MulElemOp>(
         mulOp.getLoc(), accType, *lValConverted, *rValConverted);
 
     // Create an aievec.cast or an aievec.srs op
@@ -993,7 +957,7 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
 
-  LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp(MLIRContext *context)
+  explicit LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp(MLIRContext *context)
       : OpConversionPattern<SrcOpTy>(context) {}
 
   LogicalResult
@@ -1251,7 +1215,7 @@ struct LowerVectorMinMaxOpToAIEVecMinMaxOp
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
 
-  LowerVectorMinMaxOpToAIEVecMinMaxOp(MLIRContext *context)
+  explicit LowerVectorMinMaxOpToAIEVecMinMaxOp(MLIRContext *context)
       : OpConversionPattern<SrcOpTy>(context) {}
 
   LogicalResult
@@ -1294,7 +1258,7 @@ struct LowerVectorCmpOpToAIEVecCmpOp : public OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
 
-  LowerVectorCmpOpToAIEVecCmpOp(MLIRContext *context)
+  explicit LowerVectorCmpOpToAIEVecCmpOp(MLIRContext *context)
       : OpConversionPattern<SrcOpTy>(context) {}
 
   LogicalResult
@@ -1408,7 +1372,7 @@ struct LowerVectorReductionMinOp
     if (laneSize * elWidth != 512)
       return failure();
 
-    int shiftIndex = laneSize / 2;
+    unsigned shiftIndex = laneSize / 2;
     generateAIEVecOpsForReductionOp<aievec::MinOp>(rewriter, srcOp, shiftIndex,
                                                    srcOp.getVector());
     return success();
@@ -1436,7 +1400,7 @@ struct LowerVectorReductionMaxOp
     if (laneSize * elWidth != 512)
       return failure();
 
-    int shiftIndex = laneSize / 2;
+    unsigned shiftIndex = laneSize / 2;
     generateAIEVecOpsForReductionOp<aievec::MaxOp>(rewriter, srcOp, shiftIndex,
                                                    srcOp.getVector());
     return success();
@@ -1468,7 +1432,7 @@ struct LowerVectorReductionAddIntOp
         !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))
       return failure();
 
-    int shiftIndex = laneSize / 2;
+    unsigned shiftIndex = laneSize / 2;
     if (laneSize == 32 && elWidth == 32) {
       Location loc = srcOp.getLoc();
       VectorType vecType = createVectorType(laneSize / 2, scalarType);
@@ -1510,7 +1474,7 @@ struct LowerVectorReductionAddFloatOp
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 32)
       return failure();
 
-    int shiftIndex = laneSize / 2;
+    unsigned shiftIndex = laneSize / 2;
     assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
            "shiftIndex must be power of 2");
 
@@ -1518,8 +1482,8 @@ struct LowerVectorReductionAddFloatOp
     Value curValue = srcOp.getVector();
     aievec::CastOp curOp = nullptr;
 
-    for (int id = shiftIndex; id > 0; id /= 2) {
-      arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+    for (unsigned id = shiftIndex; id > 0; id /= 2) {
+      auto constOp = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
 
       auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
@@ -1539,7 +1503,7 @@ struct LowerVectorReductionAddFloatOp
       curValue = curOp.getResult();
     }
 
-    arith::ConstantOp zeroConstOp =
+    auto zeroConstOp =
         rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
                                                    zeroConstOp.getResult());
@@ -1566,7 +1530,7 @@ struct LowerVectorReductionAddBfloat16Op
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return failure();
 
-    int shiftIndex = laneSize / 2;
+    unsigned shiftIndex = laneSize / 2;
     assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
            "shiftIndex must be power of 2");
 
@@ -1584,8 +1548,8 @@ struct LowerVectorReductionAddBfloat16Op
     VectorType vecType = createVectorType(2 * laneSize, scalarType);
     aievec::AddElemOp curOp = nullptr;
 
-    for (int id = shiftIndex; id > 0; id /= 2) {
-      arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+    for (unsigned id = shiftIndex; id > 0; id /= 2) {
+      auto constOp = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
       auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
           loc, accType, curValue, curValue, constOp, true);
@@ -1599,7 +1563,7 @@ struct LowerVectorReductionAddBfloat16Op
     auto concatOp =
         rewriter.create<aievec::ConcatOp>(loc, vecType, concatSources);
 
-    arith::ConstantOp zeroConstOp =
+    auto zeroConstOp =
         rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, concatOp,
                                                    zeroConstOp.getResult());
@@ -1698,7 +1662,7 @@ struct LowerVectorExtractStridedSliceOpAIEMLPattern
 struct ExpandUPDToUPDAndExtPattern : public OpConversionPattern<aievec::UPDOp> {
   using OpConversionPattern<aievec::UPDOp>::OpConversionPattern;
 
-  ExpandUPDToUPDAndExtPattern(MLIRContext *context)
+  explicit ExpandUPDToUPDAndExtPattern(MLIRContext *context)
       : OpConversionPattern<aievec::UPDOp>(context) {}
 
   LogicalResult
@@ -1728,7 +1692,7 @@ struct ExpandUPDToUPDAndExtPattern : public OpConversionPattern<aievec::UPDOp> {
 struct FuseExtIntoUPDPattern : public OpConversionPattern<aievec::ExtOp> {
   using OpConversionPattern<aievec::ExtOp>::OpConversionPattern;
 
-  FuseExtIntoUPDPattern(MLIRContext *context)
+  explicit FuseExtIntoUPDPattern(MLIRContext *context)
       : OpConversionPattern<aievec::ExtOp>(context) {}
 
   LogicalResult
@@ -1774,7 +1738,7 @@ struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
       return failure();
 
     StringRef includeName = "lut_based_ops.h";
-    ModuleOp moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
+    auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
     rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
@@ -1830,7 +1794,7 @@ struct ComputeInvOpByLUTPattern : public OpConversionPattern<arith::DivFOp> {
     }
 
     StringRef includeName = "lut_based_ops.h";
-    ModuleOp moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
+    auto moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
     rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
@@ -1868,7 +1832,7 @@ struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
     }
 
     StringRef includeName = "tanh.h";
-    ModuleOp moduleOp = tanhOp->getParentOfType<mlir::ModuleOp>();
+    auto moduleOp = tanhOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
     rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
@@ -1904,7 +1868,7 @@ struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
     }
 
     StringRef includeName = "sqrt.h";
-    ModuleOp moduleOp = sqrtOp->getParentOfType<mlir::ModuleOp>();
+    auto moduleOp = sqrtOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
     rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
@@ -2342,15 +2306,17 @@ struct LowerVectorToAIEVec
   LowerVectorToAIEVec() = default;
   LowerVectorToAIEVec(const LowerVectorToAIEVec &pass) : PassWrapper(pass) {}
 
-  LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options)
+  explicit LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options)
       : LowerVectorToAIEVec() {
     aieTarget = options.aieTarget;
   }
 
   // In case we want to register this pass as a standalone pass for test
   // purposes.
-  StringRef getArgument() const final { return "test-lower-vector-to-aievec"; }
-  StringRef getDescription() const final {
+  [[nodiscard]] StringRef getArgument() const final {
+    return "test-lower-vector-to-aievec";
+  }
+  [[nodiscard]] StringRef getDescription() const final {
     return "Lower vector operations to AIE vector intrinsics";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -2369,10 +2335,9 @@ struct LowerVectorToAIEVec
     auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
-    ConversionTarget target(*context);
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
-      std::string target = aieTarget;
+      std::string target = aieTarget.getValue();
       if (target == "aieml") {
         aieVersion = AIEArch::AIE_ML;
       } else if (target != "aie") {
@@ -2382,6 +2347,7 @@ struct LowerVectorToAIEVec
       }
     }
 
+    ConversionTarget target(*context);
     AnalysisManager am = getAnalysisManager();
     configureAIEVecCommonLegalizations(target, am);
     if (aieVersion == AIEArch::AIE) {
