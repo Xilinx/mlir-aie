@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.tile' op attribute 'col' failed to satisfy constraint: 32-bit signless integer attribute whose minimum value is 0
+// CHECK: error{{.*}}'AIE.tile' op attribute 'col' failed to satisfy constraint: 32-bit signless integer attribute whose minimum value is 0
 
 module @test {
   %t1 = AIE.tile(-1, -1)

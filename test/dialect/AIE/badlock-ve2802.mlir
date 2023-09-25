@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.lock' op lock assigned invalid id (maximum is 63)
+// CHECK: error{{.*}}'AIE.lock' op lock assigned invalid id (maximum is 63)
 module @test {
   AIE.device(xcve2802) {
     %t1 = AIE.tile(1, 1)

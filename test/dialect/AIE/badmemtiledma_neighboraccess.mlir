@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.buffer' op in Column 3 and Row 1 is accessed from an unreachable tile in Column 1 and Row 1
+// CHECK: error{{.*}}'AIE.buffer' op in Column 3 and Row 1 is accessed from an unreachable tile in Column 1 and Row 1
 
 // memtiles can only access neighboring memtiles
 
