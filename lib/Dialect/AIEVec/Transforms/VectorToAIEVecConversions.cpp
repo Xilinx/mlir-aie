@@ -1958,6 +1958,42 @@ struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
   }
 };
 
+// Convert math.erf to a function call to compute erf(x) for v16bfloat16 and
+// v32bfloat16 types
+struct ComputeErfOpPattern : public OpConversionPattern<math::ErfOp> {
+  using OpConversionPattern<math::ErfOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::ErfOp erfOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(erfOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return failure();
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return failure();
+    }
+
+    StringRef includeName = "erf.h";
+    ModuleOp moduleOp = erfOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(erfOp);
+    SmallVector<Value> erfOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        erfOp, TypeRange{erfOp.getResult().getType()}, "getErfBf16", nullptr,
+        nullptr, erfOperands);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -1991,6 +2027,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
+      ComputeErfOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2082,6 +2119,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<math::SqrtOp>([](math::SqrtOp sqrtOp) {
     VectorType srcType = dyn_cast<VectorType>(sqrtOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::ErfOp>([](math::ErfOp erfOp) {
+    VectorType srcType = dyn_cast<VectorType>(erfOp.getOperand().getType());
     Type scalarType = srcType.getElementType();
     if (!srcType || !isa<FloatType>(scalarType)) {
       return true;
