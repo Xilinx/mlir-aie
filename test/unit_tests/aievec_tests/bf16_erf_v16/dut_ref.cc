@@ -73,7 +73,7 @@ int main() {
   }
 
   bool ok = true;
-  ok &= checkData(out0, out0_ref, DATA_SIZE, 1e-2, 1e-1);
+  ok &= checkData(out0, out0_ref, DATA_SIZE, 9e-2, 0.0f);
 
   if (ok)
     printf("TEST PASSED\n");

@@ -1,5 +1,4 @@
-//===-  erf.h - get error function values for bfloat16 data type
-//-===//
+//===- erf.h - error function for v16bfloat16 and v32bfloat16 -===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,7 +8,7 @@
 //
 //
 //===----------------------------------------------------------------------===//
-// This is the implementation of compute error function values for bfloat16 type
+// Error function for v16bfloat16 and v32bfloat16
 //===----------------------------------------------------------------------===//
 
 #ifndef __ERF_H__
