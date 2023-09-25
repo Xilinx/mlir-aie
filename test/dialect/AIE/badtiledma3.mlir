@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.useLock' op can only access a lock in the same tile
+// CHECK: error{{.*}}'AIE.useLock' op can only access a lock in the same tile
 
 module @test {
     %t63 = AIE.tile(6, 3)

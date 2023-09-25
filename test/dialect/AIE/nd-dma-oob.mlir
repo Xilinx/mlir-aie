@@ -25,7 +25,7 @@ module @tutorial_2b {
         %mem14 = AIE.mem(%tile14) {
           %srcDma = AIE.dmaStart("MM2S", 0, ^bd0, ^end)
           ^bd0:
-            // The following should generate an out-of-bounds error: the second
+            // The following should generate an out-of-bounds error{{.*}}the second
             // repetition of accessing array %buf14 with stride of 128 will
             // attempt an access at index 128, which is OOB for a 128xi32 
             // memref.

@@ -44,8 +44,8 @@ aie_opt_passes = ['--aie-normalize-address-spaces',
                   '--cse']
 
 class flow_runner:
-  def __init__(self, mlir_module, opts, tmpdirname):
-      self.mlir_module = str(mlir_module)
+  def __init__(self, mlir_module_str, opts, tmpdirname):
+      self.mlir_module_str = mlir_module_str
       self.opts = opts
       self.tmpdirname = tmpdirname
       self.runtimes = dict()
@@ -90,13 +90,18 @@ class flow_runner:
       ret = subprocess.run(command, stdout=m, stderr=m, universal_newlines=True)
       return ret
 
-  def run_passes(self, pass_pipeline, mlir_module, outputfile=None):
+  def run_passes(self, pass_pipeline, mlir_module_str, outputfile=None):
       if self.opts.verbose:
         print("Running:", pass_pipeline)
-      PassManager.parse(pass_pipeline).run(mlir_module)
-      if outputfile:
-        with open(outputfile, 'w') as g:
-          g.write(str(mlir_module))
+      with Context() as ctx, Location.unknown():
+        aiedialect.register_dialect(ctx)
+        module = Module.parse(mlir_module_str)
+        PassManager.parse(pass_pipeline).run(module.operation)
+        mlir_module_str = str(module)
+        if outputfile:
+          with open(outputfile, 'w') as g:
+            g.write(mlir_module_str)
+      return mlir_module_str
 
   def corefile(self, dirname, core, ext):
       (corecol, corerow, _) = core
@@ -419,7 +424,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         nworkers = os.cpu_count()
 
       self.limit = asyncio.Semaphore(nworkers)
-      with Context() as ctx, Location.unknown(), progress.Progress(
+      with progress.Progress(
         *progress.Progress.get_default_columns(),
         progress.TimeElapsedColumn(),
         progress.MofNCompleteColumn(),
@@ -428,9 +433,6 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         redirect_stderr = False) as progress_bar:
         self.progress_bar = progress_bar
         progress_bar.task = progress_bar.add_task("[green] MLIR compilation:", total=1, command="1 Worker")
-
-        aiedialect.register_dialect(ctx)
-        mlir_module = Module.parse(self.mlir_module)
 
         self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
         pass_pipeline = ','.join(['lower-affine',
@@ -444,7 +446,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                                     'aie-lower-multicast',
                                     'aie-assign-buffer-addresses)',
                                   'convert-scf-to-cf'])
-        self.run_passes('builtin.module('+pass_pipeline+')', mlir_module, self.file_with_addresses)
+        self.run_passes('builtin.module('+pass_pipeline+')', self.mlir_module_str, self.file_with_addresses)
 
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
@@ -566,8 +568,13 @@ def main():
   global opts
   opts = aie.compiler.aiecc.cl_arguments.parse_args()
 
-  with Context() as ctx, Location.unknown():
-    aiedialect.register_dialect(ctx)
-    with open(opts.filename, 'r') as f:
-      module = Module.parse(f.read())
-      run(module)
+  try:
+    with Context() as ctx, Location.unknown():
+      aiedialect.register_dialect(ctx)
+      with open(opts.filename, 'r') as f:
+        module = Module.parse(f.read())
+      module_str = str(module)
+  except Exception as e:
+    print(e)
+    sys.exit(1)
+  run(module_str)
