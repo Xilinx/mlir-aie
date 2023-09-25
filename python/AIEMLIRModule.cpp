@@ -15,7 +15,7 @@ using namespace mlir::python::adaptors;
 
 PYBIND11_MODULE(_aieMlir, m) {
 
-  //::aieRegisterAllPasses();
+  ::aieRegisterAllPasses();
 
   m.doc() = R"pbdoc(
     AIE MLIR Python bindings
@@ -30,10 +30,16 @@ PYBIND11_MODULE(_aieMlir, m) {
   m.def(
       "register_dialect",
       [](MlirContext context, bool load) {
-        MlirDialectHandle handle = mlirGetDialectHandle__aie__();
-        mlirDialectHandleRegisterDialect(handle, context);
+        MlirDialectHandle aie_handle = mlirGetDialectHandle__aie__();
+        mlirDialectHandleRegisterDialect(aie_handle, context);
+        MlirDialectHandle aiex_handle = mlirGetDialectHandle__aiex__();
+        mlirDialectHandleRegisterDialect(aiex_handle, context);
+        MlirDialectHandle aievec_handle = mlirGetDialectHandle__aievec__();
+        mlirDialectHandleRegisterDialect(aievec_handle, context);
         if (load) {
-          mlirDialectHandleLoadDialect(handle, context);
+          mlirDialectHandleLoadDialect(aie_handle, context);
+          mlirDialectHandleLoadDialect(aiex_handle, context);
+          mlirDialectHandleLoadDialect(aievec_handle, context);
         }
       },
       py::arg("context"), py::arg("load") = true);
@@ -47,8 +53,6 @@ PYBIND11_MODULE(_aieMlir, m) {
           },
           "Get an instance of ObjectFifoType with given element type.",
           py::arg("self"), py::arg("type") = py::none());
-
-  // m.def("_register_all_passes", ::aieRegisterAllPasses);
 
   m.attr("__version__") = "dev";
 }

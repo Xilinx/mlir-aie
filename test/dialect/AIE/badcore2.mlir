@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.core' op failed to verify that op exists in a core tile
+// CHECK: error{{.*}}'AIE.core' op failed to verify that op exists in a core tile
 
 module @test {
   AIE.device(xcve2802) {

@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aie-opt --canonicalize %s |& FileCheck %s
-// CHECK: error: 'AIE.useLock' op is reachable from DMA channel 4 and attempts to access a non-local lock
+// CHECK: error{{.*}}'AIE.useLock' op is reachable from DMA channel 4 and attempts to access a non-local lock
 // CHECK: note: channel
 // CHECK:     AIE.dmaStart("MM2S", 4, ^bd0, ^dma1)
 // CHECK: note: lock

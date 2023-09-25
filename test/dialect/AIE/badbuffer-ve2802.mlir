@@ -10,7 +10,7 @@
 
 // RUN: not aiecc.py %s |& FileCheck %s
 // Row 2 is a memtile, not a coretile.
-// CHECK: error: 'AIE.buffer' op in Column 1 and Row 2 is accessed from an unreachable tile in Column 1 and Row 3
+// CHECK: error{{.*}}'AIE.buffer' op in Column 1 and Row 2 is accessed from an unreachable tile in Column 1 and Row 3
 
 module @test {
  AIE.device(xcve2802) {

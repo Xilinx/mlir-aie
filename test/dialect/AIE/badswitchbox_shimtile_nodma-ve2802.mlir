@@ -10,7 +10,7 @@
 
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.connect' op source bundle DMA not supported
+// CHECK: error{{.*}}'AIE.connect' op source bundle DMA not supported
 
 module {
   AIE.device(xcve2802) {

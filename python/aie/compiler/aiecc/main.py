@@ -15,11 +15,13 @@ import stat
 import platform
 import sys
 import time
-from subprocess import PIPE, run, call
-import tempfile
+import subprocess
 import shutil
-import timeit
 import asyncio
+
+from aie.mlir.passmanager import PassManager
+from aie.mlir.ir import Module, Context, Location
+from aie.dialects import aie as aiedialect
 
 import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
@@ -42,7 +44,8 @@ aie_opt_passes = ['--aie-normalize-address-spaces',
                   '--cse']
 
 class flow_runner:
-  def __init__(self, opts, tmpdirname):
+  def __init__(self, mlir_module_str, opts, tmpdirname):
+      self.mlir_module_str = mlir_module_str
       self.opts = opts
       self.tmpdirname = tmpdirname
       self.runtimes = dict()
@@ -83,8 +86,22 @@ class flow_runner:
   def do_run(self, command):
       if(self.opts.verbose):
           print(" ".join(command))
-      ret = run(command, stdout=PIPE, stderr=PIPE, universal_newlines=True)
+      m = subprocess.PIPE
+      ret = subprocess.run(command, stdout=m, stderr=m, universal_newlines=True)
       return ret
+
+  def run_passes(self, pass_pipeline, mlir_module_str, outputfile=None):
+      if self.opts.verbose:
+        print("Running:", pass_pipeline)
+      with Context() as ctx, Location.unknown():
+        aiedialect.register_dialect(ctx)
+        module = Module.parse(mlir_module_str)
+        PassManager.parse(pass_pipeline).run(module.operation)
+        mlir_module_str = str(module)
+        if outputfile:
+          with open(outputfile, 'w') as g:
+            g.write(mlir_module_str)
+      return mlir_module_str
 
   def corefile(self, dirname, core, ext):
       (corecol, corerow, _) = core
@@ -418,17 +435,19 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         progress_bar.task = progress_bar.add_task("[green] MLIR compilation:", total=1, command="1 Worker")
 
         self.file_with_addresses = os.path.join(self.tmpdirname, 'input_with_addresses.mlir')
-        await self.do_call(progress_bar.task, ['aie-opt',
-                                          '--lower-affine',
-                                          '--aie-canonicalize-device',
-                                          '--aie-assign-lock-ids',
-                                          '--aie-register-objectFifos',
-                                          '--aie-objectFifo-stateful-transform',
-                                          '--aie-lower-broadcast-packet',
-                                          '--aie-create-packet-flows',
-                                          '--aie-lower-multicast',
-                                          '--aie-assign-buffer-addresses',
-                                          '-convert-scf-to-cf', opts.filename, '-o', self.file_with_addresses], True)
+        pass_pipeline = ','.join(['lower-affine',
+                                  'aie-canonicalize-device',
+                                  'AIE.device('+
+                                    'aie-assign-lock-ids',
+                                    'aie-register-objectFifos',
+                                    'aie-objectFifo-stateful-transform',
+                                    'aie-lower-broadcast-packet',
+                                    'aie-create-packet-flows',
+                                    'aie-lower-multicast',
+                                    'aie-assign-buffer-addresses)',
+                                  'convert-scf-to-cf'])
+        self.run_passes('builtin.module('+pass_pipeline+')', self.mlir_module_str, self.file_with_addresses)
+
         t = self.do_run(['aie-translate', '--aie-generate-corelist', self.file_with_addresses])
         cores = eval(t.stdout)
         t = self.do_run(['aie-translate', '--aie-generate-target-arch', self.file_with_addresses])
@@ -478,10 +497,10 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         if(i < len(sortedruntimes)):
           print("%.4f sec: %s" % (sortedruntimes[i][1], sortedruntimes[i][0]))
 
-
-def main(builtin_params={}):
+def run(mlir_module, args=None):
     global opts
-    opts = aie.compiler.aiecc.cl_arguments.parse_args()
+    if args is not None:
+      opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
     is_windows = platform.system() == 'Windows'
 
@@ -539,8 +558,23 @@ def main(builtin_params={}):
     if(opts.verbose):
       print('created temporary directory', tmpdirname)
 
-    runner = flow_runner(opts, tmpdirname)
+    runner = flow_runner(mlir_module, opts, tmpdirname)
     asyncio.run(runner.run_flow())
 
     if(opts.profiling):
       runner.dumpprofile()
+
+def main():
+  global opts
+  opts = aie.compiler.aiecc.cl_arguments.parse_args()
+
+  try:
+    with Context() as ctx, Location.unknown():
+      aiedialect.register_dialect(ctx)
+      with open(opts.filename, 'r') as f:
+        module = Module.parse(f.read())
+      module_str = str(module)
+  except Exception as e:
+    print(e)
+    sys.exit(1)
+  run(module_str)
