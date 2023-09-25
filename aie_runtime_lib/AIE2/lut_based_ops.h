@@ -15,6 +15,7 @@
 #define __LUT_BASED_OPS_H__
 
 #include "aie_api/aie.hpp"
+//#include <aie_api/utils.hpp>
 
 alignas(aie::vector_decl_align) extern int16 exp_ilut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_ilut_cd[512];
@@ -78,5 +79,32 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
   inv_x_val = (inv_exponent << 7) + m_inv_lut[mantissa];
   inv_x = (bfloat16 *)&inv_x_val;
   return *inv_x;
+}
+
+extern float tanh_lut_ab[];
+extern float tanh_lut_cd[];
+
+inline __attribute__((always_inline)) v16bfloat16
+getTanhBf16(v16bfloat16 vInput) {
+  aie::vector<bfloat16, 16> input = vInput;
+
+  int step_bits = -2;
+  int bias = 16;
+  int data_size = 16;
+  int LUT_elems = 32;
+  int shift_offset = 0; // unused
+
+  using lut_type = aie::lut<4, float, bfloat16>;
+
+  lut_type test_lut(LUT_elems, (bfloat16 *)tanh_lut_ab,
+                    (bfloat16 *)tanh_lut_cd);
+
+  aie::linear_approx<bfloat16, lut_type> lin_aprox(test_lut, step_bits, bias,
+                                                   shift_offset);
+
+  aie::vector<bfloat16, 16> output =
+      lin_aprox.compute(input).to_vector<bfloat16>();
+
+  return (v16bfloat16)output;
 }
 #endif //__LUT_BASED_OPS_H__

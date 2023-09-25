@@ -1907,7 +1907,7 @@ struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
       return failure();
     }
 
-    StringRef includeName = "tanh.h";
+    StringRef includeName = "lut_based_ops.h";
     ModuleOp moduleOp = tanhOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
@@ -1943,7 +1943,7 @@ struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
       return failure();
     }
 
-    StringRef includeName = "sqrt.h";
+    StringRef includeName = "vec_math.h";
     ModuleOp moduleOp = sqrtOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
@@ -1954,6 +1954,42 @@ struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
     rewriter.replaceOpWithNewOp<emitc::CallOp>(
         sqrtOp, TypeRange{sqrtOp.getResult().getType()}, "getSqrtBf16", nullptr,
         nullptr, sqrtOperands);
+    return success();
+  }
+};
+
+// Convert math.rsqrt to a function call to compute 1.0f / sqrt(x) for
+// v16bfloat16 and v32bfloat16 types
+struct ComputeRsqrtOpPattern : public OpConversionPattern<math::RsqrtOp> {
+  using OpConversionPattern<math::RsqrtOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::RsqrtOp rsqrtOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return failure();
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return failure();
+    }
+
+    StringRef includeName = "vec_math.h";
+    ModuleOp moduleOp = rsqrtOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(rsqrtOp);
+    SmallVector<Value> rsqrtOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        rsqrtOp, TypeRange{rsqrtOp.getResult().getType()}, "getRsqrtBf16",
+        nullptr, nullptr, rsqrtOperands);
     return success();
   }
 };
@@ -1979,7 +2015,7 @@ struct ComputeErfOpPattern : public OpConversionPattern<math::ErfOp> {
       return failure();
     }
 
-    StringRef includeName = "erf.h";
+    StringRef includeName = "vec_math.h";
     ModuleOp moduleOp = erfOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
@@ -2027,6 +2063,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
+      ComputeRsqrtOpPattern,
       ComputeErfOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
@@ -2119,6 +2156,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<math::SqrtOp>([](math::SqrtOp sqrtOp) {
     VectorType srcType = dyn_cast<VectorType>(sqrtOp.getOperand().getType());
+    Type scalarType = srcType.getElementType();
+    if (!srcType || !isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::RsqrtOp>([](math::RsqrtOp rsqrtOp) {
+    VectorType srcType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
     Type scalarType = srcType.getElementType();
     if (!srcType || !isa<FloatType>(scalarType)) {
       return true;
