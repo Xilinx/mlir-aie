@@ -146,4 +146,4 @@ inline __attribute__((always_inline)) v16bfloat16 getErfBf16(v16bfloat16 in) {
   return (v16bfloat16)vec_out;
 }
 
-#endif //VEC_MATH_H
+#endif // VEC_MATH_H

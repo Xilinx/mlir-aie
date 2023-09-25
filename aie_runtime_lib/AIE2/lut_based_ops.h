@@ -15,7 +15,6 @@
 #define __LUT_BASED_OPS_H__
 
 #include "aie_api/aie.hpp"
-//#include <aie_api/utils.hpp>
 
 alignas(aie::vector_decl_align) extern int16 exp_ilut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_ilut_cd[512];
