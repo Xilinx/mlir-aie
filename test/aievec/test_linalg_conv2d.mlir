@@ -178,8 +178,8 @@ func.func @conv_2d(%arg0: memref<10x3x256x256xf32>, %arg1: memref<10x3x3x3xf32>,
   return
 }
 
-//CHECK-NEXT: %c1 = arith.constant 1 : index
 //CHECK-NEXT: %c2 = arith.constant 2 : index
+//CHECK-NEXT: %c1 = arith.constant 1 : index
 //CHECK-NEXT: %c0 = arith.constant 0 : index
 //CHECK-NEXT: %c0_0 = arith.constant 0 : index
 //CHECK-NEXT: %c10 = arith.constant 10 : index

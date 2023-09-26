@@ -43,7 +43,7 @@ inline VectorType createVectorType(unsigned lanes, Type elementType) {
 
 // Return the size (in bits) of the underlying element type of the vector
 inline int32_t getElementSizeInBits(VectorType type) {
-  return type.cast<ShapedType>().getElementTypeBitWidth();
+  return type.cast<ShapedType>().getSizeInBits() / type.getNumElements();
 }
 
 // Return the number of lanes along the vectorized dimension for the vector
@@ -142,15 +142,16 @@ inline AffineExpr flattenedStridedExpr(ArrayRef<int64_t> sizes,
 
 // Construct a linearized affine expression for the upd op.
 inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
+  SmallVector<Value, 4> indices(updOp.getIndices().begin(),
+                                updOp.getIndices().end());
   MemRefType memRefType = updOp.getSource().getType().cast<MemRefType>();
   MLIRContext *context = memRefType.getContext();
 
   SmallVector<AffineExpr, 8> exprVec;
-  llvm::SmallDenseMap<Value, AffineExpr, 8> indexToExprDimMap;
-  for (auto idxAndValue : llvm::enumerate(updOp.getIndices())) {
+  DenseMap<Value, AffineExpr> indexToExprDimMap;
+  for (auto idxAndValue : llvm::enumerate(indices)) {
     auto value = idxAndValue.value();
-    if (affine::AffineApplyOp apOf =
-            value.getDefiningOp<affine::AffineApplyOp>()) {
+    if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
       // Cannot create linearized affineExpr for complicated index.
       if (map.getNumResults() != 1) {

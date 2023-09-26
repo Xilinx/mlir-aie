@@ -158,7 +158,7 @@ void registerAIETranslations() {
           output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
           output << "// Memory map: name base_address num_bytes\n";
 
-          auto doBuffer = [&](std::optional<TileID> tile, int offset) {
+          auto doBuffer = [&](Optional<TileID> tile, int offset) {
             if (tiles.count(*tile))
               for (auto buf : buffers[tiles[*tile]])
                 writeBufferMap(output, buf, offset, NL);
@@ -307,7 +307,7 @@ SECTIONS
      *(.rodata*)
   } > data
 )THESCRIPT";
-            auto doBuffer = [&](std::optional<TileID> tile, int offset,
+            auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
               if (tile) {
                 if (tiles.count(*tile))
@@ -420,7 +420,7 @@ SECTIONS
                    << " //Don't put data in code memory\n";
 
             auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
-            auto doBuffer = [&](std::optional<TileID> tile, int offset,
+            auto doBuffer = [&](Optional<TileID> tile, int offset,
                                 std::string dir) {
               if (tile) {
                 if (tiles.count(*tile))

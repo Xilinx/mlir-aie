@@ -9,6 +9,7 @@
 #ifndef AIE_BINDING_TD
 #define AIE_BINDING_TD
 
+include "mlir/Bindings/Python/Attributes.td"
 include "aie/Dialect/AIE/IR/AIE.td"
 
 #endif // AIE_BINDING_TD

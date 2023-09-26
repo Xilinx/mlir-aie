@@ -90,11 +90,11 @@ struct SplitUnalignedTransferReadPattern
     Value oldInnerMostIdx = adaptor.getIndices().back();
     auto offsetCorrectionMap =
         AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
-    Value newInnerMostIdx = rewriter
-                                .create<affine::AffineApplyOp>(
-                                    readOp.getLoc(), offsetCorrectionMap,
-                                    SmallVector<Value, 1>({oldInnerMostIdx}))
-                                .getResult();
+    Value newInnerMostIdx =
+        rewriter
+            .create<AffineApplyOp>(readOp.getLoc(), offsetCorrectionMap,
+                                   SmallVector<Value, 1>({oldInnerMostIdx}))
+            .getResult();
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
     alignedIdx[alignedIdx.size() - 1] = newInnerMostIdx;
@@ -154,7 +154,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
       // If the innermost index comes from an `affine.apply` op, take the base
       // as the new innermost index for the new `vector.transfer_read`, and the
       // offset as the index for the `aievec.broadcast` op.
-      if (auto applyOp = newIdx.getDefiningOp<affine::AffineApplyOp>())
+      if (auto applyOp = newIdx.getDefiningOp<AffineApplyOp>())
         if (applyOp.getAffineMap().getNumDims() == 1) {
           newIdx = applyOp.getMapOperands()[0];
           offset = applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0];
@@ -169,11 +169,10 @@ struct ConvertSplatTransferReadToBroadcastPattern
       offset = offset % vlen;
       auto newAddrMap = AffineMap::get(
           1, 0, getAffineDimExpr(0, readOp.getContext()) + numElemsToSkip);
-      newIdx =
-          rewriter
-              .create<affine::AffineApplyOp>(readOp.getLoc(), newAddrMap,
-                                             SmallVector<Value, 1>({newIdx}))
-              .getResult();
+      newIdx = rewriter
+                   .create<AffineApplyOp>(readOp.getLoc(), newAddrMap,
+                                          SmallVector<Value, 1>({newIdx}))
+                   .getResult();
     }
     indices[indices.size() - 1] = newIdx;
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
@@ -202,8 +201,9 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
     arith::ExtSIOp extOp = cast<arith::ExtSIOp>(op);
     Operation *defOp = extOp.getIn().getDefiningOp();
     // If it's a data source op, we're done.
-    if (!defOp || isa<vector::TransferReadOp, memref::LoadOp,
-                      affine::AffineLoadOp, func::CallOp>(defOp))
+    if (!defOp ||
+        isa<vector::TransferReadOp, memref::LoadOp, AffineLoadOp, func::CallOp>(
+            defOp))
       return failure();
 
     // At the moment, we only accept ops we know we can swap with cast.

@@ -241,10 +241,8 @@ struct LongestConvMACChainAnalysis {
         return isa<aievec::BroadcastOp>(op) || isa<aievec::ExtOp>(op) ||
                isa<aievec::ConcatOp>(op);
       };
-      BackwardSliceOptions backwardSliceOptions;
-      backwardSliceOptions.filter = opFilter;
 
-      getBackwardSlice(mulOpOperand, &opBwdSlices, backwardSliceOptions);
+      getBackwardSlice(mulOpOperand, &opBwdSlices, opFilter);
       opBwdSlices.insert(mulOpOperand);
 
       LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");
