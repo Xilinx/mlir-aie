@@ -12,7 +12,7 @@
 #define AIE_CONVERSION_PASSDETAIL_H_
 
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/Interfaces/FunctionInterfaces.h"
+#include "mlir/IR/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
 
 namespace xilinx {

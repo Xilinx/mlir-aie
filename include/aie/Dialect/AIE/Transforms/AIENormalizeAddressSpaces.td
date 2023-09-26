@@ -19,11 +19,9 @@ def toDefaultAddressSpace : NativeCodeCall<"TypeAttr::get(memRefToDefaultAddress
 def hasNonDefaultAddressSpace : Constraint<
     CPred<"$0.getValue().cast<MemRefType>().getMemorySpace() != 0">,
     "has non-default address space">;
-def : Pat<
-        /*pattern*/ (MemRef_GlobalOp $sym_name, $sym_visibility, $type, $initial_value, $constant, $attrs),
-        /*result*/ (MemRef_GlobalOp $sym_name, $sym_visibility, (toDefaultAddressSpace $type), $initial_value, $constant, $attrs),
-        /*preds*/ [(hasNonDefaultAddressSpace $type)],
-        /*supplemental_results*/ [],
-        /*benefitAdded*/ (addBenefit 20)>;
+def : Pat<(MemRef_GlobalOp $sym_name, $sym_visibility, $type, $initial_value, $constant, $attrs),
+        (MemRef_GlobalOp $sym_name, $sym_visibility, (toDefaultAddressSpace $type), $initial_value, $constant, $attrs),
+        [(hasNonDefaultAddressSpace $type)],
+        (addBenefit 20)>;
 
 #endif // AIE_NORMALIZE_ADDRESS_SPACES

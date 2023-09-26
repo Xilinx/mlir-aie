@@ -33,7 +33,7 @@ public:
   ConnectivityAnalysis(DeviceOp &d) : device(d) {}
 
 private:
-  std::optional<PortConnection>
+  llvm::Optional<PortConnection>
   getConnectionThroughWire(Operation *op, Port masterPort) const {
     LLVM_DEBUG(llvm::dbgs()
                << "Wire:" << *op << " " << stringifyWireBundle(masterPort.first)

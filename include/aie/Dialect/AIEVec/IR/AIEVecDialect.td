@@ -22,6 +22,7 @@ def AIEVec_Dialect : Dialect {
   let extraClassDeclaration = [{
     void registerTypes();
   }];
+  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 #endif // AIEVEC_DIALECT

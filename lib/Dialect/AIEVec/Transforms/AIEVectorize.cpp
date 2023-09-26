@@ -444,8 +444,7 @@ static AffineExpr constructLinearizedAffineExpr(TransferReadOp readOp,
     // If the access is a map via affine apply op (e.g., A[i+2], where the map
     // is d0 -> d0+2), push in the map after replacing all the dims with unique
     // index identifiers (e.g., let the unique identifier for index i be k0).
-    if (affine::AffineApplyOp apOf =
-            value.getDefiningOp<affine::AffineApplyOp>()) {
+    if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
       assert(map.getNumResults() == 1 &&
              "Failed to create linearized affineExpr for complicated index");
@@ -1079,8 +1078,7 @@ generateUPDOp(TransferReadOp readOp,
       // If the transfer_read has some apply operations, then they also need to
       // be hoisted.
       for (auto &value : indices) {
-        if (affine::AffineApplyOp apOf =
-                value.getDefiningOp<affine::AffineApplyOp>()) {
+        if (AffineApplyOp apOf = value.getDefiningOp<AffineApplyOp>()) {
           // Skip hoisting if already above in lexicographical order
           if (apOf->getBlock() == readOp->getBlock() &&
               apOf->isBeforeInBlock(updOp))
@@ -1134,13 +1132,13 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
     // index.
     [[maybe_unused]] bool found = false;
     for (auto loop : enclosingLoops) {
-      auto iv = cast<affine::AffineForOp>(loop).getInductionVar();
-      auto invariants = mlir::affine::getInvariantAccesses(iv, indices);
+      auto iv = cast<AffineForOp>(loop).getInductionVar();
+      auto invariants = getInvariantAccesses(iv, indices);
       if (!invariants.count(index)) {
         assert(
             !found &&
             "stepsize computation already has an entry along the variant dim");
-        step = cast<affine::AffineForOp>(loop).getStep();
+        step = cast<AffineForOp>(loop).getStep();
         found = true;
       }
     }
@@ -2440,10 +2438,9 @@ static void generateAIEAddOrSubOpsInFunc(func::FuncOp func, VectState *state) {
 // generate the UPD ops, we first visit the innermost for op, and for each
 // transfer_read instruction nested inside that op, create a set of UPD ops,
 // and then insert them in the front bb of that for op's region.
-static void insertUPDOpsInLoop(affine::AffineForOp forOp, VectState *state) {
+static void insertUPDOpsInLoop(AffineForOp forOp, VectState *state) {
   // Recursively generate UPD ops in the nested for op's.
-  for (affine::AffineForOp nestedOp :
-       forOp.getRegion().getOps<affine::AffineForOp>())
+  for (AffineForOp nestedOp : forOp.getRegion().getOps<AffineForOp>())
     insertUPDOpsInLoop(nestedOp, state);
 
   // A map from an interval to the UPD op. The key gives the interval that
@@ -2474,7 +2471,7 @@ static void insertUPDOpsInLoop(affine::AffineForOp forOp, VectState *state) {
 
 // Replace all the transfer_read ops with UPD ops in the function.
 static void insertUPDOpsInFunc(func::FuncOp func, VectState *state) {
-  for (affine::AffineForOp forOp : func.getOps<affine::AffineForOp>()) {
+  for (AffineForOp forOp : func.getOps<AffineForOp>()) {
     insertUPDOpsInLoop(forOp, state);
   }
 }
@@ -2610,8 +2607,7 @@ static void redundantLoadStoreOptimization(ModuleOp module) {
     });
     // Now that all the transfer ops are marked inbound, remove redundant
     // vector loads/stores
-    IRRewriter rewriter(module.getContext());
-    vector::transferOpflowOpt(rewriter, func);
+    transferOpflowOpt(func);
   }
 }
 
@@ -2641,11 +2637,10 @@ static void postCanonicalizeIR(ModuleOp module) {
 // Iterate over the loop nestings to form loop nesting bands. Then for each
 // block within those bands, the enclosingLoops is set to the loop band.
 static void
-computeEnclosingLoopsPerBlock(affine::AffineForOp forOp, VectState *state,
+computeEnclosingLoopsPerBlock(AffineForOp forOp, VectState *state,
                               SmallVector<Operation *, 8> &enclosingLoops) {
   // Form the loop band for nested for ops
-  for (affine::AffineForOp nestedOp :
-       forOp.getRegion().getOps<affine::AffineForOp>()) {
+  for (AffineForOp nestedOp : forOp.getRegion().getOps<AffineForOp>()) {
     enclosingLoops.push_back(nestedOp);
     computeEnclosingLoopsPerBlock(nestedOp, state, enclosingLoops);
     enclosingLoops.pop_back();
@@ -2879,9 +2874,9 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
     // Iterate over all enclosing loops, and find the one that is variant in
     // index.
     for (auto loop : enclosingLoops) {
-      auto affineForOp = cast<affine::AffineForOp>(loop);
+      AffineForOp affineForOp = cast<AffineForOp>(loop);
       auto iv = affineForOp.getInductionVar();
-      auto invariants = mlir::affine::getInvariantAccesses(iv, indices);
+      auto invariants = getInvariantAccesses(iv, indices);
 
       if (!invariants.count(index)) {
         step = affineForOp.getStep();
@@ -2895,7 +2890,7 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
         // upper bound's affine_map offset and loop step, we need to check
         // whether affine map's offset of loop upper bound is divisible by
         // the vector lanes.
-        affine::AffineBound ub = affineForOp.getUpperBound();
+        AffineBound ub = affineForOp.getUpperBound();
         AffineMap origUbMap = ub.getMap();
         if (!origUbMap.isEmpty() && !origUbMap.isConstant()) {
           AffineExpr origUbMapResult = origUbMap.getResult(0);
@@ -3019,7 +3014,7 @@ void AIEVectorize::runOnOperation() {
 
     // First compute the loops surrounding each load/store operation. This is
     // necessary to identify loads/stores that are nested together.
-    for (auto forOp : func.getOps<affine::AffineForOp>()) {
+    for (AffineForOp forOp : func.getOps<AffineForOp>()) {
       SmallVector<Operation *, 8> enclosingLoops;
       enclosingLoops.push_back(forOp);
       computeEnclosingLoopsPerBlock(forOp, state, enclosingLoops);

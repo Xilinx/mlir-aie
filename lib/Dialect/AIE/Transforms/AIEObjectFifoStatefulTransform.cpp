@@ -386,9 +386,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function that returns a pointer to the block of a Region
   /// that contains the AIEEndOp.
-  Block *findEndOpBlock(Region &r) {
+  Block *findEndOpBlock(Region *r) {
     Block *endBlock = nullptr;
-    for (auto &bl : r.getBlocks())
+    for (auto &bl : r->getBlocks())
       if (!bl.getOps<EndOp>().empty())
         endBlock = &bl;
     return endBlock;
@@ -476,10 +476,10 @@ struct AIEObjectFifoStatefulTransformPass
         target = objFifoLinks[*linkOp];
 
     // search for MemOp
-    Operation *producerMem = nullptr;
+    MemOp *producerMem = nullptr;
     for (auto memOp : device.getOps<MemOp>()) {
       if (memOp.getTile() == op.getProducerTile()) {
-        producerMem = memOp.getOperation();
+        producerMem = &memOp;
         break;
       }
     }
@@ -487,20 +487,19 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerMem == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
-      OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
       MemOp newMemOp =
           builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
-      }
-      producerMem = newMemOp.getOperation();
+      producerMem = &newMemOp;
+      Region &r = producerMem->getBody();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
     }
-    Block *endBlock = findEndOpBlock(producerMem->getRegion(0));
+
+    Block *endBlock = findEndOpBlock(&(producerMem->getBody()));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
@@ -545,10 +544,10 @@ struct AIEObjectFifoStatefulTransformPass
     int offset = 0;
 
     // search for ShimDMAOp
-    Operation *producerDMA = nullptr;
+    ShimDMAOp *producerDMA = nullptr;
     for (auto dmaOp : device.getOps<ShimDMAOp>()) {
       if (dmaOp.getTile() == op.getProducerTile()) {
-        producerDMA = dmaOp.getOperation();
+        producerDMA = &dmaOp;
         break;
       }
     }
@@ -556,21 +555,19 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = op.getProducerTileOp();
     if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
-      OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
       ShimDMAOp newDMAOp = builder.create<ShimDMAOp>(
           builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
-      }
-      producerDMA = newDMAOp.getOperation();
+      producerDMA = &newDMAOp;
+      Region &r = producerDMA->getBody();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
     }
 
-    Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
+    Block *endBlock = findEndOpBlock(&(producerDMA->getBody()));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
@@ -685,10 +682,10 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     // search for MemTileDMAOp
-    Operation *producerDMA = nullptr;
+    MemTileDMAOp *producerDMA = nullptr;
     for (auto dmaOp : device.getOps<MemTileDMAOp>()) {
       if (dmaOp.getTile() == target.getProducerTile()) {
-        producerDMA = dmaOp.getOperation();
+        producerDMA = &dmaOp;
         break;
       }
     }
@@ -696,21 +693,19 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerDMA == nullptr) {
-      if (device->getNumRegions() != 1)
-        assert(false && "expected num regions for device op");
-      OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
       MemTileDMAOp newDMAOp =
           builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
-      {
-        OpBuilder::InsertionGuard g(builder);
-        builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-        builder.create<EndOp>(builder.getUnknownLoc());
-      }
-      producerDMA = newDMAOp.getOperation();
+      producerDMA = &newDMAOp;
+      Region &r = producerDMA->getBody();
+      r.push_back(new Block);
+      // add terminator operation to end block
+      Block &endBlock = r.back();
+      builder.setInsertionPointToStart(&endBlock);
+      builder.create<EndOp>(builder.getUnknownLoc());
     }
 
-    Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
+    Block *endBlock = findEndOpBlock(&(producerDMA->getBody()));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
@@ -825,7 +820,8 @@ struct AIEObjectFifoStatefulTransformPass
           increment_value = currentDuplication * step;
 
         arith::ConstantOp increment = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(increment_value));
+            builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
+            builder.getIndexType());
         arith::AddIOp sum = builder.create<arith::AddIOp>(
             builder.getUnknownLoc(), builder.getIndexType(), base,
             increment->getResult(0));
@@ -959,12 +955,13 @@ struct AIEObjectFifoStatefulTransformPass
                     new_step_value;
                 arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
                     builder.getUnknownLoc(),
-                    builder.getIndexAttr(new_upper_bound));
+                    builder.getIndexAttr(new_upper_bound),
+                    old_upper_bound.getType());
                 forLoop.setUpperBound(uBound);
               }
               arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
-                  builder.getUnknownLoc(),
-                  builder.getIndexAttr(new_step_value));
+                  builder.getUnknownLoc(), builder.getIndexAttr(new_step_value),
+                  old_upper_bound.getType());
               forLoop.setStep(new_step);
 
               // duplicate loop body, insert before terminator operation

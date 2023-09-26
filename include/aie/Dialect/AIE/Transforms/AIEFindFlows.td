@@ -11,9 +11,9 @@
 #ifndef AIE_FIND_FLOWS
 #define AIE_FIND_FLOWS
 
-include "mlir/IR/PatternBase.td"
-include "aie/Dialect/AIE/IR/AIE.td"
+include "AIE.td"
 
-def : Pat<(AIE_WireOp (AIE_CoreOp:$core $x, $y), $port, (AIE_SwitchboxOp:$switch $x, $y), $b), (AIE_FlowOp $core, $port)>;
+def : Pat<(aie_WireOp (aie_CoreOp:$core $x, $y), $port, (aie_SwitchboxOp:$switch $x, $y), $b),
+					(aie_FlowOp $core, $port)>;
 
 #endif // AIE_FIND_FLOWS

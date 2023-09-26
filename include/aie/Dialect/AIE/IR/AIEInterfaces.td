@@ -8,11 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-
-#ifndef AIE_INTERFACES
-#define AIE_INTERFACES
-
+#ifdef OP_BASE
+#else
 include "mlir/IR/OpBase.td"
+#endif // OP_BASE
+
 include "mlir/IR/EnumAttr.td"
 
 // Op is a DMA-like operation with BD contraints
@@ -180,5 +180,3 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
 
   let cppNamespace = "xilinx::AIE";
 }
-
-#endif // AIE_INTERFACES
