@@ -196,7 +196,7 @@ class flow_runner:
         await self.do_call(task, ['aie-translate', self.file_with_addresses, '--aie-generate-ldscript', '--tilecol=%d' % corecol, '--tilerow=%d' % corerow, '-o', file_core_ldscript])
       if(not self.opts.unified):
         file_core_llvmir = self.tmpcorefile(core, "ll")
-        await self.do_call(task, ['aie-translate', '--opaque-pointers=1', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
+        await self.do_call(task, ['aie-translate', '--mlir-to-llvmir', file_opt_core, '-o', file_core_llvmir])
         file_core_obj = self.tmpcorefile(core, "o")
 
       file_core_elf = elf_file if elf_file else self.corefile(".", core, "elf")
@@ -449,7 +449,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                               self.file_with_addresses, '-o', self.file_opt_with_addresses])
 
           self.file_llvmir = os.path.join(self.tmpdirname, 'input.ll')
-          await self.do_call(progress_bar.task, ['aie-translate', '--opaque-pointers=1', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
+          await self.do_call(progress_bar.task, ['aie-translate', '--mlir-to-llvmir', self.file_opt_with_addresses, '-o', self.file_llvmir])
 
           self.file_obj = os.path.join(self.tmpdirname, 'input.o')
           if(opts.compile and opts.xchesscc):
