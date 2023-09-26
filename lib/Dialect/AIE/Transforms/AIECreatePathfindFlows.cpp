@@ -119,7 +119,7 @@ public:
       maxrow = std::max(maxrow, tileOp.rowIndex());
     }
 
-    pathfinder = Pathfinder(maxcol, maxrow);
+    pathfinder = Pathfinder(maxcol, maxrow, d);
 
     // for each flow in the device, add it to pathfinder
     // each source can map to multiple different destinations (fanout)
