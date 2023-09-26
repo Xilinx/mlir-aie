@@ -1,5 +1,5 @@
 // clang-format off
-void dut(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
+void dut(int16_t * restrict v1, int16_t * restrict v2, int32_t * restrict v3) {
   size_t v4 = 0;
   size_t v5 = 1024;
   size_t v6 = 32;
@@ -10,8 +10,8 @@ void dut(int16_t * restrict v1, int16_t * restrict v2, int16_t * restrict v3) {
     v32int16 v8 = *(v32int16 *)(v1 + v7);
     v32int16 v9 = *(v32int16 *)(v2 + v7);
     v32acc32 v10 = mul_elem_32(v9, v8);
-    v32int16 v11 = srs_to_v32int16(v10, 0);
-    *(v32int16 *)(v3 + v7) = v11;
+    v32int32 v11 = v32int32(v10);
+    *(v32int32 *)(v3 + v7) = v11;
   }
   return;
 }
