@@ -6,9 +6,42 @@ Types and operations for AIE vector dialect
 
 ## Operation definition
 
+### `aievec.add_elem` (::xilinx::aievec::AddElemOp)
+
+AIE vector add elem
+
+
+Syntax:
+
+```
+operation ::= `aievec.add_elem` $lhs `,` $rhs attr-dict `:` type($result)
+```
+
+AMD-specific aie-ml intrinsic that allows you to perform addition operation
+on all types of vectors.`$result = `$lhs + $rhs`.
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.add` (::xilinx::aievec::AddOp)
 
-_AIE vector add_
+AIE vector add
 
 AMD-specific advanced add operation that adds two 1-D vectors 
 with lane selection. The vector sizes are at least 256 bits.
@@ -46,44 +79,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
-### `aievec.add_elem` (::xilinx::aievec::AddElemOp)
-
-_AIE vector add elem_
-
-
-Syntax:
-
-```
-operation ::= `aievec.add_elem` $lhs `,` $rhs attr-dict `:` type($result)
-```
-
-AMD-specific aie-ml intrinsic that allows you to perform addition operation
-on all types of vectors.`$result = `$lhs + $rhs`.
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.broadcast` (::xilinx::aievec::BroadcastOp)
 
-_AIE-ML broadcast_
+AIE-ML broadcast
 
 AMD-specific broadcast intrinsic. Extract element index from vector and broadcasts its
 value to all lanes of the vector.
@@ -113,10 +111,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.broadcast_scalar` (::xilinx::aievec::BroadcastScalarOp)
 
-_AIE-ML broadcast scalar_
+AIE-ML broadcast scalar
 
 AMD-specific broadcast scalar intrinsic. Broadcasts input value to all vector lanes.
 `$result = broadcast_scalar($source)`
@@ -139,10 +136,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.cast` (::xilinx::aievec::CastOp)
 
-_AIE cast_
+AIE cast
 
 AIE-ML cast intrinsic. Cast values from source data type to result data types.
 `$result = cast($source, isResAcc)`
@@ -171,10 +167,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.cmp` (::xilinx::aievec::CmpOp)
 
-_AIE vector comparison_
+AIE vector comparison
 
 
 Syntax:
@@ -223,10 +218,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | unsigned integer
 
-
 ### `aievec.concat` (::xilinx::aievec::ConcatOp)
 
-_AIE concat_
+AIE concat
 
 AMD-specific concat intrinsic. Concatenates two or more smaller
 vectors into a bigger vector. The verifier confirms that all the
@@ -251,44 +245,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
-### `aievec.ext` (::xilinx::aievec::ExtOp)
-
-_AIE ext_
-
-AMD-specific vector extract intrinsic. Selects contiguous lanes from 
-the source vector, and transfers the data from those lanes to the 
-result. The lane selection is controlled by index.
-`$result = ext($source, $index)`
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `index` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose minimum value is 0 whose maximum value is 8
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `source` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.ext_elem` (::xilinx::aievec::ExtElemOp)
 
-_AIE extract element_
+AIE extract element
 
 
 Syntax:
@@ -319,10 +278,42 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | bfloat16 type or 32-bit float or 32-bit signless integer or 16-bit signless integer or 8-bit signless integer
 
+### `aievec.ext` (::xilinx::aievec::ExtOp)
+
+AIE ext
+
+AMD-specific vector extract intrinsic. Selects contiguous lanes from 
+the source vector, and transfers the data from those lanes to the 
+result. The lane selection is controlled by index.
+`$result = ext($source, $index)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `index` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose minimum value is 0 whose maximum value is 8
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
 
 ### `aievec.fma_conv` (::xilinx::aievec::FMAConvOp)
 
-_AIE2 multiply accumulate convolution_
+AIE2 multiply accumulate convolution
 
 AMD-specific multiply accumulate convolution intrinsic. Multiply accumulate convolution
 operation of (M x N)matrix with (N x 1)kernel.
@@ -356,10 +347,45 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.mac_elem` (::xilinx::aievec::FMAElemOp)
+
+AIE-ML element-wise vector fused multiply-add
+
+AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
+and adds the result to an accumulator.
+`$result = `$lhs * $rhs + $acc`.
+Note: the same operator can be used as fmsub operator by setting the
+'fmsub' bool to true.
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `fmsub` | ::mlir::BoolAttr | bool attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+| `acc` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
 
 ### `aievec.mac` (::xilinx::aievec::FMAOp)
 
-_AIE vector fused multiply-add_
+AIE vector fused multiply-add
 
 AMD-specific multiply-add operation. It multiplies two 1-D vectors,
 and adds the result to an accumulator. The vector sizes are at least 
@@ -406,47 +432,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
-### `aievec.mac_elem` (::xilinx::aievec::FMAElemOp)
-
-_AIE-ML element-wise vector fused multiply-add_
-
-AMD-specific multiply-add operation. It multiplies two 1-D vectors in the same channel,
-and adds the result to an accumulator.
-`$result = `$lhs * $rhs + $acc`.
-Note: the same operator can be used as fmsub operator by setting the
-'fmsub' bool to true.
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `fmsub` | ::mlir::BoolAttr | bool attribute
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-| `acc` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.max` (::xilinx::aievec::MaxOp)
 
-_AIE vector maximum_
+AIE vector maximum
 
 
 Syntax:
@@ -477,10 +465,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.min` (::xilinx::aievec::MinOp)
 
-_AIE vector minimum_
+AIE vector minimum
 
 
 Syntax:
@@ -511,10 +498,70 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.mul_conv` (::xilinx::aievec::MulConvOp)
+
+AIE2 multiply convolution
+
+AMD-specific multiply convolution intrinsic. Multiply convolution operation
+of (M x N)matrix with (N x 1)kernel.
+`$result = mul_convMxN($lhs, $rhs)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `M` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+| `N` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+### `aievec.mul_elem` (::xilinx::aievec::MulElemOp)
+
+AIE-ML vector element-wise multiply
+
+AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
+The vector sizes are at least 512 bits.
+`$result = `$lhs * $rhs`.
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
 
 ### `aievec.mul` (::xilinx::aievec::MulOp)
 
-_AIE vector multiply_
+AIE vector multiply
 
 AMD-specific multiply operation that multiplies two 1-D vectors.
 The vector sizes are at least 256 bits, and the left operand vector 
@@ -556,73 +603,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
-### `aievec.mul_conv` (::xilinx::aievec::MulConvOp)
-
-_AIE2 multiply convolution_
-
-AMD-specific multiply convolution intrinsic. Multiply convolution operation
-of (M x N)matrix with (N x 1)kernel.
-`$result = mul_convMxN($lhs, $rhs)`
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `M` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `N` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
-### `aievec.mul_elem` (::xilinx::aievec::MulElemOp)
-
-_AIE-ML vector element-wise multiply_
-
-AMD-specific multiply operation that multiplies two 1-D vectors in the same channel.
-The vector sizes are at least 512 bits.
-`$result = `$lhs * $rhs`.
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.pack` (::xilinx::aievec::PackOp)
 
-_AIE pack_
+AIE pack
 
 AMD-specific pack intrinsic. Pack a vector of 16-bit values into
 a vector of 8-bit values.
@@ -646,10 +629,42 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.srs` (::xilinx::aievec::SRSOp)
+
+AIE srs
+
+AMD-specific shift-round-saturate intrinsic. Moves values from 
+accumulator data type to AIE vector data types. The adjustment in 
+precision is controlled by the shift parameter.
+`$result = srs($source, $shift)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `shift` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose value is non-negative
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
 
 ### `aievec.sel` (::xilinx::aievec::SelOp)
 
-_AIE vector lane wise selection_
+AIE vector lane wise selection
 
 
 Syntax:
@@ -681,10 +696,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.select` (::xilinx::aievec::SelectOp)
 
-_AIE vector lane selection_
+AIE vector lane selection
 
 AMD-specific vector lane selection operation. It selects between the
 first set of lanes or the second one according to the value in 'select'. 
@@ -725,10 +739,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.shift` (::xilinx::aievec::ShiftOp)
 
-_AIE2 concat and shift_
+AIE2 concat and shift
 
 AMD-specific shift intrinsic. Concatenates two
 vectors into a bigger vector, interprets them as a vector of 128 bytes
@@ -762,10 +775,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.shuffle` (::xilinx::aievec::ShuffleOp)
 
-_AIE2 shuffle_
+AIE2 shuffle
 
 AMD-specific vector shuffle intrinsic by a specific shuffle mode.
 `$result = shuffle($source, $mode)`
@@ -794,15 +806,19 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.sub_elem` (::xilinx::aievec::SubElemOp)
 
-### `aievec.srs` (::xilinx::aievec::SRSOp)
+AIE vector sub elem
 
-_AIE srs_
 
-AMD-specific shift-round-saturate intrinsic. Moves values from 
-accumulator data type to AIE vector data types. The adjustment in 
-precision is controlled by the shift parameter.
-`$result = srs($source, $shift)`
+Syntax:
+
+```
+operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
+```
+
+AMD-specific aie-ml intrinsic that allows you to perform substraction operation 
+on all types of vectors.`$result = `$lhs - $rhs`.
 
 Traits: AlwaysSpeculatableImplTrait
 
@@ -810,17 +826,12 @@ Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `shift` | ::mlir::IntegerAttr | 8-bit signless integer attribute whose value is non-negative
-
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
-| `source` | vector of any type values
+| `lhs` | vector of any type values
+| `rhs` | vector of any type values
 
 #### Results:
 
@@ -828,10 +839,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.sub` (::xilinx::aievec::SubOp)
 
-_AIE vector subtract_
+AIE vector subtract
 
 AMD-specific advanced sub operation that subtracts two 1-D vectors 
 with lane selection. The vector sizes are at least 256 bits.
@@ -869,71 +879,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
-### `aievec.sub_elem` (::xilinx::aievec::SubElemOp)
-
-_AIE vector sub elem_
-
-
-Syntax:
-
-```
-operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
-```
-
-AMD-specific aie-ml intrinsic that allows you to perform substraction operation 
-on all types of vectors.`$result = `$lhs - $rhs`.
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
-### `aievec.unpack` (::xilinx::aievec::UnpackOp)
-
-_AIE unpack_
-
-AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
-a vector of 16-bit values.
-`$result = unpack($source)`
-
-Traits: AlwaysSpeculatableImplTrait
-
-Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
-
-Effects: MemoryEffects::Effect{}
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `source` | vector of any type values
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | vector of any type values
-
-
 ### `aievec.upd` (::xilinx::aievec::UPDOp)
 
-_AIE upd_
+AIE upd
 
 AMD-specific update intrinsic. General upd intrinsic updates contiguous
 lanes of the result vector from a smaller source vector. This form of 
@@ -968,10 +916,9 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
-
 ### `aievec.ups` (::xilinx::aievec::UPSOp)
 
-_AIE ups_
+AIE ups
 
 AMD-specific upshift intrinsic. Moves data from AIE vector data type
 to accumulator data type. The adjustment in precision is controlled by
@@ -1002,4 +949,29 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.unpack` (::xilinx::aievec::UnpackOp)
+
+AIE unpack
+
+AMD-specific unpack intrinsic. Unpack a vector of 8-bit values into
+a vector of 16-bit values.
+`$result = unpack($source)`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
 

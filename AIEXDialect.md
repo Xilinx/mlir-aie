@@ -12,7 +12,7 @@ to the more mature AIE dialect.
 
 ### `AIEX.bp_dest` (::xilinx::AIEX::BPDestOp)
 
-_A destination port_
+A destination port
 
 
 Syntax:
@@ -40,10 +40,9 @@ Traits: HasParent<BPIDOp>
 | :-----: | ----------- |
 | `tile` | index
 
-
 ### `AIEX.bp_id` (::xilinx::AIEX::BPIDOp)
 
-_A set of packets that share the same ID_
+A set of packets that share the same ID
 
 
 Syntax:
@@ -56,7 +55,7 @@ A set of destination packets that share the same source and ID. This must exist
 within an [AIE.broadcast_packet] operation.
 See [AIE.broadcast_packet]for an example.
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: SingleBlockImplicitTerminator<AIE::EndOp>
 
 #### Attributes:
 
@@ -64,10 +63,9 @@ Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
 | :-------: | :-------: | ----------- |
 | `ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
 
-
 ### `AIEX.broadcast_packet` (::xilinx::AIEX::BroadcastPacketOp)
 
-_Combination of broadcast and packet-switch_
+Combination of broadcast and packet-switch
 
 
 Syntax:
@@ -99,7 +97,7 @@ Example:
   }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: SingleBlockImplicitTerminator<AIE::EndOp>
 
 #### Attributes:
 
@@ -114,10 +112,9 @@ Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
 | :-----: | ----------- |
 | `tile` | index
 
-
 ### `AIEX.connection` (::xilinx::AIEX::ConnectionOp)
 
-_A logical circuit-switched connection between cores_
+A logical circuit-switched connection between cores
 
 
 Syntax:
@@ -156,10 +153,9 @@ Example:
 | `source` | index
 | `dest` | index
 
-
 ### `AIEX.getTile` (::xilinx::AIEX::GetTileOp)
 
-_Get a reference to an AIE tile_
+Get a reference to an AIE tile
 
 
 Syntax:
@@ -183,10 +179,9 @@ Return a reference to an AIE tile, given the column and the row of the tile.
 | :----: | ----------- |
 | `result` | index
 
-
 ### `AIEX.herd` (::xilinx::AIEX::HerdOp)
 
-_Declare a herd which is a bundle of core organized in a rectangular shape_
+Declare a herd which is a bundle of core organized in a rectangular shape
 
 
 Syntax:
@@ -227,10 +222,9 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIEX.iter` (::xilinx::AIEX::IterOp)
 
-_An iter operation_
+An iter operation
 
 
 Syntax:
@@ -260,10 +254,9 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIEX.memcpy` (::xilinx::AIEX::MemcpyOp)
 
-_A memcpy op_
+A memcpy op
 
 
 Syntax:
@@ -302,10 +295,9 @@ the source tile to the dest. tile.
 | `dstTile` | index
 | `dstBuf` | memref of any type values
 
-
 ### `AIEX.multi_dest` (::xilinx::AIEX::MultiDestOp)
 
-_A destination port of multicast flow_
+A destination port of multicast flow
 
 
 Syntax:
@@ -335,10 +327,9 @@ Traits: HasParent<MulticastOp>
 | :-----: | ----------- |
 | `tile` | index
 
-
 ### `AIEX.multicast` (::xilinx::AIEX::MulticastOp)
 
-_An abstraction of multicast_
+An abstraction of multicast
 
 
 Syntax:
@@ -365,7 +356,7 @@ Example:
   }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: SingleBlockImplicitTerminator<AIE::EndOp>
 
 #### Attributes:
 
@@ -380,10 +371,9 @@ Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
 | :-----: | ----------- |
 | `tile` | index
 
-
 ### `AIEX.place` (::xilinx::AIEX::PlaceOp)
 
-_A place operation that specifies the relative placement (XY) of one herd to another_
+A place operation that specifies the relative placement (XY) of one herd to another
 
 
 Syntax:
@@ -408,10 +398,9 @@ A place operation that specifies the relative placement (XY) of one herd to anot
 | `sourceHerd` | index
 | `destHerd` | index
 
-
 ### `AIEX.route` (::xilinx::AIEX::RouteOp)
 
-_A route operation that routes one herd to another_
+A route operation that routes one herd to another
 
 
 Syntax:
@@ -439,10 +428,9 @@ A route operation that routes one herd to another.
 | `sourceHerds` | index
 | `destHerds` | index
 
-
 ### `AIEX.select` (::xilinx::AIEX::SelectOp)
 
-_A select operation_
+A select operation
 
 
 Syntax:
@@ -479,10 +467,9 @@ The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0]
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIEX.token` (::xilinx::AIEX::TokenOp)
 
-_Declare a token (a logical lock)_
+Declare a token (a logical lock)
 
 
 Syntax:
@@ -518,10 +505,9 @@ Interfaces: Symbol
 | :-------: | :-------: | ----------- |
 | `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
-
 ### `AIEX.useToken` (::xilinx::AIEX::UseTokenOp)
 
-_Acquire/release a logical lock_
+acquire/release a logical lock
 
 
 Syntax:
@@ -540,5 +526,4 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.
 | `tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
 | `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 | `action` | xilinx::AIE::LockActionAttr | lock acquire/release
-
 

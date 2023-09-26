@@ -15,7 +15,7 @@ switch is referred to as `switchbox` to avoid confusion with the
 
 ### `AIE.amsel` (::xilinx::AIE::AMSelOp)
 
-_Declare an arbiter of a switchbox with a master select value (arbiter + msel)_
+Declare an arbiter of a switchbox with a master select value (arbiter + msel)
 
 
 Syntax:
@@ -57,10 +57,9 @@ Traits: HasParent<SwitchboxOp>
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.buffer` (::xilinx::AIE::BufferOp)
 
-_Declare a buffer_
+Declare a buffer
 
 
 Syntax:
@@ -92,10 +91,9 @@ Interfaces: TileElement
 | :----: | ----------- |
 | `buffer` | memref of any type values
 
-
 ### `AIE.connect` (::xilinx::AIE::ConnectOp)
 
-_A circuit-switched connection inside a switchbox_
+A circuit-switched connection inside a switchbox
 
 
 Syntax:
@@ -130,10 +128,9 @@ Traits: HasParent<SwitchboxOp, ShimMuxOp>
 | `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
 | `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
-
 ### `AIE.core` (::xilinx::AIE::CoreOp)
 
-_Declare a core module_
+Declare a core module
 
 
 Syntax:
@@ -190,74 +187,9 @@ Interfaces: FlowEndPoint, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
-### `AIE.debug` (::xilinx::AIE::DebugOp)
-
-_Capture a value for debugging_
-
-
-Syntax:
-
-```
-operation ::= `AIE.debug` `(` $arg `:` type($arg) `)` attr-dict
-```
-
-Output the given value for debugging.  This is primarily used for simulation.
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `arg` | any type
-
-
-### `AIE.device` (::xilinx::AIE::DeviceOp)
-
-_Define an AIE design targetting a complete device_
-
-
-Syntax:
-
-```
-operation ::= `AIE.device` `(` $device `)` regions attr-dict
-```
-
-This operation describes a design that executes on a particular AIEngine device.
-It exists at the toplevel of a design; although currently it does not replace the
-default toplevel module in MLIR, the intention is that this could be the case
-in the future.
-
-When using this operation, all resources in a physical device are available and
-the design does not need to be concerned with other potential users of a physical
-device.  In addition, within an `aie.device` operation, tile addresses are absolute
-coordinates and are not intended to describe a relocatable design.  To describe
-a portion of a device which may be relocatable, the intention would be to provide another
-operation, for instance maybe `aie.segment`.
-The design itself is described using a region of code contained by the device
-operation.
-
-Example:
-```
-aie.device(xcvc1902) {
-  %tile = aie.tile(1, 1)
-  %CORE = aie.core(%tile) { ... }
-}
-```
-
-Traits: HasParent<ModuleOp>, IsolatedFromAbove, NoTerminator, SingleBlock, SymbolTable
-
-Interfaces: AIETarget
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `device` | xilinx::AIE::AIEDeviceAttr | AIE Device
-
-
 ### `AIE.dmaBd` (::xilinx::AIE::DMABDOp)
 
-_Declare a dma block descriptor op_
+Declare a dma block descriptor op
 
 
 Syntax:
@@ -290,10 +222,10 @@ Example:
 A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
 There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
 
-On AIE-ML devices, an optional argument can be used to specify an array of
+On AIE-ML devices, an optional argument can be used to specify an array of 
 step sizes and wraps to move data in more advanced patterns. Strides and
 wraps are specified as tuples `<stride, wrap>`, and up to three dimensions
-can be specified (or up to four dimensions on memtiles).
+can be specified (or up to four dimensions on memtiles). 
 
 The first element of the array gives the _highest-dimension_ stride and
 wrap, the last element of the array gives the lowest-dimension.
@@ -304,7 +236,7 @@ Example:
 AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<16, 8>, <1, 2>, <2, 8>])
 ```
 
-This corresponds to alternating between even and odd elements of the
+This corresponds to alternating between even and odd elements of the 
 buffer/stream every 8 elements, like so, equivalent to nested loops like so:
 
 ```
@@ -329,10 +261,9 @@ for(int i = 0; i < 8 /* wrap[0] */; i++)
 | :-----: | ----------- |
 | `buffer` | memref of any type values
 
-
 ### `AIE.dmaBdPacket` (::xilinx::AIE::DMABDPACKETOp)
 
-_Enable packet headers for a dma block descriptor_
+Enable packet headers for a dma block descriptor
 
 
 Syntax:
@@ -367,10 +298,9 @@ Example:
 | `packet_type` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 | `packet_id` | ::mlir::IntegerAttr | 32-bit signless integer attribute
 
-
 ### `AIE.dmaStart` (::xilinx::AIE::DMAStartOp)
 
-_An op to start DMA_
+An op to start DMA
 
 
 Syntax:
@@ -422,10 +352,71 @@ Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
 | `dest` | any successor
 | `chain` | any successor
 
+### `AIE.debug` (::xilinx::AIE::DebugOp)
+
+Capture a value for debugging
+
+
+Syntax:
+
+```
+operation ::= `AIE.debug` `(` $arg `:` type($arg) `)` attr-dict
+```
+
+Output the given value for debugging.  This is primarily used for simulation.
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `arg` | any type
+
+### `AIE.device` (::xilinx::AIE::DeviceOp)
+
+Define an AIE design targetting a complete device
+
+
+Syntax:
+
+```
+operation ::= `AIE.device` `(` $device `)` regions attr-dict
+```
+
+This operation describes a design that executes on a particular AIEngine device.
+It exists at the toplevel of a design; although currently it does not replace the
+default toplevel module in MLIR, the intention is that this could be the case
+in the future.
+
+When using this operation, all resources in a physical device are available and
+the design does not need to be concerned with other potential users of a physical
+device.  In addition, within an `aie.device` operation, tile addresses are absolute
+coordinates and are not intended to describe a relocatable design.  To describe
+a portion of a device which may be relocatable, the intention would be to provide another
+operation, for instance maybe `aie.segment`.
+The design itself is described using a region of code contained by the device
+operation.
+
+Example:
+```
+aie.device(xcvc1902) {
+  %tile = aie.tile(1, 1)
+  %CORE = aie.core(%tile) { ... }
+}
+```
+
+Traits: HasParent<ModuleOp>, IsolatedFromAbove, NoTerminator, SingleBlock, SymbolTable
+
+Interfaces: AIETarget
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `device` | xilinx::AIE::AIEDeviceAttr | AIE Device
 
 ### `AIE.end` (::xilinx::AIE::EndOp)
 
-_End op_
+end op
 
 
 Syntax:
@@ -438,10 +429,9 @@ A generic terminator operation for AIE ops' regions.
 
 Traits: Terminator
 
-
 ### `AIE.event` (::xilinx::AIE::EventOp)
 
-_Event instruction_
+Event instruction
 
 
 Syntax:
@@ -458,10 +448,9 @@ Event instruction.
 | :-------: | :-------: | ----------- |
 | `val` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1
 
-
 ### `AIE.external_buffer` (::xilinx::AIE::ExternalBufferOp)
 
-_Declare a buffer in external memory_
+Declare a buffer in external memory
 
 
 Syntax:
@@ -491,10 +480,9 @@ This operation represents an external buffer.
 | :----: | ----------- |
 | `buffer` | memref of any type values
 
-
 ### `AIE.flow` (::xilinx::AIE::FlowOp)
 
-_A logical circuit-switched connection between cores_
+A logical circuit-switched connection between cores
 
 
 Syntax:
@@ -532,10 +520,9 @@ Example:
 | `source` | index
 | `dest` | index
 
-
 ### `AIE.getCascade` (::xilinx::AIE::GetCascadeOp)
 
-_An op to read from a cascading stream from a neighboring core_
+An op to read from a cascading stream from a neighboring core
 
 
 Syntax:
@@ -554,10 +541,9 @@ Traits: HasParent<CoreOp>
 | :----: | ----------- |
 | `cascadeValue` | 384-bit integer
 
-
 ### `AIE.getStream` (::xilinx::AIE::GetStreamOp)
 
-_An op to read from a stream channel/port of a switchbox_
+An op to read from a stream channel/port of a switchbox
 
 
 Syntax:
@@ -582,10 +568,9 @@ Traits: HasParent<CoreOp>
 | :----: | ----------- |
 | `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
 
-
 ### `AIE.lock` (::xilinx::AIE::LockOp)
 
-_Declare a physical lock_
+Declare a physical lock
 
 
 Syntax:
@@ -629,10 +614,9 @@ Interfaces: TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.masterset` (::xilinx::AIE::MasterSetOp)
 
-_Packet switched input connection_
+Packet switched input connection
 
 
 Syntax:
@@ -683,10 +667,9 @@ Traits: HasParent<SwitchboxOp>
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.mem` (::xilinx::AIE::MemOp)
 
-_Declare a memory op_
+Declare a memory op
 
 
 Syntax:
@@ -730,10 +713,9 @@ Interfaces: CallableOpInterface, FlowEndPoint, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.memTileDMA` (::xilinx::AIE::MemTileDMAOp)
 
-_Declare a memTileDMA op_
+Declare a memTileDMA op
 
 
 Syntax:
@@ -781,10 +763,9 @@ Interfaces: CallableOpInterface, FlowEndPoint, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.nextBd` (::xilinx::AIE::NextBDOp)
 
-_The next buffer descriptor_
+The next buffer descriptor
 
 
 Syntax:
@@ -820,10 +801,53 @@ Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
 | :-------: | ----------- |
 | `dest` | any successor
 
+### `AIE.objectFifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
+
+Acquire operation to lock and return objects of an ObjectFifo
+
+
+Syntax:
+
+```
+operation ::= `AIE.objectFifo.acquire` attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+```
+
+The `aie.objectFifo.acquire` operation first acquires the locks of the next given number 
+of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port 
+(producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
+the acquired objects which can be used to access them.
+
+This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations on 
+the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
+new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
+to be released by the same process, then performing another acquire operation on the same `objectFifo` 
+within the same process of size two or less will not result in any new useLock operations (and for size 
+greater than two, only (size - 2) useLock operations will be performed).
+
+Example:
+```
+  %subview = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
+```
+This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer 
+port and returns a subview of the acquired objects.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
+| `objFifo_name` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+| `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `subview` | AIE ObjectFifoSubview type
 
 ### `AIE.objectFifo` (::xilinx::AIE::ObjectFifoCreateOp)
 
-_Create a circular buffer or channel between two tiles_
+Create a circular buffer or channel between two tiles
 
 
 Syntax:
@@ -832,43 +856,43 @@ Syntax:
 operation ::= `AIE.objectFifo` $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` $elem_type
 ```
 
-The `aie.objectFifo` operation creates a circular buffer established between a producer and one or
-more consumers, which are `aie.tile` operations. The`aie.objectFifo` instantiates the given number of
-buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after
-lowering, based on tile-adjacency. These elements represent the conceptual depth of the `objectFifo` or,
+The `aie.objectFifo` operation creates a circular buffer established between a producer and one or 
+more consumers, which are `aie.tile` operations. The`aie.objectFifo` instantiates the given number of 
+buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after 
+lowering, based on tile-adjacency. These elements represent the conceptual depth of the `objectFifo` or, 
 more specifically, of its object pool.
 
-For the producer and for each consumer, a different size (i.e., element number) can be specified as an
-array of integer values. This will take effect in the case of consumers placed on tiles non-adjacent to
-the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be
+For the producer and for each consumer, a different size (i.e., element number) can be specified as an 
+array of integer values. This will take effect in the case of consumers placed on tiles non-adjacent to 
+the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be 
 applied to both producer and consumers.
 
-This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.buffers` and their associated
+This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.buffers` and their associated 
 `aie.locks`. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
 not adjacent.
 
 1-to-1 tile example:
 ```
-  AIE.objectFifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+  AIE.objectFifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
 ```
 This operation creates an `objectFifo` between `%tile12` and `%tile23` of 4 elements, each a buffer of 16 32-bit integers.
-Note: If there are no `ObjectFifoAcquireOps` corresponding to this `objectFifo` on the cores of `%tile12` and `%tile23`,
+Note: If there are no `ObjectFifoAcquireOps` corresponding to this `objectFifo` on the cores of `%tile12` and `%tile23`, 
 then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
 highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.
 
 1-to-2 tiles broadcast example:
 ```
-  AIE.objectFifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+  AIE.objectFifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
 ```
-This operation creates an `objectFifo` between `%tile12` and tiles `%tile13`, `%tile23` of 4 elements, each a buffer of x16
+This operation creates an `objectFifo` between `%tile12` and tiles `%tile13`, `%tile23` of 4 elements, each a buffer of x16 
 32-bit integers.
 
 1-to-2 tiles broadcast with explicit sizes example:
 ```
-  AIE.objectFifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>>
+  AIE.objectFifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
 ```
-This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool
-at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis
+This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool 
+at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis 
 specified in the first example.
 
 Traits: HasParent<DeviceOp>
@@ -890,55 +914,9 @@ Interfaces: Symbol
 | `producerTile` | index
 | `consumerTiles` | index
 
-
-### `AIE.objectFifo.acquire` (::xilinx::AIE::ObjectFifoAcquireOp)
-
-_Acquire operation to lock and return objects of an ObjectFifo_
-
-
-Syntax:
-
-```
-operation ::= `AIE.objectFifo.acquire` attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
-```
-
-The `aie.objectFifo.acquire` operation first acquires the locks of the next given number 
-of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port
-(producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
-the acquired objects which can be used to access them.
-
-This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations on
-the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
-new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
-to be released by the same process, then performing another acquire operation on the same `objectFifo`
-within the same process of size two or less will not result in any new useLock operations (and for size 
-greater than two, only (size - 2) useLock operations will be performed).
-
-Example:
-```
-  %subview = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
-```
-This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
-port and returns a subview of the acquired objects.
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `port` | xilinx::AIE::ObjectFifoPortAttr | Ports of an object FIFO
-| `objFifo_name` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
-| `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `subview` | AIE ObjectFifoSubview type
-
-
 ### `AIE.objectFifo.link` (::xilinx::AIE::ObjectFifoLinkOp)
 
-_Links two objectFifos through an intermediary tile's DMA_
+Links two objectFifos through an intermediary tile's DMA
 
 
 Syntax:
@@ -964,7 +942,7 @@ This operation links two `objectFifos` which have tile `%t72` as a link point.
 
 To achieve a broadcast pattern through the link tile, the output `objectFifo` should have a list of all the consumers tiles.
 To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the LinkOp. In this case,
-parts will be taken out of the input `objectFifo`'s buffers based on the sizes of the output `objectFifos`, in the order they
+parts will be taken out of the input `objectFifo`'s buffers based on the sizes of the output `objectFifos`, in the order they 
 were given in the LinkOp.
 The join pattern is the exact inverse of the distribute one.
 
@@ -977,10 +955,9 @@ Traits: HasParent<DeviceOp>
 | `fifoIns` | ::mlir::ArrayAttr | array attribute
 | `fifoOuts` | ::mlir::ArrayAttr | array attribute
 
-
 ### `AIE.objectFifo.registerExternalBuffers` (::xilinx::AIE::ObjectFifoRegisterExternalBuffersOp)
 
-_Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)_
+Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)
 
 
 Syntax:
@@ -1021,10 +998,9 @@ Interfaces: TileElement
 | `tile` | index
 | `externalBuffers` | memref of any type values
 
-
 ### `AIE.objectFifo.registerProcess` (::xilinx::AIE::ObjectFifoRegisterProcessOp)
 
-_Operation that produces the acquire/release patterns for a process registered to an objectFifo_
+Operation that produces the acquire/release patterns for a process registered to an objectFifo
 
 
 Syntax:
@@ -1033,9 +1009,9 @@ Syntax:
 operation ::= `AIE.objectFifo.registerProcess` attr-dict $objFifo_name `(` $port `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)`
 ```
 
-The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its
+The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its 
 acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
-on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case
+on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case 
 of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
 This may result in multiple for loops of different sizes being generated. If there is no repetition, then no 
 loops will be generated.
@@ -1050,7 +1026,7 @@ Example:
 
   AIE.objectFifo.registerProcess @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
 ```
-This operation registers function @producer_work and associated patterns to the produce end of @of1.
+This operation registers function @producer_work and associated patterns to the produce end of @of1. 
 @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
 
 If the input patterns are static (only one element) then the length of the produced for loop will be that of the input %length.
@@ -1072,10 +1048,9 @@ If the input patterns are cyclo-static then they must be of the same size.
 | `releasePatternTensor` | tensor of 32-bit signless integer values
 | `length` | index
 
-
 ### `AIE.objectFifo.release` (::xilinx::AIE::ObjectFifoReleaseOp)
 
-_Release operation for object locks in an ObjectFifo_
+Release operation for object locks in an ObjectFifo
 
 
 Syntax:
@@ -1085,7 +1060,7 @@ operation ::= `AIE.objectFifo.release` attr-dict $objFifo_name `(` $port `,` $si
 ```
 
 The `aie.objectFifo.release` operation releases the locks of the given number of objects 
-in the `objectFifo`. The mode it releases the locks in is chosen based on the `port`
+in the `objectFifo`. The mode it releases the locks in is chosen based on the `port` 
 (producer: release for read, consumer: release for write). 
 
 This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations.
@@ -1104,10 +1079,9 @@ This operation releases the lock of the next object in the `objectFifo` named `@
 | `objFifo_name` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
 | `size` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
 
-
 ### `AIE.objectFifo.subview.access` (::xilinx::AIE::ObjectFifoSubviewAccessOp)
 
-_ObjectFifoSubview type accessor method_
+ObjectFifoSubview type accessor method
 
 
 Syntax:
@@ -1123,7 +1097,7 @@ Example:
   %subview = AIE.objectFifo.acquire @of1 (Produce, 3) : !AIE.objectFifoSubview<memref<16xi32>>
   %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
 ```
-In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of
+In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of 
 the `objectFifo` if other acquire operations took place beforehand.
 
 
@@ -1145,10 +1119,34 @@ the `objectFifo` if other acquire operations took place beforehand.
 | :----: | ----------- |
 | `output` | memref of any type values
 
+### `AIE.plio` (::xilinx::AIE::PLIOOp)
+
+Declare an interface to the PL
+
+
+Syntax:
+
+```
+operation ::= `AIE.plio` `(` $col `)` attr-dict
+```
+
+An interface to the PL.
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `col` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+&laquo;unnamed&raquo; | index
 
 ### `AIE.packet_dest` (::xilinx::AIE::PacketDestOp)
 
-_A destination port_
+A destination port
 
 
 Syntax:
@@ -1178,10 +1176,9 @@ Traits: HasParent<PacketFlowOp>
 | :-----: | ----------- |
 | `tile` | index
 
-
 ### `AIE.packet_flow` (::xilinx::AIE::PacketFlowOp)
 
-_Packet switched flow_
+Packet switched flow
 
 
 Syntax:
@@ -1203,7 +1200,7 @@ Example:
   }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
+Traits: SingleBlockImplicitTerminator<EndOp>
 
 #### Attributes:
 
@@ -1211,141 +1208,9 @@ Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
 | :-------: | :-------: | ----------- |
 | `ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
 
-
-### `AIE.packet_source` (::xilinx::AIE::PacketSourceOp)
-
-_A sourceport_
-
-
-Syntax:
-
-```
-operation ::= `AIE.packet_source` `<` $tile `,` $bundle `:` $channel `>` attr-dict
-```
-
-A object representing the destination of a packet-switched flow. This must exist
-within an [AIE.packet_flow](#aiepacketflow-aiepacketflowop) operation.
-
-See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
-
-Traits: HasParent<PacketFlowOp>
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `tile` | index
-
-
-### `AIE.packetrules` (::xilinx::AIE::PacketRulesOp)
-
-_Packet switched routing rules_
-
-
-Syntax:
-
-```
-operation ::= `AIE.packetrules` `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict
-```
-
-This operation defines packet-switched routing configuration for packets entering a switchbox.
-It references a port of the containing swithcbox, which be unique among other packetRules
-operations and [AIE.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
-It contains a region of up to 4 [AIE.rule](#aierule-aiepacketruleop) operations.
-
-See [AIE.rule](#aierule-aiepacketruleop) for an example.
-
-Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
-
-
-### `AIE.plio` (::xilinx::AIE::PLIOOp)
-
-_Declare an interface to the PL_
-
-
-Syntax:
-
-```
-operation ::= `AIE.plio` `(` $col `)` attr-dict
-```
-
-An interface to the PL.
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `col` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-&laquo;unnamed&raquo; | index
-
-
-### `AIE.putCascade` (::xilinx::AIE::PutCascadeOp)
-
-_An op to write to a cascading stream from a neighboring core_
-
-
-Syntax:
-
-```
-operation ::= `AIE.putCascade` `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
-```
-
-An op to write to a cascading stream from a neighboring core.
-
-Traits: HasParent<CoreOp>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `cascadeValue` | 384-bit integer
-
-
-### `AIE.putStream` (::xilinx::AIE::PutStreamOp)
-
-_An op to write to a stream channel/port of a switchbox_
-
-
-Syntax:
-
-```
-operation ::= `AIE.putStream` `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
-```
-
-An op to write to a stream channel/port of a switchbox.
-
-Traits: HasParent<CoreOp>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `channel` | integer
-| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
-
-
 ### `AIE.rule` (::xilinx::AIE::PacketRuleOp)
 
-_Packet switched routing rule_
+Packet switched routing rule
 
 
 Syntax:
@@ -1398,10 +1263,151 @@ Traits: HasParent<PacketRulesOp>
 | :-----: | ----------- |
 | `amsel` | index
 
+### `AIE.packetrules` (::xilinx::AIE::PacketRulesOp)
+
+Packet switched routing rules
+
+
+Syntax:
+
+```
+operation ::= `AIE.packetrules` `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict
+```
+
+This operation defines packet-switched routing configuration for packets entering a switchbox.
+It references a port of the containing swithcbox, which be unique among other packetRules
+operations and [AIE.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
+It contains a region of up to 4 [AIE.rule](#aierule-aiepacketruleop) operations.
+
+See [AIE.rule](#aierule-aiepacketruleop) for an example.
+
+Traits: SingleBlockImplicitTerminator<EndOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+### `AIE.packet_source` (::xilinx::AIE::PacketSourceOp)
+
+A sourceport
+
+
+Syntax:
+
+```
+operation ::= `AIE.packet_source` `<` $tile `,` $bundle `:` $channel `>` attr-dict
+```
+
+A object representing the destination of a packet-switched flow. This must exist
+within an [AIE.packet_flow](#aiepacketflow-aiepacketflowop) operation.
+
+See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+
+Traits: HasParent<PacketFlowOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
+| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute whose minimum value is 0
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index
+
+### `AIE.putCascade` (::xilinx::AIE::PutCascadeOp)
+
+An op to write to a cascading stream from a neighboring core
+
+
+Syntax:
+
+```
+operation ::= `AIE.putCascade` `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict
+```
+
+An op to write to a cascading stream from a neighboring core.
+
+Traits: HasParent<CoreOp>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `cascadeValue` | 384-bit integer
+
+### `AIE.putStream` (::xilinx::AIE::PutStreamOp)
+
+An op to write to a stream channel/port of a switchbox
+
+
+Syntax:
+
+```
+operation ::= `AIE.putStream` `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
+```
+
+An op to write to a stream channel/port of a switchbox.
+
+Traits: HasParent<CoreOp>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `channel` | integer
+| `streamValue` | 32-bit float or 32-bit signless integer or 128-bit signless integer
+
+### `AIE.shimDMAAllocation` (::xilinx::AIE::ShimDMAAllocationOp)
+
+Runtime allocation information for a single shim DMA
+
+
+Syntax:
+
+```
+operation ::= `AIE.shimDMAAllocation` $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
+```
+
+This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
+and hence there is no appropriate dmaStart operation to indicate which channel is being
+used and on which column the shimDMA is. 
+
+It contains attributes for the sym_name of an operation which generated the shim DMA, 
+for the DMAChannelDir and channel index, and for the column of the shim tile to which 
+the originating operation was mapped.
+
+Example:
+```
+  %tile00 = AIE.tile(0, 0)
+  %tile02 = AIE.tile(0, 2)
+  AIE.objectFifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectFifo<memref<64xi16>>
+```
+could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+```
+  AIE.shimDMAAllocation @of_in_0 (MM2S, 1, 0)
+```
+
+Traits: HasParent<DeviceOp>
+
+#### Attributes:
+
+| Attribute | MLIR Type | Description |
+| :-------: | :-------: | ----------- |
+| `sym_name` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
+| `channelDir` | xilinx::AIE::DMAChannelDirAttr | DMA Channel direction
+| `channelIndex` | ::mlir::IntegerAttr | 64-bit signless integer attribute
+| `col` | ::mlir::IntegerAttr | 64-bit signless integer attribute
 
 ### `AIE.shimDMA` (::xilinx::AIE::ShimDMAOp)
 
-_Declare a DMA in the PL shim_
+Declare a DMA in the PL shim
 
 
 Syntax:
@@ -1447,52 +1453,9 @@ Interfaces: FlowEndPoint, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
-### `AIE.shimDMAAllocation` (::xilinx::AIE::ShimDMAAllocationOp)
-
-_Runtime allocation information for a single shim DMA_
-
-
-Syntax:
-
-```
-operation ::= `AIE.shimDMAAllocation` $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
-```
-
-This op exists for cases where shimDMA configuration is performed outside of MLIR-AIE 
-and hence there is no appropriate dmaStart operation to indicate which channel is being
-used and on which column the shimDMA is. 
-
-It contains attributes for the sym_name of an operation which generated the shim DMA, 
-for the DMAChannelDir and channel index, and for the column of the shim tile to which 
-the originating operation was mapped.
-
-Example:
-```
-  %tile00 = AIE.tile(0, 0)
-  %tile02 = AIE.tile(0, 2)
-  AIE.objectFifo @of_in_0 (%tile00, { %tile02 }, 2) : !AIE.objectFifo<memref<64xi16>>
-```
-could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
-```
-  AIE.shimDMAAllocation @of_in_0 (MM2S, 1, 0)
-```
-
-Traits: HasParent<DeviceOp>
-
-#### Attributes:
-
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `sym_name` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
-| `channelDir` | xilinx::AIE::DMAChannelDirAttr | DMA Channel direction
-| `channelIndex` | ::mlir::IntegerAttr | 64-bit signless integer attribute
-| `col` | ::mlir::IntegerAttr | 64-bit signless integer attribute
-
-
 ### `AIE.shimmux` (::xilinx::AIE::ShimMuxOp)
 
-_Declare a switch in the PL shim_
+Declare a switch in the PL shim
 
 
 Syntax:
@@ -1513,7 +1476,7 @@ aie.shimmux(%tile) {
 }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
+Traits: SingleBlockImplicitTerminator<EndOp>
 
 Interfaces: Interconnect, TileElement
 
@@ -1529,10 +1492,9 @@ Interfaces: Interconnect, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.shimswitchbox` (::xilinx::AIE::ShimSwitchboxOp)
 
-_Declare a switch in the PL shim_
+Declare a switch in the PL shim
 
 
 Syntax:
@@ -1553,7 +1515,7 @@ AXI-Stream Master Ports AXI-Stream Slave Ports
 1 Port for trace packet from Shim
 
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
+Traits: SingleBlockImplicitTerminator<EndOp>
 
 #### Attributes:
 
@@ -1567,10 +1529,9 @@ Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.switchbox` (::xilinx::AIE::SwitchboxOp)
 
-_Declare a switch_
+Declare a switch
 
 
 Syntax:
@@ -1590,7 +1551,7 @@ aie.switchbox(%tile) {
 }
 ```
 
-Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
+Traits: SingleBlockImplicitTerminator<EndOp>
 
 Interfaces: Interconnect, TileElement
 
@@ -1606,10 +1567,9 @@ Interfaces: Interconnect, TileElement
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
-
 ### `AIE.tile` (::xilinx::AIE::TileOp)
 
-_Declare an AIE tile_
+Declare an AIE tile
 
 
 Syntax:
@@ -1643,10 +1603,9 @@ Interfaces: FlowEndPoint
 | :----: | ----------- |
 | `result` | index
 
-
 ### `AIE.useLock` (::xilinx::AIE::UseLockOp)
 
-_Acquire/release lock op_
+acquire/release lock op
 
 
 Syntax:
@@ -1676,10 +1635,9 @@ MemTileDMAOp).
 | :-----: | ----------- |
 | `lock` | index
 
-
 ### `AIE.wire` (::xilinx::AIE::WireOp)
 
-_A bundle of physical wires between components_
+A bundle of physical wires between components
 
 
 Syntax:
@@ -1705,7 +1663,6 @@ represented by an [aie.tile](#aietile-aietileop) operation.
 | :-----: | ----------- |
 | `source` | index
 | `dest` | index
-
 
 ## Attribute definition
 
