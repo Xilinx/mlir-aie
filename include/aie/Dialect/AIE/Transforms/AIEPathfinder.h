@@ -81,8 +81,8 @@ private:
 
 public:
   Pathfinder();
-  Pathfinder(int maxcol, int maxrow);
-  void initializeGraph(int maxcol, int maxrow);
+  Pathfinder(int maxcol, int maxrow, DeviceOp &d);
+  void initializeGraph(int maxcol, int maxrow, DeviceOp &d);
   void addFlow(Coord srcCoords, Port srcPort, Coord dstCoords, Port dstPort);
   void addFixedConnection(Coord coord, Port port);
   bool isLegal();
