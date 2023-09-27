@@ -1,3 +1,4 @@
+// clang-format off
 void dut(int8_t * restrict v1, int8_t * restrict v2, int32_t * restrict v3) {
   int8_t v4 = 0;
   v64int8 v5 = broadcast_to_v64int8(v4);
@@ -19,5 +20,4 @@ void dut(int8_t * restrict v1, int8_t * restrict v2, int32_t * restrict v3) {
   }
   return;
 }
-
-
+// clang-format on
