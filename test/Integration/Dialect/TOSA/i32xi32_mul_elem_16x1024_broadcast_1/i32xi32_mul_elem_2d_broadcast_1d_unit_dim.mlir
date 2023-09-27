@@ -11,9 +11,9 @@
 // CHECK: TEST PASSED
 
 module {
-  func.func @dut(%arg0: tensor<16x1024xi32>, %arg1: tensor<1024xi32>) -> (tensor<16x1024xi32>) {
-    %0 = "tosa.reshape"(%arg1) { new_shape = array<i64: 1, 1024>} : (tensor<1024xi32>)  -> (tensor<1x1024xi32>)
-    %1 = "tosa.sub"(%arg0,%0) : (tensor<16x1024xi32>, tensor<1x1024xi32>)  -> (tensor<16x1024xi32>)
+  func.func @dut(%arg0: tensor<16x1024xi32>, %arg1: tensor<1xi32>) -> (tensor<16x1024xi32>) {
+    %0 = "tosa.reshape"(%arg1) { new_shape = array<i64: 1, 1>} : (tensor<1xi32>)  -> (tensor<1x1xi32>)
+    %1 = "tosa.mul"(%arg0,%0) {shift = 0 : i32} : (tensor<16x1024xi32>, tensor<1x1xi32>)  -> (tensor<16x1024xi32>)
     return %1 : tensor<16x1024xi32>
   }
 }
