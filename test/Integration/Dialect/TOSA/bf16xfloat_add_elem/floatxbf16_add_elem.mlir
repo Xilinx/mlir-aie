@@ -11,8 +11,10 @@
 // CHECK: TEST PASSED
 
 module {
-  func.func @dut(%arg0: tensor<1024xbf16>, %arg1: tensor<1024xbf16>) -> (tensor<1024xbf16>) {
-    %1 = "tosa.mul"(%arg0,%arg1) {shift = 0 : i32} : (tensor<1024xbf16>, tensor<1024xbf16>)  -> (tensor<1024xbf16>)
-    return %1 : tensor<1024xbf16>
+  func.func @dut(%arg0: tensor<1024xbf16>, %arg1: tensor<1024xf32>) -> (tensor<1024xf32>) {
+    %1 = "tosa.cast" (%arg0) : (tensor<1024xbf16>)  -> (tensor<1024xf32>)
+    %2 = "tosa.add"(%arg1, %1) : (tensor<1024xf32>, tensor<1024xf32>)  -> (tensor<1024xf32>)
+    return %2 : tensor<1024xf32>
   }
 }
+
