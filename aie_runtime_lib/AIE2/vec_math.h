@@ -145,6 +145,7 @@ inline __attribute__((always_inline)) v16bfloat16 getErfBf16(v16bfloat16 in) {
   return (v16bfloat16)vec_out;
 }
 
+// Get absolute values using high-level api library
 inline __attribute__((always_inline)) v32bfloat16 getAbs(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::vector<bfloat16, 32> absX = aie::abs(x);
