@@ -54,6 +54,6 @@ int main(int argc, char *argv[]) {
 
 void dut_ref(bfloat16 *in0, bfloat16 *in1, bfloat16 *out0) {
   for (unsigned k = 0; k < OUT0_SIZE; k += 1) {
-    out0[k] = in0[k] - in1[k % IN1_SIZE];
+    out0[k] = in0[k] * in1[k % IN1_SIZE];
   }
 }

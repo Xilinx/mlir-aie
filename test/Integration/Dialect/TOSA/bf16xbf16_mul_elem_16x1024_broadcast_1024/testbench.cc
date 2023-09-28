@@ -8,7 +8,7 @@ void dut(bfloat16 *restrict in0, bfloat16 *restrict in1,
 void dut_ref(bfloat16 *in0, bfloat16 *in1, bfloat16 *out0);
 
 constexpr unsigned const IN0_SIZE = 16 * 1024;
-constexpr unsigned const IN1_SIZE = 1;
+constexpr unsigned const IN1_SIZE = 1024;
 constexpr unsigned const OUT0_SIZE = 16 * 1024;
 
 alignas(32) bfloat16 g_in0[IN0_SIZE];
@@ -54,6 +54,6 @@ int main(int argc, char *argv[]) {
 
 void dut_ref(bfloat16 *in0, bfloat16 *in1, bfloat16 *out0) {
   for (unsigned k = 0; k < OUT0_SIZE; k += 1) {
-    out0[k] = in0[k] - in1[k % IN1_SIZE];
+    out0[k] = in0[k] * in1[k % IN1_SIZE];
   }
 }
