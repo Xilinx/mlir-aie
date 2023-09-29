@@ -218,7 +218,7 @@ jobs:
 
   lint-repo:
     name: Check code format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       # We'll be running clang-tidy later in this flow.
       - name: Install clang-tidy
@@ -280,7 +280,7 @@ jobs:
         if: always()
         run: |
           # Run clang-format
-          git clang-format-14 $DIFF_COMMIT
+          git clang-format-12 $DIFF_COMMIT
           git diff --ignore-submodules > clang-format.patch
           if [ -s clang-format.patch ]; then
             echo "Clang-format found formatting problems in the following " \
