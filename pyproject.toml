@@ -2,6 +2,8 @@
 build-verbosity = 3
 build = "cp311-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
+manylinux-aarch64-image = "manylinux_2_28"
+manylinux-x86_64-image = "manylinux_2_28"
 
 [tool.cibuildwheel.linux]
 environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$PATH", PIP_NO_BUILD_ISOLATION = "false" }

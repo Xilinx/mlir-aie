@@ -72,7 +72,7 @@ jobs:
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_WHEEL_VERSION="18.0.0.2023091015+780b046b" \
+        MLIR_WHEEL_VERSION="18.0.0.2023100301+e8970141" \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir ../wheelhouse
         
@@ -160,22 +160,11 @@ jobs:
           CMAKE_GENERATOR="Ninja" \
           HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
           MATRIX_OS=${{ matrix.OS }} \
-          MLIR_WHEEL_VERSION="18.0.0.2023091015+780b046b" \
+          MLIR_WHEEL_VERSION="18.0.0.2023100301+e8970141" \
           PARALLEL_LEVEL=2 \
           cibuildwheel --output-dir ../wheelhouse
           
           popd
-
-      - name: Reset datetime ccache
-        shell: bash
-        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
-        run: |
-          
-          ccache -s
-          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-          DATETIME=$(date +"%Y%m%d%H")
-          find $HOST_CCACHE_DIR -exec touch -a -m -t "$DATETIME""00" {} \;
-          ccache -s
 
       - name: Download cache from container ubuntu
         if: success() || failure()
@@ -188,6 +177,17 @@ jobs:
           rm -rf $HOST_CCACHE_DIR
           mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
           ls -la $HOST_CCACHE_DIR
+          ccache -s
+
+      - name: Reset datetime ccache
+        shell: bash
+        working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+        run: |
+          
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          DATETIME=$(date +"%Y%m%d%H")
+          find $HOST_CCACHE_DIR -exec touch -a -m -t "$DATETIME""00" {} \;
           ccache -s
 
       - name: Upload wheels
