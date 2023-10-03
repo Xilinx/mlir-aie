@@ -68,9 +68,11 @@ class CMakeBuild(build_ext):
         MLIR_INSTALL_ABS_PATH = Path(mlir.__path__[0]).absolute()
         if platform.system() == "Windows":
             # fatal error LNK1170: line in command file contains 131071 or more characters
-            shutil.move(MLIR_AIE_INSTALL_ABS_PATH, "/tmp/a")
+            if not Path("/tmp/a").exists():
+                shutil.move(MLIR_AIE_INSTALL_ABS_PATH, "/tmp/a")
             MLIR_AIE_INSTALL_ABS_PATH = Path("/tmp/a").absolute()
-            shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
+            if not Path("/tmp/m").exists():
+                shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
             MLIR_INSTALL_ABS_PATH = Path("/tmp/m").absolute()
 
         cmake_args = [
