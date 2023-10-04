@@ -19,7 +19,7 @@ on:
 jobs:
 
   build_x86_wheels:
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} ${{ matrix.PY_VERSION }}
 
     continue-on-error: true
 
@@ -27,18 +27,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
+        PY_VERSION: [ "cp310", "cp311", "cp312"]
+        OS: [ubuntu-20.04, macos-11, windows-2019]
+        ARCH: [x86_64, arm64, AMD64]
+        exclude:
           - OS: ubuntu-20.04
-            ARCH: x86_64
-
-          - OS: macos-11
-            ARCH: x86_64
-
-          - OS: macos-11
             ARCH: arm64
+          - OS: ubuntu-20.04
+            ARCH: AMD64
+
+          - OS: macos-11
+            ARCH: AMD64
 
           - OS: windows-2019
-            ARCH: AMD64
+            ARCH: x86_64
+          - OS: windows-2019
+            ARCH: arm64
 
     steps:
     - uses: makslevental/mlir-wheels/.github/actions/setup_base@main
@@ -69,6 +73,7 @@ jobs:
         
         PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
         CIBW_ARCHS=${{ matrix.ARCH }} \
+        CIBW_BUILD="${{ matrix.PY_VERSION }}-*" \
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
@@ -110,7 +115,7 @@ jobs:
         name: build_artifact
 
   build_aarch64_wheels:
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }}
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} ${{ matrix.PY_VERSION }}
 
     continue-on-error: true
 
@@ -118,9 +123,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - OS: ubuntu-20.04
-            ARCH: aarch64
+        PY_VERSION: [ "cp310", "cp311", "cp312"]
+        OS: [ubuntu-20.04]
+        ARCH: [aarch64]
 
     steps:
       - uses: makslevental/mlir-wheels/.github/actions/setup_base@main
@@ -137,7 +142,6 @@ jobs:
           MATRIX_ARCH: ${{ matrix.ARCH }}
 
       - name: Set up QEMU
-        if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
         uses: docker/setup-qemu-action@v2
         with:
           platforms: ${{ matrix.ARCH }}
@@ -157,6 +161,7 @@ jobs:
           
           PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
           CIBW_ARCHS=${{ matrix.ARCH }} \
+          CIBW_BUILD="${{ matrix.PY_VERSION }}-*" \
           CMAKE_GENERATOR="Ninja" \
           HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
           MATRIX_OS=${{ matrix.OS }} \
