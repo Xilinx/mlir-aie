@@ -17,10 +17,10 @@ extern "C" {
 /** Registers all AIE dialects with a context.
  * This is needed before creating IR for these Dialects.
  */
-void aieRegisterAllDialects(MlirContext context);
+MLIR_CAPI_EXPORTED void aieRegisterAllDialects(MlirContext context);
 
 /** Registers all AIE passes for symbolic access with the global registry. */
-void aieRegisterAllPasses();
+MLIR_CAPI_EXPORTED void aieRegisterAllPasses();
 
 #ifdef __cplusplus
 }

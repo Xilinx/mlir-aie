@@ -13,6 +13,7 @@
 
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include <cstdint>
+#include <optional>
 #include <type_traits>
 
 namespace mlir {
@@ -31,10 +32,9 @@ template <
         std::is_same_v<TransferReadLikeOp, mlir::vector::TransferReadOp> ||
         std::is_same_v<TransferReadLikeOp,
                        mlir::vector::TransferReadOp::Adaptor>>>
-int64_t getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
-                                       mlir::VectorType vType,
-                                       int64_t alignment);
-
+std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
+                                                      mlir::VectorType vType,
+                                                      int64_t alignment);
 }
 
 #endif // AIE_DIALECT_AIEVEC_UTILS_UTILS_H

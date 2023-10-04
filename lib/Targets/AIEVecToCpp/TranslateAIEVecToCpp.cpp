@@ -27,8 +27,10 @@
 #include "mlir/Support/IndentedOstream.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -213,6 +215,8 @@ private:
   /// names of values in a scope.
   std::stack<int64_t> valueInScopeCount;
   std::stack<int64_t> labelInScopeCount;
+
+  llvm::SmallSet<StringRef, 16> includeNames;
 };
 } // namespace
 
@@ -670,6 +674,27 @@ static LogicalResult printOperation(CppEmitter &emitter,
     }
   }
   os << "(";
+  os << emitter.getOrCreateName(source);
+  os << ")";
+  return success();
+}
+
+// Generate the unpack intrinsic for AIE-ML
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::UnpackOp unpackOp) {
+
+  // The source should have already been emitted
+  Value source = unpackOp.getSource();
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  // Generate the initialization for the vector
+  if (failed(emitter.emitAssignPrefix(*unpackOp, /*isAcc=*/false)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "unpack(";
   os << emitter.getOrCreateName(source);
   os << ")";
   return success();
@@ -1495,7 +1520,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*add_elemOp, true)))
+  // FIXME: move the logic to the op creation and add isAcc to the op attribute
+  bool isAcc = false;
+  VectorType resType = cast<VectorType>(add_elemOp.getResult().getType());
+  auto resElemType = resType.getElementType();
+  unsigned resBitWidth = resElemType.getIntOrFloatBitWidth();
+  unsigned resLaneSize = getVectorLaneSize(resType);
+  if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
+    isAcc = true;
+
+  if (failed(emitter.emitAssignPrefix(*add_elemOp, /*isAcc=*/isAcc)))
     return failure();
 
   os << "add(";
@@ -1523,7 +1557,16 @@ static LogicalResult printOperation(CppEmitter &emitter,
   raw_indented_ostream &os = emitter.ostream();
 
   // Generate the initialization for the result
-  if (failed(emitter.emitAssignPrefix(*sub_elemOp, true)))
+  // FIXME: move the logic to the op creation and add isAcc to the op attribute
+  bool isAcc = false;
+  VectorType resType = cast<VectorType>(sub_elemOp.getResult().getType());
+  auto resElemType = resType.getElementType();
+  unsigned resBitWidth = resElemType.getIntOrFloatBitWidth();
+  unsigned resLaneSize = getVectorLaneSize(resType);
+  if (isa<FloatType>(resElemType) || (resBitWidth * resLaneSize == 1024))
+    isAcc = true;
+
+  if (failed(emitter.emitAssignPrefix(*sub_elemOp, /*isAcc=*/isAcc)))
     return failure();
 
   os << "sub(";
@@ -1878,6 +1921,40 @@ static LogicalResult printOperation(CppEmitter &emitter,
   return success();
 }
 
+// Print an operation by forwarding the value to the next op
+template <typename OpTy>
+static LogicalResult printValueForwardOperation(CppEmitter &emitter, OpTy op) {
+  Value source = op.getSrc();
+
+  // If the memref being outputted is not already emitted,
+  // error out
+  if (!emitter.hasValueInScope(source))
+    return failure();
+
+  if (failed(emitter.emitAssignPrefix(*op)))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << emitter.getOrCreateName(source);
+
+  return success();
+}
+
+// Print an expand shape by forwarding the value to the next op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::ExpandShapeOp expandShapeOp) {
+  return printValueForwardOperation<memref::ExpandShapeOp>(emitter,
+                                                           expandShapeOp);
+}
+
+// Print a collapse shape by forwarding the value to the next op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    memref::CollapseShapeOp collapseShapeOp) {
+  return printValueForwardOperation<memref::CollapseShapeOp>(emitter,
+                                                             collapseShapeOp);
+}
+
 static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
                                      Attribute value) {
   OpResult result = operation->getResult(0);
@@ -2007,9 +2084,16 @@ static LogicalResult printOperation(CppEmitter &emitter, func::CallOp callOp) {
 static LogicalResult printOperation(CppEmitter &emitter, emitc::CallOp callOp) {
   raw_ostream &os = emitter.ostream();
   Operation &op = *callOp.getOperation();
-
-  if (failed(emitter.emitAssignPrefix(op, /*isAcc*/ true)))
-    return failure();
+  if (callOp.getCallee() == "getTanhBf16" ||
+      callOp.getCallee() == "getSqrtBf16" ||
+      callOp.getCallee() == "getRsqrtBf16" ||
+      callOp.getCallee() == "getErfBf16") {
+    if (failed(emitter.emitAssignPrefix(op, /*isAcc*/ false)))
+      return failure();
+  } else {
+    if (failed(emitter.emitAssignPrefix(op, /*isAcc*/ true)))
+      return failure();
+  }
   os << callOp.getCallee();
 
   auto emitArgs = [&](Attribute attr) -> LogicalResult {
@@ -2833,9 +2917,16 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   LogicalResult status =
       llvm::TypeSwitch<Operation *, LogicalResult>(&op)
           // EmitC ops.
-          .Case<emitc::ApplyOp, emitc::CallOp, emitc::ConstantOp,
-                emitc::IncludeOp>(
+          .Case<emitc::ApplyOp, emitc::CallOp, emitc::ConstantOp>(
               [&](auto op) { return printOperation(*this, op); })
+          .Case<emitc::IncludeOp>([&](auto op) {
+            StringRef name = op.getInclude();
+            if (!includeNames.count(name)) {
+              includeNames.insert(name);
+              return printOperation(*this, op);
+            }
+            return success();
+          })
           // SCF ops.
           .Case<scf::ForOp, scf::IfOp, scf::YieldOp>(
               [&](auto op) { return printOperation(*this, op); })
@@ -2854,7 +2945,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<vector::TransferWriteOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Memref ops.
-          .Case<memref::StoreOp>(
+          .Case<memref::StoreOp, memref::ExpandShapeOp,
+                memref::CollapseShapeOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
                 aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
@@ -2864,7 +2956,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
                 aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp,
-                aievec::ExtElemOp>(
+                aievec::ExtElemOp, aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
@@ -2951,34 +3043,22 @@ LogicalResult CppEmitter::emitType(Location loc, Type type, bool stdintType,
       return failure();
 
     unsigned dimSize = tType.getDimSize(tType.getRank() - 1);
+    os << "v" << std::to_string(dimSize);
 
-    if (eltType.isa<IntegerType>()) {
-      os << "v" << std::to_string(dimSize);
-      auto iType = eltType.cast<IntegerType>();
-      unsigned width = iType.getWidth();
-      if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32)) {
-        if (isAcc) {
+    if (AIEML && isAcc) {
+      if (eltType.isa<IntegerType>()) {
+        // AIE-ML has `ups_to_v16acc32`, `ups_to_v16acc64`, `ups_to_v32acc32`
+        // intrinsics
+        unsigned width = eltType.cast<IntegerType>().getWidth();
+        if ((dimSize == 16 && width == 64) || (dimSize == 32 && width == 32) ||
+            (dimSize == 16 && width == 32)) {
           return (os << "acc" << width), success();
         } else {
-          return (os << "int" << width), success();
+          return failure();
         }
-      }
-    } else if (eltType.isa<FloatType>()) {
-      if (AIEML) {
-        if (isAcc) {
-          return (os << "v16accfloat"), success();
-        } else {
-          auto fType = eltType.cast<FloatType>();
-          unsigned width = fType.getWidth();
-          if (width == 16) {
-            return (os << "v" << std::to_string(dimSize) << "bfloat16"),
-                   success();
-          } else {
-            return (os << "v" << std::to_string(dimSize) << "float"), success();
-          }
-        }
-      } else {
-        os << "v" << std::to_string(dimSize);
+      } else if (eltType.isa<FloatType>()) {
+        // AIE-ML only has a `ups_to_v16accfloat` intrinsic
+        return (os << "accfloat"), success();
       }
     }
 

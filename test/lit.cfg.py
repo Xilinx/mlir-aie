@@ -26,6 +26,8 @@ from lit.llvm.subst import FindTool
 config.name = 'AIE'
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.environment['PYTHONPATH'] \
+    = "{}".format(os.path.join(config.aie_obj_root, "python"))
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.mlir']
@@ -36,11 +38,15 @@ config.test_source_root = os.path.dirname(__file__)
 config.substitutions.append(('%PATH%', config.environment['PATH']))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 config.substitutions.append(('%extraAieCcFlags%', config.extraAieCcFlags))
-config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib", config.aieHostTarget)))
-config.substitutions.append(('%aie_sim_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib", "x86_64")))
+config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "aie_runtime_lib")))
+config.substitutions.append(('%host_runtime_lib%', os.path.join(config.aie_obj_root, "runtime_lib", config.aieHostTarget)))
 config.substitutions.append(('%aietools', config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment('AIETOOLS', config.vitis_aietools_dir)
+
+if config.enable_python_tests:
+    config.environment['PYTHONPATH'] \
+        = "{}".format(os.path.join(config.aie_obj_root, "python"))
 
 if(config.enable_board_tests):
     config.substitutions.append(('%run_on_board', "echo %T >> /home/xilinx/testlog | sync | sudo"))
@@ -83,15 +89,15 @@ def prepend_path(path):
     llvm_config.config.environment['PATH'] = os.pathsep.join(paths)
 
 # Setup the path.
-prepend_path(config.llvm_tools_dir)
-prepend_path(config.peano_tools_dir)
-prepend_path(config.aie_tools_dir)
-#llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
-#llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
 if(config.vitis_root):
   config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
   prepend_path(config.vitis_aietools_bin)
   llvm_config.with_environment('VITIS', config.vitis_root)
+  #llvm_config.with_environment('LM_LICENSE_FILE', os.getenv('LM_LICENSE_FILE'))
+  #llvm_config.with_environment('XILINXD_LICENSE_FILE', os.getenv('XILINXD_LICENSE_FILE'))
+prepend_path(config.llvm_tools_dir)
+prepend_path(config.peano_tools_dir)
+prepend_path(config.aie_tools_dir)
 
 # Test to see if we have the peano backend.
 try:

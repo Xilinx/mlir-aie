@@ -700,7 +700,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoIn.name() == op.name())
                 break;
               else
-                extraOffset += (int)elemType.getShape()[0];
+                extraOffset += (int)getMemrefTypeSize(elemType);
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -718,7 +718,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoOut.name() == op.name())
                 break;
               else
-                extraOffset += (int)elemType.getShape()[0];
+                extraOffset += (int)getMemrefTypeSize(elemType);
             }
           }
         } else {
@@ -803,15 +803,18 @@ struct AIEObjectFifoStatefulTransformPass
     return lcm;
   }
 
-  // Function to record operations in for loop body (without
-  // terminator operation) and identify dependencies between them.
-  void identifyDependencies(mlir::scf::ForOp forLoop,
-                            std::vector<Operation *> &operations,
-                            DenseMap<Operation *, int> &opIndex,
-                            std::vector<std::vector<int>> &dependencies) {
-    Block *body = forLoop.getBody();
+  // Recursively calls itself if it finds a nested for loop.
+  // Returns the next index to use to uniquely identify operations
+  // on the body of the innerLoop.
+  int identifyDependencies(mlir::scf::ForOp outerLoop,
+                           mlir::scf::ForOp innerLoop,
+                           std::vector<Operation *> &operations,
+                           DenseMap<Operation *, int> &opIndex,
+                           std::vector<std::vector<int>> &dependencies,
+                           int startIndex) {
+    Block *body = innerLoop.getBody();
     auto withoutTerminator = --body->end();
-    int index = 0;
+    int index = startIndex;
     for (auto op = body->begin(); op != withoutTerminator; op++) {
       operations.push_back(&(*op));
       opIndex[&(*op)] = index;
@@ -823,11 +826,11 @@ struct AIEObjectFifoStatefulTransformPass
         auto operand = (&(*op))->getOperand(i);
         int dependencyIndex = -1;
 
-        if (operand == forLoop.getInductionVar()) {
+        if (operand == outerLoop.getInductionVar()) {
           dependencyIndex = LOOP_VAR_DEPENDENCY;
         } else {
           auto definingOp = operand.getDefiningOp();
-          if (definingOp->getBlock()->getParentOp() == forLoop)
+          if (opIndex.find(definingOp) != opIndex.end())
             dependencyIndex = opIndex[definingOp];
         }
         dependecyIndices.push_back(dependencyIndex);
@@ -835,59 +838,85 @@ struct AIEObjectFifoStatefulTransformPass
       dependencies.push_back(dependecyIndices);
 
       index++;
+
+      // if op was a nested for-loop, also keep track of dependencies inside it
+      if (auto nestedLoop = dyn_cast<mlir::scf::ForOp>(op))
+        index = identifyDependencies(outerLoop, nestedLoop, operations, opIndex,
+                                     dependencies, index);
     }
+    return index;
+  }
+
+  // Replace operands of cloned operation with results from other
+  // duplicated operations based on the index of the original
+  // operation and its dependencies.
+  void replaceOperands(OpBuilder &builder, Operation *clone,
+                       int originalOpIndex, mlir::Value base, int64_t step,
+                       bool inLoop, int currentDuplication,
+                       std::vector<std::vector<int>> &dependencies,
+                       std::vector<Operation *> &duplicatedOperations) {
+    auto numOperands = clone->getNumOperands();
+    for (int operandIndex = 0; (unsigned)operandIndex < numOperands;
+         operandIndex++) {
+      int originalDependencyIndex = dependencies[originalOpIndex][operandIndex];
+
+      if (originalDependencyIndex >= 0) {
+        // replace the operand with the result of operation with
+        // same index in current duplication
+        auto duplicatedOp = duplicatedOperations[originalDependencyIndex];
+        mlir::Value result = duplicatedOp->getResult(0);
+        clone->setOperand(operandIndex, result);
+
+      } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
+        int64_t increment_value = 0;
+        if (inLoop)
+          // +1 because we do not duplicate original loop body
+          increment_value = (currentDuplication + 1) * step;
+        else
+          increment_value = currentDuplication * step;
+
+        arith::ConstantOp increment = builder.create<arith::ConstantOp>(
+            builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
+            builder.getIndexType());
+        arith::AddIOp sum = builder.create<arith::AddIOp>(
+            builder.getUnknownLoc(), builder.getIndexType(), base,
+            increment->getResult(0));
+        clone->setOperand(operandIndex, sum->getResult(0));
+      }
+    }
+    duplicatedOperations.push_back(clone);
   }
 
   // Function that duplicates given operations for the given number
-  // of times. Assumes builder insertion point is set.
+  // of times. !!! Assumes builder insertion point is set. !!!
   // If there is a dependency on a loop induction variable, the given
   // base mlir::Value is used to resolve it.
   void duplicateBlock(OpBuilder &builder, int numDuplications,
                       std::vector<Operation *> &operations,
                       std::vector<std::vector<int>> &dependencies,
                       mlir::Value base, int64_t step, bool inLoop) {
-    int originalIndex = 0;
     std::vector<Operation *> duplicatedOperations; // operations in current
                                                    // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
-      originalIndex = 0;
       duplicatedOperations.clear();
-      for (auto op : operations) {
+      for (unsigned opIndex = 0; opIndex < operations.size(); opIndex++) {
         // for each operand, check whether there was a dependecy
+        auto op = operations[opIndex];
         auto clone = op->clone();
-        auto numOperands = clone->getNumOperands();
-        for (int operandIndex = 0; (unsigned)operandIndex < numOperands;
-             operandIndex++) {
-          int originalDependencyIndex =
-              dependencies[originalIndex][operandIndex];
-          if (originalDependencyIndex >= 0) {
-            // replace the operand with the result of operation with
-            // same index in current duplication
-            clone->setOperand(
-                operandIndex,
-                duplicatedOperations[originalDependencyIndex]->getResult(
-                    0)); // TODO: what if operation has
-                         // multiple results?
-          } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
-            int64_t increment_value = 0;
-            if (inLoop)
-              // +1 because we do not duplicate original loop body
-              increment_value = (i + 1) * step;
-            else
-              increment_value = i * step;
+        replaceOperands(builder, clone, opIndex, base, step, inLoop, i,
+                        dependencies, duplicatedOperations);
+        builder.insert(clone);
 
-            arith::ConstantOp increment = builder.create<arith::ConstantOp>(
-                builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
-                builder.getIndexType());
-            arith::AddIOp sum = builder.create<arith::AddIOp>(
-                builder.getUnknownLoc(), builder.getIndexType(), base,
-                increment->getResult(0));
-            clone->setOperand(operandIndex, sum->getResult(0));
+        if (auto nestedLoop = dyn_cast<mlir::scf::ForOp>(clone)) {
+          Block *body = nestedLoop.getBody();
+          auto withoutTerminator = --body->end();
+          for (auto loopOp = body->begin(); loopOp != withoutTerminator;
+               loopOp++) {
+            opIndex++;
+            replaceOperands(builder, &(*loopOp), opIndex, base, step, inLoop, i,
+                            dependencies, duplicatedOperations);
           }
         }
-        builder.insert(clone);
-        duplicatedOperations.push_back(clone);
-        originalIndex++;
       }
     }
   }
@@ -956,7 +985,8 @@ struct AIEObjectFifoStatefulTransformPass
             int64_t num_unrolls =
                 0; // number of times to unroll loop, not counting original body
 
-            identifyDependencies(forLoop, operations, opIndex, dependencies);
+            identifyDependencies(forLoop, forLoop, operations, opIndex,
+                                 dependencies, 0);
 
             if (num_iter <= unrollFactor) {
               // duplicate loop body and remove loop
@@ -1393,10 +1423,11 @@ struct AIEObjectFifoStatefulTransformPass
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
-          if (core.getTile() == *(linkOp->getOptionalSharedTile()))
+          if (core.getTile() == *(linkOp->getOptionalSharedTile())) {
             releaseOp->emitOpError("currently cannot access objectFifo used in "
                                    "ObjectFifoLinkOp");
-          return;
+            return;
+          }
         }
 
         // update index of next element to release for this objectFifo
@@ -1408,9 +1439,9 @@ struct AIEObjectFifoStatefulTransformPass
                        LockAction::Release);
 
         // register release op
-        if (releaseOps.find({op, portNum}) != releaseOps.end())
+        if (releaseOps.find({op, portNum}) != releaseOps.end()) {
           releaseOps[{op, portNum}].push_back(releaseOp);
-        else {
+        } else {
           std::vector<ObjectFifoReleaseOp> release = {releaseOp};
           releaseOps[{op, portNum}] = release;
         }
@@ -1428,10 +1459,11 @@ struct AIEObjectFifoStatefulTransformPass
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
-          if (core.getTile() == *(linkOp->getOptionalSharedTile()))
+          if (core.getTile() == *(linkOp->getOptionalSharedTile())) {
             acquireOp->emitOpError("currently cannot access objectFifo used in "
                                    "ObjectFifoLinkOp");
-          return;
+            return;
+          }
         }
 
         // index of next element to acquire for this objectFifo
@@ -1446,7 +1478,10 @@ struct AIEObjectFifoStatefulTransformPass
           ObjectFifoCreateOp otherOp = relOp.getObjectFifo();
           // TODO: operations may not be in the same block: currently only
           // support one block level of difference
+
           if (op == otherOp) {
+            // if they are already in the same block, check if releaseOp
+            // happened before
             if (acquireOp.getOperation()->getBlock() ==
                 relOp.getOperation()->getBlock()) {
               if (!acquireOp->isBeforeInBlock(relOp)) {
@@ -1460,6 +1495,9 @@ struct AIEObjectFifoStatefulTransformPass
             } else {
               Operation *acqBlockDefOp =
                   acquireOp.getOperation()->getBlock()->getParentOp();
+
+              // else, check if releaseOp happened before the block region
+              // with the acquireOp
               if (relOp.getOperation()->getBlock() ==
                   acqBlockDefOp->getBlock()) {
                 if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
@@ -1470,12 +1508,29 @@ struct AIEObjectFifoStatefulTransformPass
                                      // the subview is created
                   numRel += relOp.relNumber();
                 }
+
+                // else, check if the block region with releaseOp happened
+                // before...
               } else {
                 Operation *relBlockDefOp =
                     relOp.getOperation()->getBlock()->getParentOp();
+
+                // ...the acquireOp
                 if (acquireOp.getOperation()->getBlock() ==
                     relBlockDefOp->getBlock()) {
                   if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
+                    releaseOps[{op, portNum}].erase(
+                        releaseOps[{op, portNum}]
+                            .begin()); // to ensure that we do not account
+                                       // the ReleaseOps again later,
+                                       // after the subview is created
+                    numRel += relOp.relNumber();
+                  }
+
+                  // ...the block region with the acquireOp
+                } else if (acqBlockDefOp->getBlock() ==
+                           relBlockDefOp->getBlock()) {
+                  if (!acqBlockDefOp->isBeforeInBlock(relBlockDefOp)) {
                     releaseOps[{op, portNum}].erase(
                         releaseOps[{op, portNum}]
                             .begin()); // to ensure that we do not account
@@ -1520,6 +1575,8 @@ struct AIEObjectFifoStatefulTransformPass
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
                          LockAction::AcquireGreaterEqual);
 
+        // if objFifo was linked with others, find which objFifos
+        // elements to use
         ObjectFifoCreateOp target = op;
         if (linkOp)
           if (objFifoLinks.find(*linkOp) != objFifoLinks.end())

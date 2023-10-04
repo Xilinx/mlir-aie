@@ -1282,6 +1282,17 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
   }];
 }
 
+def AIE_EventOp: AIE_Op<"event", []> {
+  let summary = "Event instruction";
+  let description = [{
+    Event instruction.
+  }];
+  let arguments = (ins ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<1>]>:$val);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $val `)` attr-dict
+  }];
+}
 
 def AIE_GetStreamOp: AIE_Op<"getStream", [HasParent<"CoreOp">]>,
                  Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
@@ -1312,7 +1323,7 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
   let assemblyFormat = [{
-    `(` $streamValue `:` type($streamValue) `,` $channel `:` type($channel) `)` attr-dict
+    `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
   }];
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
@@ -1379,41 +1390,42 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{
     The `aie.objectFifo` operation creates a circular buffer established between a producer and one or 
-    more consumers, which are `aie.tile` operations. The `aie.objectFifo` instantiates the given number of 
-    buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after lowering, 
-    based on tile-adjacency. These elements represent the conceptual depth of the objectFifo or, more specifically,
-    of its object pool.
+    more consumers, which are `aie.tile` operations. The`aie.objectFifo` instantiates the given number of 
+    buffers (of given output type) and their locks in the Memory Module of the appropriate tile(s) after 
+    lowering, based on tile-adjacency. These elements represent the conceptual depth of the `objectFifo` or, 
+    more specifically, of its object pool.
 
-    For the producer and for each consumer, a different size (i.e., element number) can be specified. This will 
-    take effect in the case of consumers placed on tiles non-adjacent to the producer. Otherwise, the producer 
-    size will be applied. If a single size is specified, it will be applied to both producer and consumers.
+    For the producer and for each consumer, a different size (i.e., element number) can be specified as an 
+    array of integer values. This will take effect in the case of consumers placed on tiles non-adjacent to 
+    the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be 
+    applied to both producer and consumers.
 
-    This operation is then converted by the AIEObjectFifoStatefulTransformPass into buffers and their associated 
-    locks. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
+    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.buffers` and their associated 
+    `aie.locks`. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
     1-to-1 tile example:
     ```
-      AIE.objectFifo @of1 (%tile12, {%tile13}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of1 (%tile12, { %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between %tile12 and %tile13 of 4 elements, each a buffer of 16 32-bit integers.
-    Note: If there are no ObjectFifoAcquireOps corresponding to this objectFifo on the cores of %tile12 and %tile13, 
+    This operation creates an `objectFifo` between `%tile12` and `%tile23` of 4 elements, each a buffer of 16 32-bit integers.
+    Note: If there are no `ObjectFifoAcquireOps` corresponding to this `objectFifo` on the cores of `%tile12` and `%tile23`, 
     then the depths of the object pools on each tile will be 4, as specified. Otherwise, the cores are scanned and the
     highest number of acquired elements (+1 for prefetching) will be used instead, to ensure minimal resource usage.
  
     1-to-2 tiles broadcast example:
     ```
-      AIE.objectFifo @of2 (%tile12, {%tile13, %tile23}, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of2 (%tile12, { %tile13, %tile23 }, 4 : i32) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between %tile12 and tiles %tile13, %tile23 of 4 elements, each a buffer of x16 
+    This operation creates an `objectFifo` between `%tile12` and tiles `%tile13`, `%tile23` of 4 elements, each a buffer of x16 
     32-bit integers.
 
     1-to-2 tiles broadcast with explicit sizes example:
     ```
-      AIE.objectFifo @of3 (%tile12, {%tile13, %tile23}, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
+      AIE.objectFifo @of3 (%tile12, { %tile13, %tile23 }, [2, 3, 4]) : !AIE.objectFifo<memref<16xi32>> 
     ```
-    This operation creates an objectFifo between %tile12, %tile13 and %tile23. The depths of the objectFifo object pool 
-    at each tile are respectively 2, 3 and 4 for tiles %tile12, %tile13 and %tile23. This overrides the depth analysis 
+    This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool 
+    at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis 
     specified in the first example.
 
     ## Data Layout Transformations on AIE-ML devices
@@ -1504,12 +1516,12 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
-    The "aie.objectFifo.link" operation allows to mark two objectFifos as linked. This implies that the two objectFifos form
-    one dataflow movement which is split accross multiple objectFifos. Specifically, during the objectFifo lowering there will
-    be less memory elements generated at the link point as the two objectFifos can share.
+    The `aie.objectFifo.link` operation allows to mark two `objectFifos` as linked. This implies that the two `objectFifos` form
+    one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
+    be less memory elements generated at the link point as the two `objectFifos` can share.
 
-    The two objectFifos which are linked must have a link point (i.e., a shared AIE tile).
-    In L1, only objectFifos of same size may be linked. In L2, different sized objectFifos can be linked.
+    The two `objectFifos` which are linked must have a link point (i.e., a shared AIE tile).
+    In L1, only `objectFifos` of same size may be linked. In L2, different sized objectFifos can be linked.
 
     Example:
     ```
@@ -1517,11 +1529,11 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
       AIE.objectFifo @of2 (%t72, { %t74 }, 2) : !AIE.objectFifo<memref<64xi16>>
       AIE.objectFifo.link [@of1] -> [@of2] ()
     ```
-    This operation links two objectFifos which have tile %t72 as a link point.
+    This operation links two `objectFifos` which have tile `%t72` as a link point.
 
-    To achieve a broadcast pattern through the link tile, the output objectFifo should have a list of all the consumers tiles.
-    To achieve a distribute pattern from the link tile, there should be multiple output objectFifos in the LinkOp. In this case,
-    parts will be taken out of the input objectFifo's buffers based on the sizes of the output objectFifos, in the order they 
+    To achieve a broadcast pattern through the link tile, the output `objectFifo` should have a list of all the consumers tiles.
+    To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the LinkOp. In this case,
+    parts will be taken out of the input `objectFifo`'s buffers based on the sizes of the output `objectFifos`, in the order they 
     were given in the LinkOp.
     The join pattern is the exact inverse of the distribute one.
   }];
@@ -1555,10 +1567,10 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
-    to the shim tile(s) used in an objectFifo creation. During the objectFifo lowering pass, shim DMAs that are
+    to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
     generated for those shim tiles will use the registered external buffers. This is currently done because 
     external buffers typically have a different size than the AIE buffers which are used in the AIE tiles of the
-    same objectFifos.
+    same `objectFifos`.
 
     Example:
     ```
@@ -1592,14 +1604,14 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
     The `aie.objectFifo.acquire` operation first acquires the locks of the next given number 
-    of objects in the objectFifo. The mode it acquires the locks in is chosen based on the port 
+    of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port 
     (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of 
     the acquired objects which can be used to access them.
 
-    This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations on 
-    the locks of the objectFifo objects that will be acquired. Under the hood, the operation only performs
+    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations on 
+    the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
     new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
-    to be released by the same process, then performing another acquire operation on the same objectFifo 
+    to be released by the same process, then performing another acquire operation on the same `objectFifo` 
     within the same process of size two or less will not result in any new useLock operations (and for size 
     greater than two, only (size - 2) useLock operations will be performed).
 
@@ -1607,7 +1619,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
     ```
       %subview = AIE.objectFifo.acquire @of1 (Consume, 2) : !AIE.objectFifoSubview<memref<16xi32>>
     ```
-    This operation acquires the locks of the next two objects in the objectFifo named @of1 from its consumer 
+    This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer 
     port and returns a subview of the acquired objects.
   }];
 
@@ -1635,16 +1647,16 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
   let summary = "Release operation for object locks in an ObjectFifo";
   let description = [{
     The `aie.objectFifo.release` operation releases the locks of the given number of objects 
-    in the objectFifo. The mode it releases the locks in is chosen based on the `port` 
+    in the `objectFifo`. The mode it releases the locks in is chosen based on the `port` 
     (producer: release for read, consumer: release for write). 
 
-    This operation is then converted by the AIEObjectFifoStatefulTransformPass into useLock operations.
+    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.useLock` operations.
 
     Example:
     ```
       AIE.objectFifo.release @of1 (Produce, 1)
     ```
-    This operation releases the lock of the next object in the objectFifo named @of1 from producer port.
+    This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
   }];
 
   let arguments = (
@@ -1668,7 +1680,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
 def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
   let summary = "ObjectFifoSubview type accessor method";
   let description = [{
-    Access the Nth element of a value of ObjectFifoSubview type.
+    Access the Nth element of a value of `ObjectFifoSubview` type.
 
     Example:
     ```
@@ -1676,7 +1688,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
       %elem = AIE.objectFifo.subview.access %subview[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
     ```
     In this example, %elem is the first object of the subview. Note that this may not correspond to the first element of 
-    the objectFifo if other acquire operations took place beforehand.
+    the `objectFifo` if other acquire operations took place beforehand.
 
   }];
 
@@ -1702,9 +1714,9 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
   let description = [{
-    The `aie.registerProcess` operation allows the user to register a function to an objectFifo along with its 
+    The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its 
     acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
-    on the objectFifo elements. This generated sequence is often in the form of a for loop, however, in the case 
+    on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case 
     of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop. 
     This may result in multiple for loops of different sizes being generated. If there is no repetition, then no 
     loops will be generated.

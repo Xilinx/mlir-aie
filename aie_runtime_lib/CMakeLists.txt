@@ -14,6 +14,7 @@ function(add_aie_runtime_libs arch)
       # Compile me_basic.o
       add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
                       COMMAND ${VITIS_XCHESSCC} -p me -P ${VITIS_${arch}_INCLUDE_DIR}
+                      -C Release
                       -I ${VITIS_${arch}_INCLUDE_DIR}/runtime/include/
                       -d -c ${CMAKE_CURRENT_SOURCE_DIR}/me_basic.c
                       -o ${CMAKE_CURRENT_BINARY_DIR}/me_basic.o
@@ -31,7 +32,10 @@ function(add_aie_runtime_libs arch)
 
 
   set(INSTALLS
-      chess_intrinsic_wrapper.cpp)
+      chess_intrinsic_wrapper.cpp
+      lut_based_ops.cpp
+      lut_based_ops.h
+      vec_math.h)
 
   foreach(file ${INSTALLS})
       add_custom_target(aie-copy-${arch}-runtime-libs-${file} ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/${file})

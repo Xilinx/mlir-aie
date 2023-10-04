@@ -7,6 +7,8 @@
 
 add_subdirectory(aiecc)
 add_subdirectory(aie-opt)
-add_subdirectory(aie-reset)
+if(NOT WIN32)
+  add_subdirectory(aie-reset)
+endif()
 add_subdirectory(aie-translate)
 add_subdirectory(chess-clang)

@@ -173,6 +173,28 @@ void mlir_aie_clear_tile_memory(aie_libxaie_ctx_t *ctx, int col, int row) {
   }
 }
 
+static void print_aie1_dmachannel_status(aie_libxaie_ctx_t *ctx, int col,
+                                         int row, const char *dmatype,
+                                         const char *channel, int channelNum,
+                                         int running, int stalled) {
+  printf("%s [%d, %d] AIE1 %s%d ", dmatype, col, row, channel, channelNum);
+  switch (running) {
+  case 0:
+    printf("IDLE ");
+    break;
+  case 1:
+    printf("STARTING ");
+    break;
+  case 2:
+    printf("RUNNING ");
+    break;
+  }
+  if (stalled) {
+    printf("Stalled on lock");
+  }
+  printf("\n");
+}
+
 static void print_aie2_dmachannel_status(aie_libxaie_ctx_t *ctx, int col,
                                          int row, const char *dmatype,
                                          const char *channel, int channelNum,
@@ -356,11 +378,23 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
     s2mm1_current_bd = (dma_s2mm_status >> 20) & 0xf;
     mm2s0_current_bd = (dma_mm2s_status >> 16) & 0xf;
     mm2s1_current_bd = (dma_mm2s_status >> 20) & 0xf;
+    u32 s2mm_ch0_stalled = (dma_s2mm_status >> 4) & 0x1;
+    u32 s2mm_ch1_stalled = (dma_s2mm_status >> 5) & 0x1;
+    u32 mm2s_ch0_stalled = (dma_mm2s_status >> 4) & 0x1;
+    u32 mm2s_ch1_stalled = (dma_mm2s_status >> 5) & 0x1;
 
     printf("DMA [%d, %d] mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
            "s2mm_status/0ctrl/1ctrl is %08X %02X %02X\n",
            col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
            dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control);
+    print_aie1_dmachannel_status(ctx, col, row, "DMA", "s2mm", 0,
+                                 s2mm_ch0_running, s2mm_ch0_stalled);
+    print_aie1_dmachannel_status(ctx, col, row, "DMA", "s2mm", 1,
+                                 s2mm_ch1_running, s2mm_ch1_stalled);
+    print_aie1_dmachannel_status(ctx, col, row, "DMA", "mm2s", 0,
+                                 mm2s_ch0_running, mm2s_ch0_stalled);
+    print_aie1_dmachannel_status(ctx, col, row, "DMA", "mm2s", 1,
+                                 mm2s_ch1_running, mm2s_ch1_stalled);
     for (int bd = 0; bd < 8; bd++) {
       u32 dma_bd_addr_a;
       XAie_Read32(&(ctx->DevInst), tileAddr + 0x0001D000 + (0x20 * bd),
@@ -575,11 +609,23 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
     s2mm_current_bd[1] = (dma_s2mm_status >> 20) & 0xf;
     mm2s_current_bd[0] = (dma_mm2s_status >> 16) & 0xf;
     mm2s_current_bd[1] = (dma_mm2s_status >> 20) & 0xf;
+    u32 s2mm_ch0_stalled = (dma_s2mm_status >> 4) & 0x1;
+    u32 s2mm_ch1_stalled = (dma_s2mm_status >> 5) & 0x1;
+    u32 mm2s_ch0_stalled = (dma_mm2s_status >> 4) & 0x1;
+    u32 mm2s_ch1_stalled = (dma_mm2s_status >> 5) & 0x1;
 
     printf("ShimDMA [%d, %d] AIE1 mm2s_status/0ctrl/1ctrl is %08X %02X %02X, "
            "s2mm_status/0ctrl/1ctrl is %08X %02X %02X\n",
            col, row, dma_mm2s_status, dma_mm2s0_control, dma_mm2s1_control,
            dma_s2mm_status, dma_s2mm0_control, dma_s2mm1_control);
+    print_aie1_dmachannel_status(ctx, col, row, "ShimDMA", "s2mm", 0,
+                                 s2mm_ch0_running, s2mm_ch0_stalled);
+    print_aie1_dmachannel_status(ctx, col, row, "ShimDMA", "s2mm", 1,
+                                 s2mm_ch1_running, s2mm_ch1_stalled);
+    print_aie1_dmachannel_status(ctx, col, row, "ShimDMA", "mm2s", 0,
+                                 mm2s_ch0_running, mm2s_ch0_stalled);
+    print_aie1_dmachannel_status(ctx, col, row, "ShimDMA", "mm2s", 1,
+                                 mm2s_ch1_running, mm2s_ch1_stalled);
   }
 
   u32 locks;
@@ -740,29 +786,34 @@ void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
     }
   }
 
-  const char *core_status_strings[] = {"Enabled",
-                                       "In Reset",
-                                       "Memory Stall S",
-                                       "Memory Stall W",
-                                       "Memory Stall N",
-                                       "Memory Stall E",
-                                       "Lock Stall S",
-                                       "Lock Stall W",
-                                       "Lock Stall N",
-                                       "Lock Stall E",
-                                       "Stream Stall S",
-                                       "Stream Stall W",
-                                       "Stream Stall N",
-                                       "Stream Stall E",
-                                       "Cascade Stall Master",
-                                       "Cascade Stall Slave",
-                                       "Debug Halt",
-                                       "ECC Error",
-                                       "ECC Scrubbing",
-                                       "Error Halt",
-                                       "Core Done"};
+  // Note that not all strings are valid for all architectures
+  const char *core_status_strings[] = {
+      "Enabled",
+      "In Reset",
+      "Memory Stall S",
+      "Memory Stall W",
+      "Memory Stall N",
+      "Memory Stall E",
+      "Lock Stall S",
+      "Lock Stall W",
+      "Lock Stall N",
+      "Lock Stall E",
+      "Stream Stall SS0",
+      "Stream Stall SS1", // AIE1 only
+      "Stream Stall MS0",
+      "Stream Stall MS1", // AIE1 only
+      "Cascade Stall Slave",
+      "Cascade Stall Master",
+      "Debug Halt",
+      "ECC Error",
+      "ECC Scrubbing",
+      "Error Halt",
+      "Core Done",
+      "Core Processor Bus Stall", // AIE2 only
+  };
+
   printf("Core Status: ");
-  for (int i = 0; i <= 20; i++) {
+  for (int i = 0; i <= 21; i++) {
     if ((status >> i) & 0x1)
       printf("%s ", core_status_strings[i]);
   }

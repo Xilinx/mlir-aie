@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
+import os
+
 aie_link_with_xchesscc = @CONFIG_LINK_WITH_XCHESSCC@
 aie_compile_with_xchesscc = @CONFIG_COMPILE_WITH_XCHESSCC@
 aie_disable_link = @CONFIG_DISABLE_LINK@
@@ -13,3 +15,8 @@ aie_unified_compile = True
 host_disable_compile = @CONFIG_DISABLE_HOST_COMPILE@
 peano_install_dir = "@CONFIG_PEANO_INSTALL_DIR@"
 host_architecture = "@LLVM_HOST_TRIPLE@"
+
+def install_path():
+    path = os.path.dirname(os.path.realpath(__file__))
+    path = os.path.join(path, '..', '..', '..', '..')
+    return os.path.realpath(path)

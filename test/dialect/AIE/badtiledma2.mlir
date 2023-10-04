@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.dmaBd' op can only access a buffer in the same tile.
+// CHECK: error{{.*}}'AIE.dmaBd' op can only access a buffer in the same tile.
 
 module @test {
     %t63 = AIE.tile(6, 3)

@@ -53,6 +53,7 @@ config.has_libxaie = @CONFIG_HAS_LIBXAIE@
 config.extraAieCcFlags = "@extraAieCcFlags@"
 config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
 config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
+config.enable_python_tests = @ENABLE_PYTHON_TESTS@
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.

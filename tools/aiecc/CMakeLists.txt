@@ -5,18 +5,10 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-set(PYTHON_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/bin)
-
-set(AIECC_SUBFILES
-  cl_arguments.py
-  __init__.py
-  main.py)
+set(AIECC_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/bin)
 
 set(AIECC_FILES
-  aiecc.py
-  aiecc/cl_arguments.py
-  aiecc/__init__.py
-  aiecc/main.py)
+  aiecc.py)
 
 set(AIECC_TARGETS ${AIECC_FILES})
 list(TRANSFORM AIECC_TARGETS PREPEND ${PROJECT_BINARY_DIR}/bin/)
@@ -53,8 +45,8 @@ endif()
 
 set(CONFIG_PEANO_INSTALL_DIR ${PEANO_INSTALL_DIR})
 
-configure_file(aiecc/configure.py.in ${PROJECT_BINARY_DIR}/bin/aiecc/configure.py)
-install(PROGRAMS ${PROJECT_BINARY_DIR}/bin/aiecc/configure.py DESTINATION ${PYTHON_INSTALL_PATH}/aiecc)
+configure_file(aiecc/configure.py.in ${PROJECT_BINARY_DIR}/python/aie/compiler/aiecc/configure.py)
+install(PROGRAMS ${PROJECT_BINARY_DIR}/python/aie/compiler/aiecc/configure.py DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc)
 
 # Stuff our python into the build area:
 add_custom_target(aiecc.py ALL DEPENDS ${AIECC_TARGETS})
@@ -69,15 +61,6 @@ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)")
 add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/bin/aiecc.py COMMAND
 ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/copy_aiecc.cmake)
 
-foreach(file ${AIECC_SUBFILES})
-add_custom_command(OUTPUT ${PROJECT_BINARY_DIR}/bin/aiecc/${file}
-                   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/aiecc/${file}
-                   ${PROJECT_BINARY_DIR}/bin/aiecc/${file}
-                   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/aiecc/${file})
-endforeach()
 
 # Install our python stuff too.
-install(PROGRAMS aiecc.py DESTINATION ${PYTHON_INSTALL_PATH})
-foreach(file ${AIECC_SUBFILES})
-  install(PROGRAMS aiecc/${file} DESTINATION ${PYTHON_INSTALL_PATH}/aiecc)
-endforeach()
+install(PROGRAMS aiecc.py DESTINATION ${AIECC_INSTALL_PATH})

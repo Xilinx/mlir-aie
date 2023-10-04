@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.buffer' op in Column 1 and Row 1 is accessed from an unreachable tile in Column 4 and Row 4
+// CHECK: error{{.*}}'AIE.buffer' op in Column 1 and Row 1 is accessed from an unreachable tile in Column 4 and Row 4
 
 module @test {
   %t1 = AIE.tile(1, 1)

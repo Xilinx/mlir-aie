@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.useLock' op used in a DMA block that have multiple locks.
+// CHECK: error{{.*}}'AIE.useLock' op used in a DMA block that have multiple locks.
 
 module @test {
     %t63 = AIE.tile(6, 3)

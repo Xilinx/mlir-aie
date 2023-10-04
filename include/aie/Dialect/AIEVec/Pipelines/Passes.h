@@ -144,4 +144,7 @@ void registerAIEVecPipelines();
 } // namespace aievec
 } // namespace xilinx
 
+/// Create a pass that removes unnecessary Copy operations.
+std::unique_ptr<::mlir::Pass> createCopyRemovalPass();
+
 #endif // AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H

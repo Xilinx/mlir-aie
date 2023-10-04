@@ -14,14 +14,18 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/Support/Debug.h"
 #include <tuple>
 #include <utility>
 
 #include "FoldMulAddChainToConvOp.h"
+
+#define DEBUG_TYPE "fold-mul-add-chain-to-conv"
 
 using namespace mlir;
 using namespace arith;
@@ -228,13 +232,56 @@ struct LongestConvMACChainAnalysis {
     if (!mulOpLhsDefOp || !mulOpRhsDefOp)
       return nullptr;
 
+    Value convMacRhs = nullptr;
+    uint8_t convMacBcastIdx = 0;
+
+    auto getConvMacRhs = [&](Operation *mulOpOperand) -> bool {
+      SetVector<Operation *> opBwdSlices;
+      auto opFilter = [](Operation *op) {
+        return isa<aievec::BroadcastOp>(op) || isa<aievec::ExtOp>(op) ||
+               isa<aievec::ConcatOp>(op);
+      };
+
+      getBackwardSlice(mulOpOperand, &opBwdSlices, opFilter);
+      opBwdSlices.insert(mulOpOperand);
+
+      LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");
+      for (auto op : opBwdSlices) {
+        LLVM_DEBUG(llvm::dbgs() << *op << "\n");
+      }
+      LLVM_DEBUG(llvm::dbgs() << "]\n");
+
+      if (opBwdSlices.size() == 1) {
+        if (auto bcastOp = dyn_cast<aievec::BroadcastOp>(opBwdSlices[0])) {
+          convMacRhs = bcastOp.getSource();
+          convMacBcastIdx = bcastOp.getIdx();
+          return true;
+        }
+      } else if (opBwdSlices.size() >= 3) {
+        auto sliceSz = opBwdSlices.size();
+        if ((isa<aievec::ExtOp>(opBwdSlices[sliceSz - 3]) &&
+             isa<aievec::BroadcastOp>(opBwdSlices[sliceSz - 2]) &&
+             isa<aievec::ConcatOp>(opBwdSlices[sliceSz - 1])) ||
+            (isa<aievec::ConcatOp>(opBwdSlices[sliceSz - 3]) &&
+             isa<aievec::BroadcastOp>(opBwdSlices[sliceSz - 2]) &&
+             isa<aievec::ExtOp>(opBwdSlices[sliceSz - 1]))) {
+          convMacRhs = opBwdSlices[sliceSz - 3]->getOperand(0);
+          convMacBcastIdx =
+              dyn_cast<aievec::BroadcastOp>(opBwdSlices[sliceSz - 2]).getIdx();
+          return true;
+        }
+      }
+
+      return false;
+    };
+
     // Obtain the broadcast operation feeding into the MulIOp
-    auto bcastOp = dyn_cast<aievec::BroadcastOp>(mulOpRhsDefOp);
-    if (!bcastOp) {
-      bcastOp = dyn_cast<aievec::BroadcastOp>(mulOpLhsDefOp);
-      std::swap(mulOpLhsDefOp, mulOpRhsDefOp);
+    if (!getConvMacRhs(mulOpRhsDefOp)) {
+      if (getConvMacRhs(mulOpLhsDefOp)) {
+        std::swap(mulOpLhsDefOp, mulOpRhsDefOp);
+      }
     }
-    if (!bcastOp)
+    if (!convMacRhs)
       return nullptr;
 
     // Obtain the ext or ext->shift op feeding into the MulIOp
@@ -251,8 +298,7 @@ struct LongestConvMACChainAnalysis {
     if (!extOp)
       return nullptr;
 
-    Value lhs = extOp.getSource();
-    Value rhs = bcastOp.getSource();
+    Value convMacLhs = extOp.getSource();
     uint8_t shift = 0;
     if (shiftOp) {
       auto shiftConstDefOp =
@@ -263,8 +309,9 @@ struct LongestConvMACChainAnalysis {
         shift = 8 * shiftAttr.getInt() / getElementSizeInBits(vType);
       }
     }
-    uint8_t bcastIdx = bcastOp.getIdx();
-    return std::make_unique<ConvMac>(lhs, rhs, shift, bcastIdx);
+
+    return std::make_unique<ConvMac>(convMacLhs, convMacRhs, shift,
+                                     convMacBcastIdx);
   }
 
   std::unique_ptr<ConvMac> getConvMacFromAddOp(arith::AddIOp addOp) {
@@ -490,16 +537,16 @@ struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
     markAllAnalysesPreserved();
     AnalysisManager am = getAnalysisManager();
     LongestConvMACChainAnalysis::am = &am;
-    func::FuncOp func = getOperation();
+    Operation *op = getOperation();
 
     // Compute all the chains
-    func.walk([&](arith::AddIOp addOp) {
+    op->walk([&](arith::AddIOp addOp) {
       if (isa<VectorType>(addOp.getResult().getType()))
         am.getChildAnalysis<LongestConvMACChainAnalysis>(addOp);
     });
 
     // Sort the chains, ready to split by group
-    func.walk([&](arith::AddIOp addOp) {
+    op->walk([&](arith::AddIOp addOp) {
       if (isa<VectorType>(addOp.getResult().getType())) {
         auto &analysis =
             am.getChildAnalysis<LongestConvMACChainAnalysis>(addOp);
@@ -509,7 +556,7 @@ struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
     });
 
     if (printResult) {
-      func.walk([&](arith::AddIOp addOp) {
+      op->walk([&](arith::AddIOp addOp) {
         if (isa<VectorType>(addOp.getResult().getType())) {
           auto &macChainAnalysis =
               am.getChildAnalysis<LongestConvMACChainAnalysis>(addOp);

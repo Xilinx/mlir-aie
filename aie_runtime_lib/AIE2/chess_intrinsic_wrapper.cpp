@@ -19,9 +19,11 @@
 /// when parsing .ll code containing standard intrinsic names, so these symbols
 /// are defined that way.
 
-extern "C" void llvm___aie___lock___acquire___reg(unsigned id, unsigned val) {
+extern "C" void llvm___aie2___acquire(unsigned id, unsigned val) {
   acquire_equal(id, val);
 }
-extern "C" void llvm___aie___lock___release___reg(unsigned id, unsigned val) {
+extern "C" void llvm___aie2___release(unsigned id, unsigned val) {
   release(id, val);
 }
+extern "C" void llvm___aie___event0() { event0(); }
+extern "C" void llvm___aie___event1() { event1(); }

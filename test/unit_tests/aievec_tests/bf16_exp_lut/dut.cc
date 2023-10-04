@@ -1,4 +1,4 @@
-#include "exp_lut.h"
+#include "lut_based_ops.h"
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2) {
   size_t v3 = 0;
   size_t v4 = 1024;

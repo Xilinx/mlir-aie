@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-localize-locks --aie-standard-lowering="tilecol=3 tilerow=3" %s | FileCheck %s
 
 // CHECK:    call @llvm.aie.lock.acquire.reg({{.*}}, %c0_i32) : (i32, i32) -> ()
-// CHECK:    call @llvm.aie.put.ms(%c16_i32, %c0_i32_0) : (i32, i32) -> ()
+// CHECK:    call @llvm.aie.put.ms(%c0_i32_0, %c16_i32) : (i32, i32) -> ()
 // CHECK:    {{.*}} = call @llvm.aie.get.wss(%c0_i32_0) : (i32) -> i128
 // CHECK:    call @llvm.aie.put.mcd(%c1_i384) : (i384) -> ()
 // CHECK:    call @llvm.aie.lock.release.reg({{.*}}, %c1_i32) : (i32, i32) -> ()

@@ -96,7 +96,6 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
     else
       funcName += "ms";
 
-    llvm::dbgs() << "FINDING: " << funcName << "\n";
     auto putMSFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMSFunc)
       return module.emitOpError("Could not find the intrinsic function!");
@@ -198,11 +197,24 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
   matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (!isa<DeviceOp>(useLock->getParentOp())) {
-      std::string funcName = "llvm.aie.lock.";
+      auto device = useLock->getParentOfType<xilinx::AIE::DeviceOp>();
+      if (!device) {
+        return module.emitOpError("Device Not found!");
+      }
+      const auto &target_model = device.getTargetModel();
+
+      // Generate the intrinsic name
+      std::string funcName = "";
+      if (target_model.getTargetArch() == AIEArch::AIE1)
+        funcName = "llvm.aie.lock.";
+      else
+        funcName = "llvm.aie2.";
       if (useLock.acquire() || useLock.acquire_ge())
-        funcName += "acquire.reg";
+        funcName += "acquire";
       else if (useLock.release())
-        funcName += "release.reg";
+        funcName += "release";
+      if (target_model.getTargetArch() == AIEArch::AIE1)
+        funcName += ".reg";
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
       if (!useLockFunc)
@@ -332,6 +344,29 @@ template <typename OpTy> void outlineOps(AIE::DeviceOp device) {
     op->moveBefore(device);
 }
 
+// Lower AIE.event to llvm.aie.event intrinsic
+struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
+  using OpConversionPattern<EventOp>::OpConversionPattern;
+  ModuleOp &module;
+
+  AIEEventOpToStdLowering(MLIRContext *context, ModuleOp &m,
+                          PatternBenefit benefit = 1)
+      : OpConversionPattern<EventOp>(context, benefit), module(m) {}
+
+  LogicalResult
+  matchAndRewrite(EventOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    std::string funcName = "llvm.aie.event" + std::to_string(op.getVal());
+    auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
+    if (!eventFunc)
+      return module.emitOpError("Could not find the intrinsic function!");
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc,
+                                  ValueRange({}));
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
 struct AIECoreToStandardPass
     : public AIECoreToStandardBase<AIECoreToStandardPass> {
   void runOnOperation() override {
@@ -339,11 +374,27 @@ struct AIECoreToStandardPass
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
+    if (m.getOps<DeviceOp>().empty()) {
+      m.emitOpError("expected AIE.device operation at toplevel");
+      signalPassFailure();
+    }
+    DeviceOp device = *(m.getOps<DeviceOp>().begin());
+    const auto &target_model = device.getTargetModel();
+    const char *triple;
+    switch (target_model.getTargetArch()) {
+    case AIEArch::AIE1:
+      triple = "aie";
+      break;
+    case AIEArch::AIE2:
+      triple = "aie2";
+      break;
+    }
+
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.  In reality this should
     // pick the 'aie' target triple.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
-               builder.getStringAttr("aie"));
+               builder.getStringAttr(triple));
 
     // Extract all CoreOps
     // Create an LLVM func for each CoreOp
@@ -355,12 +406,6 @@ struct AIECoreToStandardPass
     DenseMap<std::pair<Operation *, int>, LockOp> locks;
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
     DenseMap<Operation *, SwitchboxOp> switchboxes;
-
-    if (m.getOps<DeviceOp>().empty()) {
-      m.emitOpError("expected AIE.device operation at toplevel");
-      signalPassFailure();
-    }
-    DeviceOp device = *(m.getOps<DeviceOp>().begin());
 
     NetlistAnalysis NL(device, tiles, cores, mems, locks, tileToBuffers,
                        switchboxes);
@@ -381,11 +426,26 @@ struct AIECoreToStandardPass
     Type int384Type = IntegerType::get(builder.getContext(), 384);
     Type floatType = FloatType::getF32(builder.getContext());
 
+    // Note that not all of these are valid for a particular design, or needed.
+    // For right now, we will just accept the noise.
+
     // llvm.func @debug_i32(%val: !llvm.i32) -> ()
     builder
         .create<func::FuncOp>(
             builder.getUnknownLoc(), "debug_i32",
             FunctionType::get(builder.getContext(), {int32Type}, {}))
+        .setPrivate();
+
+    // llvm.func @llvm.aie.event0() -> ()
+    builder
+        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.event0",
+                              FunctionType::get(builder.getContext(), {}, {}))
+        .setPrivate();
+
+    // llvm.func @llvm.aie.event1() -> ()
+    builder
+        .create<func::FuncOp>(builder.getUnknownLoc(), "llvm.aie.event1",
+                              FunctionType::get(builder.getContext(), {}, {}))
         .setPrivate();
 
     // llvm.func @llvm.aie.put.ms(%channel: !llvm.i1, %stream_val: !llvm.i32) ->
@@ -463,6 +523,22 @@ struct AIECoreToStandardPass
             FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
         .setPrivate();
 
+    // llvm.func @llvm.aie2.acquire(%lock_id: !llvm.i32, %lock_val:
+    // !llvm.i32) ->()v
+    builder
+        .create<func::FuncOp>(
+            builder.getUnknownLoc(), "llvm.aie2.acquire",
+            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
+        .setPrivate();
+
+    // llvm.func @llvm.aie2.release(%lock_id: !llvm.i32, %lock_val:
+    // !llvm.i32) ->()
+    builder
+        .create<func::FuncOp>(
+            builder.getUnknownLoc(), "llvm.aie2.release",
+            FunctionType::get(builder.getContext(), {int32Type, int32Type}, {}))
+        .setPrivate();
+
     IRMapping mapper;
     ConversionTarget target(getContext());
     target.addLegalDialect<func::FuncDialect>();
@@ -476,13 +552,17 @@ struct AIECoreToStandardPass
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,
                  AIEPutCascadeToStdLowering, AIEGetCascadeToStdLowering,
-                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering>(
-        m.getContext(), m);
+                 AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
+                 AIEEventOpToStdLowering>(m.getContext(), m);
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, mapper);
-    patterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
-                                        tileToBuffers, 1, tileCol, tileRow);
     if (failed(applyPartialConversion(m, target, std::move(patterns))))
+      signalPassFailure();
+
+    RewritePatternSet outlinePatterns(&getContext());
+    outlinePatterns.add<AIECoreToStandardFunc>(
+        m.getContext(), m, mapper, tileToBuffers, 1, tileCol, tileRow);
+    if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
       signalPassFailure();
 
     // Move all the func.func ops and memref.globals from the device to the

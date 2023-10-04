@@ -5,9 +5,12 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
+if(NOT WIN32)
+  add_compile_options(-Wno-unknown-warning-option)
+endif()
 
-add_compile_options(-Wno-unknown-warning-option)
-add_mlir_dialect_library(AIETransforms
+add_mlir_dialect_library(
+  AIETransforms
   AIEAssignBuffers.cpp
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
@@ -35,5 +38,4 @@ add_mlir_dialect_library(AIETransforms
   MLIRIR
   MLIRPass
   MLIRSupport
-  MLIRTransformUtils
-  )
+  MLIRTransformUtils)

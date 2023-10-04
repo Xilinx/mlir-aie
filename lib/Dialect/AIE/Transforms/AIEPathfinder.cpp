@@ -38,13 +38,14 @@ WireBundle getConnectingBundle(WireBundle dir) {
   }
 }
 
-Pathfinder::Pathfinder() { initializeGraph(0, 0); }
+Pathfinder::Pathfinder() {}
 
-Pathfinder::Pathfinder(int _maxcol, int _maxrow) {
-  initializeGraph(_maxcol, _maxrow);
+Pathfinder::Pathfinder(int _maxcol, int _maxrow, DeviceOp &d) {
+  initializeGraph(_maxcol, _maxrow, d);
 }
 
-void Pathfinder::initializeGraph(int maxcol, int maxrow) {
+void Pathfinder::initializeGraph(int maxcol, int maxrow, DeviceOp &d) {
+  const auto &targetModel = d.getTargetModel();
   // make grid of switchboxes
   for (int row = 0; row <= maxrow; row++) {
     for (int col = 0; col <= maxcol; col++) {
@@ -54,20 +55,32 @@ void Pathfinder::initializeGraph(int maxcol, int maxrow) {
       graph[id].pred = 0;
       graph[id].processed = false;
       if (row > 0) { // if not in row 0 add channel to North/South
-        auto north_edge = add_edge(id - maxcol - 1, id, graph).first;
-        graph[north_edge].bundle = WireBundle::North;
-        graph[north_edge].max_capacity = 6;
-        auto south_edge = add_edge(id, id - maxcol - 1, graph).first;
-        graph[south_edge].bundle = WireBundle::South;
-        graph[south_edge].max_capacity = 4;
+        if (auto max_capacity = targetModel.getNumSourceSwitchboxConnections(
+                col, row, WireBundle::South)) {
+          auto north_edge = add_edge(id - maxcol - 1, id, graph).first;
+          graph[north_edge].bundle = WireBundle::North;
+          graph[north_edge].max_capacity = max_capacity;
+        }
+        if (auto max_capacity = targetModel.getNumDestSwitchboxConnections(
+                col, row, WireBundle::South)) {
+          auto south_edge = add_edge(id, id - maxcol - 1, graph).first;
+          graph[south_edge].bundle = WireBundle::South;
+          graph[south_edge].max_capacity = max_capacity;
+        }
       }
       if (col > 0) { // if not in col 0 add channel to East/West
-        auto east_edge = add_edge(id - 1, id, graph).first;
-        graph[east_edge].bundle = WireBundle::East;
-        graph[east_edge].max_capacity = 4;
-        auto west_edge = add_edge(id, id - 1, graph).first;
-        graph[west_edge].bundle = WireBundle::West;
-        graph[west_edge].max_capacity = 4;
+        if (auto max_capacity = targetModel.getNumSourceSwitchboxConnections(
+                col, row, WireBundle::West)) {
+          auto east_edge = add_edge(id - 1, id, graph).first;
+          graph[east_edge].bundle = WireBundle::East;
+          graph[east_edge].max_capacity = max_capacity;
+        }
+        if (auto max_capacity = targetModel.getNumDestSwitchboxConnections(
+                col, row, WireBundle::West)) {
+          auto west_edge = add_edge(id, id - 1, graph).first;
+          graph[west_edge].bundle = WireBundle::West;
+          graph[west_edge].max_capacity = max_capacity;
+        }
       }
     }
   }

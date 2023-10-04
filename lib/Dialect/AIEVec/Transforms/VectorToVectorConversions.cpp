@@ -12,15 +12,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
@@ -74,7 +71,8 @@ struct SplitUnalignedTransferReadPattern
     // Check if the transfer is unaligned.
     auto vType = readOp.getVectorType();
     int64_t offset =
-        getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment);
+        getTransferReadAlignmentOffset(adaptor, vType, vectorAlignment)
+            .value_or(0);
     if (offset == 0)
       return failure();
 
@@ -89,23 +87,14 @@ struct SplitUnalignedTransferReadPattern
     // TODO: Add support for cases where the offset is greater than the
     // TODO: vector length.
     auto loc = readOp.getLoc();
-    auto newInnerMostIdx =
-        TypeSwitch<Operation *, Value>(
-            adaptor.getIndices().back().getDefiningOp())
-            .Case<AffineApplyOp>(
-                [&](auto applyOp) { return applyOp.getMapOperands()[0]; })
-            .Case<arith::ConstantOp>([&](auto constantOp) {
-              auto cstValue = cast<IntegerAttr>(constantOp.getValue()).getInt();
-              auto newCstValue = cstValue - offset;
-              auto newConstantIdxOp = rewriter.create<arith::ConstantOp>(
-                  loc,
-                  rewriter.getIntegerAttr(constantOp.getType(), newCstValue));
-              return newConstantIdxOp.getResult();
-            })
-            .Default([&](auto) {
-              llvm_unreachable("Unexpected index type");
-              return nullptr;
-            });
+    Value oldInnerMostIdx = adaptor.getIndices().back();
+    auto offsetCorrectionMap =
+        AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
+    Value newInnerMostIdx =
+        rewriter
+            .create<AffineApplyOp>(readOp.getLoc(), offsetCorrectionMap,
+                                   SmallVector<Value, 1>({oldInnerMostIdx}))
+            .getResult();
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
     alignedIdx[alignedIdx.size() - 1] = newInnerMostIdx;
@@ -145,20 +134,32 @@ struct ConvertSplatTransferReadToBroadcastPattern
     if (!map.isConstant())
       return failure();
 
-    // If the innermost index comes from an `affine.apply` op, take the base
-    // as the new innermost index for the new `vector.transfer_read`, and the
-    // offset as the index for the `aievec.broadcast` op.
+    Value srcMemRef = adaptor.getSource();
     SmallVector<Value, 8> indices;
-    indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
-    Value innerMostIdx = indices[indices.size() - 1];
-    Value newIdx = innerMostIdx;
+    Value newIdx;
     int64_t offset = 0;
-    if (auto defOp = innerMostIdx.getDefiningOp())
-      if (auto applyOp = dyn_cast<AffineApplyOp>(defOp))
+    // If it's a zero-rank memory access
+    if (cast<MemRefType>(srcMemRef.getType()).getRank() == 0) {
+      srcMemRef = rewriter
+                      .create<memref::ExpandShapeOp>(
+                          readOp.getLoc(), SmallVector<int64_t, 1>({1}),
+                          srcMemRef, SmallVector<ReassociationIndices, 1>({}))
+                      .getResult();
+      newIdx = rewriter.create<arith::ConstantOp>(readOp.getLoc(),
+                                                  rewriter.getIndexAttr(0L));
+      indices.push_back(newIdx);
+    } else {
+      indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
+      newIdx = indices[indices.size() - 1];
+      // If the innermost index comes from an `affine.apply` op, take the base
+      // as the new innermost index for the new `vector.transfer_read`, and the
+      // offset as the index for the `aievec.broadcast` op.
+      if (auto applyOp = newIdx.getDefiningOp<AffineApplyOp>())
         if (applyOp.getAffineMap().getNumDims() == 1) {
           newIdx = applyOp.getMapOperands()[0];
           offset = applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0];
         }
+    }
     // XXX: We assume we are reading 1D vectors
     int64_t vlen = readOp.getVector().getType().getShape()[0];
     if (offset >= vlen) {
@@ -175,8 +176,8 @@ struct ConvertSplatTransferReadToBroadcastPattern
     }
     indices[indices.size() - 1] = newIdx;
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVector().getType(), adaptor.getSource(),
-        indices, adaptor.getPadding());
+        readOp.getLoc(), readOp.getVector().getType(), srcMemRef, indices,
+        adaptor.getPadding());
     auto extractOp = rewriter.create<vector::ExtractOp>(
         readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
     rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
@@ -185,57 +186,90 @@ struct ConvertSplatTransferReadToBroadcastPattern
   }
 };
 
-//============================================================================//
-//============ AIEML canonicalization conversion patterns ===============//
-//============================================================================//
+// This pattern moves cast operations as close as possible to the source of
+// the data. This helps to simplify dealing with patterns that may vary only
+// by these sorts of casts between data manipulation operations and arithmetic
+// ops.
+// TODO: Generalize this op and instantiate for different types of cast ops.
+struct HoistCastOpToDataSourcePattern : public RewritePattern {
+  HoistCastOpToDataSourcePattern(MLIRContext *context)
+      : RewritePattern(arith::ExtSIOp::getOperationName(), /*benefit=*/1,
+                       context) {}
 
-struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
-  using OpConversionPattern<math::ExpOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-
-    if (!srcType) {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    arith::ExtSIOp extOp = cast<arith::ExtSIOp>(op);
+    Operation *defOp = extOp.getIn().getDefiningOp();
+    // If it's a data source op, we're done.
+    if (!defOp ||
+        isa<vector::TransferReadOp, memref::LoadOp, AffineLoadOp, func::CallOp>(
+            defOp))
       return failure();
+
+    // At the moment, we only accept ops we know we can swap with cast.
+    if (!isa<vector::BroadcastOp, vector::ExtractOp,
+             vector::ExtractStridedSliceOp>(defOp))
+      return failure();
+
+    Type extOpInTy = extOp.getIn().getType();
+    SmallVector<Value, 4> inputs;
+    for (Value operand : defOp->getOperands()) {
+      Type operandTy = operand.getType();
+      VectorType extOpInVecTy = dyn_cast<VectorType>(extOpInTy);
+      VectorType operandVecTy = dyn_cast<VectorType>(operandTy);
+      if (operandTy == extOpInTy) {
+        Type outTy = extOp.getOut().getType();
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else if (extOpInVecTy && extOpInVecTy.getElementType() == operandTy) {
+        // Promote from vector to scalar -> scalar conversion for this operand
+        Type outTy =
+            cast<VectorType>(extOp.getOut().getType()).getElementType();
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else if (operandVecTy && operandVecTy.getElementType() == extOpInTy) {
+        // Promote from scalar to vector -> vector conversion for this operand
+        Type outTy =
+            VectorType::get(operandVecTy.getShape(), extOp.getOut().getType());
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else if (extOpInVecTy && operandVecTy &&
+                 (extOpInVecTy.getElementType() ==
+                  operandVecTy.getElementType())) {
+        // Hoist through a vector shape change
+        Type outTy = VectorType::get(
+            operandVecTy.getShape(),
+            cast<VectorType>(extOp.getOut().getType()).getElementType());
+        inputs.push_back(
+            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+                .getOut());
+      } else {
+        inputs.push_back(operand);
+      }
     }
 
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return failure();
-
-    StringRef includeName = "exp_lut.h";
-    ModuleOp moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
-    rewriter.setInsertionPointToStart(
-        &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
-
-    SmallVector<Value> expOperands = {adaptor.getOperand()};
-
-    rewriter.setInsertionPoint(expOp);
-    Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
-    auto funcOp = rewriter.create<emitc::CallOp>(
-        expOp.getLoc(), TypeRange{accType}, "getExpBf16", nullptr, nullptr,
-        expOperands);
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(expOp, srcType,
-                                               funcOp.getResult(0));
-
+    auto newOp =
+        rewriter.create(extOp->getLoc(), defOp->getName().getIdentifier(),
+                        inputs, {extOp.getOut().getType()}, defOp->getAttrs());
+    rewriter.replaceOp(extOp, newOp->getResult(0));
     return success();
   }
 };
+
+//============================================================================//
+//============ AIEML canonicalization conversion patterns ===============//
+//============================================================================//
 
 //============================================================================//
 //================ Common AIE canonicalization configuration =================//
 //============================================================================//
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect>();
-  target.addLegalDialect<AffineDialect>();
-  target.addLegalDialect<aievec::AIEVecDialect>();
-  target.addLegalDialect<vector::VectorDialect>();
+  target.addLegalDialect<arith::ArithDialect, AffineDialect,
+                         memref::MemRefDialect, vector::VectorDialect>();
 }
 
 static void
@@ -252,7 +286,8 @@ static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 128) == 0;
+               getTransferReadAlignmentOffset(op, op.getVectorType(), 128)
+                       .value_or(0) == 0;
       });
 }
 
@@ -267,29 +302,16 @@ populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //============================================================================//
 
 static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<emitc::EmitCDialect>();
-  target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
-    VectorType srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
-    if (!srcType) {
-      return true;
-    }
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return true;
-    return false;
-  });
   target.addDynamicallyLegalOp<vector::TransferReadOp>(
       [](vector::TransferReadOp op) {
         return !op.getPermutationMap().isConstant() &&
-               getTransferReadAlignmentOffset(op, op.getVectorType(), 256) == 0;
+               getTransferReadAlignmentOffset(op, op.getVectorType(), 256)
+                       .value_or(0) == 0;
       });
 }
 
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<ComputeExpOpByLUTPattern>(patterns.getContext());
   patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
                                                   1024, 256);
 }
@@ -306,8 +328,7 @@ populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
 //    2) Split unaligned transfer reads into a wider aligned transfer read
 //       followed by a `vector.extract_strided_slice` operation.
 struct CanonicalizeVectorForAIEVecPass
-    : public PassWrapper<CanonicalizeVectorForAIEVecPass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<CanonicalizeVectorForAIEVecPass, OperationPass<>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CanonicalizeVectorForAIEVecPass)
 
   CanonicalizeVectorForAIEVecPass() = default;
@@ -325,11 +346,14 @@ struct CanonicalizeVectorForAIEVecPass
   StringRef getArgument() const final {
     return "test-canonicalize-vector-for-aievec";
   }
+
   StringRef getDescription() const final {
     return "Canonicalize vector operations for AIEVec conversion";
   }
+
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, vector::VectorDialect>();
+    registry.insert<arith::ArithDialect, memref::MemRefDialect,
+                    vector::VectorDialect, AffineDialect>();
   }
 
   Option<std::string> aieTarget{
@@ -339,7 +363,7 @@ struct CanonicalizeVectorForAIEVecPass
       llvm::cl::init("aie")};
 
   void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -350,7 +374,7 @@ struct CanonicalizeVectorForAIEVecPass
       if (target == "aieml") {
         aieVersion = AIEArch::AIE_ML;
       } else if (target != "aie") {
-        funcOp.emitError() << "unknown AIE target '" << aieTarget << "'";
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
         signalPassFailure();
         return;
       }
@@ -366,7 +390,7 @@ struct CanonicalizeVectorForAIEVecPass
       configureAIEMLCanonicalizeLegalizations(target);
     }
 
-    if (failed(applyPartialConversion(funcOp, target, std::move(patterns)))) {
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }
@@ -375,6 +399,24 @@ struct CanonicalizeVectorForAIEVecPass
 static std::unique_ptr<::mlir::Pass> createCanonicalizeVectorForAIEVecPass(
     const CanonicalizeVectorForAIEVecOptions &options) {
   return std::make_unique<CanonicalizeVectorForAIEVecPass>(options);
+}
+
+struct HoistCastOpToDataSourcePass
+    : public PassWrapper<HoistCastOpToDataSourcePass, OperationPass<>> {
+
+  void runOnOperation() override {
+    auto op = getOperation();
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+
+    patterns.add<HoistCastOpToDataSourcePattern>(patterns.getContext());
+
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+  }
+};
+
+static std::unique_ptr<::mlir::Pass> createHoistCastOpToDataSourcePass() {
+  return std::make_unique<HoistCastOpToDataSourcePass>();
 }
 
 //============================================================================//
@@ -386,5 +428,8 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // Add `Vector` code canonicalization passes
   // TODO: Add passes to unroll vector with unsupported types
   // TODO: Add passes to split vectors that won't fit in registers
+  pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
+
+  pm.addPass(createHoistCastOpToDataSourcePass());
 }

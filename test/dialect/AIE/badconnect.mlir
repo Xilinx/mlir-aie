@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not aiecc.py %s |& FileCheck %s
-// CHECK: error: 'AIE.connect' op source index cannot be less than zero
+// CHECK: error{{.*}} 'AIE.connect' op source index cannot be less than zero
 
 module {
   %20 = AIE.tile(2, 0)
