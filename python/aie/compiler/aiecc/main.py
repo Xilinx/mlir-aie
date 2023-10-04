@@ -18,6 +18,7 @@ import time
 import subprocess
 import shutil
 import asyncio
+import tempfile
 
 from aie.mlir.passmanager import PassManager
 from aie.mlir.ir import Module, Context, Location
@@ -552,7 +553,7 @@ def run(mlir_module, args=None):
     elif opts.filename:
       tmpdirname = os.path.basename(opts.filename) + ".prj"
     else:
-      tmpdirname = 'aiecc.prj'
+      tmpdirname = tempfile.mkdtemp()
 
     try:
       os.mkdir(tmpdirname)
