@@ -8,8 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --verify-diagnostics %s  
-// expected-error@+1 {{Specified stepsize(s) and wrap(s) result in out of bounds access in buffer }}
+// RUN: aie-opt --aie-objectFifo-stateful-transform %s |& FileCheck %s
+// CHECK: error{{.*}} 'AIE.objectFifo.link' op currently does not support objectFifos with dimensionsToStream.
 
 module @ndDMAObjFifoAIE2 {
  AIE.device(xcve2302) {
@@ -33,5 +33,6 @@ module @ndDMAObjFifoAIE2 {
                                            < 8, 8>, 
                                            < 4, 1>],
                         {%tile23}, 2 : i32) : !AIE.objectFifo<memref<128xi32>>
+   AIE.objectFifo.link [ @of0 ] -> [ @of1, @of2 ] ()
  }
 }

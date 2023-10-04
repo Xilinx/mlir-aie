@@ -564,6 +564,13 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    if(auto attr = fifoIn.getOperation()->getAttr("dimensionsToStream")) {
+      return emitOpError("currently does not support objectFifos with dimensionsToStream.");
+    }
+    if(auto attr = fifoIn.getOperation()->getAttr("dimensionsFromStreamPerConsumer")) {
+      return emitOpError("currently does not support objectFifos with dimensionsFromStreamPerConsumer.");
+    }
+
     AIEObjectFifoType fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int64_t inputSize = 1;
@@ -572,6 +579,13 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
+      if(auto attr = fifoOut.getOperation()->getAttr("dimensionsToStream")) {
+        return emitOpError("currently does not support objectFifos with dimensionsToStream.");
+      }
+      if(auto attr = fifoOut.getOperation()->getAttr("dimensionsFromStreamPerConsumer")) {
+        return emitOpError("currently does not support objectFifos with dimensionsFromStreamPerConsumer.");
+      }
+
       AIEObjectFifoType fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       int64_t nextOutputSize = 1;
