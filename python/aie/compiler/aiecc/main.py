@@ -503,7 +503,7 @@ def run(mlir_module, args=None):
     if args is not None:
       opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
-    is_windows = platform.system() == 'Windows'
+    mlir_module = str(mlir_module)
 
     aie_path = aie.compiler.aiecc.configure.install_path()
     peano_path = os.path.join(opts.peano_install_dir, 'bin')
@@ -547,10 +547,12 @@ def run(mlir_module, args=None):
     if(opts.verbose):
         sys.stderr.write('\ncompiling %s\n' % opts.filename)
 
-    if(opts.tmpdir):
+    if opts.tmpdir:
       tmpdirname = opts.tmpdir
-    else:
+    elif opts.filename:
       tmpdirname = os.path.basename(opts.filename) + ".prj"
+    else:
+      tmpdirname = 'aiecc.prj'
 
     try:
       os.mkdir(tmpdirname)
@@ -568,6 +570,9 @@ def run(mlir_module, args=None):
 def main():
   global opts
   opts = aie.compiler.aiecc.cl_arguments.parse_args()
+  if opts.filename is None:
+    print ("error: the 'file' positional argument is required.")
+    sys.exit(1)
 
   try:
     with Context() as ctx, Location.unknown():
