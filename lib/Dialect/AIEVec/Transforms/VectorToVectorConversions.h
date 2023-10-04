@@ -20,6 +20,8 @@ namespace aievec {
 void buildCanonicalizeVectorForAIEVec(
     OpPassManager &pm, const CanonicalizeVectorForAIEVecOptions &options);
 
+void buildDynamicDimSizeAlwaysNonEqOnePass(OpPassManager &pm);
+
 } // namespace aievec
 } // namespace xilinx
 

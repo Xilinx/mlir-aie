@@ -144,6 +144,10 @@ void registerAIEVecPipelines();
 /// Create a pass that removes unnecessary Copy operations.
 std::unique_ptr<::mlir::Pass> createCopyRemovalPass();
 
+/// Create a pass that optimizes arith operations when the dynamic dim size is
+/// always non one.
+std::unique_ptr<::mlir::Pass> createDynamicDimSizeAlwaysNonEqOnePass();
+
 } // namespace aievec
 } // namespace xilinx
 

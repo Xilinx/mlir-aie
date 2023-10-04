@@ -172,4 +172,9 @@ void xilinx::aievec::registerAIEVecPipelines() {
       "This pass pipeline takes AIE vector code and applies target-specific "
       "optimizations.",
       buildOptimizeAIEVec);
+
+  PassPipelineRegistration<>("optimize-arith-for-aievec",
+                             "This pass pipeline optimizes arith operations "
+                             "when the dynamic dim size is always non one.",
+                             buildDynamicDimSizeAlwaysNonEqOnePass);
 }
