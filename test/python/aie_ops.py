@@ -86,5 +86,5 @@ def objFifo():
         dtype = F16Type.get()
         memTy = MemRefType.get((12,), dtype)
         ofTy = ObjectFifoType.get(memTy)
-        ObjectFifoCreateOp("of0", tile0, tile1, two, TypeAttr.get(ofTy))
+        ObjectFifoCreateOp("of0", tile0, tile1, two, TypeAttr.get(ofTy), ArrayAttr.get([]), ArrayAttr.get([ArrayAttr.get([])]))
         EndOp()
