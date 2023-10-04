@@ -110,7 +110,7 @@ jobs:
       run: |
         
         # AIE_COMMIT=${{ inputs.AIE_COMMIT }}
-        AIE_COMMIT=0f4a19d58bada4cb4bfa3c0b8d3a5a65044801eb
+        AIE_COMMIT=753292d5058442fac29c8eb338cf94d199710b7d
         git clone --recursive https://github.com/Xilinx/mlir-aie.git
         if [ x"$AIE_COMMIT" != x"" ]; then
           pushd mlir-aie && git reset --hard $AIE_COMMIT && popd
@@ -146,7 +146,7 @@ jobs:
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_WHEEL_VERSION="18.0.0.2023100301+e8970141" \
+        MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498" \
         PARALLEL_LEVEL=${{ matrix.OS == 'windows-2019' && '2' || '4' }} \
         cibuildwheel --output-dir wheelhouse
 
@@ -159,7 +159,7 @@ jobs:
         export PIP_NO_BUILD_ISOLATION="false"
         export PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels"
         export CIBW_ARCHS=${{ matrix.ARCH }}
-        export MLIR_WHEEL_VERSION="18.0.0.2023100301+e8970141"
+        export MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498"
         export BOOST_ROOT="${{ steps.install-boost.outputs.BOOST_ROOT }}"
         export MATRIX_OS=${{ matrix.OS }}
         
