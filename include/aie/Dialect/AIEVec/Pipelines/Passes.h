@@ -14,7 +14,7 @@
 #ifndef AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H
 #define AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H
 
-#include "aie/Dialect/AIEVec/Transforms/Passes.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
 
 namespace xilinx {
