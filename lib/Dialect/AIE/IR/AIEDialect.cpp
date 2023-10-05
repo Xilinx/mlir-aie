@@ -564,12 +564,12 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    if(fifoIn.getDimensionsToStream().size() > 0) {
+    if (fifoIn.getDimensionsToStream().size() > 0) {
       return emitOpError("currently does not support objectFifos with "
                          "dimensionsToStream.");
     }
-    for (auto dims: fifoIn.getDimensionsFromStreamPerConsumer()) {
-      if(dims.size() > 0)
+    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
+      if (dims.size() > 0)
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsFromStreamPerConsumer.");
     }
@@ -582,7 +582,7 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if(fifoOut.getDimensionsToStream().size() > 0) {
+      if (fifoOut.getDimensionsToStream().size() > 0) {
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsToStream.");
       }
