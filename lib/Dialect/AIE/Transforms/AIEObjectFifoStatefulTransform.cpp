@@ -218,7 +218,7 @@ struct AIEObjectFifoStatefulTransformPass
     bool atLeastOneConsumerWantsTransform = false;
 
     if (createOp.getConsumerTiles().size() == 1 &&
-        createOp.getDimensionsToStream().size() > 0) {
+        (createOp.getDimensionsToStream().size() == 0)) {
 
       // Test for shared memory
       for (auto consumerTile : createOp.getConsumerTiles()) {
