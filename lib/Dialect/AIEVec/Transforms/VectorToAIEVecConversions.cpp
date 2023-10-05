@@ -2030,6 +2030,34 @@ struct ComputeErfOpPattern : public OpConversionPattern<math::ErfOp> {
   }
 };
 
+// Convert math.absf and math.absi to a function call to compute abs(x) for
+// v16bfloat16, v32bfloat16, v16float, v16int32, v32int16 and v64int8 types
+template <typename SrcOpTy>
+struct ComputeAbsOpPattern : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy absOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    StringRef includeName = "vec_math.h";
+    ModuleOp moduleOp = absOp->template getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(absOp);
+    SmallVector<Value> absOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        absOp, TypeRange{absOp.getResult().getType()}, "getAbs", nullptr,
+        nullptr, absOperands);
+    return success();
+  }
+};
+
+using ComputeAbsFOpPattern = ComputeAbsOpPattern<math::AbsFOp>;
+using ComputeAbsIOpPattern = ComputeAbsOpPattern<math::AbsIOp>;
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2065,6 +2093,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeSqrtOpPattern,
       ComputeRsqrtOpPattern,
       ComputeErfOpPattern,
+      ComputeAbsFOpPattern,
+      ComputeAbsIOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2196,6 +2226,38 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::AbsFOp>([](math::AbsFOp absfOp) {
+    VectorType srcType = dyn_cast<VectorType>(absfOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth * laneSize != 512 && elWidth * laneSize != 256) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::AbsIOp>([](math::AbsIOp absiOp) {
+    VectorType srcType = dyn_cast<VectorType>(absiOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth * laneSize != 512 && elWidth * laneSize != 256) {
       return true;
     }
 

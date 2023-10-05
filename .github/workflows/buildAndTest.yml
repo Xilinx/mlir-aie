@@ -218,7 +218,7 @@ jobs:
 
   lint-repo:
     name: Check code format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       # We'll be running clang-tidy later in this flow.
       - name: Install clang-tidy

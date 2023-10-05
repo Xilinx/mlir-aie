@@ -1,11 +1,14 @@
 #include "../common/testbench.h"
-#include "defines.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 void dut(int32_t *restrict in0, int32_t *restrict in1, int32_t *restrict out0);
 void dut_ref(int32_t *in0, int32_t *in1, int32_t *out0);
+
+constexpr unsigned const IN0_SIZE = 16 * 1024;
+constexpr unsigned const IN1_SIZE = 1024;
+constexpr unsigned const OUT0_SIZE = 16 * 1024;
 
 alignas(32) int32_t g_in0[IN0_SIZE];
 alignas(32) int32_t g_in1[IN1_SIZE];

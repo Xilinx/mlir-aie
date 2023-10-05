@@ -1,5 +1,4 @@
 #include "../common/testbench.h"
-#include "defines.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -7,6 +6,10 @@
 void dut(bfloat16 *restrict in0, bfloat16 *restrict in1,
          bfloat16 *restrict out0);
 void dut_ref(bfloat16 *in0, bfloat16 *in1, bfloat16 *out0);
+
+constexpr unsigned const IN0_SIZE = 16 * 1024;
+constexpr unsigned const IN1_SIZE = 1024;
+constexpr unsigned const OUT0_SIZE = 16 * 1024;
 
 alignas(32) bfloat16 g_in0[IN0_SIZE];
 alignas(32) bfloat16 g_in1[IN1_SIZE];
