@@ -18,15 +18,13 @@
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
-#include "llvm/ADT/TypeSwitch.h"
 
 #define DEBUG_TYPE "dynamic-size-no-implicit-broadcast"
 
@@ -38,9 +36,9 @@ using namespace xilinx::aievec;
 //=========================== Rewrite Patterns ===============================//
 //============================================================================//
 
-// This pattern replace a arith::CmpIOp with a arith::ConstantOp equals to 0.
-// This pattern works only when the CmpIOp compares the equality of a
-// dimension's runtime size to a constant 1, and is guarded by the attribute
+// This pattern replaces a arith::CmpIOp with a arith::ConstantOp `false` only
+// when the CmpIOp compares the equality of a dynamic dimension's runtime size
+// to a constant 1, and is guarded by the attribute
 // `tosa.no_implicit_broadcast_of_dynamic_sizes`.
 struct DynamicSizeNoImplicitBroadcastPattern : public RewritePattern {
   DynamicSizeNoImplicitBroadcastPattern(MLIRContext *context)
