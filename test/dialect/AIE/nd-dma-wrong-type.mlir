@@ -30,7 +30,7 @@ module @tutorial_2b {
             // the hardware does.
             // Cast to an i32 memref type if needed.
             //expected-error@+1 {{Specifying transfer step sizes and wraps is only supported for }}
-            AIE.dmaBd(<%buf14 : memref<128xi8>, 0, 128>, 0, [<2, 8>])
+            AIE.dmaBd(<%buf14 : memref<128xi8>, 0, 128>, 0, [<8, 2>])
             AIE.nextBd ^end
           ^end: 
             AIE.end
