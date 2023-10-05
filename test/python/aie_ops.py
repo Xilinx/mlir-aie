@@ -7,6 +7,7 @@ import aie
 from aie.mlir.ir import *
 from aie.dialects.aie import *
 
+
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
         aie.dialects.aie.register_dialect(ctx)
@@ -16,6 +17,7 @@ def constructAndPrintInModule(f):
             f()
         print(module)
 
+
 # CHECK-LABEL: tileOp
 # CHECK: AIE.tile(0, 0)
 @constructAndPrintInModule
@@ -24,6 +26,7 @@ def tileOp():
     row = IntegerAttr.get(iTy, 0)
     col = IntegerAttr.get(iTy, 0)
     t = TileOp(IndexType.get(), col, row)
+
 
 # CHECK-LABEL: coreOp
 # CHECK: %[[VAL_1:.*]] = AIE.tile(1, 1)
@@ -41,6 +44,7 @@ def coreOp():
     with InsertionPoint(bb):
         EndOp()
 
+
 # CHECK-LABEL: memOp
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
 # CHECK: %[[VAL_2:.*]] = AIE.mem(%[[VAL_1]]) {
@@ -57,6 +61,7 @@ def memOp():
     with InsertionPoint(bb):
         EndOp()
 
+
 # CHECK-LABEL: deviceOp
 # CHECK: AIE.device
 @constructAndPrintInModule
@@ -67,6 +72,42 @@ def deviceOp():
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         EndOp()
+
+
+def dim_tuple_attr_builder(wrap, stepsize):
+    return Attribute.parse(f"#AIE.DimTuple<{wrap}, {stepsize}>")
+
+
+@register_attribute_builder("AIE_DimTupleArrayAttr")
+def dim_tuple_array_attr_builder(tups, context=None):
+    return Attribute.parse(
+        f'#AIE<DimTupleArray[{", ".join(map(str, tups))}]>', context=context
+    )
+
+
+@register_attribute_builder("AIE_DimTupleArrayArrayAttr")
+def dim_tuple_array_array_attr_builder(tup_arrs, context=None):
+    return Attribute.parse(
+        f'#AIE<DimTupleArrayArray[{", ".join(map(str, tup_arrs))}]>', context=context
+    )
+
+
+# uncomment these for nicer syntax
+# @register_attribute_builder("AIE_DimTupleArrayAttr")
+# def dim_tuple_array_attr_builder(tups: list[tuple], context=None):
+#     tups = list(map(lambda t: dim_tuple_attr_builder(*t), tups))
+#     return Attribute.parse(
+#         f'#AIE<DimTupleArray[{", ".join(map(str, tups))}]>', context=context
+#     )
+#
+#
+# @register_attribute_builder("AIE_DimTupleArrayArrayAttr")
+# def dim_tuple_array_array_attr_builder(tup_arrs: list[list[tuple]], context=None):
+#     tup_arrs = list(map(dim_tuple_array_attr_builder, tup_arrs))
+#     return Attribute.parse(
+#         f'#AIE<DimTupleArrayArray[{", ".join(map(str, tup_arrs))}]>', context=context
+#     )
+
 
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
@@ -86,5 +127,16 @@ def objFifo():
         dtype = F16Type.get()
         memTy = MemRefType.get((12,), dtype)
         ofTy = ObjectFifoType.get(memTy)
-        ObjectFifoCreateOp("of0", tile0, tile1, two, TypeAttr.get(ofTy), ArrayAttr.get([]), ArrayAttr.get([ArrayAttr.get([])]))
+        ObjectFifoCreateOp(
+            "of0",
+            tile0,
+            tile1,
+            two,
+            TypeAttr.get(ofTy),
+            [dim_tuple_attr_builder(1, 2)],
+            [dim_tuple_array_attr_builder([dim_tuple_attr_builder(1, 2)])],
+        )
+        # ObjectFifoCreateOp(
+        #     "of0", tile0, tile1, two, TypeAttr.get(ofTy), [(1, 2)], [[(1, 2)]]
+        # )
         EndOp()
