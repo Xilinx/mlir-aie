@@ -564,11 +564,14 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    if(auto attr = fifoIn.getOperation()->getAttr("dimensionsToStream")) {
-      return emitOpError("currently does not support objectFifos with dimensionsToStream.");
+    if(fifoIn.getDimensionsToStream().size() > 0) {
+      return emitOpError("currently does not support objectFifos with "
+                         "dimensionsToStream.");
     }
-    if(auto attr = fifoIn.getOperation()->getAttr("dimensionsFromStreamPerConsumer")) {
-      return emitOpError("currently does not support objectFifos with dimensionsFromStreamPerConsumer.");
+    for (auto dims: fifoIn.getDimensionsFromStreamPerConsumer()) {
+      if(dims.size() > 0)
+        return emitOpError("currently does not support objectFifos with "
+                           "dimensionsFromStreamPerConsumer.");
     }
 
     AIEObjectFifoType fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
@@ -579,11 +582,14 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if(auto attr = fifoOut.getOperation()->getAttr("dimensionsToStream")) {
-        return emitOpError("currently does not support objectFifos with dimensionsToStream.");
+      if(fifoOut.getDimensionsToStream().size() > 0) {
+        return emitOpError("currently does not support objectFifos with "
+                           "dimensionsToStream.");
       }
-      if(auto attr = fifoOut.getOperation()->getAttr("dimensionsFromStreamPerConsumer")) {
-        return emitOpError("currently does not support objectFifos with dimensionsFromStreamPerConsumer.");
+      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
+        if (dims.size() > 0)
+          return emitOpError("currently does not support objectFifos with "
+                             "dimensionsFromStreamPerConsumer.");
       }
 
       AIEObjectFifoType fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();

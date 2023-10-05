@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s |& FileCheck %s
-// CHECK: error{{.*}} 'AIE.objectFifo.link' op currently does not support objectFifos with dimensionsToStream.
+// CHECK: error{{.*}} 'AIE.objectFifo.link' op currently does not support objectFifos with dimensionsFromStreamPerConsumer.
 
 module @ndDMAObjFifoAIE2 {
  AIE.device(xcve2302) {
