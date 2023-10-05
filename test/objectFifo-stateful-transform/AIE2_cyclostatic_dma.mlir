@@ -16,16 +16,16 @@
 // CHECK:   AIE.device(xcve2302) {
 // CHECK:     %[[t0:.*]] = AIE.tile(2, 2)
 // CHECK:     %[[t1:.*]] = AIE.tile(8, 3)
-// CHECK:     AIE.flow(%[[t0]], DMA : 0, %[[t1]], DMA : 0)
-// CHECK:     %[[buf0_0:.*]] = AIE.buffer(%0) {sym_name = "fifo_buff_0"} : memref<i32>
-// CHECK:     %[[buf0_1:.*]] = AIE.buffer(%0) {sym_name = "fifo_buff_1"} : memref<i32>
-// CHECK:     %[[PL:.*]] = AIE.lock(%[[t0]], 0) {init = 2 : i32, sym_name = "fifo_prod_lock"}
-// CHECK:     %[[CL:.*]] = AIE.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
 // CHECK:     %[[buf1_0:.*]] = AIE.buffer(%1) {sym_name = "fifo_cons_buff_0"} : memref<i32>
 // CHECK:     %[[buf1_1:.*]] = AIE.buffer(%1) {sym_name = "fifo_cons_buff_1"} : memref<i32>
 // CHECK:     %[[buf1_2:.*]] = AIE.buffer(%1) {sym_name = "fifo_cons_buff_2"} : memref<i32>
 // CHECK:     %[[C_PL:.*]] = AIE.lock(%[[t1]], 0) {init = 3 : i32, sym_name = "fifo_cons_prod_lock"}
 // CHECK:     %[[C_CL:.*]] = AIE.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock"}
+// CHECK:     %[[buf0_0:.*]] = AIE.buffer(%0) {sym_name = "fifo_buff_0"} : memref<i32>
+// CHECK:     %[[buf0_1:.*]] = AIE.buffer(%0) {sym_name = "fifo_buff_1"} : memref<i32>
+// CHECK:     %[[PL:.*]] = AIE.lock(%[[t0]], 0) {init = 2 : i32, sym_name = "fifo_prod_lock"}
+// CHECK:     %[[CL:.*]] = AIE.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     AIE.flow(%[[t0]], DMA : 0, %[[t1]], DMA : 0)
 // CHECK:     %[[c0:.*]] = AIE.core(%[[t0]]) {
 // CHECK:       AIE.useLock(%[[PL]], AcquireGreaterEqual, 1)
 // CHECK:       AIE.useLock(%[[CL]], Release, 1)

@@ -356,7 +356,13 @@ struct AIEObjectFifoStatefulTransformPass
       creation_tile = consumerTileOp;
     }
 
-    builder.setInsertionPointAfter(op);
+    // Reset opbuilder location to after the last tile declaration
+    Operation *t = nullptr;
+    auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
+    for (auto tile_op : dev.getBody()->getOps<AIE::TileOp>()) {
+      t = tile_op.getOperation();
+    }
+    builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers

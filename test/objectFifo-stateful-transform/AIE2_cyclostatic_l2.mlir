@@ -42,10 +42,24 @@
 // CHECK:     %[[t0:.*]] = AIE.tile(2, 2)
 // CHECK:     %[[t1:.*]] = AIE.tile(2, 1)
 // CHECK:     %[[t2:.*]] = AIE.tile(8, 3)
-// CHECK:     %[[buf83:.*]] = AIE.buffer(%[[t2]]) {sym_name = "buf83"} : memref<1xi32>
 
-// We expect a flow out of t0's core into the memtile:
-// CHECK:     AIE.flow(%[[t0]], DMA : 0, %[[t1]], DMA : 0)
+// CHECK:     %[[fifo1_cons_buff_0:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_0"} : memref<1xi32>
+// CHECK:     %[[fifo1_cons_buff_1:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_1"} : memref<1xi32>
+// CHECK:     %[[fifo1_cons_buff_2:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_2"} : memref<1xi32>
+// CHECK:     %[[fifo1_cons_buff_3:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_3"} : memref<1xi32>
+// CHECK:     %[[fifo1_cons_prod_lock:.*]] = AIE.lock(%[[t2]], 0) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock"}
+// CHECK:     %[[fifo1_cons_cons_lock:.*]] = AIE.lock(%[[t2]], 1) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock"}
+
+// The consume buffers are used at the receiving end of a stream to notify the
+// sender to send more objects once they have been consumed. In this case,
+// the (intermediary) consumer is the memtile.
+// CHECK:     %[[fifo0_cons_buff_0:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_0"} : memref<1xi32>
+// CHECK:     %[[fifo0_cons_buff_1:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_1"} : memref<1xi32>
+// CHECK:     %[[fifo0_cons_buff_2:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_2"} : memref<1xi32>
+// CHECK:     %[[fifo0_cons_buff_3:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_3"} : memref<1xi32>
+
+// CHECK:     %[[fifo0_cons_prod_lock:.*]] = AIE.lock(%[[t1]], 0) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock"}
+// CHECK:     %[[fifo0_cons_cons_lock:.*]] = AIE.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock"}
 
 // The objectFifo lowering creates two buffers (for ping-pong) on the producer
 // side to which elements are written.
@@ -60,26 +74,14 @@
 // queue to be consumed.
 // CHECK:     %[[fifo0_cons_lock:.*]] = AIE.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo0_cons_lock"}
 
-// The consume buffers are used at the receiving end of a stream to notify the
-// sender to send more objects once they have been consumed. In this case,
-// the (intermediary) consumer is the memtile.
-// CHECK:     %[[fifo0_cons_buff_0:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_0"} : memref<1xi32>
-// CHECK:     %[[fifo0_cons_buff_1:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_1"} : memref<1xi32>
-// CHECK:     %[[fifo0_cons_buff_2:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_2"} : memref<1xi32>
-// CHECK:     %[[fifo0_cons_buff_3:.*]] = AIE.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_3"} : memref<1xi32>
+// CHECK:     %[[buf83:.*]] = AIE.buffer(%[[t2]]) {sym_name = "buf83"} : memref<1xi32>
 
-// CHECK:     %[[fifo0_cons_prod_lock:.*]] = AIE.lock(%[[t1]], 0) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock"}
-// CHECK:     %[[fifo0_cons_cons_lock:.*]] = AIE.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock"}
+// We expect a flow out of t0's core into the memtile:
+// CHECK:     AIE.flow(%[[t0]], DMA : 0, %[[t1]], DMA : 0)
 
 // Flow out of the memtile into t2's DMA. This is mostly analogous to the
 // flow from t0 to the memtile.
 // CHECK:     AIE.flow(%[[t1]], DMA : 0, %[[t2]], DMA : 0)
-// CHECK:     %[[fifo1_cons_buff_0:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_0"} : memref<1xi32>
-// CHECK:     %[[fifo1_cons_buff_1:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_1"} : memref<1xi32>
-// CHECK:     %[[fifo1_cons_buff_2:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_2"} : memref<1xi32>
-// CHECK:     %[[fifo1_cons_buff_3:.*]] = AIE.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_3"} : memref<1xi32>
-// CHECK:     %[[fifo1_cons_prod_lock:.*]] = AIE.lock(%[[t2]], 0) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock"}
-// CHECK:     %[[fifo1_cons_cons_lock:.*]] = AIE.lock(%[[t2]], 1) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock"}
 
 
 // ////////////////////////////////////////////////////////////////////////// //
