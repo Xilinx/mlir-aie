@@ -7,6 +7,8 @@ import aie
 from aie.mlir.ir import *
 from aie.dialects.aie import *
 
+from typing import List
+
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
@@ -79,34 +81,19 @@ def dim_tuple_attr_builder(wrap, stepsize):
 
 
 @register_attribute_builder("AIE_DimTupleArrayAttr")
-def dim_tuple_array_attr_builder(tups, context=None):
+def dim_tuple_array_attr_builder(tups: List[tuple], context=None):
+    tups = list(map(lambda t: dim_tuple_attr_builder(*t), tups))
     return Attribute.parse(
         f'#AIE<DimTupleArray[{", ".join(map(str, tups))}]>', context=context
     )
 
 
 @register_attribute_builder("AIE_DimTupleArrayArrayAttr")
-def dim_tuple_array_array_attr_builder(tup_arrs, context=None):
+def dim_tuple_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
+    tup_arrs = list(map(dim_tuple_array_attr_builder, tup_arrs))
     return Attribute.parse(
         f'#AIE<DimTupleArrayArray[{", ".join(map(str, tup_arrs))}]>', context=context
     )
-
-
-# uncomment these for nicer syntax
-# @register_attribute_builder("AIE_DimTupleArrayAttr")
-# def dim_tuple_array_attr_builder(tups: list[tuple], context=None):
-#     tups = list(map(lambda t: dim_tuple_attr_builder(*t), tups))
-#     return Attribute.parse(
-#         f'#AIE<DimTupleArray[{", ".join(map(str, tups))}]>', context=context
-#     )
-#
-#
-# @register_attribute_builder("AIE_DimTupleArrayArrayAttr")
-# def dim_tuple_array_array_attr_builder(tup_arrs: list[list[tuple]], context=None):
-#     tup_arrs = list(map(dim_tuple_array_attr_builder, tup_arrs))
-#     return Attribute.parse(
-#         f'#AIE<DimTupleArrayArray[{", ".join(map(str, tup_arrs))}]>', context=context
-#     )
 
 
 # CHECK-LABEL: objFifo
@@ -128,15 +115,6 @@ def objFifo():
         memTy = MemRefType.get((12,), dtype)
         ofTy = ObjectFifoType.get(memTy)
         ObjectFifoCreateOp(
-            "of0",
-            tile0,
-            tile1,
-            two,
-            TypeAttr.get(ofTy),
-            [dim_tuple_attr_builder(1, 2)],
-            [dim_tuple_array_attr_builder([dim_tuple_attr_builder(1, 2)])],
+            "of0", tile0, tile1, two, TypeAttr.get(ofTy), [(1, 2)], [[(1, 2)]]
         )
-        # ObjectFifoCreateOp(
-        #     "of0", tile0, tile1, two, TypeAttr.get(ofTy), [(1, 2)], [[(1, 2)]]
-        # )
         EndOp()
