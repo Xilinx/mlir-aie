@@ -222,6 +222,27 @@ inline std::pair<AffineExpr, int32_t> extractBaseAndOffset(AffineExpr expr) {
   return std::make_pair(base, offset);
 }
 
+// MLIR-AIE auto-vectorization to CPP flow currently doesn't support to
+// implicitly broadcast a dynamic dimension of size `1`. Hence, we assume that
+// dynamic dimensions are not with size '1' that can be interpreted to various
+// broadcasting scenarios. We let lowerings assume this on a per-scope basis if
+// the tosa.no_implicit_broadcast_of_dynamic_sizes attribute presents on any
+// parent of the block.
+inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(Block *block) {
+  for (Operation *parentOp = block->getParentOp(); parentOp;
+       parentOp = parentOp->getParentOp()) {
+    if (parentOp->hasAttr("tosa.no_implicit_broadcast_of_dynamic_sizes"))
+      return true;
+  }
+  return false;
+}
+
+// Helper that uses the block from an OpBuilder for determining whether we
+// are assuming no implict broadcast of dynamic sizes
+inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(OpBuilder &builder) {
+  return isAssumingNoImplicitBroadcastOfDynamicSizes(builder.getBlock());
+}
+
 } // end namespace aievec
 } // end namespace xilinx
 

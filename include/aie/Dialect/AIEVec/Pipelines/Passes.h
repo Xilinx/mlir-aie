@@ -144,9 +144,13 @@ void registerAIEVecPipelines();
 /// Create a pass that removes unnecessary Copy operations.
 std::unique_ptr<::mlir::Pass> createCopyRemovalPass();
 
-/// Create a pass that optimizes arith operations when the dynamic dim size is
-/// always non one.
-std::unique_ptr<::mlir::Pass> createDynamicDimSizeAlwaysNonEqOnePass();
+// Create a pass that rewrites the arith dialect to enable the support of
+// dynamic sized tensor/memref for the auto-vectorization to CPP flow.
+std::unique_ptr<::mlir::Pass> createDynamicSizeNoImplicitBroadcastPass();
+
+// Build a pipeline for CLI access to the pass
+// `dynamic-size-no-implicit-broadcast`
+void buildDynamicSizeNoImplicitBroadcastPass(mlir::OpPassManager &pm);
 
 } // namespace aievec
 } // namespace xilinx

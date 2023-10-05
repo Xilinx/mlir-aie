@@ -173,8 +173,9 @@ void xilinx::aievec::registerAIEVecPipelines() {
       "optimizations.",
       buildOptimizeAIEVec);
 
-  PassPipelineRegistration<>("optimize-arith-for-aievec",
-                             "This pass pipeline optimizes arith operations "
-                             "when the dynamic dim size is always non one.",
-                             buildDynamicDimSizeAlwaysNonEqOnePass);
+  PassPipelineRegistration<>(
+      "dynamic-size-no-implicit-broadcast",
+      "This pass pipeline rewrites arith operations when assuming no implict "
+      "broadcast of dynamic sizes",
+      buildDynamicSizeNoImplicitBroadcastPass);
 }

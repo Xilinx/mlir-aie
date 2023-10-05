@@ -260,47 +260,6 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
   }
 };
 
-// This pattern replace a arith::CmpIOp with a arith::ConstantOp equals to 0.
-// This pattern works only when the CmpIOp compares the equality of a
-// dimension's runtime size to a constant 1.
-// TODO: wrap this pattern with an option to turn on or off
-struct DynamicDimSizeAlwaysNonEqOnePattern : public RewritePattern {
-  DynamicDimSizeAlwaysNonEqOnePattern(MLIRContext *context)
-      : RewritePattern(arith::CmpIOp::getOperationName(), /*benefit=*/1,
-                       context) {}
-
-  LogicalResult matchAndRewrite(Operation *op,
-                                PatternRewriter &rewriter) const override {
-    arith::CmpIOp cmpiOp = cast<arith::CmpIOp>(op);
-
-    if (cmpiOp.getPredicate() != arith::CmpIPredicate::eq)
-      return failure();
-
-    auto lhsOp = cmpiOp.getLhs().getDefiningOp();
-    auto rhsOp = cmpiOp.getRhs().getDefiningOp();
-    if (!((isa<memref::DimOp>(lhsOp) || isa<tensor::DimOp>(lhsOp)) &&
-          isa<arith::ConstantOp>(rhsOp)) &&
-        !((isa<memref::DimOp>(rhsOp) || isa<tensor::DimOp>(rhsOp)) &&
-          isa<arith::ConstantOp>(lhsOp)))
-      return failure();
-
-    // Make sure rhsOp is ConstantOp and lhsOp is DimOp
-    if (isa<memref::DimOp>(rhsOp) || isa<tensor::DimOp>(rhsOp))
-      std::swap(lhsOp, rhsOp);
-
-    // If ConstantOp is 1 for Integer/Index, replace cmpiOp as constant 0
-    auto constantOp = cast<arith::ConstantOp>(rhsOp);
-    if (constantOp.getValue().cast<IntegerAttr>().getValue().getSExtValue() !=
-        1)
-      return failure();
-
-    rewriter.replaceOpWithNewOp<arith::ConstantOp>(
-        cmpiOp, rewriter.getIntegerAttr(rewriter.getI1Type(), 0));
-
-    return success();
-  }
-};
-
 //============================================================================//
 //============ AIEML canonicalization conversion patterns ===============//
 //============================================================================//
@@ -461,34 +420,6 @@ static std::unique_ptr<::mlir::Pass> createHoistCastOpToDataSourcePass() {
   return std::make_unique<HoistCastOpToDataSourcePass>();
 }
 
-struct DynamicDimSizeAlwaysNonEqOnePass
-    : public PassWrapper<DynamicDimSizeAlwaysNonEqOnePass, OperationPass<>> {
-
-  StringRef getArgument() const final {
-    return "test-optimize-dynamic-dim-size-always-non-one";
-  }
-
-  StringRef getDescription() const final {
-    return "Test optimizing arith operations when the dynamic dim size is "
-           "always non one.";
-  }
-
-  void runOnOperation() override {
-    auto op = getOperation();
-    MLIRContext *context = &getContext();
-    RewritePatternSet patterns(context);
-
-    patterns.add<DynamicDimSizeAlwaysNonEqOnePattern>(patterns.getContext());
-
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
-  }
-};
-
-std::unique_ptr<::mlir::Pass>
-xilinx::aievec::createDynamicDimSizeAlwaysNonEqOnePass() {
-  return std::make_unique<DynamicDimSizeAlwaysNonEqOnePass>();
-}
-
 //============================================================================//
 //=============== Main Vector2Vector Pipeline Configuration ==================//
 //============================================================================//
@@ -500,11 +431,5 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
-
-  pm.addPass(createDynamicDimSizeAlwaysNonEqOnePass());
   pm.addPass(createHoistCastOpToDataSourcePass());
-}
-
-void xilinx::aievec::buildDynamicDimSizeAlwaysNonEqOnePass(OpPassManager &pm) {
-  pm.addPass(createDynamicDimSizeAlwaysNonEqOnePass());
 }
