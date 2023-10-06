@@ -172,4 +172,10 @@ void xilinx::aievec::registerAIEVecPipelines() {
       "This pass pipeline takes AIE vector code and applies target-specific "
       "optimizations.",
       buildOptimizeAIEVec);
+
+  PassPipelineRegistration<>(
+      "dynamic-size-no-implicit-broadcast",
+      "This pass pipeline rewrites arith operations when assuming no implict "
+      "broadcast of dynamic sizes",
+      buildDynamicSizeNoImplicitBroadcastPass);
 }

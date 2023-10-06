@@ -430,6 +430,5 @@ void xilinx::aievec::buildCanonicalizeVectorForAIEVec(
   // TODO: Add passes to split vectors that won't fit in registers
   pm.addPass(createCopyRemovalPass());
   pm.addPass(createCanonicalizeVectorForAIEVecPass(options));
-
   pm.addPass(createHoistCastOpToDataSourcePass());
 }

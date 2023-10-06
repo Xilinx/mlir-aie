@@ -14,7 +14,7 @@
 #ifndef AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H
 #define AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H
 
-#include "aie/Dialect/AIEVec/Transforms/Passes.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
 
 namespace xilinx {
@@ -31,7 +31,7 @@ namespace aievec {
 
 /// Options for the "canonicalize-vector-for-aievec" pipeline.
 struct CanonicalizeVectorForAIEVecOptions
-    : public PassPipelineOptions<CanonicalizeVectorForAIEVecOptions> {
+    : public mlir::PassPipelineOptions<CanonicalizeVectorForAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
       llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
@@ -41,7 +41,7 @@ struct CanonicalizeVectorForAIEVecOptions
 
 /// Options for the "lower-vector-to-aievec" pipeline.
 struct LowerVectorToAIEVecOptions
-    : public PassPipelineOptions<LowerVectorToAIEVecOptions> {
+    : public mlir::PassPipelineOptions<LowerVectorToAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
       llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
@@ -51,7 +51,7 @@ struct LowerVectorToAIEVecOptions
 
 /// Options for the "optimize-aievec" pipeline.
 struct OptimizeAIEVecOptions
-    : public PassPipelineOptions<OptimizeAIEVecOptions> {
+    : public mlir::PassPipelineOptions<OptimizeAIEVecOptions> {
   PassOptions::Option<std::string> aieTarget{
       *this, "aie-target",
       llvm::cl::desc("Select AIE version: \"aie\" or \"aieml\". This will "
@@ -65,7 +65,7 @@ struct OptimizeAIEVecOptions
 
 /// Options for the "convert-vector-to-aievec" pipeline.
 struct ConvertVectorToAIEVecOptions
-    : public PassPipelineOptions<ConvertVectorToAIEVecOptions> {
+    : public mlir::PassPipelineOptions<ConvertVectorToAIEVecOptions> {
   // 'LowerVectorToAIEVec' options
   // TODO: Review the need for these options.
   PassOptions::Option<unsigned> shiftParam{
@@ -88,7 +88,7 @@ struct ConvertVectorToAIEVecOptions
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
-  LogicalResult parseFromString(StringRef options) {
+  mlir::LogicalResult parseFromString(mlir::StringRef options) {
     auto res = PassPipelineOptions::parseFromString(options);
     if (!failed(res)) {
       lowerOptions.aieTarget = aieTarget;
@@ -126,25 +126,33 @@ private:
 /// pipeline takes `Vector` code, transforms it to make it compatible with the
 /// selected `AIE` target, lowers it to `AIEVec` dialect, and performs some
 /// optimizations based on the target AIE architecture.
-void buildConvertVectorToAIEVec(OpPassManager &pm,
+void buildConvertVectorToAIEVec(mlir::OpPassManager &pm,
                                 const ConvertVectorToAIEVecOptions &options);
 
 void buildCanonicalizeVectorForAIEVec(
-    OpPassManager &pm, const CanonicalizeVectorForAIEVecOptions &options);
+    mlir::OpPassManager &pm, const CanonicalizeVectorForAIEVecOptions &options);
 
-void buildLowerVectorToAIEVec(OpPassManager &pm,
+void buildLowerVectorToAIEVec(mlir::OpPassManager &pm,
                               const LowerVectorToAIEVecOptions &options);
 
-void buildOptimizeAIEVec(OpPassManager &pm,
+void buildOptimizeAIEVec(mlir::OpPassManager &pm,
                          const OptimizeAIEVecOptions &options);
 
 /// Register all pipelines for the AIE Vector dialect.
 void registerAIEVecPipelines();
 
-} // namespace aievec
-} // namespace xilinx
-
 /// Create a pass that removes unnecessary Copy operations.
 std::unique_ptr<::mlir::Pass> createCopyRemovalPass();
+
+// Create a pass that rewrites the arith dialect to enable the support of
+// dynamic sized tensor/memref for the auto-vectorization to CPP flow.
+std::unique_ptr<::mlir::Pass> createDynamicSizeNoImplicitBroadcastPass();
+
+// Build a pipeline for CLI access to the pass
+// `dynamic-size-no-implicit-broadcast`
+void buildDynamicSizeNoImplicitBroadcastPass(mlir::OpPassManager &pm);
+
+} // namespace aievec
+} // namespace xilinx
 
 #endif // AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H

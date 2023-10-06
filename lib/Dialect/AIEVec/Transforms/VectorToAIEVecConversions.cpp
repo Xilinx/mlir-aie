@@ -138,7 +138,6 @@ convertValueToTargetTypeAieML(ConversionPatternRewriter &rewriter, Location loc,
     } else if (srcBitWidth == 8 && tgtBitWidth == 32 && srcLaneSize == 16) {
       // Case 2: vector<16xi8> to vector<16xi32> conversion by aievec.concat +
       // aievec.ups + aievec.cast + aievec.ext
-      // FIXME: Should use undef_xxx() for the second input of concat
       auto concatOutType = createVectorType(32, srcElemType);
       auto concatOp = rewriter.create<aievec::ConcatOp>(
           loc, concatOutType, SmallVector<Value>({inputVal, inputVal}));

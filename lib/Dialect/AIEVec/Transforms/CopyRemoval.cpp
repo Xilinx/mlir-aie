@@ -6,6 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+
 #include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
@@ -240,6 +242,6 @@ private:
 // CopyRemovalPass construction
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<::mlir::Pass> createCopyRemovalPass() {
+std::unique_ptr<::mlir::Pass> xilinx::aievec::createCopyRemovalPass() {
   return std::make_unique<CopyRemovalPass>();
 }
