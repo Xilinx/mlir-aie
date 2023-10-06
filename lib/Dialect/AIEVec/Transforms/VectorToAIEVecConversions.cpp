@@ -2180,11 +2180,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
-      LowerVectorExtractStridedSliceOpAIEMLPattern,
-      LowerExtFOpPattern,
-      LowerExtSIOpPattern,
-      LowerTruncFOpPattern,
-      LowerTruncIOpPattern>(patterns.getContext());
+      LowerVectorExtractStridedSliceOpAIEMLPattern>(patterns.getContext());
   // clang-format on
 }
 
@@ -2328,118 +2324,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     if (elWidth * laneSize != 512 && elWidth * laneSize != 256) {
-      return true;
-    }
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
-    VectorType srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(extfOp.getOut().getType());
-    if (!srcType || !dstType) {
-      return true;
-    }
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-
-    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType)) {
-      return true;
-    }
-
-    unsigned srcLaneSize = getVectorLaneSize(srcType);
-    unsigned dstLaneSize = getVectorLaneSize(dstType);
-
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-
-    if (srcElWidth != 16 || srcLaneSize != 16 || dstElWidth != 32 ||
-        dstLaneSize != 16) {
-      return true;
-    }
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::ExtSIOp>([](arith::ExtSIOp extsiOp) {
-    VectorType srcType = dyn_cast<VectorType>(extsiOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(extsiOp.getOut().getType());
-    if (!srcType || !dstType) {
-      return true;
-    }
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-
-    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType)) {
-      return true;
-    }
-
-    unsigned srcLaneSize = getVectorLaneSize(srcType);
-    unsigned dstLaneSize = getVectorLaneSize(dstType);
-
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-
-    if (!(srcLaneSize == 32 && (dstElWidth > srcElWidth) &&
-          (dstLaneSize == srcLaneSize))) {
-      return true;
-    }
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
-    VectorType srcType = dyn_cast<VectorType>(truncfOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(truncfOp.getOut().getType());
-    if (!srcType || !dstType) {
-      return true;
-    }
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-
-    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType)) {
-      return true;
-    }
-
-    unsigned srcLaneSize = getVectorLaneSize(srcType);
-    unsigned dstLaneSize = getVectorLaneSize(dstType);
-
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-
-    if (srcElWidth != 32 || srcLaneSize != 16 || dstElWidth != 16 ||
-        dstLaneSize != 16) {
-      return true;
-    }
-
-    return false;
-  });
-
-  target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
-    VectorType srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
-    if (!srcType || !dstType) {
-      return true;
-    }
-
-    Type srcScalarType = srcType.getElementType();
-    Type dstScalarType = dstType.getElementType();
-
-    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType)) {
-      return true;
-    }
-
-    unsigned srcLaneSize = getVectorLaneSize(srcType);
-    unsigned dstLaneSize = getVectorLaneSize(dstType);
-
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-
-    if (!(srcLaneSize == 32 && (dstElWidth < srcElWidth) &&
-          (dstLaneSize == srcLaneSize))) {
       return true;
     }
 
@@ -2797,6 +2681,138 @@ createLowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options) {
 // Custom canonicalization passes
 //===---------------------------------------------------------------------------
 
+struct ProcessExtOpsPass
+    : public PassWrapper<ProcessExtOpsPass, OperationPass<>> {
+
+  void runOnOperation() override {
+    MLIRContext *context = &getContext();
+    RewritePatternSet patterns(context);
+    ConversionTarget target(*context);
+    patterns.add<LowerExtFOpPattern, LowerExtSIOpPattern, LowerTruncFOpPattern,
+                 LowerTruncIOpPattern>(patterns.getContext());
+    target.addLegalDialect<aievec::AIEVecDialect>();
+
+    target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
+      VectorType srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
+      VectorType dstType = dyn_cast<VectorType>(extfOp.getOut().getType());
+      if (!srcType || !dstType) {
+        return true;
+      }
+
+      Type srcScalarType = srcType.getElementType();
+      Type dstScalarType = dstType.getElementType();
+
+      if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType)) {
+        return true;
+      }
+
+      unsigned srcLaneSize = getVectorLaneSize(srcType);
+      unsigned dstLaneSize = getVectorLaneSize(dstType);
+
+      unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
+      unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
+
+      if (srcElWidth != 16 || srcLaneSize != 16 || dstElWidth != 32 ||
+          dstLaneSize != 16) {
+        return true;
+      }
+
+      return false;
+    });
+
+    target.addDynamicallyLegalOp<arith::ExtSIOp>([](arith::ExtSIOp extsiOp) {
+      VectorType srcType = dyn_cast<VectorType>(extsiOp.getIn().getType());
+      VectorType dstType = dyn_cast<VectorType>(extsiOp.getOut().getType());
+      if (!srcType || !dstType) {
+        return true;
+      }
+
+      Type srcScalarType = srcType.getElementType();
+      Type dstScalarType = dstType.getElementType();
+
+      if (!isa<IntegerType>(srcScalarType) ||
+          !isa<IntegerType>(dstScalarType)) {
+        return true;
+      }
+
+      unsigned srcLaneSize = getVectorLaneSize(srcType);
+      unsigned dstLaneSize = getVectorLaneSize(dstType);
+
+      unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
+      unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
+
+      if (!(srcLaneSize == 32 && (dstElWidth > srcElWidth) &&
+            (dstLaneSize == srcLaneSize))) {
+        return true;
+      }
+
+      return false;
+    });
+
+    target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
+      VectorType srcType = dyn_cast<VectorType>(truncfOp.getIn().getType());
+      VectorType dstType = dyn_cast<VectorType>(truncfOp.getOut().getType());
+      if (!srcType || !dstType) {
+        return true;
+      }
+
+      Type srcScalarType = srcType.getElementType();
+      Type dstScalarType = dstType.getElementType();
+
+      if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType)) {
+        return true;
+      }
+
+      unsigned srcLaneSize = getVectorLaneSize(srcType);
+      unsigned dstLaneSize = getVectorLaneSize(dstType);
+
+      unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
+      unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
+
+      if (srcElWidth != 32 || srcLaneSize != 16 || dstElWidth != 16 ||
+          dstLaneSize != 16) {
+        return true;
+      }
+
+      return false;
+    });
+
+    target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
+      VectorType srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
+      VectorType dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
+      if (!srcType || !dstType) {
+        return true;
+      }
+
+      Type srcScalarType = srcType.getElementType();
+      Type dstScalarType = dstType.getElementType();
+
+      if (!isa<IntegerType>(srcScalarType) ||
+          !isa<IntegerType>(dstScalarType)) {
+        return true;
+      }
+
+      unsigned srcLaneSize = getVectorLaneSize(srcType);
+      unsigned dstLaneSize = getVectorLaneSize(dstType);
+
+      unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
+      unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
+
+      if (!(srcLaneSize == 32 && (dstElWidth < srcElWidth) &&
+            (dstLaneSize == srcLaneSize))) {
+        return true;
+      }
+
+      return false;
+    });
+
+    auto op = getOperation();
+    if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
+      signalPassFailure();
+    }
+  }
+};
+
 // This pass widens UPD ops to twice the width followed by an ext op of the
 // bottom half. This can be used together with SimplifyUPDOpsPass to find
 // additional common subexpressions with UPDs generated from unaligned
@@ -2857,6 +2873,7 @@ void xilinx::aievec::buildLowerVectorToAIEVec(
     OpPassManager &pm, const LowerVectorToAIEVecOptions &options) {
   // Add lowering from `Vector` to `AIEVec`
   pm.addPass(createLowerVectorToAIEVec(options));
+  pm.addPass(std::make_unique<ProcessExtOpsPass>());
   pm.addPass(createCanonicalizerPass());
 
   // Simplify UPD ops
