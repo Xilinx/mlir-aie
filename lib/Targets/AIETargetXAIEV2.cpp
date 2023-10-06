@@ -51,7 +51,7 @@ const char *xaie_cpp_file_header = R"code(
 
 // The following is a wrapper for the common "if(call() != 0) return 1" pattern.
 // Use this only in functions that return int. If the call this wrapper is used
-// on does not succeed, the expanded code will exit out of the function 
+// on does not succeed, the expanded code will exit out of the function
 // containing this macro with an error code.
 #define __mlir_aie_try(x) do { \
   AieRC ret = (x); \
@@ -814,7 +814,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     int row = coord.second;
     auto loc = tileLocStr(col, row);
 
-    auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
+    auto bufferAccessor = [&](std::optional<TileID> tile, BufferOp buf) {
       // int32_t mlir_aie_read_buffer_a13(int index) {
       // void mlir_aie_write_buffer_a13(int index, int32_t value) {
       std::string bufName(buf.name().getValue());

@@ -38,7 +38,7 @@ aie_opt_passes = ['--aie-normalize-address-spaces',
                   '--lower-affine',
                   '--convert-math-to-llvm',
                   '--convert-arith-to-llvm',
-                  '--convert-memref-to-llvm',
+                  '--finalize-memref-to-llvm',
                   '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
                   '--convert-cf-to-llvm',
                   '--canonicalize',
@@ -97,7 +97,7 @@ class flow_runner:
       with Context() as ctx, Location.unknown():
         aiedialect.register_dialect(ctx)
         module = Module.parse(mlir_module_str)
-        PassManager.parse(pass_pipeline).run(module)
+        PassManager.parse(pass_pipeline).run(module.operation)
         mlir_module_str = str(module)
         if outputfile:
           with open(outputfile, 'w') as g:

@@ -33,7 +33,6 @@ def ADF_Dialect : Dialect {
   }];
   let cppNamespace = "::xilinx::ADF";
   let useDefaultTypePrinterParser = 1;
-  let useFoldAPI = kEmitFoldAdaptorFolder;
 }
 
 //===----------------------------------------------------------------------===//
