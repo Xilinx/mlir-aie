@@ -47,9 +47,8 @@ struct DynamicSizeNoImplicitBroadcastPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    if (!isAssumingNoImplicitBroadcastOfDynamicSizes(rewriter)) {
+    if (!isAssumingNoImplicitBroadcastOfDynamicSizes(rewriter))
       return failure();
-    }
 
     arith::CmpIOp cmpiOp = cast<arith::CmpIOp>(op);
 
