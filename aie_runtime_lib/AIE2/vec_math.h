@@ -145,4 +145,40 @@ inline __attribute__((always_inline)) v16bfloat16 getErfBf16(v16bfloat16 in) {
   return (v16bfloat16)vec_out;
 }
 
+// Get absolute values using high-level api library
+inline __attribute__((always_inline)) v32bfloat16 getAbs(v32bfloat16 in) {
+  aie::vector<bfloat16, 32> x = in;
+  aie::vector<bfloat16, 32> absX = aie::abs(x);
+  return (v32bfloat16)absX;
+}
+
+inline __attribute__((always_inline)) v16bfloat16 getAbs(v16bfloat16 in) {
+  aie::vector<bfloat16, 16> x = in;
+  aie::vector<bfloat16, 16> absX = aie::abs(x);
+  return (v16bfloat16)absX;
+}
+
+inline __attribute__((always_inline)) v16float getAbs(v16float in) {
+  aie::vector<float, 16> x = in;
+  aie::vector<float, 16> absX = aie::abs(x);
+  return (v16float)absX;
+}
+
+inline __attribute__((always_inline)) v16int32 getAbs(v16int32 in) {
+  aie::vector<int32, 16> x = in;
+  aie::vector<int32, 16> absX = aie::abs(x);
+  return (v16int32)absX;
+}
+
+inline __attribute__((always_inline)) v32int16 getAbs(v32int16 in) {
+  aie::vector<int16, 32> x = in;
+  aie::vector<int16, 32> absX = aie::abs(x);
+  return (v32int16)absX;
+}
+
+inline __attribute__((always_inline)) v64int8 getAbs(v64int8 in) {
+  aie::vector<int8, 64> x = in;
+  aie::vector<int8, 64> absX = aie::abs(x);
+  return (v64int8)absX;
+}
 #endif // VEC_MATH_H

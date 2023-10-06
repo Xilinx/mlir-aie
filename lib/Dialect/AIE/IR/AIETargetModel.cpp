@@ -454,7 +454,8 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
       else
         return 4;
     case WireBundle::Trace:
-      return 1;
+      // Port 0: core trace. Port 1: memory trace.
+      return 2;
     default:
       return 0;
     }

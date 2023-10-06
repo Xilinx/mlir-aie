@@ -28,7 +28,7 @@ module @tutorial_2b {
             // Currently, we only allow multi-dimensional stride/wrap definitons
             // on BDs referring to a memref of rank 1.
             // expected-error@+1 {{Specifying transfer step sizes and wraps is only supported for }}
-            AIE.dmaBd(<%buf14 : memref<3x2x64xi32>, 0, 128>, 0, [<2, 8>])
+            AIE.dmaBd(<%buf14 : memref<3x2x64xi32>, 0, 128>, 0, [<8, 2>])
             AIE.nextBd ^end
           ^end: 
             AIE.end

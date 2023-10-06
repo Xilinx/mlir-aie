@@ -18,7 +18,9 @@ def parse_args(args=None):
         args = sys.argv[1:]
     parser = argparse.ArgumentParser(prog='aiecc')
     parser.add_argument('filename',
+            nargs='?',
             metavar="file",
+            default=None,
             help='MLIR file to compile')
     parser.add_argument('--sysroot',
             metavar="sysroot",

@@ -430,11 +430,104 @@ LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
+  if (getProducerTileOp().isShimTile() && getDimensionsToStream().size() > 0) {
+    return emitError("`toStream` data layout transformations are not supported "
+                     "on shim tile producers");
+  }
+
   return success();
 }
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
   return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
 }
+
+namespace xilinx {
+namespace AIE {
+
+::mlir::ParseResult
+parseObjectFifoProducerTile(::mlir::OpAsmParser &parser,
+                            ::mlir::OpAsmParser::UnresolvedOperand &tile,
+                            DimTupleArrayAttr &dimensions) {
+  std::vector<DimTupleAttr> emptyDims = {};
+  if (parser.parseOperand(tile))
+    return ::mlir::failure();
+  if (::mlir::succeeded(parser.parseOptionalKeyword("toStream"))) {
+    if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(
+            dimensions)) {
+      return ::mlir::failure();
+    }
+  } else {
+    dimensions = DimTupleArrayAttr::get(parser.getContext(),
+                                        ArrayRef<DimTupleAttr>(emptyDims));
+  }
+  return ::mlir::success();
+}
+
+void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
+                                 Operation *op, Value operand,
+                                 DimTupleArrayAttr dimensions) {
+  _odsPrinter << operand;
+  if (dimensions && dimensions.size() > 0) {
+    _odsPrinter << " toStream ";
+    _odsPrinter.printStrippedAttrOrType(dimensions);
+  }
+}
+
+::mlir::ParseResult parseObjectFifoConsumerTiles(
+    ::mlir::OpAsmParser &parser,
+    SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &tiles,
+    DimTupleArrayArrayAttr &dimensions) {
+  // parseCommaSeparatedList doesn't handle the missing case for "none",
+  // so we handle it custom here.
+  std::vector<DimTupleArrayAttr> tileDims = {};
+
+  auto parseOneOperand = [&]() -> ParseResult {
+    if (parser.parseOperand(tiles.emplace_back(), true)) {
+      return ::mlir::failure();
+    }
+    // By default, create empty dimensions array for each consumer; this way,
+    // we can be certain to have as many entries in the dimensions array as
+    // there are customer
+    DimTupleArrayAttr dimAttr = DimTupleArrayAttr::get(parser.getContext(), {});
+
+    if (::mlir::succeeded(parser.parseOptionalKeyword("fromStream"))) {
+      // If specified, parse actual data layout transform dimensions
+      if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(dimAttr)) {
+        return ::mlir::failure();
+      }
+    }
+    tileDims.emplace_back(dimAttr);
+    return ::mlir::success();
+  };
+
+  if (parser.parseCommaSeparatedList(::mlir::AsmParser::Delimiter::None,
+                                     parseOneOperand, " in operand list"))
+    return ::mlir::failure();
+
+  dimensions = DimTupleArrayArrayAttr::get(parser.getContext(), tileDims);
+  return ::mlir::success();
+}
+
+void printObjectFifoConsumerTiles(::mlir::OpAsmPrinter &_odsPrinter,
+                                  Operation *op, OperandRange tiles,
+                                  DimTupleArrayArrayAttr dimsPerTileAttr) {
+  size_t tileIdx = 0;
+  for (auto tile : tiles) {
+    _odsPrinter << tile;
+    if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size() &&
+        dimsPerTileAttr[tileIdx] && dimsPerTileAttr[tileIdx].size() > 0) {
+      _odsPrinter << " fromStream ";
+      _odsPrinter.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
+    }
+    if (tileIdx < dimsPerTileAttr.size() - 1) {
+      _odsPrinter << ", ";
+    }
+    tileIdx++;
+  }
+}
+
+} // namespace AIE
+} // namespace xilinx
 
 // ObjectFifoLinkOp
 LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
@@ -471,6 +564,16 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    if (fifoIn.getDimensionsToStream().size() > 0) {
+      return emitOpError("currently does not support objectFifos with "
+                         "dimensionsToStream.");
+    }
+    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
+      if (dims.size() > 0)
+        return emitOpError("currently does not support objectFifos with "
+                           "dimensionsFromStreamPerConsumer.");
+    }
+
     AIEObjectFifoType fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
     MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
     int64_t inputSize = 1;
@@ -479,6 +582,16 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
+      if (fifoOut.getDimensionsToStream().size() > 0) {
+        return emitOpError("currently does not support objectFifos with "
+                           "dimensionsToStream.");
+      }
+      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
+        if (dims.size() > 0)
+          return emitOpError("currently does not support objectFifos with "
+                             "dimensionsFromStreamPerConsumer.");
+      }
+
       AIEObjectFifoType fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
       MemRefType elemType = fifo.getElementType().cast<MemRefType>();
       int64_t nextOutputSize = 1;
@@ -1194,6 +1307,12 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
         return emitOpError()
                << "Step size " << std::to_string(dim.getStepsize() * 4) << " "
                << "bytes exceeds memref size " << std::to_string(memref_size);
+      }
+      if (dim.getWrap() >= (1UL << 9) + 1) {
+        return emitOpError() << "Wrap may not exceed 1023.";
+      }
+      if (dim.getStepsize() >= (1UL << 19)) {
+        return emitOpError() << "Stepsize may not exceed " << (1 << 20);
       }
     }
     if (memref_size <= 4 * max_idx) {
