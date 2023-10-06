@@ -41,7 +41,7 @@ struct AIENormalizeAddressSpacesPass
     DeviceOp device = getOperation();
 
     TypeConverter converter;
-    converter.addConversion([&](Type type) -> Optional<Type> {
+    converter.addConversion([&](Type type) -> std::optional<Type> {
       return memRefToDefaultAddressSpace(type);
     });
 

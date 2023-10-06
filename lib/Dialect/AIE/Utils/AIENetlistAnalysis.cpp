@@ -249,7 +249,7 @@ xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
   uint64_t memUsage = 0;
   for (auto buf : buffers[tileOp]) {
     auto t = buf.getType().cast<ShapedType>();
-    memUsage += t.getSizeInBits();
+    memUsage += t.getElementTypeBitWidth();
   }
   return memUsage / 8;
 }

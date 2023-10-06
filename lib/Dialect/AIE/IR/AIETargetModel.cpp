@@ -26,9 +26,9 @@ AIETargetModel::~AIETargetModel() {}
 AIEArch AIE1TargetModel::getTargetArch() const { return AIEArch::AIE1; }
 
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE1TargetModel::getMemWest(TileID src) const {
+std::optional<TileID> AIE1TargetModel::getMemWest(TileID src) const {
   bool isEvenRow = ((src.second % 2) == 0);
-  Optional<TileID> ret;
+  std::optional<TileID> ret;
   if (isEvenRow)
     ret = src;
   else
@@ -38,9 +38,9 @@ Optional<TileID> AIE1TargetModel::getMemWest(TileID src) const {
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
+std::optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
   bool isEvenRow = ((src.second % 2) == 0);
-  Optional<TileID> ret;
+  std::optional<TileID> ret;
   if (isEvenRow)
     ret = std::make_pair(src.first + 1, src.second);
   else
@@ -50,14 +50,14 @@ Optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE1TargetModel::getMemNorth(TileID src) const {
-  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
+std::optional<TileID> AIE1TargetModel::getMemNorth(TileID src) const {
+  std::optional<TileID> ret = std::make_pair(src.first, src.second + 1);
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
-Optional<TileID> AIE1TargetModel::getMemSouth(TileID src) const {
-  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
+std::optional<TileID> AIE1TargetModel::getMemSouth(TileID src) const {
+  std::optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
   if (!isValidTile(*ret) || ret->second == 0)
     ret.reset();
@@ -266,28 +266,28 @@ bool AIE1TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
 AIEArch AIE2TargetModel::getTargetArch() const { return AIEArch::AIE2; }
 
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
-  Optional<TileID> ret = std::make_pair(src.first - 1, src.second);
+std::optional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
+  std::optional<TileID> ret = std::make_pair(src.first - 1, src.second);
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE2TargetModel::getMemEast(TileID src) const {
-  Optional<TileID> ret = src;
+std::optional<TileID> AIE2TargetModel::getMemEast(TileID src) const {
+  std::optional<TileID> ret = src;
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
-Optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
-  Optional<TileID> ret = std::make_pair(src.first, src.second + 1);
+std::optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
+  std::optional<TileID> ret = std::make_pair(src.first, src.second + 1);
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
-Optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
-  Optional<TileID> ret = std::make_pair(src.first, src.second - 1);
+std::optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
+  std::optional<TileID> ret = std::make_pair(src.first, src.second - 1);
   // The first row doesn't have a tile memory south
   // Memtiles don't have memory adjacency to neighboring core tiles.
   if (!isValidTile(*ret) || ret->second == 0 ||

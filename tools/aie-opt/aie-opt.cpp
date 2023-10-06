@@ -71,7 +71,6 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerTransformDialectExtension(registry);
   ::test::registerTestTransformDialectExtension(registry);
 
-  return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
-                            registry,
-                            /*preloadDialectsInContext=*/false));
+  return failed(
+      MlirOptMain(argc, argv, "MLIR modular optimizer driver\n", registry));
 }
