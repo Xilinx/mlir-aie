@@ -2499,7 +2499,7 @@ struct LowerVectorToAIEVec
     return "Lower vector operations to AIE vector intrinsics";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<affine::AffineDialect, xilinx::aievec::AIEVecDialect,
+    registry.insert<AffineDialect, xilinx::aievec::AIEVecDialect,
                     arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
                     vector::VectorDialect, emitc::EmitCDialect>();
   }
