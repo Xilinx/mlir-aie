@@ -1240,9 +1240,6 @@ int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
 /// function.
 Region *xilinx::AIE::MemOp::getCallableRegion() { return &(getBody()); }
 
-/// Returns the results types that the callable region produces when executed.
-ArrayRef<Type> xilinx::AIE::MemOp::getCallableResults() { return getType(); }
-
 // MemTileDMAOp
 LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
   assert(getOperation()->getNumRegions() == 1 &&
@@ -1401,11 +1398,6 @@ int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 /// return nullptr in the case of an external callable object, e.g. an external
 /// function.
 Region *xilinx::AIE::MemTileDMAOp::getCallableRegion() { return &(getBody()); }
-
-/// Returns the results types that the callable region produces when executed.
-ArrayRef<Type> xilinx::AIE::MemTileDMAOp::getCallableResults() {
-  return getType();
-}
 
 // SwitchboxOp
 xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {

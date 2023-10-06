@@ -59,14 +59,11 @@ struct AIEObjectFifoRegisterProcessPass
 
   mlir::scf::ForOp createForLoop(OpBuilder &builder, int length) {
     arith::ConstantOp lowerBound = builder.create<arith::ConstantOp>(
-        builder.getUnknownLoc(), builder.getIndexAttr(0),
-        builder.getIndexType());
+        builder.getUnknownLoc(), builder.getIndexAttr(0));
     arith::ConstantOp upperBound = builder.create<arith::ConstantOp>(
-        builder.getUnknownLoc(), builder.getIndexAttr(length),
-        builder.getIndexType());
+        builder.getUnknownLoc(), builder.getIndexAttr(length));
     arith::ConstantOp step = builder.create<arith::ConstantOp>(
-        builder.getUnknownLoc(), builder.getIndexAttr(1),
-        builder.getIndexType());
+        builder.getUnknownLoc(), builder.getIndexAttr(1));
     mlir::scf::ForOp forLoop = builder.create<mlir::scf::ForOp>(
         builder.getUnknownLoc(), lowerBound, upperBound, step);
     return forLoop;
