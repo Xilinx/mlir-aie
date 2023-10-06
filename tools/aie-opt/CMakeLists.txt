@@ -29,6 +29,7 @@ set(LIBS
   AIEXTransforms
   AIEXUtils
   MLIRAIEVec
+  MLIRAIEVecTransformOps
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM
   MLIRTestTransformDialect
