@@ -5,7 +5,7 @@
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
-// Cycle count: 746
+// Cycle count: 151
 
 func.func @dut(%arg0: tensor<1024xi32>) -> (tensor<1024xi16>) {
   %0 = "tosa.cast"(%arg0) : (tensor<1024xi32>) -> tensor<1024xi16>
