@@ -42,7 +42,7 @@ using namespace mlir;
 //     %1 = vector.type_cast %0 : memref<64x64xvector<8x4xf32>>
 //     %2 = bufferization.to_tensor %1 restrict : memref<64x64xvector<8x4xf32>>
 // ```
-static Value vectorizeTensor(IRRewriter &rewriter, Location loc, Value tensor) {
+static Value vectorizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto opTy = tensor.getType();
   auto shapeTy = cast<ShapedType>(opTy);
   auto shape = shapeTy.getShape();
@@ -68,7 +68,7 @@ static Value vectorizeTensor(IRRewriter &rewriter, Location loc, Value tensor) {
 // Emit IR to convert the given tensor in the form tensor<...xvector<MxNxTy>>
 // into a tensor<...xMxNxTy>. It performs the inverse operation to
 // `vectorizeTensor` above.
-static Value scalarizeTensor(IRRewriter &rewriter, Location loc, Value tensor) {
+static Value scalarizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto opTy = tensor.getType();
   auto shapeTy = cast<ShapedType>(opTy);
 
@@ -97,7 +97,7 @@ static Value scalarizeTensor(IRRewriter &rewriter, Location loc, Value tensor) {
   return toTensorOp.getResult();
 }
 
-static bool vectorizeContractionOpBlock(IRRewriter &rewriter, Location loc,
+static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
                                         Block &srcBlock, Block &dstBlock) {
   auto ctx = rewriter.getContext();
   OpBuilder::InsertionGuard g(rewriter);
@@ -182,11 +182,9 @@ static bool vectorizeContractionOpBlock(IRRewriter &rewriter, Location loc,
   return mulOpFound && addOpFound && !walkResult.wasInterrupted();
 }
 
-// transform::VectorizeContractionOp::applyToOne(transform::TransformRewriter
-// &rewriter, linalg::LinalgOp target, transform::ApplyToEachResultList
-// &results, transform::TransformState &state) {
 DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
-    linalg::GenericOp target, transform::ApplyToEachResultList &results,
+    transform::TransformRewriter &rewriter, linalg::GenericOp target,
+    transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
 
   auto ctx = target.getContext();
@@ -258,7 +256,7 @@ DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
       indexingMaps[2]
           .dropResults({numResults - 2, numResults - 1})
           .replaceDimsAndSymbols(remOuterDims, {}, numOuterMostDims, 0);
-  IRRewriter rewriter(ctx);
+
   rewriter.setInsertionPoint(target);
   Location loc = target.getLoc();
   // Insert reshape ops for input operands

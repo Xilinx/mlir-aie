@@ -268,7 +268,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
 //============================================================================//
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect, AffineDialect,
+  target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
                          memref::MemRefDialect, vector::VectorDialect>();
 }
 
@@ -353,7 +353,7 @@ struct CanonicalizeVectorForAIEVecPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, AffineDialect>();
+                    vector::VectorDialect, affine::AffineDialect>();
   }
 
   Option<std::string> aieTarget{
