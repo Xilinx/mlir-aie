@@ -1316,10 +1316,10 @@ using LowerVectorMinSIOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
 using LowerVectorMaxSIOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
-using LowerVectorMinFOpToAIEVecMinOp =
-    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinFOp, aievec::MinOp>;
-using LowerVectorMaxFOpToAIEVecMaxOp =
-    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxFOp, aievec::MaxOp>;
+using LowerVectorMinimumFOpToAIEVecMinOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinimumFOp, aievec::MinOp>;
+using LowerVectorMaximumFOpToAIEVecMaxOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaximumFOp, aievec::MaxOp>;
 
 template <typename SrcOpTy, typename CmpTy>
 struct LowerVectorCmpOpToAIEVecCmpOp : public OpConversionPattern<SrcOpTy> {
@@ -2489,9 +2489,9 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorSubFOpToAIEVecSubElemOp,
       ConvertMulFToAIEVecMulElemOpPattern,
       LowerVectorMinSIOpToAIEVecMinOp,
-      LowerVectorMinFOpToAIEVecMinOp,
+      LowerVectorMinimumFOpToAIEVecMinOp,
       LowerVectorMaxSIOpToAIEVecMaxOp,
-      LowerVectorMaxFOpToAIEVecMaxOp,
+      LowerVectorMaximumFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp,
       LowerVectorCmpFOpToAIEVecCmpOp,
       LowerVectorSelectOpToAIEVecSelOp,
@@ -2987,7 +2987,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
              laneSize * resultElWidth == 512);
   });
 
-  target.addDynamicallyLegalOp<arith::MinFOp>([=](arith::MinFOp op) {
+  target.addDynamicallyLegalOp<arith::MinimumFOp>([=](arith::MinimumFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType) {
       return true;
@@ -2999,7 +2999,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
              laneSize * resultElWidth == 512);
   });
 
-  target.addDynamicallyLegalOp<arith::MaxFOp>([=](arith::MaxFOp op) {
+  target.addDynamicallyLegalOp<arith::MaximumFOp>([=](arith::MaximumFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType) {
       return true;
@@ -3120,7 +3120,7 @@ struct LowerVectorToAIEVec
     return "Lower vector operations to AIE vector intrinsics";
   }
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<AffineDialect, xilinx::aievec::AIEVecDialect,
+    registry.insert<affine::AffineDialect, xilinx::aievec::AIEVecDialect,
                     arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
                     vector::VectorDialect, emitc::EmitCDialect>();
   }

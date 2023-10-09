@@ -284,7 +284,7 @@ struct AIEVecTransformationPass
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     // TODO: Review list of dependent dialects.
-    registry.insert<AffineDialect, xilinx::aievec::AIEVecDialect,
+    registry.insert<affine::AffineDialect, xilinx::aievec::AIEVecDialect,
                     arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
                     vector::VectorDialect>();
   }
@@ -354,7 +354,7 @@ struct AIEVecConvOpTransformationPass
   }
   void getDependentDialects(DialectRegistry &registry) const override {
     // TODO: Review list of dependent dialects.
-    registry.insert<AffineDialect, xilinx::aievec::AIEVecDialect,
+    registry.insert<affine::AffineDialect, xilinx::aievec::AIEVecDialect,
                     arith::ArithDialect, memref::MemRefDialect, scf::SCFDialect,
                     vector::VectorDialect>();
   }

@@ -140,6 +140,7 @@ def VectorizeContractionOp : Op<Transform_Dialect,
   }];
   let extraClassDeclaration = [{
       ::mlir::DiagnosedSilenceableFailure applyToOne(
+        ::mlir::transform::TransformRewriter &rewriter,
         ::mlir::linalg::GenericOp target,
         ::mlir::transform::ApplyToEachResultList &results,
         TransformState &state);
