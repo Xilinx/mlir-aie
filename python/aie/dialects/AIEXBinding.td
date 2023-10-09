@@ -9,7 +9,6 @@
 #ifndef AIEX_BINDING_TD
 #define AIEX_BINDING_TD
 
-include "mlir/Bindings/Python/Attributes.td"
 include "aie/Dialect/AIEX/IR/AIEX.td"
 
 #endif // AIEX_BINDING_TD
