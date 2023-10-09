@@ -519,7 +519,7 @@ void printObjectFifoConsumerTiles(::mlir::OpAsmPrinter &_odsPrinter,
       _odsPrinter << " fromStream ";
       _odsPrinter.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
     }
-    if (tileIdx < dimsPerTileAttr.size() - 1) {
+    if (tileIdx < tiles.size() - 1) {
       _odsPrinter << ", ";
     }
     tileIdx++;
