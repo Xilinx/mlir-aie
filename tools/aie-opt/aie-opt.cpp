@@ -35,6 +35,15 @@
 using namespace llvm;
 using namespace mlir;
 
+namespace mlir::test {
+void registerTestTransformDialectEraseSchedulePass();
+void registerTestTransformDialectInterpreterPass();
+} // namespace mlir::test
+
+namespace test {
+void registerTestTransformDialectExtension(DialectRegistry &);
+}
+
 int main(int argc, char **argv) {
 
   registerAllPasses();
@@ -45,6 +54,9 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();
 
+  mlir::test::registerTestTransformDialectEraseSchedulePass();
+  mlir::test::registerTestTransformDialectInterpreterPass();
+
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert<scf::SCFDialect>();
@@ -54,6 +66,8 @@ int main(int argc, char **argv) {
   registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<xilinx::ADF::ADFDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
+
+  ::test::registerTestTransformDialectExtension(registry);
 
   return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
                             registry,
