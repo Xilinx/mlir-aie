@@ -2446,6 +2446,17 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return false;
   });
 
+  // Check there is an operation chain like-
+  //
+  //      %cst_0 = arith.constant dense<1.000000e+00> : vector<16xbf16>
+  //      %cst_1 = arith.constant 0.000000e+00 : bf16
+  //      %0 = vector.transfer_read %arg0[%arg2], %cst_1 : memref<1024xbf16>,
+  //      vector<16xbf16> %1 = arith.negf %0 : vector<16xbf16> %2 = math.exp %1
+  //      : vector<16xbf16> %3 = arith.addf %2, %cst_0 : vector<16xbf16> %4 =
+  //      arith.divf %cst_0, %3 : vector<16xbf16>
+  //
+  // so that this operation chain can be converted to a function call to compute
+  // sigmoid value for v16bfloat16 and v32bfloat16 types
   target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
     VectorType srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
 
