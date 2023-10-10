@@ -15,8 +15,7 @@ alignas(32) bfloat16 g_out0Ref[OUT0_SIZE];
 int main(int argc, char *argv[]) {
   std::string dataDir(TO_STR(DATA_DIR));
   srand(10);
-  std::generate(g_in0, g_in0 + IN0_SIZE,
-                [&]() { return random_bfloat16(); });
+  std::generate(g_in0, g_in0 + IN0_SIZE, [&]() { return random_bfloat16(); });
 
   writeData(g_in0, IN0_SIZE, dataDir + "/in0.txt");
 
