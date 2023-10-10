@@ -2123,6 +2123,50 @@ struct LowerTruncOpPattern : public OpConversionPattern<SrcOpTy> {
 using LowerTruncFOpPattern = LowerTruncOpPattern<arith::TruncFOp>;
 using LowerTruncIOpPattern = LowerTruncOpPattern<arith::TruncIOp>;
 
+// Convert the operation chain like-
+//
+//      %cst_0 = arith.constant dense<1.000000e+00> : vector<16xbf16>
+//      %cst_1 = arith.constant 0.000000e+00 : bf16
+//      %0 = vector.transfer_read %arg0[%arg2], %cst_1 : memref<1024xbf16>,
+//      vector<16xbf16> %1 = arith.negf %0 : vector<16xbf16> %2 = math.exp %1 :
+//      vector<16xbf16> %3 = arith.addf %2, %cst_0 : vector<16xbf16> %4 =
+//      arith.divf %cst_0, %3 : vector<16xbf16>
+//
+// to a function call to compute sigmoid value for v16bfloat16 and
+// v32bfloat16 types
+struct ComputeSigmoidOpPattern : public OpConversionPattern<arith::DivFOp> {
+  using OpConversionPattern<arith::DivFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divfOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto addOp = cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
+
+    auto addLvalOp = addOp.getLhs().getDefiningOp();
+    auto addRvalOp = addOp.getRhs().getDefiningOp();
+
+    auto expOp = isa<math::ExpOp>(addLvalOp) ? cast<math::ExpOp>(addLvalOp)
+                                             : cast<math::ExpOp>(addRvalOp);
+
+    auto negOp = cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
+
+    StringRef includeName = "vec_math.h";
+    ModuleOp moduleOp = divfOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(divfOp);
+    SmallVector<Value> sigmoidOperands = {negOp.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        divfOp, TypeRange{divfOp.getResult().getType()}, "getSigmoidBf16",
+        nullptr, nullptr, sigmoidOperands);
+
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2160,6 +2204,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeErfOpPattern,
       ComputeAbsFOpPattern,
       ComputeAbsIOpPattern,
+      ComputeSigmoidOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2188,6 +2233,74 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 // TODO: Review the validity of these legalizations beyond basic cases.
+static bool isInSigmoidOperationChain(math::ExpOp expOp) {
+  auto negOp = dyn_cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
+
+  if (!negOp) {
+    return false;
+  }
+
+  arith::AddFOp addOp = nullptr;
+  for (Operation *user : expOp->getUsers()) {
+    addOp = dyn_cast<arith::AddFOp>(user);
+    if (addOp) {
+      break;
+    }
+  }
+
+  if (!addOp) {
+    return false;
+  }
+
+  auto addLvalOp = addOp.getLhs().getDefiningOp();
+  auto addRvalOp = addOp.getRhs().getDefiningOp();
+
+  if (!((isa<math::ExpOp>(addLvalOp) && isa<arith::ConstantOp>(addRvalOp)) ||
+        (isa<math::ExpOp>(addRvalOp) && isa<arith::ConstantOp>(addLvalOp)))) {
+    return false;
+  }
+
+  auto constOp = isa<arith::ConstantOp>(addLvalOp)
+                     ? cast<arith::ConstantOp>(addLvalOp)
+                     : cast<arith::ConstantOp>(addRvalOp);
+
+  auto cstDense = dyn_cast<DenseFPElementsAttr>(constOp.getValue());
+  if (!cstDense) {
+    return false;
+  }
+
+  if (cstDense.getSplatValue<APFloat>().convertToFloat() != 1.0f) {
+    return false;
+  }
+
+  arith::DivFOp divOp = nullptr;
+  for (Operation *user : addOp->getUsers()) {
+    divOp = dyn_cast<arith::DivFOp>(user);
+    if (divOp) {
+      break;
+    }
+  }
+
+  if (!divOp) {
+    return false;
+  }
+
+  constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
+  if (!constOp) {
+    return false;
+  }
+
+  cstDense = dyn_cast<DenseFPElementsAttr>(constOp.getValue());
+  if (!cstDense) {
+    return false;
+  }
+
+  if (cstDense.getSplatValue<APFloat>().convertToFloat() != 1.0f) {
+    return false;
+  }
+  return true;
+}
+
 static void configureAIEVecCommonLegalizations(ConversionTarget &target,
                                                AnalysisManager &am) {
   target.addLegalDialect<xilinx::aievec::AIEVecDialect, arith::ArithDialect,
@@ -2204,6 +2317,10 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return true;
+
+    if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp)) {
+      return true;
+    }
     return false;
   });
 
@@ -2323,6 +2440,76 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     if (elWidth * laneSize != 512 && elWidth * laneSize != 256) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
+    VectorType srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
+
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+    if (!isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return true;
+    }
+
+    auto constOp = dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+    if (!constOp) {
+      return true;
+    }
+
+    auto cstDense = dyn_cast<DenseFPElementsAttr>(constOp.getValue());
+    if (!cstDense) {
+      return true;
+    }
+
+    if (cstDense.getSplatValue<APFloat>().convertToFloat() != 1.0f) {
+      return true;
+    }
+
+    auto addOp = dyn_cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
+    if (!addOp) {
+      return true;
+    }
+
+    auto addLvalOp = addOp.getLhs().getDefiningOp();
+    auto addRvalOp = addOp.getRhs().getDefiningOp();
+
+    if (!((isa<math::ExpOp>(addLvalOp) && isa<arith::ConstantOp>(addRvalOp)) ||
+          (isa<math::ExpOp>(addRvalOp) && isa<arith::ConstantOp>(addLvalOp)))) {
+      return true;
+    }
+
+    auto expOp = isa<math::ExpOp>(addLvalOp) ? cast<math::ExpOp>(addLvalOp)
+                                             : cast<math::ExpOp>(addRvalOp);
+    constOp = isa<arith::ConstantOp>(addLvalOp)
+                  ? cast<arith::ConstantOp>(addLvalOp)
+                  : cast<arith::ConstantOp>(addRvalOp);
+
+    cstDense = dyn_cast<DenseFPElementsAttr>(constOp.getValue());
+    if (!cstDense) {
+      return true;
+    }
+
+    if (cstDense.getSplatValue<APFloat>().convertToFloat() != 1.0f) {
+      return true;
+    }
+
+    auto negOp = dyn_cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
+
+    if (!negOp) {
       return true;
     }
 
