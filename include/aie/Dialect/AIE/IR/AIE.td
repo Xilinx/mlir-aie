@@ -1502,14 +1502,21 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
   }];
 
   let builders = [
-    OpBuilder<(ins "StringAttr":$sym_name, "Value":$producerTile, "ValueRange":$consumerTiles, "Attribute":$elemNumber, "Type":$elem_type), [{
-      printf("Non additional attribute builder called.\n");
+    OpBuilder<(ins "StringAttr":$sym_name, "Value":$producerTile,
+                   "ValueRange":$consumerTiles, "Attribute":$elemNumber, "Type":$elem_type,
+                   CArg<"ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
+                   CArg<"ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer),
+    [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
       odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
       odsState.addAttribute(getElemTypeAttrName(odsState.name), ::mlir::TypeAttr::get(elem_type));
-      }]>
+      odsState.addAttribute(getDimensionsToStreamAttrName(odsState.name),
+                            odsBuilder.getAttr<DimTupleArrayAttr>(dimensionsToStream));
+      odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),
+                            odsBuilder.getAttr<DimTupleArrayArrayAttr>(dimensionsFromStreamPerConsumer));
+    }]>
   ];
 }
 
