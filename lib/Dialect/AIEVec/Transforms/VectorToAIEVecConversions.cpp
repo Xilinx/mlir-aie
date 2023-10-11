@@ -2158,12 +2158,16 @@ static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
   auto addRvalOp = addOp.getRhs().getDefiningOp();
 
   if (!((isa<math::ExpOp>(addLvalOp) && isa<arith::ConstantOp>(addRvalOp)) ||
-        (isa<math::ExpOp>(addRvalOp) && isa<arith::ConstantOp>(addLvalOp)))) {
+        (isa<math::ExpOp>(addRvalOp) && isa<arith::ConstantOp>(addLvalOp)) ||
+        (isa<emitc::CallOp>(addLvalOp) &&
+         cast<emitc::CallOp>(addLvalOp).getCallee() == "getExpBf16" &&
+         isa<arith::ConstantOp>(addRvalOp)) ||
+        (isa<emitc::CallOp>(addRvalOp) &&
+         cast<emitc::CallOp>(addRvalOp).getCallee() == "getExpBf16" &&
+         isa<arith::ConstantOp>(addLvalOp)))) {
     return false;
   }
 
-  auto expOp = isa<math::ExpOp>(addLvalOp) ? cast<math::ExpOp>(addLvalOp)
-                                           : cast<math::ExpOp>(addRvalOp);
   constOp = isa<arith::ConstantOp>(addLvalOp)
                 ? cast<arith::ConstantOp>(addLvalOp)
                 : cast<arith::ConstantOp>(addRvalOp);
@@ -2177,7 +2181,18 @@ static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
     return false;
   }
 
-  auto negOp = dyn_cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
+  auto expOp = isa<math::ExpOp>(addLvalOp)
+                   ? cast<math::ExpOp>(addLvalOp)
+                   : (isa<emitc::CallOp>(addLvalOp)
+                          ? cast<emitc::CallOp>(addLvalOp)
+                          : (isa<math::ExpOp>(addRvalOp)
+                                 ? cast<math::ExpOp>(addRvalOp)
+                                 : cast<emitc::CallOp>(addRvalOp)));
+
+  auto expOperand = isa<math::ExpOp>(expOp)
+                        ? cast<math::ExpOp>(expOp).getOperand()
+                        : *(cast<emitc::CallOp>(expOp).getOperands().begin());
+  auto negOp = dyn_cast<arith::NegFOp>(expOperand.getDefiningOp());
 
   if (!negOp) {
     return false;
@@ -2191,9 +2206,11 @@ static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
 //      %cst_0 = arith.constant dense<1.000000e+00> : vector<16xbf16>
 //      %cst_1 = arith.constant 0.000000e+00 : bf16
 //      %0 = vector.transfer_read %arg0[%arg2], %cst_1 : memref<1024xbf16>,
-//      vector<16xbf16> %1 = arith.negf %0 : vector<16xbf16> %2 = math.exp %1 :
-//      vector<16xbf16> %3 = arith.addf %2, %cst_0 : vector<16xbf16> %4 =
-//      arith.divf %cst_0, %3 : vector<16xbf16>
+//      vector<16xbf16>
+//      %1 = arith.negf %0 : vector<16xbf16>
+//      %2 = math.exp %1 :vector<16xbf16>
+//      %3 = arith.addf %2, %cst_0 : vector<16xbf16>
+//      %4 = arith.divf %cst_0, %3 : vector<16xbf16>
 //
 // to a function call to compute sigmoid value for v16bfloat16 and
 // v32bfloat16 types
@@ -2203,7 +2220,7 @@ struct ComputeSigmoidOpPattern : public OpConversionPattern<arith::DivFOp> {
   LogicalResult
   matchAndRewrite(arith::DivFOp divfOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
+    VectorType srcType = dyn_cast<VectorType>(adaptor.getLhs().getType());
 
     if (!srcType) {
       return failure();
@@ -2244,7 +2261,7 @@ struct ComputeSigmoidOpPattern : public OpConversionPattern<arith::DivFOp> {
     rewriter.setInsertionPoint(divfOp);
     SmallVector<Value> sigmoidOperands = {negOp.getOperand()};
     rewriter.replaceOpWithNewOp<emitc::CallOp>(
-        divfOp, TypeRange{divfOp.getResult().getType()}, "getSigmoidBf16",
+        divfOp, TypeRange{adaptor.getLhs().getType()}, "getSigmoidBf16",
         nullptr, nullptr, sigmoidOperands);
 
     return success();
@@ -2317,6 +2334,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 // TODO: Review the validity of these legalizations beyond basic cases.
+
 static bool isInSigmoidOperationChain(math::ExpOp expOp) {
   auto negOp = dyn_cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
 
@@ -2402,9 +2420,10 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return true;
 
-    if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp)) {
+    if (!expOp->use_empty() && isInSigmoidOperationChain(expOp)) {
       return true;
     }
+
     return false;
   });
 
