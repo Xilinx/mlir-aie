@@ -2152,13 +2152,54 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
     return false;
   }
 
+  Operation *addLvalOp = nullptr;
+  Operation *addRvalOp = nullptr;
+  // divfOp's rval could be an arith::AddFOp or the pattern like-
+  // %1 = aievec.ups %a
+  // %2 = aievec.ups %b;
+  // %3 = aievec.add_elem %1, %2
+  // %4 = aievec.srs %3;
   auto addOp = dyn_cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
   if (!addOp) {
-    return false;
+    auto srsOp = dyn_cast<aievec::SRSOp>(divfOp.getRhs().getDefiningOp());
+    if (!srsOp) {
+      return false;
+    }
+    auto addElemOp =
+        dyn_cast<aievec::AddElemOp>(srsOp.getSource().getDefiningOp());
+    if (!addElemOp) {
+      return false;
+    }
+    auto lUpsOp = dyn_cast<aievec::UPSOp>(addElemOp.getLhs().getDefiningOp());
+    auto rUpsOp = dyn_cast<aievec::UPSOp>(addElemOp.getRhs().getDefiningOp());
+    if (!lUpsOp || !rUpsOp) {
+      return false;
+    }
+    addLvalOp = lUpsOp.getSource().getDefiningOp();
+    addRvalOp = rUpsOp.getSource().getDefiningOp();
+    // One of add operation's operand is a constant op and another operand could
+    // be arith::ExpOp or the combination of emitc.call and aievec.srs
+    auto addDefOp = isa<arith::ConstantOp>(addLvalOp)
+                        ? dyn_cast<aievec::SRSOp>(addRvalOp)
+                        : dyn_cast<aievec::SRSOp>(addLvalOp);
+    if (!addDefOp) {
+      addLvalOp = isa<arith::ConstantOp>(addLvalOp)
+                      ? dyn_cast<math::ExpOp>(addRvalOp)
+                      : dyn_cast<math::ExpOp>(addLvalOp);
+    } else {
+      addLvalOp = addDefOp.getSource().getDefiningOp();
+    }
+    addRvalOp = isa<arith::ConstantOp>(addLvalOp)
+                    ? lUpsOp.getSource().getDefiningOp()
+                    : rUpsOp.getSource().getDefiningOp();
+  } else {
+    addLvalOp = addOp.getLhs().getDefiningOp();
+    addRvalOp = addOp.getRhs().getDefiningOp();
   }
 
-  auto addLvalOp = addOp.getLhs().getDefiningOp();
-  auto addRvalOp = addOp.getRhs().getDefiningOp();
+  if (!addLvalOp || !addRvalOp) {
+    return false;
+  }
 
   if (!((isa<math::ExpOp>(addLvalOp) && isa<arith::ConstantOp>(addRvalOp)) ||
         (isa<math::ExpOp>(addRvalOp) && isa<arith::ConstantOp>(addLvalOp)) ||
@@ -2413,11 +2454,11 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return true;
-    /*
-        if (!expOp->use_empty() && isInSigmoidOperationChain(expOp)) {
-          return true;
-        }
-    */
+
+    if (!expOp->use_empty() && isInSigmoidOperationChain(expOp)) {
+      return true;
+    }
+
     return false;
   });
 
