@@ -2136,7 +2136,8 @@ using LowerTruncIOpPattern = LowerTruncOpPattern<arith::TruncIOp>;
 //
 // so that this operation chain can be converted to a function call to compute
 // sigmoid value for v16bfloat16 and v32bfloat16 types
-static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
+template <typename DivFOpTy>
+static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
   auto constOp = dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
   if (!constOp) {
     return false;
@@ -2147,7 +2148,7 @@ static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
     return false;
   }
 
-  if (cstDense.getSplatValue<APFloat>().convertToFloat() != 1.0f) {
+  if (cstDense.template getSplatValue<APFloat>().convertToFloat() != 1.0f) {
     return false;
   }
 
@@ -2179,7 +2180,7 @@ static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
     return false;
   }
 
-  if (cstDense.getSplatValue<APFloat>().convertToFloat() != 1.0f) {
+  if (cstDense.template getSplatValue<APFloat>().convertToFloat() != 1.0f) {
     return false;
   }
 
@@ -2194,7 +2195,7 @@ static bool hasSigmoidComputationChain(arith::DivFOp divfOp) {
   auto expOperand = isa<math::ExpOp>(expOp)
                         ? cast<math::ExpOp>(expOp).getOperand()
                         : *(cast<emitc::CallOp>(expOp).getOperands().begin());
-  auto negOp = dyn_cast<arith::NegFOp>(expOperand.getDefiningOp());
+  negOp = dyn_cast<arith::NegFOp>(expOperand.getDefiningOp());
 
   if (!negOp) {
     return false;
@@ -2240,19 +2241,10 @@ struct ComputeSigmoidOpPattern : public OpConversionPattern<arith::DivFOp> {
       return failure();
     }
 
-    if (!hasSigmoidComputationChain(divfOp)) {
+    arith::NegFOp negOp = nullptr;
+    if (!hasSigmoidComputationChain(adaptor, negOp)) {
       return failure();
     }
-
-    auto addOp = cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
-
-    auto addLvalOp = addOp.getLhs().getDefiningOp();
-    auto addRvalOp = addOp.getRhs().getDefiningOp();
-
-    auto expOp = isa<math::ExpOp>(addLvalOp) ? cast<math::ExpOp>(addLvalOp)
-                                             : cast<math::ExpOp>(addRvalOp);
-
-    auto negOp = cast<arith::NegFOp>(expOp.getOperand().getDefiningOp());
 
     StringRef includeName = "vec_math.h";
     ModuleOp moduleOp = divfOp->getParentOfType<mlir::ModuleOp>();
@@ -2421,11 +2413,11 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     unsigned laneSize = getVectorLaneSize(srcType);
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return true;
-
-    if (!expOp->use_empty() && isInSigmoidOperationChain(expOp)) {
-      return true;
-    }
-
+    /*
+        if (!expOp->use_empty() && isInSigmoidOperationChain(expOp)) {
+          return true;
+        }
+    */
     return false;
   });
 
@@ -2565,7 +2557,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
         return true;
       }
 
-      if (!hasSigmoidComputationChain(divfOp)) {
+      arith::NegFOp negOp = nullptr;
+      if (!hasSigmoidComputationChain(divfOp, negOp)) {
         return true;
       }
     }
