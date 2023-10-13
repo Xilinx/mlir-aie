@@ -40,19 +40,27 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     message(FATAL_ERROR "Toolchain file ${${target}_TOOLCHAIN_FILE} not found! Cannot build target ${target}.")
   endif()
   message("Building AIE runtime for ${target} with TOOLCHAIN=${${target}_TOOLCHAIN_FILE}")
-  
+
   # xaiengine
-  # if no LibXAIE_{target}_DIR specified, build xaiengine_${target} from Vitis
   if (DEFINED LibXAIE_${target}_DIR)
     message("Using xaiengine from LibXAIE_${target}_DIR=${LibXAIE_${target}_DIR}.")
     set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
-    find_package(LibXAIE)
+    find_package(LibXAIE REQUIRED)
     message(STATUS "FOUND LibXAIE: ${LibXAIE_FOUND}, XILINX_XAIE_LIB_DIR: ${XILINX_XAIE_LIB_DIR}, XILINX_XAIE_INCLUDE_DIR: ${XILINX_XAIE_INCLUDE_DIR}")
+
   elseif (DEFINED VITIS_ROOT)
-      message("LibXAIE_${target}_DIR not specified: Building xaiengine for ${target} from Vitis at ${VITIS_ROOT}.") 
-      set(XILINX_XAIE_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine/include) #set path where to pick up libxaiengine from build area
-      set(testLibDependsOnXaiengine xaiengine_${target}-build)
-      ExternalProject_Add(xaiengine_${target}
+  
+    # if no LibXAIE_{target}_DIR specified, build xaiengine_${target} from Vitis
+    message("LibXAIE_${target}_DIR not specified: Building xaiengine for ${target} from Vitis at ${VITIS_ROOT}.") 
+    set(LibXAIE_FOUND TRUE)
+    set(XILINX_XAIE_INCLUDE_DIR ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
+    set(XILINX_XAIE_LIBS ${VITIS_ROOT}/aietools/lib/lnx64.o/libxaiengine.so)
+
+  endif()
+
+  if (LibXAIE_FOUND)
+    set(testLibDependsOnXaiengine xaiengine_${target}-build)
+    ExternalProject_Add(xaiengine_${target}
       PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
       SOURCE_DIR ${PROJECT_SOURCE_DIR}/xaiengine
       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine
@@ -63,10 +71,12 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
+          -DAIERT_INCLUDE_DIR=${XILINX_XAIE_INCLUDE_DIR}
+          -DAIERT_LIBS=${XILINX_XAIE_LIBS}
           -DVITIS_ROOT=${VITIS_ROOT}
           -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
           -DVitis_VERSION_MAJOR=${Vitis_VERSION_MAJOR}
-		      -DVitis_VERSION_MINOR=${Vitis_VERSION_MINOR}
+          -DVitis_VERSION_MINOR=${Vitis_VERSION_MINOR}
           -DSysroot=${Sysroot}
       BUILD_ALWAYS true
       STEP_TARGETS clean build install test
@@ -76,7 +86,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       USES_TERMINAL_INSTALL true
       TEST_BEFORE_INSTALL true
       TEST_EXCLUDE_FROM_MAIN true
-      )
+    )
   else()
     message(STATUS "LibXAIE_${target}_DIR not specified and Vitis not found.  LibXAIE not built.")
   endif()
