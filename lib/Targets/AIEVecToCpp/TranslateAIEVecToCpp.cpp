@@ -2088,7 +2088,9 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CallOp callOp) {
       callOp.getCallee() == "getSqrtBf16" ||
       callOp.getCallee() == "getRsqrtBf16" ||
       callOp.getCallee() == "getErfBf16" || callOp.getCallee() == "getAbs" ||
-      callOp.getCallee() == "getSigmoidBf16") {
+      callOp.getCallee() == "getSigmoidBf16" ||
+      callOp.getCallee() == "getCeilBf16" ||
+      callOp.getCallee() == "getFloorBf16") {
     if (failed(emitter.emitAssignPrefix(op, /*isAcc*/ false)))
       return failure();
   } else {

@@ -229,4 +229,22 @@ getSigmoidBf16(v32bfloat16 in) {
   aie::vector<bfloat16, 32> out = msc0_acc.to_vector<bfloat16>();
   return (v32bfloat16)out;
 }
+
+inline __attribute__((always_inline)) v16bfloat16 getCeilBf16(v16bfloat16 in) {
+  aie::vector<int32, 16> in_int32 = bfloat16_to_int(
+      aie::sub(aie::zeros<bfloat16, 16>(), aie::vector<bfloat16, 16>(in)), 0);
+  aie::accum<accfloat, 16> in_accfloat =
+      v16accfloat(aie::to_float(aie::neg(in_int32), 0));
+  aie::vector<bfloat16, 16> out = in_accfloat.to_vector<bfloat16>();
+  return (v16bfloat16)out;
+}
+
+inline __attribute__((always_inline)) v16bfloat16 getFloorBf16(v16bfloat16 in) {
+  aie::vector<int32, 16> in_int32 = bfloat16_to_int(in, 0);
+  aie::accum<accfloat, 16> in_accfloat =
+      v16accfloat(aie::to_float(in_int32, 0));
+  aie::vector<bfloat16, 16> out = in_accfloat.to_vector<bfloat16>();
+  return (v16bfloat16)out;
+}
+
 #endif // VEC_MATH_H
