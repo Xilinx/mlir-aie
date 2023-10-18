@@ -19,6 +19,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/TypeUtilities.h"
 
+#include <numeric>
 #include <sstream>
 
 using namespace mlir;
@@ -717,6 +718,174 @@ public:
   }
 };
 
+class MatMulOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp> {
+  using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedMatMulOp {
+    typedef enum { I32, I64, BF16 } Kind;
+    Kind kind;
+    Value lhs;
+    Value rhs;
+    Value acc;
+    int conf;
+  };
+
+  static DecodedMatMulOp decodeMatMulOp(OpAdaptor op) {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Value acc = op.getAcc();
+    auto accVecTy = cast<VectorType>(acc.getType());
+    if (isa<Float32Type>(accVecTy.getElementType()))
+      // <4x8xbf16> x <8x4xbf16> + <4x4xf32>
+      return {DecodedMatMulOp::Kind::BF16, lhs, rhs, acc, 28};
+
+    int signConf = 0;
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
+    if (auto extSIOp = lhs.getDefiningOp<arith::ExtSIOp>()) {
+      lhs = extSIOp.getIn();
+      lhsVecTy = cast<VectorType>(lhs.getType());
+      lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
+      signConf |= (1 << 9);
+    } else if (auto extUIOp = lhs.getDefiningOp<arith::ExtUIOp>()) {
+      lhs = extUIOp.getIn();
+      lhsVecTy = cast<VectorType>(lhs.getType());
+      lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
+    } else {
+      // NOTE: We're choosing 'signed' by default
+      if (!lhsScaTy.isUnsigned())
+        signConf |= (1 << 9);
+    }
+    auto lhsShape = lhsVecTy.getShape();
+
+    auto rhsVecTy = cast<VectorType>(rhs.getType());
+    auto rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
+    if (auto extSIOp = rhs.getDefiningOp<arith::ExtSIOp>()) {
+      rhs = extSIOp.getIn();
+      rhsVecTy = cast<VectorType>(rhs.getType());
+      rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
+      signConf |= (1 << 8);
+    } else if (auto extUIOp = rhs.getDefiningOp<arith::ExtUIOp>()) {
+      rhs = extUIOp.getIn();
+      rhsVecTy = cast<VectorType>(rhs.getType());
+      rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
+    } else {
+      // NOTE: We're choosing 'signed' by default
+      if (!rhsScaTy.isUnsigned())
+        signConf |= (1 << 8);
+    }
+
+    unsigned lhsBitWidth = lhsScaTy.getWidth();
+    unsigned rhsBitWidth = rhsScaTy.getWidth();
+    auto accScaTy = cast<IntegerType>(accVecTy.getElementType());
+    unsigned accBitWidth = accScaTy.getWidth();
+    if (accBitWidth == 32) {
+      if (lhsBitWidth == 8) {
+        if (rhsBitWidth == 4) {
+          // <4x16xi8> x <16x8xi4> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf};
+        } else {
+          // <4x8xi8> x <8x8xi8> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 8};
+        }
+      } else {
+        if (rhsBitWidth == 8) {
+          // <4x4xi16> x <4x8xi8> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 16};
+        } else {
+          // <4x2xi16> x <2x8xi16> + <4x8xi32>
+          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc, signConf | 2};
+        }
+      }
+    }
+
+    if (lhsBitWidth == 16) {
+      if (rhsBitWidth == 8) {
+        if (lhsShape == ArrayRef<int64_t>({2, 8})) {
+          // <2x8xi16> x <8x8xi8> + <2x8xi64>
+          return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 18};
+        }
+        // <4x8xi16> x <8x4xi8> + <4x4xi64>
+        return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 50};
+      }
+      if (lhsShape == ArrayRef<int64_t>({2, 4})) {
+        // <2x4xi16> x <4x8xi16> + <2x8xi64>
+        return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 26};
+      }
+      // <4x4xi16> x <4x4xi16> + <4x4xi64>
+      return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 58};
+    }
+    // <4x2xi32> x <2x4xi16> + <4x4xi64>
+    return {DecodedMatMulOp::Kind::I64, lhs, rhs, acc, signConf | 2};
+  }
+
+  static VectorType getFlattenedVectorType(VectorType vecTy) {
+    if (vecTy.getRank() == 1)
+      return vecTy;
+    auto shape = vecTy.getShape();
+    return VectorType::get({std::accumulate(shape.begin(), shape.end(), 1,
+                                            std::multiplies<int64_t>())},
+                           vecTy.getElementType());
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::MatMulOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto decodedMatMulOp = decodeMatMulOp(adaptor);
+    std::string intrinsicName;
+    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I32)
+      intrinsicName = "llvm.aie2.i512.i512.acc1024.acc32.mac.conf";
+    else if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I64)
+      intrinsicName = "llvm.aie2.i512.i512.acc1024.acc64.mac.conf";
+    else
+      intrinsicName = "llvm.aie2.bf.mac16.conf";
+
+    Location loc = op.getLoc();
+    // Flatten the inputs
+    auto lhsFlattenedVecTy =
+        getFlattenedVectorType(cast<VectorType>(decodedMatMulOp.lhs.getType()));
+    decodedMatMulOp.lhs = rewriter.create<vector::ShapeCastOp>(
+        loc, lhsFlattenedVecTy, decodedMatMulOp.lhs);
+    auto rhsFlattenedVecTy =
+        getFlattenedVectorType(cast<VectorType>(decodedMatMulOp.rhs.getType()));
+    decodedMatMulOp.rhs = rewriter.create<vector::ShapeCastOp>(
+        loc, rhsFlattenedVecTy, decodedMatMulOp.rhs);
+    auto accFlattenedVecTy =
+        getFlattenedVectorType(cast<VectorType>(decodedMatMulOp.acc.getType()));
+    decodedMatMulOp.acc = rewriter.create<vector::ShapeCastOp>(
+        loc, accFlattenedVecTy, decodedMatMulOp.acc);
+
+    // If the intrinsic declaration doesn't exist, create it
+    auto module = op->getParentOfType<ModuleOp>();
+    MLIRContext *context = rewriter.getContext();
+    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrinsicName));
+
+    auto i32ty = rewriter.getI32Type();
+    if (!func) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(module.getBody());
+      func = rewriter.create<LLVM::LLVMFuncOp>(
+          rewriter.getUnknownLoc(), intrinsicName,
+          LLVM::LLVMFunctionType::get(accFlattenedVecTy,
+                                      {lhsFlattenedVecTy, rhsFlattenedVecTy,
+                                       accFlattenedVecTy, i32ty}));
+    }
+
+    auto confCst = rewriter.create<arith::ConstantOp>(
+        loc, i32ty, rewriter.getI32IntegerAttr(decodedMatMulOp.conf));
+    auto callOp = rewriter.create<LLVM::CallOp>(
+        loc, func,
+        ValueRange{decodedMatMulOp.lhs, decodedMatMulOp.rhs,
+                   decodedMatMulOp.acc, confCst});
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
+                                                     callOp.getResult());
+
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -733,7 +902,8 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                PackOpConversion,
                UnpackOpConversion,
                BroadcastOpConversion,
-               FMAElemOpConversion>(converter);
+               FMAElemOpConversion,
+               MatMulOpConversion>(converter);
   // clang-format on
 }
 
@@ -742,9 +912,19 @@ struct ConvertAIEVecToLLVMPass
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     mlir::LLVMTypeConverter converter(&getContext());
+
+    // Don't convert vector types, we want to handle multi-dimensional
+    // vector on our own.
+    converter.addConversion(
+        [&](VectorType type) -> std::optional<Type> { return type; });
+
     populateAIEVecToLLVMConversionPatterns(converter, patterns);
 
     LLVMConversionTarget target(getContext());
+    target.addIllegalDialect<AIEVecDialect>();
+    target.addLegalOp<arith::ConstantOp>();
+    target.addLegalOp<vector::ShapeCastOp>();
+    //    target.addLegalOp<arith::ConstantOp>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
