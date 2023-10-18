@@ -11,6 +11,8 @@
 #ifndef AIE_CONVERSION_PASSDETAIL_H_
 #define AIE_CONVERSION_PASSDETAIL_H_
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Pass/Pass.h"
