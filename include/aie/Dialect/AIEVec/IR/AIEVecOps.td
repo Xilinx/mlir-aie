@@ -14,6 +14,7 @@
 #define AIEVEC_OPS
 
 include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
+include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for AIE dialect ops.
@@ -727,4 +728,27 @@ def AIEVec_ExtElemOp:
   let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_MatMulOp:
+  AIEVec_Op<"matmul", [
+    Pure,
+    AllTypesMatch<["acc", "result"]>
+  ]>,
+  Arguments<(ins VectorOfShapeAndType<[4, 8], BF16>:$lhs,
+                 VectorOfShapeAndType<[8, 4], BF16>:$rhs,
+                 VectorOfShapeAndType<[4, 4], F32>:$acc)>,
+  Results<(outs VectorOfShapeAndType<[4, 4], F32>:$result)> {
+  let summary = "AIEML matrix-multiply and accummulate";
+  let description = [{
+    AMD AIEv2-specific intrinsic that performs a matrix multiplications
+    between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+    Currently, this intrinsic supports the operation for bfloat16 operands
+    accumulating on a 32-bit float accumulator.
+  }];
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
+                         type($rhs) `into` type($acc)}];
+  let hasVerifier = 0;
+}
+
 #endif // AIEVEC_OPS
