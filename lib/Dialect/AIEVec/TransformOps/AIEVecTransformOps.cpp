@@ -78,8 +78,6 @@ static Value scalarizeTensor(IRRewriter &rewriter, Location loc, Value tensor) {
   auto toMemRefVecTyOp = rewriter.create<bufferization::ToMemrefOp>(
       loc, MemRefType::get(vecShape, vecElemTy), tensor);
 
-  //  SmallVector<int64_t> scalShape = llvm::to_vector(
-  //    llvm::concat<int64_t>(shapeTy.getShape(), vecElemTy.getShape()));
   SmallVector<int64_t> scalShape;
   for (auto d : shapeTy.getShape())
     scalShape.push_back(d);
