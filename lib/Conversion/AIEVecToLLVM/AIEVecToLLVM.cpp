@@ -18,6 +18,7 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 
+#include <numeric>
 #include <sstream>
 
 using namespace mlir;
@@ -715,6 +716,47 @@ public:
   }
 };
 
+class MatMulOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp> {
+  using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
+
+  static std::string getIntrinsicName(aievec::MatMulOp op) {
+    // TODO: This intrinsic is specifically for the bf16 to float
+    // TODO: matrix-matrix multiply and accumulate. When we begin to support
+    // TODO: more variants, we need to extend this code to cover them.
+    return "llvm.aie2.bf.mac16.conf";
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::MatMulOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto module = op->getParentOfType<ModuleOp>();
+    MLIRContext *context = rewriter.getContext();
+
+    // If the intrinsic declaration doesn't exist, create it
+    std::string intrinsicName = getIntrinsicName(op);
+    auto func = module.lookupSymbol<LLVM::LLVMFuncOp>(
+        StringAttr::get(context, intrinsicName));
+
+    if (!func) {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(module.getBody());
+      func = rewriter.create<LLVM::LLVMFuncOp>(
+          rewriter.getUnknownLoc(), intrinsicName,
+          LLVM::LLVMFunctionType::get(
+              typeConverter->convertType(op.getResult().getType()),
+              {adaptor.getLhs().getType(), adaptor.getRhs().getType(),
+               adaptor.getAcc().getType()}));
+    }
+
+    rewriter.replaceOpWithNewOp<LLVM::CallOp>(
+        op, func,
+        ValueRange{adaptor.getLhs(), adaptor.getRhs(), adaptor.getAcc()});
+
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                                             mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -731,7 +773,8 @@ void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
                PackOpConversion,
                UnpackOpConversion,
                BroadcastOpConversion,
-               FMAElemOpConversion>(converter);
+               FMAElemOpConversion,
+               MatMulOpConversion>(converter);
   // clang-format on
 }
 
@@ -740,6 +783,20 @@ struct ConvertAIEVecToLLVMPass
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
     mlir::LLVMTypeConverter converter(&getContext());
+
+    // If it's a multi-rank vector, flatten it first and the call the base LLVM
+    // type converter.
+    converter.addConversion([&](VectorType type) -> std::optional<Type> {
+      auto shape = type.getShape();
+      if (shape.size() < 2)
+        return {};
+      auto vectorType =
+          VectorType::get({std::accumulate(shape.begin(), shape.end(), 1,
+                                           std::multiplies<int64_t>())},
+                          type.getElementType());
+      return converter.convertType(vectorType);
+    });
+
     populateAIEVecToLLVMConversionPatterns(converter, patterns);
 
     LLVMConversionTarget target(getContext());
