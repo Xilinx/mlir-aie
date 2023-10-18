@@ -12,7 +12,7 @@ module {
     %cst_2 = arith.constant dense<0xFF80> : vector<32xbf16>
     %0 = affine.for %arg2 = 0 to 1024 step 32 iter_args(%arg3 = %cst_2) -> (vector<32xbf16>) {
       %5 = vector.transfer_read %arg0[%arg2], %cst_1 : memref<1024xbf16>, vector<32xbf16>
-      %6 = arith.maxf %arg3, %5 : vector<32xbf16>
+      %6 = arith.maximumf %arg3, %5 : vector<32xbf16>
       affine.yield %6 : vector<32xbf16>
     }
     %1 = vector.reduction <maxf>, %0 : vector<32xbf16> into bf16

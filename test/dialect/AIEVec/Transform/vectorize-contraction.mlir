@@ -20,7 +20,7 @@ func.func @single_contraction(%A : tensor<16x24xf32>, %B : tensor<24x16xf32>,
 
 transform.sequence failures(propagate) {
   ^bb0(%arg0 : !pdl.operation):
-    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0
+    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!pdl.operation) -> !pdl.operation
     %1 = transform.structured.vectorize_contraction %0
 }
 
@@ -79,7 +79,7 @@ func.func @multiple_parallel_contraction(%A : tensor<8x8x16x24xf32>, %B : tensor
 
 transform.sequence failures(propagate) {
   ^bb0(%arg0 : !pdl.operation):
-    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0
+    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!pdl.operation) -> !pdl.operation
     %1 = transform.structured.vectorize_contraction %0
 }
 
@@ -141,7 +141,7 @@ func.func @packed_gemm(%A : tensor<16x8x4x8xbf16>, %B : tensor<8x16x8x4xbf16>,
 
 transform.sequence failures(propagate) {
   ^bb0(%arg0 : !pdl.operation):
-    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0
+    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!pdl.operation) -> !pdl.operation
     %1 = transform.structured.vectorize_contraction %0
 }
 

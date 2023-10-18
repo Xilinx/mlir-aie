@@ -11,7 +11,7 @@ module {
     affine.for %arg3 = 0 to 1024 step 16 {
       %0 = vector.transfer_read %arg0[%arg3], %cst : memref<1024xf32>, vector<16xf32>
       %1 = vector.transfer_read %arg1[%arg3], %cst : memref<1024xf32>, vector<16xf32>
-      %2 = arith.maxf %0, %1 : vector<16xf32>
+      %2 = arith.maximumf %0, %1 : vector<16xf32>
       vector.transfer_write %2, %arg2[%arg3] : vector<16xf32>, memref<1024xf32>
     }
     return

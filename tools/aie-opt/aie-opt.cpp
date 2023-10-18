@@ -11,6 +11,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
+#include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -32,6 +33,7 @@
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/InitialAllDialect.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -60,13 +62,9 @@ int main(int argc, char **argv) {
 
   DialectRegistry registry;
   registerAllDialects(registry);
-  registry.insert<scf::SCFDialect>();
-  registry.insert<memref::MemRefDialect>();
-  registry.insert<xilinx::AIE::AIEDialect>();
-  registry.insert<xilinx::AIEX::AIEXDialect>();
-  registry.insert<xilinx::aievec::AIEVecDialect>();
-  registry.insert<xilinx::ADF::ADFDialect>();
-  registry.insert<mlir::LLVM::LLVMDialect>();
+  xilinx::registerAllDialects(registry);
+
+  registerAllExtensions(registry);
 
   xilinx::aievec::registerTransformDialectExtension(registry);
   ::test::registerTestTransformDialectExtension(registry);
