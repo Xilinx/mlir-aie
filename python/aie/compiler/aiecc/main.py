@@ -477,7 +477,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
             await self.do_call(progress_bar.task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
           elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
-            await self.do_call(progress_bar.task, ['opt', '--opaque-pointers=1', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
+            await self.do_call(progress_bar.task, ['opt', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 
             await self.do_call(progress_bar.task, ['llc', self.file_llvmir_opt, '-O2', '--march=%s' % self.aie_target.lower(), '--function-sections', '--filetype=obj', '-o', self.file_obj])
 
