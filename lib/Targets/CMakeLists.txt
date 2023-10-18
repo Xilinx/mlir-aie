@@ -10,6 +10,7 @@ add_subdirectory(AIEVecToCpp)
 add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetXAIEV2.cpp
+  AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
   ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
