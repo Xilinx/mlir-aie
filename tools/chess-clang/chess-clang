@@ -56,6 +56,9 @@ do
   fi
 done
 
+# aie_api.h spews tons of warnings here.
+ArgsArr+=( "-Wno-deprecated-declarations" )
+
 # Has to be invoked with exec, which means it never returns to this script
 # so this has to be the final invocation.
 exec $CHESSROOT/target/bin/LNa64bin/chess-clang "${ArgsArr[@]}"
