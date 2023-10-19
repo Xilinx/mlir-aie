@@ -85,7 +85,7 @@ module {
       AIE.connect<DMA: 5, North: 1>  // 5 DMA connections
       AIE.connect<South: 5, North: 5> // 6 northgoing connections
       AIE.connect<North: 3, South: 3> // 4 southgoing connections
-      AIE.connect<Trace: 0, North: 2>
+      AIE.connect<Trace: 0, South: 1>
     }
 
     %03 = AIE.tile(1, 3) // core tile

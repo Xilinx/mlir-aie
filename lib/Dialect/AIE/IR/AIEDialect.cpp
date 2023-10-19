@@ -752,10 +752,33 @@ LogicalResult xilinx::AIE::TileOp::verify() {
   return success();
 }
 
+bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &target_model,
+                              xilinx::AIE::MasterSetOp masterOp,
+                              xilinx::AIE::PacketRulesOp slaveOp) {
+  auto srcBundle = masterOp.destPort().first;
+  auto srcChan = masterOp.destPort().second;
+  auto dstBundle = slaveOp.sourcePort().first;
+  auto dstChan = slaveOp.sourcePort().second;
+  return target_model.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
+                                               dstChan);
+}
+
+bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &target_model,
+                              xilinx::AIE::ConnectOp connectOp) {
+  auto srcBundle = connectOp.getSourceBundle();
+  auto srcChan = connectOp.getSourceChannel();
+  auto dstBundle = connectOp.getDestBundle();
+  auto dstChan = connectOp.getDestChannel();
+  return target_model.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
+                                               dstChan);
+}
+
 LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> sourceset;
   DenseSet<xilinx::AIE::Port> destset;
+  auto tile = getTileOp();
+  const auto &target_model = getTargetModel(tile);
   if (body.empty())
     return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
@@ -811,6 +834,24 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
         if (boundsCheck.failed())
           return boundsCheck;
       }
+
+      // Memtile stream switch connection constraints
+      if (tile.isMemTile()) {
+        if (!isLegalMemtileConnection(target_model, connectOp))
+          return connectOp.emitOpError(
+              "illegal memtile stream switch connection");
+      }
+
+      // Trace stream switch connection constraints
+      if (connectOp.getDestBundle() == xilinx::AIE::WireBundle::Trace)
+        return connectOp.emitOpError("Trace port cannot be a destination");
+      if (connectOp.getSourceBundle() == xilinx::AIE::WireBundle::Trace) {
+        if (!target_model.isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                             connectOp.getDestBundle(),
+                                             connectOp.getDestChannel()))
+          return connectOp.emitOpError("illegal Trace destination");
+      }
+
     } else if (auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
       xilinx::AIE::Port dest =
           std::make_pair(connectOp.getDestBundle(), connectOp.destIndex());
@@ -851,6 +892,34 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
         sourceset.insert(source);
       }
     } else if (auto amselOp = dyn_cast<xilinx::AIE::AMSelOp>(ops)) {
+      std::vector<xilinx::AIE::MasterSetOp> mstrs;
+      std::vector<xilinx::AIE::PacketRulesOp> slvs;
+      for (auto user : amselOp.getResult().getUsers()) {
+        if (auto s = dyn_cast<xilinx::AIE::PacketRuleOp>(user)) {
+          auto pkt_rules =
+              dyn_cast<xilinx::AIE::PacketRulesOp>(s->getParentOp());
+          slvs.push_back(pkt_rules);
+        } else if (auto m = dyn_cast<xilinx::AIE::MasterSetOp>(user))
+          mstrs.push_back(m);
+      }
+      for (auto m : mstrs) {
+        // Trace stream switch connection constraints
+        if (m.destPort().first == xilinx::AIE::WireBundle::Trace)
+          return connectOp.emitOpError("Trace port cannot be a destination");
+        for (auto s : slvs) {
+          if (s.sourcePort().first == xilinx::AIE::WireBundle::Trace) {
+            if (!target_model.isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                                 m.destPort().first,
+                                                 m.destPort().second))
+              return amselOp.emitOpError("illegal Trace destination");
+          }
+
+          // Memtile stream switch connection constraints
+          if (tile.isMemTile() && !isLegalMemtileConnection(target_model, m, s))
+            return amselOp->emitOpError(
+                "illegal memtile stream switch connection");
+        }
+      }
     } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
