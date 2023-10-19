@@ -1894,8 +1894,13 @@ struct ComputeTanhOpByLUTPattern : public OpConversionPattern<math::TanhOp> {
   matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     VectorType srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return failure();
     }
 
@@ -1930,8 +1935,13 @@ struct ComputeSqrtOpPattern : public OpConversionPattern<math::SqrtOp> {
   matchAndRewrite(math::SqrtOp sqrtOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     VectorType srcType = dyn_cast<VectorType>(sqrtOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return failure();
     }
 
@@ -1966,8 +1976,13 @@ struct ComputeRsqrtOpPattern : public OpConversionPattern<math::RsqrtOp> {
   matchAndRewrite(math::RsqrtOp rsqrtOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     VectorType srcType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return failure();
     }
 
@@ -2002,8 +2017,13 @@ struct ComputeErfOpPattern : public OpConversionPattern<math::ErfOp> {
   matchAndRewrite(math::ErfOp erfOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     VectorType srcType = dyn_cast<VectorType>(erfOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return failure();
     }
 
@@ -2303,6 +2323,84 @@ struct ComputeSigmoidOpPattern : public OpConversionPattern<arith::DivFOp> {
   }
 };
 
+// Convert math.ceil to a function call to compute ceil(x) for v16bfloat16
+struct ComputeCeilOpPattern : public OpConversionPattern<math::CeilOp> {
+  using OpConversionPattern<math::CeilOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::CeilOp ceilOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(ceilOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<FloatType>(scalarType)) {
+      return failure();
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return failure();
+    }
+
+    StringRef includeName = "vec_math.h";
+    ModuleOp moduleOp = ceilOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(ceilOp);
+    SmallVector<Value> ceilOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        ceilOp, TypeRange{ceilOp.getResult().getType()}, "getCeilBf16", nullptr,
+        nullptr, ceilOperands);
+    return success();
+  }
+};
+
+// Convert math.floor to a function call to compute floor(x) for v16bfloat16
+struct ComputeFloorOpPattern : public OpConversionPattern<math::FloorOp> {
+  using OpConversionPattern<math::FloorOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::FloorOp floorOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(floorOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<FloatType>(scalarType)) {
+      return failure();
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return failure();
+    }
+
+    StringRef includeName = "vec_math.h";
+    ModuleOp moduleOp = floorOp->getParentOfType<mlir::ModuleOp>();
+    rewriter.setInsertionPointToStart(
+        &moduleOp.getRegion().getBlocks().front());
+    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+
+    rewriter.setInsertionPoint(floorOp);
+    SmallVector<Value> floorOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(
+        floorOp, TypeRange{floorOp.getResult().getType()}, "getFloorBf16",
+        nullptr, nullptr, floorOperands);
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2341,6 +2439,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeAbsFOpPattern,
       ComputeAbsIOpPattern,
       ComputeSigmoidOpPattern,
+      ComputeCeilOpPattern,
+      ComputeFloorOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2455,7 +2555,7 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return true;
 
-    if (!expOp->use_empty() && isInSigmoidOperationChain(expOp)) {
+    if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp)) {
       return true;
     }
 
@@ -2464,8 +2564,13 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
     VectorType srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return true;
     }
 
@@ -2480,8 +2585,13 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<math::SqrtOp>([](math::SqrtOp sqrtOp) {
     VectorType srcType = dyn_cast<VectorType>(sqrtOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return true;
     }
 
@@ -2512,8 +2622,13 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<math::ErfOp>([](math::ErfOp erfOp) {
     VectorType srcType = dyn_cast<VectorType>(erfOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
     Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType)) {
+
+    if (!isa<FloatType>(scalarType)) {
       return true;
     }
 
@@ -2603,6 +2718,48 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
         return true;
       }
     }
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::CeilOp>([](math::CeilOp ceilOp) {
+    VectorType srcType = dyn_cast<VectorType>(ceilOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  target.addDynamicallyLegalOp<math::FloorOp>([](math::FloorOp floorOp) {
+    VectorType srcType = dyn_cast<VectorType>(floorOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
+      return true;
+    }
+
     return false;
   });
 
