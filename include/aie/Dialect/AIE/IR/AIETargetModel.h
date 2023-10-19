@@ -64,6 +64,11 @@ public:
            (src.second < rows());
   }
 
+  /// Return true if the given port in the given tile is a valid destination for
+  /// traces
+  virtual bool isValidTraceMaster(int col, int row, WireBundle destBundle,
+                                  int destIndex) const = 0;
+
   /// Return the tile ID of the memory to the west of the given tile, if it
   /// exists.
   virtual llvm::Optional<TileID> getMemWest(TileID src) const = 0;
@@ -153,6 +158,11 @@ public:
   virtual uint32_t getNumSourceShimMuxConnections(int col, int row,
                                                   WireBundle bundle) const = 0;
 
+  // Return true if the stream switch connection is legal, false otherwise.
+  virtual bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
+                                        WireBundle dstBundle,
+                                        int dstChan) const = 0;
+
   // Run consistency checks on the target model.
   void validate() const;
 };
@@ -208,6 +218,18 @@ public:
                                         WireBundle bundle) const override;
   uint32_t getNumSourceShimMuxConnections(int col, int row,
                                           WireBundle bundle) const override;
+  bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
+                                WireBundle dstBundle,
+                                int dstChan) const override;
+
+  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
+                          int destIndex) const override {
+    if (isCoreTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    return false;
+  }
 };
 
 class AIE2TargetModel : public AIETargetModel {
@@ -255,6 +277,9 @@ public:
                                         WireBundle bundle) const override;
   uint32_t getNumSourceShimMuxConnections(int col, int row,
                                           WireBundle bundle) const override;
+  bool isLegalMemtileConnection(WireBundle srcBundle, int srcChan,
+                                WireBundle dstBundle,
+                                int dstChan) const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -301,6 +326,28 @@ public:
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
   uint32_t getNumMemTileRows() const override { return 1; }
+  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
+                          int destIndex) const override {
+    if (isCoreTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 0)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 5)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+             destIndex == 0)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+             destIndex == 0)
+      return true;
+    return false;
+  }
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
@@ -329,6 +376,28 @@ public:
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
   uint32_t getNumMemTileRows() const override { return 2; }
+  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
+                          int destIndex) const override {
+    if (isCoreTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 0)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 5)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+             destIndex == 0)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+             destIndex == 0)
+      return true;
+    return false;
+  }
 };
 
 } // namespace AIE
