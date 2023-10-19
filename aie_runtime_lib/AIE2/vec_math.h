@@ -244,6 +244,27 @@ inline __attribute__((always_inline)) v16bfloat16 getCeilBf16(v16bfloat16 in) {
   return (v16bfloat16)out;
 }
 
+inline __attribute__((always_inline)) v32bfloat16 getCeilBf16(v32bfloat16 in) {
+  v16bfloat16 in_low = extract_v16bfloat16(in, 0);
+  v16bfloat16 in_high = extract_v16bfloat16(in, 1);
+  aie::vector<int32, 16> in_int32_low = bfloat16_to_int(
+      aie::sub(aie::zeros<bfloat16, 16>(), aie::vector<bfloat16, 16>(in_low)),
+      0);
+  aie::vector<int32, 16> in_int32_high = bfloat16_to_int(
+      aie::sub(aie::zeros<bfloat16, 16>(), aie::vector<bfloat16, 16>(in_high)),
+      0);
+  aie::vector<int32, 32> in_int32 = concat(in_int32_low, in_int32_high);
+  constexpr bfloat16 C0 = 0x1.p31;
+  v32bfloat16 limit = broadcast_bfloat16(C0);
+  v32bfloat16 in_abs = abs(in);
+  unsigned cmp = gt(in_abs, limit);
+  aie::accum<accfloat, 32> in_accfloat =
+      v32accfloat(aie::to_float(aie::neg(in_int32), 0));
+  aie::vector<bfloat16, 32> out =
+      sel(in_accfloat.to_vector<bfloat16>(), in, cmp);
+  return (v32bfloat16)out;
+}
+
 inline __attribute__((always_inline)) v16bfloat16 getFloorBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> in_bf16 = in;
   aie::vector<int32, 16> in_int32 = bfloat16_to_int(in, 0);
@@ -255,5 +276,22 @@ inline __attribute__((always_inline)) v16bfloat16 getFloorBf16(v16bfloat16 in) {
       v16accfloat(sel(aie::to_float(in_int32, 0), v16float(ups(in)), cmp));
   aie::vector<bfloat16, 16> out = in_accfloat.to_vector<bfloat16>();
   return (v16bfloat16)out;
+}
+
+inline __attribute__((always_inline)) v32bfloat16 getFloorBf16(v32bfloat16 in) {
+  v16bfloat16 in_low = extract_v16bfloat16(in, 0);
+  v16bfloat16 in_high = extract_v16bfloat16(in, 1);
+  aie::vector<int32, 16> in_int32_low = bfloat16_to_int(in_low, 0);
+  aie::vector<int32, 16> in_int32_high = bfloat16_to_int(in_high, 0);
+  aie::vector<int32, 32> in_int32 = concat(in_int32_low, in_int32_high);
+  constexpr bfloat16 C0 = 0x1.p31;
+  v32bfloat16 limit = broadcast_bfloat16(C0);
+  v32bfloat16 in_abs = abs(in);
+  unsigned cmp = gt(in_abs, limit);
+  aie::accum<accfloat, 32> in_accfloat =
+      v32accfloat(aie::to_float(in_int32, 0));
+  aie::vector<bfloat16, 32> out =
+      sel(in_accfloat.to_vector<bfloat16>(), in, cmp);
+  return (v32bfloat16)out;
 }
 #endif // VEC_MATH_H

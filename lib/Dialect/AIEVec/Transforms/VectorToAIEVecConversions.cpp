@@ -2343,7 +2343,7 @@ struct ComputeCeilOpPattern : public OpConversionPattern<math::CeilOp> {
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-    if (elWidth != 16 || laneSize != 16) {
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
       return failure();
     }
 
@@ -2382,7 +2382,7 @@ struct ComputeFloorOpPattern : public OpConversionPattern<math::FloorOp> {
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-    if (elWidth != 16 || laneSize != 16) {
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
       return failure();
     }
 
@@ -2735,7 +2735,7 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    if (elWidth != 16 || laneSize != 16) {
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
       return true;
     }
 
@@ -2756,7 +2756,7 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    if (elWidth != 16 || laneSize != 16) {
+    if (elWidth != 16 || (laneSize != 16 && laneSize != 32)) {
       return true;
     }
 
