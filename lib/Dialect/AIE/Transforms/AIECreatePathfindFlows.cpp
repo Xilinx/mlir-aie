@@ -336,8 +336,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
             analyzer.getSwitchbox(rewriter, curr->col, curr->row);
         int shim_ch = srcChannel;
         // TODO: must reserve N3, N7, S2, S3 for DMA connections
-        if (curr == srcSB && srcSB->row == 0 &&
-            analyzer.getTile(rewriter, srcSB->col, 0).isShimNOCTile()) {
+        if (curr == srcSB && analyzer.getTile(rewriter, srcSB->col, srcSB->row)
+                                 .isShimNOCTile()) {
           // shim DMAs at start of flows
           if (srcBundle == WireBundle::DMA) {
             shim_ch = (srcChannel == 0
@@ -370,14 +370,18 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
           WireBundle bundle = (*it).first;
           int channel = (*it).second;
           // handle special shim connectivity
-          if (curr == srcSB && srcSB->row == 0) {
+          if (curr == srcSB &&
+              analyzer.getTile(rewriter, srcSB->col, srcSB->row)
+                  .isShimNOCorPLTile()) {
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
                           flowOp, WireBundle::South, shim_ch, bundle, channel);
-          } else if (curr->row == 0 &&
+          } else if (analyzer.getTile(rewriter, curr->col, curr->row)
+                         .isShimNOCorPLTile() &&
                      (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
                       bundle == WireBundle::NOC)) {
             shim_ch = channel;
-            if (analyzer.getTile(rewriter, curr->col, 0).isShimNOCTile()) {
+            if (analyzer.getTile(rewriter, curr->col, curr->row)
+                    .isShimNOCTile()) {
               // shim DMAs at end of flows
               if (bundle == WireBundle::DMA) {
                 shim_ch = (channel == 0
@@ -539,7 +543,163 @@ struct AIEPathfinderPass
       }
     }
 
+    // If the routing violates architecture-specific routing constraints, then
+    // attempt to partial reroute.
+    const auto &target_model = d.getTargetModel();
+    std::vector<ConnectOp> problemConnects;
+    d.walk([&](ConnectOp connect) {
+      if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
+        auto tile = sw.getTileOp();
+        // Constraint: memtile stream switch constraints
+        if (tile.isMemTile() &&
+            !target_model.isLegalMemtileConnection(
+                connect.getSourceBundle(), connect.getSourceChannel(),
+                connect.getDestBundle(), connect.getDestChannel())) {
+          problemConnects.push_back(connect);
+        }
+      }
+    });
+    for (auto connect : problemConnects) {
+      auto sw_box = connect->getParentOfType<SwitchboxOp>();
+      auto tile = sw_box.getTileOp();
+      builder.setInsertionPoint(connect);
+      auto northSw = getSwitchbox(d, sw_box.colIndex(), sw_box.rowIndex() + 1);
+      assert(northSw);
+      auto southSw = getSwitchbox(d, sw_box.colIndex(), sw_box.rowIndex() - 1);
+      assert(southSw);
+      attemptFixupMemtileRouting(builder, sw_box, northSw, southSw, connect);
+    }
+
     return;
+  }
+
+  bool attemptFixupMemtileRouting(OpBuilder builder, SwitchboxOp memtileSwOp,
+                                  SwitchboxOp northSwOp, SwitchboxOp southSwOp,
+                                  ConnectOp &problemConnect) {
+    WireBundle problemNorthBundle;
+    int problemNorthChannel;
+    if (problemConnect.getSourceBundle() == WireBundle::North) {
+      problemNorthBundle = problemConnect.getSourceBundle();
+      problemNorthChannel = problemConnect.getSourceChannel();
+    } else if (problemConnect.getDestBundle() == WireBundle::North) {
+      problemNorthBundle = problemConnect.getDestBundle();
+      problemNorthChannel = problemConnect.getDestChannel();
+    } else
+      return false; // Problem is not about n-s routing
+    WireBundle problemSouthBundle;
+    int problemSouthChannel;
+    if (problemConnect.getSourceBundle() == WireBundle::South) {
+      problemSouthBundle = problemConnect.getSourceBundle();
+      problemSouthChannel = problemConnect.getSourceChannel();
+    } else if (problemConnect.getDestBundle() == WireBundle::South) {
+      problemSouthBundle = problemConnect.getDestBundle();
+      problemSouthChannel = problemConnect.getDestChannel();
+    } else
+      return false; // Problem is not about n-s routing
+
+    // Attempt to reroute northern neighbouring sw
+    if (reconnectConnectOps(builder, northSwOp, problemConnect, true,
+                            WireBundle::South, problemNorthChannel,
+                            problemSouthChannel))
+      return true;
+    if (reconnectConnectOps(builder, northSwOp, problemConnect, false,
+                            WireBundle::South, problemNorthChannel,
+                            problemSouthChannel))
+      return true;
+    // Otherwise, attempt to reroute southern neighbouring sw
+    if (reconnectConnectOps(builder, southSwOp, problemConnect, true,
+                            WireBundle::North, problemSouthChannel,
+                            problemNorthChannel))
+      return true;
+    if (reconnectConnectOps(builder, southSwOp, problemConnect, false,
+                            WireBundle::North, problemSouthChannel,
+                            problemNorthChannel))
+      return true;
+    return false;
+  }
+
+  bool reconnectConnectOps(OpBuilder builder, SwitchboxOp sw,
+                           ConnectOp problemConnect, bool isIncomingToSW,
+                           WireBundle problemBundle, int ProblemChan,
+                           int emptyChan) {
+    bool hasEmptyChannelSlot = true;
+    bool foundCandidateForFixup = false;
+    ConnectOp candidate;
+    if (isIncomingToSW) {
+      for (ConnectOp connect : sw.getOps<ConnectOp>()) {
+        if (connect.getDestBundle() == problemBundle &&
+            connect.getDestChannel() == ProblemChan) {
+          candidate = connect;
+          foundCandidateForFixup = true;
+        }
+        if (connect.getDestBundle() == problemBundle &&
+            connect.getDestChannel() == emptyChan) {
+          hasEmptyChannelSlot = false;
+        }
+      }
+    } else {
+      for (ConnectOp connect : sw.getOps<ConnectOp>()) {
+        if (connect.getSourceBundle() == problemBundle &&
+            connect.getSourceChannel() == ProblemChan) {
+          candidate = connect;
+          foundCandidateForFixup = true;
+        }
+        if (connect.getSourceBundle() == problemBundle &&
+            connect.getSourceChannel() == emptyChan) {
+          hasEmptyChannelSlot = false;
+        }
+      }
+    }
+    if (foundCandidateForFixup && hasEmptyChannelSlot) {
+      WireBundle problemBundleOpposite = (problemBundle == WireBundle::North)
+                                             ? (WireBundle::South)
+                                             : (WireBundle::North);
+      // Found empty channel slot, perform reroute
+      if (isIncomingToSW) {
+        replaceConnectOpWithNewDest(builder, candidate, problemBundle,
+                                    emptyChan);
+        replaceConnectOpWithNewSource(builder, problemConnect,
+                                      problemBundleOpposite, emptyChan);
+      } else {
+        replaceConnectOpWithNewSource(builder, candidate, problemBundle,
+                                      emptyChan);
+        replaceConnectOpWithNewDest(builder, problemConnect,
+                                    problemBundleOpposite, emptyChan);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Replace connect op
+  ConnectOp replaceConnectOpWithNewDest(OpBuilder builder, ConnectOp connect,
+                                        WireBundle newBundle, int newChannel) {
+    builder.setInsertionPoint(connect);
+    auto newOp = builder.create<ConnectOp>(
+        builder.getUnknownLoc(), connect.getSourceBundle(),
+        connect.getSourceChannel(), newBundle, newChannel);
+    connect.erase();
+    return newOp;
+  }
+  ConnectOp replaceConnectOpWithNewSource(OpBuilder builder, ConnectOp connect,
+                                          WireBundle newBundle,
+                                          int newChannel) {
+    builder.setInsertionPoint(connect);
+    auto newOp = builder.create<ConnectOp>(builder.getUnknownLoc(), newBundle,
+                                           newChannel, connect.getDestBundle(),
+                                           connect.getDestChannel());
+    connect.erase();
+    return newOp;
+  }
+
+  SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row) {
+    SwitchboxOp output = nullptr;
+    d.walk([&](SwitchboxOp sw_box) {
+      if (sw_box.colIndex() == col && sw_box.rowIndex() == row) {
+        output = sw_box;
+      }
+    });
+    return output;
   }
 };
 
