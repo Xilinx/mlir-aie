@@ -18,14 +18,14 @@
 // CHECK:   %[[VAL_2:.*]] = AIE.switchbox(%[[VAL_0:.*]]) {
 // CHECK:     %[[VAL_3:.*]] = AIE.amsel<0> (0)
 // CHECK:     %[[VAL_4:.*]] = AIE.masterset(South : 3, %[[VAL_3:.*]])
-// CHECK:     AIE.packetrules(North : 0) {
+// CHECK:     AIE.packetrules(North : 3) {
 // CHECK:       AIE.rule(31, 10, %[[VAL_3:.*]])
 // CHECK:     }
 // CHECK:   }
 // CHECK:   %[[VAL_5:.*]] = AIE.tile(7, 1)
 // CHECK:   %[[VAL_6:.*]] = AIE.switchbox(%[[VAL_5:.*]]) {
 // CHECK:     %[[VAL_7:.*]] = AIE.amsel<0> (0)
-// CHECK:     %[[VAL_8:.*]] = AIE.masterset(South : 0, %[[VAL_6:.*]])
+// CHECK:     %[[VAL_8:.*]] = AIE.masterset(South : 3, %[[VAL_6:.*]])
 // CHECK:     AIE.packetrules(DMA : 0) {
 // CHECK:       AIE.rule(31, 10, %[[VAL_7:.*]])
 // CHECK:     }
