@@ -561,12 +561,9 @@ struct AIEPathfinderPass
     });
     for (auto connect : problemConnects) {
       auto sw_box = connect->getParentOfType<SwitchboxOp>();
-      auto tile = sw_box.getTileOp();
       builder.setInsertionPoint(connect);
       auto northSw = getSwitchbox(d, sw_box.colIndex(), sw_box.rowIndex() + 1);
-      assert(northSw);
       auto southSw = getSwitchbox(d, sw_box.colIndex(), sw_box.rowIndex() - 1);
-      assert(southSw);
       attemptFixupMemtileRouting(builder, sw_box, northSw, southSw, connect);
     }
 
@@ -577,7 +574,7 @@ struct AIEPathfinderPass
                                   SwitchboxOp northSwOp, SwitchboxOp southSwOp,
                                   ConnectOp &problemConnect) {
     WireBundle problemNorthBundle;
-    int problemNorthChannel;
+    unsigned problemNorthChannel;
     if (problemConnect.getSourceBundle() == WireBundle::North) {
       problemNorthBundle = problemConnect.getSourceBundle();
       problemNorthChannel = problemConnect.getSourceChannel();
@@ -587,7 +584,7 @@ struct AIEPathfinderPass
     } else
       return false; // Problem is not about n-s routing
     WireBundle problemSouthBundle;
-    int problemSouthChannel;
+    unsigned problemSouthChannel;
     if (problemConnect.getSourceBundle() == WireBundle::South) {
       problemSouthBundle = problemConnect.getSourceBundle();
       problemSouthChannel = problemConnect.getSourceChannel();
@@ -620,8 +617,8 @@ struct AIEPathfinderPass
 
   bool reconnectConnectOps(OpBuilder builder, SwitchboxOp sw,
                            ConnectOp problemConnect, bool isIncomingToSW,
-                           WireBundle problemBundle, int ProblemChan,
-                           int emptyChan) {
+                           WireBundle problemBundle, unsigned ProblemChan,
+                           unsigned emptyChan) {
     bool hasEmptyChannelSlot = true;
     bool foundCandidateForFixup = false;
     ConnectOp candidate;
