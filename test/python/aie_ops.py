@@ -7,6 +7,9 @@ import aie
 from aie.mlir.ir import *
 from aie.dialects.aie import *
 
+from typing import List
+
+
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
         aie.dialects.aie.register_dialect(ctx)
@@ -16,6 +19,7 @@ def constructAndPrintInModule(f):
             f()
         print(module)
 
+
 # CHECK-LABEL: tileOp
 # CHECK: AIE.tile(0, 0)
 @constructAndPrintInModule
@@ -24,6 +28,7 @@ def tileOp():
     row = IntegerAttr.get(iTy, 0)
     col = IntegerAttr.get(iTy, 0)
     t = TileOp(IndexType.get(), col, row)
+
 
 # CHECK-LABEL: coreOp
 # CHECK: %[[VAL_1:.*]] = AIE.tile(1, 1)
@@ -41,6 +46,7 @@ def coreOp():
     with InsertionPoint(bb):
         EndOp()
 
+
 # CHECK-LABEL: memOp
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
 # CHECK: %[[VAL_2:.*]] = AIE.mem(%[[VAL_1]]) {
@@ -57,6 +63,7 @@ def memOp():
     with InsertionPoint(bb):
         EndOp()
 
+
 # CHECK-LABEL: deviceOp
 # CHECK: AIE.device
 @constructAndPrintInModule
@@ -68,10 +75,31 @@ def deviceOp():
     with InsertionPoint(bb):
         EndOp()
 
+
+def dim_tuple_attr_builder(wrap, stepsize):
+    return Attribute.parse(f"#AIE.DimTuple<{wrap}, {stepsize}>")
+
+
+@register_attribute_builder("AIE_DimTupleArrayAttr")
+def dim_tuple_array_attr_builder(tups: List[tuple], context=None):
+    tups = list(map(lambda t: dim_tuple_attr_builder(*t), tups))
+    return Attribute.parse(
+        f'#AIE<DimTupleArray[{", ".join(map(str, tups))}]>', context=context
+    )
+
+
+@register_attribute_builder("AIE_DimTupleArrayArrayAttr")
+def dim_tuple_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None):
+    tup_arrs = list(map(dim_tuple_array_attr_builder, tup_arrs))
+    return Attribute.parse(
+        f'#AIE<DimTupleArrayArray[{", ".join(map(str, tup_arrs))}]>', context=context
+    )
+
+
 # CHECK-LABEL: objFifo
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @of0(%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
+# CHECK: AIE.objectFifo @of0(%[[VAL_0]] toStream [<1, 2>], {%[[VAL_1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 @constructAndPrintInModule
 def objFifo():
     iTy = IntegerType.get_signless(32)
@@ -86,5 +114,7 @@ def objFifo():
         dtype = F16Type.get()
         memTy = MemRefType.get((12,), dtype)
         ofTy = ObjectFifoType.get(memTy)
-        ObjectFifoCreateOp("of0", tile0, tile1, two, TypeAttr.get(ofTy))
+        ObjectFifoCreateOp(
+            "of0", tile0, tile1, two, TypeAttr.get(ofTy), [(1, 2)], [[(1, 2)]]
+        )
         EndOp()

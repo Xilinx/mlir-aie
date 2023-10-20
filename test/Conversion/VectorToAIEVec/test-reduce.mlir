@@ -239,19 +239,16 @@ func.func @reduce_add_f32(%arg0: vector<16xf32>) -> f32 {
   // CHECK: %[[ADD1:.*]] = aievec.add_elem %[[CASTL1]], %[[CASTR1]] : vector<16xf32>
   // CHECK: %[[CAST1:.*]] = aievec.cast %[[ADD1]] {isResAcc = false} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[SHIFT16:.*]] = aievec.shift %[[CAST1]], %[[CAST1]], %[[C16]] {isAcc = false} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
-  // CHECK: %[[CASTL2:.*]] = aievec.cast %[[CAST1]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[CASTR2:.*]] = aievec.cast %[[SHIFT16]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
-  // CHECK: %[[ADD2:.*]] = aievec.add_elem %[[CASTL2]], %[[CASTR2]] : vector<16xf32>
+  // CHECK: %[[ADD2:.*]] = aievec.add_elem %[[ADD1]], %[[CASTR2]] : vector<16xf32>
   // CHECK: %[[CAST2:.*]] = aievec.cast %[[ADD2]] {isResAcc = false} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[SHIFT8:.*]] = aievec.shift %[[CAST2]], %[[CAST2]], %[[C8]] {isAcc = false} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
-  // CHECK: %[[CASTL3:.*]] = aievec.cast %[[CAST2]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[CASTR3:.*]] = aievec.cast %[[SHIFT8]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
-  // CHECK: %[[ADD3:.*]] = aievec.add_elem %[[CASTL3]], %[[CASTR3]] : vector<16xf32>
+  // CHECK: %[[ADD3:.*]] = aievec.add_elem %[[ADD2]], %[[CASTR3]] : vector<16xf32>
   // CHECK: %[[CAST3:.*]] = aievec.cast %[[ADD3]] {isResAcc = false} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[CAST3]], %[[CAST3]], %[[C4]] {isAcc = false} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
-  // CHECK: %[[CASTL4:.*]] = aievec.cast %[[CAST3]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[CASTR4:.*]] = aievec.cast %[[SHIFT4]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
-  // CHECK: %[[ADD4:.*]] = aievec.add_elem %[[CASTL4]], %[[CASTR4]] : vector<16xf32>
+  // CHECK: %[[ADD4:.*]] = aievec.add_elem %[[ADD3]], %[[CASTR4]] : vector<16xf32>
   // CHECK: %[[CAST4:.*]] = aievec.cast %[[ADD4]] {isResAcc = false} : vector<16xf32>, vector<16xf32>
   // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[CAST4]], %[[C0]] : vector<16xf32>, i32, f32
   %0 = vector.reduction <add>, %arg0 : vector<16xf32> into f32

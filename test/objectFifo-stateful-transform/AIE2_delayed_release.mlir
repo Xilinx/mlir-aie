@@ -34,13 +34,13 @@
 // CHECK:   AIE.device(xcve2302) {
 // CHECK:     %[[tile0:.*]] = AIE.tile(2, 2)
 // CHECK:     %[[tile1:.*]] = AIE.tile(2, 3)
-// CHECK:     %[[buf23:.*]] = AIE.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
 // CHECK:     %[[fifo_buff_0:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_0"} : memref<i32>
 // CHECK:     %[[fifo_buff_1:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_1"} : memref<i32>
 // CHECK:     %[[fifo_buff_2:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_2"} : memref<i32>
 // CHECK:     %[[fifo_buff_3:.*]] = AIE.buffer(%[[tile0]]) {sym_name = "fifo_buff_3"} : memref<i32>
 // CHECK:     %[[fifo_prod_lock:.*]] = AIE.lock(%[[tile0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock"}
 // CHECK:     %[[fifo_cons_lock:.*]] = AIE.lock(%[[tile0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock"}
+// CHECK:     %[[buf23:.*]] = AIE.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
 // CHECK:     %[[core0:.*]] = AIE.core(%[[tile0]]) {
 // CHECK:       %c99_i32 = arith.constant 99 : i32
 // CHECK:       %c0 = arith.constant 0 : index

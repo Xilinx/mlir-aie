@@ -28,12 +28,22 @@
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 using namespace llvm;
 using namespace mlir;
+
+namespace mlir::test {
+void registerTestTransformDialectEraseSchedulePass();
+void registerTestTransformDialectInterpreterPass();
+} // namespace mlir::test
+
+namespace test {
+void registerTestTransformDialectExtension(DialectRegistry &);
+}
 
 int main(int argc, char **argv) {
 
@@ -45,6 +55,9 @@ int main(int argc, char **argv) {
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();
 
+  mlir::test::registerTestTransformDialectEraseSchedulePass();
+  mlir::test::registerTestTransformDialectInterpreterPass();
+
   DialectRegistry registry;
   registerAllDialects(registry);
   registry.insert<scf::SCFDialect>();
@@ -54,6 +67,9 @@ int main(int argc, char **argv) {
   registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<xilinx::ADF::ADFDialect>();
   registry.insert<mlir::LLVM::LLVMDialect>();
+
+  xilinx::aievec::registerTransformDialectExtension(registry);
+  ::test::registerTestTransformDialectExtension(registry);
 
   return failed(MlirOptMain(argc, argv, "MLIR modular optimizer driver\n",
                             registry,

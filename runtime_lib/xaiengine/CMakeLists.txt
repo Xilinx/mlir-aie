@@ -6,18 +6,19 @@
 
 cmake_minimum_required(VERSION 3.20.1)
 
-#tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
-if(${Vitis_VERSION_MAJOR} EQUAL "2022")
-    set(aieRTIncludePath "${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src" CACHE STRING "AIE-RT include path")
-elseif(${Vitis_VERSION_MAJOR} EQUAL "2023")
-    set(aieRTIncludePath "${VITIS_AIETOOLS_DIR}/include/drivers/aiengine" CACHE STRING "AIE-RT include path")
-else()
-    message(FATAL_ERROR "Unsupported Vitis version: ${Vitis_VERSION_MAJOR}")
-endif()
-
 project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 
 if (${CMAKE_CROSSCOMPILING})
+
+    #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1
+    if(${Vitis_VERSION_MAJOR} EQUAL "2022")
+        set(aieRTIncludePath "${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src" CACHE STRING "AIE-RT include path")
+    elseif(${Vitis_VERSION_MAJOR} EQUAL "2023")
+        set(aieRTIncludePath "${VITIS_AIETOOLS_DIR}/include/drivers/aiengine" CACHE STRING "AIE-RT include path")
+    else()
+        message(FATAL_ERROR "Unsupported Vitis version: ${Vitis_VERSION_MAJOR}")
+    endif()
+
     message("Building xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.") 
     file(GLOB libheaders ${aieRTIncludePath}/*.h)
     file(GLOB libheadersSub ${aieRTIncludePath}/*/*.h)
@@ -49,31 +50,30 @@ if (${CMAKE_CROSSCOMPILING})
     add_subdirectory(lib)
 
 else()
-    message("Copying xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.") 
-    set(xaiengineIncludePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
-    #tmp path to header files since we use an older (3_0) version of xaiengine. need to fix when we upgrade to 2023.1 and can take this from aie-rt
-    set(xaiengineIncludePathTmp ${VITIS_ROOT}/data/embeddedsw/XilinxProcessorIPLib/drivers/aienginev2_v3_0/src)
-    file(GLOB libheaders ${aieRTIncludePath}/*.h)
-    file(GLOB libheadersSub ${aieRTIncludePath}/*/*.h)
-    set(xaiengineLibPath ${VITIS_ROOT}/aietools/lib/lnx64.o/libxaiengine.so)
+
+    message("Copying xaiengine for ${AIE_RUNTIME_TARGET} from ${AIERT_LIBS}.") 
+
+    file(GLOB libheaders ${AIERT_INCLUDE_DIR}/*.h)
+    file(GLOB libheadersSub ${AIERT_INCLUDE_DIR}/*/*.h)
 
     # copy header files into build area
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/include)
     add_custom_target(aie-copy-runtime-headers ALL DEPENDS ${dest})
     add_custom_command(OUTPUT ${dest}
-                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${xaiengineIncludePath} ${dest})
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${AIERT_INCLUDE_DIR} ${dest})
 
-    # and the libraries
-    set(dest ${CMAKE_CURRENT_BINARY_DIR}/lib/libxaiengine.so)
-    add_custom_target(aie-copy-runtime-libs ALL DEPENDS ${dest})
-    add_custom_command(OUTPUT ${dest}
-                    COMMAND ${CMAKE_COMMAND} -E copy ${xaiengineLibPath} ${dest})
+    # copy library file to build area
+    set(libs
+        ${CMAKE_CURRENT_BINARY_DIR}/lib/libxaiengine.so
+        ${CMAKE_CURRENT_BINARY_DIR}/lib/libxaiengine.so.3)
+    add_custom_target(aie-copy-runtime-libs ALL DEPENDS ${libs})
+    foreach(lib ${libs})
+        add_custom_command(OUTPUT ${lib} COMMAND ${CMAKE_COMMAND} -E copy ${AIERT_LIBS} ${lib})
+    endforeach()
 
+    # install library and headers
     install(FILES ${libheaders} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
     install(FILES ${libheadersSub} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include/xaiengine)
-    install(FILES ${xaiengineLibPath}
-            DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
+    install(FILES ${libs} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
 
-    # /proj/xbuilds/2023.1_daily_latest/installs/lin64/Vitis/2023.1/aietools/include/drivers/aiengine
-    #     ./aietools/lib/lnx64.o/libxaiengine.so
 endif()

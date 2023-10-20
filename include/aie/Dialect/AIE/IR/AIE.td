@@ -806,10 +806,12 @@ def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
     "uint32_t" : $stepsize,
     "uint16_t" : $wrap
   );
-  let assemblyFormat = "`<` $stepsize `,` $wrap `>`";
+  let assemblyFormat = "`<` $wrap `,` $stepsize `>`";
 }
 
 def AIE_DimTupleArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArray", "DimTupleArray", "::xilinx::AIE::DimTupleAttr">;
+
+def AIE_DimTupleArrayArrayAttr : ArrayOfAttr<AIE_Dialect, "DimTupleArrayArray", "DimTupleArrayArray", "::xilinx::AIE::DimTupleArrayAttr">;
 
 def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   let summary = "Declare a dma block descriptor op";
@@ -838,28 +840,45 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     A DMA channel in a Memory Module can process one block descriptor after another by chaining them.
     There are 16 block descriptors per Memory Module. They are shared by four DMA channels.
 
-    On AIE-ML devices, an optional argument can be used to specify an array of 
-    step sizes and wraps to move data in more advanced patterns. Strides and
-    wraps are specified as tuples `<stride, wrap>`, and up to three dimensions
-    can be specified (or up to four dimensions on memtiles). 
+    ## DMA Data Layout Transformations on AIE-ML Devices
 
-    The first element of the array gives the _highest-dimension_ stride and
+    AIE-ML devices can apply data layout transformations at the buffer
+    descriptor level. These transformation are described by strides (also called
+    stepsizes) and wraps (also called lengths) in up to three dimensions (four
+    dimensions on memtiles). Strides and wraps can be supplied to the `dmaBdOp`
+    through an optional argument, an array of tuples `<wrap, stride>`.
+
+    The first element of this array gives the _highest-dimension_ stride and
     wrap, the last element of the array gives the lowest-dimension.
 
-    Example:
+    Strides are always expressed in units of `i32`s; this is an architectural
+    requirement, as data is moved by the DMA at this fundamental size. 
+
+    We can model the access pattern strides and wraps generate by a series of
+    nested loops. In general, a set of strides and wraps like this...
 
     ```
-    AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<16, 8>, <1, 2>, <2, 8>])
+    [<wrap_2, stride_2>, <wrap_1, stride_1>, <wrap_0, stride_0>]
     ```
 
-    This corresponds to alternating between even and odd elements of the 
-    buffer/stream every 8 elements, like so, equivalent to nested loops like so:
+    ...translates to an access pattern that can be epxressed like this:
 
     ```
-    for(int i = 0; i < 8 /* wrap[0] */; i++)
-      for(int j = 0; j < 2 /* wrap[1] */; j++)
-        for(int k = 0; k < 8 /* wrap[2] */; k++)
-          // access/store element at/to index (i * 16 + j * 1 + k * 2)
+    int *buffer;  // i32
+    for(int i = 0; i < wrap_2; i++)
+      for(int j = 0; j < wrap_1; j++)
+        for(int k = 0; k < wrap_0; k++)
+          // access/store element at/to buffer[  i * stride_2 
+          //                                   + j * stride_1 
+          //                                   + k * stride_0]
+    ```
+
+    The following example shows an access pattern that corresponds to 
+    alternating between even and odd elements of the buffer/stream every 8 
+    elements: 
+
+    ```
+    AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
     ```
   }];
 
@@ -1408,6 +1427,40 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
     This operation creates an `objectFifo` between `%tile12`, `%tile13` and `%tile23`. The depths of the `objectFifo` object pool 
     at each tile are respectively 2, 3 and 4 for tiles `%tile12`, `%tile13` and `%tile23`. This overrides the depth analysis 
     specified in the first example.
+
+    ## Data Layout Transformations on AIE-ML devices
+    
+    On AIE-ML devices, objectFifos can also apply data layout transformations by
+    using the DMAs n-dimensional address generation scheme. Two transformations
+    can be applied for an objectFifo: one on the producer side, given by a
+    `toStream` attribute, and one transformation on the consumer side, given by
+    a `fromStream` attribute. See the `DMABDOp` documentation for a description
+    of strides and wraps. The `toStream` and `fromStream` optional attributes
+    are given directly following the producer or consumer tile declaration. 
+    Different transformations can be specified for each consumer. See example
+    below.
+
+    Note that using data layout transformations will cause the DMA be used even
+    between adjacent tiles whose objectFifos would otherwise use shared memory.
+
+    Further note that data layout transforms always apply at a granularity of 
+    `i32`s, irrespective of the used `memref` data type. This is an 
+    architectural requirement. Hence, a stride of 4 always expresses 4 `i32`s, 
+    i.e. 16 bytes.
+
+    The following example shows an objectFifo which transposes a 16x16 matrix of 
+    `i32`s on the producer side using strides and wraps. No transformation is
+    applied on the consumer side of %tile13 (in this case the `fromStream` 
+    attribute may also be left off), and a transformation on %tile23 first gives
+    all even indices from the stream, followed by all odd indices:
+
+    ```
+      AIE.objectFifo @of4 (%tile12 toStream [<16, 1>, <16, 16>, <1,1>], 
+                           {%tile13 fromStream [],
+                            %tile23 fromStream [<2, 1>, <128, 2>]}, 
+                           2 : i32
+                          ) : !AIE.objectFifo<memref<256xi32>>
+    ```
   }];
 
   let arguments = (
@@ -1415,11 +1468,21 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
         Index:$producerTile,
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elem_type
+        TypeAttrOf<AIE_ObjectFifoType>:$elem_type,
+        AIE_DimTupleArrayAttr:$dimensionsToStream,
+        AIE_DimTupleArrayArrayAttr:$dimensionsFromStreamPerConsumer
   );
 
   let assemblyFormat = [{
-    $sym_name `(` $producerTile `,` `{` $consumerTiles `}` `,` $elemNumber `)` attr-dict `:` $elem_type
+    $sym_name 
+    `(` 
+        custom<ObjectFifoProducerTile>($producerTile, $dimensionsToStream) `,` 
+        `{` 
+          custom<ObjectFifoConsumerTiles>($consumerTiles, $dimensionsFromStreamPerConsumer) 
+        `}` 
+        `,` 
+        $elemNumber 
+    `)` attr-dict `:` $elem_type
   }];
   
   let hasVerifier = 1;
@@ -1437,6 +1500,24 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
       return attr;
     }
   }];
+
+  let builders = [
+    OpBuilder<(ins "StringAttr":$sym_name, "Value":$producerTile,
+                   "ValueRange":$consumerTiles, "Attribute":$elemNumber, "Type":$elem_type,
+                   CArg<"ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
+                   CArg<"ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer),
+    [{
+      odsState.addOperands(producerTile);
+      odsState.addOperands(consumerTiles);
+      odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
+      odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
+      odsState.addAttribute(getElemTypeAttrName(odsState.name), ::mlir::TypeAttr::get(elem_type));
+      odsState.addAttribute(getDimensionsToStreamAttrName(odsState.name),
+                            odsBuilder.getAttr<DimTupleArrayAttr>(dimensionsToStream));
+      odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),
+                            odsBuilder.getAttr<DimTupleArrayArrayAttr>(dimensionsFromStreamPerConsumer));
+    }]>
+  ];
 }
 
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {

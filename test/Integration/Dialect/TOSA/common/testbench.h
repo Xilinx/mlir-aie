@@ -200,9 +200,9 @@ private:
     if (!ok && _numErrors < _maxNumToReport) {
       printf("Mismatch at item %u: ", ind);
       printf(" expected: ");
-      writeItems(stdout, &data, 1);
-      printf(" but got: ");
       writeItems(stdout, &expected, 1);
+      printf(" but got: ");
+      writeItems(stdout, &data, 1);
       printf("\n");
     }
     if (!ok)
