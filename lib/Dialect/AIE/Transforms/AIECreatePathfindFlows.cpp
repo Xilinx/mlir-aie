@@ -573,23 +573,17 @@ struct AIEPathfinderPass
   bool attemptFixupMemtileRouting(OpBuilder builder, SwitchboxOp memtileSwOp,
                                   SwitchboxOp northSwOp, SwitchboxOp southSwOp,
                                   ConnectOp &problemConnect) {
-    WireBundle problemNorthBundle;
     unsigned problemNorthChannel;
     if (problemConnect.getSourceBundle() == WireBundle::North) {
-      problemNorthBundle = problemConnect.getSourceBundle();
       problemNorthChannel = problemConnect.getSourceChannel();
     } else if (problemConnect.getDestBundle() == WireBundle::North) {
-      problemNorthBundle = problemConnect.getDestBundle();
       problemNorthChannel = problemConnect.getDestChannel();
     } else
       return false; // Problem is not about n-s routing
-    WireBundle problemSouthBundle;
     unsigned problemSouthChannel;
     if (problemConnect.getSourceBundle() == WireBundle::South) {
-      problemSouthBundle = problemConnect.getSourceBundle();
       problemSouthChannel = problemConnect.getSourceChannel();
     } else if (problemConnect.getDestBundle() == WireBundle::South) {
-      problemSouthBundle = problemConnect.getDestBundle();
       problemSouthChannel = problemConnect.getDestChannel();
     } else
       return false; // Problem is not about n-s routing
