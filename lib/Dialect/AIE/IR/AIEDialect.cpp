@@ -1338,11 +1338,11 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
     ::mlir::MemRefType buffer = getBuffer().getType();
-    // We are not restrictive about the type of the memref used as the input 
+    // We are not restrictive about the type of the memref used as the input
     // to the DMABD when used with multi-dimensional strides/wraps. Since the
     // BD will use the memref as a base address and copy from it in 32 bit
     // chunks, while assuming the layout of the memref is contiguous. We
-    // assume the user/compiler understands and accounts for this. 
+    // assume the user/compiler understands and accounts for this.
     uint64_t memref_size = 1; // in bytes
     uint64_t max_idx = 0;
     for (int64_t memref_dim : buffer.getShape()) {
