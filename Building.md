@@ -7,7 +7,7 @@ clang 10.0.0+
 lld
 cmake 3.20.6
 ninja 1.8.2
-Xilinx Vitis 2022.2
+Xilinx Vitis 2023.2
 python 3.8.x and pip
 virtualenv
 pip3 install psutil rich pybind11 numpy
@@ -21,7 +21,7 @@ In order to successfully install Vitis on a fresh bare-bones Ubuntu install, som
 NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
  
 ```
-export PATH=$PATH:<Vitis_install_path>/Vitis/2022.2/aietools/bin:<Vitis_install_path>/Vitis/2022.2/bin
+export PATH=$PATH:<Vitis_install_path>/Vitis/2023.2/aietools/bin:<Vitis_install_path>/Vitis/2023.2/bin
 ```
 
 The cmake and python packages prerequisites can be satisfied by sourcing the `utils/setup_python_packages.sh` script. See step 2 of the build instructions. 
@@ -125,8 +125,8 @@ Absolute symbolic links can be converted to relative symbolic links using [symli
 cd /
 sudo symlinks -rc .
 ```
-Following the [platform build steps](Platform.md) will create such a sysroot based on PetaLinux. Note that those instructions require Vitis 2021.2 -- building a sysroot with Vitis 2022.2 will not currently succeed. 
+Following the [platform build steps](Platform.md) will create such a sysroot based on PetaLinux. Note that those instructions require Vitis 2021.2 -- building a sysroot with Vitis 2023.2 will not currently succeed.
 
 -----
 
-<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2019-2023 AMD/Xilinx</p>
