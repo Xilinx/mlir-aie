@@ -582,9 +582,10 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getDimensionsToStream().size() > 0) {
+      if ((fifoOut.getDimensionsToStream().size() > 0) &&
+          (fifoOut.getConsumerTiles().size() > 1)) {
         return emitOpError("currently does not support objectFifos with "
-                           "dimensionsToStream.");
+                           "dimensionsToStream and multiple consumers.");
       }
       for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
         if (dims.size() > 0)
