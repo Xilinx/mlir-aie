@@ -96,6 +96,48 @@ int getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
   return -1;
 }
 
+// Same function as above, but scanning from the last connect backwards
+int getAvailableDestChannelReverseOrder(
+    SmallVector<std::pair<Connect, int>, 8> &connects, Port sourcePort,
+    int flowID, WireBundle destBundle) {
+
+  int numChannels;
+
+  if (destBundle == WireBundle::North)
+    numChannels = 6;
+  else if (destBundle == WireBundle::South || destBundle == WireBundle::East ||
+           destBundle == WireBundle::West)
+    numChannels = 4;
+  else
+    numChannels = 2;
+
+  if (connects.size() == 0)
+    return numChannels - 1;
+
+  for (int i = numChannels - 1; i >= 0; i--) {
+    Port port = std::make_pair(destBundle, i);
+    int countFlows = 0;
+    for (auto conn : connects) {
+      Port connDest = conn.first.second;
+      if (connDest == port)
+        countFlows++;
+    }
+    if (countFlows > 0 && countFlows < 32)
+      return i;
+  }
+  for (int i = numChannels - 1; i >= 0; i--) {
+    Port port = std::make_pair(destBundle, i);
+    SmallVector<Port, 8> ports;
+    for (auto connect : connects)
+      ports.push_back(connect.first.second);
+
+    if (std::find(ports.begin(), ports.end(), port) == ports.end())
+      return i;
+  }
+
+  return -1;
+}
+
 void update_coordinates(int &xCur, int &yCur, WireBundle move) {
   if (move == WireBundle::East) {
     xCur = xCur + 1;
@@ -118,7 +160,8 @@ void buildPSRoute(
     int xSrc, int ySrc, Port sourcePort, int xDest, int yDest, Port destPort,
     int flowID,
     DenseMap<std::pair<int, int>, SmallVector<std::pair<Connect, int>, 8>>
-        &switchboxes) {
+        &switchboxes,
+    bool reverseOrder = false) {
   int xCur = xSrc;
   int yCur = ySrc;
   WireBundle curBundle;
@@ -161,8 +204,12 @@ void buildPSRoute(
 
     for (unsigned i = 0; i < moves.size(); i++) {
       WireBundle move = moves[i];
-      curChannel = getAvailableDestChannel(switchboxes[curCoord], lastPort,
-                                           flowID, move);
+      if (reverseOrder)
+        curChannel = getAvailableDestChannelReverseOrder(
+            switchboxes[curCoord], lastPort, flowID, move);
+      else
+        curChannel = getAvailableDestChannel(switchboxes[curCoord], lastPort,
+                                             flowID, move);
       if (curChannel == -1)
         continue;
 
@@ -268,6 +315,8 @@ struct AIERoutePacketFlowsPass
     DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
     SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
     DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+    // Map from a port to
+    DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
 
     for (auto tileOp : device.getOps<TileOp>()) {
       int col = tileOp.colIndex();
@@ -299,7 +348,12 @@ struct AIERoutePacketFlowsPass
           Port destPort = pktDest.port();
 
           buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID,
-                       switchboxes);
+                       switchboxes, true);
+
+          // Assign "keep_pkt_header flag"
+          if (pktflow->hasAttr("keep_pkt_header"))
+            keepPktHeaderAttr[std::make_pair(destTile, destPort)] =
+                StringAttr::get(Op.getContext(), "true");
         }
       }
     }
@@ -611,9 +665,12 @@ struct AIERoutePacketFlowsPass
           amsels.push_back(amselOps[msel]);
         }
 
-        builder.create<MasterSetOp>(builder.getUnknownLoc(),
-                                    builder.getIndexType(), bundle, channel,
-                                    amsels);
+        auto ms_op = builder.create<MasterSetOp>(builder.getUnknownLoc(),
+                                                 builder.getIndexType(), bundle,
+                                                 channel, amsels);
+        if (auto pktFlowAttrs =
+                keepPktHeaderAttr[std::make_pair(tileOp, tileMaster)])
+          ms_op->setAttr("keep_pkt_header", pktFlowAttrs);
       }
 
       // Generate the packet rules

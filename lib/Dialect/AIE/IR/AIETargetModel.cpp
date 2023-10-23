@@ -252,6 +252,13 @@ AIE1TargetModel::getNumSourceShimMuxConnections(int col, int row,
     return 0;
 }
 
+bool AIE1TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
+                                               int srcChan,
+                                               WireBundle dstBundle,
+                                               int dstChan) const {
+  return false;
+}
+
 ///
 /// AIE2 TargetModel
 ///
@@ -497,6 +504,31 @@ AIE2TargetModel::getNumSourceShimMuxConnections(int col, int row,
     }
   else
     return 0;
+}
+
+bool AIE2TargetModel::isLegalMemtileConnection(WireBundle srcBundle,
+                                               int srcChan,
+                                               WireBundle dstBundle,
+                                               int dstChan) const {
+  // Memtile north-south stream switch constraint
+  // Memtile stream interconnect master South and slave North must have equal
+  // channel indices
+  if (srcBundle == WireBundle::North && dstBundle == WireBundle::South &&
+      srcChan != dstChan)
+    return false;
+  else if (srcBundle == WireBundle::South && dstBundle == WireBundle::North &&
+           srcChan != dstChan)
+    return false;
+  // Memtile has no east or west connections
+  else if (srcBundle == WireBundle::East)
+    return false;
+  else if (srcBundle == WireBundle::West)
+    return false;
+  else if (dstBundle == WireBundle::East)
+    return false;
+  else if (dstBundle == WireBundle::West)
+    return false;
+  return true;
 }
 
 void AIETargetModel::validate() const {

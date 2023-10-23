@@ -582,9 +582,10 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getDimensionsToStream().size() > 0) {
+      if ((fifoOut.getDimensionsToStream().size() > 0) &&
+          (fifoOut.getConsumerTiles().size() > 1)) {
         return emitOpError("currently does not support objectFifos with "
-                           "dimensionsToStream.");
+                           "dimensionsToStream and multiple consumers.");
       }
       for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
         if (dims.size() > 0)
@@ -865,10 +866,33 @@ LogicalResult xilinx::AIE::TileOp::verify() {
   return success();
 }
 
+bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &target_model,
+                              xilinx::AIE::MasterSetOp masterOp,
+                              xilinx::AIE::PacketRulesOp slaveOp) {
+  auto srcBundle = masterOp.destPort().first;
+  auto srcChan = masterOp.destPort().second;
+  auto dstBundle = slaveOp.sourcePort().first;
+  auto dstChan = slaveOp.sourcePort().second;
+  return target_model.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
+                                               dstChan);
+}
+
+bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &target_model,
+                              xilinx::AIE::ConnectOp connectOp) {
+  auto srcBundle = connectOp.getSourceBundle();
+  auto srcChan = connectOp.getSourceChannel();
+  auto dstBundle = connectOp.getDestBundle();
+  auto dstChan = connectOp.getDestChannel();
+  return target_model.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
+                                               dstChan);
+}
+
 LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   Region &body = getConnections();
   DenseSet<xilinx::AIE::Port> sourceset;
   DenseSet<xilinx::AIE::Port> destset;
+  auto tile = getTileOp();
+  const auto &target_model = getTargetModel(tile);
   if (body.empty())
     return emitOpError("should have non-empty body");
   for (auto &ops : body.front()) {
@@ -924,6 +948,24 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
         if (boundsCheck.failed())
           return boundsCheck;
       }
+
+      // Memtile stream switch connection constraints
+      if (tile.isMemTile()) {
+        if (!isLegalMemtileConnection(target_model, connectOp))
+          return connectOp.emitOpError(
+              "illegal memtile stream switch connection");
+      }
+
+      // Trace stream switch connection constraints
+      if (connectOp.getDestBundle() == xilinx::AIE::WireBundle::Trace)
+        return connectOp.emitOpError("Trace port cannot be a destination");
+      if (connectOp.getSourceBundle() == xilinx::AIE::WireBundle::Trace) {
+        if (!target_model.isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                             connectOp.getDestBundle(),
+                                             connectOp.getDestChannel()))
+          return connectOp.emitOpError("illegal Trace destination");
+      }
+
     } else if (auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
       xilinx::AIE::Port dest =
           std::make_pair(connectOp.getDestBundle(), connectOp.destIndex());
@@ -964,6 +1006,34 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
         sourceset.insert(source);
       }
     } else if (auto amselOp = dyn_cast<xilinx::AIE::AMSelOp>(ops)) {
+      std::vector<xilinx::AIE::MasterSetOp> mstrs;
+      std::vector<xilinx::AIE::PacketRulesOp> slvs;
+      for (auto user : amselOp.getResult().getUsers()) {
+        if (auto s = dyn_cast<xilinx::AIE::PacketRuleOp>(user)) {
+          auto pkt_rules =
+              dyn_cast<xilinx::AIE::PacketRulesOp>(s->getParentOp());
+          slvs.push_back(pkt_rules);
+        } else if (auto m = dyn_cast<xilinx::AIE::MasterSetOp>(user))
+          mstrs.push_back(m);
+      }
+      for (auto m : mstrs) {
+        // Trace stream switch connection constraints
+        if (m.destPort().first == xilinx::AIE::WireBundle::Trace)
+          return connectOp.emitOpError("Trace port cannot be a destination");
+        for (auto s : slvs) {
+          if (s.sourcePort().first == xilinx::AIE::WireBundle::Trace) {
+            if (!target_model.isValidTraceMaster(tile.getCol(), tile.getRow(),
+                                                 m.destPort().first,
+                                                 m.destPort().second))
+              return amselOp.emitOpError("illegal Trace destination");
+          }
+
+          // Memtile stream switch connection constraints
+          if (tile.isMemTile() && !isLegalMemtileConnection(target_model, m, s))
+            return amselOp->emitOpError(
+                "illegal memtile stream switch connection");
+        }
+      }
     } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
@@ -1268,18 +1338,11 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
     ::mlir::MemRefType buffer = getBuffer().getType();
-    // We are restrictive about the type of the memref used as the input address
+    // We are not restrictive about the type of the memref used as the input
     // to the DMABD when used with multi-dimensional strides/wraps. Since the
     // BD will use the memref as a base address and copy from it in 32 bit
-    // chunks, while assuming the layout of the memref is contiguous, we
-    // disallow anything whose elemental size is not 32 bits, or where we
-    // cannot verify that the layout is contiguous.
-    if (!buffer.getElementType().isInteger(32) || buffer.getRank() > 1 ||
-        !buffer.getLayout().isIdentity()) {
-      return emitOpError() << "Specifying transfer step sizes and wraps is only"
-                              " supported for one-dimensional memrefs of 32 bit"
-                              " integer elements.";
-    }
+    // chunks, while assuming the layout of the memref is contiguous. We
+    // assume the user/compiler understands and accounts for this.
     uint64_t memref_size = 1; // in bytes
     uint64_t max_idx = 0;
     for (int64_t memref_dim : buffer.getShape()) {
