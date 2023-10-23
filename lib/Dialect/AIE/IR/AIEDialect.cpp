@@ -582,9 +582,10 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getDimensionsToStream().size() > 0) {
+      if ((fifoOut.getDimensionsToStream().size() > 0) &&
+          (fifoOut.getConsumerTiles().size() > 1)) {
         return emitOpError("currently does not support objectFifos with "
-                           "dimensionsToStream.");
+                           "dimensionsToStream and multiple consumers.");
       }
       for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
         if (dims.size() > 0)
@@ -1337,18 +1338,11 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
     ::mlir::MemRefType buffer = getBuffer().getType();
-    // We are restrictive about the type of the memref used as the input address
+    // We are not restrictive about the type of the memref used as the input
     // to the DMABD when used with multi-dimensional strides/wraps. Since the
     // BD will use the memref as a base address and copy from it in 32 bit
-    // chunks, while assuming the layout of the memref is contiguous, we
-    // disallow anything whose elemental size is not 32 bits, or where we
-    // cannot verify that the layout is contiguous.
-    if (!buffer.getElementType().isInteger(32) || buffer.getRank() > 1 ||
-        !buffer.getLayout().isIdentity()) {
-      return emitOpError() << "Specifying transfer step sizes and wraps is only"
-                              " supported for one-dimensional memrefs of 32 bit"
-                              " integer elements.";
-    }
+    // chunks, while assuming the layout of the memref is contiguous. We
+    // assume the user/compiler understands and accounts for this.
     uint64_t memref_size = 1; // in bytes
     uint64_t max_idx = 0;
     for (int64_t memref_dim : buffer.getShape()) {
