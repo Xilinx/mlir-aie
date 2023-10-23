@@ -2401,8 +2401,8 @@ struct ComputeFloorOpPattern : public OpConversionPattern<math::FloorOp> {
   }
 };
 
-// Convert arith.negf to aievec.neg to negates the vector for v16bfloat16 and
-// v16float.
+// Convert arith.negf to aievec.neg to negate the vector for v16bfloat16 and
+// v16float types.
 struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
   using OpConversionPattern<arith::NegFOp>::OpConversionPattern;
 
@@ -2420,7 +2420,6 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
       return failure();
     }
     unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
     if (laneSize != 16 && laneSize != 32) {
       return failure();
@@ -2429,6 +2428,7 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
     Location loc = negOp.getLoc();
     auto accType = getVectorOpDestType(srcType, /*AIEML =*/true);
 
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     if (elWidth == 16) {
       auto upsOp =
           rewriter.create<aievec::UPSOp>(loc, accType, adaptor.getOperand());

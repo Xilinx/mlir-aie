@@ -738,7 +738,7 @@ def AIEVec_NegOp:
   let summary = "AIE vector negative";
   let description = [{
     AMD-specific intrinsic that negates the vector and returns the result.
-    `$result = min(`$source`).
+    `$result = neg(`$source`).
   }];
   let assemblyFormat = "$source attr-dict `:` type($result)";
   let hasVerifier = 0;
