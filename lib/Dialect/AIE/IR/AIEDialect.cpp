@@ -1344,7 +1344,7 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
     // chunks, while assuming the layout of the memref is contiguous, we
     // disallow anything whose elemental size is not 32 bits, or where we
     // cannot verify that the layout is contiguous.
- 
+
     /* For now, we disable these type checks, since MLIR currently makes it
        almost impossible to cast a memref to another type, so this would be too
        restrictive.
