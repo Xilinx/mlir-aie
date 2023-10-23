@@ -2401,6 +2401,55 @@ struct ComputeFloorOpPattern : public OpConversionPattern<math::FloorOp> {
   }
 };
 
+// Convert arith.negf to aievec.neg to negates the vector for v16bfloat16 and
+// v16float.
+struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
+  using OpConversionPattern<arith::NegFOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::NegFOp negOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
+    if (!srcType) {
+      return failure();
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<FloatType>(scalarType)) {
+      return failure();
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (laneSize != 16 && laneSize != 32) {
+      return failure();
+    }
+
+    Location loc = negOp.getLoc();
+    auto accType = getVectorOpDestType(srcType, /*AIEML =*/true);
+
+    if (elWidth == 16) {
+      auto upsOp =
+          rewriter.create<aievec::UPSOp>(loc, accType, adaptor.getOperand());
+
+      auto aieNegOp =
+          rewriter.create<aievec::NegOp>(loc, accType, upsOp.getResult());
+
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(negOp, srcType,
+                                                 aieNegOp.getResult());
+    } else {
+      auto castOp = rewriter.create<aievec::CastOp>(
+          loc, accType, adaptor.getOperand(), /*isResAcc*/ true);
+      auto aieNegOp =
+          rewriter.create<aievec::NegOp>(loc, accType, castOp.getResult());
+      rewriter.replaceOpWithNewOp<aievec::CastOp>(
+          negOp, srcType, aieNegOp.getResult(), /*isResAcc*/ false);
+    }
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2441,6 +2490,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeSigmoidOpPattern,
       ComputeCeilOpPattern,
       ComputeFloorOpPattern,
+      ComputeNegOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2761,6 +2811,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     }
 
     return false;
+  });
+
+  target.addDynamicallyLegalOp<arith::NegFOp>([](arith::NegFOp negOp) {
+    VectorType srcType = dyn_cast<VectorType>(negOp.getOperand().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<FloatType>(scalarType)) {
+      return true;
+    }
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    return laneSize != 16 && laneSize != 32;
   });
 
   target.addDynamicallyLegalOp<arith::AddIOp>(

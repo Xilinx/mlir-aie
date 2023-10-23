@@ -1507,6 +1507,26 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::MaxOp maxOp) {
   return success();
 }
 
+// Generate the Neg op
+static LogicalResult printOperation(CppEmitter &emitter, aievec::NegOp negOp) {
+  auto src = negOp.getSource();
+
+  // The source should have already been emitted
+  if (!emitter.hasValueInScope(src))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*negOp, true /*isAcc*/)))
+    return failure();
+
+  os << "neg(";
+  os << emitter.getOrCreateName(src);
+  os << ")";
+  return success();
+}
+
 // Generate the AddElem op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::AddElemOp add_elemOp) {
@@ -2958,8 +2978,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
-                aievec::MinOp, aievec::MaxOp, aievec::CmpOp, aievec::SelOp,
-                aievec::ExtElemOp, aievec::UnpackOp>(
+                aievec::MinOp, aievec::MaxOp, aievec::NegOp, aievec::CmpOp,
+                aievec::SelOp, aievec::ExtElemOp, aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
