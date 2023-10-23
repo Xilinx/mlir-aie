@@ -1344,12 +1344,17 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
     // chunks, while assuming the layout of the memref is contiguous, we
     // disallow anything whose elemental size is not 32 bits, or where we
     // cannot verify that the layout is contiguous.
+ 
+    /* For now, we disable these type checks, since MLIR currently makes it
+       almost impossible to cast a memref to another type, so this would be too
+       restrictive.
     if (!buffer.getElementType().isInteger(32) || buffer.getRank() > 1 ||
         !buffer.getLayout().isIdentity()) {
       return emitOpError() << "Specifying transfer step sizes and wraps is only"
                               " supported for one-dimensional memrefs of 32 bit"
                               " integer elements.";
     }
+    */
     uint64_t memref_size = 1; // in bytes
     uint64_t max_idx = 0;
     for (int64_t memref_dim : buffer.getShape()) {
