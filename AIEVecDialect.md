@@ -603,6 +603,38 @@ Effects: MemoryEffects::Effect{}
 | :----: | ----------- |
 | `result` | vector of any type values
 
+### `aievec.neg` (::xilinx::aievec::NegOp)
+
+AIE vector negative
+
+
+Syntax:
+
+```
+operation ::= `aievec.neg` $source attr-dict `:` type($result)
+```
+
+AMD-specific intrinsic that negates the vector and returns the result.
+`$result = neg(`$source`).
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
 ### `aievec.pack` (::xilinx::aievec::PackOp)
 
 AIE pack
