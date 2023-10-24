@@ -77,7 +77,7 @@ jobs:
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_WHEEL_VERSION="18.0.0.2023100301+e8970141" \
+        MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498" \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir ../wheelhouse
         
@@ -165,7 +165,7 @@ jobs:
           CMAKE_GENERATOR="Ninja" \
           HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
           MATRIX_OS=${{ matrix.OS }} \
-          MLIR_WHEEL_VERSION="18.0.0.2023100301+e8970141" \
+          MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498" \
           PARALLEL_LEVEL=2 \
           cibuildwheel --output-dir ../wheelhouse
           
