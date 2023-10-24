@@ -727,4 +727,20 @@ def AIEVec_ExtElemOp:
   let assemblyFormat = "$source `,` $index attr-dict `:` type($source) `,` type($index) `,` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_NegOp:
+  AIEVec_Op<"neg", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$source)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector negative";
+  let description = [{
+    AMD-specific intrinsic that negates the vector and returns the result.
+    `$result = neg(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS
