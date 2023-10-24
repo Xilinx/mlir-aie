@@ -2421,7 +2421,7 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
     }
     unsigned laneSize = getVectorLaneSize(srcType);
 
-    if (laneSize != 16 && laneSize != 32) {
+    if (laneSize != 16) {
       return failure();
     }
 
@@ -2826,7 +2826,7 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     }
 
     unsigned laneSize = getVectorLaneSize(srcType);
-    return laneSize != 16 && laneSize != 32;
+    return laneSize != 16;
   });
 
   target.addDynamicallyLegalOp<arith::AddIOp>(
