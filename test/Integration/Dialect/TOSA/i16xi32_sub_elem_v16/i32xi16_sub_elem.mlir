@@ -12,9 +12,11 @@
 
 module {
   func.func @dut(%arg0: tensor<1024xi16>, %arg1: tensor<1024xi32>) -> (tensor<1024xi32>) {
-    %0 = "tosa.cast"(%arg0) : (tensor<1024xi16>) -> tensor<1024xi32>
-    %2 = "tosa.sub"(%arg1, %0) : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
-    return %2 : tensor<1024xi32>
+    %0 = "tosa.const"() {value = dense<0> : tensor<1024xi32>} : () -> tensor<1024xi32>
+    %1 = "tosa.cast"(%arg0) : (tensor<1024xi16>) -> tensor<1024xi32>
+    %2 = "tosa.sub"(%arg1, %1) : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
+    %3 = "tosa.sub"(%0, %2) : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
+    return %3 : tensor<1024xi32>
   }
 }
 
