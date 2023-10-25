@@ -1140,7 +1140,7 @@ static int32_t computeVecorizedLoopStepSize(Operation *op, VectState *state) {
         assert(
             !found &&
             "stepsize computation already has an entry along the variant dim");
-        step = cast<affine::AffineForOp>(loop).getStep();
+        step = cast<affine::AffineForOp>(loop).getStepAsInt();
         found = true;
       }
     }
@@ -2884,7 +2884,7 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
       auto invariants = mlir::affine::getInvariantAccesses(iv, indices);
 
       if (!invariants.count(index)) {
-        step = affineForOp.getStep();
+        step = affineForOp.getStepAsInt();
         if (step % lanes) {
           return readOp->emitError()
                  << "Loop step of inner index of " << readOp->getName()
