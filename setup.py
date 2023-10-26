@@ -48,7 +48,7 @@ def get_cross_cmake_args():
             f.locate() for f in files("mlir") if f.name.startswith("mlir-tblgen")
         )
         os.remove(mlir_tblgen_target)
-        shutil.move(mlir_tblgen_host, mlir_tblgen_target)
+        shutil.copy(mlir_tblgen_host, mlir_tblgen_target)
         mlir_pdll_host = next(
             f.locate()
             for f in files("mlir-native-tools")
@@ -58,7 +58,7 @@ def get_cross_cmake_args():
             f.locate() for f in files("mlir") if f.name.startswith("mlir-pdll")
         )
         os.remove(mlir_pdll_target)
-        shutil.move(mlir_pdll_host, mlir_pdll_target)
+        shutil.copy(mlir_pdll_host, mlir_pdll_target)
 
     CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
