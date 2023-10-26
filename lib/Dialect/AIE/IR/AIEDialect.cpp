@@ -623,11 +623,12 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
     return {fifoIn.getConsumerTiles()[0]};
 
   } else {
-    auto fifoIn = getInputObjectFifos()[0];
-    auto fifoOut = getOutputObjectFifos()[0];
-    for (auto consumerIn : fifoIn.getConsumerTiles())
-      if (consumerIn == fifoOut.getProducerTile())
-        return {fifoOut.getProducerTile()};
+    auto fifoIn = getInputObjectFifos();
+    auto fifoOut = getOutputObjectFifos();
+    if (!fifoIn.empty() && !fifoOut.empty())
+      for (auto consumerIn : fifoIn[0].getConsumerTiles())
+        if (consumerIn == fifoOut[0].getProducerTile())
+          return {fifoOut[0].getProducerTile()};
     return {};
   }
   return {};

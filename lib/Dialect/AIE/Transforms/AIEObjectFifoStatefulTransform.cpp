@@ -578,6 +578,8 @@ struct AIEObjectFifoStatefulTransformPass
     Block *curr = bdBlock;
     int blockIndex = 0;
     for (int i = 0; i < numBlocks; i++) {
+      if (blockIndex >= buffersPerFifo[target].size())
+        break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
@@ -789,6 +791,8 @@ struct AIEObjectFifoStatefulTransformPass
     Block *curr = bdBlock;
     int blockIndex = 0;
     for (int i = 0; i < numBlocks; i++) {
+      if (blockIndex >= buffersPerFifo[target].size())
+        break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
