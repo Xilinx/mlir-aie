@@ -467,7 +467,7 @@ struct AIEObjectFifoStatefulTransformPass
   template <typename MyOp>
   void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
                      int acqNum, int relNum, MyOp buff, int offset, int len,
-                     DMAChannelDir channelDir, int blockIndex, Block *succ,
+                     DMAChannelDir channelDir, size_t blockIndex, Block *succ,
                      DimTupleArrayAttr dims) {
     LockOp acqLock;
     LockOp relLock;
@@ -517,7 +517,7 @@ struct AIEObjectFifoStatefulTransformPass
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
                         DimTupleArrayAttr dims) {
-    int numBlocks = op.size();
+    size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
 
@@ -576,8 +576,8 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ = nullptr;
     Block *curr = bdBlock;
-    int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    size_t blockIndex = 0;
+    for (size_t i = 0; i < numBlocks; i++) {
       if (blockIndex >= buffersPerFifo[target].size())
         break;
       if (i == numBlocks - 1)
@@ -599,7 +599,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createShimDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode, DimTupleArrayAttr dims) {
-    int numBlocks = externalBuffersPerFifo[op].size();
+    size_t numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
 
@@ -648,8 +648,10 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ;
     Block *curr = bdBlock;
-    int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    size_t blockIndex = 0;
+    for (size_t i = 0; i < numBlocks; i++) {
+      if (blockIndex >= externalBuffersPerFifo[op].size())
+        break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
@@ -673,7 +675,7 @@ struct AIEObjectFifoStatefulTransformPass
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
                         DimTupleArrayAttr dims) {
-    int numBlocks = op.size();
+    size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
 
@@ -789,8 +791,8 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ = nullptr;
     Block *curr = bdBlock;
-    int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    size_t blockIndex = 0;
+    for (size_t i = 0; i < numBlocks; i++) {
       if (blockIndex >= buffersPerFifo[target].size())
         break;
       if (i == numBlocks - 1)
