@@ -244,18 +244,16 @@ DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
   for (unsigned i = 0; i < numOuterMostDims; i++)
     remOuterDims.push_back(getAffineDimExpr(i, ctx));
   unsigned numResults = indexingMaps[0].getNumResults();
+  llvm::ArrayRef<int64_t> positions = {numResults - 2, numResults - 1};
   auto outerMostAidxMap =
-      indexingMaps[0]
-          .dropResults({numResults - 2, numResults - 1})
-          .replaceDimsAndSymbols(remOuterDims, {}, numOuterMostDims, 0);
+      indexingMaps[0].dropResults(positions).replaceDimsAndSymbols(
+          remOuterDims, {}, numOuterMostDims, 0);
   auto outerMostBidxMap =
-      indexingMaps[1]
-          .dropResults({numResults - 2, numResults - 1})
-          .replaceDimsAndSymbols(remOuterDims, {}, numOuterMostDims, 0);
+      indexingMaps[1].dropResults(positions).replaceDimsAndSymbols(
+          remOuterDims, {}, numOuterMostDims, 0);
   auto outerMostCidxMap =
-      indexingMaps[2]
-          .dropResults({numResults - 2, numResults - 1})
-          .replaceDimsAndSymbols(remOuterDims, {}, numOuterMostDims, 0);
+      indexingMaps[2].dropResults(positions).replaceDimsAndSymbols(
+          remOuterDims, {}, numOuterMostDims, 0);
 
   rewriter.setInsertionPoint(target);
   Location loc = target.getLoc();
