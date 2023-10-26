@@ -129,6 +129,10 @@ class CMakeBuild(build_ext):
             f"-DBoost_LIBRARY_DIRS=${BOOST_ROOT}/lib",
             # not used on MSVC, but no harm
             f"-DCMAKE_BUILD_TYPE={cfg}",
+            # prevent symbol collision that leads to multiple pass registration and such
+            "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
+            "-DCMAKE_C_VISIBILITY_PRESET=hidden",
+            "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
         ]
         if platform.system() == "Windows":
             cmake_args += [
