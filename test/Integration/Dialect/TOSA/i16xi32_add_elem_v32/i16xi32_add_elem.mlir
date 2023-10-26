@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 
-// XFAIL: *
 // REQUIRES: valid_xchess_license
 // RUN: mkdir -p %t/data
 // RUN: aie-opt %s %tosa-to-linalg% | aie-opt %linalg-to-vector-v32% --convert-vector-to-aievec="aie-target=aieml" -lower-affine -o %t/aievec.mlir

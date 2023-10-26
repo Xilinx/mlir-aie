@@ -1139,29 +1139,22 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
 
           if (bitWidth == 8) {
             accType = getVectorOpDestType(vType, /*AIEML =*/true);
-            aievec::UPSOp upsOp = nullptr;
-            aievec::CastOp castOp = nullptr;
-            if (lhsExt) {
-              upsOp =
-                  rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
-              castOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(),
-                                                       resultType, rval,
-                                                       /*isResAcc*/ true);
-            } else {
-              upsOp =
-                  rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-              castOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(),
-                                                       resultType, lval,
-                                                       /*isResAcc*/ true);
-            }
+            Value valToUps = lhsExt ? lval : rval;
+            Value valToCast = lhsExt ? rval : lval;
+            auto upsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
+                                                        valToUps);
+            auto castOp = rewriter.create<aievec::CastOp>(
+                srcOp.getLoc(), resultType, valToCast, /*isResAcc*/ true);
+            Value lhsToElemOp =
+                lhsExt ? upsOp->getResult(0) : castOp->getResult(0);
+            Value rhsToElemOp =
+                lhsExt ? castOp->getResult(0) : upsOp->getResult(0);
             auto elemOp = rewriter.create<DstOpTy>(
-                srcOp.getLoc(), upsOp->getResult(0).getType(),
-                upsOp->getResult(0), castOp->getResult(0));
-
+                srcOp.getLoc(), upsOp->getResult(0).getType(), lhsToElemOp,
+                rhsToElemOp);
             rewriter.replaceOpWithNewOp<aievec::CastOp>(
                 srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
             return success();
-
           } else if (bitWidth == 16) {
             accType = getVectorOpDestType(resultType, /*AIEML =*/true);
             auto lUpsOp =
