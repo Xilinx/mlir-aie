@@ -15,7 +15,9 @@ module {
     %0 = "tosa.cast"(%arg0) : (tensor<1024xi8>) -> tensor<1024xi32>
     %1 = "tosa.cast"(%arg1) : (tensor<1024xi16>) -> tensor<1024xi32>
     %2 = "tosa.sub"(%1,%0) : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
-    return %2 : tensor<1024xi32>
+    %3 = "tosa.const"() {value = dense<0> : tensor<1024xi32>} : () -> tensor<1024xi32>
+    %4 = "tosa.sub"(%3, %2) : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
+    return %4 : tensor<1024xi32>
   }
 }
 
