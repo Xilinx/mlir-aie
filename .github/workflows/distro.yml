@@ -109,7 +109,8 @@ jobs:
       shell: bash
       run: |
         
-        AIE_COMMIT=${{ inputs.AIE_COMMIT }}
+        # AIE_COMMIT=${{ inputs.AIE_COMMIT }}
+        AIE_COMMIT=518a7ee2
         git clone --recursive https://github.com/Xilinx/mlir-aie.git
         if [ x"$AIE_COMMIT" != x"" ]; then
           pushd mlir-aie && git reset --hard $AIE_COMMIT && popd
@@ -187,6 +188,7 @@ jobs:
         else
           sudo apt-get install -y rename
         fi
+        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie-*whl
         rename 's/cp311-cp311/py3-none/' wheelhouse/mlir_aie-*whl
         
         if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
@@ -197,6 +199,7 @@ jobs:
       if: ${{ matrix.OS == 'windows-2019' }}
       working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
       run: |
+        ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
         ls wheelhouse/mlir_aie-*whl | Rename-Item -NewName {$_ -replace 'cp311-cp311', 'py3-none' }
 
     - name: Download cache from container ubuntu

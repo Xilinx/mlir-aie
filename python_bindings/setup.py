@@ -157,6 +157,15 @@ class CMakeBuild(build_ext):
             cwd=build_temp,
             check=True,
         )
+        shutil.copy(
+            MLIR_AIE_INSTALL_ABS_PATH
+            / "python"
+            / "aie"
+            / "compiler"
+            / "aiecc"
+            / "configure.py",
+            install_dir / "aie" / "compiler" / "aiecc" / "configure.py",
+        )
 
 
 setup(

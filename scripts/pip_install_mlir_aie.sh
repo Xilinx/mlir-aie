@@ -4,7 +4,7 @@ set -xe
 SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
 
 if [ ! -z "$MLIR_AIE_WHEEL_VERSION" ]; then
-  MLIR_AIE_COMMIT="==$MLIR_AIE_WHEEL_VERSION"
+  MLIR_AIE_WHEEL_VERSION="==$MLIR_AIE_WHEEL_VERSION"
 fi
 
 if [ x"$CIBW_ARCHS" == x"arm64" ] || [ x"$CIBW_ARCHS" == x"aarch64" ]; then

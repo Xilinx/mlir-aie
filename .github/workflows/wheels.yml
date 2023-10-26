@@ -41,6 +41,7 @@ jobs:
 
           - OS: windows-2019
             ARCH: x86_64
+
           - OS: windows-2019
             ARCH: arm64
 
@@ -78,6 +79,7 @@ jobs:
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
         MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498" \
+        MLIR_AIE_WHEEL_VERSION=${{ inputs.MLIR_AIE_WHEEL_VERSION }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir ../wheelhouse
         

@@ -52,6 +52,9 @@ else
   cibuildwheel "$HERE"/.. --platform "$machine"
 fi
 
+rename 's/cp310-cp310/py3-none/' $HERE/../wheelhouse/mlir_aie-*whl
+rename 's/cp311-cp311/py3-none/' $HERE/../wheelhouse/mlir_aie-*whl
+
 cp -a $HERE/../scripts $HERE/../python_bindings/
 cp -a $HERE/../requirements.txt $HERE/../python_bindings/
 
