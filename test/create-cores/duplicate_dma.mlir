@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-create-cores --aie-lower-memcpy %s |& FileCheck %s
+// RUN: not aie-opt --aie-create-cores --aie-lower-memcpy %s 2>&1 | FileCheck %s
 // CHECK: error: 'AIE.dmaStart' op duplicate DMA channel MM2S0 not allowed
 
 module @duplicate_dma  {

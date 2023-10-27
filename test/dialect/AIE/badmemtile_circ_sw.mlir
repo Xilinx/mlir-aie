@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt %s |& FileCheck %s
+// RUN: not aie-opt %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}} 'AIE.connect' op illegal memtile stream switch connection
 
 AIE.device(xcve2802) {

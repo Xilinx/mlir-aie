@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --canonicalize %s |& FileCheck %s
+// RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
 // CHECK: 'cf.br' op is not an allowed terminator
 
 module @test {
