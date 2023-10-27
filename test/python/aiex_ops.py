@@ -1,13 +1,13 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: python3 %s | FileCheck %s
+# RUN: %PYTHON %s | FileCheck %s
 
 import aie
-from aie.mlir.ir import *
+from aie.ir import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.mlir.dialects import arith
+from aie.dialects import arith
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s |& FileCheck %s
 // CHECK: error{{.*}}'AIE.useLock' op used in a DMA block that have multiple locks.
 
 module @test {

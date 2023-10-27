@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s |& FileCheck %s
 // CHECK: error{{.*}}'AIE.dmaBd' op can only access a buffer in the same tile.
 
 module @test {
