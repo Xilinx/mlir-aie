@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-create-pathfinder-flows --aie-find-flows %s |& FileCheck %s
+// RUN: not aie-opt --aie-create-pathfinder-flows --aie-find-flows %s 2>&1 | FileCheck %s
 // CHECK: error: Unable to find a legal routing
 
 module {

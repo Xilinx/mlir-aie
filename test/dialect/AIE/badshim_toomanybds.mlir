@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --canonicalize %s |& FileCheck %s
+// RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
 // CHECK: 'AIE.shimDMA' op has more than 16 blocks
 
 AIE.device(xcvc1902) {

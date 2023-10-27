@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --canonicalize %s |& FileCheck %s
+// RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
 // CHECK:  error{{.*}}'AIE.dmaBd' op is reachable from DMA channel 4 and attempts to access a non-local buffer
 // CHECK: note: channel
 // CHECK:     AIE.dmaStart("MM2S", 4, ^bd1, ^dma1)
