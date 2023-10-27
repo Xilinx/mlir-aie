@@ -11,7 +11,10 @@
 #ifndef AIE_PATHFINDER_H
 #define AIE_PATHFINDER_H
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h" // for WireBundle and Port
+#include <algorithm>
+#include <limits>
+#include <utility> //for std::pair
+#include <vector>
 
 // builds against at least boost graph 1.7.1
 #pragma GCC diagnostic push
@@ -19,17 +22,12 @@
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #pragma GCC diagnostic ignored "-Wdeprecated-copy"
 #pragma GCC diagnostic ignored "-Wsuggest-override"
-
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 #include <boost/graph/graph_traits.hpp>
-
 #pragma GCC diagnostic pop
 
-#include <algorithm>
-#include <limits>
-#include <utility> //for std::pair
-#include <vector>
+#include "aie/Dialect/AIE/IR/AIEDialect.h" // for WireBundle and Port
 
 namespace xilinx {
 namespace AIE {
@@ -105,5 +103,4 @@ public:
 
 } // namespace AIE
 } // namespace xilinx
-
 #endif

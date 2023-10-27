@@ -11,8 +11,6 @@
 #ifndef AIEX_PASSES_H
 #define AIEX_PASSES_H
 
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-
 #include "mlir/Pass/Pass.h"
 
 namespace aie {
