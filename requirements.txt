@@ -9,4 +9,4 @@ rich
 setuptools>=42
 wheel
 
-mlir-native-tools==17.0.0.2023092813+35ca6498
+mlir-native-tools==17.0.0.2023102703+35ca6498

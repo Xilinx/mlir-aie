@@ -72,13 +72,13 @@ jobs:
         cp requirements.txt python_bindings
         pushd python_bindings
         
-        PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
+        PIP_FIND_LINKS="https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CIBW_BUILD="${{ matrix.PY_VERSION }}-*" \
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
-        MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498" \
+        MLIR_WHEEL_VERSION="17.0.0.2023102703+35ca6498" \
         MLIR_AIE_WHEEL_VERSION=${{ inputs.MLIR_AIE_WHEEL_VERSION }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir ../wheelhouse
@@ -161,13 +161,13 @@ jobs:
           cp requirements.txt python_bindings
           pushd python_bindings
           
-          PIP_FIND_LINKS="https://makslevental.github.io/wheels https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
+          PIP_FIND_LINKS="https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
           CIBW_ARCHS=${{ matrix.ARCH }} \
           CIBW_BUILD="${{ matrix.PY_VERSION }}-*" \
           CMAKE_GENERATOR="Ninja" \
           HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
           MATRIX_OS=${{ matrix.OS }} \
-          MLIR_WHEEL_VERSION="17.0.0.2023092813+35ca6498" \
+          MLIR_WHEEL_VERSION="17.0.0.2023102703+35ca6498" \
           PARALLEL_LEVEL=2 \
           cibuildwheel --output-dir ../wheelhouse
           
