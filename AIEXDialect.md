@@ -12,7 +12,7 @@ to the more mature AIE dialect.
 
 ### `AIEX.bp_dest` (::xilinx::AIEX::BPDestOp)
 
-A destination port
+_A destination port_
 
 
 Syntax:
@@ -29,10 +29,21 @@ Traits: HasParent<BPIDOp>
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -40,9 +51,10 @@ Traits: HasParent<BPIDOp>
 | :-----: | ----------- |
 | `tile` | index
 
+
 ### `AIEX.bp_id` (::xilinx::AIEX::BPIDOp)
 
-A set of packets that share the same ID
+_A set of packets that share the same ID_
 
 
 Syntax:
@@ -55,17 +67,19 @@ A set of destination packets that share the same source and ID. This must exist
 within an [AIE.broadcast_packet] operation.
 See [AIE.broadcast_packet]for an example.
 
-Traits: SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `ID` | ::mlir::IntegerAttr | 8-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>ID</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute</td></tr>
+</table>
+
 
 ### `AIEX.broadcast_packet` (::xilinx::AIEX::BroadcastPacketOp)
 
-Combination of broadcast and packet-switch
+_Combination of broadcast and packet-switch_
 
 
 Syntax:
@@ -97,14 +111,25 @@ Example:
   }
 ```
 
-Traits: SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -112,9 +137,10 @@ Traits: SingleBlockImplicitTerminator<AIE::EndOp>
 | :-----: | ----------- |
 | `tile` | index
 
+
 ### `AIEX.connection` (::xilinx::AIEX::ConnectionOp)
 
-A logical circuit-switched connection between cores
+_A logical circuit-switched connection between cores_
 
 
 Syntax:
@@ -139,12 +165,33 @@ Example:
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -153,9 +200,10 @@ Example:
 | `source` | index
 | `dest` | index
 
+
 ### `AIEX.getTile` (::xilinx::AIEX::GetTileOp)
 
-Get a reference to an AIE tile
+_Get a reference to an AIE tile_
 
 
 Syntax:
@@ -179,9 +227,10 @@ Return a reference to an AIE tile, given the column and the row of the tile.
 | :----: | ----------- |
 | `result` | index
 
+
 ### `AIEX.herd` (::xilinx::AIEX::HerdOp)
 
-Declare a herd which is a bundle of core organized in a rectangular shape
+_Declare a herd which is a bundle of core organized in a rectangular shape_
 
 
 Syntax:
@@ -211,10 +260,11 @@ Example:
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `width` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `height` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>width</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>height</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Results:
 
@@ -222,9 +272,10 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
+
 ### `AIEX.iter` (::xilinx::AIEX::IterOp)
 
-An iter operation
+_An iter operation_
 
 
 Syntax:
@@ -242,11 +293,12 @@ Example:
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `start` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `end` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `stride` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>start</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>end</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Results:
 
@@ -254,9 +306,10 @@ Example:
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
+
 ### `AIEX.memcpy` (::xilinx::AIEX::MemcpyOp)
 
-A memcpy op
+_A memcpy op_
 
 
 Syntax:
@@ -276,15 +329,16 @@ the source tile to the dest. tile.
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
-| `acqValue` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `relValue` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `srcOffset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `srcLen` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `dstOffset` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `dstLen` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>tokenName</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>acqValue</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>relValue</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>srcOffset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>srcLen</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>dstOffset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>dstLen</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -295,9 +349,10 @@ the source tile to the dest. tile.
 | `dstTile` | index
 | `dstBuf` | memref of any type values
 
+
 ### `AIEX.multi_dest` (::xilinx::AIEX::MultiDestOp)
 
-A destination port of multicast flow
+_A destination port of multicast flow_
 
 
 Syntax:
@@ -316,10 +371,21 @@ Traits: HasParent<MulticastOp>
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -327,9 +393,10 @@ Traits: HasParent<MulticastOp>
 | :-----: | ----------- |
 | `tile` | index
 
+
 ### `AIEX.multicast` (::xilinx::AIEX::MulticastOp)
 
-An abstraction of multicast
+_An abstraction of multicast_
 
 
 Syntax:
@@ -356,14 +423,25 @@ Example:
   }
 ```
 
-Traits: SingleBlockImplicitTerminator<AIE::EndOp>
+Traits: SingleBlock, SingleBlockImplicitTerminator<AIE::EndOp>
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `bundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `channel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>bundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -371,9 +449,10 @@ Traits: SingleBlockImplicitTerminator<AIE::EndOp>
 | :-----: | ----------- |
 | `tile` | index
 
+
 ### `AIEX.place` (::xilinx::AIEX::PlaceOp)
 
-A place operation that specifies the relative placement (XY) of one herd to another
+_A place operation that specifies the relative placement (XY) of one herd to another_
 
 
 Syntax:
@@ -386,10 +465,11 @@ A place operation that specifies the relative placement (XY) of one herd to anot
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `distX` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `distY` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>distX</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>distY</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -398,9 +478,10 @@ A place operation that specifies the relative placement (XY) of one herd to anot
 | `sourceHerd` | index
 | `destHerd` | index
 
+
 ### `AIEX.route` (::xilinx::AIEX::RouteOp)
 
-A route operation that routes one herd to another
+_A route operation that routes one herd to another_
 
 
 Syntax:
@@ -414,12 +495,33 @@ A route operation that routes one herd to another.
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `sourceBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `sourceChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `destBundle` | xilinx::AIE::WireBundleAttr | Bundle of wires
-| `destChannel` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td><details><summary>Bundle of wires</summary>{{% markdown %}}Enum cases:
+* Core (`Core`)
+* DMA (`DMA`)
+* FIFO (`FIFO`)
+* South (`South`)
+* West (`West`)
+* North (`North`)
+* East (`East`)
+* PLIO (`PLIO`)
+* NOC (`NOC`)
+* Trace (`Trace`){{% /markdown %}}</details></td></tr>
+<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
 
 #### Operands:
 
@@ -428,9 +530,10 @@ A route operation that routes one herd to another.
 | `sourceHerds` | index
 | `destHerds` | index
 
+
 ### `AIEX.select` (::xilinx::AIEX::SelectOp)
 
-A select operation
+_A select operation_
 
 
 Syntax:
@@ -467,9 +570,10 @@ The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0]
 | :----: | ----------- |
 &laquo;unnamed&raquo; | index
 
+
 ### `AIEX.token` (::xilinx::AIEX::TokenOp)
 
-Declare a token (a logical lock)
+_Declare a token (a logical lock)_
 
 
 Syntax:
@@ -501,13 +605,15 @@ Interfaces: Symbol
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
 
 ### `AIEX.useToken` (::xilinx::AIEX::UseTokenOp)
 
-acquire/release a logical lock
+_Acquire/release a logical lock_
 
 
 Syntax:
@@ -521,9 +627,14 @@ Similar to UseLockOp, this operation can be understood as "blocking" op.
 
 #### Attributes:
 
-| Attribute | MLIR Type | Description |
-| :-------: | :-------: | ----------- |
-| `tokenName` | ::mlir::FlatSymbolRefAttr | flat symbol reference attribute
-| `value` | ::mlir::IntegerAttr | 32-bit signless integer attribute
-| `action` | xilinx::AIE::LockActionAttr | lock acquire/release
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>tokenName</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td><details><summary>lock acquire/release</summary>{{% markdown %}}Enum cases:
+* Acquire (`Acquire`)
+* AcquireGreaterEqual (`AcquireGreaterEqual`)
+* Release (`Release`){{% /markdown %}}</details></td></tr>
+</table>
+
 
