@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s |& FileCheck %s
 // CHECK: error{{.*}} 'AIE.connect' op source index cannot be less than zero
 
 module {

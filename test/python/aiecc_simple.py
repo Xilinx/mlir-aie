@@ -1,12 +1,12 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# RUN: python3 %s --compile --xchesscc --no-link -nv | FileCheck %s
+# RUN: %PYTHON %s --compile --xchesscc --no-link -nv | FileCheck %s
 
 # CHECK: xchesscc_wrapper aie
 
 import aie.dialects.aie
-from aie.mlir.ir import Context, Location, Module
+from aie.ir import Context, Location, Module
 
 import aie.compiler.aiecc.main as aiecc
 

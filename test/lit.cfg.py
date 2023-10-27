@@ -26,8 +26,7 @@ from lit.llvm.subst import FindTool
 config.name = 'AIE'
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
-config.environment['PYTHONPATH'] \
-    = "{}".format(os.path.join(config.aie_obj_root, "python"))
+config.environment['PYTHONPATH'] = "{}".format(os.path.join(config.aie_obj_root, "python"))
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = ['.mlir']
@@ -36,6 +35,7 @@ config.suffixes = ['.mlir']
 config.test_source_root = os.path.dirname(__file__)
 
 config.substitutions.append(('%PATH%', config.environment['PATH']))
+config.substitutions.append(('%PYTHON', config.python_executable))
 config.substitutions.append(('%shlibext', config.llvm_shlib_ext))
 config.substitutions.append(('%extraAieCcFlags%', config.extraAieCcFlags))
 config.substitutions.append(('%aie_runtime_lib%', os.path.join(config.aie_obj_root, "aie_runtime_lib")))
@@ -43,10 +43,6 @@ config.substitutions.append(('%host_runtime_lib%', os.path.join(config.aie_obj_r
 config.substitutions.append(('%aietools', config.vitis_aietools_dir))
 # for xchesscc_wrapper
 llvm_config.with_environment('AIETOOLS', config.vitis_aietools_dir)
-
-if config.enable_python_tests:
-    config.environment['PYTHONPATH'] \
-        = "{}".format(os.path.join(config.aie_obj_root, "python"))
 
 if(config.enable_board_tests):
     config.substitutions.append(('%run_on_board', "echo %T >> /home/xilinx/testlog | sync | sudo"))

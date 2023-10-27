@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s |& FileCheck %s
 // CHECK: error{{.*}}'AIE.tile' op column index (50) must be less than the number of columns in the device (38)
 
 module @test {

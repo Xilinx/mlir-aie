@@ -20,8 +20,8 @@ import shutil
 import asyncio
 import tempfile
 
-from aie.mlir.passmanager import PassManager
-from aie.mlir.ir import Module, Context, Location
+from aie.passmanager import PassManager
+from aie.ir import Module, Context, Location
 from aie.dialects import aie as aiedialect
 
 import aie.compiler.aiecc.cl_arguments

@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s |& FileCheck %s
 // CHECK: error{{.*}}'AIE.connect' op source bundle FIFO not supported
 
 module {
