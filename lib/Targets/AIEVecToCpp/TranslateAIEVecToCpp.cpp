@@ -1527,6 +1527,29 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::NegOp negOp) {
   return success();
 }
 
+// Generate the Bxor op
+static LogicalResult printOperation(CppEmitter &emitter, aievec::BxorOp xorOp) {
+  auto lhs = xorOp.getLhs();
+  auto rhs = xorOp.getRhs();
+
+  // The source should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*xorOp)))
+    return failure();
+
+  os << "bxor(";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
+  os << ")";
+  return success();
+}
+
 // Generate the AddElem op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::AddElemOp add_elemOp) {
@@ -2979,7 +3002,8 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
                 aievec::MinOp, aievec::MaxOp, aievec::NegOp, aievec::CmpOp,
-                aievec::SelOp, aievec::ExtElemOp, aievec::UnpackOp>(
+                aievec::SelOp, aievec::ExtElemOp, aievec::BxorOp,
+                aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");

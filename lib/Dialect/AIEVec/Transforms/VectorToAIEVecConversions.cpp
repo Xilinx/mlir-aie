@@ -2443,6 +2443,37 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
   }
 };
 
+// Convert arith.xori to aievec.bxor to compute bitwise xor of two vectors for
+// integer types
+struct ComputeBxorOpPattern : public OpConversionPattern<arith::XOrIOp> {
+  using OpConversionPattern<arith::XOrIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::XOrIOp xorOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
+    if (!srcType) {
+      return failure();
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<IntegerType>(scalarType)) {
+      return failure();
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (laneSize * elWidth != 512) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<aievec::BxorOp>(
+        xorOp, srcType, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2484,6 +2515,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeCeilOpPattern,
       ComputeFloorOpPattern,
       ComputeNegOpPattern,
+      ComputeBxorOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2820,6 +2852,23 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
     unsigned laneSize = getVectorLaneSize(srcType);
     return laneSize != 16;
+  });
+
+  target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
+    VectorType srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<IntegerType>(scalarType)) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    return laneSize * elWidth != 512;
   });
 
   target.addDynamicallyLegalOp<arith::AddIOp>(
