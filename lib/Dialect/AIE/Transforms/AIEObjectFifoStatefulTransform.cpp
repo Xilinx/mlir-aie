@@ -259,13 +259,13 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
-    auto device = op->getParentOfType<DeviceOp>();
-    for (auto linkOp : device.getOps<ObjectFifoLinkOp>()) {
-      for (auto in : linkOp.getInputObjectFifos())
-        if (in.name() == op.name())
+    DeviceOp device = op->getParentOfType<DeviceOp>();
+    for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
+      for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos())
+        if (in == op)
           return {linkOp};
-      for (auto out : linkOp.getOutputObjectFifos())
-        if (out.name() == op.name())
+      for (ObjectFifoCreateOp out : linkOp.getOutputObjectFifos())
+        if (out == op)
           return {linkOp};
     }
     return {};
@@ -531,10 +531,10 @@ struct AIEObjectFifoStatefulTransformPass
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
-    auto linkOp = getOptionalLinkOp(op);
-    if (linkOp)
-      if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-        target = objFifoLinks[*linkOp];
+    std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
+    if (linkOp.has_value())
+      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+        target = objFifoLinks[linkOp.value()];
 
     // search for MemOp
     Operation *producerMem = nullptr;
@@ -1292,17 +1292,12 @@ struct AIEObjectFifoStatefulTransformPass
         // update the linkOp if the split objFifo was originally its start point
         auto linkOp = getOptionalLinkOp(createOp);
         if (linkOp) {
-          for (auto fifoIn : linkOp->getInputObjectFifos()) {
-            if (fifoIn.name() == createOp.name()) {
-              if (consumerTile == *(linkOp->getOptionalSharedTile())) {
-                auto res = mlir::SymbolTable::replaceAllSymbolUses(
-                    createOp.name(), consumerFifo.name(),
-                    linkOp->getOperation());
-                if (res.failed())
-                  llvm_unreachable("unreachable");
-              }
-            }
-          }
+          for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
+            if (fifoIn.name() == createOp.name() &&
+                consumerTile == *(linkOp->getOptionalSharedTile()))
+              if (failed(SymbolTable::replaceAllSymbolUses(
+                      createOp, consumerFifo.name(), linkOp->getOperation())))
+                llvm::report_fatal_error("unable to update all symbol uses");
         }
 
         consumerIndex++;
