@@ -168,19 +168,20 @@ struct AIEDevDesc {
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op);
 
-::mlir::ParseResult
-parseObjectFifoProducerTile(::mlir::OpAsmParser &parser,
-                            ::mlir::OpAsmParser::UnresolvedOperand &operand,
+mlir::ParseResult
+parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
+                            mlir::OpAsmParser::UnresolvedOperand &operand,
                             DimTupleArrayAttr &dimensions);
-void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
-                                 Operation *op, Value tile,
-                                 Attribute dimensions);
 
-::mlir::ParseResult parseObjectFifoConsumerTiles(
-    ::mlir::OpAsmParser &parser,
-    SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &tiles,
+void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter, Operation *op,
+                                 Value tile, Attribute dimensions);
+
+mlir::ParseResult parseObjectFifoConsumerTiles(
+    mlir::OpAsmParser &parser,
+    SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     DimTupleArrayArrayAttr &dimensions);
-void printObjectFifoConsumerTiles(::mlir::OpAsmPrinter &_odsPrinter,
+
+void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
                                   Operation *op, OperandRange tiles,
                                   Attribute dimensions);
 

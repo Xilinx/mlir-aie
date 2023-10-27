@@ -13,8 +13,11 @@
 #ifndef AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES_H
 #define AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES_H
 
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
+
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
+
 #include <limits>
 
 namespace mlir {
