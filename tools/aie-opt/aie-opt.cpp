@@ -9,29 +9,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
 
 #include "aie/Conversion/Passes.h"
-#include "aie/Dialect/ADF/ADFDialect.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
 
@@ -51,7 +39,7 @@ int main(int argc, char **argv) {
 
   registerAllPasses();
   xilinx::registerConversionPasses();
-  aie::registerAIEPasses();
+  xilinx::AIE::registerAIEPasses();
   xilinx::AIEX::registerAIEXPasses();
   xilinx::aievec::registerAIEVecAnalysisPasses();
   xilinx::aievec::registerAIEVecPasses();

@@ -8,11 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/Transforms/AIEPathfinder.h"
+
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include <iostream>
-
-#include <aie/Dialect/AIE/Transforms/AIEPathfinder.h>
 
 using namespace xilinx;
 using namespace xilinx::AIE;
