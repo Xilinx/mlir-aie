@@ -11,19 +11,15 @@
 // dialect. Conversions assume that the Vector dialect has been rectricted
 // to ops that can be translated to a sequence of valid AIEVec ops.
 //===----------------------------------------------------------------------===//
-
-#include <algorithm>
-#include <bitset>
-#include <optional>
-#include <tuple>
+#include "VectorToAIEVecConversions.h"
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -31,12 +27,13 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-#include "VectorToAIEVecConversions.h"
+#include <bitset>
+#include <optional>
+#include <tuple>
 
 #define DEBUG_TYPE "lower-vector-to-aievec"
 
@@ -405,40 +402,6 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                                  zeroConstOp.getResult());
   return;
 }
-
-//===----------------------------------------------------------------------===//
-// Analyses
-//===----------------------------------------------------------------------===//
-
-// Calculates the effective size of the load operation (in bits).
-// If a long UPD is followed by another one with an offset, we count
-// its effective size as the number of bits loaded up to that offset.
-// E.g.:
-//  As is, the effective size of:
-//     %0 = aievec.upd %m[%i] {index = 0 : i8, offset = 0 : si32}
-//                            : memref<256xi32>, vector<32xi32>
-//  would be `8 * sizeof(i32) * 32` (i.e: 1024 bits).
-//  On the other, for two arranged like so:
-//     %0 = aievec.upd %m[%i] {index = 0 : i8, offset = 0 : si32}
-//                            : memref<256xi32>, vector<32xi32>
-//     %1 = aievec.upd %m[%i], %1 {index = 1 : i8, offset = 512 : si32}
-//                                : memref<256xi32>, vector<32xi32>
-// it would be `8 * sizeof(i32) * 32 - 512` (i.e.: 512 bits) each.
-struct UPDOpEffectiveAccessSizeAnalysis {
-  UPDOpEffectiveAccessSizeAnalysis(aievec::UPDOp updOp) {
-    auto vecType = cast<VectorType>(updOp.getResult().getType());
-    unsigned sizeInBits =
-        cast<ShapedType>(vecType).getElementTypeBitWidth() - updOp.getOffset();
-    for (Operation *user : updOp->getUsers()) {
-      auto userUpdOp = dyn_cast<xilinx::aievec::UPDOp>(user);
-      if (userUpdOp)
-        sizeInBits -= userUpdOp.getOffset();
-    }
-    effectiveSize = sizeInBits;
-  }
-
-  unsigned effectiveSize;
-};
 
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
@@ -891,10 +854,10 @@ struct LowerVectorTransferReadToAIEUPD
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
 
-  LowerVectorTransferReadToAIEUPD(MLIRContext *context, AnalysisManager &am,
-                                  int64_t minVectorSize, int64_t maxVectorSize,
-                                  int64_t alignment, int64_t maxLoadSize)
-      : OpConversionPattern<vector::TransferReadOp>(context), am(am),
+  LowerVectorTransferReadToAIEUPD(MLIRContext *context, int64_t minVectorSize,
+                                  int64_t maxVectorSize, int64_t alignment,
+                                  int64_t maxLoadSize)
+      : OpConversionPattern<vector::TransferReadOp>(context),
         minVectorSize(minVectorSize), maxVectorSize(maxVectorSize),
         vectorAlignment(alignment), maxLoadSize(maxLoadSize) {}
 
@@ -950,7 +913,6 @@ struct LowerVectorTransferReadToAIEUPD
     return success();
   }
 
-  AnalysisManager &am;
   int64_t minVectorSize, maxVectorSize, vectorAlignment, maxLoadSize;
 };
 
@@ -1031,9 +993,6 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     : public OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
-
-  LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp(MLIRContext *context)
-      : OpConversionPattern<SrcOpTy>(context) {}
 
   LogicalResult
   matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
@@ -1283,9 +1242,6 @@ struct LowerVectorMinMaxOpToAIEVecMinMaxOp
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
 
-  LowerVectorMinMaxOpToAIEVecMinMaxOp(MLIRContext *context)
-      : OpConversionPattern<SrcOpTy>(context) {}
-
   LogicalResult
   matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -1325,9 +1281,6 @@ template <typename SrcOpTy, typename CmpTy>
 struct LowerVectorCmpOpToAIEVecCmpOp : public OpConversionPattern<SrcOpTy> {
   using OpConversionPattern<SrcOpTy>::OpConversionPattern;
   using OpAdaptor = typename SrcOpTy::Adaptor;
-
-  LowerVectorCmpOpToAIEVecCmpOp(MLIRContext *context)
-      : OpConversionPattern<SrcOpTy>(context) {}
 
   LogicalResult
   matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
@@ -2449,8 +2402,8 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
 
 static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
-  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), am, 128,
-                                                512, 128, 256);
+  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128, 512,
+                                                128, 256);
   // clang-format off
   patterns.add<LowerVectorAddIOpToAIEVecAddOp,
                LowerVectorSubIOpToAIEVecSubOp,
@@ -2466,7 +2419,7 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
 
 static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
                                                AnalysisManager &am) {
-  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), am, 128,
+  patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128,
                                                 1024, 256, 1024);
   // clang-format off
   patterns.add<

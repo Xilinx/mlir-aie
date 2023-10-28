@@ -30,7 +30,6 @@ static int currentindent = 0;
 struct Indent {
   int indent;
   Indent() : indent(1) { currentindent += indent; }
-  Indent(int &indent) : indent(indent) { currentindent += indent; }
   ~Indent() { currentindent -= indent; }
 };
 static void resetIndent() { currentindent = 0; }
