@@ -11,21 +11,14 @@
 // dialect to AIEVec, compatible with the AIE vector architecture.
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIEVec/AIEVecUtils.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
-
-#include "AIEVecOptimizations.h"
-#include "VectorToAIEVecConversions.h"
-#include "VectorToVectorConversions.h"
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC

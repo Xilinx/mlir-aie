@@ -11,7 +11,6 @@
 #include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/Passes.h"
 
 using namespace mlir;
 using namespace MemoryEffects;

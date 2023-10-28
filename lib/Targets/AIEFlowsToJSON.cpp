@@ -13,27 +13,16 @@
  * Converts the flows into a JSON file to be read by other tools.
  */
 
-#include <queue>
-#include <set>
+#include "AIETargets.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Target/LLVMIR/Import.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/Passes.h"
-
-#include "llvm/IR/Module.h"
-#include "llvm/Support/TargetSelect.h"
-
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "AIETargets.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/Target/LLVMIR/Import.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+
+#include <queue>
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -47,16 +36,12 @@ WireBundle getConnectingBundle(WireBundle bundle) {
   switch (bundle) {
   case WireBundle::North:
     return WireBundle::South;
-    break;
   case WireBundle::South:
     return WireBundle::North;
-    break;
   case WireBundle::East:
     return WireBundle::West;
-    break;
   case WireBundle::West:
     return WireBundle::East;
-    break;
   default:
     return bundle;
   }
