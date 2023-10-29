@@ -1468,20 +1468,6 @@ LogicalResult xilinx::AIE::LockOp::verify() {
   return success();
 }
 
-struct UsesReachableLock {
-  static LogicalResult verifyTrait(Operation *op) {
-    auto useLock = dyn_cast<xilinx::AIE::UseLockOp>(op);
-    auto lock = useLock.getLockOp();
-    auto parent = dyn_cast<xilinx::AIE::TileElement>(useLock->getParentOp());
-    auto tileID = parent.getTileID();
-    const auto &target_model = xilinx::AIE::getTargetModel(op);
-    if (!target_model.isLegalMemAffinity(tileID.first, tileID.second,
-                                         lock.colIndex(), lock.rowIndex()))
-      return failure();
-    return success();
-  }
-};
-
 struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
     auto block = op->getBlock();

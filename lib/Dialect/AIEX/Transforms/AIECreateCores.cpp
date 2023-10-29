@@ -9,13 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/AIETokenAnalysis.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"

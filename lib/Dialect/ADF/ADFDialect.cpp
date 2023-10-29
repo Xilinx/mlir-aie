@@ -12,17 +12,8 @@
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/ADF/ADFOps.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/OpImplementation.h"
-#include "mlir/Interfaces/FoldInterfaces.h"
-#include "mlir/Transforms/InliningUtils.h"
 
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace xilinx;

@@ -13,11 +13,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "aievec-utils"
 

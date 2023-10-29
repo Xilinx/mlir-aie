@@ -102,8 +102,6 @@ struct VectState {
   int32_t dupFactor;
 
   // Constructors
-  VectState(MLIRContext *context)
-      : builder(context), shift(0), zeroOffset(0), dupFactor(2) {}
   VectState(MLIRContext *context, int8_t s, int32_t z, int32_t d)
       : builder(context), shift(s), zeroOffset(z), dupFactor(d) {}
 
@@ -147,10 +145,6 @@ struct AIEVecAttributes {
   AIEVecAttributes(unsigned l, unsigned vs, Type et, int32_t es)
       : lanes(l), vecSizeInBits(vs), elementType(et), elementSizeInBits(es),
         loadFromMemory(false), isSplat(false) {}
-  AIEVecAttributes(unsigned l, unsigned vs, Type et, int32_t es, bool lm,
-                   bool sp)
-      : lanes(l), vecSizeInBits(vs), elementType(et), elementSizeInBits(es),
-        loadFromMemory(lm), isSplat(sp) {}
 };
 
 // Structure to capture the lane/col topology, and the element type size of

@@ -5,7 +5,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // (c) Copyright 2023 Xilinx Inc.
-//
+
+#include "mlir/Pass/AnalysisManager.h"
+#include "mlir/Transforms/DialectConversion.h"
+
 //===----------------------------------------------------------------------===//
 // This is the implementation of the folding pass from mul add chain
 // to AIEVec convolution operations, compatible with the AIE-ML architecture.

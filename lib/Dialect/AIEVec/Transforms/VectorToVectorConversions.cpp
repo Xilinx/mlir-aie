@@ -52,11 +52,10 @@ struct SplitUnalignedTransferReadPattern
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
 
-  SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t minVectorSize,
-                                    int64_t maxVectorSize, int64_t alignment)
+  SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t maxVectorSize,
+                                    int64_t alignment)
       : OpConversionPattern<vector::TransferReadOp>(context),
-        minVectorSize(minVectorSize), maxVectorSize(maxVectorSize),
-        vectorAlignment(alignment) {}
+        maxVectorSize(maxVectorSize), vectorAlignment(alignment) {}
 
   LogicalResult
   matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
@@ -108,7 +107,6 @@ struct SplitUnalignedTransferReadPattern
     return success();
   }
 
-  int64_t minVectorSize;
   int64_t maxVectorSize;
   int64_t vectorAlignment;
 };
@@ -290,8 +288,8 @@ static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
 
 static void
 populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
-                                                  512, 128);
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 512,
+                                                  128);
 }
 
 //============================================================================//
@@ -309,8 +307,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
 
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
-                                                  1024, 256);
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
+                                                  256);
 }
 
 //============================================================================//

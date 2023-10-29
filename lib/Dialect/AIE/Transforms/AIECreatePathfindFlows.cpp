@@ -213,6 +213,7 @@ public:
       return tileOp;
     }
   }
+
   SwitchboxOp getSwitchbox(OpBuilder &builder, int col, int row) {
     assert(col >= 0);
     assert(row >= 0);
@@ -230,6 +231,7 @@ public:
       return switchboxOp;
     }
   }
+
   ShimMuxOp getShimMux(OpBuilder &builder, int col) {
     assert(col >= 0);
     int row = 0;
@@ -245,19 +247,6 @@ public:
       maxcol = std::max(maxcol, col);
       maxrow = std::max(maxrow, row);
       return switchboxOp;
-    }
-  }
-  PLIOOp getPLIO(OpBuilder &builder, int col) {
-    if (coordToPLIO.count(col)) {
-      return coordToPLIO[col];
-    } else {
-      IntegerType i32 = builder.getIntegerType(32);
-      PLIOOp op = builder.create<PLIOOp>(builder.getUnknownLoc(),
-                                         builder.getIndexType(),
-                                         IntegerAttr::get(i32, (int32_t)col));
-      coordToPLIO[col] = op;
-      maxcol = std::max(maxcol, col);
-      return op;
     }
   }
 };
