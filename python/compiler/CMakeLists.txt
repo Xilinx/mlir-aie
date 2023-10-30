@@ -8,11 +8,10 @@ declare_mlir_python_sources(AIECompilerPythonSources.Core
   ADD_TO_PARENT AIECompilerPythonSources
   SOURCES_GLOB
     aiecc/*.py
-    *.py
 )
 
 add_mlir_python_modules(AIECompilerPythonModules
   ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie/compiler"
   INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie/compiler"
   DECLARED_SOURCES AIECompilerPythonSources
-  )
+)

@@ -8,28 +8,20 @@
 // (c) Copyright 2021-2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Target/LLVMIR/Import.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/Passes.h"
-
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/TargetSelect.h"
+#include "AIETargetShared.h"
+#include "AIETargets.h"
 
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
-#include "AIETargetShared.h"
-#include "AIETargets.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/IRMapping.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/IR/Module.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -51,7 +43,7 @@ const char *xaie_cpp_file_header = R"code(
 
 // The following is a wrapper for the common "if(call() != 0) return 1" pattern.
 // Use this only in functions that return int. If the call this wrapper is used
-// on does not succeed, the expanded code will exit out of the function 
+// on does not succeed, the expanded code will exit out of the function
 // containing this macro with an error code.
 #define __mlir_aie_try(x) do { \
   AieRC ret = (x); \
@@ -814,7 +806,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
     int row = coord.second;
     auto loc = tileLocStr(col, row);
 
-    auto bufferAccessor = [&](Optional<TileID> tile, BufferOp buf) {
+    auto bufferAccessor = [&](std::optional<TileID> tile, BufferOp buf) {
       // int32_t mlir_aie_read_buffer_a13(int index) {
       // void mlir_aie_write_buffer_a13(int index, int32_t value) {
       std::string bufName(buf.name().getValue());

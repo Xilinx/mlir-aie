@@ -41,7 +41,7 @@ func.func @muladd2mac_inv(%a : vector<8xi32>,
 func.func @splatAndMac2SplatMac(%a : vector<8xi32>,
                                 %b : vector<8xi32>,
                                 %c : vector<8xi32>) -> vector<8xi80> {
-    %0 = vector.extract %a[2] : vector<8xi32>
+    %0 = vector.extract %a[2] : i32 from vector<8xi32>
     %1 = vector.broadcast %0 : i32 to vector<8xi32>
     %2 = aievec.concat %1, %1 : vector<8xi32>, vector<16xi32>
     %3 = aievec.ups %c {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
@@ -63,7 +63,7 @@ func.func @splatAndMac2SplatMac(%a : vector<8xi32>,
 func.func @splatAndMac2SplatMac_inv(%a : vector<8xi32>,
                                     %b : vector<8xi32>,
                                     %c : vector<8xi32>) -> vector<8xi80> {
-    %0 = vector.extract %b[4] : vector<8xi32>
+    %0 = vector.extract %b[4] : i32 from vector<8xi32>
     %1 = vector.broadcast %0 : i32 to vector<8xi32>
     %2 = aievec.concat %a, %a : vector<8xi32>, vector<16xi32>
     %3 = aievec.ups %c {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
@@ -85,7 +85,7 @@ func.func @splatAndMac2SplatMac_inv(%a : vector<8xi32>,
 func.func @splatAndMac2SplatMacI16(%a : vector<16xi16>,
                                    %b : vector<16xi16>,
                                    %c : vector<16xi16>) -> vector<16xi48> {
-    %0 = vector.extract %a[3] : vector<16xi16>
+    %0 = vector.extract %a[3] : i16 from vector<16xi16>
     %1 = vector.broadcast %0 : i16 to vector<16xi16>
     %2 = aievec.concat %1, %1 : vector<16xi16>, vector<32xi16>
     %3 = aievec.ups %c {shift = 0 : i8} : vector<16xi16>, vector<16xi48>

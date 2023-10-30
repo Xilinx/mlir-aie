@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
 // CHECK: error{{.*}}'AIE.core' op failed to verify that op exists in a core tile
 
 module @test {

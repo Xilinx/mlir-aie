@@ -8,24 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Target/LLVMIR/Import.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/Passes.h"
+#include "AIETargets.h"
 
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/TargetSelect.h"
-
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "AIETargets.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/Target/LLVMIR/Import.h"
+#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+
+#include "llvm/IR/Module.h"
+
 namespace xilinx {
 namespace AIE {
 

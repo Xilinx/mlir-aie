@@ -11,18 +11,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "llvm/Support/Debug.h"
+
 #include <numeric>
 
 using namespace mlir;
@@ -259,13 +258,13 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
-    auto device = op->getParentOfType<DeviceOp>();
-    for (auto linkOp : device.getOps<ObjectFifoLinkOp>()) {
-      for (auto in : linkOp.getInputObjectFifos())
-        if (in.name() == op.name())
+    DeviceOp device = op->getParentOfType<DeviceOp>();
+    for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
+      for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos())
+        if (in == op)
           return {linkOp};
-      for (auto out : linkOp.getOutputObjectFifos())
-        if (out.name() == op.name())
+      for (ObjectFifoCreateOp out : linkOp.getOutputObjectFifos())
+        if (out == op)
           return {linkOp};
     }
     return {};
@@ -434,9 +433,9 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function that returns a pointer to the block of a Region
   /// that contains the AIEEndOp.
-  Block *findEndOpBlock(Region *r) {
+  Block *findEndOpBlock(Region &r) {
     Block *endBlock = nullptr;
-    for (auto &bl : r->getBlocks())
+    for (auto &bl : r.getBlocks())
       if (!bl.getOps<EndOp>().empty())
         endBlock = &bl;
     return endBlock;
@@ -467,7 +466,7 @@ struct AIEObjectFifoStatefulTransformPass
   template <typename MyOp>
   void createBdBlock(OpBuilder &builder, ObjectFifoCreateOp op, int lockMode,
                      int acqNum, int relNum, MyOp buff, int offset, int len,
-                     DMAChannelDir channelDir, int blockIndex, Block *succ,
+                     DMAChannelDir channelDir, size_t blockIndex, Block *succ,
                      DimTupleArrayAttr dims) {
     LockOp acqLock;
     LockOp relLock;
@@ -517,7 +516,7 @@ struct AIEObjectFifoStatefulTransformPass
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
                         DimTupleArrayAttr dims) {
-    int numBlocks = op.size();
+    size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
 
@@ -531,16 +530,16 @@ struct AIEObjectFifoStatefulTransformPass
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
-    auto linkOp = getOptionalLinkOp(op);
-    if (linkOp)
-      if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
-        target = objFifoLinks[*linkOp];
+    std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
+    if (linkOp.has_value())
+      if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
+        target = objFifoLinks[linkOp.value()];
 
     // search for MemOp
-    MemOp *producerMem = nullptr;
+    Operation *producerMem = nullptr;
     for (auto memOp : device.getOps<MemOp>()) {
       if (memOp.getTile() == op.getProducerTile()) {
-        producerMem = &memOp;
+        producerMem = memOp.getOperation();
         break;
       }
     }
@@ -548,19 +547,20 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerMem == nullptr) {
+      if (device->getNumRegions() != 1)
+        assert(false && "expected num regions for device op");
+      OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
       MemOp newMemOp =
           builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
-      producerMem = &newMemOp;
-      Region &r = producerMem->getBody();
-      r.push_back(new Block);
-      // add terminator operation to end block
-      Block &endBlock = r.back();
-      builder.setInsertionPointToStart(&endBlock);
-      builder.create<EndOp>(builder.getUnknownLoc());
+      {
+        OpBuilder::InsertionGuard g(builder);
+        builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
+        builder.create<EndOp>(builder.getUnknownLoc());
+      }
+      producerMem = newMemOp.getOperation();
     }
-
-    Block *endBlock = findEndOpBlock(&(producerMem->getBody()));
+    Block *endBlock = findEndOpBlock(producerMem->getRegion(0));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
@@ -575,8 +575,10 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ = nullptr;
     Block *curr = bdBlock;
-    int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    size_t blockIndex = 0;
+    for (size_t i = 0; i < numBlocks; i++) {
+      if (blockIndex >= buffersPerFifo[target].size())
+        break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
@@ -596,7 +598,7 @@ struct AIEObjectFifoStatefulTransformPass
   void createShimDMA(DeviceOp &device, OpBuilder &builder,
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode, DimTupleArrayAttr dims) {
-    int numBlocks = externalBuffersPerFifo[op].size();
+    size_t numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
 
@@ -605,10 +607,10 @@ struct AIEObjectFifoStatefulTransformPass
     int offset = 0;
 
     // search for ShimDMAOp
-    ShimDMAOp *producerDMA = nullptr;
+    Operation *producerDMA = nullptr;
     for (auto dmaOp : device.getOps<ShimDMAOp>()) {
       if (dmaOp.getTile() == op.getProducerTile()) {
-        producerDMA = &dmaOp;
+        producerDMA = dmaOp.getOperation();
         break;
       }
     }
@@ -616,19 +618,21 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = op.getProducerTileOp();
     if (producerDMA == nullptr) {
+      if (device->getNumRegions() != 1)
+        assert(false && "expected num regions for device op");
+      OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
       ShimDMAOp newDMAOp = builder.create<ShimDMAOp>(
           builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
-      producerDMA = &newDMAOp;
-      Region &r = producerDMA->getBody();
-      r.push_back(new Block);
-      // add terminator operation to end block
-      Block &endBlock = r.back();
-      builder.setInsertionPointToStart(&endBlock);
-      builder.create<EndOp>(builder.getUnknownLoc());
+      {
+        OpBuilder::InsertionGuard g(builder);
+        builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
+        builder.create<EndOp>(builder.getUnknownLoc());
+      }
+      producerDMA = newDMAOp.getOperation();
     }
 
-    Block *endBlock = findEndOpBlock(&(producerDMA->getBody()));
+    Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
@@ -643,8 +647,10 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ;
     Block *curr = bdBlock;
-    int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    size_t blockIndex = 0;
+    for (size_t i = 0; i < numBlocks; i++) {
+      if (blockIndex >= externalBuffersPerFifo[op].size())
+        break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
@@ -668,7 +674,7 @@ struct AIEObjectFifoStatefulTransformPass
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
                         DimTupleArrayAttr dims) {
-    int numBlocks = op.size();
+    size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
 
@@ -744,10 +750,10 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     // search for MemTileDMAOp
-    MemTileDMAOp *producerDMA = nullptr;
+    Operation *producerDMA = nullptr;
     for (auto dmaOp : device.getOps<MemTileDMAOp>()) {
       if (dmaOp.getTile() == target.getProducerTile()) {
-        producerDMA = &dmaOp;
+        producerDMA = dmaOp.getOperation();
         break;
       }
     }
@@ -755,19 +761,21 @@ struct AIEObjectFifoStatefulTransformPass
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerDMA == nullptr) {
+      if (device->getNumRegions() != 1)
+        assert(false && "expected num regions for device op");
+      OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
       MemTileDMAOp newDMAOp =
           builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
-      producerDMA = &newDMAOp;
-      Region &r = producerDMA->getBody();
-      r.push_back(new Block);
-      // add terminator operation to end block
-      Block &endBlock = r.back();
-      builder.setInsertionPointToStart(&endBlock);
-      builder.create<EndOp>(builder.getUnknownLoc());
+      {
+        OpBuilder::InsertionGuard g(builder);
+        builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
+        builder.create<EndOp>(builder.getUnknownLoc());
+      }
+      producerDMA = newDMAOp.getOperation();
     }
 
-    Block *endBlock = findEndOpBlock(&(producerDMA->getBody()));
+    Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
@@ -782,8 +790,10 @@ struct AIEObjectFifoStatefulTransformPass
     // create Bd blocks
     Block *succ = nullptr;
     Block *curr = bdBlock;
-    int blockIndex = 0;
-    for (int i = 0; i < numBlocks; i++) {
+    size_t blockIndex = 0;
+    for (size_t i = 0; i < numBlocks; i++) {
+      if (blockIndex >= buffersPerFifo[target].size())
+        break;
       if (i == numBlocks - 1)
         succ = bdBlock;
       else
@@ -882,8 +892,7 @@ struct AIEObjectFifoStatefulTransformPass
           increment_value = currentDuplication * step;
 
         arith::ConstantOp increment = builder.create<arith::ConstantOp>(
-            builder.getUnknownLoc(), builder.getIndexAttr(increment_value),
-            builder.getIndexType());
+            builder.getUnknownLoc(), builder.getIndexAttr(increment_value));
         arith::AddIOp sum = builder.create<arith::AddIOp>(
             builder.getUnknownLoc(), builder.getIndexType(), base,
             increment->getResult(0));
@@ -1017,13 +1026,12 @@ struct AIEObjectFifoStatefulTransformPass
                     new_step_value;
                 arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
                     builder.getUnknownLoc(),
-                    builder.getIndexAttr(new_upper_bound),
-                    old_upper_bound.getType());
+                    builder.getIndexAttr(new_upper_bound));
                 forLoop.setUpperBound(uBound);
               }
               arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
-                  builder.getUnknownLoc(), builder.getIndexAttr(new_step_value),
-                  old_upper_bound.getType());
+                  builder.getUnknownLoc(),
+                  builder.getIndexAttr(new_step_value));
               forLoop.setStep(new_step);
 
               // duplicate loop body, insert before terminator operation
@@ -1283,17 +1291,12 @@ struct AIEObjectFifoStatefulTransformPass
         // update the linkOp if the split objFifo was originally its start point
         auto linkOp = getOptionalLinkOp(createOp);
         if (linkOp) {
-          for (auto fifoIn : linkOp->getInputObjectFifos()) {
-            if (fifoIn.name() == createOp.name()) {
-              if (consumerTile == *(linkOp->getOptionalSharedTile())) {
-                auto res = mlir::SymbolTable::replaceAllSymbolUses(
-                    createOp.name(), consumerFifo.name(),
-                    linkOp->getOperation());
-                if (res.failed())
-                  llvm_unreachable("unreachable");
-              }
-            }
-          }
+          for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
+            if (fifoIn.name() == createOp.name() &&
+                consumerTile == *(linkOp->getOptionalSharedTile()))
+              if (failed(SymbolTable::replaceAllSymbolUses(
+                      createOp, consumerFifo.name(), linkOp->getOperation())))
+                llvm::report_fatal_error("unable to update all symbol uses");
         }
 
         consumerIndex++;

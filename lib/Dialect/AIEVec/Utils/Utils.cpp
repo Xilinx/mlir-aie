@@ -13,11 +13,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "aievec-utils"
 
@@ -29,7 +29,7 @@ static std::optional<int64_t> getLowerBoundValue(Value idx) {
   if (auto blkArg = dyn_cast<BlockArgument>(idx)) {
     auto parentOp = blkArg.getOwner()->getParentOp();
     return TypeSwitch<Operation *, std::optional<int64_t>>(parentOp)
-        .Case<AffineForOp>([&blkArg](AffineForOp forOp) {
+        .Case<affine::AffineForOp>([&blkArg](affine::AffineForOp forOp) {
           if (forOp.getInductionVar() == blkArg &&
               forOp.hasConstantLowerBound())
             return std::optional<int64_t>(forOp.getConstantLowerBound());
@@ -46,7 +46,7 @@ static std::optional<int64_t> getLowerBoundValue(Value idx) {
         return std::optional<int64_t>(
             cast<IntegerAttr>(constantOp.getValue()).getInt());
       })
-      .Case<AffineApplyOp>([](auto applyOp) {
+      .Case<affine::AffineApplyOp>([](auto applyOp) {
         if (applyOp.getAffineMap().getNumResults() == 1) {
           SmallVector<int64_t, 4> srcIndices;
           for (auto index : applyOp.getMapOperands()) {

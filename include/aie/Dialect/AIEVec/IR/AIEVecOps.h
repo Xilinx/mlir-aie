@@ -13,8 +13,10 @@
 #ifndef AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H
 #define AIE_DIALECT_AIEVEC_IR_AIEVECOPS_H
 
-#include "AIEVecDialect.h"
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+
+#include "AIEVecDialect.h"
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h.inc"

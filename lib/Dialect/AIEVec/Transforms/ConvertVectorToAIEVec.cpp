@@ -11,21 +11,14 @@
 // dialect to AIEVec, compatible with the AIE vector architecture.
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIEVec/AIEVecUtils.h"
-#include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
-
-#include "AIEVecOptimizations.h"
-#include "VectorToAIEVecConversions.h"
-#include "VectorToVectorConversions.h"
 
 namespace xilinx::aievec {
 #define GEN_PASS_DEF_LOWERVECTORTOAIEVEC
@@ -82,18 +75,19 @@ using SetInboundsToWriteOp = SetInboundsToReadStoreOpPattern<TransferWriteOp>;
 //===----------------------------------------------------------------------===//
 
 struct RedundantLoadStoreOptimizationPass
-    : public PassWrapper<RedundantLoadStoreOptimizationPass,
-                         OperationPass<func::FuncOp>> {
+    : public PassWrapper<RedundantLoadStoreOptimizationPass, OperationPass<>> {
+
   void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
 
     patterns.add<SetInboundsToReadOp, SetInboundsToWriteOp>(
         patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
-    transferOpflowOpt(funcOp);
+    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    IRRewriter rewriter(&getContext());
+    vector::transferOpflowOpt(rewriter, op);
   }
 };
 

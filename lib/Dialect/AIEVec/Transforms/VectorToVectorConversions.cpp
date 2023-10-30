@@ -14,22 +14,19 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
+
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Transforms/Passes.h"
-#include "llvm/ADT/TypeSwitch.h"
 
-#include "VectorToVectorConversions.h"
+#include "llvm/ADT/TypeSwitch.h"
 
 #define DEBUG_TYPE "aievec-canonicalization"
 
@@ -55,11 +52,10 @@ struct SplitUnalignedTransferReadPattern
     : public OpConversionPattern<vector::TransferReadOp> {
   using OpConversionPattern<vector::TransferReadOp>::OpConversionPattern;
 
-  SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t minVectorSize,
-                                    int64_t maxVectorSize, int64_t alignment)
+  SplitUnalignedTransferReadPattern(MLIRContext *context, int64_t maxVectorSize,
+                                    int64_t alignment)
       : OpConversionPattern<vector::TransferReadOp>(context),
-        minVectorSize(minVectorSize), maxVectorSize(maxVectorSize),
-        vectorAlignment(alignment) {}
+        maxVectorSize(maxVectorSize), vectorAlignment(alignment) {}
 
   LogicalResult
   matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor,
@@ -90,11 +86,11 @@ struct SplitUnalignedTransferReadPattern
     Value oldInnerMostIdx = adaptor.getIndices().back();
     auto offsetCorrectionMap =
         AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
-    Value newInnerMostIdx =
-        rewriter
-            .create<AffineApplyOp>(readOp.getLoc(), offsetCorrectionMap,
-                                   SmallVector<Value, 1>({oldInnerMostIdx}))
-            .getResult();
+    Value newInnerMostIdx = rewriter
+                                .create<affine::AffineApplyOp>(
+                                    readOp.getLoc(), offsetCorrectionMap,
+                                    SmallVector<Value, 1>({oldInnerMostIdx}))
+                                .getResult();
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
     alignedIdx[alignedIdx.size() - 1] = newInnerMostIdx;
@@ -111,7 +107,6 @@ struct SplitUnalignedTransferReadPattern
     return success();
   }
 
-  int64_t minVectorSize;
   int64_t maxVectorSize;
   int64_t vectorAlignment;
 };
@@ -154,7 +149,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
       // If the innermost index comes from an `affine.apply` op, take the base
       // as the new innermost index for the new `vector.transfer_read`, and the
       // offset as the index for the `aievec.broadcast` op.
-      if (auto applyOp = newIdx.getDefiningOp<AffineApplyOp>())
+      if (auto applyOp = newIdx.getDefiningOp<affine::AffineApplyOp>())
         if (applyOp.getAffineMap().getNumDims() == 1) {
           newIdx = applyOp.getMapOperands()[0];
           offset = applyOp.getAffineMap().compose(ArrayRef<int64_t>{0})[0];
@@ -169,10 +164,11 @@ struct ConvertSplatTransferReadToBroadcastPattern
       offset = offset % vlen;
       auto newAddrMap = AffineMap::get(
           1, 0, getAffineDimExpr(0, readOp.getContext()) + numElemsToSkip);
-      newIdx = rewriter
-                   .create<AffineApplyOp>(readOp.getLoc(), newAddrMap,
-                                          SmallVector<Value, 1>({newIdx}))
-                   .getResult();
+      newIdx =
+          rewriter
+              .create<affine::AffineApplyOp>(readOp.getLoc(), newAddrMap,
+                                             SmallVector<Value, 1>({newIdx}))
+              .getResult();
     }
     indices[indices.size() - 1] = newIdx;
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
@@ -201,9 +197,8 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
     arith::ExtSIOp extOp = cast<arith::ExtSIOp>(op);
     Operation *defOp = extOp.getIn().getDefiningOp();
     // If it's a data source op, we're done.
-    if (!defOp ||
-        isa<vector::TransferReadOp, memref::LoadOp, AffineLoadOp, func::CallOp>(
-            defOp))
+    if (!defOp || isa<vector::TransferReadOp, memref::LoadOp,
+                      affine::AffineLoadOp, func::CallOp>(defOp))
       return failure();
 
     // At the moment, we only accept ops we know we can swap with cast.
@@ -268,7 +263,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
 //============================================================================//
 static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target) {
-  target.addLegalDialect<arith::ArithDialect, AffineDialect,
+  target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
                          memref::MemRefDialect, vector::VectorDialect>();
 }
 
@@ -293,8 +288,8 @@ static void configureAIEv1CanonicalizeLegalizations(ConversionTarget &target) {
 
 static void
 populateAIEv1CanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
-                                                  512, 128);
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 512,
+                                                  128);
 }
 
 //============================================================================//
@@ -312,8 +307,8 @@ static void configureAIEMLCanonicalizeLegalizations(ConversionTarget &target) {
 
 static void
 populateAIEMLCanonicalizeConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 128,
-                                                  1024, 256);
+  patterns.add<SplitUnalignedTransferReadPattern>(patterns.getContext(), 1024,
+                                                  256);
 }
 
 //============================================================================//
@@ -353,7 +348,7 @@ struct CanonicalizeVectorForAIEVecPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, AffineDialect>();
+                    vector::VectorDialect, affine::AffineDialect>();
   }
 
   Option<std::string> aieTarget{

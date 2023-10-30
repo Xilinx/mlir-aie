@@ -13,8 +13,6 @@
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
 
-#include "mlir/CAPI/IR.h"
-
 void aieRegisterAllDialects(MlirContext context) {
   mlir::DialectRegistry registry;
   xilinx::registerAllDialects(registry);

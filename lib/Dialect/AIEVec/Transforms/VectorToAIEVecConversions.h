@@ -17,7 +17,7 @@ namespace xilinx {
 namespace aievec {
 
 /// Build a pipeline to convert vector operations to AIEVec operations.
-void buildLowerVectorToAIEVec(OpPassManager &pm,
+void buildLowerVectorToAIEVec(mlir::OpPassManager &pm,
                               const LowerVectorToAIEVecOptions &options);
 
 } // namespace aievec

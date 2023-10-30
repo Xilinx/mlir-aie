@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
@@ -437,6 +438,7 @@ LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
 
   return success();
 }
+
 xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
   return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
 }
@@ -444,28 +446,27 @@ xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
 namespace xilinx {
 namespace AIE {
 
-::mlir::ParseResult
-parseObjectFifoProducerTile(::mlir::OpAsmParser &parser,
-                            ::mlir::OpAsmParser::UnresolvedOperand &tile,
+mlir::ParseResult
+parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
+                            mlir::OpAsmParser::UnresolvedOperand &tile,
                             DimTupleArrayAttr &dimensions) {
   std::vector<DimTupleAttr> emptyDims = {};
   if (parser.parseOperand(tile))
-    return ::mlir::failure();
-  if (::mlir::succeeded(parser.parseOptionalKeyword("toStream"))) {
+    return mlir::failure();
+  if (mlir::succeeded(parser.parseOptionalKeyword("toStream"))) {
     if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(
             dimensions)) {
-      return ::mlir::failure();
+      return mlir::failure();
     }
   } else {
     dimensions = DimTupleArrayAttr::get(parser.getContext(),
                                         ArrayRef<DimTupleAttr>(emptyDims));
   }
-  return ::mlir::success();
+  return mlir::success();
 }
 
-void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
-                                 Operation *op, Value operand,
-                                 DimTupleArrayAttr dimensions) {
+void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter, Operation *op,
+                                 Value operand, DimTupleArrayAttr dimensions) {
   _odsPrinter << operand;
   if (dimensions && dimensions.size() > 0) {
     _odsPrinter << " toStream ";
@@ -473,9 +474,9 @@ void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
   }
 }
 
-::mlir::ParseResult parseObjectFifoConsumerTiles(
-    ::mlir::OpAsmParser &parser,
-    SmallVectorImpl<::mlir::OpAsmParser::UnresolvedOperand> &tiles,
+mlir::ParseResult parseObjectFifoConsumerTiles(
+    mlir::OpAsmParser &parser,
+    SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     DimTupleArrayArrayAttr &dimensions) {
   // parseCommaSeparatedList doesn't handle the missing case for "none",
   // so we handle it custom here.
@@ -483,32 +484,32 @@ void printObjectFifoProducerTile(::mlir::OpAsmPrinter &_odsPrinter,
 
   auto parseOneOperand = [&]() -> ParseResult {
     if (parser.parseOperand(tiles.emplace_back(), true)) {
-      return ::mlir::failure();
+      return mlir::failure();
     }
     // By default, create empty dimensions array for each consumer; this way,
     // we can be certain to have as many entries in the dimensions array as
     // there are customer
     DimTupleArrayAttr dimAttr = DimTupleArrayAttr::get(parser.getContext(), {});
 
-    if (::mlir::succeeded(parser.parseOptionalKeyword("fromStream"))) {
+    if (mlir::succeeded(parser.parseOptionalKeyword("fromStream"))) {
       // If specified, parse actual data layout transform dimensions
       if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(dimAttr)) {
-        return ::mlir::failure();
+        return mlir::failure();
       }
     }
     tileDims.emplace_back(dimAttr);
-    return ::mlir::success();
+    return mlir::success();
   };
 
-  if (parser.parseCommaSeparatedList(::mlir::AsmParser::Delimiter::None,
+  if (parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::None,
                                      parseOneOperand, " in operand list"))
-    return ::mlir::failure();
+    return mlir::failure();
 
   dimensions = DimTupleArrayArrayAttr::get(parser.getContext(), tileDims);
-  return ::mlir::success();
+  return mlir::success();
 }
 
-void printObjectFifoConsumerTiles(::mlir::OpAsmPrinter &_odsPrinter,
+void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
                                   Operation *op, OperandRange tiles,
                                   DimTupleArrayArrayAttr dimsPerTileAttr) {
   size_t tileIdx = 0;
@@ -607,6 +608,7 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   return success();
 }
+
 std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
   if (isJoin()) {
     auto fifoOut = getOutputObjectFifos()[0];
@@ -623,15 +625,17 @@ std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
     return {fifoIn.getConsumerTiles()[0]};
 
   } else {
-    auto fifoIn = getInputObjectFifos()[0];
-    auto fifoOut = getOutputObjectFifos()[0];
-    for (auto consumerIn : fifoIn.getConsumerTiles())
-      if (consumerIn == fifoOut.getProducerTile())
-        return {fifoOut.getProducerTile()};
+    auto fifoIn = getInputObjectFifos();
+    auto fifoOut = getOutputObjectFifos();
+    if (!fifoIn.empty() && !fifoOut.empty())
+      for (auto consumerIn : fifoIn[0].getConsumerTiles())
+        if (consumerIn == fifoOut[0].getProducerTile())
+          return {fifoOut[0].getProducerTile()};
     return {};
   }
   return {};
 }
+
 std::vector<xilinx::AIE::ObjectFifoCreateOp>
 xilinx::AIE::ObjectFifoLinkOp::getInputObjectFifos() {
   std::vector<ObjectFifoCreateOp> inputObjFifos;
@@ -648,6 +652,7 @@ xilinx::AIE::ObjectFifoLinkOp::getInputObjectFifos() {
   }
   return inputObjFifos;
 }
+
 std::vector<xilinx::AIE::ObjectFifoCreateOp>
 xilinx::AIE::ObjectFifoLinkOp::getOutputObjectFifos() {
   std::vector<ObjectFifoCreateOp> outputObjFifos;
@@ -672,10 +677,12 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
 
   return success();
 }
+
 xilinx::AIE::TileOp
 xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
@@ -721,6 +728,7 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
 
   return success();
 }
+
 xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
@@ -766,6 +774,7 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
 
   return success();
 }
+
 xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
@@ -801,8 +810,8 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   if (getAcquirePattern().size() != getReleasePattern().size()) {
     // acquire pattern size = process length (i.e., release pattern will be
     // duplicated by process length times) OR the other way around
-    if (!(getAcquirePattern().size() == getProcessLength()) &&
-        !(getProcessLength() == getReleasePattern().size()))
+    if (getAcquirePattern().size() != getProcessLength() &&
+        getProcessLength() != getReleasePattern().size())
       return emitOpError(
           "Acquire and Release patterns must be of equal length, or "
           "longest length of one must be equal to process "
@@ -811,6 +820,7 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
 
   return success();
 }
+
 xilinx::AIE::ObjectFifoCreateOp
 xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
@@ -1100,16 +1110,20 @@ int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   return target_model.getNumSourceShimMuxConnections(tile.getCol(),
                                                      tile.getRow(), bundle);
 }
+
 int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
                                                    bundle);
 }
+
 xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 int xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
+
 int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
@@ -1129,10 +1143,13 @@ LogicalResult xilinx::AIE::ShimDMAOp::verify() {
 
   return success();
 }
+
 xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
+
 int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
+
 int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::PacketRulesOp::verify() {
@@ -1174,6 +1191,7 @@ LogicalResult xilinx::AIE::CoreOp::verify() {
 int xilinx::AIE::CoreOp::colIndex() { return getTileOp().colIndex(); }
 
 int xilinx::AIE::CoreOp::rowIndex() { return getTileOp().rowIndex(); }
+
 xilinx::AIE::TileOp xilinx::AIE::CoreOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
@@ -1183,9 +1201,11 @@ int64_t xilinx::AIE::BufferOp::getAllocationSize() {
   MemRefType type = getType().cast<MemRefType>();
   return type.getNumElements() * type.getElementTypeBitWidth() / 8;
 }
+
 xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 LogicalResult xilinx::AIE::BufferOp::verify() {
   auto result = UsesAreAccessable::verifyTrait(*this);
   if (result.failed())
@@ -1231,6 +1251,7 @@ LogicalResult xilinx::AIE::MemOp::verify() {
 xilinx::AIE::TileOp xilinx::AIE::MemOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 int xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
 
 int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
@@ -1239,9 +1260,6 @@ int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
 /// return nullptr in the case of an external callable object, e.g. an external
 /// function.
 Region *xilinx::AIE::MemOp::getCallableRegion() { return &(getBody()); }
-
-/// Returns the results types that the callable region produces when executed.
-ArrayRef<Type> xilinx::AIE::MemOp::getCallableResults() { return getType(); }
 
 // MemTileDMAOp
 LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
@@ -1337,7 +1355,7 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
 
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
-    ::mlir::MemRefType buffer = getBuffer().getType();
+    mlir::MemRefType buffer = getBuffer().getType();
     // We are not restrictive about the type of the memref used as the input
     // to the DMABD when used with multi-dimensional strides/wraps. Since the
     // BD will use the memref as a base address and copy from it in 32 bit
@@ -1393,6 +1411,7 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
 xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 int xilinx::AIE::MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
 int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
@@ -1402,16 +1421,13 @@ int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 /// function.
 Region *xilinx::AIE::MemTileDMAOp::getCallableRegion() { return &(getBody()); }
 
-/// Returns the results types that the callable region produces when executed.
-ArrayRef<Type> xilinx::AIE::MemTileDMAOp::getCallableResults() {
-  return getType();
-}
-
 // SwitchboxOp
 xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 int xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
+
 int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
@@ -1429,7 +1445,9 @@ template <typename... ParentOpTypes> struct HasSomeParent {
 xilinx::AIE::TileOp xilinx::AIE::LockOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
+
 int xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
+
 int xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::LockOp::verify() {
@@ -1449,20 +1467,6 @@ LogicalResult xilinx::AIE::LockOp::verify() {
 
   return success();
 }
-
-struct UsesReachableLock {
-  static LogicalResult verifyTrait(Operation *op) {
-    auto useLock = dyn_cast<xilinx::AIE::UseLockOp>(op);
-    auto lock = useLock.getLockOp();
-    auto parent = dyn_cast<xilinx::AIE::TileElement>(useLock->getParentOp());
-    auto tileID = parent.getTileID();
-    const auto &target_model = xilinx::AIE::getTargetModel(op);
-    if (!target_model.isLegalMemAffinity(tileID.first, tileID.second,
-                                         lock.colIndex(), lock.rowIndex()))
-      return failure();
-    return success();
-  }
-};
 
 struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
@@ -1576,12 +1580,14 @@ int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   return target_model.getNumSourceSwitchboxConnections(tile.getCol(),
                                                        tile.getRow(), bundle);
 }
+
 int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumDestSwitchboxConnections(tile.getCol(),
                                                      tile.getRow(), bundle);
 }
+
 int TileOp::getNumSourceConnections(WireBundle bundle) {
   const auto &target_model = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
@@ -1596,6 +1602,7 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
   else
     return 0;
 }
+
 int TileOp::getNumDestConnections(WireBundle bundle) {
   const auto &target_model = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
@@ -1610,18 +1617,22 @@ int TileOp::getNumDestConnections(WireBundle bundle) {
   else
     return 0;
 }
+
 bool TileOp::isMemTile() {
   const auto &target_model = getTargetModel(*this);
   return target_model.isMemTile(getCol(), getRow());
 }
+
 bool TileOp::isShimNOCTile() {
   const auto &target_model = getTargetModel(*this);
   return target_model.isShimNOCTile(getCol(), getRow());
 }
+
 bool TileOp::isShimPLTile() {
   const auto &target_model = getTargetModel(*this);
   return target_model.isShimPLTile(getCol(), getRow());
 }
+
 bool TileOp::isShimNOCorPLTile() {
   const auto &target_model = getTargetModel(*this);
   return target_model.isShimNOCorPLTile(getCol(), getRow());

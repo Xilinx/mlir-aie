@@ -6,10 +6,10 @@ include(AddMLIRPython)
 # The directory at which the Python import tree begins.
 # See documentation for `declare_mlir_python_sources`'s ROOT_DIR
 # argument.
-set(AIE_PYTHON_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/aie")
+set(AIE_PYTHON_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
-add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.mlir.")
+add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
 ################################################################################
 # Sources
@@ -17,8 +17,7 @@ add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.mlir.")
 
 declare_mlir_python_sources(AIEPythonSources
   ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
-  SOURCES
-    dialects/_ods_common.py)
+)
 
 declare_mlir_python_sources(AIEPythonExtensions)
 
@@ -31,8 +30,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
   TD_FILE dialects/AIEBinding.td
   SOURCES
-    dialects/aie/__init__.py
-    dialects/_AIE_ops_ext.py
+    dialects/aie.py
   DIALECT_NAME AIE
 )
 
@@ -41,8 +39,7 @@ declare_mlir_dialect_python_bindings(
   ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
   TD_FILE dialects/AIEXBinding.td
   SOURCES
-    dialects/aiex/__init__.py
-    dialects/_AIEX_ops_ext.py
+    dialects/aiex.py
   DIALECT_NAME AIEX
 )
 
@@ -62,22 +59,10 @@ declare_mlir_python_extension(AIEPythonExtensions.MLIR
     LLVMSupport
 )
 
-declare_mlir_python_extension(AIEXPythonExtensions.MLIR
-  MODULE_NAME _aiexMlir
-  ADD_TO_PARENT AIEPythonExtensions
-  ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-  SOURCES
-    AIEMLIRModule.cpp
-  EMBED_CAPI_LINK_LIBS
-    AIECAPI
-  PRIVATE_LINK_LIBS
-    LLVMSupport
-)
-
 add_mlir_python_common_capi_library(AIEAggregateCAPI
   INSTALL_COMPONENT AIEPythonModules
-  INSTALL_DESTINATION python/aie/mlir/_mlir_libs
-  OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/mlir/_mlir_libs"
+  INSTALL_DESTINATION python/aie/_mlir_libs
+  OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
   RELATIVE_INSTALL_ROOT "../../../.."
   DECLARED_SOURCES
     MLIRPythonSources
@@ -89,8 +74,8 @@ add_mlir_python_common_capi_library(AIEAggregateCAPI
 )
 
 add_mlir_python_modules(AIEMLIRPythonModules
-  ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie/mlir"
-  INSTALL_PREFIX "python/aie/mlir"
+  ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
+  INSTALL_PREFIX "python/aie"
   DECLARED_SOURCES
     MLIRPythonSources
     MLIRPythonExtension.Core
@@ -111,5 +96,5 @@ add_mlir_python_modules(AIEPythonModules
     AIEAggregateCAPI
 )
 
+add_subdirectory(compiler)
 add_dependencies(AIEPythonModules AIECompilerPythonModules)
-add_subdirectory(aie/compiler)

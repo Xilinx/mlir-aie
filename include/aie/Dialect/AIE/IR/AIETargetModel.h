@@ -12,7 +12,6 @@
 #define MLIR_AIE_DEVICEMODEL_H
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallSet.h"
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
@@ -71,16 +70,16 @@ public:
 
   /// Return the tile ID of the memory to the west of the given tile, if it
   /// exists.
-  virtual llvm::Optional<TileID> getMemWest(TileID src) const = 0;
+  virtual std::optional<TileID> getMemWest(TileID src) const = 0;
   /// Return the tile ID of the memory to the east of the given tile, if it
   /// exists.
-  virtual llvm::Optional<TileID> getMemEast(TileID src) const = 0;
+  virtual std::optional<TileID> getMemEast(TileID src) const = 0;
   /// Return the tile ID of the memory to the north of the given tile, if it
   /// exists.
-  virtual llvm::Optional<TileID> getMemNorth(TileID src) const = 0;
+  virtual std::optional<TileID> getMemNorth(TileID src) const = 0;
   /// Return the tile ID of the memory to the south of the given tile, if it
   /// exists.
-  virtual llvm::Optional<TileID> getMemSouth(TileID src) const = 0;
+  virtual std::optional<TileID> getMemSouth(TileID src) const = 0;
 
   /// Return true if src is the internal memory of dst
   bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) const {
@@ -176,10 +175,10 @@ public:
 
   AIEArch getTargetArch() const override;
 
-  llvm::Optional<TileID> getMemWest(TileID src) const override;
-  llvm::Optional<TileID> getMemEast(TileID src) const override;
-  llvm::Optional<TileID> getMemNorth(TileID src) const override;
-  llvm::Optional<TileID> getMemSouth(TileID src) const override;
+  std::optional<TileID> getMemWest(TileID src) const override;
+  std::optional<TileID> getMemEast(TileID src) const override;
+  std::optional<TileID> getMemNorth(TileID src) const override;
+  std::optional<TileID> getMemSouth(TileID src) const override;
 
   bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) const override;
@@ -238,10 +237,10 @@ public:
 
   AIEArch getTargetArch() const override;
 
-  llvm::Optional<TileID> getMemWest(TileID src) const override;
-  llvm::Optional<TileID> getMemEast(TileID src) const override;
-  llvm::Optional<TileID> getMemNorth(TileID src) const override;
-  llvm::Optional<TileID> getMemSouth(TileID src) const override;
+  std::optional<TileID> getMemWest(TileID src) const override;
+  std::optional<TileID> getMemEast(TileID src) const override;
+  std::optional<TileID> getMemNorth(TileID src) const override;
+  std::optional<TileID> getMemSouth(TileID src) const override;
 
   bool isMemWest(int srcCol, int srcRow, int dstCol, int dstRow) const override;
   bool isMemEast(int srcCol, int srcRow, int dstCol, int dstRow) const override;

@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --canonicalize %s |& FileCheck %s
+// RUN: not aie-opt --canonicalize %s 2>&1 | FileCheck %s
 // CHECK: 'AIE.memTileDMA' op failed to verify that op exists in a MemTile
 
 AIE.device(xcve2802) {

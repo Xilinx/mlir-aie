@@ -11,19 +11,18 @@
 // to AIEVec convolution operations, compatible with the AIE-ML architecture.
 //===----------------------------------------------------------------------===//
 
+#include "FoldMulAddChainToConvOp.h"
+
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+
 #include "mlir/Analysis/SliceAnalysis.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
-#include <tuple>
-#include <utility>
 
-#include "FoldMulAddChainToConvOp.h"
+#include <utility>
 
 #define DEBUG_TYPE "fold-mul-add-chain-to-conv"
 
@@ -241,8 +240,10 @@ struct LongestConvMACChainAnalysis {
         return isa<aievec::BroadcastOp>(op) || isa<aievec::ExtOp>(op) ||
                isa<aievec::ConcatOp>(op);
       };
+      BackwardSliceOptions backwardSliceOptions;
+      backwardSliceOptions.filter = opFilter;
 
-      getBackwardSlice(mulOpOperand, &opBwdSlices, opFilter);
+      getBackwardSlice(mulOpOperand, &opBwdSlices, backwardSliceOptions);
       opBwdSlices.insert(mulOpOperand);
 
       LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");

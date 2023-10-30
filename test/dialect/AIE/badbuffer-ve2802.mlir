@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aiecc.py %s |& FileCheck %s
+// RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
 // Row 2 is a memtile, not a coretile.
 // CHECK: error{{.*}}'AIE.buffer' op in Column 1 and Row 2 is accessed from an unreachable tile in Column 1 and Row 3
 

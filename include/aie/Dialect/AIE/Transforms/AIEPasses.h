@@ -11,6 +11,8 @@
 #ifndef AIE_PASSES_H
 #define AIE_PASSES_H
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+
 #include "mlir/Pass/Pass.h"
 
 namespace aie {

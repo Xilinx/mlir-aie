@@ -11,7 +11,7 @@ module {
     %cst_0 = arith.constant dense<0x7F800000> : vector<16xf32>
     %0 = affine.for %arg2 = 0 to 1024 step 16 iter_args(%arg3 = %cst_0) -> (vector<16xf32>) {
       %3 = vector.transfer_read %arg0[%arg2], %cst : memref<1024xf32>, vector<16xf32>
-      %4 = arith.minf %arg3, %3 : vector<16xf32>
+      %4 = arith.minimumf %arg3, %3 : vector<16xf32>
       affine.yield %4 : vector<16xf32>
     }
     %1 = vector.reduction <minf>, %0 : vector<16xf32> into f32

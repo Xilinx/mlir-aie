@@ -20,8 +20,8 @@ import shutil
 import asyncio
 import tempfile
 
-from aie.mlir.passmanager import PassManager
-from aie.mlir.ir import Module, Context, Location
+from aie.passmanager import PassManager
+from aie.ir import Module, Context, Location
 from aie.dialects import aie as aiedialect
 
 import aie.compiler.aiecc.cl_arguments
@@ -38,7 +38,7 @@ aie_opt_passes = ['--aie-normalize-address-spaces',
                   '--lower-affine',
                   '--convert-math-to-llvm',
                   '--convert-arith-to-llvm',
-                  '--convert-memref-to-llvm',
+                  '--finalize-memref-to-llvm',
                   '--convert-func-to-llvm=use-bare-ptr-memref-call-conv',
                   '--convert-cf-to-llvm',
                   '--canonicalize',
@@ -97,7 +97,7 @@ class flow_runner:
       with Context() as ctx, Location.unknown():
         aiedialect.register_dialect(ctx)
         module = Module.parse(mlir_module_str)
-        PassManager.parse(pass_pipeline).run(module)
+        PassManager.parse(pass_pipeline).run(module.operation)
         mlir_module_str = str(module)
         if outputfile:
           with open(outputfile, 'w') as g:
@@ -477,7 +477,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
             await self.do_call(progress_bar.task, ['xchesscc_wrapper', self.aie_target.lower(), '+w', os.path.join(self.tmpdirname, 'work'), '-c', '-d', '-f', '+P', '4', file_llvmir_hacked, '-o', self.file_obj])
           elif(opts.compile):
             self.file_llvmir_opt= os.path.join(self.tmpdirname, 'input.opt.ll')
-            await self.do_call(progress_bar.task, ['opt', '--opaque-pointers=1', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
+            await self.do_call(progress_bar.task, ['opt', '--passes=default<O2>', '-inline-threshold=10', '-S', self.file_llvmir, '-o', self.file_llvmir_opt])
 
             await self.do_call(progress_bar.task, ['llc', self.file_llvmir_opt, '-O2', '--march=%s' % self.aie_target.lower(), '--function-sections', '--filetype=obj', '-o', self.file_obj])
 
