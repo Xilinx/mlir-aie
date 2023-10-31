@@ -11,7 +11,10 @@
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
 
+#include "AIEEnums.h"
+
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -30,12 +33,11 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
+
 #include <map>
 #include <set>
 
 using namespace mlir;
-
-#include "AIEEnums.h"
 
 namespace xilinx {
 namespace AIE {
@@ -149,22 +151,9 @@ public:
 namespace xilinx {
 namespace AIE {
 
-// #include "AIEOpInterfaces.h.inc"
-
 typedef std::pair<WireBundle, int> Port;
 typedef std::pair<Port, Port> Connect;
 typedef std::pair<DMAChannelDir, int> DMAChannel;
-
-struct AIEArchDesc {
-  bool checkerboard;
-};
-
-// xcve2302 17x2, xcvc1902 50x8
-struct AIEDevDesc {
-  unsigned int rows;
-  unsigned int cols;
-  AIEArchDesc arch;
-};
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op);
 

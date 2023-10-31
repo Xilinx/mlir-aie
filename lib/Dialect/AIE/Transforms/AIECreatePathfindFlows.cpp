@@ -9,17 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathfinder.h"
+
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_os_ostream.h"
-
-#include <aie/Dialect/AIE/Transforms/AIEPathfinder.h>
 
 using namespace mlir;
 using namespace xilinx;
@@ -30,16 +28,6 @@ static llvm::cl::opt<bool>
     debugRoute("debug-pathfinder",
                llvm::cl::desc("Enable Debugging of Pathfinder routing process"),
                llvm::cl::init(false));
-
-#define BOOST_NO_EXCEPTIONS
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Winvalid-noreturn"
-#include <boost/throw_exception.hpp>
-void boost::throw_exception(std::exception const &e) {
-  // boost expects this exception to be defined.
-  assert(false);
-}
-#pragma clang diagnostic pop
 
 std::string stringifyDirs(std::set<Port> dirs) {
   unsigned int count = 0;
@@ -101,9 +89,9 @@ public:
   std::map<PathEndPoint, SwitchSettings> flow_solutions;
   std::map<PathEndPoint, bool> processed_flows;
 
-  DenseMap<Coord, TileOp> coordToTile;
-  DenseMap<Coord, SwitchboxOp> coordToSwitchbox;
-  DenseMap<Coord, ShimMuxOp> coordToShimMux;
+  DenseMap<TileID, TileOp> coordToTile;
+  DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
+  DenseMap<TileID, ShimMuxOp> coordToShimMux;
   DenseMap<int, PLIOOp> coordToPLIO;
 
   const int MAX_ITERATIONS = 1000; // how long until declared unroutable
@@ -126,8 +114,8 @@ public:
     for (FlowOp flowOp : device.getOps<FlowOp>()) {
       TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
       TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-      Coord srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-      Coord dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+      TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
+      TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
       Port srcPort =
           std::make_pair(flowOp.getSourceBundle(), flowOp.getSourceChannel());
       Port dstPort =
@@ -146,7 +134,7 @@ public:
     // available search all existing SwitchBoxOps for exising connections
     for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
       for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-        Coord existing_coord =
+        TileID existing_coord =
             std::make_pair(switchboxOp.colIndex(), switchboxOp.rowIndex());
         Port existing_port = std::make_pair(connectOp.getDestBundle(),
                                             connectOp.getDestChannel());
@@ -295,7 +283,6 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
     Port srcPort = std::make_pair(srcBundle, srcChannel);
-    // Port dstPort = std::make_pair(dstBundle, dstChannel);
 
 #ifndef NDEBUG
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
@@ -314,7 +301,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     // add all switchbox connections to implement the flow
     Switchbox *srcSB = analyzer.pathfinder.getSwitchbox(srcCoords);
     PathEndPoint srcPoint = std::make_pair(srcSB, srcPort);
-    if (analyzer.processed_flows[srcPoint] == false) {
+    if (!analyzer.processed_flows[srcPoint]) {
       SwitchSettings settings = analyzer.flow_solutions[srcPoint];
       // add connections for all of the Switchboxes in SwitchSettings
       for (auto map_iter = settings.begin(); map_iter != settings.end();

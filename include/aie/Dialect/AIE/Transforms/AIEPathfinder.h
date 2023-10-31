@@ -13,57 +13,66 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h" // for WireBundle and Port
 
-// builds against at least boost graph 1.7.1
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-local-typedef"
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wdeprecated-copy"
-#pragma GCC diagnostic ignored "-Wsuggest-override"
-
-#include <boost/graph/adjacency_list.hpp>
-#include <boost/graph/dijkstra_shortest_paths.hpp>
-#include <boost/graph/graph_traits.hpp>
-
-#pragma GCC diagnostic pop
+#include "llvm/ADT/DirectedGraph.h"
+#include "llvm/ADT/GraphTraits.h"
 
 #include <algorithm>
 #include <limits>
 #include <utility> //for std::pair
 #include <vector>
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
-using namespace boost;
+class Switchbox;
+class Channel;
+using SwitchboxBase = llvm::DGNode<Switchbox, Channel>;
+using ChannelBase = llvm::DGEdge<Switchbox, Channel>;
+using SwitchboxGraphBase = llvm::DirectedGraph<Switchbox, Channel>;
 
-struct Switchbox { // acts as a vertex
-  unsigned short col, row;
-  // int dist;
-  unsigned int pred; // predecessor for dijkstra's
-  bool processed;    // denotes this switchbox has already been processed
+class Switchbox : public SwitchboxBase {
+public:
+  Switchbox() = default;
+  Switchbox(int col, int row) : col(col), row(row) {}
+  int col, row;
 };
 
-struct Channel { // acts as an edge
-  float demand;  // indicates how many flows want to use this Channel
-  unsigned short
-      used_capacity;           // how many flows are actually using this Channel
-  unsigned short max_capacity; // maximum number of routing resources
-  std::set<short> fixed_capacity;     // channels not available to the algorithm
-  unsigned short over_capacity_count; // history of Channel being over capacity
+class Channel : public ChannelBase {
+public:
+  Channel() = delete;
+  Channel(Switchbox &src, Switchbox &dst, WireBundle bundle,
+          uint32_t maxCapacity = 0, float demand = 0.0,
+          uint32_t usedCapacity = 0,
+          const std::set<uint32_t> &fixedCapacity = {},
+          uint32_t overCapacityCount = 0)
+      : ChannelBase(dst), src(src), bundle(bundle), maxCapacity(maxCapacity),
+        demand(demand), usedCapacity(usedCapacity),
+        fixedCapacity(fixedCapacity), overCapacityCount(overCapacityCount) {}
+  Channel &operator=(const Channel &other) {
+    src = other.src;
+    bundle = other.bundle;
+    maxCapacity = other.maxCapacity;
+    demand = other.demand;
+    usedCapacity = other.usedCapacity;
+    fixedCapacity = other.fixedCapacity;
+    overCapacityCount = other.overCapacityCount;
+    return *this;
+  }
+
+  Switchbox &src;
   WireBundle bundle;
+  uint32_t maxCapacity = 0; // maximum number of routing resources
+  float demand = 0.0;       // indicates how many flows want to use this Channel
+  uint32_t usedCapacity = 0; // how many flows are actually using this Channel
+  std::set<uint32_t> fixedCapacity; // channels not available to the algorithm
+  uint32_t overCapacityCount = 0;   // history of Channel being over capacity
 };
 
-// create a graph type that uses Switchboxes as vertices and Channels as edges
-typedef adjacency_list<vecS, vecS, bidirectionalS, Switchbox, Channel>
-    SwitchboxGraph;
+class SwitchboxGraph : public SwitchboxGraphBase {
+public:
+  SwitchboxGraph() = default;
+  ~SwitchboxGraph() = default;
+};
 
-typedef graph_traits<SwitchboxGraph>::vertex_descriptor vertex_descriptor;
-typedef graph_traits<SwitchboxGraph>::edge_descriptor edge_descriptor;
-typedef graph_traits<SwitchboxGraph>::vertex_iterator vertex_iterator;
-typedef graph_traits<SwitchboxGraph>::edge_iterator edge_iterator;
-typedef graph_traits<SwitchboxGraph>::in_edge_iterator in_edge_iterator;
-
-typedef std::pair<int, int> Coord;
 // A SwitchSetting defines the required settings for a Switchbox for a flow
 // SwitchSetting.first is the incoming signal
 // SwitchSetting.second is the fanout
@@ -76,34 +85,82 @@ typedef std::pair<Switchbox *, Port> PathEndPoint;
 typedef std::pair<PathEndPoint, std::vector<PathEndPoint>> Flow;
 
 class Pathfinder {
-private:
   SwitchboxGraph graph;
   std::vector<Flow> flows;
-  bool maxIterReached;
+  bool maxIterReached{};
+  std::map<TileID, Switchbox> grid;
+  SmallVector<Channel, 10> edges;
 
 public:
-  Pathfinder();
-  Pathfinder(int maxcol, int maxrow, DeviceOp &d);
-  void initializeGraph(int maxcol, int maxrow, DeviceOp &d);
-  void addFlow(Coord srcCoords, Port srcPort, Coord dstCoords, Port dstPort);
-  void addFixedConnection(Coord coord, Port port);
+  Pathfinder() = default;
+  Pathfinder(int maxCol, int maxRow, DeviceOp &d);
+  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
+  void addFixedConnection(TileID coord, Port port);
   bool isLegal();
-  std::map<PathEndPoint, SwitchSettings>
-  findPaths(const int MAX_ITERATIONS = 1000);
+  std::map<PathEndPoint, SwitchSettings> findPaths(int maxIterations = 1000);
 
   Switchbox *getSwitchbox(TileID coords) {
-    auto vpair = vertices(graph);
-    Switchbox *sb;
-    for (vertex_iterator v = vpair.first; v != vpair.second; v++) {
-      sb = &graph[*v];
-      if (sb->col == coords.first && sb->row == coords.second)
-        return sb;
-    }
-    return nullptr;
+    auto sb = std::find_if(graph.begin(), graph.end(), [&](Switchbox *sb) {
+      return sb->col == coords.first && sb->row == coords.second;
+    });
+    assert(sb != graph.end() && "couldn't find sb");
+    return *sb;
   }
 };
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
+
+namespace llvm {
+using namespace xilinx::AIE;
+
+template <> struct GraphTraits<Switchbox *> {
+  using NodeRef = Switchbox *;
+
+  static Switchbox *SwitchboxGraphGetSwitchbox(DGEdge<Switchbox, Channel> *P) {
+    return &P->getTargetNode();
+  }
+
+  // Provide a mapped iterator so that the GraphTrait-based implementations can
+  // find the target nodes without having to explicitly go through the edges.
+  using ChildIteratorType =
+      mapped_iterator<Switchbox::iterator,
+                      decltype(&SwitchboxGraphGetSwitchbox)>;
+  using ChildEdgeIteratorType = Switchbox::iterator;
+
+  static NodeRef getEntryNode(NodeRef N) { return N; }
+  static ChildIteratorType child_begin(NodeRef N) {
+    return ChildIteratorType(N->begin(), &SwitchboxGraphGetSwitchbox);
+  }
+  static ChildIteratorType child_end(NodeRef N) {
+    return ChildIteratorType(N->end(), &SwitchboxGraphGetSwitchbox);
+  }
+
+  static ChildEdgeIteratorType child_edge_begin(NodeRef N) {
+    return N->begin();
+  }
+  static ChildEdgeIteratorType child_edge_end(NodeRef N) { return N->end(); }
+};
+
+template <>
+struct GraphTraits<SwitchboxGraph *> : public GraphTraits<Switchbox *> {
+  using nodes_iterator = SwitchboxGraph::iterator;
+  static NodeRef getEntryNode(SwitchboxGraph *DG) { return *DG->begin(); }
+  static nodes_iterator nodes_begin(SwitchboxGraph *DG) { return DG->begin(); }
+  static nodes_iterator nodes_end(SwitchboxGraph *DG) { return DG->end(); }
+};
+
+inline raw_ostream &operator<<(raw_ostream &OS, const Switchbox &S) {
+  OS << "Switchbox(" << S.col << ", " << S.row << ")";
+  return OS;
+}
+
+inline raw_ostream &operator<<(raw_ostream &OS, const Channel &C) {
+  OS << "Channel(src=";
+  OS << C.src;
+  OS << ", dst=" << C.getTargetNode() << ")";
+  return OS;
+}
+
+} // namespace llvm
 
 #endif
