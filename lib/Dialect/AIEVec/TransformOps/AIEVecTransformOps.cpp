@@ -50,13 +50,9 @@ static Value vectorizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto opMemrefVecTy = MemRefType::get(newShape, opVecElemTy);
   auto typeCastOp =
       rewriter.create<vector::TypeCastOp>(loc, opMemrefVecTy, toMemRefOp);
-  // Missing a 'restrict' qualifier
   auto toTensorOp = rewriter.create<bufferization::ToTensorOp>(
       loc, RankedTensorType::get(newShape, opVecElemTy), typeCastOp);
-  // TODO: This won't work until we next update llvm, with the newly added
-  // TODO: properties. In the meantime, I'm not sure how to do this, or
-  // TODO: whether it matters at all.
-  // toTensorOp.setRestrict(true);
+  toTensorOp.setRestrict(true);
   return toTensorOp.getResult();
 }
 
@@ -82,13 +78,9 @@ static Value scalarizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto typeCastOp =
       rewriter.create<vector::TypeCastOp>(loc, opMemrefScalTy, toMemRefVecTyOp);
 
-  // Missing a 'restrict' qualifier
   auto toTensorOp = rewriter.create<bufferization::ToTensorOp>(
       loc, RankedTensorType::get(scalShape, elemTy), typeCastOp);
-  // TODO: This won't work until we next update llvm, with the newly added
-  // TODO: properties. In the meantime, I'm not sure how to do this, or
-  // TODO: whether it matters at all.
-  // toTensorOp.setRestrict(true);
+  toTensorOp.setRestrict(true);
   return toTensorOp.getResult();
 }
 
@@ -239,7 +231,7 @@ DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
   for (unsigned i = 0; i < numOuterMostDims; i++)
     remOuterDims.push_back(getAffineDimExpr(i, ctx));
   unsigned numResults = indexingMaps[0].getNumResults();
-  llvm::ArrayRef<int64_t> positions = {numResults - 2, numResults - 1};
+  SmallVector<int64_t> positions = {numResults - 2, numResults - 1};
   auto outerMostAidxMap =
       indexingMaps[0].dropResults(positions).replaceDimsAndSymbols(
           remOuterDims, {}, numOuterMostDims, 0);
@@ -283,7 +275,6 @@ DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
 
   results.push_back(newOp);
 
-  // return DiagnosedSilenceableFailure(target);
   return DiagnosedSilenceableFailure::success();
 }
 
