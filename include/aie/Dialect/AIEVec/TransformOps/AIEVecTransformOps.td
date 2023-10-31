@@ -21,7 +21,6 @@ def VectorizeContractionOp : Op<Transform_Dialect,
                         FunctionalStyleTransformOpTrait,
                         MemoryEffectsOpInterface, TransformEachOpTrait,
                         TransformOpInterface]> {
-//                            ReportTrackingListenerFailuresOpTrait]> {
   let description = [{
       Vectorize a LinalgOp describing a contraction by reinterpreting the
       scalar types as vector types, and replacing the payload with a
@@ -131,12 +130,11 @@ def VectorizeContractionOp : Op<Transform_Dialect,
       multiply accesses, in the `vector.contract` op.
       }];
 
-  let arguments = (ins PDL_Operation:$target);
+  let arguments = (ins TransformHandleTypeInterface:$target);
   // TODO: Return all new ops generated neatly arranged
-  let results = (outs PDL_Operation:$transformed);
-//            $target attr-dict `:` functional-type($target, results)
+  let results = (outs TransformHandleTypeInterface:$transformed);
   let assemblyFormat = [{
-    $target attr-dict
+    $target attr-dict `:` functional-type($target, results)
   }];
   let extraClassDeclaration = [{
       ::mlir::DiagnosedSilenceableFailure applyToOne(
