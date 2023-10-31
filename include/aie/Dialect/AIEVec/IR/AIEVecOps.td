@@ -743,4 +743,20 @@ def AIEVec_NegOp:
   let assemblyFormat = "$source attr-dict `:` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_BxorOp:
+  AIEVec_Op<"bxor", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector bitwise xor";
+  let description = [{
+    AMD-specific intrinsic that computes bitwise xor of two vectors and returns the result.
+    `$result = bxor(`$lhs, $rhs`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS
