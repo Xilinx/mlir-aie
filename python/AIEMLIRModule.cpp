@@ -54,5 +54,14 @@ PYBIND11_MODULE(_aieMlir, m) {
           "Get an instance of ObjectFifoType with given element type.",
           py::arg("self"), py::arg("type") = py::none());
 
+  mlir_type_subclass(m, "ObjectFifoSubviewType", aieTypeIsObjectFifoSubviewType)
+      .def_classmethod(
+          "get",
+          [](py::object cls, MlirType type) {
+            return cls(aieObjectFifoSubviewTypeGet(type));
+          },
+          "Get an instance of ObjectFifoSubviewType with given element type.",
+          py::arg("self"), py::arg("type") = py::none());
+
   m.attr("__version__") = "dev";
 }
