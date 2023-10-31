@@ -4,7 +4,7 @@
 Syntax:
 
 ```
-operation ::= `transform.structured.vectorize_contraction` $target attr-dict
+operation ::= `transform.structured.vectorize_contraction` $target attr-dict `:` functional-type($target, results)
 ```
 
 Vectorize a LinalgOp describing a contraction by reinterpreting the
@@ -122,11 +122,11 @@ Interfaces: MemoryEffectsOpInterface, TransformOpInterface
 
 | Operand | Description |
 | :-----: | ----------- |
-| `target` | PDL handle to an `mlir::Operation *`
+| `target` | TransformHandleTypeInterface instance
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `transformed` | PDL handle to an `mlir::Operation *`
+| `transformed` | TransformHandleTypeInterface instance
 
