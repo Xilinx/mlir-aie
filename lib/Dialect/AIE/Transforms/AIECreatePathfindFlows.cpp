@@ -84,30 +84,30 @@ std::string stringifySwitchSettings(SwitchSettings settings) {
 class DynamicTileAnalysis {
 public:
   DeviceOp &device;
-  int maxcol, maxrow;
+  int maxCol, maxRow;
   Pathfinder pathfinder;
-  std::map<PathEndPoint, SwitchSettings> flow_solutions;
-  std::map<PathEndPoint, bool> processed_flows;
+  std::map<PathEndPoint, SwitchSettings> flowSolutions;
+  std::map<PathEndPoint, bool> processedFlows;
 
   DenseMap<TileID, TileOp> coordToTile;
   DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
   DenseMap<TileID, ShimMuxOp> coordToShimMux;
   DenseMap<int, PLIOOp> coordToPLIO;
 
-  const int MAX_ITERATIONS = 1000; // how long until declared unroutable
+  const int maxIterations = 1000; // how long until declared unroutable
 
   DynamicTileAnalysis(DeviceOp &d) : device(d) {
     LLVM_DEBUG(llvm::dbgs()
                << "\t---Begin DynamicTileAnalysis Constructor---\n");
-    // find the maxcol and maxrow
-    maxcol = 0;
-    maxrow = 0;
+    // find the maxCol and maxRow
+    maxCol = 0;
+    maxRow = 0;
     for (TileOp tileOp : d.getOps<TileOp>()) {
-      maxcol = std::max(maxcol, tileOp.colIndex());
-      maxrow = std::max(maxrow, tileOp.rowIndex());
+      maxCol = std::max(maxCol, tileOp.colIndex());
+      maxRow = std::max(maxRow, tileOp.rowIndex());
     }
 
-    pathfinder = Pathfinder(maxcol, maxrow, d);
+    pathfinder = Pathfinder(maxCol, maxRow, d);
 
     // for each flow in the device, add it to pathfinder
     // each source can map to multiple different destinations (fanout)
@@ -145,14 +145,14 @@ public:
     // all flows are now populated, call the congestion-aware pathfinder
     // algorithm
     // check whether the pathfinder algorithm creates a legal routing
-    flow_solutions = pathfinder.findPaths(MAX_ITERATIONS);
+    flowSolutions = pathfinder.findPaths(maxIterations);
     if (!pathfinder.isLegal())
       d.emitError("Unable to find a legal routing");
 
     // initialize all flows as unprocessed to prep for rewrite
-    for (auto iter = flow_solutions.begin(); iter != flow_solutions.end();
+    for (auto iter = flowSolutions.begin(); iter != flowSolutions.end();
          iter++) {
-      processed_flows[(*iter).first] = false;
+      processedFlows[(*iter).first] = false;
       LLVM_DEBUG(llvm::dbgs()
                  << "Flow starting at (" << (*iter).first.first->col << ","
                  << (*iter).first.first->row << "):\t");
@@ -164,8 +164,8 @@ public:
       int col, row;
       col = tileOp.colIndex();
       row = tileOp.rowIndex();
-      maxcol = std::max(maxcol, col);
-      maxrow = std::max(maxrow, row);
+      maxCol = std::max(maxCol, col);
+      maxRow = std::max(maxRow, row);
       assert(coordToTile.count(std::make_pair(col, row)) == 0);
       coordToTile[std::make_pair(col, row)] = tileOp;
     }
@@ -187,8 +187,8 @@ public:
     LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
   }
 
-  int getMaxCol() { return maxcol; }
-  int getMaxRow() { return maxrow; }
+  int getMaxCol() { return maxCol; }
+  int getMaxRow() { return maxRow; }
 
   TileOp getTile(OpBuilder &builder, int col, int row) {
     if (coordToTile.count(std::make_pair(col, row))) {
@@ -196,8 +196,8 @@ public:
     } else {
       TileOp tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
       coordToTile[std::make_pair(col, row)] = tileOp;
-      maxcol = std::max(maxcol, col);
-      maxrow = std::max(maxrow, row);
+      maxCol = std::max(maxCol, col);
+      maxRow = std::max(maxRow, row);
       return tileOp;
     }
   }
@@ -214,8 +214,8 @@ public:
       switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
-      maxcol = std::max(maxcol, col);
-      maxrow = std::max(maxrow, row);
+      maxCol = std::max(maxCol, col);
+      maxRow = std::max(maxRow, row);
       return switchboxOp;
     }
   }
@@ -232,8 +232,8 @@ public:
       switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToShimMux[std::make_pair(col, row)] = switchboxOp;
-      maxcol = std::max(maxcol, col);
-      maxrow = std::max(maxrow, row);
+      maxCol = std::max(maxCol, col);
+      maxRow = std::max(maxRow, row);
       return switchboxOp;
     }
   }
@@ -301,8 +301,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     // add all switchbox connections to implement the flow
     Switchbox *srcSB = analyzer.pathfinder.getSwitchbox(srcCoords);
     PathEndPoint srcPoint = std::make_pair(srcSB, srcPort);
-    if (!analyzer.processed_flows[srcPoint]) {
-      SwitchSettings settings = analyzer.flow_solutions[srcPoint];
+    if (!analyzer.processedFlows[srcPoint]) {
+      SwitchSettings settings = analyzer.flowSolutions[srcPoint];
       // add connections for all of the Switchboxes in SwitchSettings
       for (auto map_iter = settings.begin(); map_iter != settings.end();
            map_iter++) {
@@ -400,7 +400,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
 
       LLVM_DEBUG(llvm::dbgs()
                  << "\n\t\tFinished adding ConnectOps to implement flowOp.\n");
-      analyzer.processed_flows[srcPoint] = true;
+      analyzer.processedFlows[srcPoint] = true;
     } else
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
 

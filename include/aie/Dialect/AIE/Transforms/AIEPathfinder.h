@@ -31,30 +31,58 @@ using SwitchboxGraphBase = llvm::DirectedGraph<Switchbox, Channel>;
 
 class Switchbox : public SwitchboxBase {
 public:
-  Switchbox() = default;
-  Switchbox(int col, int row) : col(col), row(row) {}
+  Switchbox() = delete;
+  Switchbox(const int col, const int row) : col(col), row(row) {}
+  Switchbox(const Switchbox &N) = default;
+  Switchbox(Switchbox &&N)
+      : SwitchboxBase(std::move(N)), col(N.col), row(N.row) {}
+  ~Switchbox() = default;
+
+  Switchbox &operator=(const Switchbox &N) {
+    SwitchboxBase::operator=(N);
+    col = N.col;
+    row = N.row;
+    return *this;
+  }
+
+  Switchbox &operator=(Switchbox &&N) {
+    SwitchboxBase::operator=(std::move(N));
+    col = N.col;
+    row = N.row;
+    return *this;
+  }
+
   int col, row;
 };
 
 class Channel : public ChannelBase {
 public:
-  Channel() = delete;
-  Channel(Switchbox &src, Switchbox &dst, WireBundle bundle,
-          uint32_t maxCapacity = 0, float demand = 0.0,
-          uint32_t usedCapacity = 0,
-          const std::set<uint32_t> &fixedCapacity = {},
-          uint32_t overCapacityCount = 0)
-      : ChannelBase(dst), src(src), bundle(bundle), maxCapacity(maxCapacity),
-        demand(demand), usedCapacity(usedCapacity),
-        fixedCapacity(fixedCapacity), overCapacityCount(overCapacityCount) {}
-  Channel &operator=(const Channel &other) {
-    src = other.src;
-    bundle = other.bundle;
-    maxCapacity = other.maxCapacity;
-    demand = other.demand;
-    usedCapacity = other.usedCapacity;
-    fixedCapacity = other.fixedCapacity;
-    overCapacityCount = other.overCapacityCount;
+  explicit Channel(Switchbox &target) = delete;
+  Channel(Switchbox &src, Switchbox &target, WireBundle bundle,
+          uint32_t maxCapacity)
+      : src(src), ChannelBase(target), bundle(bundle),
+        maxCapacity(maxCapacity) {}
+  Channel(const Channel &E)
+      : ChannelBase(E), src(E.src), bundle(E.bundle),
+        maxCapacity(E.maxCapacity), demand(E.demand),
+        usedCapacity(E.usedCapacity), fixedCapacity(E.fixedCapacity),
+        overCapacityCount(E.overCapacityCount) {}
+  Channel(Channel &&E)
+      : ChannelBase(E), src(E.src), bundle(E.bundle),
+        maxCapacity(E.maxCapacity), demand(E.demand),
+        usedCapacity(E.usedCapacity), fixedCapacity(E.fixedCapacity),
+        overCapacityCount(E.overCapacityCount) {}
+  Channel &operator=(const Channel &E) = default;
+
+  Channel &operator=(Channel &&E) {
+    ChannelBase::operator=(std::move(E));
+    src = E.src;
+    bundle = E.bundle;
+    maxCapacity = E.maxCapacity;
+    demand = E.demand;
+    usedCapacity = E.usedCapacity;
+    fixedCapacity = E.fixedCapacity;
+    overCapacityCount = E.overCapacityCount;
     return *this;
   }
 
@@ -89,7 +117,7 @@ class Pathfinder {
   std::vector<Flow> flows;
   bool maxIterReached{};
   std::map<TileID, Switchbox> grid;
-  SmallVector<Channel, 10> edges;
+  SmallVector<Channel *, 10> edges;
 
 public:
   Pathfinder() = default;
