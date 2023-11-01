@@ -2396,8 +2396,8 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
   }
 };
 
-// Check whether the int type dense value has a splat value and get the int
-// value as a string.
+// Check whether the value of constant operation is int type and the dense value
+// is -1.
 static bool hasConstNegOneValue(arith::ConstantOp constOp, unsigned elWidth) {
   if (!constOp) {
     return false;
