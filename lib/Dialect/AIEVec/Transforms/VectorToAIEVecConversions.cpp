@@ -2447,6 +2447,8 @@ struct ComputeBxorAndBnegOpPattern : public OpConversionPattern<arith::XOrIOp> {
     auto rhsConstOp =
         dyn_cast<arith::ConstantOp>(xorOp.getRhs().getDefiningOp());
 
+    // If one of operands in xorOp is a constant -1, xorOp will be replaced with
+    // aievec::BnegOp.
     if ((lhsConstOp && hasConstNegOneValue(lhsConstOp, elWidth)) ||
         (rhsConstOp && hasConstNegOneValue(rhsConstOp, elWidth))) {
       Value val = hasConstNegOneValue(lhsConstOp, elWidth) ? adaptor.getRhs()
