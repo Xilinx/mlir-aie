@@ -11,7 +11,7 @@ add_mlir_dialect_library(
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
   AIEPathfinder.cpp
-  AIECreatePathfindFlows.cpp
+  AIECreatePathFindFlows.cpp
   AIECoreToStandard.cpp
   AIECreatePacketFlows.cpp
   AIECanonicalizeDevice.cpp

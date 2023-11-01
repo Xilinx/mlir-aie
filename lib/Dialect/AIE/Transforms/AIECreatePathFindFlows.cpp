@@ -210,7 +210,6 @@ public:
     } else {
       SwitchboxOp switchboxOp = builder.create<SwitchboxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
-      // coordToTile[std::make_pair(col, row)]);
       switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
       coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;

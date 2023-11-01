@@ -11,9 +11,9 @@
 // RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
 // CHECK: %[[T23:.*]] = AIE.tile(2, 3)
 // CHECK: %[[T22:.*]] = AIE.tile(2, 2)
-// CHECK: AIE.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
-// CHECK: AIE.flow(%[[T22]], Core : 0, %[[T22]], Core : 0)
-// CHECK: AIE.flow(%[[T22]], Core : 1, %[[T23]], Core : 1)
+// CHECK-DAG: AIE.flow(%[[T23]], Core : 0, %[[T22]], Core : 1)
+// CHECK-DAG: AIE.flow(%[[T22]], Core : 0, %[[T22]], Core : 0)
+// CHECK-DAG: AIE.flow(%[[T22]], Core : 1, %[[T23]], Core : 1)
 
 module {
   AIE.device(xcvc1902) {

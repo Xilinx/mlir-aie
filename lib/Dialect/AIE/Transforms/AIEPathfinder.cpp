@@ -17,6 +17,9 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-pathfinder"
+#define OVER_CAPACITY_COEFF 0.02
+#define USED_CAPACITY_COEFF 0.02
+#define DEMAND_COEFF 1.1
 
 WireBundle getConnectingBundle(WireBundle dir) {
   switch (dir) {
@@ -39,26 +42,21 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
       auto nodeIt = grid.insert({{col, row}, Switchbox{col, row}});
-      assert(nodeIt.second && "couldn't insert switchbox");
-      assert(graph.addNode(nodeIt.first->second) && "couldn't insert node");
+      (void)graph.addNode(nodeIt.first->second);
       Switchbox &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
         Switchbox &southernNeighbor = grid.at({col, row - 1});
         if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
                 col, row, WireBundle::South)) {
-          auto *E = new Channel(southernNeighbor, thisNode, WireBundle::North,
-                                maxCapacity);
-          edges.push_back(E);
-          assert(graph.connect(southernNeighbor, thisNode, *edges.back()));
-          assert((southernNeighbor.hasEdgeTo(thisNode)) && "has edge to");
+          edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
+                             maxCapacity);
+          (void)graph.connect(southernNeighbor, thisNode, edges.back());
         }
         if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
                 col, row, WireBundle::South)) {
-          auto *E = new Channel(thisNode, southernNeighbor, WireBundle::South,
-                                maxCapacity);
-          edges.push_back(E);
-          assert(graph.connect(thisNode, southernNeighbor, *edges.back()));
-          assert((thisNode.hasEdgeTo(southernNeighbor)) && "has edge to");
+          edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
+                             maxCapacity);
+          (void)graph.connect(thisNode, southernNeighbor, edges.back());
         }
       }
 
@@ -66,19 +64,15 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
         Switchbox &westernNeighbor = grid.at({col - 1, row});
         if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
                 col, row, WireBundle::West)) {
-          auto *E = new Channel(westernNeighbor, thisNode, WireBundle::East,
-                                maxCapacity);
-          edges.push_back(E);
-          assert(graph.connect(westernNeighbor, thisNode, *edges.back()));
-          assert((westernNeighbor.hasEdgeTo(thisNode)) && "has edge to");
+          edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
+                             maxCapacity);
+          (void)graph.connect(westernNeighbor, thisNode, edges.back());
         }
         if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
                 col, row, WireBundle::West)) {
-          auto *E = new Channel(thisNode, westernNeighbor, WireBundle::West,
-                                maxCapacity);
-          edges.push_back(E);
-          assert(graph.connect(thisNode, westernNeighbor, *edges.back()));
-          assert((thisNode.hasEdgeTo(westernNeighbor)) && "has edge to");
+          edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
+                             maxCapacity);
+          (void)graph.connect(thisNode, westernNeighbor, edges.back());
         }
       }
     }
@@ -86,11 +80,11 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
 
   // initialize weights of all Channels to 1
   // initialize other variables
-  for (auto *edge : edges) {
-    edge->demand = 1.0;
-    edge->usedCapacity = 0;
-    edge->fixedCapacity.clear();
-    edge->overCapacityCount = 0;
+  for (auto &edge : edges) {
+    edge.demand = 1.0;
+    edge.usedCapacity = 0;
+    edge.fixedCapacity.clear();
+    edge.overCapacityCount = 0;
   }
 
   // initialize maximum iterations flag
@@ -98,9 +92,8 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
 }
 
 // TODO(max): refactor this
-// Pathfinder::addFlow
-// add a flow from src to dst
-// can have an arbitrary number of dst locations due to fanout
+// Add a flow from src to dst can have an arbitrary number of dst locations due
+// to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort) {
   // check if a flow with this source already exists
@@ -136,18 +129,17 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                      std::vector<PathEndPoint>{{*matchingDstSb, dstPort}});
 }
 
-// Pathfinder::addFixedConnection
-// Keep track of connections already used in the AIE
-// Pathfinder algorithm will avoid using these
+// Keep track of connections already used in the AIE; Pathfinder algorithm will
+// avoid using these.
 void Pathfinder::addFixedConnection(TileID coords, Port port) {
   // find the correct Channel and indicate the fixed direction
-  auto matchingCh = std::find_if(edges.begin(), edges.end(), [&](Channel *ch) {
-    return ch->src.col == coords.first && ch->src.row == coords.second &&
-           ch->bundle == port.first;
+  auto matchingCh = std::find_if(edges.begin(), edges.end(), [&](Channel &ch) {
+    return ch.src.col == coords.first && ch.src.row == coords.second &&
+           ch.bundle == port.first;
   });
-  // TODO(max): remove this?
+  // TODO(max): report an error here instead of silently failing
   if (matchingCh != edges.end())
-    (*matchingCh)->fixedCapacity.insert((uint32_t)port.second);
+    (*matchingCh).fixedCapacity.insert((uint32_t)port.second);
 }
 
 /// A value indicating an infinite flow/capacity/weight of a block/edge.
@@ -157,8 +149,6 @@ static constexpr float INF = float(((int64_t)1) << 50);
 
 std::map<Switchbox *, Switchbox *>
 dijkstraShortestPaths(const SwitchboxGraph &graph, Switchbox *src) {
-  // Initialize data structures
-
   // Use std::map instead of DenseMap because DenseMap doesn't let you overwrite
   // tombstones.
   auto demand = std::map<Switchbox *, float>();
@@ -173,11 +163,8 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, Switchbox *src) {
   while (!priorityQueue.empty()) {
     Switchbox *src = priorityQueue.begin()->second;
     priorityQueue.erase(priorityQueue.begin());
-    assert(src && "null src");
     for (Channel *e : src->getEdges()) {
-      assert(e && "null edge");
       Switchbox *dst = &e->getTargetNode();
-      assert(dst && "null dst");
       if (demand[dst] > demand[src] + e->demand) {
         priorityQueue.erase({demand[dst], dst});
 
@@ -191,19 +178,12 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, Switchbox *src) {
   return preds;
 }
 
-#define OVER_CAPACITY_COEFF 0.02
-#define USED_CAPACITY_COEFF 0.02
-#define DEMAND_COEFF 1.1
-
-// Pathfinder::findPaths
-// Primary function for the class
 // Perform congestion-aware routing for all flows which have been added.
-// Use Dijkstra's shortest path to find routes, and use "demand" as the weights
-// if the routing finds too much congestion, update the demand weights
-// and repeat the process until a valid solution is found
-//
-// returns a map specifying switchbox settings for all flows
-// if no legal routing can be found after maxIterations, returns empty vector
+// Use Dijkstra's shortest path to find routes, and use "demand" as the weights.
+// If the routing finds too much congestion, update the demand weights
+// and repeat the process until a valid solution is found.
+// Returns a map specifying switchbox settings for all flows.
+// If no legal routing can be found after maxIterations, returns empty vector.
 std::map<PathEndPoint, SwitchSettings>
 Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths\n");
@@ -211,21 +191,20 @@ Pathfinder::findPaths(const int maxIterations) {
   std::map<PathEndPoint, SwitchSettings> routingSolution;
 
   // initialize all Channel histories to 0
-  for (auto *ch : edges)
-    ch->overCapacityCount = 0;
+  for (auto &ch : edges)
+    ch.overCapacityCount = 0;
 
-  // Pathfinder iteration loop
   do {
     LLVM_DEBUG(llvm::dbgs()
                << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
-    for (auto *ch : edges) {
-      if (ch->fixedCapacity.size() >= ch->maxCapacity) {
-        ch->demand = INF;
+    for (auto &ch : edges) {
+      if (ch.fixedCapacity.size() >= ch.maxCapacity) {
+        ch.demand = INF;
       } else {
-        float history = 1.0 + OVER_CAPACITY_COEFF * ch->overCapacityCount;
-        float congestion = 1.0 + USED_CAPACITY_COEFF * ch->usedCapacity;
-        ch->demand = history * congestion;
+        float history = 1.0 + OVER_CAPACITY_COEFF * ch.overCapacityCount;
+        float congestion = 1.0 + USED_CAPACITY_COEFF * ch.usedCapacity;
+        ch.demand = history * congestion;
       }
     }
     // if reach maxIterations, throw an error since no routing can be found
@@ -242,14 +221,14 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // "rip up" all routes, i.e. set used capacity in each Channel to 0
     routingSolution = {};
-    for (auto *ch : edges)
-      ch->usedCapacity = 0;
+    for (auto &ch : edges)
+      ch.usedCapacity = 0;
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
     for (const auto &flow : flows) {
       // Use dijkstra to find path given current demand from the start
-      // switchbox, find the shortest paths to each other switchbox. Output is
+      // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
       // switchbox settings
       Switchbox *src = flow.first.first;
@@ -311,22 +290,22 @@ Pathfinder::findPaths(const int maxIterations) {
   return routingSolution;
 }
 
-// check that every channel does not exceed max capacity
+// Check that every channel does not exceed max capacity.
 bool Pathfinder::isLegal() {
   bool legal = true; // assume legal until found otherwise
   // check if maximum number of iterations has been reached
   if (maxIterReached)
     legal = false;
-  for (auto *e : edges)
-    if (e->usedCapacity > e->maxCapacity) {
+  for (auto &e : edges)
+    if (e.usedCapacity > e.maxCapacity) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "Too much capacity on Edge (" << e->getTargetNode().col
-                 << ", " << e->getTargetNode().row << ") -> "
-                 << stringifyWireBundle(e->bundle) << "\t: used_capacity = "
-                 << e->usedCapacity << "\t: Demand = " << e->demand << "\n");
-      e->overCapacityCount++;
+                 << "Too much capacity on Edge (" << e.getTargetNode().col
+                 << ", " << e.getTargetNode().row << ") . "
+                 << stringifyWireBundle(e.bundle) << "\t: used_capacity = "
+                 << e.usedCapacity << "\t: Demand = " << e.demand << "\n");
+      e.overCapacityCount++;
       LLVM_DEBUG(llvm::dbgs()
-                 << "over_capacity_count = " << e->overCapacityCount << "\n");
+                 << "over_capacity_count = " << e.overCapacityCount << "\n");
       legal = false;
     }
   return legal;
