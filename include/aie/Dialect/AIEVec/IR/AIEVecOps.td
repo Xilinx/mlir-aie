@@ -759,4 +759,20 @@ def AIEVec_BxorOp:
   let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_BnegOp:
+  AIEVec_Op<"bneg", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$source)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector bitwise negation";
+  let description = [{
+    AMD-specific intrinsic that computes bitwise negation of a vector and returns the result.
+    `$result = bneg(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
 #endif // AIEVEC_OPS
