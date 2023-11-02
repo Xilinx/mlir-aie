@@ -83,7 +83,7 @@ cmake ../llvm \
   -DCMAKE_CXX_STANDARD=17 \
   -DCMAKE_CXX_STANDARD_REQUIRED=ON \
   -Wno-dev \
-  |& tee cmake.log
+  2>&1 | tee cmake.log
 
 #  -DCMAKE_BUILD_TYPE=MinSizeRel \
 #  -DHAVE_POSIX_REGEX=0 \
@@ -91,6 +91,6 @@ cmake ../llvm \
 #  -DLLVM_LINK_LLVM_DYLIB=ON \
 #  -DCLANG_LINK_CLANG_DYLIB=ON \
 
-ninja |& tee ninja.log
-ninja install |& tee ninja-install.log
+ninja 2>&1 | tee ninja.log
+ninja install 2>&1 | tee ninja-install.log
 cd ../..

@@ -55,9 +55,9 @@ cmake -GNinja \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DCMAKE_BUILD_TYPE=Debug \
     -Wno-dev \
-    .. |& tee cmake.log
+    .. 2>&1 | tee cmake.log
 
-ninja |& tee ninja.log
-ninja install |& tee ninja-install.log
-#ninja check-aie |& tee ninja-check-aie.log
+ninja 2>&1 | tee ninja.log
+ninja install 2>&1 | tee ninja-install.log
+#ninja check-aie 2>&1 | tee ninja-check-aie.log
 cd ..

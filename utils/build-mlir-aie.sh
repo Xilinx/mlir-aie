@@ -47,8 +47,8 @@ cmake -GNinja\
     -DLLVM_ENABLE_ASSERTIONS=ON \
     "-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
     -DAIE_RUNTIME_TEST_TARGET=aarch64 \
-    .. |& tee cmake.log
+    .. 2>&1 | tee cmake.log
 
-ninja |& tee ninja.log
-ninja install |& tee ninja-install.log
-#ninja check-aie |& tee ninja-check-aie.log
+ninja 2>&1 | tee ninja.log
+ninja install 2>&1 | tee ninja-install.log
+#ninja check-aie 2>&1 | tee ninja-check-aie.log
