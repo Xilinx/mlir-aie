@@ -2396,9 +2396,30 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
   }
 };
 
+// Check whether the value of constant operation is int type and the dense value
+// is -1.
+static bool hasConstNegOneValue(arith::ConstantOp constOp, unsigned elWidth) {
+  if (!constOp) {
+    return false;
+  }
+  auto cstDense = dyn_cast<DenseIntElementsAttr>(constOp.getValue());
+  if (!cstDense) {
+    return false;
+  }
+
+  if (elWidth == 32) {
+    return cstDense.getSplatValue<int32_t>() == -1;
+  } else if (elWidth == 16) {
+    return cstDense.getSplatValue<int16_t>() == -1;
+  } else if (elWidth == 8) {
+    return cstDense.getSplatValue<int8_t>() == -1;
+  }
+  return false;
+}
+
 // Convert arith.xori to aievec.bxor to compute bitwise xor of two vectors for
 // integer types
-struct ComputeBxorOpPattern : public OpConversionPattern<arith::XOrIOp> {
+struct ComputeBxorAndBnegOpPattern : public OpConversionPattern<arith::XOrIOp> {
   using OpConversionPattern<arith::XOrIOp>::OpConversionPattern;
 
   LogicalResult
@@ -2421,8 +2442,22 @@ struct ComputeBxorOpPattern : public OpConversionPattern<arith::XOrIOp> {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<aievec::BxorOp>(
-        xorOp, srcType, adaptor.getLhs(), adaptor.getRhs());
+    auto lhsConstOp =
+        dyn_cast<arith::ConstantOp>(xorOp.getLhs().getDefiningOp());
+    auto rhsConstOp =
+        dyn_cast<arith::ConstantOp>(xorOp.getRhs().getDefiningOp());
+
+    // If one of operands in xorOp is a constant -1, xorOp will be replaced with
+    // aievec::BnegOp.
+    if ((lhsConstOp && hasConstNegOneValue(lhsConstOp, elWidth)) ||
+        (rhsConstOp && hasConstNegOneValue(rhsConstOp, elWidth))) {
+      Value val = hasConstNegOneValue(lhsConstOp, elWidth) ? adaptor.getRhs()
+                                                           : adaptor.getLhs();
+      rewriter.replaceOpWithNewOp<aievec::BnegOp>(xorOp, srcType, val);
+    } else {
+      rewriter.replaceOpWithNewOp<aievec::BxorOp>(
+          xorOp, srcType, adaptor.getLhs(), adaptor.getRhs());
+    }
     return success();
   }
 };
@@ -2468,7 +2503,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeCeilOpPattern,
       ComputeFloorOpPattern,
       ComputeNegOpPattern,
-      ComputeBxorOpPattern,
+      ComputeBxorAndBnegOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,

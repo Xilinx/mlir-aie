@@ -1527,6 +1527,27 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::NegOp negOp) {
   return success();
 }
 
+// Generate the Bneg op
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    aievec::BnegOp bnegOp) {
+  auto src = bnegOp.getSource();
+
+  // The source should have already been emitted
+  if (!emitter.hasValueInScope(src))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*bnegOp)))
+    return failure();
+
+  os << "bneg(";
+  os << emitter.getOrCreateName(src);
+  os << ")";
+  return success();
+}
+
 // Generate the Bxor op
 static LogicalResult printOperation(CppEmitter &emitter, aievec::BxorOp xorOp) {
   auto lhs = xorOp.getLhs();
@@ -3003,7 +3024,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
                 aievec::MinOp, aievec::MaxOp, aievec::NegOp, aievec::CmpOp,
                 aievec::SelOp, aievec::ExtElemOp, aievec::BxorOp,
-                aievec::UnpackOp>(
+                aievec::BnegOp, aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
