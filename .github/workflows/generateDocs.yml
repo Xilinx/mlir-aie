@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
 
 jobs:
@@ -28,7 +30,7 @@ jobs:
           submodules: "true"
 
       - name: Install packages
-        run: sudo apt-get install -y libboost-all-dev graphviz
+        run: sudo apt-get install -y libboost-all-dev graphviz lld
 
       - name: Install Python packages
         run: sudo pip install psutil rich numpy pybind11
@@ -46,7 +48,7 @@ jobs:
         # https://github.com/hendrikmuhs/ccache-action/releases/tag/v1.2.9
         uses: hendrikmuhs/ccache-action@ca3acd2731eef11f1572ccb126356c2f9298d35e
         with:
-          key: ${{ runner.os }}-clangreleaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
+          key: ${{ runner.os }}-releaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
 
       - name: Get cmakeModules
@@ -90,6 +92,7 @@ jobs:
           echo "}" > ../build_release/docs/build_info.json
 
       - name: Publish to GitHub-Pages
+        if: github.event_name != 'pull_request'
         # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
         uses: peaceiris/actions-gh-pages@v3.9.3
         with:
