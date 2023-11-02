@@ -31,8 +31,6 @@ set -o pipefail
 set -e
 cmake ../llvm \
   -GNinja \
-  -DCMAKE_C_COMPILER=clang \
-  -DCMAKE_CXX_COMPILER=clang++ \
   -DPython3_FIND_VIRTUALENV=ONLY \
   -DLLVM_LINK_LLVM_DYLIB=ON \
   -DCLANG_LINK_CLANG_DYLIB=ON \

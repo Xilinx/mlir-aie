@@ -74,8 +74,6 @@ jobs:
             -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
             -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
             -DCMAKE_LINKER=lld \
-            -DCMAKE_C_COMPILER=clang \
-            -DCMAKE_CXX_COMPILER=clang++ \
             -DAIE_INCLUDE_DOCS=ON \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make docs
