@@ -46,8 +46,8 @@ cmake ../llvm \
   -DLLVM_TARGETS_TO_BUILD:STRING="X86;ARM;AArch64;" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
-  |& tee cmake.log
+  2>&1 | tee cmake.log
 
-ninja |& tee ninja.log
-ninja install |& tee ninja-install.log
+ninja 2>&1 | tee ninja.log
+ninja install 2>&1 | tee ninja-install.log
 )
