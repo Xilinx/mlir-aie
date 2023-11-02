@@ -82,6 +82,39 @@ Effects: MemoryEffects::Effect{}
 | `result` | vector of any type values
 
 
+### `aievec.bneg` (::xilinx::aievec::BnegOp)
+
+_AIE vector bitwise negation_
+
+
+Syntax:
+
+```
+operation ::= `aievec.bneg` $source attr-dict `:` type($result)
+```
+
+AMD-specific intrinsic that computes bitwise negation of a vector and returns the result.
+`$result = bneg(`$source`).
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values
+
+
 ### `aievec.broadcast` (::xilinx::aievec::BroadcastOp)
 
 _AIE-ML broadcast_
