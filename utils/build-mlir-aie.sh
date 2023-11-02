@@ -37,8 +37,6 @@ cd $BUILD_DIR
 set -o pipefail
 set -e
 cmake -GNinja\
-    -DCMAKE_C_COMPILER=clang \
-    -DCMAKE_CXX_COMPILER=clang++ \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
