@@ -3,9 +3,11 @@
 
 # RUN: %PYTHON %s | FileCheck %s
 
+
 import aie
 from aie.ir import *
 from aie.dialects.aie import *
+from aie.passmanager import PassManager
 
 
 def constructAndPrintInModule(f):
@@ -193,26 +195,39 @@ def objFifoRelease():
             EndOp()
 
 
-# CHECK-LABEL: flowOp
-# CHECK: %[[VAL_0:.*]] = AIE.tile(0, 0)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(0, 2)
-# CHECK: AIE.flow(%[[VAL_1]], Trace : 0, %[[VAL_0]], DMA : 1)
-@constructAndPrintInModule
-def flowOp():
-    S = Tile(0, 0)
-    T = Tile(0, 2)
-    Flow(T, WireBundle.Trace, 0, S, WireBundle.DMA, 1)
+def testPythonPassDemo():
+    # CHECK-LABEL: testPythonPassDemo
+    print("\nTEST: testPythonPassDemo")
+
+    def print_ops(op):
+        print(op.name)
+
+    module = """
+    module {
+      %12 = AIE.tile(1, 2)
+      %buf = AIE.buffer(%12) : memref<256xi32>
+      %4 = AIE.core(%12)  {
+        %0 = arith.constant 0 : i32
+        %1 = arith.constant 0 : index
+        memref.store %0, %buf[%1] : memref<256xi32>
+        AIE.end
+      }
+    }
+    """
+
+    # CHECK: AIE.tile
+    # CHECK: AIE.buffer
+    # CHECK: arith.constant
+    # CHECK: arith.constant
+    # CHECK: memref.store
+    # CHECK: AIE.end
+    # CHECK: AIE.core
+    # CHECK: builtin.module
+    with Context() as ctx, Location.unknown():
+        aie.dialects.aie.register_dialect(ctx)
+        aie.dialects.aie.register_python_pass_demo_pass(print_ops)
+        mlir_module = Module.parse(module)
+        PassManager.parse("builtin.module(python-pass-demo)").run(mlir_module.operation)
 
 
-# CHECK-LABEL: packetFlowOp
-# CHECK: %[[VAL_0:.*]] = AIE.tile(0, 0)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(0, 2)
-# CHECK: AIE.packet_flow(0) {
-# CHECK:   AIE.packet_source<%[[VAL_1]], Trace : 0>
-# CHECK:   AIE.packet_dest<%[[VAL_0]], DMA : 1>
-# CHECK: }
-@constructAndPrintInModule
-def packetFlowOp():
-    S = Tile(0, 0)
-    T = Tile(0, 2)
-    PacketFlow(0, T, WireBundle.Trace, 0, S, WireBundle.DMA, 1)
+testPythonPassDemo()

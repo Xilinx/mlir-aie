@@ -52,6 +52,7 @@ CMAKE_CONFIGS="\
     -DArch=arm64 \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
+    -DLLVM_ENABLE_RTTI=ON \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DCMAKE_BUILD_TYPE=Debug \
     -Wno-dev"

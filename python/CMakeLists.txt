@@ -57,6 +57,7 @@ declare_mlir_python_extension(AIEPythonExtensions.MLIR
   ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
   SOURCES
     AIEMLIRModule.cpp
+    PythonPass.cpp
   EMBED_CAPI_LINK_LIBS
     AIECAPI
   PRIVATE_LINK_LIBS
