@@ -2411,7 +2411,7 @@ static bool hasConstNegOneValue(arith::ConstantOp constOp, unsigned elWidth) {
     return cstDense.getSplatValue<int32_t>() == -1;
   } else if (elWidth == 16) {
     return cstDense.getSplatValue<int16_t>() == -1;
-  } else {
+  } else if (elWidth == 8){
     return cstDense.getSplatValue<int8_t>() == -1;
   }
   return false;
