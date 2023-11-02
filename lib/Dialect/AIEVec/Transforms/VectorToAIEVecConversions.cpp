@@ -2462,6 +2462,39 @@ struct ComputeBxorAndBnegOpPattern : public OpConversionPattern<arith::XOrIOp> {
   }
 };
 
+template <typename SrcOpTy, typename DstOpTy>
+struct ComputeBandAndBorOpPattern : public OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(srcOp.getLhs().getType());
+    if (!srcType) {
+      return failure();
+    }
+    Type scalarType = srcType.getElementType();
+    if (!isa<IntegerType>(scalarType)) {
+      return failure();
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    if (laneSize * elWidth != 512) {
+      return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getResult().getType(),
+                                         adaptor.getLhs(), adaptor.getRhs());
+
+    return success();
+  }
+};
+
+using ComputeBorOpPattern =
+    ComputeBandAndBorOpPattern<arith::OrIOp, aievec::BorOp>;
+using ComputeBandOpPattern =
+    ComputeBandAndBorOpPattern<arith::AndIOp, aievec::BandOp>;
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2504,6 +2537,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeFloorOpPattern,
       ComputeNegOpPattern,
       ComputeBxorAndBnegOpPattern,
+      ComputeBorOpPattern,
+      ComputeBandOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2844,6 +2879,40 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<arith::XOrIOp>([](arith::XOrIOp xorOp) {
     VectorType srcType = dyn_cast<VectorType>(xorOp.getLhs().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<IntegerType>(scalarType)) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    return laneSize * elWidth != 512;
+  });
+
+  target.addDynamicallyLegalOp<arith::OrIOp>([](arith::OrIOp orOp) {
+    VectorType srcType = dyn_cast<VectorType>(orOp.getLhs().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    if (!isa<IntegerType>(scalarType)) {
+      return true;
+    }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    return laneSize * elWidth != 512;
+  });
+
+  target.addDynamicallyLegalOp<arith::AndIOp>([](arith::AndIOp andOp) {
+    VectorType srcType = dyn_cast<VectorType>(andOp.getLhs().getType());
     if (!srcType) {
       return true;
     }

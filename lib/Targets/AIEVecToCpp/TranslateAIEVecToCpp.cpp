@@ -1571,6 +1571,52 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::BxorOp xorOp) {
   return success();
 }
 
+// Generate the Band op
+static LogicalResult printOperation(CppEmitter &emitter, aievec::BandOp andOp) {
+  auto lhs = andOp.getLhs();
+  auto rhs = andOp.getRhs();
+
+  // The source should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*andOp)))
+    return failure();
+
+  os << "band(";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
+  os << ")";
+  return success();
+}
+
+// Generate the Bor op
+static LogicalResult printOperation(CppEmitter &emitter, aievec::BorOp orOp) {
+  auto lhs = orOp.getLhs();
+  auto rhs = orOp.getRhs();
+
+  // The source should have already been emitted
+  if (!emitter.hasValueInScope(lhs) || !emitter.hasValueInScope(rhs))
+    return failure();
+
+  raw_indented_ostream &os = emitter.ostream();
+
+  // Generate the initialization for the result
+  if (failed(emitter.emitAssignPrefix(*orOp)))
+    return failure();
+
+  os << "bor(";
+  os << emitter.getOrCreateName(lhs);
+  os << ", ";
+  os << emitter.getOrCreateName(rhs);
+  os << ")";
+  return success();
+}
+
 // Generate the AddElem op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     aievec::AddElemOp add_elemOp) {
@@ -3015,16 +3061,16 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
           .Case<memref::StoreOp, memref::ExpandShapeOp,
                 memref::CollapseShapeOp>(
               [&](auto op) { return printOperation(*this, op); })
-          .Case<aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp,
-                aievec::ExtOp, aievec::FMAOp, aievec::MulOp, aievec::PackOp,
-                aievec::SelectOp, aievec::SRSOp, aievec::SubOp,
-                aievec::SubElemOp, aievec::UPDOp, aievec::UPSOp,
-                aievec::FMAElemOp, aievec::MulElemOp, aievec::BroadcastOp,
-                aievec::BroadcastScalarOp, aievec::MulConvOp, aievec::FMAConvOp,
-                aievec::ShiftOp, aievec::ShuffleOp, aievec::CastOp,
-                aievec::MinOp, aievec::MaxOp, aievec::NegOp, aievec::CmpOp,
-                aievec::SelOp, aievec::ExtElemOp, aievec::BxorOp,
-                aievec::BnegOp, aievec::UnpackOp>(
+          .Case<
+              aievec::AddOp, aievec::AddElemOp, aievec::ConcatOp, aievec::ExtOp,
+              aievec::FMAOp, aievec::MulOp, aievec::PackOp, aievec::SelectOp,
+              aievec::SRSOp, aievec::SubOp, aievec::SubElemOp, aievec::UPDOp,
+              aievec::UPSOp, aievec::FMAElemOp, aievec::MulElemOp,
+              aievec::BroadcastOp, aievec::BroadcastScalarOp, aievec::MulConvOp,
+              aievec::FMAConvOp, aievec::ShiftOp, aievec::ShuffleOp,
+              aievec::CastOp, aievec::MinOp, aievec::MaxOp, aievec::NegOp,
+              aievec::CmpOp, aievec::SelOp, aievec::ExtElemOp, aievec::BxorOp,
+              aievec::BnegOp, aievec::BandOp, aievec::BorOp, aievec::UnpackOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
