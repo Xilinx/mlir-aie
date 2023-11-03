@@ -278,7 +278,8 @@ Interfaces: AIETarget
 <tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td><details><summary>AIE Device</summary>{{% markdown %}}Enum cases:
 * xcvc1902 (`xcvc1902`)
 * xcve2302 (`xcve2302`)
-* xcve2802 (`xcve2802`){{% /markdown %}}</details></td></tr>
+* xcve2802 (`xcve2802`)
+* ipu (`ipu`){{% /markdown %}}</details></td></tr>
 </table>
 
 
