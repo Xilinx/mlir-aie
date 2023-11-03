@@ -25,5 +25,7 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &);
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &);
+mlir::LogicalResult AIETranslateToIPU(mlir::ModuleOp module,
+                                      llvm::raw_ostream &output);
 } // namespace AIE
 } // namespace xilinx
