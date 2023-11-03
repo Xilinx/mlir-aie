@@ -57,7 +57,7 @@ set(AIE_LINKER
     "XCHESSCC"
     CACHE STRING "Backend linker selection")
 set(HOST_COMPILER
-    ""
+    "NONE"
     CACHE STRING "Host program compiler selection")
 set(PEANO_INSTALL_DIR
     "<unset>"

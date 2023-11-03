@@ -138,8 +138,7 @@ jobs:
         # So just use the specific implementation instead:
         run: apt-get install -y ninja-build
 
-        # Because the build requires to use explicitly this compiler
-      - name: Install Clang & Clang++ and linker
+      - name: Install lld and clang (for aiecc)
         run: apt-get install -y clang lld
 
       - name: Get LLVM
@@ -158,7 +157,7 @@ jobs:
         with:
           # Since there are now several compilation jobs running in parallel,
           # use a different key per job to avoid a ccache writing race condition
-          key: clang-${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}
+          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}
           max-size: 1G
 
       - name: Build and install LLVM
