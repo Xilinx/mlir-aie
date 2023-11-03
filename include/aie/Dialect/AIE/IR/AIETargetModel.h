@@ -399,6 +399,54 @@ public:
   }
 };
 
+class IPUTargetModel : public AIE2TargetModel {
+  llvm::SmallDenseSet<unsigned, 16> noc_columns = {0, 1, 2, 3};
+
+public:
+  IPUTargetModel() {}
+
+  int columns() const override { return 5; }
+  int rows() const override {
+    return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
+  }
+
+  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isMemTile(int col, int row) const override { return row == 1; }
+
+  bool isShimNOCTile(int col, int row) const override {
+    return row == 0 && noc_columns.contains(col);
+  }
+  bool isShimPLTile(int col, int row) const override {
+    return row == 0 && !noc_columns.contains(col);
+  }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  }
+  uint32_t getNumMemTileRows() const override { return 1; }
+  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
+                          int destIndex) const override {
+    if (isCoreTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 0)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 5)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+             destIndex == 0)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+             destIndex == 0)
+      return true;
+    return false;
+  }
+};
+
 } // namespace AIE
 } // namespace xilinx
 

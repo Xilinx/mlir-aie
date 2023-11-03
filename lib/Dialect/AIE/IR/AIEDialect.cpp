@@ -74,6 +74,7 @@ namespace AIE {
 static xilinx::AIE::VC1902TargetModel VC1902model;
 static xilinx::AIE::VE2302TargetModel VE2302model;
 static xilinx::AIE::VE2802TargetModel VE2802model;
+static xilinx::AIE::IPUTargetModel IPUmodel;
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
   if (auto t = dyn_cast<xilinx::AIE::AIETarget>(op))
@@ -842,6 +843,8 @@ const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
     return VE2302model;
   case AIEDevice::xcve2802:
     return VE2802model;
+  case AIEDevice::ipu:
+    return IPUmodel;
   }
   return VC1902model;
 }

@@ -158,6 +158,7 @@ def AIE2: I32EnumAttrCase<"AIE2", 2>;
 def xcvc1902: I32EnumAttrCase<"xcvc1902", 1>;
 def xcve2302: I32EnumAttrCase<"xcve2302", 2>;
 def xcve2802: I32EnumAttrCase<"xcve2802", 3>;
+def ipu: I32EnumAttrCase<"ipu", 4>;
 
 def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
   [Acquire, AcquireGreaterEqual, Release]> {
@@ -176,7 +177,7 @@ def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
   let cppNamespace = "xilinx::AIE";
 }
 def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
-  [xcvc1902, xcve2302, xcve2802]> {
+  [xcvc1902, xcve2302, xcve2802, ipu]> {
 
   let cppNamespace = "xilinx::AIE";
 }
