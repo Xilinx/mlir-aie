@@ -3,7 +3,6 @@
 ## Prerequisites
 
 ```
-clang 10.0.0+
 lld
 cmake 3.20.6
 ninja 1.8.2
