@@ -775,4 +775,37 @@ def AIEVec_BnegOp:
   let assemblyFormat = "$source attr-dict `:` type($result)";
   let hasVerifier = 0;
 }
+
+def AIEVec_BorOp:
+  AIEVec_Op<"bor", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector bitwise or";
+  let description = [{
+    AMD-specific intrinsic that computes bitwise or of two vectors and returns the result.
+    `$result = bor(`$lhs, $rhs`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let hasVerifier = 0;
+}
+
+def AIEVec_BandOp:
+  AIEVec_Op<"band", [
+    Pure,
+    AllTypesMatch<["lhs", "rhs", "result"]>
+  ]>,
+  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
+  Results<(outs AnyVector:$result)> {
+  let summary = "AIE vector bitwise and";
+  let description = [{
+    AMD-specific intrinsic that computes bitwise and of two vectors and returns the result.
+    `$result = band(`$lhs, $rhs`).
+  }];
+  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let hasVerifier = 0;
+}
+
 #endif // AIEVEC_OPS
