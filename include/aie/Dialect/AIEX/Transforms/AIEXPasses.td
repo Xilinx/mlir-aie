@@ -116,4 +116,18 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
   ];
 }
 
+def AIEDmaToIpu : Pass<"aie-dma-to-ipu", "AIE::DeviceOp"> {
+  let summary = "";
+  let description = [{
+
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEDmaToIpuPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif
