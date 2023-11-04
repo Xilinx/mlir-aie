@@ -7,46 +7,44 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 // Date: October 26th 2021
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK: module @singleFifo {
-// CHECK:   AIE.device(xcvc1902) {
-// CHECK:     %0 = AIE.tile(1, 2)
-// CHECK:     %1 = AIE.tile(1, 3)
-// CHECK:     %2 = AIE.buffer(%0) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK:     %3 = AIE.buffer(%0) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK:     %4 = AIE.buffer(%0) {sym_name = "objfifo_buff_2"} : memref<16xi32>
-// CHECK:     %5 = AIE.buffer(%0) {sym_name = "objfifo_buff_3"} : memref<16xi32>
-// CHECK:     %6 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-// CHECK:     %7 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "objfifo_lock_1"}
-// CHECK:     %8 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "objfifo_lock_2"}
-// CHECK:     %9 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "objfifo_lock_3"}
-// CHECK:     func.func @some_work(%arg0: memref<16xi32>) {
-// CHECK:       return
-// CHECK:     }
-// CHECK:     %10 = AIE.core(%0) {
-// CHECK:       AIE.useLock(%6, Acquire, 0)
-// CHECK:       AIE.useLock(%7, Acquire, 0)
-// CHECK:       func.call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK:       func.call @some_work(%3) : (memref<16xi32>) -> ()
-// CHECK:       AIE.useLock(%8, Acquire, 0)
-// CHECK:       func.call @some_work(%2) : (memref<16xi32>) -> ()
-// CHECK:       func.call @some_work(%3) : (memref<16xi32>) -> ()
-// CHECK:       func.call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK:       AIE.useLock(%6, Release, 1)
-// CHECK:       AIE.useLock(%7, Release, 1)
-// CHECK:       AIE.useLock(%9, Acquire, 0)
-// CHECK:       func.call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK:       func.call @some_work(%5) : (memref<16xi32>) -> ()
-// CHECK:       func.call @some_work(%4) : (memref<16xi32>) -> ()
-// CHECK:       func.call @some_work(%5) : (memref<16xi32>) -> ()
-// CHECK:       AIE.end
-// CHECK:     }
-// CHECK:   }
-// CHECK: }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 2)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(1, 3)
+// CHECK:           %[[VAL_2:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_2"} : memref<16xi32>
+// CHECK:           %[[VAL_5:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_3"} : memref<16xi32>
+// CHECK:           %[[VAL_6:.*]] = AIE.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK:           %[[VAL_7:.*]] = AIE.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK:           %[[VAL_8:.*]] = AIE.lock(%[[VAL_0]], 2) {init = 0 : i32, sym_name = "objfifo_lock_2"}
+// CHECK:           %[[VAL_9:.*]] = AIE.lock(%[[VAL_0]], 3) {init = 0 : i32, sym_name = "objfifo_lock_3"}
+// CHECK:           func.func @some_work(%[[VAL_10:.*]]: memref<16xi32>) {
+// CHECK:             return
+// CHECK:           }
+// CHECK:           %[[VAL_11:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             AIE.useLock(%[[VAL_6]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_7]], Acquire, 0)
+// CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
+// CHECK:             func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()
+// CHECK:             AIE.useLock(%[[VAL_8]], Acquire, 0)
+// CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
+// CHECK:             func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()
+// CHECK:             func.call @some_work(%[[VAL_4]]) : (memref<16xi32>) -> ()
+// CHECK:             AIE.useLock(%[[VAL_6]], Release, 1)
+// CHECK:             AIE.useLock(%[[VAL_7]], Release, 1)
+// CHECK:             AIE.useLock(%[[VAL_9]], Acquire, 0)
+// CHECK:             func.call @some_work(%[[VAL_4]]) : (memref<16xi32>) -> ()
+// CHECK:             func.call @some_work(%[[VAL_5]]) : (memref<16xi32>) -> ()
+// CHECK:             func.call @some_work(%[[VAL_4]]) : (memref<16xi32>) -> ()
+// CHECK:             func.call @some_work(%[[VAL_5]]) : (memref<16xi32>) -> ()
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:         }
 
 module @singleFifo {
     AIE.device(xcvc1902) {
@@ -82,7 +80,7 @@ module @singleFifo {
             %subview2 = AIE.objectFifo.acquire @objfifo (Produce, 2) : !AIE.objectFifoSubview<memref<16xi32>>
             %elem20 = AIE.objectFifo.subview.access %subview2[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
             %elem21 = AIE.objectFifo.subview.access %subview2[1] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-            func.call @some_work(%elem20) : (memref<16xi32>) -> () 
+            func.call @some_work(%elem20) : (memref<16xi32>) -> ()
             func.call @some_work(%elem21) : (memref<16xi32>) -> ()
 
             // no new acquires should take place, elem30 should be third element of objFifo (with index 2)

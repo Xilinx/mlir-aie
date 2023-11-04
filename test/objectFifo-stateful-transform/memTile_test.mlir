@@ -8,58 +8,56 @@
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 // Date: May 9th 2023
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-//CHECK: module @memTile {
-//CHECK:   AIE.device(xcve2302) {
-//CHECK:     memref.global "public" @of_cons : memref<16xi32>
-//CHECK:     memref.global "public" @of : memref<16xi32>
-//CHECK:     %0 = AIE.tile(2, 1)
-//CHECK:     %1 = AIE.tile(2, 2)
-//CHECK:     %2 = AIE.buffer(%1) {sym_name = "of_cons_buff_0"} : memref<16xi32>
-//CHECK:     %3 = AIE.buffer(%1) {sym_name = "of_cons_buff_1"} : memref<16xi32>
-//CHECK:     %4 = AIE.lock(%1, 0) {init = 2 : i32, sym_name = "of_cons_prod_lock"}
-//CHECK:     %5 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "of_cons_cons_lock"}
-//CHECK:     %6 = AIE.buffer(%0) {sym_name = "of_buff_0"} : memref<16xi32>
-//CHECK:     %7 = AIE.buffer(%0) {sym_name = "of_buff_1"} : memref<16xi32>
-//CHECK:     %8 = AIE.lock(%0, 0) {init = 2 : i32, sym_name = "of_prod_lock"}
-//CHECK:     %9 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "of_cons_lock"}
-//CHECK:     AIE.flow(%0, DMA : 0, %1, DMA : 0)
-//CHECK:     %10 = AIE.memTileDMA(%0) {
-//CHECK:       %12 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-//CHECK:       AIE.useLock(%9, AcquireGreaterEqual, 1)
-//CHECK:       AIE.dmaBd(<%6 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%8, Release, 1)
-//CHECK:       AIE.nextBd ^bb2
-//CHECK:     ^bb2:  // pred: ^bb1
-//CHECK:       AIE.useLock(%9, AcquireGreaterEqual, 1)
-//CHECK:       AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%8, Release, 1)
-//CHECK:       AIE.nextBd ^bb1
-//CHECK:     ^bb3:  // pred: ^bb0
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:     %11 = AIE.mem(%1) {
-//CHECK:       %12 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-//CHECK:       AIE.useLock(%4, AcquireGreaterEqual, 1)
-//CHECK:       AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%5, Release, 1)
-//CHECK:       AIE.nextBd ^bb2
-//CHECK:     ^bb2:  // pred: ^bb1
-//CHECK:       AIE.useLock(%4, AcquireGreaterEqual, 1)
-//CHECK:       AIE.dmaBd(<%3 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%5, Release, 1)
-//CHECK:       AIE.nextBd ^bb1
-//CHECK:     ^bb3:  // pred: ^bb0
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:   }
-//CHECK: }
+// CHECK-LABEL:   AIE.device(xcve2302) {
+// CHECK:           memref.global "public" @of_cons : memref<16xi32>
+// CHECK:           memref.global "public" @of : memref<16xi32>
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 1)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 2)
+// CHECK:           %[[VAL_2:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "of_cons_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "of_cons_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = AIE.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "of_cons_prod_lock"}
+// CHECK:           %[[VAL_5:.*]] = AIE.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "of_cons_cons_lock"}
+// CHECK:           %[[VAL_6:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "of_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_7:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "of_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_8:.*]] = AIE.lock(%[[VAL_0]], 0) {init = 2 : i32, sym_name = "of_prod_lock"}
+// CHECK:           %[[VAL_9:.*]] = AIE.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "of_cons_lock"}
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           %[[VAL_10:.*]] = AIE.memTileDMA(%[[VAL_0]]) {
+// CHECK:             %[[VAL_11:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:             AIE.useLock(%[[VAL_9]], AcquireGreaterEqual, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_6]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_8]], Release, 1)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:  // pred: ^bb1
+// CHECK:             AIE.useLock(%[[VAL_9]], AcquireGreaterEqual, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_7]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_8]], Release, 1)
+// CHECK:             AIE.nextBd ^bb1
+// CHECK:           ^bb3:  // pred: ^bb0
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_12:.*]] = AIE.mem(%[[VAL_1]]) {
+// CHECK:             %[[VAL_13:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:             AIE.useLock(%[[VAL_4]], AcquireGreaterEqual, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_2]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:  // pred: ^bb1
+// CHECK:             AIE.useLock(%[[VAL_4]], AcquireGreaterEqual, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_3]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.nextBd ^bb1
+// CHECK:           ^bb3:  // pred: ^bb0
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:         }
 
 module @memTile {
    AIE.device(xcve2302) {

@@ -1,16 +1,16 @@
 // RUN: aie-opt --aie-lower-multicast %s | FileCheck %s
 
-// CHECK-LABEL: module @test_multicast { 
-// CHECK:         %0 = AIE.tile(7, 0)
-// CHECK-NEXT:    %1 = AIE.tile(7, 3)
-// CHECK-NEXT:    %2 = AIE.tile(7, 4)
-// CHECK-NEXT:    %3 = AIE.tile(6, 3)
-// CHECK-NEXT:    %4 = AIE.tile(6, 4)
-// CHECK-NEXT:    AIE.flow(%0, DMA : 0, %1, DMA : 0)
-// CHECK-NEXT:    AIE.flow(%0, DMA : 0, %2, DMA : 0)
-// CHECK-NEXT:    AIE.flow(%0, DMA : 0, %3, DMA : 0)
-// CHECK-NEXT:    AIE.flow(%0, DMA : 0, %4, DMA : 0)
-// CHECK-NEXT:  }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(7, 0)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(7, 3)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(7, 4)
+// CHECK:           %[[VAL_3:.*]] = AIE.tile(6, 3)
+// CHECK:           %[[VAL_4:.*]] = AIE.tile(6, 4)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_3]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_4]], DMA : 0)
+// CHECK:         }
 
 module @test_multicast {
  AIE.device(xcvc1902) {

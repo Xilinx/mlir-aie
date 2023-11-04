@@ -7,41 +7,41 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 // Date: June 1st 2022
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-register-objectFifos %s | FileCheck %s
 
-// CHECK: module @registerPatterns {
-// CHECK:    %0 = AIE.tile(1, 2)
-// CHECK:    %1 = AIE.tile(1, 3)
-// CHECK:    AIE.objectFifo @objfifo(%0, {%1}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
-// CHECK:    %cst = arith.constant dense<1> : tensor<1xi32>
-// CHECK:    %cst_0 = arith.constant dense<[0, 1, 1, 1, 2]> : tensor<5xi32>
-// CHECK:    %c5 = arith.constant 5 : index
-// CHECK:    func.func @producer_work() {
-// CHECK:      return
-// CHECK:    }
-// CHECK:    %2 = AIE.core(%0) {
-// CHECK:      %3 = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK:      %4 = AIE.objectFifo.subview.access %3[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:      func.call @producer_work() : () -> ()
-// CHECK:      %c0 = arith.constant 0 : index
-// CHECK:      %c3 = arith.constant 3 : index
-// CHECK:      %c1 = arith.constant 1 : index
-// CHECK:      scf.for %arg0 = %c0 to %c3 step %c1 {
-// CHECK:        %7 = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK:        %8 = AIE.objectFifo.subview.access %7[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:        func.call @producer_work() : () -> ()
-// CHECK:        AIE.objectFifo.release @objfifo(Produce, 1)
-// CHECK:      }
-// CHECK:      %5 = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
-// CHECK:      %6 = AIE.objectFifo.subview.access %5[0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
-// CHECK:      func.call @producer_work() : () -> ()
-// CHECK:      AIE.objectFifo.release @objfifo(Produce, 2)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:  }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 2)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(1, 3)
+// CHECK:           AIE.objectFifo @objfifo(%[[VAL_0]], {%[[VAL_1]]}, 4 : i32) : !AIE.objectFifo<memref<16xi32>>
+// CHECK:           %[[VAL_2:.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK:           %[[VAL_3:.*]] = arith.constant dense<[0, 1, 1, 1, 2]> : tensor<5xi32>
+// CHECK:           %[[VAL_4:.*]] = arith.constant 5 : index
+// CHECK:           func.func @producer_work() {
+// CHECK:             return
+// CHECK:           }
+// CHECK:           %[[VAL_5:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             %[[VAL_6:.*]] = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:             %[[VAL_7:.*]] = AIE.objectFifo.subview.access %[[VAL_6]][0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:             func.call @producer_work() : () -> ()
+// CHECK:             %[[VAL_8:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_9:.*]] = arith.constant 3 : index
+// CHECK:             %[[VAL_10:.*]] = arith.constant 1 : index
+// CHECK:             scf.for %[[VAL_11:.*]] = %[[VAL_8]] to %[[VAL_9]] step %[[VAL_10]] {
+// CHECK:               %[[VAL_12:.*]] = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:               %[[VAL_13:.*]] = AIE.objectFifo.subview.access %[[VAL_12]][0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:               func.call @producer_work() : () -> ()
+// CHECK:               AIE.objectFifo.release @objfifo(Produce, 1)
+// CHECK:             }
+// CHECK:             %[[VAL_14:.*]] = AIE.objectFifo.acquire @objfifo(Produce, 1) : !AIE.objectFifoSubview<memref<16xi32>>
+// CHECK:             %[[VAL_15:.*]] = AIE.objectFifo.subview.access %[[VAL_14]][0] : !AIE.objectFifoSubview<memref<16xi32>> -> memref<16xi32>
+// CHECK:             func.call @producer_work() : () -> ()
+// CHECK:             AIE.objectFifo.release @objfifo(Produce, 2)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:         }
 
 module @registerPatterns  {
     AIE.device(xcvc1902) {
@@ -53,10 +53,10 @@ module @registerPatterns  {
         %acquirePattern = arith.constant dense<[1]> : tensor<1xi32>
         %releasePattern = arith.constant dense<[0,1,1,1,2]> : tensor<5xi32>
         %length = arith.constant 5 : index
-        func.func @producer_work() -> () { 
+        func.func @producer_work() -> () {
             return
         }
 
-        AIE.objectFifo.registerProcess @objfifo (Produce, %acquirePattern : tensor<1xi32>, %releasePattern : tensor<5xi32>, @producer_work, %length) 
+        AIE.objectFifo.registerProcess @objfifo (Produce, %acquirePattern : tensor<1xi32>, %releasePattern : tensor<5xi32>, @producer_work, %length)
     }
 }

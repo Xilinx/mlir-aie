@@ -10,18 +10,19 @@
 
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
-// CHECK-LABEL: module @test_lock0 {
-// CHECK:  %0 = AIE.tile(3, 3)
-// CHECK:  %1 = AIE.tile(2, 3)
-// CHECK:  %2 = AIE.lock(%1, 0)
-// CHECK:  %5 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%2, Acquire, 0)
-// CHECK:    AIE.useLock(%2, Release, 1)
-// CHECK:  }
-// CHECK:  %6 = AIE.core(%1) {
-// CHECK:    AIE.useLock(%2, Acquire, 1)
-// CHECK:    AIE.useLock(%2, Release, 0)
-// CHECK:  }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(3, 3)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 3)
+// CHECK:           %[[VAL_2:.*]] = AIE.lock(%[[VAL_1]], 0)
+// CHECK:           %[[VAL_5:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             AIE.useLock(%[[VAL_2]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_2]], Release, 1)
+// CHECK:           }
+// CHECK:           %[[VAL_6:.*]] = AIE.core(%[[VAL_1]]) {
+// CHECK:             AIE.useLock(%[[VAL_2]], Acquire, 1)
+// CHECK:             AIE.useLock(%[[VAL_2]], Release, 0)
+// CHECK:           }
+// CHECK:         }
 
 // Generate LockOp in the top-level module
 // Lower UseTokenOp to UseLockOp

@@ -10,10 +10,10 @@
 
 // RUN: aie-opt --aie-find-flows %s | FileCheck %s
 
-// CHECK: %0 = AIE.tile(2, 1)
-// CHECK: %1 = AIE.tile(2, 0)
-// CHECK: %6 = AIE.shimDMA(%1)
-// CHECK: AIE.flow(%0, Core : 0, %6, DMA : 0)
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 1)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 0)
+// CHECK:           %[[VAL_6:.*]] = AIE.shimDMA(%[[VAL_1]])
+// CHECK:           AIE.flow(%[[VAL_0]], Core : 0, %[[VAL_6]], DMA : 0)
 module {
   AIE.device(xcvc1902) {
     %t21 = AIE.tile(2, 1)
