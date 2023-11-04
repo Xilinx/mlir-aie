@@ -14,6 +14,7 @@
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/OpAsmInterface.td"
 
 // Op is a DMA-like operation with BD contraints
 def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
@@ -83,7 +84,10 @@ def Interconnect : OpInterface<"Interconnect"> {
   ];
 }
 
-def TileElement : OpInterface<"TileElement"> {
+
+def TileElement : OpInterface<"TileElement", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
+  ]> {
   let description = [{
     Interface for operations that exist in a TileOp.
   }];
@@ -98,8 +102,19 @@ def TileElement : OpInterface<"TileElement"> {
         ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
         return op.getTileOp().getTileID();
       }]
-    >
+    >,
   ];
+  let extraTraitClassDeclaration = [{
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
+      std::string nameWithoutDialect =
+          op.getOperationName().str().substr(op.getOperationName().find('.') + 1);
+      setNameFn(op.getResult(), nameWithoutDialect + "_" +
+                                    std::to_string(this->getTileID().col) + "_" +
+                                    std::to_string(this->getTileID().row));
+    }
+  }];
 }
 
 def AIETarget : OpInterface<"AIETarget"> {
