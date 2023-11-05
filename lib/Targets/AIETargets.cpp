@@ -151,7 +151,7 @@ void registerAIETranslations() {
 
         for (auto tile : tiles) {
           Operation *srcTileOp = tile.second;
-          TileID srcCoord = NL.getCoord(srcTileOp);
+          TileID srcCoord = cast<TileOp>(srcTileOp).getTileID();
           uint32_t srcCol = srcCoord.col;
           uint32_t srcRow = srcCoord.row;
 

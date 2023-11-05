@@ -19,16 +19,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-// void xilinx::AIE::NetlistAnalysis::runAnalysis() {
-//   // Collect op instances
-//   collectTiles(tiles);
-//   collectCores(cores);
-//   collectMems(mems);
-//   collectLocks(locks);
-//   collectBuffers(buffers);
-//   collectSwitchboxes(switchboxes);
-// }
-
 void xilinx::AIE::NetlistAnalysis::collectTiles(
     DenseMap<TileID, Operation *> &tiles) {
   for (auto tile : device.getOps<TileOp>()) {
@@ -48,166 +38,12 @@ void xilinx::AIE::NetlistAnalysis::collectCores(
   }
 }
 
-void xilinx::AIE::NetlistAnalysis::collectMems(
-    DenseMap<Operation *, MemOp> &mems) {
-  for (auto mem : device.getOps<MemOp>()) {
-    Operation *tileOp = mem.getTile().getDefiningOp();
-    assert(mems.count(tileOp) == 0 &&
-           "Invalid netlist! Expected 1-1 mapping of tile and mem");
-    mems[tileOp] = mem;
-  }
-}
-
-void xilinx::AIE::NetlistAnalysis::collectLocks(
-    DenseMap<std::pair<Operation *, int>, LockOp> &locks) {
-  for (auto lock : device.getOps<LockOp>()) {
-    Operation *tileOp = lock.getTile().getDefiningOp();
-    int lockID = lock.getLockIDValue();
-    assert(locks.count(std::make_pair(tileOp, lockID)) == 0 &&
-           "Invalid netlist! Expected 1-1 mapping of (tile, lockID) and lock");
-    locks[std::make_pair(tileOp, lockID)] = lock;
-  }
-}
-
 void xilinx::AIE::NetlistAnalysis::collectBuffers(
     DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers) {
 
   for (auto buffer : device.getOps<BufferOp>()) {
     Operation *tileOp = buffer.getTile().getDefiningOp();
     buffers[tileOp].push_back(buffer);
-  }
-}
-
-void xilinx::AIE::NetlistAnalysis::collectSwitchboxes(
-    DenseMap<Operation *, SwitchboxOp> &switchboxes) {
-
-  for (auto switchbox : device.getOps<SwitchboxOp>()) {
-    Operation *tileOp = switchbox.getTile().getDefiningOp();
-    assert(switchboxes.count(tileOp) == 0 &&
-           "Invalid netlist! Expected 1-1 mapping of tile and switchbox");
-    switchboxes[tileOp] = switchbox;
-  }
-}
-
-TileID xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const {
-  if (TileOp op = dyn_cast<TileOp>(Op))
-    return {op.colIndex(), op.rowIndex()};
-
-  if (CoreOp op = dyn_cast<CoreOp>(Op))
-    return {op.colIndex(), op.rowIndex()};
-
-  if (MemOp op = dyn_cast<MemOp>(Op))
-    return {op.colIndex(), op.rowIndex()};
-
-  if (LockOp op = dyn_cast<LockOp>(Op)) {
-    TileOp tile = dyn_cast<TileOp>(op.getTile().getDefiningOp());
-    return {tile.colIndex(), tile.rowIndex()};
-  }
-
-  if (BufferOp op = dyn_cast<BufferOp>(Op)) {
-    TileOp tile = dyn_cast<TileOp>(op.getTile().getDefiningOp());
-    return {tile.colIndex(), tile.rowIndex()};
-  }
-
-  llvm_unreachable("Unknown Operation!");
-}
-
-// item: Lock, Buffer
-// user: Core, Mem
-bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item,
-                                                   Operation *user) const {
-  TileID itemCoord = getCoord(item);
-  TileID userCoord = getCoord(user);
-  uint32_t itemCol = itemCoord.col;
-  uint32_t itemRow = itemCoord.row;
-  uint32_t userCol = userCoord.col;
-  uint32_t userRow = userCoord.row;
-  bool IsUserMem = isa<MemOp>(user);
-
-  const auto &target_model = getTargetModel(item);
-
-  if (IsUserMem)
-    return (target_model.isInternal(itemCol, itemRow, userCol, userRow));
-
-  // user is a Core
-  return target_model.isLegalMemAffinity(userCol, userRow, itemCol, itemRow);
-}
-
-bool xilinx::AIE::NetlistAnalysis::validateCoreOrMemRegion(
-    Operation *CoreOrMemOp) {
-  Region *r = nullptr;
-  if (CoreOp core = dyn_cast<CoreOp>(CoreOrMemOp))
-    r = &core.getBody();
-  else if (MemOp mem = dyn_cast<MemOp>(CoreOrMemOp))
-    r = &mem.getBody();
-
-  assert(r && "Expected non-null region!");
-
-  bool IsValid = true;
-  bool IsCore = isa<CoreOp>(CoreOrMemOp);
-
-  r->walk([&](Operation *Op) {
-    // Check illegal uses of some Ops
-    if (LockOp lock = dyn_cast<LockOp>(Op)) {
-      assert(false && "Invalid LockOp found in region");
-    } else if (BufferOp buf = dyn_cast<BufferOp>(Op)) {
-      assert(false && "Invalid BufferOp found in region");
-    } else if (DMAStartOp dma = dyn_cast<DMAStartOp>(Op)) {
-      if (IsCore) {
-        assert(false && "Invalid DMAStartOp found in region");
-      }
-    } else if (DMABDOp dmaBd = dyn_cast<DMABDOp>(Op)) {
-      if (IsCore) {
-        assert(false && "Invalid DMABDOp found in region");
-      }
-    }
-
-    // Check Op's operands
-    for (Value operand : Op->getOperands()) {
-      if (LockOp lock = dyn_cast<LockOp>(operand.getDefiningOp())) {
-        IsValid = isLegalAffinity(lock, CoreOrMemOp);
-        assert(IsValid && "Illegal use of lock in region");
-      } else if (BufferOp buf = dyn_cast<BufferOp>(operand.getDefiningOp())) {
-        IsValid = isLegalAffinity(buf, CoreOrMemOp);
-        assert(IsValid && "Illegal use of buffer in region");
-        bufferUsers[buf].push_back(CoreOrMemOp);
-      } else {
-        // except for (legal) lock and buffer, operand should be defined within
-        // the region
-        IsValid = CoreOrMemOp->isProperAncestor(operand.getDefiningOp());
-      }
-    }
-  });
-
-  return IsValid;
-}
-
-void xilinx::AIE::NetlistAnalysis::collectBufferUsage() {
-  SmallVector<Operation *, 4> CoreOrMemOps;
-  for (auto map : cores) {
-    CoreOrMemOps.push_back(map.second);
-  }
-
-  for (auto map : mems) {
-    CoreOrMemOps.push_back(map.second);
-  }
-
-  for (auto CoreOrMemOp : CoreOrMemOps) {
-    Region *r = nullptr;
-    if (CoreOp core = dyn_cast<CoreOp>(CoreOrMemOp))
-      r = &core.getBody();
-    else if (MemOp mem = dyn_cast<MemOp>(CoreOrMemOp))
-      r = &mem.getBody();
-
-    assert(r && "Expected non-null region!");
-
-    r->walk([&](Operation *Op) {
-      for (Value operand : Op->getOperands()) {
-        if (BufferOp buf = dyn_cast<BufferOp>(operand.getDefiningOp())) {
-          bufferUsers[buf].push_back(CoreOrMemOp);
-        }
-      }
-    });
   }
 }
 
@@ -238,16 +74,6 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
       }
     }
   }
-}
-
-uint64_t
-xilinx::AIE::NetlistAnalysis::getMemUsageInBytes(Operation *tileOp) const {
-  uint64_t memUsage = 0;
-  for (auto buf : buffers[tileOp]) {
-    auto t = buf.getType().cast<ShapedType>();
-    memUsage += t.getElementTypeBitWidth();
-  }
-  return memUsage / 8;
 }
 
 // FIXME: make address assignment for buffers explicit and move this function to
@@ -316,31 +142,6 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
 }
 
 SmallVector<Operation *, 4>
-xilinx::AIE::NetlistAnalysis::findRoutes(Operation *sourceConnectOp,
-                                         Operation *destConnectOp) const {
-
-  SmallVector<Operation *, 4> routes;
-  routes.push_back(sourceConnectOp);
-  ConnectOp sourceConnect = dyn_cast<ConnectOp>(sourceConnectOp);
-  auto nextConnectOps(getNextConnectOps(sourceConnect));
-  for (auto nextConnectOp : nextConnectOps) {
-    if (destConnectOp == nextConnectOp) {
-      return routes;
-    } else {
-      SmallVector<Operation *, 4> workList(
-          findRoutes(nextConnectOp, destConnectOp));
-      if (workList.size() > 0) {
-        routes.push_back(destConnectOp);
-        routes.insert(routes.end(), workList.begin(), workList.end());
-        return routes;
-      }
-    }
-  }
-
-  return routes;
-}
-
-SmallVector<Operation *, 4>
 xilinx::AIE::NetlistAnalysis::findDestConnectOps(ConnectOp source,
                                                  WireBundle destBundle) const {
 
@@ -401,57 +202,4 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
       }
     }
   }
-}
-
-void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
-
-  DenseMap<Value, SmallVector<Operation *, 4>> visitors;
-
-  device.getBodyRegion().walk([&](Operation *Op) {
-    if (auto op = dyn_cast<UseLockOp>(Op)) {
-      Value lock = op.getLock();
-      if (op.acquire() || op.acquire_ge()) {
-        visitors[lock].push_back(op);
-      } else if (op.release()) {
-        if (!visitors[lock].empty()) {
-          Operation *Op = visitors[lock].pop_back_val();
-          lockPairs[Op] = op;
-        }
-      }
-    } else {
-      for (Value operand : Op->getOperands()) {
-        if (BufferOp buf = dyn_cast<BufferOp>(operand.getDefiningOp())) {
-          for (auto map : visitors) {
-            SmallVector<Operation *, 4> acqLocks(map.second);
-            for (auto acqLock : acqLocks)
-              bufAcqLocks[operand.getDefiningOp()].push_back(acqLock);
-          }
-        }
-      }
-    }
-  });
-
-  for (auto pair1 : lockPairs) {
-    Operation *srcRelLockOp = pair1.second;
-    for (auto pair2 : lockPairs) {
-      Operation *dstAcqLockOp = pair2.first;
-
-      if (pair1 == pair2)
-        continue;
-
-      UseLockOp srcRelLock = dyn_cast<UseLockOp>(srcRelLockOp);
-      UseLockOp dstAcqLock = dyn_cast<UseLockOp>(dstAcqLockOp);
-      int relValue = srcRelLock.getLockValue();
-      int acqValue = dstAcqLock.getLockValue();
-      if (acqValue == 0)
-        continue;
-
-      if (relValue == acqValue)
-        lockChains.push_back({srcRelLockOp, dstAcqLockOp});
-    }
-  }
-}
-
-void xilinx::AIE::NetlistAnalysis::print(raw_ostream &os) {
-  // TODO
 }

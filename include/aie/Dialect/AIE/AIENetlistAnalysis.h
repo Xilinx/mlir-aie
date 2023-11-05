@@ -28,8 +28,7 @@
 
 using namespace mlir;
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 class NetlistAnalysis {
   DeviceOp &device;
@@ -58,14 +57,9 @@ public:
       : device(d), tiles(tiles), cores(cores), mems(mems), locks(locks),
         buffers(buffers), switchboxes(switchboxes) {}
 
-  //  void runAnalysis();
-
   void collectTiles(DenseMap<TileID, Operation *> &tiles);
   void collectCores(DenseMap<Operation *, CoreOp> &cores);
-  void collectMems(DenseMap<Operation *, MemOp> &mems);
-  void collectLocks(DenseMap<std::pair<Operation *, int>, LockOp> &locks);
   void collectBuffers(DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers);
-  void collectSwitchboxes(DenseMap<Operation *, SwitchboxOp> &switchboxes);
 
   auto getBufferUsers() const { return bufferUsers; }
 
@@ -73,36 +67,15 @@ public:
 
   auto getDMAs() const { return dmas; }
 
-  auto getDMAConnections() const { return dmaConnections; }
-
-  auto getLockPairs() const { return lockPairs; }
-
-  auto getLockChains() const { return lockChains; }
-
-  auto getBufAcqLocks() const { return bufAcqLocks; }
-
-  auto getDma2ConnectsMap() const { return dma2ConnectsMap; }
-
-  TileID getCoord(Operation *Op) const;
-  bool isLegalAffinity(Operation *src, Operation *user) const;
-  bool validateCoreOrMemRegion(Operation *CoreOrMemOp);
-  void collectBufferUsage();
   void collectDMAUsage();
-  uint64_t getMemUsageInBytes(Operation *tileOp) const;
   uint64_t getBufferBaseAddress(Operation *bufOp) const;
 
   SmallVector<Operation *, 4> getNextConnectOps(ConnectOp currentConnect) const;
   SmallVector<Operation *, 4> findDestConnectOps(ConnectOp source,
                                                  WireBundle destBundle) const;
-  SmallVector<Operation *, 4> findRoutes(Operation *sourceConnectOp,
-                                         Operation *destConnectOp) const;
   void dmaAnalysis();
-  void lockAnalysis();
-
-  void print(raw_ostream &os);
 };
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 #endif

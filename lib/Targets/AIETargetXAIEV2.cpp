@@ -801,7 +801,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   for (auto tile : tiles) {
     Operation *tileOp = tile.second;
-    TileID coord = NL.getCoord(tileOp);
+    TileID coord = cast<TileOp>(tileOp).getTileID();
     uint32_t col = coord.col;
     uint32_t row = coord.row;
     auto loc = tileLocStr(col, row);
