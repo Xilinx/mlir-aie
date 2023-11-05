@@ -306,7 +306,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
       for (auto map_iter = settings.begin(); map_iter != settings.end();
            map_iter++) {
         Switchbox *curr = (*map_iter).first;
-        SwitchSetting s = (*map_iter).second;
+        SwitchSetting setting = (*map_iter).second;
         SwitchboxOp swOp =
             analyzer.getSwitchbox(rewriter, curr->col, curr->row);
         int shim_ch = srcChannel;
@@ -341,7 +341,8 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
             }
           }
         }
-        for (auto it = s.second.begin(); it != s.second.end(); it++) {
+        for (auto it = setting.second.begin(); it != setting.second.end();
+             it++) {
           WireBundle bundle = (*it).first;
           int channel = (*it).second;
           // handle special shim connectivity
@@ -382,19 +383,19 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
               }
             }
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, s.first.first, s.first.second,
+                          flowOp, setting.first.first, setting.first.second,
                           WireBundle::South, shim_ch);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, s.first.first, s.first.second, bundle,
-                          channel);
+                          flowOp, setting.first.first, setting.first.second,
+                          bundle, channel);
           }
         }
 
         LLVM_DEBUG(llvm::dbgs() << " (" << curr->col << "," << curr->row << ") "
-                                << stringifyDir(s.first) << " -> "
-                                << stringifyDirs(s.second) << " | ");
+                                << stringifyDir(setting.first) << " -> "
+                                << stringifyDirs(setting.second) << " | ");
       }
 
       LLVM_DEBUG(llvm::dbgs()

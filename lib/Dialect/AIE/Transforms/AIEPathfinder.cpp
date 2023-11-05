@@ -91,7 +91,7 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
   Pathfinder::maxIterReached = false;
 }
 
-// TODO(max): refactor this
+// TODO: refactor this
 // Add a flow from src to dst can have an arbitrary number of dst locations due
 // to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
@@ -137,31 +137,34 @@ void Pathfinder::addFixedConnection(TileID coords, Port port) {
     return ch.src.col == coords.first && ch.src.row == coords.second &&
            ch.bundle == port.first;
   });
-  // TODO(max): report an error here instead of silently failing
+  // TODO: report an error here instead of silently failing
   if (matchingCh != edges.end())
     (*matchingCh).fixedCapacity.insert((uint32_t)port.second);
 }
 
-/// A value indicating an infinite flow/capacity/weight of a block/edge.
-/// Not using numeric_limits<float>::max(), as the values can be summed up
-/// during the execution.
-static constexpr float INF = float(((int64_t)1) << 50);
+static constexpr double INF = std::numeric_limits<double>::max();
 
 std::map<Switchbox *, Switchbox *>
 dijkstraShortestPaths(const SwitchboxGraph &graph, Switchbox *src) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you overwrite
   // tombstones.
-  auto demand = std::map<Switchbox *, float>();
+  auto demand = std::map<Switchbox *, double>();
   auto preds = std::map<Switchbox *, Switchbox *>();
   for (Switchbox *sb : graph)
     demand.emplace(sb, INF);
   demand[src] = 0.0;
-  std::set<std::pair<float, Switchbox *>> priorityQueue;
+  auto cmp = [](const std::pair<double, Switchbox *> &p1,
+                const std::pair<double, Switchbox *> &p2) {
+    return std::fabs(p1.first - p2.first) <
+                   std::numeric_limits<double>::epsilon()
+               ? std::less<Switchbox *>()(p1.second, p2.second)
+               : p1.first < p2.first;
+  };
+  std::set<std::pair<double, Switchbox *>, decltype(cmp)> priorityQueue(cmp);
   priorityQueue.insert({demand[src], src});
 
-  // Run the Dijkstra algorithm
   while (!priorityQueue.empty()) {
-    Switchbox *src = priorityQueue.begin()->second;
+    src = priorityQueue.begin()->second;
     priorityQueue.erase(priorityQueue.begin());
     for (Channel *e : src->getEdges()) {
       Switchbox *dst = &e->getTargetNode();
@@ -202,8 +205,8 @@ Pathfinder::findPaths(const int maxIterations) {
       if (ch.fixedCapacity.size() >= ch.maxCapacity) {
         ch.demand = INF;
       } else {
-        float history = 1.0 + OVER_CAPACITY_COEFF * ch.overCapacityCount;
-        float congestion = 1.0 + USED_CAPACITY_COEFF * ch.usedCapacity;
+        double history = 1.0 + OVER_CAPACITY_COEFF * ch.overCapacityCount;
+        double congestion = 1.0 + USED_CAPACITY_COEFF * ch.usedCapacity;
         ch.demand = history * congestion;
       }
     }

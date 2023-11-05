@@ -16,6 +16,7 @@
 #include "llvm/ADT/DirectedGraph.h"
 #include "llvm/ADT/GraphTraits.h"
 
+#include <algorithm>
 #include <list>
 
 namespace xilinx::AIE {
@@ -65,7 +66,7 @@ public:
   Switchbox &src;
   WireBundle bundle;
   uint32_t maxCapacity = 0; // maximum number of routing resources
-  float demand = 0.0;       // indicates how many flows want to use this Channel
+  double demand = 0.0;      // indicates how many flows want to use this Channel
   uint32_t usedCapacity = 0; // how many flows are actually using this Channel
   std::set<uint32_t> fixedCapacity; // channels not available to the algorithm
   uint32_t overCapacityCount = 0;   // history of Channel being over capacity
@@ -166,5 +167,14 @@ inline raw_ostream &operator<<(raw_ostream &OS, const Channel &C) {
 }
 
 } // namespace llvm
+
+namespace std {
+using namespace xilinx::AIE;
+template <> struct less<Switchbox *> {
+  bool operator()(const Switchbox *a, const Switchbox *b) const {
+    return a->col == b->col ? a->row < b->row : a->col < b->col;
+  }
+};
+} // namespace std
 
 #endif
