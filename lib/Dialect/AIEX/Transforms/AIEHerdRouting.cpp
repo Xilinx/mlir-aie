@@ -164,27 +164,21 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
 
     assert(curChannel >= 0 && "Could not find available destination port!");
 
-    if (curChannel == -1) {
-      congestion.push_back({xLast, yLast}); // this switchbox is congested
-      switchboxes[std::make_pair(herdOp, curCoord)]
-          .pop_back(); // back up, remove the last connection
-    } else {
-      llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle) << " : "
-                   << lastPort.channel
-                   << "], "
-                      "["
-                   << stringifyWireBundle(curBundle) << " : " << curChannel
-                   << "]\n";
+    llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle) << " : "
+                 << lastPort.channel
+                 << "], "
+                    "["
+                 << stringifyWireBundle(curBundle) << " : " << curChannel
+                 << "]\n";
 
-      Port curPort = {curBundle, curChannel};
-      Connect connect = {lastPort, curPort};
-      if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
-                    switchboxes[std::make_pair(herdOp, curCoord)].end(),
-                    connect) ==
-          switchboxes[std::make_pair(herdOp, curCoord)].end())
-        switchboxes[std::make_pair(herdOp, curCoord)].push_back(connect);
-      lastPort = {lastBundle, curChannel};
-    }
+    Port curPort = {curBundle, curChannel};
+    Connect connect = {lastPort, curPort};
+    if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
+                  switchboxes[std::make_pair(herdOp, curCoord)].end(),
+                  connect) ==
+        switchboxes[std::make_pair(herdOp, curCoord)].end())
+      switchboxes[std::make_pair(herdOp, curCoord)].push_back(connect);
+    lastPort = {lastBundle, curChannel};
   }
 
   llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';

@@ -71,15 +71,15 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   // count flow sources and destinations
-  std::map<TileID, int> source_counts;
-  std::map<TileID, int> destination_counts;
+  std::map<TileID, int> sourceCounts;
+  std::map<TileID, int> destinationCounts;
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dest = cast<TileOp>(flowOp.getDest().getDefiningOp());
     TileID srcID = {source.colIndex(), source.rowIndex()};
     TileID dstID = {dest.colIndex(), dest.rowIndex()};
-    source_counts[srcID]++;
-    destination_counts[dstID]++;
+    sourceCounts[srcID]++;
+    destinationCounts[dstID]++;
   }
 
   // for each switchbox, write name, coordinates, and routing demand info
@@ -93,42 +93,40 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
 
     // write source and destination info
     switchString +=
-        "\"source_count\": " + std::to_string(source_counts[{col, row}]) +
-        ",\n";
+        "\"source_count\": " + std::to_string(sourceCounts[{col, row}]) + ",\n";
     switchString += "\"destination_count\": " +
-                    std::to_string(destination_counts[{col, row}]) + ",\n";
+                    std::to_string(destinationCounts[{col, row}]) + ",\n";
 
     // write routing demand info
-    uint32_t connect_counts[10];
-    for (int i = 0; i < 10; i++)
-      connect_counts[i] = 0;
+    uint32_t connectCounts[10];
+    for (unsigned int &connect_count : connectCounts)
+      connect_count = 0;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>())
-      connect_counts[int(connectOp.getDestBundle())]++;
+      connectCounts[int(connectOp.getDestBundle())]++;
 
     switchString += "\"northbound\": " +
-                    std::to_string(connect_counts[int(WireBundle::North)]) +
+                    std::to_string(connectCounts[int(WireBundle::North)]) +
                     ",\n";
     switchString += "\"eastbound\": " +
-                    std::to_string(connect_counts[int(WireBundle::East)]) +
+                    std::to_string(connectCounts[int(WireBundle::East)]) +
                     ",\n";
     switchString += "\"southbound\": " +
-                    std::to_string(connect_counts[int(WireBundle::South)]) +
+                    std::to_string(connectCounts[int(WireBundle::South)]) +
                     ",\n";
     switchString += "\"westbound\": " +
-                    std::to_string(connect_counts[int(WireBundle::West)]) +
-                    "\n";
+                    std::to_string(connectCounts[int(WireBundle::West)]) + "\n";
     switchString += "},\n";
     output << switchString;
   }
 
   // for each flow, trace it through switchboxes and write the route to JSON
-  int flow_count = 0;
+  int flowCount = 0;
   std::set<std::pair<TileOp, Port>> flowSources;
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     // objects used to trace through the flow
     Port currPort = {flowOp.getSourceBundle(),
                      static_cast<int>(flowOp.getSourceChannel())};
-    SwitchboxOp curr_switchbox;
+    SwitchboxOp currSwitchbox;
 
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
     // TileOp dest = cast<TileOp>(flowOp.dest().getDefiningOp());
@@ -141,17 +139,17 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
     flowSources.insert(flowSource);
 
     std::string routeString =
-        "\"route" + std::to_string(flow_count++) + "\": [ ";
+        "\"route" + std::to_string(flowCount++) + "\": [ ";
 
     // FIFO to handle fanouts
     std::queue<Port> nextPorts;
-    std::queue<SwitchboxOp> next_switches;
+    std::queue<SwitchboxOp> nextSwitches;
 
     // find the starting switchbox
     for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
       if (switchboxOp.colIndex() == source.colIndex() &&
           switchboxOp.rowIndex() == source.rowIndex()) {
-        curr_switchbox = switchboxOp;
+        currSwitchbox = switchboxOp;
         break;
       }
     }
@@ -176,9 +174,9 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
     bool done = false;
     do {
       // get the coordinates for the next switchbox in the flow
-      for (ConnectOp connectOp : curr_switchbox.getOps<ConnectOp>()) {
+      for (ConnectOp connectOp : currSwitchbox.getOps<ConnectOp>()) {
         // if this connectOp is the end of a flow, skip
-        if ((curr_switchbox.rowIndex() == 0 &&
+        if ((currSwitchbox.rowIndex() == 0 &&
              connectOp.getDestBundle() == WireBundle::South) ||
             connectOp.getDestBundle() == WireBundle::DMA ||
             connectOp.getDestBundle() == WireBundle::Core)
@@ -189,15 +187,15 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
           nextPorts.push({getConnectingBundle(connectOp.getDestBundle()),
                           static_cast<int>(connectOp.getDestChannel())});
 
-          std::pair<uint32_t, uint32_t> next_coords = getNextCoords(
-              curr_switchbox.colIndex(), curr_switchbox.rowIndex(),
-              connectOp.getDestBundle());
+          std::pair<uint32_t, uint32_t> next_coords =
+              getNextCoords(currSwitchbox.colIndex(), currSwitchbox.rowIndex(),
+                            connectOp.getDestBundle());
 
           // search for next switchbox to connect to
           for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
             if (uint32_t(switchboxOp.colIndex()) == next_coords.first &&
                 uint32_t(switchboxOp.rowIndex()) == next_coords.second) {
-              next_switches.push(switchboxOp);
+              nextSwitches.push(switchboxOp);
               break;
             }
           }
@@ -205,16 +203,16 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
       }
 
       // add switchbox to the routeString
-      std::string dirString =
-          std::string("[[") + std::to_string(curr_switchbox.colIndex()) + ", " +
-          std::to_string(curr_switchbox.rowIndex()) + "], [";
-      int op_count = 0, dir_count = 0;
-      for (ConnectOp connectOp : curr_switchbox.getOps<ConnectOp>()) {
+      std::string dirString = std::string("[[") +
+                              std::to_string(currSwitchbox.colIndex()) + ", " +
+                              std::to_string(currSwitchbox.rowIndex()) + "], [";
+      int opCount = 0, dirCount = 0;
+      for (ConnectOp connectOp : currSwitchbox.getOps<ConnectOp>()) {
         if (connectOp.getSourceBundle() == currPort.bundle &&
             connectOp.getSourceChannel() == currPort.channel) {
-          if (op_count++ > 0)
+          if (opCount++ > 0)
             dirString += ", ";
-          dir_count++;
+          dirCount++;
           dirString +=
               "\"" +
               (std::string)stringifyWireBundle(connectOp.getDestBundle()) +
@@ -222,17 +220,17 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
         }
       }
       dirString += "]], ";
-      if (dir_count > 0)
+      if (dirCount > 0)
         routeString += dirString;
 
-      if (nextPorts.empty() || next_switches.empty()) {
+      if (nextPorts.empty() || nextSwitches.empty()) {
         done = true;
         routeString += "[]";
       } else {
         currPort = nextPorts.front();
-        curr_switchbox = next_switches.front();
+        currSwitchbox = nextSwitches.front();
         nextPorts.pop();
-        next_switches.pop();
+        nextSwitches.pop();
       }
     } while (!done);
     // write string to JSON

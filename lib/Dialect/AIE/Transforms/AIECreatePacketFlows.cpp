@@ -235,25 +235,20 @@ void buildPSRoute(
 
     assert(curChannel >= 0 && "Could not find available destination port!");
 
-    if (curChannel == -1) {
-      congestion.push_back({xLast, yLast}); // this switchbox is congested
-      switchboxes[curCoord].pop_back(); // back up, remove the last connection
-    } else {
-      LLVM_DEBUG(llvm::dbgs()
-                 << stringifyWireBundle(lastPort.bundle) << " "
-                 << lastPort.channel << " -> " << stringifyWireBundle(curBundle)
-                 << " " << curChannel << "\n");
+    LLVM_DEBUG(llvm::dbgs()
+               << stringifyWireBundle(lastPort.bundle) << " "
+               << lastPort.channel << " -> " << stringifyWireBundle(curBundle)
+               << " " << curChannel << "\n");
 
-      Port curPort = {curBundle, curChannel};
-      Connect connect = {lastPort, curPort};
-      // If there is no connection with this ID going where we want to go.
-      if (std::find(switchboxes[curCoord].begin(), switchboxes[curCoord].end(),
-                    std::pair<Connect, int>{connect, flowID}) ==
-          switchboxes[curCoord].end())
-        // then add one.
-        switchboxes[curCoord].push_back({connect, flowID});
-      lastPort = {lastBundle, curChannel};
-    }
+    Port curPort = {curBundle, curChannel};
+    Connect connect = {lastPort, curPort};
+    // If there is no connection with this ID going where we want to go.
+    if (std::find(switchboxes[curCoord].begin(), switchboxes[curCoord].end(),
+                  std::pair<Connect, int>{connect, flowID}) ==
+        switchboxes[curCoord].end())
+      // then add one.
+      switchboxes[curCoord].push_back({connect, flowID});
+    lastPort = {lastBundle, curChannel};
   }
 
   LLVM_DEBUG(llvm::dbgs() << "Tile " << xCur << " " << yCur << " ");
@@ -660,11 +655,11 @@ struct AIERoutePacketFlowsPass
           amsels.push_back(amselOps[msel]);
         }
 
-        auto ms_op = builder.create<MasterSetOp>(builder.getUnknownLoc(),
-                                                 builder.getIndexType(), bundle,
-                                                 channel, amsels);
+        auto msOp = builder.create<MasterSetOp>(builder.getUnknownLoc(),
+                                                builder.getIndexType(), bundle,
+                                                channel, amsels);
         if (auto pktFlowAttrs = keepPktHeaderAttr[{tileOp, tileMaster}])
-          ms_op->setAttr("keep_pkt_header", pktFlowAttrs);
+          msOp->setAttr("keep_pkt_header", pktFlowAttrs);
       }
 
       // Generate the packet rules
@@ -729,11 +724,11 @@ struct AIERoutePacketFlowsPass
       Block &b = r.front();
 
       // Find if the corresponding shimmux exsists or not
-      int shim_exist = 0;
+      int shimExist = 0;
       ShimMuxOp shimOp;
       for (auto shimmux : device.getOps<ShimMuxOp>()) {
         if (shimmux.getTile() == tileOp) {
-          shim_exist = 1;
+          shimExist = 1;
           shimOp = shimmux;
           break;
         }
@@ -747,7 +742,7 @@ struct AIERoutePacketFlowsPass
 
             // If there is, then it should be put into the corresponding shimmux
             // If shimmux not defined then create shimmux
-            if (!shim_exist) {
+            if (!shimExist) {
               builder.setInsertionPointAfter(tileOp);
               shimOp =
                   builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
@@ -755,7 +750,7 @@ struct AIERoutePacketFlowsPass
               Block *b1 = builder.createBlock(&r1);
               builder.setInsertionPointToEnd(b1);
               builder.create<EndOp>(builder.getUnknownLoc());
-              shim_exist = 1;
+              shimExist = 1;
             }
 
             Region &r0 = shimOp.getConnections();
@@ -792,7 +787,7 @@ struct AIERoutePacketFlowsPass
 
             // If there is, then it should be put into the corresponding shimmux
             // If shimmux not defined then create shimmux
-            if (!shim_exist) {
+            if (!shimExist) {
               builder.setInsertionPointAfter(tileOp);
               shimOp =
                   builder.create<ShimMuxOp>(builder.getUnknownLoc(), tileOp);
@@ -800,7 +795,7 @@ struct AIERoutePacketFlowsPass
               Block *b1 = builder.createBlock(&r1);
               builder.setInsertionPointToEnd(b1);
               builder.create<EndOp>(builder.getUnknownLoc());
-              shim_exist = 1;
+              shimExist = 1;
             }
 
             Region &r0 = shimOp.getConnections();
