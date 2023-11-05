@@ -39,8 +39,8 @@ WireBundle getConnectingBundle(WireBundle dir) {
 Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
   const auto &targetModel = d.getTargetModel();
   // make grid of switchboxes
-  for (int row = 0; row <= maxRow; row++) {
-    for (int col = 0; col <= maxCol; col++) {
+  for (int col = 0; col <= maxCol; col++) {
+    for (int row = 0; row <= maxRow; row++) {
       auto nodeIt = grid.insert({{col, row}, Switchbox{col, row}});
       (void)graph.addNode(nodeIt.first->second);
       Switchbox &thisNode = grid.at({col, row});
@@ -168,7 +168,7 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, Switchbox *src) {
     priorityQueue.erase(priorityQueue.begin());
     for (Channel *e : src->getEdges()) {
       Switchbox *dst = &e->getTargetNode();
-      if (demand[dst] > demand[src] + e->demand) {
+      if (demand[src] + e->demand < demand[dst]) {
         priorityQueue.erase({demand[dst], dst});
 
         demand[dst] = demand[src] + e->demand;
