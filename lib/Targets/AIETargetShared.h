@@ -32,25 +32,24 @@ namespace AIE {
 
 std::string tileLocStr(StringRef col, StringRef row);
 
-std::string tileLocStr(uint32_t col, uint32_t row);
+std::string tileLocStr(int col, int row);
 
 std::string tileDMAInstStr(StringRef col, StringRef row, StringRef bdNum);
 
-std::string tileDMAInstStr(uint32_t col, uint32_t row, uint32_t bdNum);
+std::string tileDMAInstStr(int col, int row, int bdNum);
 
 std::string tileDMAInstRefStr(StringRef col, StringRef row, StringRef bdNum);
 
-std::string tileDMAInstRefStr(uint32_t col, uint32_t row, uint32_t bdNum);
+std::string tileDMAInstRefStr(int col, int row, int bdNum);
 
 std::string packetStr(StringRef id, StringRef type);
 
-std::string packetStr(uint32_t id, uint32_t type);
+std::string packetStr(int id, int type);
 
-void generateXAieDmaSetMultiDimAddr(raw_ostream &output, uint32_t ndims,
-                                    ArrayRef<DimTupleAttr> dims, uint32_t col,
-                                    uint32_t row, uint32_t bdNum,
-                                    uint32_t baseAddrA, uint32_t offsetA,
-                                    uint32_t lenA, uint32_t bytesA,
+void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
+                                    ArrayRef<DimTupleAttr> dims, int col,
+                                    int row, int bdNum, int baseAddrA,
+                                    int offsetA, int lenA, int bytesA,
                                     const char *error_ret);
 
 } // namespace AIE

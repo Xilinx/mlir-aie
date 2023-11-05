@@ -29,7 +29,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
     StringRef tokenName =
         op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
             .getValue();
-    uint32_t value = op.getTokenValue();
+    int value = op.getTokenValue();
     tokenSymbols[tokenName] = value;
   }
 
@@ -93,7 +93,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
     auto tokenRels = map.second;
     auto tokenAcqs = tokenAcqMap[tokenName];
     for (auto ROp : tokenRels) {
-      uint32_t releaseValue;
+      int releaseValue;
 
       if (auto op = dyn_cast<UseTokenOp>(ROp))
         releaseValue = op.getTokenValue();
@@ -101,7 +101,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
         releaseValue = op.getReleaseTokenValue();
 
       for (auto AOp : tokenAcqs) {
-        uint32_t acquireValue;
+        int acquireValue;
 
         if (auto op = dyn_cast<UseTokenOp>(AOp))
           acquireValue = op.getTokenValue();
@@ -121,8 +121,8 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
   }
 
   for (auto tile : device.getOps<TileOp>()) {
-    uint32_t colIndex = tile.colIndex();
-    uint32_t rowIndex = tile.rowIndex();
+    int colIndex = tile.colIndex();
+    int rowIndex = tile.rowIndex();
     tiles[{colIndex, rowIndex}] = tile;
   }
 }
@@ -141,8 +141,8 @@ Operation *xilinx::AIEX::TokenAnalysis::getTokenUserOp(Operation *Op) {
 }
 
 TileID xilinx::AIEX::TokenAnalysis::getCoord(Operation *Op) {
-  uint32_t colIndex = 0;
-  uint32_t rowIndex = 0;
+  int colIndex = 0;
+  int rowIndex = 0;
 
   if (CoreOp core = dyn_cast<CoreOp>(Op)) {
     colIndex = core.colIndex();
@@ -169,10 +169,10 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
   TileID coord1 = getCoord(Op1);
   TileID coord2 = getCoord(Op2);
 
-  uint32_t col1 = coord1.col;
-  uint32_t row1 = coord1.row;
-  uint32_t col2 = coord2.col;
-  uint32_t row2 = coord2.row;
+  int col1 = coord1.col;
+  int row1 = coord1.row;
+  int col2 = coord2.col;
+  int row2 = coord2.row;
 
   const auto &target_model = xilinx::AIE::getTargetModel(Op1);
 

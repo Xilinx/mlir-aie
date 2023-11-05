@@ -84,8 +84,8 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
 
   // for each switchbox, write name, coordinates, and routing demand info
   for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
-    uint32_t col = switchboxOp.colIndex();
-    uint32_t row = switchboxOp.rowIndex();
+    int col = switchboxOp.colIndex();
+    int row = switchboxOp.rowIndex();
     std::string switchString = "\"switchbox" + std::to_string(col) +
                                std::to_string(row) + "\": {\n" +
                                "\"col\": " + std::to_string(col) + ",\n" +
@@ -126,7 +126,8 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   std::set<std::pair<TileOp, Port>> flowSources;
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     // objects used to trace through the flow
-    Port currPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
+    Port currPort = {flowOp.getSourceBundle(),
+                     static_cast<int>(flowOp.getSourceChannel())};
     SwitchboxOp curr_switchbox;
 
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
@@ -186,7 +187,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
         if (connectOp.getSourceBundle() == currPort.bundle &&
             connectOp.getSourceChannel() == currPort.channel) {
           nextPorts.push({getConnectingBundle(connectOp.getDestBundle()),
-                          connectOp.getDestChannel()});
+                          static_cast<int>(connectOp.getDestChannel())});
 
           std::pair<uint32_t, uint32_t> next_coords = getNextCoords(
               curr_switchbox.colIndex(), curr_switchbox.rowIndex(),
@@ -224,11 +225,6 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
       if (dir_count > 0)
         routeString += dirString;
 
-      // if in the same switchbox, ignore it
-      // if(curr_switchbox == next_switches.front()) {
-      //	nextPorts.pop();
-      //	next_switches.pop();
-      //}
       if (nextPorts.empty() || next_switches.empty()) {
         done = true;
         routeString += "[]";

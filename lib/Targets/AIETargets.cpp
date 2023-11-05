@@ -152,8 +152,8 @@ void registerAIETranslations() {
         for (auto tile : tiles) {
           Operation *srcTileOp = tile.second;
           TileID srcCoord = cast<TileOp>(srcTileOp).getTileID();
-          uint32_t srcCol = srcCoord.col;
-          uint32_t srcRow = srcCoord.row;
+          int srcCol = srcCoord.col;
+          int srcRow = srcCoord.row;
 
           output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
           output << "// Memory map: name base_address num_bytes\n";
@@ -266,10 +266,10 @@ void registerAIETranslations() {
 
             // Figure out how much memory we have left for random allocations
             auto core = tile.getCoreOp();
-            uint32_t max = core.getStackSize();
+            int max = core.getStackSize();
             for (auto buf : buffers[tiles[srcCoord]]) {
-              uint32_t bufferBaseAddr = NL.getBufferBaseAddress(buf);
-              uint32_t numBytes = buf.getAllocationSize();
+              int bufferBaseAddr = NL.getBufferBaseAddress(buf);
+              int numBytes = buf.getAllocationSize();
               max = std::max(max, bufferBaseAddr + numBytes);
             }
             int origin = target_model.getMemInternalBaseAddress(srcCoord) + max;

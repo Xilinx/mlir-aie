@@ -40,14 +40,14 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-std::optional<uint32_t>
-getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
-                        WireBundle destBundle) {
+std::optional<int> getAvailableDestChannel(SmallVector<Connect, 8> &connects,
+                                           Port sourcePort,
+                                           WireBundle destBundle) {
 
   if (connects.empty())
     return {0};
 
-  uint32_t numChannels;
+  int numChannels;
 
   if (destBundle == WireBundle::North)
     numChannels = 6;
@@ -58,7 +58,7 @@ getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
     numChannels = 2;
 
   // look for existing connect
-  for (uint32_t i = 0; i < numChannels; i++) {
+  for (int i = 0; i < numChannels; i++) {
     Port port = {destBundle, i};
     if (std::find(connects.begin(), connects.end(),
                   Connect{sourcePort, port}) != connects.end())
@@ -66,7 +66,7 @@ getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
   }
 
   // if not, look for available destination port
-  for (uint32_t i = 0; i < numChannels; i++) {
+  for (int i = 0; i < numChannels; i++) {
     Port port = {destBundle, i};
     SmallVector<Port, 8> ports;
     for (auto connect : connects)
@@ -79,17 +79,17 @@ getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
   return std::nullopt;
 }
 
-void buildRoute(uint32_t xSrc, uint32_t ySrc, uint32_t xDest, uint32_t yDest,
-                WireBundle sourceBundle, uint32_t sourceChannel,
-                WireBundle destBundle, uint32_t destChannel, Operation *herdOp,
+void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
+                WireBundle sourceBundle, int sourceChannel,
+                WireBundle destBundle, int destChannel, Operation *herdOp,
                 DenseMap<std::pair<Operation *, TileID>,
                          SmallVector<Connect, 8>> &switchboxes) {
 
-  uint32_t xCur = xSrc;
-  uint32_t yCur = ySrc;
+  int xCur = xSrc;
+  int yCur = ySrc;
   WireBundle curBundle;
-  uint32_t curChannel;
-  uint32_t xLast, yLast;
+  int curChannel;
+  int xLast, yLast;
   WireBundle lastBundle;
   Port lastPort = {sourceBundle, sourceChannel};
 
@@ -210,10 +210,7 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
     SmallVector<Operation *, 4> routeOps;
     DenseMap<std::pair<Operation *, Operation *>, std::pair<int, int>>
         distances;
-    SmallVector<
-        std::pair<std::pair<uint32_t, uint32_t>, std::pair<uint32_t, uint32_t>>,
-        4>
-        routes;
+    SmallVector<std::pair<std::pair<int, int>, std::pair<int, int>>, 4> routes;
     DenseMap<std::pair<Operation *, TileID>, SmallVector<Connect, 8>>
         switchboxes;
 
@@ -225,8 +222,8 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       placeOps.push_back(placeOp);
       Operation *sourceHerd = placeOp.getSourceHerd().getDefiningOp();
       Operation *destHerd = placeOp.getDestHerd().getDefiningOp();
-      uint32_t distX = placeOp.getDistXValue();
-      uint32_t distY = placeOp.getDistYValue();
+      int distX = placeOp.getDistXValue();
+      int distY = placeOp.getDistYValue();
       distances[std::make_pair(sourceHerd, destHerd)] =
           std::make_pair(distX, distY);
     }
@@ -242,8 +239,8 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
           dyn_cast<AIEX::SelectOp>(routeOp.getDestHerds().getDefiningOp());
       WireBundle sourceBundle = routeOp.getSourceBundle();
       WireBundle destBundle = routeOp.getDestBundle();
-      uint32_t sourceChannel = routeOp.getSourceChannelValue();
-      uint32_t destChannel = routeOp.getDestChannelValue();
+      int sourceChannel = routeOp.getSourceChannelValue();
+      int destChannel = routeOp.getDestChannelValue();
 
       HerdOp sourceHerd =
           dyn_cast<HerdOp>(sourceHerds.getStartHerd().getDefiningOp());
@@ -257,19 +254,19 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       IterOp destIterX = dyn_cast<IterOp>(destHerds.getIterX().getDefiningOp());
       IterOp destIterY = dyn_cast<IterOp>(destHerds.getIterY().getDefiningOp());
 
-      uint32_t sourceStartX = sourceIterX.getStartValue();
-      uint32_t sourceEndX = sourceIterX.getEndValue();
-      uint32_t sourceStrideX = sourceIterX.getStrideValue();
-      uint32_t sourceStartY = sourceIterY.getStartValue();
-      uint32_t sourceEndY = sourceIterY.getEndValue();
-      uint32_t sourceStrideY = sourceIterY.getStrideValue();
+      int sourceStartX = sourceIterX.getStartValue();
+      int sourceEndX = sourceIterX.getEndValue();
+      int sourceStrideX = sourceIterX.getStrideValue();
+      int sourceStartY = sourceIterY.getStartValue();
+      int sourceEndY = sourceIterY.getEndValue();
+      int sourceStrideY = sourceIterY.getStrideValue();
 
-      uint32_t destStartX = destIterX.getStartValue();
-      uint32_t destEndX = destIterX.getEndValue();
-      uint32_t destStrideX = destIterX.getStrideValue();
-      uint32_t destStartY = destIterY.getStartValue();
-      uint32_t destEndY = destIterY.getEndValue();
-      uint32_t destStrideY = destIterY.getStrideValue();
+      int destStartX = destIterX.getStartValue();
+      int destEndX = destIterX.getEndValue();
+      int destStrideX = destIterX.getStrideValue();
+      int destStartY = destIterY.getStartValue();
+      int destEndY = destIterY.getEndValue();
+      int destStrideY = destIterY.getStrideValue();
 
       assert(distances.count(std::make_pair(sourceHerd, destHerd)) == 1);
 
@@ -278,19 +275,16 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       int distX = distance.first;
       int distY = distance.second;
       // FIXME: this looks like it can be improved further ...
-      for (uint32_t xSrc = sourceStartX; xSrc < sourceEndX;
-           xSrc += sourceStrideX) {
-        for (uint32_t ySrc = sourceStartY; ySrc < sourceEndY;
+      for (int xSrc = sourceStartX; xSrc < sourceEndX; xSrc += sourceStrideX) {
+        for (int ySrc = sourceStartY; ySrc < sourceEndY;
              ySrc += sourceStrideY) {
-          for (uint32_t xDst = destStartX; xDst < destEndX;
-               xDst += destStrideX) {
-            for (uint32_t yDst = destStartY; yDst < destEndY;
-                 yDst += destStrideY) {
+          for (int xDst = destStartX; xDst < destEndX; xDst += destStrideX) {
+            for (int yDst = destStartY; yDst < destEndY; yDst += destStrideY) {
               // Build route (x0, y0) --> (x1, y1)
-              uint32_t x0 = xSrc;
-              uint32_t y0 = ySrc;
-              uint32_t x1 = xDst;
-              uint32_t y1 = yDst;
+              int x0 = xSrc;
+              int y0 = ySrc;
+              int x1 = xDst;
+              int y1 = yDst;
               if (destIterX == sourceIterX)
                 x1 = x0;
               if (destIterY == sourceIterX)
@@ -320,8 +314,8 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
     for (const auto &swboxCfg : switchboxes) {
       Operation *herdOp = swboxCfg.first.first;
-      uint32_t x = swboxCfg.first.second.col;
-      uint32_t y = swboxCfg.first.second.row;
+      int x = swboxCfg.first.second.col;
+      int y = swboxCfg.first.second.row;
       auto connects = swboxCfg.second;
       HerdOp herd = dyn_cast<HerdOp>(herdOp);
 
@@ -341,9 +335,9 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
         Port sourcePort = connect.src;
         Port destPort = connect.dst;
         WireBundle sourceBundle = sourcePort.bundle;
-        uint32_t sourceChannel = sourcePort.channel;
+        int sourceChannel = sourcePort.channel;
         WireBundle destBundle = destPort.bundle;
-        uint32_t destChannel = destPort.channel;
+        int destChannel = destPort.channel;
 
         builder.create<ConnectOp>(builder.getUnknownLoc(), sourceBundle,
                                   sourceChannel, destBundle, destChannel);

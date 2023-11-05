@@ -85,8 +85,8 @@ def AIE_ConnectionOp: AIEX_Op<"connection", []> {
     `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    uint32_t sourceIndex() { return getSourceChannel(); }
-    uint32_t destIndex() { return getDestChannel(); }
+    int sourceIndex() { return getSourceChannel(); }
+    int destIndex() { return getDestChannel(); }
   }];
 }
 
@@ -120,7 +120,7 @@ def AIE_MulticastOp: AIEX_Op<"multicast", [SingleBlockImplicitTerminator<"AIE::E
   let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    uint32_t channelIndex() { return getChannel(); }
+    int channelIndex() { return getChannel(); }
     AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
@@ -143,7 +143,7 @@ def AIE_MultiDestOp: AIEX_Op<"multi_dest", [HasParent<"MulticastOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    uint32_t channelIndex() { return getChannel(); }
+    int channelIndex() { return getChannel(); }
     AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
@@ -183,7 +183,7 @@ def AIE_BroadcastPacketOp: AIEX_Op<"broadcast_packet", [SingleBlockImplicitTermi
   let assemblyFormat = [{ `(` $tile `,` $bundle `:` $channel `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    uint32_t channelIndex() { return getChannel(); }
+    int channelIndex() { return getChannel(); }
     AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
@@ -201,7 +201,7 @@ def AIE_BPIDOp: AIEX_Op<"bp_id", [SingleBlockImplicitTerminator<"AIE::EndOp">]> 
   }];
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let extraClassDeclaration = [{
-    uint32_t IDInt() { return getID(); }
+    uint8_t IDInt() { return getID(); }
   }];
 }
 
@@ -221,7 +221,7 @@ def AIE_BPDestOp: AIEX_Op<"bp_dest", [HasParent<"BPIDOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    uint32_t channelIndex() { return getChannel(); }
+    int channelIndex() { return getChannel(); }
     AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
@@ -251,7 +251,7 @@ def AIE_TokenOp: AIEX_Op<"token", [Symbol]> {
   let arguments = (ins I32Attr:$value);
   let assemblyFormat = [{ `(` $value `)` attr-dict }];
   let extraClassDeclaration = [{
-    uint32_t getTokenValue() { return getValue(); }
+    int getTokenValue() { return getValue(); }
   }];
 }
 
@@ -271,7 +271,7 @@ def AIE_UseTokenOp: AIEX_Op<"useToken", []> {
   let extraClassDeclaration = [{
     bool acquire() { return (getAction() == AIE::LockAction::Acquire); }
     bool release() { return (getAction() == AIE::LockAction::Release); }
-    uint32_t getTokenValue() { return getValue(); }
+    int getTokenValue() { return getValue(); }
   }];
 }
 
@@ -304,12 +304,12 @@ def AIE_MemcpyOp: AIEX_Op<"memcpy", []> {
         attr-dict `:` `(` type($srcBuf) `,` type($dstBuf) `)`
   }];
   let extraClassDeclaration = [{
-    uint32_t getAcquireTokenValue() { return getAcqValue(); }
-    uint32_t getReleaseTokenValue() { return getRelValue(); }
-    uint32_t getSrcOffsetValue() { return getSrcOffset(); }
-    uint32_t getDstOffsetValue() { return getDstOffset(); }
-    uint32_t getSrcLenValue() { return getSrcLen(); }
-    uint32_t getDstLenValue() { return getDstLen(); }
+    int getAcquireTokenValue() { return getAcqValue(); }
+    int getReleaseTokenValue() { return getRelValue(); }
+    int getSrcOffsetValue() { return getSrcOffset(); }
+    int getDstOffsetValue() { return getDstOffset(); }
+    int getSrcLenValue() { return getSrcLen(); }
+    int getDstLenValue() { return getDstLen(); }
   }];
 }
 
@@ -344,9 +344,9 @@ def AIE_HerdOp: AIEX_Op<"herd", []>, Results<(outs Index)> {
         I32Attr:$height
   );
   let extraClassDeclaration = [{
-    uint32_t getHerdWidth()   { return getWidth(); }
-    uint32_t getHerdHeight()  { return getHeight(); }
-    uint32_t getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
+    int getHerdWidth()   { return getWidth(); }
+    int getHerdHeight()  { return getHeight(); }
+    int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
     StringAttr name() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
         return attr;
@@ -381,8 +381,8 @@ def AIE_PlaceOp: AIEX_Op<"place", []> {
   );
   let assemblyFormat = [{ `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict }];
   let extraClassDeclaration = [{
-    uint32_t getDistXValue() { return getDistX(); }
-    uint32_t getDistYValue() { return getDistY(); }
+    int getDistXValue() { return getDistX(); }
+    int getDistYValue() { return getDistY(); }
   }];
 }
 
@@ -404,8 +404,8 @@ def AIE_RouteOp: AIEX_Op<"route", []> {
         `<` $destHerds   `,` $destBundle   `:` $destChannel   `>` `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    uint32_t getSourceChannelValue()  { return getSourceChannel(); }
-    uint32_t getDestChannelValue()  { return getDestChannel(); }
+    int getSourceChannelValue()  { return getSourceChannel(); }
+    int getDestChannelValue()  { return getDestChannel(); }
   }];
 }
 
@@ -426,9 +426,9 @@ def AIE_IterOp: AIEX_Op<"iter", []>, Results<(outs Index)> {
   );
   let assemblyFormat = [{ `(` $start `,` $end `,` $stride `)` attr-dict }];
   let extraClassDeclaration = [{
-    uint32_t getStartValue()  { return getStart(); }
-    uint32_t getEndValue()    { return getEnd(); }
-    uint32_t getStrideValue() { return getStride(); }
+    int getStartValue()  { return getStart(); }
+    int getEndValue()    { return getEnd(); }
+    int getStrideValue() { return getStride(); }
   }];
   let builders = [
     OpBuilder<(ins "int":$start, "int":$end, "int":$stride), [{

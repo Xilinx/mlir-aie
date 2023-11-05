@@ -22,8 +22,8 @@ using namespace xilinx::AIE;
 void xilinx::AIE::NetlistAnalysis::collectTiles(
     DenseMap<TileID, Operation *> &tiles) {
   for (auto tile : device.getOps<TileOp>()) {
-    uint32_t colIndex = tile.colIndex();
-    uint32_t rowIndex = tile.rowIndex();
+    int colIndex = tile.colIndex();
+    int rowIndex = tile.rowIndex();
     tiles[{colIndex, rowIndex}] = tile;
   }
 }
@@ -53,10 +53,9 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
     Region &r = mem.getBody();
     Block *endBlock = &r.back();
     for (auto op : r.getOps<cf::CondBranchOp>()) {
-      DMAStartOp dmaSt =
-          dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
-      xilinx::AIE::DMAChannel dmaChan = {dmaSt.getChannelDir(),
-                                         dmaSt.getChannelIndex()};
+      auto dmaSt = dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
+      xilinx::AIE::DMAChannel dmaChan = {
+          dmaSt.getChannelDir(), static_cast<int>(dmaSt.getChannelIndex())};
       dmas[{mem, dmaChan}] = dmaSt;
       Block *firstBd = op.getTrueDest();
       Block *curBd = firstBd;
@@ -96,8 +95,8 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
 
   Operation *swboxOp = currentConnect->getParentOp();
   SwitchboxOp swbox = dyn_cast<SwitchboxOp>(swboxOp);
-  uint32_t col = swbox.colIndex();
-  uint32_t row = swbox.rowIndex();
+  int col = swbox.colIndex();
+  int row = swbox.rowIndex();
   int nextCol = -1;
   int nextRow = -1;
   WireBundle nextSrcBundle;
@@ -126,8 +125,7 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
   assert((nextCol >= 0 && nextRow >= 0) &&
          "Invalid ConnectOp! Could not find next tile!");
 
-  Operation *nextTileOp =
-      tiles[{static_cast<uint32_t>(nextCol), static_cast<uint32_t>(nextRow)}];
+  Operation *nextTileOp = tiles[{nextCol, nextRow}];
   Operation *nextSwboxOp = switchboxes[nextTileOp];
   SwitchboxOp nextSwbox = dyn_cast<SwitchboxOp>(nextSwboxOp);
 

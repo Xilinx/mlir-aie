@@ -49,10 +49,10 @@ def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   let cppNamespace = "::xilinx::AIE";
   let methods = [
     InterfaceMethod<[{}],
-      "uint32_t", "colIndex", (ins )
+      "int", "colIndex", (ins )
     >,
     InterfaceMethod<[{}],
-      "uint32_t", "rowIndex", (ins )
+      "int", "rowIndex", (ins )
     >
   ];
 }
@@ -69,16 +69,16 @@ def Interconnect : OpInterface<"Interconnect"> {
       "::mlir::Region &", "getConnections", (ins )
     >,
     InterfaceMethod<[{}],
-      "uint32_t", "colIndex", (ins )
+      "int", "colIndex", (ins )
     >,
     InterfaceMethod<[{}],
-      "uint32_t", "rowIndex", (ins )
+      "int", "rowIndex", (ins )
     >,
     InterfaceMethod<[{}],
-      "uint32_t", "getNumSourceConnections", (ins "WireBundle":$bundle)
+      "int", "getNumSourceConnections", (ins "WireBundle":$bundle)
     >,
     InterfaceMethod<[{}],
-      "uint32_t", "getNumDestConnections", (ins "WireBundle":$bundle)
+      "int", "getNumDestConnections", (ins "WireBundle":$bundle)
     >
   ];
 }

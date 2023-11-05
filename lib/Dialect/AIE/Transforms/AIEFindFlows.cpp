@@ -25,19 +25,16 @@ typedef struct MaskValue {
   uint8_t value;
 } MaskValue;
 
-// typedef std::pair<Operation *, Port> PortConnection;
 typedef struct PortConnection {
   Operation *op;
   Port port;
 } PortConnection;
 
-// typedef std::pair<Port, MaskValue> PortMaskValue;
 typedef struct PortMaskValue {
   Port port;
   MaskValue mv;
 } PortMaskValue;
 
-// typedef std::pair<PortConnection, MaskValue> PacketConnection;
 typedef struct PacketConnection {
   PortConnection portConnection;
   MaskValue mv;
@@ -126,7 +123,7 @@ private:
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.port;
       MaskValue nextMaskValue = nextPortMaskValue.mv;
-      uint32_t maskConflicts = nextMaskValue.mask & maskValue.mask;
+      int maskConflicts = nextMaskValue.mask & maskValue.mask;
       LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.mask << " "
                               << maskValue.value << "\n");
       LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.mask << " "
@@ -237,7 +234,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
     LLVM_DEBUG(llvm::dbgs()
                << op << stringifyWireBundle(bundle) << " has "
                << op.getNumSourceConnections(bundle) << " Connections\n");
-    for (uint32_t i = 0; i < op.getNumSourceConnections(bundle); i++) {
+    for (int i = 0; i < op.getNumSourceConnections(bundle); i++) {
       std::vector<PacketConnection> tiles =
           analysis.getConnectedTiles(op, {bundle, i});
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");

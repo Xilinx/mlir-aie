@@ -411,8 +411,9 @@ xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   for (auto &bodyOp : element.getBody().getOps()) {
     // check for duplicate DMA channels within the same MemTileDMAOp
     if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                                         dmaStart.getChannelIndex()};
+      xilinx::AIE::DMAChannel dmaChan = {
+          dmaStart.getChannelDir(),
+          static_cast<int>(dmaStart.getChannelIndex())};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -1108,14 +1109,14 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   return success();
 }
 
-uint32_t xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
+int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumSourceShimMuxConnections(tile.getCol(),
                                                      tile.getRow(), bundle);
 }
 
-uint32_t xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
+int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
@@ -1126,9 +1127,9 @@ xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-uint32_t xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
+int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
@@ -1152,9 +1153,9 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
-uint32_t xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::PacketRulesOp::verify() {
   Region &body = getRules();
@@ -1192,9 +1193,9 @@ LogicalResult xilinx::AIE::CoreOp::verify() {
   return success();
 }
 
-uint32_t xilinx::AIE::CoreOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::CoreOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::CoreOp::rowIndex() { return getTileOp().rowIndex(); }
+int xilinx::AIE::CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 xilinx::AIE::TileOp xilinx::AIE::CoreOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
@@ -1234,8 +1235,9 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same MemOp
     if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                                         dmaStart.getChannelIndex()};
+      xilinx::AIE::DMAChannel dmaChan = {
+          dmaStart.getChannelDir(),
+          static_cast<int>(dmaStart.getChannelIndex())};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -1257,9 +1259,9 @@ xilinx::AIE::TileOp xilinx::AIE::MemOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-uint32_t xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
+int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
@@ -1417,13 +1419,9 @@ xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-uint32_t xilinx::AIE::MemTileDMAOp::colIndex() {
-  return getTileOp().colIndex();
-}
+int xilinx::AIE::MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::MemTileDMAOp::rowIndex() {
-  return getTileOp().rowIndex();
-}
+int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
@@ -1435,9 +1433,9 @@ xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-uint32_t xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
+int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
@@ -1455,9 +1453,9 @@ xilinx::AIE::TileOp xilinx::AIE::LockOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-uint32_t xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
+int xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
 
-uint32_t xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
+int xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::LockOp::verify() {
   auto result = UsesAreAccessable::verifyTrait(*this);
@@ -1583,21 +1581,21 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
 namespace xilinx {
 namespace AIE {
 
-uint32_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
+int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumSourceSwitchboxConnections(tile.getCol(),
                                                        tile.getRow(), bundle);
 }
 
-uint32_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
+int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumDestSwitchboxConnections(tile.getCol(),
                                                      tile.getRow(), bundle);
 }
 
-uint32_t TileOp::getNumSourceConnections(WireBundle bundle) {
+int TileOp::getNumSourceConnections(WireBundle bundle) {
   const auto &target_model = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
     // Note dest is correct here, since direction is reversed.
@@ -1612,7 +1610,7 @@ uint32_t TileOp::getNumSourceConnections(WireBundle bundle) {
     return 0;
 }
 
-uint32_t TileOp::getNumDestConnections(WireBundle bundle) {
+int TileOp::getNumDestConnections(WireBundle bundle) {
   const auto &target_model = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
     // Note source is correct here, since direction is reversed.

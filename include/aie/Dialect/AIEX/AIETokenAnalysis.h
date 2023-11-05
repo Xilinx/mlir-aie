@@ -35,7 +35,7 @@ namespace AIEX {
 
 class TokenAnalysis {
   AIE::DeviceOp &device;
-  DenseMap<StringRef, uint32_t> tokenSymbols;
+  DenseMap<StringRef, int> tokenSymbols;
   DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap;
   DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap;
   SmallVector<std::pair<Operation *, Operation *>, 4> tokenChains;

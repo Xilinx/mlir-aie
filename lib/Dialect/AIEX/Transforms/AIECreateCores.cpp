@@ -78,8 +78,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
     // Collect existing TileOps
     for (auto tile : device.getOps<TileOp>()) {
-      uint32_t colIndex = tile.colIndex();
-      uint32_t rowIndex = tile.rowIndex();
+      int colIndex = tile.colIndex();
+      int rowIndex = tile.rowIndex();
       tiles[{colIndex, rowIndex}] = tile;
     }
 
@@ -93,8 +93,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       SmallVector<Value, 4> callOperands(callOp.getArgOperands());
       SmallVector<std::pair<MemRefType, int>, 4> coreBufTypes;
 
-      uint32_t colIndex = callOp->getAttrOfType<IntegerAttr>("aie.x").getInt();
-      uint32_t rowIndex = callOp->getAttrOfType<IntegerAttr>("aie.y").getInt();
+      int colIndex = callOp->getAttrOfType<IntegerAttr>("aie.x").getInt();
+      int rowIndex = callOp->getAttrOfType<IntegerAttr>("aie.y").getInt();
 
       // get or create TileOp
       if (!tiles[{colIndex, rowIndex}]) {

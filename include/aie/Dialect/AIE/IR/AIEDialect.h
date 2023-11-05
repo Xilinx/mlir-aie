@@ -150,7 +150,7 @@ namespace AIE {
 
 typedef struct Port {
   WireBundle bundle;
-  uint32_t channel;
+  int channel;
 
   inline bool operator==(const Port &rhs) const {
     return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
@@ -175,7 +175,7 @@ typedef struct Connect {
 
 typedef struct DMAChannel {
   DMAChannelDir direction;
-  uint32_t channel;
+  int channel;
 
   inline bool operator==(const DMAChannel &rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
@@ -280,7 +280,7 @@ template <> struct DenseMapInfo<ObjectFifoCreateOp> {
 
 template <> struct DenseMapInfo<DMAChannel> {
   using FirstInfo = DenseMapInfo<DMAChannelDir>;
-  using SecondInfo = DenseMapInfo<uint32_t>;
+  using SecondInfo = DenseMapInfo<int>;
   static inline DMAChannel getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
@@ -301,7 +301,7 @@ template <> struct DenseMapInfo<DMAChannel> {
 
 template <> struct DenseMapInfo<Port> {
   using FirstInfo = DenseMapInfo<WireBundle>;
-  using SecondInfo = DenseMapInfo<uint32_t>;
+  using SecondInfo = DenseMapInfo<int>;
   static inline Port getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }

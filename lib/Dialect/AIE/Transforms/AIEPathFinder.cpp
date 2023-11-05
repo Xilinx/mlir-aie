@@ -36,11 +36,11 @@ WireBundle getConnectingBundle(WireBundle dir) {
   }
 }
 
-Pathfinder::Pathfinder(uint32_t maxCol, uint32_t maxRow, DeviceOp &d) {
+Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
   const auto &targetModel = d.getTargetModel();
   // make grid of switchboxes
-  for (uint32_t col = 0; col <= maxCol; col++) {
-    for (uint32_t row = 0; row <= maxRow; row++) {
+  for (int col = 0; col <= maxCol; col++) {
+    for (int row = 0; row <= maxRow; row++) {
       auto nodeIt = grid.insert({{col, row}, Switchbox{col, row}});
       (void)graph.addNode(nodeIt.first->second);
       Switchbox &thisNode = grid.at({col, row});

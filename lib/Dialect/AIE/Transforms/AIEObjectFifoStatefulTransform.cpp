@@ -88,8 +88,8 @@ public:
 // TileDMA Channel Analysis
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
-  DenseMap<Value, uint32_t> masterChannelsPerTile;
-  DenseMap<Value, uint32_t> slaveChannelsPerTile;
+  DenseMap<Value, int> masterChannelsPerTile;
+  DenseMap<Value, int> slaveChannelsPerTile;
 
 public:
   DMAChannelAnalysis(DeviceOp &device) {
@@ -116,7 +116,7 @@ public:
     } else {
       assert([&] {
         TileOp tileOp = tile.getDefiningOp<TileOp>();
-        uint32_t numChannels = tileOp.getNumSourceConnections(WireBundle::DMA);
+        int numChannels = tileOp.getNumSourceConnections(WireBundle::DMA);
         if (masterChannelsPerTile[tile] >= (numChannels - 1)) {
           printf("All tile DMA master channels are already in use.\n");
           return false;
@@ -137,7 +137,7 @@ public:
     } else {
       assert([&] {
         TileOp tileOp = tile.getDefiningOp<TileOp>();
-        uint32_t numChannels = tileOp.getNumDestConnections(WireBundle::DMA);
+        int numChannels = tileOp.getNumDestConnections(WireBundle::DMA);
         if (slaveChannelsPerTile[tile] >= (numChannels - 1)) {
           printf("All tile DMA slave channels are already in use.\n");
           return false;
@@ -1205,10 +1205,9 @@ struct AIEObjectFifoStatefulTransformPass
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      FlatSymbolRefAttr obj_fifo,
-                                      uint32_t colIndex,
+                                      FlatSymbolRefAttr obj_fifo, int colIndex,
                                       DMAChannelDir channelDir,
-                                      uint32_t channelIndex) {
+                                      int channelIndex) {
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),

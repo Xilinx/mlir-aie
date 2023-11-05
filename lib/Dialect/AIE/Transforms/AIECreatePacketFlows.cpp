@@ -45,15 +45,14 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
 // A port on a switch is identified by the tile and port name.
 typedef std::pair<Operation *, Port> PhysPort;
 
-std::optional<uint32_t>
-getAvailableDestChannel(SmallVector<std::pair<Connect, uint32_t>, 8> &connects,
-                        Port sourcePort, uint32_t flowID,
-                        WireBundle destBundle) {
+std::optional<int>
+getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
+                        Port sourcePort, int flowID, WireBundle destBundle) {
 
   if (connects.empty())
-    return 0;
+    return {0};
 
-  uint32_t numChannels;
+  int numChannels;
 
   if (destBundle == WireBundle::North)
     numChannels = 6;
@@ -64,7 +63,7 @@ getAvailableDestChannel(SmallVector<std::pair<Connect, uint32_t>, 8> &connects,
     numChannels = 2;
 
   // look for existing connect that has a matching destination
-  for (uint32_t i = 0; i < numChannels; i++) {
+  for (int i = 0; i < numChannels; i++) {
     Port port = {destBundle, i};
     int countFlows = 0;
     for (const auto &[conn, _flowID] : connects) {
@@ -79,29 +78,29 @@ getAvailableDestChannel(SmallVector<std::pair<Connect, uint32_t>, 8> &connects,
     // through a port
     // TODO: what about packet-switched flow that uses nested header?
     if (countFlows > 0 && countFlows < 32)
-      return i;
+      return {i};
   }
 
   // if not, look for available destination port
-  for (uint32_t i = 0; i < numChannels; i++) {
+  for (int i = 0; i < numChannels; i++) {
     Port port = {destBundle, i};
     SmallVector<Port, 8> ports;
     for (const auto &[conn, _flowID] : connects)
       ports.push_back(conn.dst);
 
     if (std::find(ports.begin(), ports.end(), port) == ports.end())
-      return i;
+      return {i};
   }
 
   return std::nullopt;
 }
 
 // Same function as above, but scanning from the last connect backwards
-std::optional<uint32_t> getAvailableDestChannelReverseOrder(
-    SmallVector<std::pair<Connect, uint32_t>, 8> &connects, Port sourcePort,
-    uint32_t flowID, WireBundle destBundle) {
+std::optional<int> getAvailableDestChannelReverseOrder(
+    SmallVector<std::pair<Connect, int>, 8> &connects, Port sourcePort,
+    int flowID, WireBundle destBundle) {
 
-  uint32_t numChannels;
+  int numChannels;
 
   if (destBundle == WireBundle::North)
     numChannels = 6;
@@ -116,7 +115,7 @@ std::optional<uint32_t> getAvailableDestChannelReverseOrder(
     return numChannels - 1;
   }
 
-  for (uint32_t i = numChannels - 1; i >= 0; i--) {
+  for (int i = numChannels - 1; i >= 0; i--) {
     Port port = {destBundle, i};
     int countFlows = 0;
     for (const auto &[conn, _flowID] : connects) {
@@ -127,7 +126,7 @@ std::optional<uint32_t> getAvailableDestChannelReverseOrder(
     if (countFlows > 0 && countFlows < 32)
       return {i};
   }
-  for (uint32_t i = numChannels - 1; i >= 0; i--) {
+  for (int i = numChannels - 1; i >= 0; i--) {
     Port port = {destBundle, i};
     SmallVector<Port, 8> ports;
     for (auto connect : connects)
@@ -140,7 +139,7 @@ std::optional<uint32_t> getAvailableDestChannelReverseOrder(
   return std::nullopt;
 }
 
-void updateCoordinates(uint32_t &xCur, uint32_t &yCur, WireBundle move) {
+void updateCoordinates(int &xCur, int &yCur, WireBundle move) {
   if (move == WireBundle::East) {
     xCur = xCur + 1;
     // yCur = yCur;
@@ -159,15 +158,15 @@ void updateCoordinates(uint32_t &xCur, uint32_t &yCur, WireBundle move) {
 // Build a packet-switched route from the sourse to the destination with the
 // given ID. The route is recorded in the given map of switchboxes.
 void buildPSRoute(
-    uint32_t xSrc, uint32_t ySrc, Port sourcePort, uint32_t xDest,
-    uint32_t yDest, Port destPort, uint32_t flowID,
-    DenseMap<TileID, SmallVector<std::pair<Connect, uint32_t>, 8>> &switchboxes,
+    int xSrc, int ySrc, Port sourcePort, int xDest, int yDest, Port destPort,
+    int flowID,
+    DenseMap<TileID, SmallVector<std::pair<Connect, int>, 8>> &switchboxes,
     bool reverseOrder = false) {
-  uint32_t xCur = xSrc;
-  uint32_t yCur = ySrc;
+  int xCur = xSrc;
+  int yCur = ySrc;
   WireBundle curBundle;
-  uint32_t curChannel;
-  uint32_t xLast, yLast;
+  int curChannel;
+  int xLast, yLast;
   WireBundle lastBundle;
   Port lastPort = sourcePort;
 
@@ -249,7 +248,7 @@ void buildPSRoute(
       Connect connect = {lastPort, curPort};
       // If there is no connection with this ID going where we want to go.
       if (std::find(switchboxes[curCoord].begin(), switchboxes[curCoord].end(),
-                    std::pair<Connect, uint32_t>{connect, flowID}) ==
+                    std::pair<Connect, int>{connect, flowID}) ==
           switchboxes[curCoord].end())
         // then add one.
         switchboxes[curCoord].push_back({connect, flowID});
@@ -279,7 +278,7 @@ struct AIERoutePacketFlowsPass
     : public AIERoutePacketFlowsBase<AIERoutePacketFlowsPass> {
   // Map from tile coordinates to TileOp
   DenseMap<TileID, Operation *> tiles;
-  Operation *getOrCreateTile(OpBuilder &builder, uint32_t col, uint32_t row) {
+  Operation *getOrCreateTile(OpBuilder &builder, int col, int row) {
     TileID index = {col, row};
     Operation *tileOp = tiles[index];
     if (!tileOp) {
@@ -321,18 +320,18 @@ struct AIERoutePacketFlowsPass
     DenseMap<PhysPort, Attribute> keepPktHeaderAttr;
 
     for (auto tileOp : device.getOps<TileOp>()) {
-      uint32_t col = tileOp.colIndex();
-      uint32_t row = tileOp.rowIndex();
+      int col = tileOp.colIndex();
+      int row = tileOp.rowIndex();
       tiles[{col, row}] = tileOp;
     }
 
     // The logical model of all the switchboxes.
-    DenseMap<TileID, SmallVector<std::pair<Connect, uint32_t>, 8>> switchboxes;
+    DenseMap<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
     for (auto pktflow : device.getOps<PacketFlowOp>()) {
       Region &r = pktflow.getPorts();
       Block &b = r.front();
-      uint32_t flowID = pktflow.IDInt();
-      uint32_t xSrc, ySrc;
+      int flowID = pktflow.IDInt();
+      int xSrc, ySrc;
       Port sourcePort;
 
       for (Operation &Op : b.getOperations()) {
@@ -344,8 +343,8 @@ struct AIERoutePacketFlowsPass
           sourcePort = pktSource.port();
         } else if (PacketDestOp pktDest = dyn_cast<PacketDestOp>(Op)) {
           TileOp destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
-          uint32_t xDest = destTile.colIndex();
-          uint32_t yDest = destTile.rowIndex();
+          int xDest = destTile.colIndex();
+          int yDest = destTile.rowIndex();
           Port destPort = pktDest.port();
 
           buildPSRoute(xSrc, ySrc, sourcePort, xDest, yDest, destPort, flowID,
@@ -362,8 +361,8 @@ struct AIERoutePacketFlowsPass
     LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 
     for (const auto &[tileId, connects] : switchboxes) {
-      uint32_t col = tileId.col;
-      uint32_t row = tileId.row;
+      int col = tileId.col;
+      int row = tileId.row;
       Operation *tileOp = getOrCreateTile(builder, col, row);
 
       LLVM_DEBUG(llvm::dbgs()
@@ -371,7 +370,7 @@ struct AIERoutePacketFlowsPass
       for (const auto &[conn, flowID] : connects) {
         Port sourcePort = conn.src;
         Port destPort = conn.dst;
-        uint32_t nextCol = col, nextRow = row;
+        int nextCol = col, nextRow = row;
         updateCoordinates(nextCol, nextRow, sourcePort.bundle);
         LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
                                 << stringifyWireBundle(sourcePort.bundle) << " "
@@ -500,7 +499,7 @@ struct AIERoutePacketFlowsPass
     for (const auto &[physPort, values] : mastersets) {
       Operation *tileOp = physPort.first;
       WireBundle bundle = physPort.second.bundle;
-      uint32_t channel = physPort.second.channel;
+      int channel = physPort.second.channel;
       assert(tileOp);
       TileOp tile = dyn_cast<TileOp>(tileOp);
       LLVM_DEBUG(llvm::dbgs()
@@ -589,9 +588,9 @@ struct AIERoutePacketFlowsPass
       auto port = map.first.first;
       TileOp tile = dyn_cast<TileOp>(port.first);
       WireBundle bundle = port.second.bundle;
-      uint32_t channel = port.second.channel;
-      uint32_t ID = map.first.second;
-      uint32_t mask = map.second;
+      int channel = port.second.channel;
+      int ID = map.first.second;
+      int mask = map.second;
 
       LLVM_DEBUG(llvm::dbgs()
                  << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
@@ -653,7 +652,7 @@ struct AIERoutePacketFlowsPass
       std::sort(tileMasters.begin(), tileMasters.end());
       for (auto tileMaster : tileMasters) {
         WireBundle bundle = tileMaster.bundle;
-        uint32_t channel = tileMaster.channel;
+        int channel = tileMaster.channel;
         SmallVector<int, 4> msels = mastersets[{tileOp, tileMaster}];
         SmallVector<Value, 4> amsels;
         for (auto msel : msels) {
@@ -678,7 +677,7 @@ struct AIERoutePacketFlowsPass
           continue;
 
         WireBundle bundle = port.second.bundle;
-        uint32_t channel = port.second.channel;
+        int channel = port.second.channel;
         auto slave = port.second;
 
         int mask = slaveMasks[group.front()];

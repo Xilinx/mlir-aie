@@ -30,9 +30,9 @@ using SwitchboxGraphBase = llvm::DirectedGraph<Switchbox, Channel>;
 class Switchbox : public SwitchboxBase {
 public:
   Switchbox() = delete;
-  Switchbox(const uint32_t col, const uint32_t row) : col(col), row(row) {}
+  Switchbox(const int col, const int row) : col(col), row(row) {}
 
-  uint32_t col, row;
+  int col, row;
 };
 
 class Channel : public ChannelBase {
@@ -122,7 +122,7 @@ class Pathfinder {
 
 public:
   Pathfinder() = default;
-  Pathfinder(uint32_t maxCol, uint32_t maxRow, DeviceOp &d);
+  Pathfinder(int maxCol, int maxRow, DeviceOp &d);
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
   bool addFixedConnection(TileID coord, Port port);
   bool isLegal();

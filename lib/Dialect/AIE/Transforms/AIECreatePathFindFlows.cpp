@@ -79,7 +79,7 @@ std::string stringifySwitchSettings(SwitchSettings settings) {
 class DynamicTileAnalysis {
 public:
   DeviceOp &device;
-  uint32_t maxCol, maxRow;
+  int maxCol, maxRow;
   Pathfinder pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
@@ -155,7 +155,7 @@ public:
 
     // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
     for (auto tileOp : device.getOps<TileOp>()) {
-      uint32_t col, row;
+      int col, row;
       col = tileOp.colIndex();
       row = tileOp.rowIndex();
       maxCol = std::max(maxCol, col);
@@ -164,14 +164,14 @@ public:
       coordToTile[{col, row}] = tileOp;
     }
     for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
-      uint32_t col, row;
+      int col, row;
       col = switchboxOp.colIndex();
       row = switchboxOp.rowIndex();
       assert(coordToSwitchbox.count({col, row}) == 0);
       coordToSwitchbox[{col, row}] = switchboxOp;
     }
     for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
-      uint32_t col, row;
+      int col, row;
       col = shimmuxOp.colIndex();
       row = shimmuxOp.rowIndex();
       assert(coordToShimMux.count({col, row}) == 0);
@@ -184,7 +184,7 @@ public:
   int getMaxCol() { return maxCol; }
   int getMaxRow() { return maxRow; }
 
-  TileOp getTile(OpBuilder &builder, uint32_t col, uint32_t row) {
+  TileOp getTile(OpBuilder &builder, int col, int row) {
     if (coordToTile.count({col, row})) {
       return coordToTile[{col, row}];
     } else {
@@ -196,7 +196,7 @@ public:
     }
   }
 
-  SwitchboxOp getSwitchbox(OpBuilder &builder, uint32_t col, uint32_t row) {
+  SwitchboxOp getSwitchbox(OpBuilder &builder, int col, int row) {
     assert(col >= 0);
     assert(row >= 0);
     if (coordToSwitchbox.count({col, row})) {
@@ -213,9 +213,9 @@ public:
     }
   }
 
-  ShimMuxOp getShimMux(OpBuilder &builder, uint32_t col) {
+  ShimMuxOp getShimMux(OpBuilder &builder, int col) {
     assert(col >= 0);
-    uint32_t row = 0;
+    int row = 0;
     if (coordToShimMux.count({col, row})) {
       return coordToShimMux[{col, row}];
     } else {
@@ -438,8 +438,8 @@ struct AIEPathfinderPass
       signalPassFailure();
 
     // Populate wires between switchboxes and tiles.
-    for (uint32_t col = 0; col <= analyzer.getMaxCol(); col++) {
-      for (uint32_t row = 0; row <= analyzer.getMaxRow(); row++) {
+    for (int col = 0; col <= analyzer.getMaxCol(); col++) {
+      for (int row = 0; row <= analyzer.getMaxRow(); row++) {
         TileOp tile;
         if (analyzer.coordToTile.count({col, row}))
           tile = analyzer.coordToTile[{col, row}];
