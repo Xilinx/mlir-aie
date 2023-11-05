@@ -15,20 +15,20 @@
 // CHECK: %[[T22:.*]] = AIE.tile(2, 2)
 // CHECK: %[[T21:.*]] = AIE.tile(2, 1)
 // CHECK: %[[T20:.*]] = AIE.tile(2, 0)
-// CHECK-DAG: AIE.switchbox(%[[T21]]) {
-// CHECK-DAG:   AIE.connect<North : 0, DMA : 0>
-// CHECK-DAG:   AIE.connect<North : 1, South : 1>
-// CHECK-DAG: }
-// CHECK-DAG: AIE.switchbox(%[[T22]]) {
-// CHECK-DAG:   AIE.connect<DMA : 0, South : 0>
-// CHECK-DAG:   AIE.connect<North : 1, South : 1>
-// CHECK-DAG: }
-// CHECK-DAG: AIE.switchbox(%[[T20]]) {
-// CHECK-DAG:   AIE.connect<North : 1, South : 2>
-// CHECK-DAG: }
-// CHECK-DAG: AIE.switchbox(%[[T23]]) {
-// CHECK-DAG:   AIE.connect<DMA : 0, South : 1>
-// CHECK-DAG: }
+// CHECK: AIE.switchbox(%[[T21]]) {
+// CHECK:   AIE.connect<North : 0, DMA : 0>
+// CHECK:   AIE.connect<North : 1, South : 1>
+// CHECK: }
+// CHECK: AIE.switchbox(%[[T22]]) {
+// CHECK:   AIE.connect<DMA : 0, South : 0>
+// CHECK:   AIE.connect<North : 1, South : 1>
+// CHECK: }
+// CHECK: AIE.switchbox(%[[T20]]) {
+// CHECK:   AIE.connect<North : 1, South : 2>
+// CHECK: }
+// CHECK: AIE.switchbox(%[[T23]]) {
+// CHECK:   AIE.connect<DMA : 0, South : 1>
+// CHECK: }
 
 module {
     AIE.device(xcve2802) {

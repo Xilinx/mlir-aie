@@ -28,14 +28,14 @@
 // CHECK: %[[T82:.*]] = AIE.tile(8, 2)
 // CHECK: %[[T83:.*]] = AIE.tile(8, 3)
 //
-// CHECK-DAG: AIE.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
-// CHECK-DAG: AIE.flow(%[[T20]], DMA : 0, %[[T82]], DMA : 0)
-// CHECK-DAG: AIE.flow(%[[T20]], DMA : 0, %[[T31]], DMA : 0)
-// CHECK-DAG: AIE.flow(%[[T20]], DMA : 0, %[[T13]], DMA : 0)
-// CHECK-DAG: AIE.flow(%[[T60]], DMA : 0, %[[T83]], DMA : 1)
-// CHECK-DAG: AIE.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
-// CHECK-DAG: AIE.flow(%[[T60]], DMA : 0, %[[T31]], DMA : 1)
-// CHECK-DAG: AIE.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T71]], DMA : 0)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T82]], DMA : 0)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T31]], DMA : 0)
+// CHECK: AIE.flow(%[[T20]], DMA : 0, %[[T13]], DMA : 0)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T83]], DMA : 1)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T22]], DMA : 1)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T31]], DMA : 1)
+// CHECK: AIE.flow(%[[T60]], DMA : 0, %[[T02]], DMA : 1)
 
 module {
     AIE.device(xcvc1902) {
