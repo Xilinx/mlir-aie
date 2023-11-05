@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
-// CHECK: error{{.*}} 'AIE.connect' op source index cannot be less than zero
+// CHECK: error{{.*}} 'AIE.connect' op attribute 'sourceChannel' failed to satisfy constraint: 32-bit signless integer attribute whose minimum value is 0
 
 module {
   %20 = AIE.tile(2, 0)

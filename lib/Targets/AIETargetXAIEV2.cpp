@@ -306,7 +306,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //  StringRef deviceInst = "ctx->DevInst";       // TODO
   StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
 
-  DenseMap<std::pair<int, int>, Operation *> tiles;
+  DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, CoreOp> cores;
   DenseMap<Operation *, MemOp> mems;
   DenseMap<std::pair<Operation *, int>, LockOp> locks;
@@ -801,9 +801,9 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   //---------------------------------------------------------------------------
   for (auto tile : tiles) {
     Operation *tileOp = tile.second;
-    std::pair<int, int> coord = NL.getCoord(tileOp);
-    int col = coord.first;
-    int row = coord.second;
+    TileID coord = NL.getCoord(tileOp);
+    uint32_t col = coord.col;
+    uint32_t row = coord.row;
     auto loc = tileLocStr(col, row);
 
     auto bufferAccessor = [&](std::optional<TileID> tile, BufferOp buf) {
@@ -867,8 +867,8 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   }
 
   auto lockAccessor = [&](LockOp lock) {
-    int col = lock.colIndex();
-    int row = lock.rowIndex();
+    uint32_t col = lock.colIndex();
+    uint32_t row = lock.rowIndex();
     if (!lock.hasName())
       return;
     std::string lockName(lock.name().getValue());

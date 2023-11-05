@@ -41,9 +41,6 @@ using namespace mlir;
 
 namespace xilinx {
 namespace AIE {
-// template <typename ConcreteType>
-// class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint>
-// {};
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
@@ -151,9 +148,39 @@ public:
 namespace xilinx {
 namespace AIE {
 
-typedef std::pair<WireBundle, int> Port;
-typedef std::pair<Port, Port> Connect;
-typedef std::pair<DMAChannelDir, int> DMAChannel;
+typedef struct Port {
+  WireBundle bundle;
+  uint32_t channel;
+
+  inline bool operator==(const Port &rhs) const {
+    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
+  }
+
+  inline bool operator!=(const Port &rhs) const { return !(*this == rhs); }
+
+  inline bool operator<(const Port &rhs) const {
+    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
+  }
+
+} Port;
+
+typedef struct Connect {
+  Port src;
+  Port dst;
+
+  inline bool operator==(const Connect &rhs) const {
+    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
+  }
+} Connect;
+
+typedef struct DMAChannel {
+  DMAChannelDir direction;
+  uint32_t channel;
+
+  inline bool operator==(const DMAChannel &rhs) const {
+    return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
+  }
+} DMAChannel;
 
 const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op);
 
@@ -232,24 +259,74 @@ template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
 } // namespace llvm
 
 namespace llvm {
+using namespace xilinx::AIE;
 // Functions hash just like pointers.
-template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
-  static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
+template <> struct DenseMapInfo<ObjectFifoCreateOp> {
+  static ObjectFifoCreateOp getEmptyKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
-    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
+    return ObjectFifoCreateOp::getFromOpaquePointer(pointer);
   }
-  static xilinx::AIE::ObjectFifoCreateOp getTombstoneKey() {
+  static ObjectFifoCreateOp getTombstoneKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
-    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
+    return ObjectFifoCreateOp::getFromOpaquePointer(pointer);
   }
-  static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
+  static unsigned getHashValue(ObjectFifoCreateOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
-  static bool isEqual(xilinx::AIE::ObjectFifoCreateOp lhs,
-                      xilinx::AIE::ObjectFifoCreateOp rhs) {
+  static bool isEqual(ObjectFifoCreateOp lhs, ObjectFifoCreateOp rhs) {
     return lhs == rhs;
   }
 };
+
+template <> struct DenseMapInfo<DMAChannel> {
+  using FirstInfo = DenseMapInfo<DMAChannelDir>;
+  using SecondInfo = DenseMapInfo<uint32_t>;
+  static inline DMAChannel getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static inline DMAChannel getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const DMAChannel &d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const DMAChannel &lhs, const DMAChannel &rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <> struct DenseMapInfo<Port> {
+  using FirstInfo = DenseMapInfo<WireBundle>;
+  using SecondInfo = DenseMapInfo<uint32_t>;
+  static inline Port getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static inline Port getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const Port &d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const Port &lhs, const Port &rhs) { return lhs == rhs; }
+};
+
 } // namespace llvm
+
+namespace std {
+using namespace xilinx::AIE;
+template <> struct less<Port> {
+  bool operator()(const Port &a, const Port &b) const {
+    return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
+  }
+};
+} // namespace std
 
 #endif

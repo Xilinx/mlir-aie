@@ -25,14 +25,14 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
-def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
-def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
-def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
 def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
@@ -48,12 +48,10 @@ def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   }];
   let cppNamespace = "::xilinx::AIE";
   let methods = [
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "colIndex", (ins )
     >,
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "rowIndex", (ins )
     >
   ];
@@ -67,26 +65,19 @@ def Interconnect : OpInterface<"Interconnect"> {
   let cppNamespace = "::xilinx::AIE";
 
   let methods = [
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "::mlir::Region &", "getConnections", (ins )
     >,
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "colIndex", (ins )
     >,
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "rowIndex", (ins )
     >,
-    InterfaceMethod<[{
-        int FooOp::getNumSourceConnections(WireBundle bundle) {
-      }],
+    InterfaceMethod<[{}],
       "int", "getNumSourceConnections", (ins "WireBundle":$bundle)
     >,
-    InterfaceMethod<[{
-        int FooOp::getNumDestConnections(WireBundle bundle) {
-      }],
+    InterfaceMethod<[{}],
       "int", "getNumDestConnections", (ins "WireBundle":$bundle)
     >
   ];

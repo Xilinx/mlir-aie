@@ -132,7 +132,7 @@ void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
       [](ModuleOp module, raw_ostream &output) {
-        DenseMap<std::pair<int, int>, Operation *> tiles;
+        DenseMap<TileID, Operation *> tiles;
         DenseMap<Operation *, CoreOp> cores;
         DenseMap<Operation *, MemOp> mems;
         DenseMap<std::pair<Operation *, int>, LockOp> locks;
@@ -151,9 +151,9 @@ void registerAIETranslations() {
 
         for (auto tile : tiles) {
           Operation *srcTileOp = tile.second;
-          std::pair<int, int> srcCoord = NL.getCoord(srcTileOp);
-          int srcCol = srcCoord.first;
-          int srcRow = srcCoord.second;
+          TileID srcCoord = NL.getCoord(srcTileOp);
+          uint32_t srcCol = srcCoord.col;
+          uint32_t srcRow = srcCoord.row;
 
           output << "// Tile(" << srcCol << ", " << srcRow << ")\n";
           output << "// Memory map: name base_address num_bytes\n";
@@ -184,15 +184,15 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         for (auto d : module.getOps<DeviceOp>()) {
           llvm::json::Object moduleJSON;
-          for (auto shimDMA_meta : d.getOps<ShimDMAAllocationOp>()) {
+          for (auto shimDMAMeta : d.getOps<ShimDMAAllocationOp>()) {
             llvm::json::Object shimJSON;
-            auto channelDir = shimDMA_meta.getChannelDirAttr();
+            auto channelDir = shimDMAMeta.getChannelDirAttr();
             shimJSON["channelDir"] = attrToJSON(channelDir);
-            auto channelIndex = shimDMA_meta.getChannelIndexAttr();
+            auto channelIndex = shimDMAMeta.getChannelIndexAttr();
             shimJSON["channelIndex"] = attrToJSON(channelIndex);
-            auto col = shimDMA_meta.getColAttr();
+            auto col = shimDMAMeta.getColAttr();
             shimJSON["col"] = attrToJSON(col);
-            moduleJSON[shimDMA_meta.getSymName()] =
+            moduleJSON[shimDMAMeta.getSymName()] =
                 llvm::json::Value(std::move(shimJSON));
           }
           llvm::json::Value topv(std::move(moduleJSON));
@@ -242,7 +242,7 @@ void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationLDScript(
       "aie-generate-ldscript", "Generate AIE loader script",
       [](ModuleOp module, raw_ostream &output) {
-        DenseMap<std::pair<int, int>, Operation *> tiles;
+        DenseMap<TileID, Operation *> tiles;
         DenseMap<Operation *, CoreOp> cores;
         DenseMap<Operation *, MemOp> mems;
         DenseMap<std::pair<Operation *, int>, LockOp> locks;
@@ -261,15 +261,15 @@ void registerAIETranslations() {
 
         for (auto tile : targetOp.getOps<TileOp>())
           if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
-            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
+            TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
             const auto &target_model = getTargetModel(tile);
 
             // Figure out how much memory we have left for random allocations
             auto core = tile.getCoreOp();
-            int max = core.getStackSize();
+            uint32_t max = core.getStackSize();
             for (auto buf : buffers[tiles[srcCoord]]) {
-              int bufferBaseAddr = NL.getBufferBaseAddress(buf);
-              int numBytes = buf.getAllocationSize();
+              uint32_t bufferBaseAddr = NL.getBufferBaseAddress(buf);
+              uint32_t numBytes = buf.getAllocationSize();
               max = std::max(max, bufferBaseAddr + numBytes);
             }
             int origin = target_model.getMemInternalBaseAddress(srcCoord) + max;
@@ -375,7 +375,7 @@ SECTIONS
   TranslateFromMLIRRegistration registrationBCF(
       "aie-generate-bcf", "Generate AIE bcf",
       [](ModuleOp module, raw_ostream &output) {
-        DenseMap<std::pair<int, int>, Operation *> tiles;
+        DenseMap<TileID, Operation *> tiles;
         DenseMap<Operation *, CoreOp> cores;
         DenseMap<Operation *, MemOp> mems;
         DenseMap<std::pair<Operation *, int>, LockOp> locks;
@@ -419,9 +419,9 @@ SECTIONS
             output << "_reserved DMb      0x00000 " << initReserved
                    << " //Don't put data in code memory\n";
 
-            auto srcCoord = std::make_pair(tile.colIndex(), tile.rowIndex());
+            TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
             auto doBuffer = [&](std::optional<TileID> tile, int offset,
-                                std::string dir) {
+                                const std::string &dir) {
               if (tile) {
                 if (tiles.count(*tile))
                   for (auto buf : buffers[tiles[*tile]])

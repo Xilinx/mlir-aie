@@ -9,35 +9,32 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
+
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-void xilinx::AIE::NetlistAnalysis::runAnalysis() {
-
-  // Collect op instances
-  collectTiles(tiles);
-  collectCores(cores);
-  collectMems(mems);
-  collectLocks(locks);
-  collectBuffers(buffers);
-  collectSwitchboxes(switchboxes);
-}
+// void xilinx::AIE::NetlistAnalysis::runAnalysis() {
+//   // Collect op instances
+//   collectTiles(tiles);
+//   collectCores(cores);
+//   collectMems(mems);
+//   collectLocks(locks);
+//   collectBuffers(buffers);
+//   collectSwitchboxes(switchboxes);
+// }
 
 void xilinx::AIE::NetlistAnalysis::collectTiles(
-    DenseMap<std::pair<int, int>, Operation *> &tiles) {
+    DenseMap<TileID, Operation *> &tiles) {
   for (auto tile : device.getOps<TileOp>()) {
-    int colIndex = tile.colIndex();
-    int rowIndex = tile.rowIndex();
-    tiles[std::make_pair(colIndex, rowIndex)] = tile;
+    uint32_t colIndex = tile.colIndex();
+    uint32_t rowIndex = tile.rowIndex();
+    tiles[{colIndex, rowIndex}] = tile;
   }
 }
 
@@ -92,25 +89,24 @@ void xilinx::AIE::NetlistAnalysis::collectSwitchboxes(
   }
 }
 
-std::pair<int, int>
-xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const {
+TileID xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const {
   if (TileOp op = dyn_cast<TileOp>(Op))
-    return std::make_pair(op.colIndex(), op.rowIndex());
+    return {op.colIndex(), op.rowIndex()};
 
   if (CoreOp op = dyn_cast<CoreOp>(Op))
-    return std::make_pair(op.colIndex(), op.rowIndex());
+    return {op.colIndex(), op.rowIndex()};
 
   if (MemOp op = dyn_cast<MemOp>(Op))
-    return std::make_pair(op.colIndex(), op.rowIndex());
+    return {op.colIndex(), op.rowIndex()};
 
   if (LockOp op = dyn_cast<LockOp>(Op)) {
     TileOp tile = dyn_cast<TileOp>(op.getTile().getDefiningOp());
-    return std::make_pair(tile.colIndex(), tile.rowIndex());
+    return {tile.colIndex(), tile.rowIndex()};
   }
 
   if (BufferOp op = dyn_cast<BufferOp>(Op)) {
     TileOp tile = dyn_cast<TileOp>(op.getTile().getDefiningOp());
-    return std::make_pair(tile.colIndex(), tile.rowIndex());
+    return {tile.colIndex(), tile.rowIndex()};
   }
 
   llvm_unreachable("Unknown Operation!");
@@ -120,12 +116,12 @@ xilinx::AIE::NetlistAnalysis::getCoord(Operation *Op) const {
 // user: Core, Mem
 bool xilinx::AIE::NetlistAnalysis::isLegalAffinity(Operation *item,
                                                    Operation *user) const {
-  std::pair<int, int> itemCoord = getCoord(item);
-  std::pair<int, int> userCoord = getCoord(user);
-  int itemCol = itemCoord.first;
-  int itemRow = itemCoord.second;
-  int userCol = userCoord.first;
-  int userRow = userCoord.second;
+  TileID itemCoord = getCoord(item);
+  TileID userCoord = getCoord(user);
+  uint32_t itemCol = itemCoord.col;
+  uint32_t itemRow = itemCoord.row;
+  uint32_t userCol = userCoord.col;
+  uint32_t userRow = userCoord.row;
   bool IsUserMem = isa<MemOp>(user);
 
   const auto &target_model = getTargetModel(item);
@@ -223,9 +219,9 @@ void xilinx::AIE::NetlistAnalysis::collectDMAUsage() {
     for (auto op : r.getOps<cf::CondBranchOp>()) {
       DMAStartOp dmaSt =
           dyn_cast<DMAStartOp>(op.getCondition().getDefiningOp());
-      xilinx::AIE::DMAChannel dmaChan =
-          std::make_pair(dmaSt.getChannelDir(), dmaSt.getChannelIndex());
-      dmas[std::make_pair(mem, dmaChan)] = dmaSt;
+      xilinx::AIE::DMAChannel dmaChan = {dmaSt.getChannelDir(),
+                                         dmaSt.getChannelIndex()};
+      dmas[{mem, dmaChan}] = dmaSt;
       Block *firstBd = op.getTrueDest();
       Block *curBd = firstBd;
 
@@ -274,8 +270,8 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
 
   Operation *swboxOp = currentConnect->getParentOp();
   SwitchboxOp swbox = dyn_cast<SwitchboxOp>(swboxOp);
-  int col = swbox.colIndex();
-  int row = swbox.rowIndex();
+  uint32_t col = swbox.colIndex();
+  uint32_t row = swbox.rowIndex();
   int nextCol = -1;
   int nextRow = -1;
   WireBundle nextSrcBundle;
@@ -304,7 +300,8 @@ SmallVector<Operation *, 4> xilinx::AIE::NetlistAnalysis::getNextConnectOps(
   assert((nextCol >= 0 && nextRow >= 0) &&
          "Invalid ConnectOp! Could not find next tile!");
 
-  Operation *nextTileOp = tiles[std::make_pair(nextCol, nextRow)];
+  Operation *nextTileOp =
+      tiles[{static_cast<uint32_t>(nextCol), static_cast<uint32_t>(nextRow)}];
   Operation *nextSwboxOp = switchboxes[nextTileOp];
   SwitchboxOp nextSwbox = dyn_cast<SwitchboxOp>(nextSwboxOp);
 
@@ -396,9 +393,9 @@ void xilinx::AIE::NetlistAnalysis::dmaAnalysis() {
         SwitchboxOp destSwbox =
             dyn_cast<SwitchboxOp>(destConnect->getParentOp());
         Operation *destMemOp = mems[destSwbox.getTile().getDefiningOp()];
-        xilinx::AIE::DMAChannel dmaChan =
-            std::make_pair(DMAChannelDir::S2MM, destConnect.destIndex());
-        Operation *destDmaOp = dmas[std::make_pair(destMemOp, dmaChan)];
+        xilinx::AIE::DMAChannel dmaChan = {DMAChannelDir::S2MM,
+                                           destConnect.destIndex()};
+        Operation *destDmaOp = dmas[{destMemOp, dmaChan}];
         dmaConnections[srcDma].push_back(destDmaOp);
         dma2ConnectsMap[destDmaOp].push_back(destConnect);
       }
@@ -450,7 +447,7 @@ void xilinx::AIE::NetlistAnalysis::lockAnalysis() {
         continue;
 
       if (relValue == acqValue)
-        lockChains.push_back(std::make_pair(srcRelLockOp, dstAcqLockOp));
+        lockChains.push_back({srcRelLockOp, dstAcqLockOp});
     }
   }
 }

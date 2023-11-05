@@ -70,7 +70,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     DeviceOp device = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
 
-    DenseMap<std::pair<int, int>, Operation *> tiles;
+    DenseMap<TileID, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;
     DenseMap<Operation *, MemOp> mems;
     DenseMap<Value, Value> buffers;
@@ -78,9 +78,9 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
     // Collect existing TileOps
     for (auto tile : device.getOps<TileOp>()) {
-      int colIndex = tile.colIndex();
-      int rowIndex = tile.rowIndex();
-      tiles[std::make_pair(colIndex, rowIndex)] = tile;
+      uint32_t colIndex = tile.colIndex();
+      uint32_t rowIndex = tile.rowIndex();
+      tiles[{colIndex, rowIndex}] = tile;
     }
 
     // Bind FuncOp to an AIE core based on attributes of the CallOp
@@ -93,17 +93,17 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       SmallVector<Value, 4> callOperands(callOp.getArgOperands());
       SmallVector<std::pair<MemRefType, int>, 4> coreBufTypes;
 
-      int colIndex = callOp->getAttrOfType<IntegerAttr>("aie.x").getInt();
-      int rowIndex = callOp->getAttrOfType<IntegerAttr>("aie.y").getInt();
+      uint32_t colIndex = callOp->getAttrOfType<IntegerAttr>("aie.x").getInt();
+      uint32_t rowIndex = callOp->getAttrOfType<IntegerAttr>("aie.y").getInt();
 
       // get or create TileOp
-      if (!tiles[std::make_pair(colIndex, rowIndex)]) {
+      if (!tiles[{colIndex, rowIndex}]) {
         builder.setInsertionPointToStart(device.getBody());
         TileOp tile =
             builder.create<TileOp>(builder.getUnknownLoc(), colIndex, rowIndex);
-        tiles[std::make_pair(colIndex, rowIndex)] = tile;
+        tiles[{colIndex, rowIndex}] = tile;
       }
-      Operation *tileOp = tiles[std::make_pair(colIndex, rowIndex)];
+      Operation *tileOp = tiles[{colIndex, rowIndex}];
       TileOp tile = dyn_cast<TileOp>(tileOp);
       builder.setInsertionPointAfter(tileOp);
 
@@ -121,7 +121,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           }
 
           assert(t && "Unsupported type!");
-          coreBufTypes.push_back(std::make_pair(t, i));
+          coreBufTypes.push_back({t, i});
           BufferOp buf =
               builder.create<BufferOp>(builder.getUnknownLoc(), t, tile);
           //          buf.setAttr("sym_name",
@@ -146,7 +146,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
               dyn_cast<CallOpInterface>(callOp.getOperation())) {
         Operation *callable = call.resolveCallable();
         if (func::FuncOp func = dyn_cast<func::FuncOp>(callable)) {
-          funcs[func] = std::make_pair(colIndex, rowIndex);
+          funcs[func] = {colIndex, rowIndex};
 
           IRMapping mapper;
 

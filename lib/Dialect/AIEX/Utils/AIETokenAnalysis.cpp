@@ -11,12 +11,11 @@
 #include "aie/Dialect/AIEX/AIETokenAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
-#include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -30,7 +29,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
     StringRef tokenName =
         op->getAttrOfType<StringAttr>(::mlir::SymbolTable::getSymbolAttrName())
             .getValue();
-    int value = op.getTokenValue();
+    uint32_t value = op.getTokenValue();
     tokenSymbols[tokenName] = value;
   }
 
@@ -48,7 +47,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
         tokenRelMap[tokenName].push_back(op.getOperation());
         if (!visitors[tokenName].empty()) {
           Operation *Op = visitors[tokenName].pop_back_val();
-          tokenPairs.push_back(std::make_pair(Op, op.getOperation()));
+          tokenPairs.push_back({Op, op.getOperation()});
         }
       }
     } else if (auto op = dyn_cast<MemcpyOp>(Op)) {
@@ -58,13 +57,13 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
       Operation *Op = op.getOperation();
       tokenAcqMap[tokenName].push_back(Op);
       tokenRelMap[tokenName].push_back(Op);
-      tokenPairs.push_back(std::make_pair(Op, Op));
+      tokenPairs.push_back({Op, Op});
     }
   });
 
   // sanity check: ensure that acquiring a token is followed by releasing a
   // token
-  for (auto map : tokenAcqMap) {
+  for (const auto &map : tokenAcqMap) {
     StringRef tokenName = map.first;
     for (auto Op : map.second) {
       bool isReleased = false;
@@ -89,12 +88,12 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
   // releases and one acquires the same token + value. They form a chain of
   // releasing and acquiring a token. From the chains of tokens collected, we
   // can infer the dependency of the parentOps
-  for (auto map : tokenRelMap) {
+  for (const auto &map : tokenRelMap) {
     StringRef tokenName = map.first;
     auto tokenRels = map.second;
     auto tokenAcqs = tokenAcqMap[tokenName];
     for (auto ROp : tokenRels) {
-      int releaseValue;
+      uint32_t releaseValue;
 
       if (auto op = dyn_cast<UseTokenOp>(ROp))
         releaseValue = op.getTokenValue();
@@ -102,7 +101,7 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
         releaseValue = op.getReleaseTokenValue();
 
       for (auto AOp : tokenAcqs) {
-        int acquireValue;
+        uint32_t acquireValue;
 
         if (auto op = dyn_cast<UseTokenOp>(AOp))
           acquireValue = op.getTokenValue();
@@ -116,15 +115,15 @@ void xilinx::AIEX::TokenAnalysis::runAnalysis() {
         if (releaseValue != acquireValue)
           continue;
 
-        tokenChains.push_back(std::make_pair(ROp, AOp));
+        tokenChains.push_back({ROp, AOp});
       }
     }
   }
 
   for (auto tile : device.getOps<TileOp>()) {
-    int colIndex = tile.colIndex();
-    int rowIndex = tile.rowIndex();
-    tiles[std::make_pair(colIndex, rowIndex)] = tile;
+    uint32_t colIndex = tile.colIndex();
+    uint32_t rowIndex = tile.rowIndex();
+    tiles[{colIndex, rowIndex}] = tile;
   }
 }
 
@@ -141,9 +140,9 @@ Operation *xilinx::AIEX::TokenAnalysis::getTokenUserOp(Operation *Op) {
   return nullptr;
 }
 
-std::pair<int, int> xilinx::AIEX::TokenAnalysis::getCoord(Operation *Op) {
-  int colIndex = 0;
-  int rowIndex = 0;
+TileID xilinx::AIEX::TokenAnalysis::getCoord(Operation *Op) {
+  uint32_t colIndex = 0;
+  uint32_t rowIndex = 0;
 
   if (CoreOp core = dyn_cast<CoreOp>(Op)) {
     colIndex = core.colIndex();
@@ -156,7 +155,7 @@ std::pair<int, int> xilinx::AIEX::TokenAnalysis::getCoord(Operation *Op) {
     rowIndex = shimDma.rowIndex();
   }
 
-  return std::make_pair(colIndex, rowIndex);
+  return {colIndex, rowIndex};
 }
 
 Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
@@ -167,13 +166,13 @@ Operation *xilinx::AIEX::TokenAnalysis::getShareableTileOp(Operation *Op1,
   assert((!IsOp1Mem || !IsOp2Mem) &&
          "Op1 and Op2 cannot be both Mem operation!");
 
-  std::pair<int, int> coord1 = getCoord(Op1);
-  std::pair<int, int> coord2 = getCoord(Op2);
+  TileID coord1 = getCoord(Op1);
+  TileID coord2 = getCoord(Op2);
 
-  int col1 = coord1.first;
-  int row1 = coord1.second;
-  int col2 = coord2.first;
-  int row2 = coord2.second;
+  uint32_t col1 = coord1.col;
+  uint32_t row1 = coord1.row;
+  uint32_t col2 = coord2.col;
+  uint32_t row2 = coord2.row;
 
   const auto &target_model = xilinx::AIE::getTargetModel(Op1);
 

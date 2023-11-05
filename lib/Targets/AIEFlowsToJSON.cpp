@@ -28,8 +28,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 // returns the opposite WireBundle, useful for connecting switchboxes
 WireBundle getConnectingBundle(WireBundle bundle) {
@@ -52,15 +51,15 @@ std::pair<uint32_t, uint32_t> getNextCoords(uint32_t col, uint32_t row,
                                             WireBundle bundle) {
   switch (bundle) {
   case WireBundle::North:
-    return std::make_pair(col, row + 1);
+    return {col, row + 1};
   case WireBundle::South:
-    return std::make_pair(col, row - 1);
+    return {col, row - 1};
   case WireBundle::East:
-    return std::make_pair(col + 1, row);
+    return {col + 1, row};
   case WireBundle::West:
-    return std::make_pair(col - 1, row);
+    return {col - 1, row};
   default:
-    return std::make_pair(col, row);
+    return {col, row};
   }
 }
 
@@ -77,8 +76,8 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileOp dest = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID srcID = std::make_pair(source.colIndex(), source.rowIndex());
-    TileID dstID = std::make_pair(dest.colIndex(), dest.rowIndex());
+    TileID srcID = {source.colIndex(), source.rowIndex()};
+    TileID dstID = {dest.colIndex(), dest.rowIndex()};
     source_counts[srcID]++;
     destination_counts[dstID]++;
   }
@@ -93,12 +92,11 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
                                "\"row\": " + std::to_string(row) + ",\n";
 
     // write source and destination info
-    switchString += "\"source_count\": " +
-                    std::to_string(source_counts[std::make_pair(col, row)]) +
-                    ",\n";
     switchString +=
-        "\"destination_count\": " +
-        std::to_string(destination_counts[std::make_pair(col, row)]) + ",\n";
+        "\"source_count\": " + std::to_string(source_counts[{col, row}]) +
+        ",\n";
+    switchString += "\"destination_count\": " +
+                    std::to_string(destination_counts[{col, row}]) + ",\n";
 
     // write routing demand info
     uint32_t connect_counts[10];
@@ -128,15 +126,14 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   std::set<std::pair<TileOp, Port>> flowSources;
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     // objects used to trace through the flow
-    Port curr_port =
-        std::make_pair(flowOp.getSourceBundle(), flowOp.getSourceChannel());
+    Port currPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
     SwitchboxOp curr_switchbox;
 
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
     // TileOp dest = cast<TileOp>(flowOp.dest().getDefiningOp());
 
     // track flow sources to avoid duplicate routes
-    auto flowSource = std::make_pair(source, curr_port);
+    std::pair<TileOp, Port> flowSource = {source, currPort};
     if (flowSources.count(flowSource)) {
       continue;
     }
@@ -146,7 +143,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
         "\"route" + std::to_string(flow_count++) + "\": [ ";
 
     // FIFO to handle fanouts
-    std::queue<Port> next_ports;
+    std::queue<Port> nextPorts;
     std::queue<SwitchboxOp> next_switches;
 
     // find the starting switchbox
@@ -163,10 +160,10 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
       if (shimMuxOp.colIndex() == source.colIndex() &&
           shimMuxOp.rowIndex() == source.rowIndex()) {
         for (ConnectOp connectOp : shimMuxOp.getOps<ConnectOp>()) {
-          if (connectOp.getSourceBundle() == curr_port.first &&
-              connectOp.getSourceChannel() == (unsigned)curr_port.second) {
-            curr_port.first = getConnectingBundle(connectOp.getDestBundle());
-            curr_port.second = connectOp.getDestChannel();
+          if (connectOp.getSourceBundle() == currPort.bundle &&
+              connectOp.getSourceChannel() == currPort.channel) {
+            currPort.bundle = getConnectingBundle(connectOp.getDestBundle());
+            currPort.channel = connectOp.getDestChannel();
             break;
           }
         }
@@ -186,11 +183,10 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
             connectOp.getDestBundle() == WireBundle::Core)
           continue;
 
-        if (connectOp.getSourceBundle() == curr_port.first &&
-            connectOp.getSourceChannel() == (unsigned)curr_port.second) {
-          next_ports.push(
-              std::make_pair(getConnectingBundle(connectOp.getDestBundle()),
-                             connectOp.getDestChannel()));
+        if (connectOp.getSourceBundle() == currPort.bundle &&
+            connectOp.getSourceChannel() == currPort.channel) {
+          nextPorts.push({getConnectingBundle(connectOp.getDestBundle()),
+                          connectOp.getDestChannel()});
 
           std::pair<uint32_t, uint32_t> next_coords = getNextCoords(
               curr_switchbox.colIndex(), curr_switchbox.rowIndex(),
@@ -213,8 +209,8 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
           std::to_string(curr_switchbox.rowIndex()) + "], [";
       int op_count = 0, dir_count = 0;
       for (ConnectOp connectOp : curr_switchbox.getOps<ConnectOp>()) {
-        if (connectOp.getSourceBundle() == curr_port.first &&
-            connectOp.getSourceChannel() == (unsigned)curr_port.second) {
+        if (connectOp.getSourceBundle() == currPort.bundle &&
+            connectOp.getSourceChannel() == currPort.channel) {
           if (op_count++ > 0)
             dirString += ", ";
           dir_count++;
@@ -230,16 +226,16 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
 
       // if in the same switchbox, ignore it
       // if(curr_switchbox == next_switches.front()) {
-      //	next_ports.pop();
+      //	nextPorts.pop();
       //	next_switches.pop();
       //}
-      if (next_ports.empty() || next_switches.empty()) {
+      if (nextPorts.empty() || next_switches.empty()) {
         done = true;
         routeString += "[]";
       } else {
-        curr_port = next_ports.front();
+        currPort = nextPorts.front();
         curr_switchbox = next_switches.front();
-        next_ports.pop();
+        nextPorts.pop();
         next_switches.pop();
       }
     } while (!done);
@@ -252,5 +248,4 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   output << "}";
   return success();
 } // end AIETranslateToJSON
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE

@@ -115,12 +115,12 @@ struct UsesAreAccessable {
       if (auto element = getParentTileElement(user)) {
 
         auto tileID = element.getTileID();
-        if (!target_model.isLegalMemAffinity(tileID.first, tileID.second,
-                                             thisID.first, thisID.second))
+        if (!target_model.isLegalMemAffinity(tileID.col, tileID.row, thisID.col,
+                                             thisID.row))
           return (op->emitOpError("in Column ")
-                  << thisID.first << " and Row " << thisID.second
+                  << thisID.col << " and Row " << thisID.row
                   << " is accessed from an unreachable tile in Column "
-                  << tileID.first << " and Row " << tileID.second)
+                  << tileID.col << " and Row " << tileID.row)
                      .attachNote(user->getLoc())
                  << "user";
       } else {
@@ -383,8 +383,8 @@ LogicalResult
 xilinx::AIE::HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
   const auto &target_model = xilinx::AIE::getTargetModel(op);
-  int bdMax = target_model.getNumBDs(element.getTileID().first,
-                                     element.getTileID().second);
+  int bdMax =
+      target_model.getNumBDs(element.getTileID().col, element.getTileID().row);
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
@@ -407,17 +407,18 @@ template <typename ConcreteType>
 LogicalResult
 xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
-  DenseSet<xilinx::AIE::DMAChannel> used_channels;
+  DenseSet<xilinx::AIE::DMAChannel> usedChannels;
   for (auto &bodyOp : element.getBody().getOps()) {
     // check for duplicate DMA channels within the same MemTileDMAOp
-    if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = std::make_pair(
-          DMA_start.getChannelDir(), DMA_start.getChannelIndex());
-      if (used_channels.count(dmaChan))
-        return DMA_start.emitOpError() << "duplicate DMA channel "
-                                       << stringifyDMAChannelDir(dmaChan.first)
-                                       << dmaChan.second << " not allowed";
-      used_channels.insert(dmaChan);
+    if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
+      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                                         dmaStart.getChannelIndex()};
+      if (usedChannels.count(dmaChan))
+        return dmaStart.emitOpError()
+               << "duplicate DMA channel "
+               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
+               << " not allowed";
+      usedChannels.insert(dmaChan);
     }
   }
   return success();
@@ -882,10 +883,10 @@ LogicalResult xilinx::AIE::TileOp::verify() {
 bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &target_model,
                               xilinx::AIE::MasterSetOp masterOp,
                               xilinx::AIE::PacketRulesOp slaveOp) {
-  auto srcBundle = masterOp.destPort().first;
-  auto srcChan = masterOp.destPort().second;
-  auto dstBundle = slaveOp.sourcePort().first;
-  auto dstChan = slaveOp.sourcePort().second;
+  auto srcBundle = masterOp.destPort().bundle;
+  auto srcChan = masterOp.destPort().channel;
+  auto dstBundle = slaveOp.sourcePort().bundle;
+  auto dstChan = slaveOp.sourcePort().channel;
   return target_model.isLegalMemtileConnection(srcBundle, srcChan, dstBundle,
                                                dstChan);
 }
@@ -926,15 +927,15 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
       return success();
     };
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
-      xilinx::AIE::Port source =
-          std::make_pair(connectOp.getSourceBundle(), connectOp.sourceIndex());
+      xilinx::AIE::Port source = {connectOp.getSourceBundle(),
+                                  connectOp.sourceIndex()};
       sourceset.insert(source);
 
-      xilinx::AIE::Port dest =
-          std::make_pair(connectOp.getDestBundle(), connectOp.destIndex());
+      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
+                                connectOp.destIndex()};
       if (destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.first) << dest.second
+               << stringifyWireBundle(dest.bundle) << dest.channel
                << " as another connect operation";
       } else {
         destset.insert(dest);
@@ -980,11 +981,11 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
       }
 
     } else if (auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
-      xilinx::AIE::Port dest =
-          std::make_pair(connectOp.getDestBundle(), connectOp.destIndex());
+      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
+                                connectOp.destIndex()};
       if (destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.first) << dest.second
+               << stringifyWireBundle(dest.bundle) << dest.channel
                << " as another connect or masterset operation";
       } else {
         destset.insert(dest);
@@ -1009,11 +1010,11 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
         arbiter = amsel.arbiterIndex();
       }
     } else if (auto connectOp = dyn_cast<xilinx::AIE::PacketRulesOp>(ops)) {
-      xilinx::AIE::Port source =
-          std::make_pair(connectOp.getSourceBundle(), connectOp.sourceIndex());
+      xilinx::AIE::Port source = {connectOp.getSourceBundle(),
+                                  connectOp.sourceIndex()};
       if (sourceset.count(source)) {
         return connectOp.emitOpError("packet switched source ")
-               << stringifyWireBundle(source.first) << source.second
+               << stringifyWireBundle(source.bundle) << source.channel
                << " cannot match another connect or masterset operation";
       } else {
         sourceset.insert(source);
@@ -1031,13 +1032,13 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
       }
       for (auto m : mstrs) {
         // Trace stream switch connection constraints
-        if (m.destPort().first == xilinx::AIE::WireBundle::Trace)
+        if (m.destPort().bundle == xilinx::AIE::WireBundle::Trace)
           return connectOp.emitOpError("Trace port cannot be a destination");
         for (auto s : slvs) {
-          if (s.sourcePort().first == xilinx::AIE::WireBundle::Trace) {
+          if (s.sourcePort().bundle == xilinx::AIE::WireBundle::Trace) {
             if (!target_model.isValidTraceMaster(tile.getCol(), tile.getRow(),
-                                                 m.destPort().first,
-                                                 m.destPort().second))
+                                                 m.destPort().bundle,
+                                                 m.destPort().channel))
               return amselOp.emitOpError("illegal Trace destination");
           }
 
@@ -1064,11 +1065,11 @@ LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
-      xilinx::AIE::Port dest =
-          std::make_pair(connectOp.getDestBundle(), connectOp.destIndex());
+      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
+                                connectOp.destIndex()};
       if (destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.first) << dest.second
+               << stringifyWireBundle(dest.bundle) << dest.channel
                << " as another connect operation";
       } else {
         destset.insert(dest);
@@ -1090,11 +1091,11 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
 
   for (auto &ops : body.front()) {
     if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
-      xilinx::AIE::Port dest =
-          std::make_pair(connectOp.getDestBundle(), connectOp.destIndex());
+      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
+                                connectOp.destIndex()};
       if (destset.count(dest)) {
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.first) << dest.second
+               << stringifyWireBundle(dest.bundle) << dest.channel
                << " as another connect operation";
       } else {
         destset.insert(dest);
@@ -1107,14 +1108,14 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   return success();
 }
 
-int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
+uint32_t xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumSourceShimMuxConnections(tile.getCol(),
                                                      tile.getRow(), bundle);
 }
 
-int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
+uint32_t xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
@@ -1125,9 +1126,9 @@ xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
 LogicalResult xilinx::AIE::ShimDMAOp::verify() {
@@ -1151,9 +1152,9 @@ xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::PacketRulesOp::verify() {
   Region &body = getRules();
@@ -1191,9 +1192,9 @@ LogicalResult xilinx::AIE::CoreOp::verify() {
   return success();
 }
 
-int xilinx::AIE::CoreOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::CoreOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::CoreOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 xilinx::AIE::TileOp xilinx::AIE::CoreOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
@@ -1219,7 +1220,7 @@ LogicalResult xilinx::AIE::BufferOp::verify() {
 // MemOp
 LogicalResult xilinx::AIE::MemOp::verify() {
   Region &body = getBody();
-  DenseSet<xilinx::AIE::DMAChannel> used_channels;
+  DenseSet<xilinx::AIE::DMAChannel> usedChannels;
   if (body.empty())
     return emitOpError("should have non-empty body");
 
@@ -1232,14 +1233,15 @@ LogicalResult xilinx::AIE::MemOp::verify() {
 
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same MemOp
-    if (auto DMA_start = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = std::make_pair(
-          DMA_start.getChannelDir(), DMA_start.getChannelIndex());
-      if (used_channels.count(dmaChan))
-        return DMA_start.emitOpError() << "duplicate DMA channel "
-                                       << stringifyDMAChannelDir(dmaChan.first)
-                                       << dmaChan.second << " in MemOp";
-      used_channels.insert(dmaChan);
+    if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
+      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                                         dmaStart.getChannelIndex()};
+      if (usedChannels.count(dmaChan))
+        return dmaStart.emitOpError()
+               << "duplicate DMA channel "
+               << stringifyDMAChannelDir(dmaChan.direction) << dmaChan.channel
+               << " in MemOp";
+      usedChannels.insert(dmaChan);
     }
 
     if (auto allocOp = dyn_cast<memref::AllocOp>(bodyOp)) {
@@ -1255,9 +1257,9 @@ xilinx::AIE::TileOp xilinx::AIE::MemOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
@@ -1415,9 +1417,13 @@ xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::MemTileDMAOp::colIndex() {
+  return getTileOp().colIndex();
+}
 
-int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::MemTileDMAOp::rowIndex() {
+  return getTileOp().rowIndex();
+}
 
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
@@ -1429,9 +1435,9 @@ xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
@@ -1449,9 +1455,9 @@ xilinx::AIE::TileOp xilinx::AIE::LockOp::getTileOp() {
   return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
+uint32_t xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
+uint32_t xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult xilinx::AIE::LockOp::verify() {
   auto result = UsesAreAccessable::verifyTrait(*this);
@@ -1577,21 +1583,21 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
 namespace xilinx {
 namespace AIE {
 
-int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
+uint32_t SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumSourceSwitchboxConnections(tile.getCol(),
                                                        tile.getRow(), bundle);
 }
 
-int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
+uint32_t SwitchboxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &target_model = getTargetModel(*this);
   return target_model.getNumDestSwitchboxConnections(tile.getCol(),
                                                      tile.getRow(), bundle);
 }
 
-int TileOp::getNumSourceConnections(WireBundle bundle) {
+uint32_t TileOp::getNumSourceConnections(WireBundle bundle) {
   const auto &target_model = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
     // Note dest is correct here, since direction is reversed.
@@ -1606,7 +1612,7 @@ int TileOp::getNumSourceConnections(WireBundle bundle) {
     return 0;
 }
 
-int TileOp::getNumDestConnections(WireBundle bundle) {
+uint32_t TileOp::getNumDestConnections(WireBundle bundle) {
   const auto &target_model = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
     // Note source is correct here, since direction is reversed.

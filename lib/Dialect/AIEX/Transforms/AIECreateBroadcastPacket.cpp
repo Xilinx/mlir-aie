@@ -1,12 +1,22 @@
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
+//===- AIECreateBroadcastPacket.cpp -----------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2019 Xilinx Inc.
+//
+//===----------------------------------------------------------------------===//
+
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+
 #include "llvm/ADT/Twine.h"
 
 #define DEBUG_TYPE "aie-create-lower-packet"
@@ -60,7 +70,7 @@ struct AIEBroadcastPacketPass
           Block *b_pkFlow = builder.createBlock(&r_pkFlow);
           builder.setInsertionPointToStart(b_pkFlow);
           builder.create<PacketSourceOp>(builder.getUnknownLoc(), srcTile,
-                                         sourcePort.first, sourcePort.second);
+                                         sourcePort.bundle, sourcePort.channel);
           for (Operation &op : b_bpid.getOperations()) {
             if (BPDestOp bpdest = dyn_cast<BPDestOp>(op)) {
               TileOp destTile =
@@ -68,7 +78,7 @@ struct AIEBroadcastPacketPass
               Port destPort = bpdest.port();
               builder.setInsertionPointToEnd(b_pkFlow);
               builder.create<PacketDestOp>(builder.getUnknownLoc(), destTile,
-                                           destPort.first, destPort.second);
+                                           destPort.bundle, destPort.channel);
             }
           }
           builder.setInsertionPointToEnd(b_pkFlow);

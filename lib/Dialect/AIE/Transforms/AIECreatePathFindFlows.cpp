@@ -29,7 +29,7 @@ std::string stringifyDirs(std::set<Port> dirs) {
   unsigned int count = 0;
   std::string out = "{";
   for (Port dir : dirs) {
-    switch (dir.first) {
+    switch (dir.bundle) {
     case WireBundle::Core:
       out += "Core";
       break;
@@ -51,7 +51,7 @@ std::string stringifyDirs(std::set<Port> dirs) {
     default:
       out += "X";
     }
-    out += std::to_string(dir.second);
+    out += std::to_string(dir.channel);
     if (++count < dirs.size())
       out += ",";
   }
@@ -66,8 +66,8 @@ std::string stringifySwitchSettings(SwitchSettings settings) {
   std::string out = "\tSwitchSettings: ";
   for (const auto &[sb, setting] : settings) {
     out += (std::string) "(" + std::to_string(sb->col) + ", " +
-           std::to_string(sb->row) + ") " + stringifyDir(setting.first) +
-           " -> " + stringifyDirs(setting.second) + " | ";
+           std::to_string(sb->row) + ") " + stringifyDir(setting.src) + " -> " +
+           stringifyDirs(setting.dsts) + " | ";
   }
   return out + "\n";
 }
@@ -79,7 +79,7 @@ std::string stringifySwitchSettings(SwitchSettings settings) {
 class DynamicTileAnalysis {
 public:
   DeviceOp &device;
-  int maxCol, maxRow;
+  uint32_t maxCol, maxRow;
   Pathfinder pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
@@ -109,19 +109,16 @@ public:
     for (FlowOp flowOp : device.getOps<FlowOp>()) {
       TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
       TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-      TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
-      TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
-      Port srcPort =
-          std::make_pair(flowOp.getSourceBundle(), flowOp.getSourceChannel());
-      Port dstPort =
-          std::make_pair(flowOp.getDestBundle(), flowOp.getDestChannel());
+      TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+      TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+      Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
+      Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
       LLVM_DEBUG(llvm::dbgs()
-                 << "\tAdding Flow: (" << srcCoords.first << ", "
-                 << srcCoords.second << ")"
-                 << stringifyWireBundle(srcPort.first) << (int)srcPort.second
-                 << " -> (" << dstCoords.first << ", " << dstCoords.second
-                 << ")" << stringifyWireBundle(dstPort.first)
-                 << (int)dstPort.second << "\n");
+                 << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
+                 << ")" << stringifyWireBundle(srcPort.bundle)
+                 << srcPort.channel << " -> (" << dstCoords.col << ", "
+                 << dstCoords.row << ")" << stringifyWireBundle(dstPort.bundle)
+                 << (int)dstPort.channel << "\n");
       pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
     }
 
@@ -129,16 +126,15 @@ public:
     // available search all existing SwitchBoxOps for exising connections
     for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
       for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-        TileID existingCoord =
-            std::make_pair(switchboxOp.colIndex(), switchboxOp.rowIndex());
-        Port existingPort = std::make_pair(connectOp.getDestBundle(),
-                                           connectOp.getDestChannel());
+        TileID existingCoord = {switchboxOp.colIndex(), switchboxOp.rowIndex()};
+        Port existingPort = {connectOp.getDestBundle(),
+                             connectOp.getDestChannel()};
         if (!pathfinder.addFixedConnection(existingCoord, existingPort))
           switchboxOp.emitOpError(
-              "Couldn't connect tile (" + std::to_string(existingCoord.first) +
-              ", " + std::to_string(existingCoord.second) + ") to port (" +
-              stringifyWireBundle(existingPort.first) + ", " +
-              std::to_string(existingPort.second) + ")\n");
+              "Couldn't connect tile (" + std::to_string(existingCoord.col) +
+              ", " + std::to_string(existingCoord.row) + ") to port (" +
+              stringifyWireBundle(existingPort.bundle) + ", " +
+              std::to_string(existingPort.channel) + ")\n");
       }
     }
 
@@ -152,34 +148,34 @@ public:
     // initialize all flows as unprocessed to prep for rewrite
     for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
       processedFlows[pathEndPoint] = false;
-      LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.first->col
-                              << "," << pathEndPoint.first->row << "):\t");
+      LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb->col
+                              << "," << pathEndPoint.sb->row << "):\t");
       LLVM_DEBUG(llvm::dbgs() << stringifySwitchSettings(switchSetting));
     }
 
     // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
     for (auto tileOp : device.getOps<TileOp>()) {
-      int col, row;
+      uint32_t col, row;
       col = tileOp.colIndex();
       row = tileOp.rowIndex();
       maxCol = std::max(maxCol, col);
       maxRow = std::max(maxRow, row);
-      assert(coordToTile.count(std::make_pair(col, row)) == 0);
-      coordToTile[std::make_pair(col, row)] = tileOp;
+      assert(coordToTile.count({col, row}) == 0);
+      coordToTile[{col, row}] = tileOp;
     }
     for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
-      int col, row;
+      uint32_t col, row;
       col = switchboxOp.colIndex();
       row = switchboxOp.rowIndex();
-      assert(coordToSwitchbox.count(std::make_pair(col, row)) == 0);
-      coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
+      assert(coordToSwitchbox.count({col, row}) == 0);
+      coordToSwitchbox[{col, row}] = switchboxOp;
     }
     for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
-      int col, row;
+      uint32_t col, row;
       col = shimmuxOp.colIndex();
       row = shimmuxOp.rowIndex();
-      assert(coordToShimMux.count(std::make_pair(col, row)) == 0);
-      coordToShimMux[std::make_pair(col, row)] = shimmuxOp;
+      assert(coordToShimMux.count({col, row}) == 0);
+      coordToShimMux[{col, row}] = shimmuxOp;
     }
 
     LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
@@ -188,47 +184,47 @@ public:
   int getMaxCol() { return maxCol; }
   int getMaxRow() { return maxRow; }
 
-  TileOp getTile(OpBuilder &builder, int col, int row) {
-    if (coordToTile.count(std::make_pair(col, row))) {
-      return coordToTile[std::make_pair(col, row)];
+  TileOp getTile(OpBuilder &builder, uint32_t col, uint32_t row) {
+    if (coordToTile.count({col, row})) {
+      return coordToTile[{col, row}];
     } else {
       TileOp tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
-      coordToTile[std::make_pair(col, row)] = tileOp;
+      coordToTile[{col, row}] = tileOp;
       maxCol = std::max(maxCol, col);
       maxRow = std::max(maxRow, row);
       return tileOp;
     }
   }
 
-  SwitchboxOp getSwitchbox(OpBuilder &builder, int col, int row) {
+  SwitchboxOp getSwitchbox(OpBuilder &builder, uint32_t col, uint32_t row) {
     assert(col >= 0);
     assert(row >= 0);
-    if (coordToSwitchbox.count(std::make_pair(col, row))) {
-      return coordToSwitchbox[std::make_pair(col, row)];
+    if (coordToSwitchbox.count({col, row})) {
+      return coordToSwitchbox[{col, row}];
     } else {
       SwitchboxOp switchboxOp = builder.create<SwitchboxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
       switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
-      coordToSwitchbox[std::make_pair(col, row)] = switchboxOp;
+      coordToSwitchbox[{col, row}] = switchboxOp;
       maxCol = std::max(maxCol, col);
       maxRow = std::max(maxRow, row);
       return switchboxOp;
     }
   }
 
-  ShimMuxOp getShimMux(OpBuilder &builder, int col) {
+  ShimMuxOp getShimMux(OpBuilder &builder, uint32_t col) {
     assert(col >= 0);
-    int row = 0;
-    if (coordToShimMux.count(std::make_pair(col, row))) {
-      return coordToShimMux[std::make_pair(col, row)];
+    uint32_t row = 0;
+    if (coordToShimMux.count({col, row})) {
+      return coordToShimMux[{col, row}];
     } else {
       assert(getTile(builder, col, row).isShimNOCTile());
       ShimMuxOp switchboxOp = builder.create<ShimMuxOp>(
           builder.getUnknownLoc(), getTile(builder, col, row));
       switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
                                    builder.getUnknownLoc());
-      coordToShimMux[std::make_pair(col, row)] = switchboxOp;
+      coordToShimMux[{col, row}] = switchboxOp;
       maxCol = std::max(maxCol, col);
       maxRow = std::max(maxRow, row);
       return switchboxOp;
@@ -276,28 +272,28 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
     Operation *Op = flowOp.getOperation();
 
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
-    TileID srcCoords = std::make_pair(srcTile.colIndex(), srcTile.rowIndex());
+    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
     auto srcBundle = flowOp.getSourceBundle();
     auto srcChannel = flowOp.getSourceChannel();
-    Port srcPort = std::make_pair(srcBundle, srcChannel);
+    Port srcPort = {srcBundle, srcChannel};
 
 #ifndef NDEBUG
     TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
-    TileID dstCoords = std::make_pair(dstTile.colIndex(), dstTile.rowIndex());
+    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
     auto dstBundle = flowOp.getDestBundle();
     auto dstChannel = flowOp.getDestChannel();
     LLVM_DEBUG(llvm::dbgs()
-               << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.first
-               << ", " << srcCoords.second << ")"
-               << stringifyWireBundle(srcBundle) << (int)srcChannel << " -> ("
-               << dstCoords.first << ", " << dstCoords.second << ")"
-               << stringifyWireBundle(dstBundle) << (int)dstChannel << "\n\t");
+               << "\n\t---Begin rewrite() for flowOp: (" << srcCoords.col
+               << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)
+               << srcChannel << " -> (" << dstCoords.col << ", "
+               << dstCoords.row << ")" << stringifyWireBundle(dstBundle)
+               << (int)dstChannel << "\n\t");
 #endif
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
     Switchbox *srcSB = analyzer.pathfinder.getSwitchbox(srcCoords);
-    PathEndPoint srcPoint = std::make_pair(srcSB, srcPort);
+    PathEndPoint srcPoint = {srcSB, srcPort};
     if (!analyzer.processedFlows[srcPoint]) {
       SwitchSettings settings = analyzer.flowSolutions[srcPoint];
       // add connections for all the Switchboxes in SwitchSettings
@@ -337,7 +333,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
             }
           }
         }
-        for (const auto &[bundle, channel] : setting.second) {
+        for (const auto &[bundle, channel] : setting.dsts) {
           // handle special shim connectivity
           if (*curr == *srcSB &&
               analyzer.getTile(rewriter, srcSB->col, srcSB->row)
@@ -375,19 +371,19 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
               }
             }
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.first.first, setting.first.second,
+                          flowOp, setting.src.bundle, setting.src.channel,
                           WireBundle::South, shimCh);
           } else {
             // otherwise, regular switchbox connection
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
-                          flowOp, setting.first.first, setting.first.second,
+                          flowOp, setting.src.bundle, setting.src.channel,
                           bundle, channel);
           }
         }
 
         LLVM_DEBUG(llvm::dbgs() << " (" << curr->col << "," << curr->row << ") "
-                                << stringifyDir(setting.first) << " -> "
-                                << stringifyDirs(setting.second) << " | ");
+                                << stringifyDir(setting.src) << " -> "
+                                << stringifyDirs(setting.dsts) << " | ");
       }
 
       LLVM_DEBUG(llvm::dbgs()
@@ -442,23 +438,22 @@ struct AIEPathfinderPass
       signalPassFailure();
 
     // Populate wires between switchboxes and tiles.
-    for (int col = 0; col <= analyzer.getMaxCol(); col++) {
-      for (int row = 0; row <= analyzer.getMaxRow(); row++) {
+    for (uint32_t col = 0; col <= analyzer.getMaxCol(); col++) {
+      for (uint32_t row = 0; row <= analyzer.getMaxRow(); row++) {
         TileOp tile;
-        if (analyzer.coordToTile.count(std::make_pair(col, row)))
-          tile = analyzer.coordToTile[std::make_pair(col, row)];
+        if (analyzer.coordToTile.count({col, row}))
+          tile = analyzer.coordToTile[{col, row}];
         else
           continue;
         SwitchboxOp sw;
-        if (analyzer.coordToSwitchbox.count(std::make_pair(col, row)))
-          sw = analyzer.coordToSwitchbox[std::make_pair(col, row)];
+        if (analyzer.coordToSwitchbox.count({col, row}))
+          sw = analyzer.coordToSwitchbox[{col, row}];
         else
           continue;
         if (col > 0) {
           // connections east-west between stream switches
-          if (analyzer.coordToSwitchbox.count(std::make_pair(col - 1, row))) {
-            auto westsw =
-                analyzer.coordToSwitchbox[std::make_pair(col - 1, row)];
+          if (analyzer.coordToSwitchbox.count({col - 1, row})) {
+            auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
             builder.create<WireOp>(builder.getUnknownLoc(), westsw,
                                    WireBundle::East, sw, WireBundle::West);
           }
@@ -472,16 +467,15 @@ struct AIEPathfinderPass
                                  sw, WireBundle::DMA);
           // connections north-south inside array ( including connection to shim
           // row)
-          if (analyzer.coordToSwitchbox.count(std::make_pair(col, row - 1))) {
-            auto southsw =
-                analyzer.coordToSwitchbox[std::make_pair(col, row - 1)];
+          if (analyzer.coordToSwitchbox.count({col, row - 1})) {
+            auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
             builder.create<WireOp>(builder.getUnknownLoc(), southsw,
                                    WireBundle::North, sw, WireBundle::South);
           }
         } else if (row == 0) {
           if (tile.isShimNOCTile()) {
-            if (analyzer.coordToShimMux.count(std::make_pair(col, 0))) {
-              auto shimsw = analyzer.coordToShimMux[std::make_pair(col, 0)];
+            if (analyzer.coordToShimMux.count({col, 0})) {
+              auto shimsw = analyzer.coordToShimMux[{col, 0}];
               builder.create<WireOp>(
                   builder.getUnknownLoc(), shimsw,
                   WireBundle::North, // Changed to connect into the north

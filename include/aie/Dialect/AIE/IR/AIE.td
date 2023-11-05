@@ -130,11 +130,11 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   }];
 
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
-    int colIndex() { return getCol(); }
-    int rowIndex() { return getRow(); }
-    TileID getTileID() { return std::make_pair(getCol(), getRow()); }
+    uint32_t getNumSourceConnections(WireBundle bundle);
+    uint32_t getNumDestConnections(WireBundle bundle);
+    uint32_t colIndex() { return getCol(); }
+    uint32_t rowIndex() { return getRow(); }
+    TileID getTileID() { return {getCol(), getRow()}; }
     bool isShimTile() { return getRow() == 0; }
     bool isMemTile();
     bool isShimNOCTile();
@@ -204,10 +204,10 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, TileElement,
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
-    int colIndex();
-    int rowIndex();
+    uint32_t getNumSourceConnections(WireBundle bundle);
+    uint32_t getNumDestConnections(WireBundle bundle);
+    uint32_t colIndex();
+    uint32_t rowIndex();
     TileOp getTileOp();
   }];
   let builders = [
@@ -273,10 +273,10 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
-    int getNumSourceConnections(WireBundle bundle);
-    int getNumDestConnections(WireBundle bundle);
+    uint32_t colIndex();
+    uint32_t rowIndex();
+    uint32_t getNumSourceConnections(WireBundle bundle);
+    uint32_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
   }];
  let builders = [
@@ -319,8 +319,8 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs, Ha
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
+    uint32_t colIndex();
+    uint32_t rowIndex();
     TileOp getTileOp();
     static StringRef getDefaultDialect() { return "AIE"; }
   }];
@@ -365,8 +365,8 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, IsCoreTile, TileElement]>, Results
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
+    uint32_t colIndex();
+    uint32_t rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     TileOp getTileOp();
   }];
@@ -398,7 +398,7 @@ def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
   }];
   let assemblyFormat = [{ `(` $col `)` attr-dict }];
   let extraClassDeclaration = [{
-    int colIndex() { return getCol(); }
+    uint32_t colIndex() { return getCol(); }
   }];
 }
 
@@ -430,10 +430,10 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
     `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return getSourceChannel(); }
-    int destIndex() { return getDestChannel(); }
-    Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
-    Port destPort() { return std::make_pair(getDestBundle(), destIndex()); }
+    uint32_t sourceIndex() { return getSourceChannel(); }
+    uint32_t destIndex() { return getDestChannel(); }
+    Port sourcePort() { return {getSourceBundle(), sourceIndex()}; }
+    Port destPort() { return {getDestBundle(), destIndex()}; }
   }];
 }
 
@@ -465,21 +465,9 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int sourceIndex() { return getSourceChannel(); }
-    int destIndex() { return getDestChannel(); }
+    uint32_t sourceIndex() { return getSourceChannel(); }
+    uint32_t destIndex() { return getDestChannel(); }
   }];
-  // let builders = [
-  //   OpBuilder<(ins "Value":$source, "int":$sourceBundle,
-  //     "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel), [{
-  //     build($_builder, $_state,
-  //           source,
-  //           $_builder.getI32IntegerAttr(sourceBundle),
-  //           $_builder.getI32IntegerAttr(sourceChannel),
-  //           dest,
-  //           $_builder.getI32IntegerAttr(destBundle),
-  //           $_builder.getI32IntegerAttr(destChannel));
-  //     }]>
-  // ];
 }
 
 def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Index)> {
@@ -512,17 +500,17 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
     `<` $arbiterID `>` `(` $msel `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int arbiterIndex() { return getArbiterID(); }
-    int getMselValue() { return getMsel(); }
+    uint8_t arbiterIndex() { return getArbiterID(); }
+    uint8_t getMselValue() { return getMsel(); }
   }];
 
   let builders = [
-    OpBuilder<(ins "int":$arbiterID, "int":$msel),
+    OpBuilder<(ins "uint8_t":$arbiterID, "uint8_t":$msel),
     [{
-              build($_builder, $_state, $_builder.getIndexType(),
-                    $_builder.getI8IntegerAttr(arbiterID),
-                    $_builder.getI8IntegerAttr(msel));
-              }]>
+      build($_builder, $_state, $_builder.getIndexType(),
+            $_builder.getI8IntegerAttr(arbiterID),
+            $_builder.getI8IntegerAttr(msel));
+    }]>
   ];
 }
 
@@ -559,8 +547,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(o
     `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
   }];
   let extraClassDeclaration = [{
-    int destIndex() { return getDestChannel(); }
-    Port destPort() { return std::make_pair(getDestBundle(), destIndex()); }
+    uint32_t destIndex() { return getDestChannel(); }
+    Port destPort() { return {getDestBundle(), destIndex()}; }
   }];
 }
 
@@ -580,16 +568,6 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   let assemblyFormat = [{
     `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
-  // let builders = [
-  //   OpBuilder<(ins "Value":$source, "int":$sourceBundle, "Value":$dest,
-  //     "int":$destBundle), [{
-  //     build($_builder, $_state,
-  //           source,
-  //           $_builder.getI32IntegerAttr((int)sourceBundle),
-  //           dest,
-  //           $_builder.getI32IntegerAttr((int)destBundle));
-  //     }]>
-  // ];
 }
 
 def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
@@ -611,8 +589,8 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int sourceIndex() { return getSourceChannel(); }
-    Port sourcePort() { return std::make_pair(getSourceBundle(), sourceIndex()); }
+    uint32_t sourceIndex() { return getSourceChannel(); }
+    Port sourcePort() { return {getSourceBundle(), sourceIndex()}; }
   }];
 }
 
@@ -654,20 +632,12 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
     ```
   }];
   let extraClassDeclaration = [{
-    int maskInt() { return getMask(); }
-    int valueInt() { return getValue(); }
+    uint8_t maskInt() { return getMask(); }
+    uint8_t valueInt() { return getValue(); }
   }];
   let assemblyFormat = [{
     `(` $mask `,` $value `,` $amsel `)` attr-dict
   }];
-  // let builders = [
-  //   OpBuilder<(ins "int":$mask, "int":$value, "Value":$amsel), [{
-  //     build($_builder, $_state,
-  //           $_builder.getI8IntegerAttr(mask),
-  //           $_builder.getI8IntegerAttr(value),
-  //           amsel);
-  //     }]>
-  // ];
 }
 
 
@@ -694,7 +664,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int IDInt() { return getID(); }
+    uint8_t IDInt() { return getID(); }
   }];
 }
 
@@ -715,8 +685,8 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int channelIndex() { return getChannel(); }
-    Port port() { return std::make_pair(getBundle(), channelIndex()); }
+    uint32_t channelIndex() { return getChannel(); }
+    Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
 
@@ -738,8 +708,8 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
   let extraClassDeclaration = [{
-    int channelIndex() { return getChannel(); }
-    Port port() { return std::make_pair(getBundle(), channelIndex()); }
+    uint32_t channelIndex() { return getChannel(); }
+    Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
 
@@ -770,9 +740,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
         AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
         AIE.useLock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
-
     ```
-    
   }];
 
   let arguments = (
@@ -785,7 +753,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   }];
 
   let extraClassDeclaration = [{
-    int getPacketID() { return getPacketId(); }
+    uint32_t getPacketID() { return getPacketId(); }
   }];
 
 }
@@ -891,15 +859,15 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
-    int getOffsetValue() { return getOffset(); }
-    int getLenValue() { return getLen(); }
+    uint32_t getOffsetValue() { return getOffset(); }
+    uint32_t getLenValue() { return getLen(); }
     bool isA() { return (getAB() == 0); }
     bool isB() { return (getAB() == 1); }
   }];
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+    OpBuilder<(ins "Value":$buffer, "uint32_t":$offset, "uint32_t":$len, "uint32_t":$AB), [{
       odsState.addOperands(buffer);
       odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
       odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
@@ -952,8 +920,8 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "f
   let builders = [
     OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
     [{
-              build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
-              }]>
+      build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
+    }]>
   ];
 }
 
@@ -989,10 +957,10 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, Is
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
+    uint32_t colIndex();
+    uint32_t rowIndex();
     TileOp getTileOp();
-    int maxSizeInBytes() { return 32768; }
+    uint32_t maxSizeInBytes() { return 32768; }
     // CallableOpInterface
     Region *getCallableRegion();
     ArrayRef<Type> getArgumentTypes() { return getOperand().getType(); }
@@ -1042,8 +1010,8 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableO
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
+    uint32_t colIndex();
+    uint32_t rowIndex();
     TileOp getTileOp();
     // CallableOpInterface
     Region *getCallableRegion();
@@ -1127,12 +1095,12 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
       }
       llvm_unreachable("unreachable");
     }
-    int getLockIDValue() { 
+    uint32_t getLockIDValue() {
       assert(getLockID().has_value() && "Lock has no ID value");
       return getLockID().value();
     }
-    int colIndex();
-    int rowIndex();
+    uint32_t colIndex();
+    uint32_t rowIndex();
     TileOp getTileOp();
   }];
   let builders = [
@@ -1181,8 +1149,8 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     bool acquire() { return (getAction() == LockAction::Acquire); }
     bool acquire_ge() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
-    int getLockValue() { return getValue(); }
-    int getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
+    uint32_t getLockValue() { return getValue(); }
+    uint32_t getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
     LockOp getLockOp() { return dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp()); }
   }];
 }
@@ -1483,7 +1451,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int size(int index = 0) { 
+    uint32_t size( uint32_t index = 0) {
       if (isa<ArrayAttr>(getElemNumber()))
         return dyn_cast<IntegerAttr>(dyn_cast<ArrayAttr>(getElemNumber())[index]).getInt(); 
       else 
@@ -1641,7 +1609,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectFifo.acquire", []> {
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    int acqNumber() { return getSize(); }
+    uint32_t acqNumber() { return getSize(); }
   }];
 }
 
@@ -1675,7 +1643,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectFifo.release", []> {
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    int relNumber() { return getSize(); }
+    uint32_t relNumber() { return getSize(); }
   }];
 }
 
@@ -1759,7 +1727,7 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
     ObjectFifoCreateOp getObjectFifo();
     DenseIntElementsAttr getAcquirePattern() { return getAcquirePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
     DenseIntElementsAttr getReleasePattern() { return getReleasePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
-    int getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
+    uint32_t getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
   }];
 }
 
