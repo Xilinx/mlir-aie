@@ -129,11 +129,16 @@ public:
     // available search all existing SwitchBoxOps for exising connections
     for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
       for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-        TileID existing_coord =
+        TileID existingCoord =
             std::make_pair(switchboxOp.colIndex(), switchboxOp.rowIndex());
-        Port existing_port = std::make_pair(connectOp.getDestBundle(),
-                                            connectOp.getDestChannel());
-        pathfinder.addFixedConnection(existing_coord, existing_port);
+        Port existingPort = std::make_pair(connectOp.getDestBundle(),
+                                           connectOp.getDestChannel());
+        if (!pathfinder.addFixedConnection(existingCoord, existingPort))
+          switchboxOp.emitOpError(
+              "Couldn't connect tile (" + std::to_string(existingCoord.first) +
+              ", " + std::to_string(existingCoord.second) + ") to port (" +
+              stringifyWireBundle(existingPort.first) + ", " +
+              std::to_string(existingPort.second) + ")\n");
       }
     }
 
@@ -508,14 +513,14 @@ struct AIEPathfinderPass
 
     // If the routing violates architecture-specific routing constraints, then
     // attempt to partially reroute.
-    const auto &target_model = d.getTargetModel();
+    const auto &targetModel = d.getTargetModel();
     std::vector<ConnectOp> problemConnects;
     d.walk([&](ConnectOp connect) {
       if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
         auto tile = sw.getTileOp();
         // Constraint: memtile stream switch constraints
         if (tile.isMemTile() &&
-            !target_model.isLegalMemtileConnection(
+            !targetModel.isLegalMemtileConnection(
                 connect.getSourceBundle(), connect.getSourceChannel(),
                 connect.getDestBundle(), connect.getDestChannel())) {
           problemConnects.push_back(connect);
@@ -523,11 +528,11 @@ struct AIEPathfinderPass
       }
     });
     for (auto connect : problemConnects) {
-      auto sw_box = connect->getParentOfType<SwitchboxOp>();
+      auto swBox = connect->getParentOfType<SwitchboxOp>();
       builder.setInsertionPoint(connect);
-      auto northSw = getSwitchbox(d, sw_box.colIndex(), sw_box.rowIndex() + 1);
-      auto southSw = getSwitchbox(d, sw_box.colIndex(), sw_box.rowIndex() - 1);
-      attemptFixupMemTileRouting(builder, sw_box, northSw, southSw, connect);
+      auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
+      auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
+      attemptFixupMemTileRouting(builder, swBox, northSw, southSw, connect);
     }
 
     return;
@@ -648,9 +653,9 @@ struct AIEPathfinderPass
 
   SwitchboxOp getSwitchbox(DeviceOp &d, int col, int row) {
     SwitchboxOp output = nullptr;
-    d.walk([&](SwitchboxOp sw_box) {
-      if (sw_box.colIndex() == col && sw_box.rowIndex() == row) {
-        output = sw_box;
+    d.walk([&](SwitchboxOp swBox) {
+      if (swBox.colIndex() == col && swBox.rowIndex() == row) {
+        output = swBox;
       }
     });
     return output;

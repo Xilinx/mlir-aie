@@ -102,7 +102,7 @@ public:
   Pathfinder() = default;
   Pathfinder(int maxCol, int maxRow, DeviceOp &d);
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
-  void addFixedConnection(TileID coord, Port port);
+  bool addFixedConnection(TileID coord, Port port);
   bool isLegal();
   std::map<PathEndPoint, SwitchSettings> findPaths(int maxIterations = 1000);
 

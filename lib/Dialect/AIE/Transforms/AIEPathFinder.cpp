@@ -91,7 +91,6 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
   Pathfinder::maxIterReached = false;
 }
 
-// TODO: refactor this
 // Add a flow from src to dst can have an arbitrary number of dst locations due
 // to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
@@ -131,15 +130,17 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-void Pathfinder::addFixedConnection(TileID coords, Port port) {
+bool Pathfinder::addFixedConnection(TileID coords, Port port) {
   // find the correct Channel and indicate the fixed direction
   auto matchingCh = std::find_if(edges.begin(), edges.end(), [&](Channel &ch) {
     return ch.src.col == coords.first && ch.src.row == coords.second &&
            ch.bundle == port.first;
   });
-  // TODO: report an error here instead of silently failing
-  if (matchingCh != edges.end())
-    (*matchingCh).fixedCapacity.insert((uint32_t)port.second);
+  if (matchingCh == edges.end())
+    return false;
+
+  matchingCh->fixedCapacity.insert((uint32_t)port.second);
+  return true;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();
