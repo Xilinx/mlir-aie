@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/Transforms/AIEPathfinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"

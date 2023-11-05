@@ -10,7 +10,7 @@ add_mlir_dialect_library(
   AIEAssignBuffers.cpp
   AIEAssignLockIDs.cpp
   AIEFindFlows.cpp
-  AIEPathfinder.cpp
+  AIEPathFinder.cpp
   AIECreatePathFindFlows.cpp
   AIECoreToStandard.cpp
   AIECreatePacketFlows.cpp

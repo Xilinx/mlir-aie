@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPathfinder.h"
+#include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
