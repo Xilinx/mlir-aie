@@ -15,7 +15,7 @@ clang/llvm 14+ from source https://github.com/llvm/llvm-project
 
 Xilinx Vitis can be downloaded and installed from the [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) site.
 
-In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip libboost-all-dev` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
+In order to successfully install Vitis on a fresh bare-bones Ubuntu install, some additional prerequisites are required, [documented here](https://support.xilinx.com/s/article/63794?language=en_US). For Ubuntu 20.04, the installation should succeed if you additionally install the following packages: `libncurses5 libtinfo5 libncurses5-dev libncursesw5-dev ncurses-compat-libs libstdc++6:i386 libgtk2.0-0:i386 dpkg-dev:i386 python3-pip` Further note that the above mentioned cmake prerequisite is _not_ satisfied by the package provided by Ubuntu; you will need to obtain a more current version.
 
 NOTE: Using the Vitis recommended `settings64.sh` script to set up your environement can cause tool conflicts. Setup your environment in the following order for aietools and Vitis:
  
