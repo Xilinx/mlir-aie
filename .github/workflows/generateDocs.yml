@@ -30,7 +30,7 @@ jobs:
           submodules: "true"
 
       - name: Install packages
-        run: sudo apt-get install -y libboost-all-dev graphviz lld
+        run: sudo apt-get install -y graphviz lld
 
       - name: Install Python packages
         run: sudo pip install psutil rich numpy pybind11

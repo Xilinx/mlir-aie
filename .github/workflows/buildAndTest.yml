@@ -18,7 +18,6 @@ defaults:
 env:
   # Run apt package manager in the CI in non-interactive mode.
   # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
-  # freezes libboost installation.
   DEBIAN_FRONTEND: noninteractive
 
 jobs:
@@ -119,9 +118,6 @@ jobs:
         with:
           fetch-depth: 2
           submodules: "true"
-
-      - name: Install libboost
-        run: apt-get install -y libboost-all-dev
 
       - name: Install Python and other packages
         # Install cmake here to get the latest version to compile

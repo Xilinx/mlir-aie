@@ -354,7 +354,6 @@ class flow_runner:
                  "-I" + opts.aietools_path + "/include",
                  "-I" + opts.aietools_path + "/include/drivers/aiengine",
                  "-I" + opts.aietools_path + "/data/osci_systemc/include",
-                 "-I" + opts.aietools_path + "/tps/boost_1_72_0",
                  "-I" + opts.aietools_path + "/include/xtlm/include",
                  "-I" + opts.aietools_path + "/include/common_cpp/common_cpp_v1_0/include",
                  "-I" + runtime_testlib_include_path,
