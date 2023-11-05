@@ -25,12 +25,12 @@ def AIE_Dialect : Dialect {
   let cppNamespace = "::xilinx::AIE";
   let description = [{
 
-This is a dialect for describing netlists of AIE components in a
-Versal device.  It focuses on representing logical stream connections
-between cores and DMAs, along with the implementation of those logical
-connections in the various switch components.  In the dialect, a
-switch is referred to as `switchbox` to avoid confusion with the
-`switch` keyword in C/C++.
+    This is a dialect for describing netlists of AIE components in a
+    Versal device.  It focuses on representing logical stream connections
+    between cores and DMAs, along with the implementation of those logical
+    connections in the various switch components.  In the dialect, a
+    switch is referred to as `switchbox` to avoid confusion with the
+    `switch` keyword in C/C++.
 
   }];
   let useDefaultTypePrinterParser = 1;
@@ -70,9 +70,10 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
                                   "scalar">;
 
 
-def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
-                                    HasParent<"ModuleOp">,
-                                    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove]> {
+def AIE_DeviceOp: AIE_Op<"device", [
+    AIETarget, HasParent<"ModuleOp">,
+    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+  ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
     This operation describes a design that executes on a particular AIEngine device.
@@ -97,9 +98,8 @@ def AIE_DeviceOp: AIE_Op<"device", [AIETarget,
     }
     ```
   }];
-  let arguments = (
-    ins AIEDevice:$device
-  );
+
+  let arguments = (ins AIEDevice:$device);
   let regions = (region AnyRegion:$bodyRegion);
   let assemblyFormat = [{
     `(` $device `)` regions attr-dict
@@ -141,6 +141,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     bool isShimPLTile();
     bool isShimNOCorPLTile();
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
+
     MemOp getMemOp() {
       auto users = getResult().getUsers();
       for(auto user : users)
@@ -148,6 +149,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
           return memOp;
       return nullptr;
     }
+
     CoreOp getCoreOp() {
       auto users = getResult().getUsers();
       for(auto user : users)
@@ -160,15 +162,16 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
   let assemblyFormat = [{
     `(` $col `,` $row `)` attr-dict
   }];
+
   let hasVerifier = 1;
 
   let builders = [
-    OpBuilder<(ins "int":$col, "int":$row),
+    OpBuilder<(ins "uint32_t":$col, "uint32_t":$row),
     [{
-              build($_builder, $_state, $_builder.getIndexType(),
-                    $_builder.getI32IntegerAttr(col),
-                    $_builder.getI32IntegerAttr(row));
-              }]>
+      build($_builder, $_state, $_builder.getIndexType(),
+            $_builder.getI32IntegerAttr(col),
+            $_builder.getI32IntegerAttr(row));
+    }]>
   ];
 }
 
@@ -180,12 +183,11 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
   let assemblyFormat = [{ attr-dict }];
 }
 
-def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, TileElement,
-                                          SingleBlockImplicitTerminator<"EndOp">]>,
-                     Results<(outs Index)> {
-  let arguments = (
-    ins Index:$tile
-  );
+def AIE_SwitchboxOp: AIE_Op<"switchbox", [
+    Interconnect, TileElement,
+    SingleBlockImplicitTerminator<"EndOp">
+  ]>, Results<(outs Index)> {
+  let arguments = (ins Index:$tile);
 
   let summary = "Declare a switch";
   let description = [{
@@ -200,9 +202,11 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, TileElement,
     }
     ```
   }];
+
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t getNumSourceConnections(WireBundle bundle);
     uint32_t getNumDestConnections(WireBundle bundle);
@@ -210,16 +214,18 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [Interconnect, TileElement,
     uint32_t rowIndex();
     TileOp getTileOp();
   }];
+
   let builders = [
     OpBuilder<(ins "Value":$tile),
     [{
-              build($_builder, $_state, $_builder.getIndexType(), tile);
-              }]>
+      build($_builder, $_state, $_builder.getIndexType(), tile);
+    }]>
   ];
 }
 
-def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<"EndOp">]>,
-                         Results<(outs Index)> {
+def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [
+    SingleBlockImplicitTerminator<"EndOp">
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins I32Attr:$col
   );
@@ -241,17 +247,12 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shimswitchbox", [SingleBlockImplicitTerminator<
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
   let hasVerifier = 1;
-  let builders = [
-    OpBuilder<(ins "Type":$resultType,
-                      "int":$col), [{
-        build($_builder, $_state, resultType, $_builder.getI32IntegerAttr(col));
-    }]>
-  ];
 }
 
-def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
-                                      SingleBlockImplicitTerminator<"EndOp">]>,
-                         Results<(outs Index)> {
+def AIE_ShimMuxOp: AIE_Op<"shimmux", [
+    Interconnect, TileElement, IsShimTile,
+    SingleBlockImplicitTerminator<"EndOp">
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -272,6 +273,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
   let regions = (region AnyRegion:$connections);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t colIndex();
     uint32_t rowIndex();
@@ -279,6 +281,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
     uint32_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
   }];
+
  let builders = [
     OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
@@ -286,9 +289,10 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [Interconnect, TileElement, IsShimTile,
  ];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs, HasValidDMAChannels, IsShimNOCTile
-                                      /*, CallableOpInterface*/]>,
-                         Results<(outs Index)> {
+def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
+    FlowEndPoint, TileElement, HasValidBDs,
+    HasValidDMAChannels, IsShimNOCTile
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -318,6 +322,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs, Ha
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t colIndex();
     uint32_t rowIndex();
@@ -326,7 +331,9 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [FlowEndPoint, TileElement, HasValidBDs, Ha
   }];
 }
 
-def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, IsCoreTile, TileElement]>, Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", [
+    FlowEndPoint, IsCoreTile, TileElement
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
     DefaultValuedAttr<I32Attr, "0x400">:$stackSize
@@ -361,15 +368,18 @@ def AIE_CoreOp: AIE_Op<"core", [FlowEndPoint, IsCoreTile, TileElement]>, Results
     } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
     ```
   }];
+
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t colIndex();
     uint32_t rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     TileOp getTileOp();
   }];
+
   let builders = [
     OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
@@ -389,14 +399,13 @@ def AIE_DebugOp: AIE_Op<"debug", []> {
 }
 
 def AIE_PLIOOp: AIE_Op<"plio", []>, Results<(outs Index)> {
-  let arguments = (
-    ins I32Attr:$col
-  );
+  let arguments = (ins I32Attr:$col);
   let summary = "Declare an interface to the PL";
   let description = [{
     An interface to the PL.
   }];
   let assemblyFormat = [{ `(` $col `)` attr-dict }];
+
   let extraClassDeclaration = [{
     uint32_t colIndex() { return getCol(); }
   }];
@@ -426,9 +435,11 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
     }
     ```
   }];
+
   let assemblyFormat = [{
     `<` $sourceBundle `:` $sourceChannel `,` $destBundle `:` $destChannel `>` attr-dict
   }];
+
   let extraClassDeclaration = [{
     uint32_t sourceIndex() { return getSourceChannel(); }
     uint32_t destIndex() { return getDestChannel(); }
@@ -461,9 +472,11 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
       aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
     ```
   }];
+
   let assemblyFormat = [{
     `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
   }];
+
   let extraClassDeclaration = [{
     uint32_t sourceIndex() { return getSourceChannel(); }
     uint32_t destIndex() { return getDestChannel(); }
@@ -499,6 +512,7 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   let assemblyFormat = [{
     `<` $arbiterID `>` `(` $msel `)` attr-dict
   }];
+
   let extraClassDeclaration = [{
     uint8_t arbiterIndex() { return getArbiterID(); }
     uint8_t getMselValue() { return getMsel(); }
@@ -543,9 +557,11 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [HasParent<"SwitchboxOp">]>, Results<(o
       AIE.masterset("West" : 2, %a1_0, %a2_3) // this is illegal, please don't do this
       AIE.masterset("West" : 3, %a1_0, %a1_1) // this is OK
   }];
+
   let assemblyFormat = [{
     `(` $destBundle `:` $destChannel `,` $amsels `)` attr-dict
   }];
+
   let extraClassDeclaration = [{
     uint32_t destIndex() { return getDestChannel(); }
     Port destPort() { return {getDestBundle(), destIndex()}; }
@@ -565,13 +581,13 @@ def AIE_WireOp: AIE_Op<"wire", []> {
     Typically, these components are switches, represented by an `aie.switchbox` operation, and tiles,
     represented by an [aie.tile](#aietile-aietileop) operation.
   }];
+
   let assemblyFormat = [{
     `(` $source `:` $sourceBundle `,` $dest `:` $destBundle `)` attr-dict
   }];
 }
 
-def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
-                                              SingleBlockImplicitTerminator<"EndOp">]> {
+def AIE_PacketRulesOp: AIE_Op<"packetrules", [SingleBlockImplicitTerminator<"EndOp">]> {
   let arguments = (
     ins WireBundle:$sourceBundle,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$sourceChannel
@@ -586,8 +602,10 @@ def AIE_PacketRulesOp: AIE_Op<"packetrules", [/*HasParent<"SwitchboxOp">*/
 
     See [AIE.rule](#aierule-aiepacketruleop) for an example.
   }];
+
   let assemblyFormat = [{ `(` $sourceBundle `:` $sourceChannel `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t sourceIndex() { return getSourceChannel(); }
     Port sourcePort() { return {getSourceBundle(), sourceIndex()}; }
@@ -631,10 +649,12 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
       }
     ```
   }];
+
   let extraClassDeclaration = [{
     uint8_t maskInt() { return getMask(); }
     uint8_t valueInt() { return getValue(); }
   }];
+
   let assemblyFormat = [{
     `(` $mask `,` $value `,` $amsel `)` attr-dict
   }];
@@ -642,9 +662,7 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
 
 
 def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndOp">]> {
-  let arguments = (
-    ins I8Attr:$ID
-  );
+  let arguments = (ins I8Attr:$ID);
   let regions = (region AnyRegion:$ports);
   let summary = "Packet switched flow";
   let description = [{
@@ -661,8 +679,10 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
       }
     ```
   }];
+
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint8_t IDInt() { return getID(); }
   }];
@@ -681,9 +701,11 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
 
     See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
   }];
+
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
+
   let extraClassDeclaration = [{
     uint32_t channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
@@ -704,9 +726,11 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
 
     See [AIE.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
   }];
+
   let assemblyFormat = [{
     `<` $tile `,` $bundle `:` $channel `>` attr-dict
   }];
+
   let extraClassDeclaration = [{
     uint32_t channelIndex() { return getChannel(); }
     Port port() { return {getBundle(), channelIndex()}; }
@@ -755,7 +779,6 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   let extraClassDeclaration = [{
     uint32_t getPacketID() { return getPacketId(); }
   }];
-
 }
 
 def AIE_DimTupleAttr : AttrDef<AIE_Dialect, "DimTuple", []> {
@@ -876,8 +899,10 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   ];
 }
 
-def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>, Terminator]>,
-                     Results<(outs I1:$valid)> {
+def AIE_DMAStartOp: AIE_Op<"dmaStart", [
+    ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>,
+    Terminator
+  ]>, Results<(outs I1:$valid)> {
 
   let summary = "An op to start DMA";
   let description = [{
@@ -918,7 +943,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "f
   }];
 
   let builders = [
-    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
+    OpBuilder<(ins "DMAChannelDir":$channelDir, "uint32_t":$channelIndex, "Block *":$dest, "Block *":$chain),
     [{
       build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
     }]>
@@ -927,8 +952,10 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [ParentOneOf<["MemOp", "MemTileDMAOp", "f
 
 // MemOps are not actually Callable, but we want to inline code into them, so we have to 
 // implement CallableOpInterface
-def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, IsCoreTile, HasValidBDs, HasValidDMAChannels]>,
-                     Results<(outs Index)> {
+def AIE_MemOp: AIE_Op<"mem", [
+    TileElement, FlowEndPoint, CallableOpInterface,
+    IsCoreTile, HasValidBDs, HasValidDMAChannels
+  ]>, Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
     This operation creates a Memory module that belongs to a tile.
@@ -950,12 +977,12 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, Is
     ```
     Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
   }];
-  let arguments = (
-    ins Index:$tile
-  );
+
+  let arguments = (ins Index:$tile);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t colIndex();
     uint32_t rowIndex();
@@ -967,6 +994,7 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, Is
     ArrayRef<Type> getResultTypes() { return getType(); }
     static StringRef getDefaultDialect() { return "AIE"; }
   }];
+
   let builders = [
     OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
@@ -976,8 +1004,10 @@ def AIE_MemOp: AIE_Op<"mem", [TileElement, FlowEndPoint, CallableOpInterface, Is
 
 // This op is not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
-def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableOpInterface, IsMemTile, HasValidBDs, HasValidDMAChannels]>,
-                     Results<(outs Index)> {
+def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
+    TileElement, FlowEndPoint, CallableOpInterface,
+    IsMemTile, HasValidBDs, HasValidDMAChannels
+  ]>, Results<(outs Index)> {
   let summary = "Declare a memTileDMA op";
   let description = [{
     This operation describes a DMA inside an AIE2 MemTile.
@@ -1003,12 +1033,12 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableO
     ```
     Create a description for tile %t73 and setup one DMA channel and one Buffer Descriptor.
   }];
-  let arguments = (
-    ins Index:$tile
-  );
+
+  let arguments = (ins Index:$tile);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     uint32_t colIndex();
     uint32_t rowIndex();
@@ -1019,6 +1049,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableO
     ArrayRef<Type> getResultTypes() { return getType(); }
     static StringRef getDefaultDialect() { return "AIE"; }
   }];
+
   let builders = [
     OpBuilder<(ins "Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
@@ -1026,7 +1057,9 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [TileElement, FlowEndPoint, CallableO
   ];
 }
 
-def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>]> {
+def AIE_NextBDOp: AIE_Op<"nextBd", [
+    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>
+  ]> {
   let summary = "The next buffer descriptor";
   let description = [{
     This operation terminates the basic block describing a buffer descriptor inside
@@ -1048,6 +1081,7 @@ def AIE_NextBDOp: AIE_Op<"nextBd", [Terminator, ParentOneOf<["MemOp", "MemTileDM
       }
     ```
   }];
+
   let successors = (successor AnySuccessor:$dest);
 
   let assemblyFormat = [{
@@ -1072,12 +1106,15 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
       Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
       After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
   }];
+
   let arguments = (
     ins Index:$tile,
         OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>]>>:$lockID,
         OptionalAttr<I32Attr>:$init
   );
+
   let assemblyFormat = [{ `(` $tile (`,` $lockID^ )? `)` attr-dict }];
+
   let extraClassDeclaration = [{
     bool hasName() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
@@ -1103,6 +1140,7 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
     uint32_t rowIndex();
     TileOp getTileOp();
   }];
+
   let builders = [
     OpBuilder<(ins "Value":$tile, "int":$lockID, "int":$init), [{
       build($_builder, $_state,
@@ -1110,10 +1148,9 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
         tile,
         $_builder.getI32IntegerAttr(lockID),
         $_builder.getI32IntegerAttr(init));
-      }]>
+    }]>
   ];
   let hasVerifier = 1;
-  // let hasCanonicalizer = 1;
 }
 
 def AIE_UseLockOp: AIE_Op<"useLock", []> {
@@ -1126,21 +1163,23 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
     MemTileDMAOp).
   }];
+
   let arguments = (
     ins Index:$lock,
         I32Attr:$value,
         LockAction:$action,
         OptionalAttr<LockBlocking>:$blocking
   );
+
   let assemblyFormat = [{
     `(` $lock `,` $action `,` $value ( `,` $blocking^ )? `)` attr-dict
   }];
+
   let hasVerifier = 1;
   let builders = [
     OpBuilder<(ins "::mlir::Value":$lock,
                    "uint32_t":$value,
-                   "xilinx::AIE::LockAction":$action),
-    [{
+                   "xilinx::AIE::LockAction":$action), [{
       build($_builder, $_state, lock, value, action, nullptr);
     }]>
   ];
@@ -1155,7 +1194,9 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp: AIE_Op<"buffer", [
+    TileElement, IsTileWithMemory
+  ]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1167,12 +1208,11 @@ def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(ou
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
   }];
-  let arguments = (
-    ins Index:$tile
-  );
+  let arguments = (ins Index:$tile);
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
   let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     bool hasName() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
@@ -1181,6 +1221,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(ou
         return false;
       }
     }
+
     StringAttr name() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
         return attr;
@@ -1190,6 +1231,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(ou
       }
       llvm_unreachable("unreachable");
     }
+
     // Return the address of this buffer
     int64_t address() {
       if(auto attr = getOperation()->getAttrOfType<IntegerAttr>("address")) {
@@ -1199,6 +1241,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [TileElement, IsTileWithMemory]>, Results<(ou
       }
       llvm_unreachable("unreachable");
     }
+
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
     TileOp getTileOp();
@@ -1223,8 +1266,10 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
     ```
     This operation represents an external buffer.
   }];
+
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];
+
   let extraClassDeclaration = [{
     bool hasName() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
@@ -1233,6 +1278,7 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
         return false;
       }
     }
+
     StringAttr name() {
       if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
         return attr;
@@ -1257,19 +1303,21 @@ def AIE_EventOp: AIE_Op<"event", []> {
   }];
 }
 
-def AIE_GetStreamOp: AIE_Op<"getStream", [HasParent<"CoreOp">]>,
-                 Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
+def AIE_GetStreamOp: AIE_Op<"getStream", [
+    HasParent<"CoreOp">
+  ]>, Results<(outs AnyTypeOf<[F32, I32, I<128>]>)> {
   let summary = "An op to read from a stream channel/port of a switchbox";
   let description = [{
     An op to read from a stream channel/port of a switchbox.
   }];
-  let arguments = (
-    ins AnyInteger:$channel
-  );
+
+  let arguments = (ins AnyInteger:$channel);
   let results = (outs AnyTypeOf<[F32, I32, I<128>]>:$streamValue);
+
   let assemblyFormat = [{
     `(` $channel `:` type($channel) `)` attr-dict `:` type($streamValue)
   }];
+
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
     bool isFloatStream() { return getStreamValue().getType().isa<FloatType>(); }
@@ -1281,21 +1329,23 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
   let description = [{
     An op to write to a stream channel/port of a switchbox.
   }];
+
   let arguments = (
     ins AnyInteger:$channel,
         AnyTypeOf<[F32, I32, I<128>]>:$streamValue
   );
+
   let assemblyFormat = [{
     `(` $channel `:` type($channel) `,` $streamValue `:` type($streamValue) `)` attr-dict
   }];
+
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
     bool isFloatStream() { return getStreamValue().getType().isa<FloatType>(); }
   }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"getCascade", [HasParent<"CoreOp">]>,
-                      Results<(outs AnyI<384>)> {
+def AIE_GetCascadeOp: AIE_Op<"getCascade", [HasParent<"CoreOp">]>, Results<(outs AnyI<384>)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -1309,9 +1359,9 @@ def AIE_PutCascadeOp: AIE_Op<"putCascade", [HasParent<"CoreOp">]> {
   let description = [{
     An op to write to a cascading stream from a neighboring core.
   }];
-  let arguments = (
-    ins AnyI<384>:$cascadeValue
-  );
+
+  let arguments = (ins AnyI<384>:$cascadeValue);
+
   let assemblyFormat = [{ `(` $cascadeValue `:` type($cascadeValue) `)` attr-dict }];
 }
 
@@ -1337,13 +1387,16 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shimDMAAllocation", [HasParent<"DeviceOp">
       AIE.shimDMAAllocation @of_in_0 (MM2S, 1, 0)
     ```
   }];
+
   let arguments = (
     ins FlatSymbolRefAttr:$sym_name,
         DMAChannelDir:$channelDir,
         I64Attr:$channelIndex,
         I64Attr:$col
   );
+
   let results = (outs);
+
   let assemblyFormat = [{
     $sym_name `(` $channelDir `,` $channelIndex `,` $col `)` attr-dict
   }];
@@ -1457,7 +1510,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
       else 
         return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
     }
+
     TileOp getProducerTileOp();
+
     StringAttr name() {
       auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
       return attr;
@@ -1468,8 +1523,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
     OpBuilder<(ins "StringAttr":$sym_name, "Value":$producerTile,
                    "ValueRange":$consumerTiles, "Attribute":$elemNumber, "Type":$elem_type,
                    CArg<"ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
-                   CArg<"ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer),
-    [{
+                   CArg<"ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
@@ -1512,6 +1566,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
     ins ArrayAttr:$fifoIns,
         ArrayAttr:$fifoOuts
   );
+
   let hasCustomAssemblyFormat = 1;
 
   let assemblyFormat = [{
@@ -1523,17 +1578,22 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
   let extraClassDeclaration = [{
     std::vector<ObjectFifoCreateOp> getInputObjectFifos();
     std::vector<ObjectFifoCreateOp> getOutputObjectFifos();
+
     bool isJoin() {
       return getFifoIns().size() > 1;
     }
+
     bool isDistribute() {
       return getFifoOuts().size() > 1;
     }
+
     std::optional<Value> getOptionalSharedTile();
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [HasParent<"DeviceOp">, TileElement, IsShimNOCTile]> {
+def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternalBuffers", [
+    HasParent<"DeviceOp">, TileElement, IsShimNOCTile
+  ]> {
   let summary = "Registers external buffers to given object fifo shim tile(s) to use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectFifo.registerExternalBuffers` operation is used to register one or multiple external buffers 
@@ -1718,16 +1778,40 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   );
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)`
+    attr-dict $objFifo_name `(`
+        $port `,`
+        $acquirePatternTensor `:` type($acquirePatternTensor) `,`
+        $releasePatternTensor `:` type($releasePatternTensor) `,`
+        $callee `,` $length
+    `)`
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    DenseIntElementsAttr getAcquirePattern() { return getAcquirePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
-    DenseIntElementsAttr getReleasePattern() { return getReleasePatternTensor().getDefiningOp<arith::ConstantOp>().getValue().cast<DenseIntElementsAttr>(); }
-    uint32_t getProcessLength() { return getLength().getDefiningOp<arith::ConstantOp>().getValue().cast<IntegerAttr>().getInt(); }
+
+    DenseIntElementsAttr getAcquirePattern() {
+      return getAcquirePatternTensor()
+          .getDefiningOp<arith::ConstantOp>()
+          .getValue()
+          .cast<DenseIntElementsAttr>();
+    }
+
+    DenseIntElementsAttr getReleasePattern() {
+      return getReleasePatternTensor()
+          .getDefiningOp<arith::ConstantOp>()
+          .getValue()
+          .cast<DenseIntElementsAttr>();
+    }
+
+    uint32_t getProcessLength() {
+      return getLength()
+          .getDefiningOp<arith::ConstantOp>()
+          .getValue()
+          .cast<IntegerAttr>()
+          .getInt();
+    }
   }];
 }
 
