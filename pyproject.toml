@@ -10,7 +10,6 @@ environment = { PATH = "/usr/lib/ccache:/usr/lib64/ccache:/usr/lib/ccache/bin:$P
 before-all = [
     "yum -y install libxml2 ncurses-devel",
     "{project}/scripts/docker_prepare_ccache.sh",
-    "{project}/scripts/install_boost.sh",
 ]
 before-build = [
     "pip install -r requirements.txt",

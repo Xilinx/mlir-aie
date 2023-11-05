@@ -114,8 +114,6 @@ class CMakeBuild(build_ext):
             shutil.move(MLIR_INSTALL_ABS_PATH, "/tmp/m")
             MLIR_INSTALL_ABS_PATH = Path("/tmp/m").absolute()
 
-        BOOST_ROOT = os.environ.get("BOOST_ROOT")
-
         cmake_args = [
             f"-G {cmake_generator}",
             cmake_module_path,
@@ -125,8 +123,6 @@ class CMakeBuild(build_ext):
             f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
             f"-DPython3_EXECUTABLE={sys.executable}",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
-            f"-DBoost_INCLUDE_DIR=${BOOST_ROOT}/include",
-            f"-DBoost_LIBRARY_DIRS=${BOOST_ROOT}/lib",
             # not used on MSVC, but no harm
             f"-DCMAKE_BUILD_TYPE={cfg}",
             # prevent symbol collision that leads to multiple pass registration and such

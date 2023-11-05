@@ -123,14 +123,6 @@ jobs:
       id: split
       run: echo "platform_version=${OS##*-}" | tee -a $GITHUB_OUTPUT
 
-    - name: Install boost
-      uses: MarkusJx/install-boost@v2.4.4
-      id: install-boost
-      with:
-        boost_version: 1.72.0
-        platform_version: ${{ steps.split.outputs.platform_version }}
-        arch: ${{ matrix.ARCH == 'x86_64' && 'x86' || 'aarch64' }}
-
     - name: cibuildwheel
       if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
       working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
@@ -140,7 +132,6 @@ jobs:
         pip install cibuildwheel
         
         PIP_FIND_LINKS="https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
-        BOOST_ROOT="${{ steps.install-boost.outputs.BOOST_ROOT }}" \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
@@ -159,7 +150,6 @@ jobs:
         export PIP_FIND_LINKS="https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels"
         export CIBW_ARCHS=${{ matrix.ARCH }}
         export MLIR_WHEEL_VERSION="18.0.0.2023102707+7046202c"
-        export BOOST_ROOT="${{ steps.install-boost.outputs.BOOST_ROOT }}"
         export MATRIX_OS=${{ matrix.OS }}
         
         pip install -r requirements.txt
