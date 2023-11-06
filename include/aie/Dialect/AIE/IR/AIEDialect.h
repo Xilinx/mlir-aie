@@ -30,17 +30,17 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
+
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
 
 #include <map>
 #include <set>
 
-using namespace mlir;
-
 namespace xilinx {
 namespace AIE {
+
+using namespace mlir;
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
@@ -208,35 +208,6 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIE.h.inc"
 
-namespace xilinx {
-namespace AIE {
-
-#define GEN_PASS_CLASSES
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-
-std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignBufferAddressesPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIECanonicalizeDevicePass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEFindFlowsPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass();
-std::unique_ptr<OperationPass<DeviceOp>>
-createAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<DeviceOp>>
-createAIEObjectFifoRegisterProcessPass();
-
-/// Generate the code for registering passes.
-#define GEN_PASS_REGISTRATION
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-
-} // namespace AIE
-} // namespace xilinx
-
 namespace llvm {
 // Functions hash just like pointers.
 template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
@@ -316,7 +287,10 @@ template <> struct DenseMapInfo<xilinx::AIE::Port> {
                                     SecondInfo::getHashValue(d.channel));
   }
 
-  static bool isEqual(const Port &lhs, const Port &rhs) { return lhs == rhs; }
+  static bool isEqual(const xilinx::AIE::Port &lhs,
+                      const xilinx::AIE::Port &rhs) {
+    return lhs == rhs;
+  }
 };
 
 } // namespace llvm

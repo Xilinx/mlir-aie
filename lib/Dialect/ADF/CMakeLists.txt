@@ -14,11 +14,10 @@ add_mlir_dialect_library(ADF
 
   DEPENDS
   MLIRADFIncGen
-  MLIRADFPassIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRPass
   MLIRTransformUtils
-  )
+)
 

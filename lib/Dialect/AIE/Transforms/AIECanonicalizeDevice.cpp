@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
@@ -17,6 +18,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
 #define DEBUG_TYPE "aie-canonicalize-device"
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;

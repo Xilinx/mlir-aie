@@ -166,8 +166,6 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIEVectorOptPass()";
-  let dependentDialects = [
-  ];
 }
 
 def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {

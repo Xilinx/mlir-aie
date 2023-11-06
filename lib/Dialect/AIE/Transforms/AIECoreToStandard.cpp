@@ -10,6 +10,8 @@
 
 #include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -19,7 +21,6 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
@@ -29,7 +30,6 @@ using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
-// using namespace mlir::LLVM;
 
 template <typename MyAIEOp>
 struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {

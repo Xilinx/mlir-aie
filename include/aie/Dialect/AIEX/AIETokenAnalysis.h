@@ -27,11 +27,9 @@
 
 #include <map>
 
-using namespace mlir;
-using namespace xilinx::AIE;
+namespace xilinx::AIEX {
 
-namespace xilinx {
-namespace AIEX {
+using namespace xilinx::AIE;
 
 class TokenAnalysis {
   AIE::DeviceOp &device;
@@ -67,7 +65,6 @@ public:
   void print(raw_ostream &os);
 };
 
-} // namespace AIEX
-} // namespace xilinx
+} // namespace xilinx::AIEX
 
 #endif

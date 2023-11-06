@@ -14,6 +14,7 @@
 #define AIE_DIALECT_AIEVEC_TRANSFORMS_INTERVALREUSE_H
 
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+
 #include <utility>
 
 namespace xilinx {

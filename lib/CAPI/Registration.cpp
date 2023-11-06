@@ -9,6 +9,7 @@
 
 #include "aie/InitialAllDialect.h"
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"

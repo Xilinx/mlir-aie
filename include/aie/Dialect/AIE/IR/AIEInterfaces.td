@@ -66,7 +66,7 @@ def Interconnect : OpInterface<"Interconnect"> {
 
   let methods = [
     InterfaceMethod<[{}],
-      "::mlir::Region &", "getConnections", (ins )
+      "Region &", "getConnections", (ins )
     >,
     InterfaceMethod<[{}],
       "int", "colIndex", (ins )
@@ -93,8 +93,8 @@ def TileElement : OpInterface<"TileElement"> {
         Return the location of the Tile where the element is located.
       }],
       "xilinx::AIE::TileID", "getTileID", (ins ),
-      /*methodBody=*/  [{}],
-      /*defaultImpl=*/ [{
+      /*methodBody=*/[{}],
+      /*defaultImpl=*/[{
         ConcreteOp op = cast<ConcreteOp>(this->getOperation());
         return op.getTileOp().getTileID();
       }]

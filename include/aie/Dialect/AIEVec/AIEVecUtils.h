@@ -16,8 +16,10 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+
 #include <assert.h>
 
 namespace xilinx {
@@ -83,7 +85,7 @@ inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
       width = itype.getWidth() <= 16 ? 48 : 80;
     }
 
-    Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+    Type ctype = IntegerType::get(itype.getContext(), width);
     return VectorType::get(type.getShape(), ctype);
   } else if (FloatType ftype = stype.dyn_cast<FloatType>()) {
     if (AIEML && ftype.getWidth() == 16) {
@@ -94,7 +96,7 @@ inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
     // floating point operations write back to registers and not accumulators
     return type;
   } else
-    llvm_unreachable("Unsupported destination type");
+    report_fatal_error("Unsupported destination type");
 }
 
 // Linearize the exprVec as a strided access, but do not simplify
@@ -152,7 +154,7 @@ inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
     if (affine::AffineApplyOp apOf =
             value.getDefiningOp<affine::AffineApplyOp>()) {
       AffineMap map = apOf.getAffineMap();
-      // Cannot create linearized affineExpr for complicated index.
+      // Cannot create linearized AffineExpr for complicated index.
       if (map.getNumResults() != 1) {
         return nullptr;
       }

@@ -145,7 +145,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     MemOp getMemOp() {
       auto users = getResult().getUsers();
       for(auto user : users)
-        if(auto memOp = llvm::dyn_cast<MemOp>(*user))
+        if(auto memOp = dyn_cast<MemOp>(*user))
           return memOp;
       return nullptr;
     }
@@ -153,7 +153,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     CoreOp getCoreOp() {
       auto users = getResult().getUsers();
       for(auto user : users)
-        if(auto coreOp = llvm::dyn_cast<CoreOp>(*user))
+        if(auto coreOp = dyn_cast<CoreOp>(*user))
           return coreOp;
       return nullptr;
     }
@@ -1117,20 +1117,13 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
 
   let extraClassDeclaration = [{
     bool hasName() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
-        return true;
-      } else {
-        return false;
-      }
+      return bool(getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()));
     }
     StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
         return attr;
-      } else {
-        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
-          "' attribute specified";
-      }
-      llvm_unreachable("unreachable");
+      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
     int getLockIDValue() {
       assert(getLockID().has_value() && "Lock has no ID value");
@@ -1177,7 +1170,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "::mlir::Value":$lock,
+    OpBuilder<(ins "Value":$lock,
                    "uint32_t":$value,
                    "xilinx::AIE::LockAction":$action), [{
       build($_builder, $_state, lock, value, action, nullptr);
@@ -1215,31 +1208,22 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let extraClassDeclaration = [{
     bool hasName() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
-        return true;
-      } else {
-        return false;
-      }
+      return bool(getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()));
     }
 
     StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
         return attr;
-      } else {
-        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
-          "' attribute specified";
-      }
-      llvm_unreachable("unreachable");
+      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
 
     // Return the address of this buffer
     int64_t address() {
-      if(auto attr = getOperation()->getAttrOfType<IntegerAttr>("address")) {
+      if(auto attr = getOperation()->getAttrOfType<IntegerAttr>("address"))
         return attr.getInt();
-      } else {
-        emitOpError("does not have 'address' attribute specified");
-      }
-      llvm_unreachable("unreachable");
+      emitOpError("does not have 'address' attribute specified");
+      llvm::report_fatal_error("couldn't get name");
     }
 
     // Return the number of bytes that need to be allocated for this buffer.
@@ -1272,21 +1256,14 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
 
   let extraClassDeclaration = [{
     bool hasName() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
-        return true;
-      } else {
-        return false;
-      }
+      return bool(getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()));
     }
 
     StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
         return attr;
-      } else {
-        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
-          "' attribute specified";
-      }
-      llvm_unreachable("unreachable");
+      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
   }];
 }
@@ -1506,7 +1483,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
   let extraClassDeclaration = [{
     int size(int index = 0) {
       if (isa<ArrayAttr>(getElemNumber()))
-        return dyn_cast<IntegerAttr>(dyn_cast<ArrayAttr>(getElemNumber())[index]).getInt(); 
+        return dyn_cast<IntegerAttr>(dyn_cast<ArrayAttr>(getElemNumber())[index]).getInt();
       else 
         return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
     }
@@ -1514,8 +1491,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
     TileOp getProducerTileOp();
 
     StringAttr name() {
-      auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-      return attr;
+      return getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     }
   }];
 
@@ -1528,7 +1504,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
       odsState.addAttribute(getElemNumberAttrName(odsState.name), elemNumber);
-      odsState.addAttribute(getElemTypeAttrName(odsState.name), ::mlir::TypeAttr::get(elem_type));
+      odsState.addAttribute(getElemTypeAttrName(odsState.name), TypeAttr::get(elem_type));
       odsState.addAttribute(getDimensionsToStreamAttrName(odsState.name),
                             odsBuilder.getAttr<DimTupleArrayAttr>(dimensionsToStream));
       odsState.addAttribute(getDimensionsFromStreamPerConsumerAttrName(odsState.name),

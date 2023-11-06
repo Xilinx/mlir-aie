@@ -19,12 +19,12 @@
 // AIE Vector Dialect Types
 //===----------------------------------------------------------------------===//
 
-namespace xilinx {
-namespace aievec {
+namespace xilinx::aievec {
+
 using namespace mlir;
 
 // Base class of all AIE types
-class AIEVecType : public Type {
+class AIEVecType : public mlir::Type {
 public:
   using Type::Type;
 
@@ -32,8 +32,7 @@ public:
   static bool classof(Type type);
 };
 
-} // end namespace aievec
-} // end namespace xilinx
+} // namespace xilinx::aievec
 
 //===----------------------------------------------------------------------===//
 // Tablegen Type Declarations
