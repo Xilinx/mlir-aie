@@ -259,58 +259,59 @@ template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
 } // namespace llvm
 
 namespace llvm {
-using namespace xilinx::AIE;
 // Functions hash just like pointers.
-template <> struct DenseMapInfo<ObjectFifoCreateOp> {
-  static ObjectFifoCreateOp getEmptyKey() {
+template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
+  static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
-    return ObjectFifoCreateOp::getFromOpaquePointer(pointer);
+    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
   }
-  static ObjectFifoCreateOp getTombstoneKey() {
+  static xilinx::AIE::ObjectFifoCreateOp getTombstoneKey() {
     auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
-    return ObjectFifoCreateOp::getFromOpaquePointer(pointer);
+    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
   }
-  static unsigned getHashValue(ObjectFifoCreateOp val) {
+  static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
-  static bool isEqual(ObjectFifoCreateOp lhs, ObjectFifoCreateOp rhs) {
+  static bool isEqual(xilinx::AIE::ObjectFifoCreateOp lhs,
+                      xilinx::AIE::ObjectFifoCreateOp rhs) {
     return lhs == rhs;
   }
 };
 
-template <> struct DenseMapInfo<DMAChannel> {
-  using FirstInfo = DenseMapInfo<DMAChannelDir>;
+template <> struct DenseMapInfo<xilinx::AIE::DMAChannel> {
+  using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
   using SecondInfo = DenseMapInfo<int>;
-  static inline DMAChannel getEmptyKey() {
+  static inline xilinx::AIE::DMAChannel getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static inline DMAChannel getTombstoneKey() {
+  static inline xilinx::AIE::DMAChannel getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 
-  static unsigned getHashValue(const DMAChannel &d) {
+  static unsigned getHashValue(const xilinx::AIE::DMAChannel &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
                                     SecondInfo::getHashValue(d.channel));
   }
 
-  static bool isEqual(const DMAChannel &lhs, const DMAChannel &rhs) {
+  static bool isEqual(const xilinx::AIE::DMAChannel &lhs,
+                      const xilinx::AIE::DMAChannel &rhs) {
     return lhs == rhs;
   }
 };
 
-template <> struct DenseMapInfo<Port> {
-  using FirstInfo = DenseMapInfo<WireBundle>;
+template <> struct DenseMapInfo<xilinx::AIE::Port> {
+  using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
   using SecondInfo = DenseMapInfo<int>;
-  static inline Port getEmptyKey() {
+  static inline xilinx::AIE::Port getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static inline Port getTombstoneKey() {
+  static inline xilinx::AIE::Port getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 
-  static unsigned getHashValue(const Port &d) {
+  static unsigned getHashValue(const xilinx::AIE::Port &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
                                     SecondInfo::getHashValue(d.channel));
   }
@@ -321,9 +322,9 @@ template <> struct DenseMapInfo<Port> {
 } // namespace llvm
 
 namespace std {
-using namespace xilinx::AIE;
-template <> struct less<Port> {
-  bool operator()(const Port &a, const Port &b) const {
+template <> struct less<xilinx::AIE::Port> {
+  bool operator()(const xilinx::AIE::Port &a,
+                  const xilinx::AIE::Port &b) const {
     return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
   }
 };

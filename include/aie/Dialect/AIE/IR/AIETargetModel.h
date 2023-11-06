@@ -31,6 +31,7 @@ typedef struct TileID {
     return std::tie(col, row) != std::tie(rhs.col, rhs.row);
   }
 
+  // Imposes a lexical order on TileIDs.
   inline bool operator<(const TileID &rhs) const {
     return col == rhs.col ? row < rhs.row : col < rhs.col;
   }
