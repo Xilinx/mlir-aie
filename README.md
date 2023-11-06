@@ -10,4 +10,5 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for A
 [Full Documentation](https://xilinx.github.io/mlir-aie/)
 
 -----
-<p align="center">Copyright&copy; 2019-2021 Xilinx</p>
+<p align="center">Copyright&copy; 2019-2022 Xilinx, Inc</p>
+<p align="center">Copyright&copy; 2022-2023 Advanced Micro Devices, Inc</p>
