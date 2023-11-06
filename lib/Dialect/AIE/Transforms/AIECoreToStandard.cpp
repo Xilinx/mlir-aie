@@ -400,7 +400,7 @@ struct AIECoreToStandardPass
     // Create an LLVM func for each CoreOp
     // Clone the region body of each CoreOp to the newly created LLVM func
 
-    DenseMap<std::pair<int, int>, Operation *> tiles;
+    DenseMap<TileID, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;
     DenseMap<Operation *, MemOp> mems;
     DenseMap<std::pair<Operation *, int>, LockOp> locks;

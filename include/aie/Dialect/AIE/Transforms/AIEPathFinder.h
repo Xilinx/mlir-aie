@@ -81,13 +81,35 @@ public:
 // A SwitchSetting defines the required settings for a Switchbox for a flow
 // SwitchSetting.first is the incoming signal
 // SwitchSetting.second is the fanout
-typedef std::pair<Port, std::set<Port>> SwitchSetting;
+typedef struct SwitchSetting {
+  Port src;
+  std::set<Port> dsts;
+} SwitchSetting;
+
 typedef std::map<Switchbox *, SwitchSetting> SwitchSettings;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
-typedef std::pair<Switchbox *, Port> PathEndPoint;
-typedef std::pair<PathEndPoint, std::vector<PathEndPoint>> Flow;
+typedef struct PathEndPoint {
+  Switchbox *sb;
+  Port port;
+
+  inline bool operator<(const PathEndPoint &rhs) const {
+    return sb->col == rhs.sb->col
+               ? (sb->row == rhs.sb->row
+                      ? (port.bundle == rhs.port.bundle
+                             ? port.channel < rhs.port.channel
+                             : port.bundle < rhs.port.bundle)
+                      : sb->row < rhs.sb->row)
+               : sb->col < rhs.sb->col;
+  }
+
+} PathEndPoint;
+
+typedef struct Flow {
+  PathEndPoint src;
+  std::vector<PathEndPoint> dsts;
+} Flow;
 
 class Pathfinder {
   SwitchboxGraph graph;
@@ -108,7 +130,7 @@ public:
 
   Switchbox *getSwitchbox(TileID coords) {
     auto sb = std::find_if(graph.begin(), graph.end(), [&](Switchbox *sb) {
-      return sb->col == coords.first && sb->row == coords.second;
+      return sb->col == coords.col && sb->row == coords.row;
     });
     assert(sb != graph.end() && "couldn't find sb");
     return *sb;

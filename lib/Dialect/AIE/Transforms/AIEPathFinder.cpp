@@ -97,18 +97,18 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort) {
   // check if a flow with this source already exists
   for (auto &flow : flows) {
-    Switchbox *existingSrc = flow.first.first;
+    Switchbox *existingSrc = flow.src.sb;
     assert(existingSrc && "nullptr flow source");
-    Port existingPort = flow.first.second;
-    if (existingSrc->col == srcCoords.first &&
-        existingSrc->row == srcCoords.second && existingPort == srcPort) {
+    Port existingPort = flow.src.port;
+    if (existingSrc->col == srcCoords.col &&
+        existingSrc->row == srcCoords.row && existingPort == srcPort) {
       // find the vertex corresponding to the destination
       auto matchingSb =
           std::find_if(graph.begin(), graph.end(), [&](const Switchbox *sb) {
-            return sb->col == dstCoords.first && sb->row == dstCoords.second;
+            return sb->col == dstCoords.col && sb->row == dstCoords.row;
           });
       assert(matchingSb != graph.end() && "didn't find flow dest");
-      flow.second.emplace_back(*matchingSb, dstPort);
+      flow.dsts.push_back({*matchingSb, dstPort});
       return;
     }
   }
@@ -116,16 +116,16 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   // If no existing flow was found with this source, create a new flow.
   auto matchingSrcSb =
       std::find_if(graph.begin(), graph.end(), [&](const Switchbox *sb) {
-        return sb->col == srcCoords.first && sb->row == srcCoords.second;
+        return sb->col == srcCoords.col && sb->row == srcCoords.row;
       });
   assert(matchingSrcSb != graph.end() && "didn't find flow source");
   auto matchingDstSb =
       std::find_if(graph.begin(), graph.end(), [&](const Switchbox *sb) {
-        return sb->col == dstCoords.first && sb->row == dstCoords.second;
+        return sb->col == dstCoords.col && sb->row == dstCoords.row;
       });
   assert(matchingDstSb != graph.end() && "didn't add flow destinations");
-  flows.emplace_back(PathEndPoint{*matchingSrcSb, srcPort},
-                     std::vector<PathEndPoint>{{*matchingDstSb, dstPort}});
+  flows.push_back({PathEndPoint{*matchingSrcSb, srcPort},
+                   std::vector<PathEndPoint>{{*matchingDstSb, dstPort}}});
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
@@ -133,13 +133,13 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 bool Pathfinder::addFixedConnection(TileID coords, Port port) {
   // find the correct Channel and indicate the fixed direction
   auto matchingCh = std::find_if(edges.begin(), edges.end(), [&](Channel &ch) {
-    return ch.src.col == coords.first && ch.src.row == coords.second &&
-           ch.bundle == port.first;
+    return ch.src.col == coords.col && ch.src.row == coords.row &&
+           ch.bundle == port.bundle;
   });
   if (matchingCh == edges.end())
     return false;
 
-  matchingCh->fixedCapacity.insert((uint32_t)port.second);
+  matchingCh->fixedCapacity.insert(port.channel);
   return true;
 }
 
@@ -224,7 +224,7 @@ Pathfinder::findPaths(const int maxIterations) {
     }
 
     // "rip up" all routes, i.e. set used capacity in each Channel to 0
-    routingSolution = {};
+    routingSolution.clear();
     for (auto &ch : edges)
       ch.usedCapacity = 0;
 
@@ -235,7 +235,7 @@ Pathfinder::findPaths(const int maxIterations) {
       // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
       // switchbox settings
-      Switchbox *src = flow.first.first;
+      Switchbox *src = flow.src.sb;
       assert(src && "nonexistent flow source");
       std::set<Switchbox *> processed;
       std::map<Switchbox *, Switchbox *> preds =
@@ -245,13 +245,13 @@ Pathfinder::findPaths(const int maxIterations) {
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
       // set the input bundle for the source endpoint
-      switchSettings[src].first = flow.first.second;
+      switchSettings[src].src = flow.src.port;
       processed.insert(src);
-      for (const PathEndPoint &endPoint : flow.second) {
-        Switchbox *curr = endPoint.first;
+      for (const PathEndPoint &endPoint : flow.dsts) {
+        Switchbox *curr = endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
         // set the output bundle for this destination endpoint
-        switchSettings[curr].second.insert(endPoint.second);
+        switchSettings[curr].dsts.insert(endPoint.port);
 
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
@@ -270,11 +270,11 @@ Pathfinder::findPaths(const int maxIterations) {
             ch->usedCapacity++;
 
           // add the entrance port for this Switchbox
-          switchSettings[curr].first =
-              std::make_pair(getConnectingBundle(ch->bundle), ch->usedCapacity);
+          switchSettings[curr].src = {getConnectingBundle(ch->bundle),
+                                      ch->usedCapacity};
           // add the current Switchbox to the map of the predecessor
-          switchSettings[preds[curr]].second.insert(
-              std::make_pair(ch->bundle, ch->usedCapacity));
+          switchSettings[preds[curr]].dsts.insert(
+              {ch->bundle, ch->usedCapacity});
 
           ch->usedCapacity++;
           // if at capacity, bump demand to discourage using this Channel
@@ -288,7 +288,7 @@ Pathfinder::findPaths(const int maxIterations) {
         }
       }
       // add this flow to the proposed solution
-      routingSolution[flow.first] = switchSettings;
+      routingSolution[flow.src] = switchSettings;
     }
   } while (!isLegal()); // continue iterations until a legal routing is found
   return routingSolution;

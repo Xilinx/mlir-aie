@@ -88,18 +88,6 @@ def AIE_ConnectionOp: AIEX_Op<"connection", []> {
     int sourceIndex() { return getSourceChannel(); }
     int destIndex() { return getDestChannel(); }
   }];
-  // let builders = [
-  //   OpBuilder<(ins "Value":$source, "int":$sourceBundle,
-  //     "int":$sourceChannel, "Value":$dest, "int":$destBundle, "int":$destChannel), [{
-  //     build($_builder, $_state,
-  //           source,
-  //           $_builder.getI32IntegerAttr(sourceBundle),
-  //           $_builder.getI32IntegerAttr(sourceChannel),
-  //           dest,
-  //           $_builder.getI32IntegerAttr(destBundle),
-  //           $_builder.getI32IntegerAttr(destChannel));
-  //     }]>
-  // ];
 }
 
 def AIE_MulticastOp: AIEX_Op<"multicast", [SingleBlockImplicitTerminator<"AIE::EndOp">]> {
@@ -133,7 +121,7 @@ def AIE_MulticastOp: AIEX_Op<"multicast", [SingleBlockImplicitTerminator<"AIE::E
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     int channelIndex() { return getChannel(); }
-    AIE::Port port() { return std::make_pair(getBundle(), channelIndex()); }
+    AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
 
@@ -156,7 +144,7 @@ def AIE_MultiDestOp: AIEX_Op<"multi_dest", [HasParent<"MulticastOp">]> {
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return getChannel(); }
-    AIE::Port port() { return std::make_pair(getBundle(), channelIndex()); }
+    AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
 
@@ -196,7 +184,7 @@ def AIE_BroadcastPacketOp: AIEX_Op<"broadcast_packet", [SingleBlockImplicitTermi
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     int channelIndex() { return getChannel(); }
-    AIE::Port port() { return std::make_pair(getBundle(), channelIndex()); }
+    AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
 
@@ -234,7 +222,7 @@ def AIE_BPDestOp: AIEX_Op<"bp_dest", [HasParent<"BPIDOp">]> {
   }];
   let extraClassDeclaration = [{
     int channelIndex() { return getChannel(); }
-    AIE::Port port() { return std::make_pair(getBundle(), channelIndex()); }
+    AIE::Port port() { return {getBundle(), channelIndex()}; }
   }];
 }
 

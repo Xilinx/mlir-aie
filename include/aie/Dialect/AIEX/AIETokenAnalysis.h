@@ -12,6 +12,8 @@
 #define AIEX_TOKENANALYSIS_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -26,6 +28,7 @@
 #include <map>
 
 using namespace mlir;
+using namespace xilinx::AIE;
 
 namespace xilinx {
 namespace AIEX {
@@ -37,7 +40,7 @@ class TokenAnalysis {
   DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap;
   SmallVector<std::pair<Operation *, Operation *>, 4> tokenChains;
   SmallVector<std::pair<Operation *, Operation *>, 4> tokenPairs;
-  DenseMap<std::pair<int, int>, Operation *> tiles;
+  DenseMap<TileID, Operation *> tiles;
 
 public:
   TokenAnalysis(AIE::DeviceOp &d) : device(d) {}
@@ -59,7 +62,7 @@ public:
   // CoreOp or MemOp
   Operation *getTokenUserOp(Operation *Op);
   Operation *getShareableTileOp(Operation *Op1, Operation *Op2);
-  std::pair<int, int> getCoord(Operation *Op);
+  TileID getCoord(Operation *Op);
 
   void print(raw_ostream &os);
 };

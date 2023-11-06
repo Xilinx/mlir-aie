@@ -65,7 +65,7 @@ public:
     for (auto lockOp : device.getOps<LockOp>()) {
       auto tile = lockOp.getTile();
       auto lockID = lockOp.getLockIDValue();
-      locksPerTile[std::make_pair(tile, lockID)] = 1;
+      locksPerTile[{tile, lockID}] = 1;
     }
   }
 
@@ -74,9 +74,9 @@ public:
     const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
     for (unsigned i = 0;
          i < target_model.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
-      int usageCnt = locksPerTile[std::make_pair(tileOp, i)];
+      int usageCnt = locksPerTile[{tileOp, i}];
       if (usageCnt == 0) {
-        locksPerTile[std::make_pair(tileOp, i)] = 1;
+        locksPerTile[{tileOp, i}] = 1;
         return i;
       }
     }
@@ -125,7 +125,7 @@ public:
       }());
       masterChannelsPerTile[tile]++;
     }
-    dmaChan = std::make_pair(DMAChannelDir::MM2S, masterChannelsPerTile[tile]);
+    dmaChan = {DMAChannelDir::MM2S, masterChannelsPerTile[tile]};
     return dmaChan;
   }
 
@@ -146,7 +146,7 @@ public:
       }());
       slaveChannelsPerTile[tile]++;
     }
-    dmaChan = std::make_pair(DMAChannelDir::S2MM, slaveChannelsPerTile[tile]);
+    dmaChan = {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]};
     return dmaChan;
   }
 };
@@ -1358,15 +1358,15 @@ struct AIEObjectFifoStatefulTransformPass
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-      createDMA(device, builder, producer, producerChan.first,
-                producerChan.second, 0, producer.getDimensionsToStreamAttr());
+      createDMA(device, builder, producer, producerChan.direction,
+                producerChan.channel, 0, producer.getDimensionsToStreamAttr());
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.first,
-            producerChan.second);
+            producer.getProducerTileOp().colIndex(), producerChan.direction,
+            producerChan.channel);
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
@@ -1374,22 +1374,22 @@ struct AIEObjectFifoStatefulTransformPass
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
         DimTupleArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
-        createDMA(device, builder, consumer, consumerChan.first,
-                  consumerChan.second, 1, consumerDims);
+        createDMA(device, builder, consumer, consumerChan.direction,
+                  consumerChan.channel, 1, consumerDims);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              consumer.getProducerTileOp().colIndex(), consumerChan.first,
-              consumerChan.second);
+              consumer.getProducerTileOp().colIndex(), consumerChan.direction,
+              consumerChan.channel);
 
         // create flow
         builder.setInsertionPointAfter(producer);
         builder.create<FlowOp>(builder.getUnknownLoc(),
                                producer.getProducerTile(), WireBundle::DMA,
-                               producerChan.second, consumer.getProducerTile(),
-                               WireBundle::DMA, consumerChan.second);
+                               producerChan.channel, consumer.getProducerTile(),
+                               WireBundle::DMA, consumerChan.channel);
       }
     }
 

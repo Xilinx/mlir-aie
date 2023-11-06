@@ -27,22 +27,22 @@ AIEArch AIE1TargetModel::getTargetArch() const { return AIEArch::AIE1; }
 
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE1TargetModel::getMemWest(TileID src) const {
-  bool isEvenRow = ((src.second % 2) == 0);
+  bool isEvenRow = ((src.row % 2) == 0);
   std::optional<TileID> ret;
   if (isEvenRow)
     ret = src;
   else
-    ret = std::make_pair(src.first - 1, src.second);
+    ret = {src.col - 1, src.row};
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
-  bool isEvenRow = ((src.second % 2) == 0);
+  bool isEvenRow = ((src.row % 2) == 0);
   std::optional<TileID> ret;
   if (isEvenRow)
-    ret = std::make_pair(src.first + 1, src.second);
+    ret = {src.col + 1, src.row};
   else
     ret = src;
   if (!isValidTile(*ret))
@@ -51,15 +51,15 @@ std::optional<TileID> AIE1TargetModel::getMemEast(TileID src) const {
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE1TargetModel::getMemNorth(TileID src) const {
-  std::optional<TileID> ret = std::make_pair(src.first, src.second + 1);
+  std::optional<TileID> ret({src.col, src.row + 1});
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 std::optional<TileID> AIE1TargetModel::getMemSouth(TileID src) const {
-  std::optional<TileID> ret = std::make_pair(src.first, src.second - 1);
+  std::optional<TileID> ret({src.col, src.row - 1});
   // The first row doesn't have a tile memory south
-  if (!isValidTile(*ret) || ret->second == 0)
+  if (!isValidTile(*ret) || ret->row == 0)
     ret.reset();
   return ret;
 }
@@ -267,7 +267,7 @@ AIEArch AIE2TargetModel::getTargetArch() const { return AIEArch::AIE2; }
 
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE2TargetModel::getMemWest(TileID src) const {
-  std::optional<TileID> ret = std::make_pair(src.first - 1, src.second);
+  std::optional<TileID> ret({src.col - 1, src.row});
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
@@ -281,17 +281,16 @@ std::optional<TileID> AIE2TargetModel::getMemEast(TileID src) const {
 }
 // Return the tile ID of the memory to the west of the given tile, if it exists.
 std::optional<TileID> AIE2TargetModel::getMemNorth(TileID src) const {
-  std::optional<TileID> ret = std::make_pair(src.first, src.second + 1);
+  std::optional<TileID> ret({src.col, src.row + 1});
   if (!isValidTile(*ret))
     ret.reset();
   return ret;
 }
 std::optional<TileID> AIE2TargetModel::getMemSouth(TileID src) const {
-  std::optional<TileID> ret = std::make_pair(src.first, src.second - 1);
+  std::optional<TileID> ret({src.col, src.row - 1});
   // The first row doesn't have a tile memory south
   // Memtiles don't have memory adjacency to neighboring core tiles.
-  if (!isValidTile(*ret) || ret->second == 0 ||
-      isMemTile(ret->first, ret->second))
+  if (!isValidTile(*ret) || ret->row == 0 || isMemTile(ret->col, ret->row))
     ret.reset();
   return ret;
 }
@@ -552,22 +551,22 @@ void AIETargetModel::validate() const {
       assert(!isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
              isCoreTile(j, i));
 
-  // Looking North, busses must match
+  // Looking North, buses must match
   for (int i = 0; i < rows() - 1; i++)
     for (int j = 0; j < columns(); j++)
       assert(getNumSourceSwitchboxConnections(j, i, WireBundle::North) ==
              getNumDestSwitchboxConnections(j, i + 1, WireBundle::South));
-  // Looking South, busses must match
+  // Looking South, buses must match
   for (int i = 1; i < rows(); i++)
     for (int j = 0; j < columns(); j++)
       assert(getNumSourceSwitchboxConnections(j, i, WireBundle::South) ==
              getNumDestSwitchboxConnections(j, i - 1, WireBundle::North));
-  // Looking East, busses must match
+  // Looking East, buses must match
   for (int i = 0; i < rows(); i++)
     for (int j = 0; j < columns() - 1; j++)
       assert(getNumSourceSwitchboxConnections(j, i, WireBundle::East) ==
              getNumDestSwitchboxConnections(j + 1, i, WireBundle::West));
-  // Looking West, busses must match
+  // Looking West, buses must match
   for (int i = 0; i < rows(); i++)
     for (int j = 1; j < columns(); j++)
       assert(getNumSourceSwitchboxConnections(j, i, WireBundle::West) ==

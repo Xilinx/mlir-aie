@@ -19,7 +19,23 @@
 namespace xilinx {
 namespace AIE {
 
-typedef std::pair<int, int> TileID;
+typedef struct TileID {
+  int col;
+  int row;
+
+  inline bool operator==(const TileID &rhs) const {
+    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+  }
+
+  inline bool operator!=(const TileID &rhs) const {
+    return std::tie(col, row) != std::tie(rhs.col, rhs.row);
+  }
+
+  // Imposes a lexical order on TileIDs.
+  inline bool operator<(const TileID &rhs) const {
+    return col == rhs.col ? row < rhs.row : col < rhs.col;
+  }
+} TileID;
 
 class AIETargetModel {
 public:
@@ -48,9 +64,9 @@ public:
   /// any memory.
   virtual bool isShimNOCTile(int col, int row) const = 0;
 
-  /// Return true if the given tile is a Shim PL interface tile.  These tiles do
-  /// not include a ShimDMA and instead include connections to the PL.  They do
-  /// not contain any memory.
+  /// Return true if the given tile is a Shim PL interface tile.  These
+  /// tiles do not include a ShimDMA and instead include connections to the PL.
+  /// They do not contain any memory.
   virtual bool isShimPLTile(int col, int row) const = 0;
 
   /// Return true if the given tile is either a Shim NOC or a Shim PL interface
@@ -59,8 +75,8 @@ public:
 
   /// Return true if the given tile ID is valid.
   virtual bool isValidTile(TileID src) const {
-    return (src.first >= 0) && (src.first < columns()) && (src.second >= 0) &&
-           (src.second < rows());
+    return (src.col >= 0) && (src.col < columns()) && (src.row >= 0) &&
+           (src.row < rows());
   }
 
   /// Return true if the given port in the given tile is a valid destination for
@@ -191,7 +207,7 @@ public:
                           int memRow) const override;
 
   uint32_t getMemInternalBaseAddress(TileID src) const override {
-    bool IsEvenRow = ((src.second % 2) == 0);
+    bool IsEvenRow = ((src.row % 2) == 0);
     if (IsEvenRow)
       // Internal is West
       return getMemWestBaseAddress();
@@ -449,5 +465,30 @@ public:
 
 } // namespace AIE
 } // namespace xilinx
+
+namespace llvm {
+using namespace xilinx::AIE;
+template <> struct DenseMapInfo<TileID> {
+  using FirstInfo = DenseMapInfo<int>;
+  using SecondInfo = DenseMapInfo<int>;
+
+  static inline TileID getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static inline TileID getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const TileID &t) {
+    return detail::combineHashValue(FirstInfo::getHashValue(t.col),
+                                    SecondInfo::getHashValue(t.row));
+  }
+
+  static bool isEqual(const TileID &lhs, const TileID &rhs) {
+    return lhs == rhs;
+  }
+};
+} // namespace llvm
 
 #endif
