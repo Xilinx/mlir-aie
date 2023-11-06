@@ -514,12 +514,12 @@ def AIE_AMSelOp: AIE_Op<"amsel", [HasParent<"SwitchboxOp">]>, Results<(outs Inde
   }];
 
   let extraClassDeclaration = [{
-    uint8_t arbiterIndex() { return getArbiterID(); }
-    uint8_t getMselValue() { return getMsel(); }
+    int arbiterIndex() { return getArbiterID(); }
+    int getMselValue() { return getMsel(); }
   }];
 
   let builders = [
-    OpBuilder<(ins "uint8_t":$arbiterID, "uint8_t":$msel),
+    OpBuilder<(ins "int":$arbiterID, "int":$msel),
     [{
       build($_builder, $_state, $_builder.getIndexType(),
             $_builder.getI8IntegerAttr(arbiterID),
@@ -651,8 +651,8 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   }];
 
   let extraClassDeclaration = [{
-    uint8_t maskInt() { return getMask(); }
-    uint8_t valueInt() { return getValue(); }
+    int maskInt() { return getMask(); }
+    int valueInt() { return getValue(); }
   }];
 
   let assemblyFormat = [{
@@ -684,7 +684,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    uint8_t IDInt() { return getID(); }
+    int IDInt() { return getID(); }
   }];
 }
 

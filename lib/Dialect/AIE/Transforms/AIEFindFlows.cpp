@@ -21,8 +21,8 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 typedef struct MaskValue {
-  uint8_t mask;
-  uint8_t value;
+  int mask;
+  int value;
 } MaskValue;
 
 typedef struct PortConnection {
@@ -135,10 +135,9 @@ private:
         // Incoming packets cannot match this rule. Skip it.
         continue;
       }
-      MaskValue newMaskValue = {
-          static_cast<uint8_t>((maskValue.mask | nextMaskValue.mask)),
-          static_cast<uint8_t>(
-              (maskValue.value | (nextMaskValue.mask & nextMaskValue.value)))};
+      MaskValue newMaskValue = {maskValue.mask | nextMaskValue.mask,
+                                maskValue.value |
+                                    (nextMaskValue.mask & nextMaskValue.value)};
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.

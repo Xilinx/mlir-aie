@@ -201,7 +201,7 @@ def AIE_BPIDOp: AIEX_Op<"bp_id", [SingleBlockImplicitTerminator<"AIE::EndOp">]> 
   }];
   let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
   let extraClassDeclaration = [{
-    uint8_t IDInt() { return getID(); }
+    int IDInt() { return getID(); }
   }];
 }
 
