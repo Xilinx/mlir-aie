@@ -402,9 +402,7 @@ Example:
     AIE.dmaBd(<$buf0 : memref<512xi32>, 0, 512>, 1)
     AIE.useLock(%lck, "Release", 1)
     br ^bd6 // point to the next Block, which is also a different Block Descriptor
-
 ```
-
 
 #### Attributes:
 
@@ -1164,7 +1162,12 @@ _Operation that produces the acquire/release patterns for a process registered t
 Syntax:
 
 ```
-operation ::= `AIE.objectFifo.registerProcess` attr-dict $objFifo_name `(` $port `,` $acquirePatternTensor `:` type($acquirePatternTensor) `,` $releasePatternTensor `:` type($releasePatternTensor) `,` $callee `,` $length`)`
+operation ::= `AIE.objectFifo.registerProcess` attr-dict $objFifo_name `(`
+              $port `,`
+              $acquirePatternTensor `:` type($acquirePatternTensor) `,`
+              $releasePatternTensor `:` type($releasePatternTensor) `,`
+              $callee `,` $length
+              `)`
 ```
 
 The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its
