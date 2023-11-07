@@ -10,75 +10,75 @@
 
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
-// CHECK-LABEL: module @test_lock4 {
-// CHECK:       %0 = AIE.tile(5, 5)
-// CHECK-NEXT:  %1 = AIE.lock(%0, 0)
-// CHECK-NEXT:  %2 = AIE.tile(4, 4)
-// CHECK-NEXT:  %3 = AIE.lock(%2, 1)
-// CHECK-NEXT:  %4 = AIE.lock(%2, 0)
-// CHECK-NEXT:  %5 = AIE.tile(3, 3)
-// CHECK-NEXT:  %6 = AIE.lock(%5, 0)
-// CHECK-NEXT:  %7 = AIE.buffer(%5) : memref<256xi32>
-// CHECK-NEXT:  %8 = AIE.buffer(%2) : memref<256xi32>
-// CHECK-NEXT:  %9 = AIE.buffer(%0) : memref<256xi32>
-// CHECK-NEXT:  AIEX.token(0) {sym_name = "token0"}
-// CHECK-NEXT:  %10 = AIE.mem(%5) {
-// CHECK-NEXT:    %16 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
-// CHECK-NEXT:  ^bb1:
-// CHECK-NEXT:    AIE.useLock(%6, Acquire, 1)
-// CHECK-NEXT:    AIE.dmaBd(<%7 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%6, Release, 0)
-// CHECK-NEXT:    AIE.nextBd ^bb2
-// CHECK-NEXT:  ^bb2:
-// CHECK-NEXT:    AIE.end
-// CHECK-NEXT:  }
-// CHECK-NEXT:  %11 = AIE.mem(%2) {
-// CHECK-NEXT:    %16 = AIE.dmaStart(S2MM, 0, ^bb2, ^bb1)
-// CHECK:       ^bb1
-// CHECK-NEXT:    %17 = AIE.dmaStart(MM2S, 0, ^bb3, ^bb4)
-// CHECK-NEXT:  ^bb2:
-// CHECK-NEXT:    AIE.useLock(%4, Acquire, 0)
-// CHECK-NEXT:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%4, Release, 1)
-// CHECK-NEXT:    AIE.nextBd ^bb4
-// CHECK-NEXT:  ^bb3:
-// CHECK-NEXT:    AIE.useLock(%3, Acquire, 1)
-// CHECK-NEXT:    AIE.dmaBd(<%8 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%3, Release, 0)
-// CHECK-NEXT:    AIE.nextBd ^bb4
-// CHECK-NEXT:  ^bb4:
-// CHECK-NEXT:    AIE.end
-// CHECK-NEXT:  }
-// CHECK-NEXT:  %12 = AIE.mem(%0) {
-// CHECK-NEXT:    %16 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
-// CHECK-NEXT:  ^bb1:
-// CHECK-NEXT:    AIE.useLock(%1, Acquire, 0)
-// CHECK-NEXT:    AIE.dmaBd(<%9 : memref<256xi32>, 0, 256>, 0)
-// CHECK-NEXT:    AIE.useLock(%1, Release, 1)
-// CHECK-NEXT:    AIE.nextBd ^bb2
-// CHECK-NEXT:  ^bb2:
-// CHECK-NEXT:    AIE.end
-// CHECK-NEXT:  }
-// CHECK-NEXT:  %13 = AIE.core(%5) {
-// CHECK-NEXT:    AIE.useLock(%6, Acquire, 0)
-// CHECK-NEXT:    AIE.useLock(%6, Release, 1)
-// CHECK-NEXT:    AIE.end
-// CHECK-NEXT:  }
-// CHECK-NEXT:  %14 = AIE.core(%2) {
-// CHECK-NEXT:    AIE.useLock(%3, Acquire, 0)
-// CHECK-NEXT:    AIE.useLock(%4, Acquire, 1)
-// CHECK-NEXT:    AIE.useLock(%4, Release, 0)
-// CHECK-NEXT:    AIE.useLock(%3, Release, 1)
-// CHECK-NEXT:    AIE.end
-// CHECK-NEXT:  }
-// CHECK-NEXT:  %15 = AIE.core(%0) {
-// CHECK-NEXT:    AIE.useLock(%1, Acquire, 1)
-// CHECK-NEXT:    AIE.useLock(%1, Release, 0)
-// CHECK-NEXT:    AIE.end
-// CHECK-NEXT:  }
-// CHECK-NEXT:  AIE.flow(%5, DMA : 0, %2, DMA : 0)
-// CHECK-NEXT:  AIE.flow(%2, DMA : 0, %0, DMA : 0)
-// CHECK-NEXT:}
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(5, 5)
+// CHECK:           %[[VAL_1:.*]] = AIE.lock(%[[VAL_0]], 0)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(4, 4)
+// CHECK:           %[[VAL_3:.*]] = AIE.lock(%[[VAL_2]], 1)
+// CHECK:           %[[VAL_4:.*]] = AIE.lock(%[[VAL_2]], 0)
+// CHECK:           %[[VAL_5:.*]] = AIE.tile(3, 3)
+// CHECK:           %[[VAL_6:.*]] = AIE.lock(%[[VAL_5]], 0)
+// CHECK:           %[[VAL_7:.*]] = AIE.buffer(%[[VAL_5]]) : memref<256xi32>
+// CHECK:           %[[VAL_8:.*]] = AIE.buffer(%[[VAL_2]]) : memref<256xi32>
+// CHECK:           %[[VAL_9:.*]] = AIE.buffer(%[[VAL_0]]) : memref<256xi32>
+// CHECK:           AIEX.token(0) {sym_name = "token0"}
+// CHECK:           %[[VAL_10:.*]] = AIE.mem(%[[VAL_5]]) {
+// CHECK:             %[[VAL_11:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+// CHECK:           ^bb1:
+// CHECK:             AIE.useLock(%[[VAL_6]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_7]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:             AIE.useLock(%[[VAL_6]], Release, 0)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_12:.*]] = AIE.mem(%[[VAL_2]]) {
+// CHECK:             %[[VAL_13:.*]] = AIE.dmaStart(S2MM, 0, ^bb2, ^bb1)
+// CHECK:           ^bb1:
+// CHECK:             %[[VAL_14:.*]] = AIE.dmaStart(MM2S, 0, ^bb3, ^bb4)
+// CHECK:           ^bb2:
+// CHECK:             AIE.useLock(%[[VAL_4]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_8]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:             AIE.useLock(%[[VAL_4]], Release, 1)
+// CHECK:             AIE.nextBd ^bb4
+// CHECK:           ^bb3:
+// CHECK:             AIE.useLock(%[[VAL_3]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_8]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:             AIE.useLock(%[[VAL_3]], Release, 0)
+// CHECK:             AIE.nextBd ^bb4
+// CHECK:           ^bb4:
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_15:.*]] = AIE.mem(%[[VAL_0]]) {
+// CHECK:             %[[VAL_16:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb2)
+// CHECK:           ^bb1:
+// CHECK:             AIE.useLock(%[[VAL_1]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_9]] : memref<256xi32>, 0, 256>, 0)
+// CHECK:             AIE.useLock(%[[VAL_1]], Release, 1)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_17:.*]] = AIE.core(%[[VAL_5]]) {
+// CHECK:             AIE.useLock(%[[VAL_6]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_6]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_18:.*]] = AIE.core(%[[VAL_2]]) {
+// CHECK:             AIE.useLock(%[[VAL_3]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_4]], Acquire, 1)
+// CHECK:             AIE.useLock(%[[VAL_4]], Release, 0)
+// CHECK:             AIE.useLock(%[[VAL_3]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_19:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             AIE.useLock(%[[VAL_1]], Acquire, 1)
+// CHECK:             AIE.useLock(%[[VAL_1]], Release, 0)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           AIE.flow(%[[VAL_5]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_2]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK:         }
 
 // Generate LockOp in the top-level module
 // Lower UseTokenOp to UseLockOp

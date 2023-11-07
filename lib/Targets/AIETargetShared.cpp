@@ -22,8 +22,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 std::string tileLocStr(StringRef col, StringRef row) {
   std::string str;
@@ -118,5 +117,4 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
   // TODO: Might need to adjust step sizes / wraps by -1
 }
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE

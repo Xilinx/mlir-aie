@@ -16,10 +16,25 @@
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
-typedef std::pair<int, int> TileID;
+typedef struct TileID {
+  int col;
+  int row;
+
+  inline bool operator==(const TileID &rhs) const {
+    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+  }
+
+  inline bool operator!=(const TileID &rhs) const {
+    return std::tie(col, row) != std::tie(rhs.col, rhs.row);
+  }
+
+  // Imposes a lexical order on TileIDs.
+  inline bool operator<(const TileID &rhs) const {
+    return col == rhs.col ? row < rhs.row : col < rhs.col;
+  }
+} TileID;
 
 class AIETargetModel {
 public:
@@ -48,9 +63,9 @@ public:
   /// any memory.
   virtual bool isShimNOCTile(int col, int row) const = 0;
 
-  /// Return true if the given tile is a Shim PL interface tile.  These tiles do
-  /// not include a ShimDMA and instead include connections to the PL.  They do
-  /// not contain any memory.
+  /// Return true if the given tile is a Shim PL interface tile.  These
+  /// tiles do not include a ShimDMA and instead include connections to the PL.
+  /// They do not contain any memory.
   virtual bool isShimPLTile(int col, int row) const = 0;
 
   /// Return true if the given tile is either a Shim NOC or a Shim PL interface
@@ -59,8 +74,8 @@ public:
 
   /// Return true if the given tile ID is valid.
   virtual bool isValidTile(TileID src) const {
-    return (src.first >= 0) && (src.first < columns()) && (src.second >= 0) &&
-           (src.second < rows());
+    return (src.col >= 0) && (src.col < columns()) && (src.row >= 0) &&
+           (src.row < rows());
   }
 
   /// Return true if the given port in the given tile is a valid destination for
@@ -191,7 +206,7 @@ public:
                           int memRow) const override;
 
   uint32_t getMemInternalBaseAddress(TileID src) const override {
-    bool IsEvenRow = ((src.second % 2) == 0);
+    bool IsEvenRow = ((src.row % 2) == 0);
     if (IsEvenRow)
       // Internal is West
       return getMemWestBaseAddress();
@@ -399,7 +414,79 @@ public:
   }
 };
 
-} // namespace AIE
-} // namespace xilinx
+class IPUTargetModel : public AIE2TargetModel {
+  llvm::SmallDenseSet<unsigned, 16> noc_columns = {0, 1, 2, 3};
+
+public:
+  IPUTargetModel() {}
+
+  int columns() const override { return 5; }
+  int rows() const override {
+    return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
+  }
+
+  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isMemTile(int col, int row) const override { return row == 1; }
+
+  bool isShimNOCTile(int col, int row) const override {
+    return row == 0 && noc_columns.contains(col);
+  }
+  bool isShimPLTile(int col, int row) const override {
+    return row == 0 && !noc_columns.contains(col);
+  }
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row) || isShimPLTile(col, row);
+  }
+  uint32_t getNumMemTileRows() const override { return 1; }
+  bool isValidTraceMaster(int col, int row, WireBundle destBundle,
+                          int destIndex) const override {
+    if (isCoreTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 0)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
+             destIndex == 5)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+             destIndex == 0)
+      return true;
+    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+             destIndex == 0)
+      return true;
+    return false;
+  }
+};
+
+} // namespace xilinx::AIE
+
+namespace llvm {
+template <> struct DenseMapInfo<xilinx::AIE::TileID> {
+  using FirstInfo = DenseMapInfo<int>;
+  using SecondInfo = DenseMapInfo<int>;
+
+  static inline xilinx::AIE::TileID getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static inline xilinx::AIE::TileID getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const xilinx::AIE::TileID &t) {
+    return detail::combineHashValue(FirstInfo::getHashValue(t.col),
+                                    SecondInfo::getHashValue(t.row));
+  }
+
+  static bool isEqual(const xilinx::AIE::TileID &lhs,
+                      const xilinx::AIE::TileID &rhs) {
+    return lhs == rhs;
+  }
+};
+} // namespace llvm
 
 #endif

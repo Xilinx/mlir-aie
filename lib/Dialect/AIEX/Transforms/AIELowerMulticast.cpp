@@ -16,6 +16,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+
 #include "llvm/ADT/Twine.h"
 
 #define DEBUG_TYPE "aie-lower-multicast"
@@ -60,8 +61,8 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
               dyn_cast<TileOp>(multiDest.getTile().getDefiningOp());
           Port destPort = multiDest.port();
           builder.create<FlowOp>(builder.getUnknownLoc(), srcTile,
-                                 sourcePort.first, sourcePort.second, destTile,
-                                 destPort.first, destPort.second);
+                                 sourcePort.bundle, sourcePort.channel,
+                                 destTile, destPort.bundle, destPort.channel);
         }
       }
     }

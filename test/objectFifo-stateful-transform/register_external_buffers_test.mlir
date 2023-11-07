@@ -8,72 +8,70 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 // Date: January 27th 2023
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-//CHECK: module @register_external_buffers {
-//CHECK:   AIE.device(xcvc1902) {
-//CHECK:     memref.global "public" @ext_of_cons : memref<16xi32>
-//CHECK:     memref.global "public" @ext_of : memref<16xi32>
-//CHECK:     %0 = AIE.tile(7, 1)
-//CHECK:     %1 = AIE.tile(7, 0)
-//CHECK:     %2 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
-//CHECK:     %3 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>
-//CHECK:     %4 = AIE.buffer(%0) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32>
-//CHECK:     %5 = AIE.lock(%0, 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
-//CHECK:     %6 = AIE.lock(%0, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
-//CHECK:     %7 = AIE.lock(%0, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
-//CHECK:     %8 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
-//CHECK:     AIE.flow(%1, DMA : 0, %0, DMA : 0)
-//CHECK:     %9 = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
-//CHECK:     func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-//CHECK:       return
-//CHECK:     }
-//CHECK:     %10 = AIE.core(%0) {
-//CHECK:       %c0 = arith.constant 0 : index
-//CHECK:       %c1 = arith.constant 1 : index
-//CHECK:       %c12 = arith.constant 12 : index
-//CHECK:       AIE.useLock(%5, Acquire, 1)
-//CHECK:       AIE.useLock(%6, Acquire, 1)
-//CHECK:       func.call @some_work(%2, %3) : (memref<16xi32>, memref<16xi32>) -> ()
-//CHECK:       AIE.useLock(%5, Release, 0)
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:     AIE.shimDMAAllocation @ext_of(MM2S, 0, 7)
-//CHECK:     %11 = AIE.shimDMA(%1) {
-//CHECK:       %13 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-//CHECK:       AIE.useLock(%8, Acquire, 1)
-//CHECK:       AIE.dmaBd(<%9 : memref<64xi32>, 0, 64>, 0)
-//CHECK:       AIE.useLock(%8, Release, 0)
-//CHECK:       AIE.nextBd ^bb1
-//CHECK:     ^bb2:  // pred: ^bb0
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:     %12 = AIE.mem(%0) {
-//CHECK:       %13 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb3
-//CHECK:       AIE.useLock(%5, Acquire, 0)
-//CHECK:       AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%5, Release, 1)
-//CHECK:       AIE.nextBd ^bb2
-//CHECK:     ^bb2:  // pred: ^bb1
-//CHECK:       AIE.useLock(%6, Acquire, 0)
-//CHECK:       AIE.dmaBd(<%3 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%6, Release, 1)
-//CHECK:       AIE.nextBd ^bb3
-//CHECK:     ^bb3:  // pred: ^bb2
-//CHECK:       AIE.useLock(%7, Acquire, 0)
-//CHECK:       AIE.dmaBd(<%4 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%7, Release, 1)
-//CHECK:       AIE.nextBd ^bb1
-//CHECK:     ^bb4:  // pred: ^bb0
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:   }
-//CHECK: }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           memref.global "public" @ext_of_cons : memref<16xi32>
+// CHECK:           memref.global "public" @ext_of : memref<16xi32>
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(7, 1)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(7, 0)
+// CHECK:           %[[VAL_2:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32>
+// CHECK:           %[[VAL_5:.*]] = AIE.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
+// CHECK:           %[[VAL_6:.*]] = AIE.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
+// CHECK:           %[[VAL_7:.*]] = AIE.lock(%[[VAL_0]], 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
+// CHECK:           %[[VAL_8:.*]] = AIE.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
+// CHECK:           AIE.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK:           %[[VAL_9:.*]] = AIE.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
+// CHECK:           func.func @some_work(%[[VAL_10:.*]]: memref<16xi32>, %[[VAL_11:.*]]: memref<16xi32>) {
+// CHECK:             return
+// CHECK:           }
+// CHECK:           %[[VAL_12:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             %[[VAL_13:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_14:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_15:.*]] = arith.constant 12 : index
+// CHECK:             AIE.useLock(%[[VAL_5]], Acquire, 1)
+// CHECK:             AIE.useLock(%[[VAL_6]], Acquire, 1)
+// CHECK:             func.call @some_work(%[[VAL_2]], %[[VAL_3]]) : (memref<16xi32>, memref<16xi32>) -> ()
+// CHECK:             AIE.useLock(%[[VAL_5]], Release, 0)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           AIE.shimDMAAllocation @ext_of(MM2S, 0, 7)
+// CHECK:           %[[VAL_16:.*]] = AIE.shimDMA(%[[VAL_1]]) {
+// CHECK:             %[[VAL_17:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb2)
+// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1
+// CHECK:             AIE.useLock(%[[VAL_8]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_9]] : memref<64xi32>, 0, 64>, 0)
+// CHECK:             AIE.useLock(%[[VAL_8]], Release, 0)
+// CHECK:             AIE.nextBd ^bb1
+// CHECK:           ^bb2:  // pred: ^bb0
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_18:.*]] = AIE.mem(%[[VAL_0]]) {
+// CHECK:             %[[VAL_19:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb3
+// CHECK:             AIE.useLock(%[[VAL_5]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_2]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:  // pred: ^bb1
+// CHECK:             AIE.useLock(%[[VAL_6]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_3]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_6]], Release, 1)
+// CHECK:             AIE.nextBd ^bb3
+// CHECK:           ^bb3:  // pred: ^bb2
+// CHECK:             AIE.useLock(%[[VAL_7]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_4]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_7]], Release, 1)
+// CHECK:             AIE.nextBd ^bb1
+// CHECK:           ^bb4:  // pred: ^bb0
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:         }
 
 module @register_external_buffers {
  AIE.device(xcvc1902) {

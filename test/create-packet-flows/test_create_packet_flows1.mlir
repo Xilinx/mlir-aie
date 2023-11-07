@@ -10,19 +10,19 @@
 
 // RUN: aie-opt --aie-create-packet-flows %s | FileCheck %s
 
-// CHECK-LABEL: module @test_create_packet_flows1 {
-// CHECK:   %0 = AIE.tile(1, 1)
-// CHECK:   %1 = AIE.switchbox(%0) {
-// CHECK:     %2 = AIE.amsel<0> (0)
-// CHECK:     %3 = AIE.masterset(Core : 0, %2)
-// CHECK:     AIE.packetrules(West : 1) {
-// CHECK:       AIE.rule(31, 1, %2)
-// CHECK:     }
-// CHECK:     AIE.packetrules(West : 0) {
-// CHECK:       AIE.rule(31, 0, %2)
-// CHECK:     }
-// CHECK:   }
-// CHECK: }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 1)
+// CHECK:           %[[VAL_1:.*]] = AIE.switchbox(%[[VAL_0]]) {
+// CHECK:             %[[VAL_2:.*]] = AIE.amsel<0> (0)
+// CHECK:             %[[VAL_3:.*]] = AIE.masterset(Core : 0, %[[VAL_2]])
+// CHECK:             AIE.packetrules(West : 1) {
+// CHECK:               AIE.rule(31, 1, %[[VAL_2]])
+// CHECK:             }
+// CHECK:             AIE.packetrules(West : 0) {
+// CHECK:               AIE.rule(31, 0, %[[VAL_2]])
+// CHECK:             }
+// CHECK:           }
+// CHECK:         }
 
 // many-to-one, single arbiter
 module @test_create_packet_flows1 {

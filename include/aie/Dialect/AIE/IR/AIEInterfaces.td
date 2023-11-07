@@ -12,8 +12,11 @@
 #ifndef AIE_INTERFACES
 #define AIE_INTERFACES
 
+include "aie/Dialect/AIE/IR/AIE.td"
+
 include "mlir/IR/OpBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/OpAsmInterface.td"
 
 // Op is a DMA-like operation with BD contraints
 def HasValidBDs : NativeOpTrait<"HasValidBDs"> {
@@ -25,14 +28,14 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
-def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
-def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
-def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(cast<xilinx::AIE::TileElement>($_op).getTileID().first,"
-                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().second)">;
+def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                       "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                       "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
 def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
@@ -48,12 +51,10 @@ def FlowEndPoint : OpInterface<"FlowEndPoint"> {
   }];
   let cppNamespace = "::xilinx::AIE";
   let methods = [
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "colIndex", (ins )
     >,
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "rowIndex", (ins )
     >
   ];
@@ -67,32 +68,28 @@ def Interconnect : OpInterface<"Interconnect"> {
   let cppNamespace = "::xilinx::AIE";
 
   let methods = [
-    InterfaceMethod<[{
-      }],
-      "::mlir::Region &", "getConnections", (ins )
+    InterfaceMethod<[{}],
+      "mlir::Region &", "getConnections", (ins )
     >,
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "colIndex", (ins )
     >,
-    InterfaceMethod<[{
-      }],
+    InterfaceMethod<[{}],
       "int", "rowIndex", (ins )
     >,
-    InterfaceMethod<[{
-        int FooOp::getNumSourceConnections(WireBundle bundle) {
-      }],
+    InterfaceMethod<[{}],
       "int", "getNumSourceConnections", (ins "WireBundle":$bundle)
     >,
-    InterfaceMethod<[{
-        int FooOp::getNumDestConnections(WireBundle bundle) {
-      }],
+    InterfaceMethod<[{}],
       "int", "getNumDestConnections", (ins "WireBundle":$bundle)
     >
   ];
 }
 
-def TileElement : OpInterface<"TileElement"> {
+
+def TileElement : OpInterface<"TileElement", [
+    DeclareOpInterfaceMethods<OpAsmOpInterface>,
+  ]> {
   let description = [{
     Interface for operations that exist in a TileOp.
   }];
@@ -102,13 +99,24 @@ def TileElement : OpInterface<"TileElement"> {
         Return the location of the Tile where the element is located.
       }],
       "xilinx::AIE::TileID", "getTileID", (ins ),
-      /*methodBody=*/  [{}],
-      /*defaultImpl=*/ [{
-        ConcreteOp op = cast<ConcreteOp>(this->getOperation());
+      /*methodBody=*/[{}],
+      /*defaultImpl=*/[{
+        ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
         return op.getTileOp().getTileID();
       }]
-    >
+    >,
   ];
+  let extraTraitClassDeclaration = [{
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
+      std::string nameWithoutDialect =
+          op.getOperationName().str().substr(op.getOperationName().find('.') + 1);
+      setNameFn(op.getResult(), nameWithoutDialect + "_" +
+                                    std::to_string(this->getTileID().col) + "_" +
+                                    std::to_string(this->getTileID().row));
+    }
+  }];
 }
 
 def AIETarget : OpInterface<"AIETarget"> {
@@ -125,60 +133,5 @@ def AIETarget : OpInterface<"AIETarget"> {
   ];
 }
 
-def Core: I32EnumAttrCase<"Core", 0>;
-def DMA: I32EnumAttrCase<"DMA", 1>;
-def FIFO: I32EnumAttrCase<"FIFO", 2>;
-def South: I32EnumAttrCase<"South", 3>;
-def West: I32EnumAttrCase<"West", 4>;
-def North: I32EnumAttrCase<"North", 5>;
-def East: I32EnumAttrCase<"East", 6>;
-def PLIO: I32EnumAttrCase<"PLIO", 7>;
-def NOC: I32EnumAttrCase<"NOC", 8>;
-def Trace: I32EnumAttrCase<"Trace", 9>;
-
-def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-  [Core, DMA, FIFO, South, West, North, East, PLIO, NOC, Trace]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
-def Produce: I32EnumAttrCase<"Produce", 0>;
-def Consume: I32EnumAttrCase<"Consume", 1>;
-
-def Acquire: I32EnumAttrCase<"Acquire", 0>;
-def Release: I32EnumAttrCase<"Release", 1>;
-def AcquireGreaterEqual: I32EnumAttrCase<"AcquireGreaterEqual", 2>;
-
-def NonBlocking: I32EnumAttrCase<"NonBlocking", 0>;
-def Blocking: I32EnumAttrCase<"Blocking", 1>;
-
-def AIE1: I32EnumAttrCase<"AIE1", 1>;
-def AIE2: I32EnumAttrCase<"AIE2", 2>;
-
-def xcvc1902: I32EnumAttrCase<"xcvc1902", 1>;
-def xcve2302: I32EnumAttrCase<"xcve2302", 2>;
-def xcve2802: I32EnumAttrCase<"xcve2802", 3>;
-
-def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
-  [Acquire, AcquireGreaterEqual, Release]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
-def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
-  [NonBlocking, Blocking]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
-  [AIE1, AIE2]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
-  [xcvc1902, xcve2302, xcve2802]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
 
 #endif // AIE_INTERFACES

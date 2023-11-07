@@ -15,16 +15,18 @@
 
 include "mlir/Pass/PassBase.td"
 
-def AIEVectorize : Pass<"aie-vectorize", "ModuleOp"> {
+def AIEVectorize : Pass<"aie-vectorize", "mlir::ModuleOp"> {
   let summary = "Vectorize the output of affine "
                 "supervectorizer to AIE vector abstraction";
   let constructor = "xilinx::aievec::createAIEVectorizePass()";
-  let dependentDialects = ["AffineDialect", 
-                           "xilinx::aievec::AIEVecDialect",
-                           "arith::ArithDialect",
-                           "memref::MemRefDialect",
-                           "scf::SCFDialect", 
-                           "vector::VectorDialect"];
+  let dependentDialects = [
+    "mlir::affine::AffineDialect",
+    "xilinx::aievec::AIEVecDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::vector::VectorDialect"
+  ];
   let options = [
     Option<"shiftParam", "shift", "unsigned", /*default=*/"0",
       "Shift parameter for rounding and saturation">,

@@ -348,8 +348,7 @@ static LogicalResult createLinearizedAccess(CppEmitter &emitter, Value source,
   ArrayRef<int64_t> stride = memRefType.getShape();
 
   // The stride and indices size must match
-  if (stride.size() != indices.size() ||
-      (int)stride.size() != memRefType.getRank())
+  if (stride.size() != indices.size() || stride.size() != memRefType.getRank())
     return failure();
 
   // A stride contains two parts:

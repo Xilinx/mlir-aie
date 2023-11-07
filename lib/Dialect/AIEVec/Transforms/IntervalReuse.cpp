@@ -14,6 +14,7 @@
 
 #include "aie/Dialect/AIEVec/Transforms/IntervalReuse.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
+
 #include "llvm/Support/Debug.h"
 
 using namespace mlir;

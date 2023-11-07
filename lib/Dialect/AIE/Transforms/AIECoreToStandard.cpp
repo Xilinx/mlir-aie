@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -19,7 +20,6 @@
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
@@ -29,7 +29,6 @@ using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
-// using namespace mlir::LLVM;
 
 template <typename MyAIEOp>
 struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {
@@ -201,19 +200,19 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
       if (!device) {
         return module.emitOpError("Device Not found!");
       }
-      const auto &target_model = device.getTargetModel();
+      const auto &targetModel = device.getTargetModel();
 
       // Generate the intrinsic name
       std::string funcName = "";
-      if (target_model.getTargetArch() == AIEArch::AIE1)
+      if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName = "llvm.aie.lock.";
       else
         funcName = "llvm.aie2.";
-      if (useLock.acquire() || useLock.acquire_ge())
+      if (useLock.acquire() || useLock.acquireGE())
         funcName += "acquire";
       else if (useLock.release())
         funcName += "release";
-      if (target_model.getTargetArch() == AIEArch::AIE1)
+      if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName += ".reg";
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
@@ -224,7 +223,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
       auto lockValue = useLock.getLockValue();
 
       // AIE2 acquire greater equal is encoded as a negative value.
-      if (useLock.acquire_ge()) {
+      if (useLock.acquireGE()) {
         lockValue = -lockValue;
       }
       args.push_back(rewriter.create<arith::IndexCastOp>(
@@ -379,9 +378,9 @@ struct AIECoreToStandardPass
       signalPassFailure();
     }
     DeviceOp device = *(m.getOps<DeviceOp>().begin());
-    const auto &target_model = device.getTargetModel();
+    const auto &targetModel = device.getTargetModel();
     const char *triple;
-    switch (target_model.getTargetArch()) {
+    switch (targetModel.getTargetArch()) {
     case AIEArch::AIE1:
       triple = "aie";
       break;
@@ -400,18 +399,12 @@ struct AIECoreToStandardPass
     // Create an LLVM func for each CoreOp
     // Clone the region body of each CoreOp to the newly created LLVM func
 
-    DenseMap<std::pair<int, int>, Operation *> tiles;
+    DenseMap<TileID, Operation *> tiles;
     DenseMap<Operation *, CoreOp> cores;
     DenseMap<Operation *, MemOp> mems;
     DenseMap<std::pair<Operation *, int>, LockOp> locks;
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
     DenseMap<Operation *, SwitchboxOp> switchboxes;
-
-    NetlistAnalysis NL(device, tiles, cores, mems, locks, tileToBuffers,
-                       switchboxes);
-    NL.collectTiles(tiles);
-    NL.collectCores(cores);
-    NL.collectBuffers(tileToBuffers);
 
     // Populate intrinsic functions
     // Intrinsic information:

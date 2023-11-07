@@ -7,7 +7,6 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
-//
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/ADF/ADFOps.h"
@@ -16,8 +15,9 @@
 
 #include "llvm/ADT/TypeSwitch.h"
 
+using namespace mlir;
 using namespace xilinx;
-using namespace ADF;
+using namespace xilinx::ADF;
 
 //===----------------------------------------------------------------------===//
 // ADF Types

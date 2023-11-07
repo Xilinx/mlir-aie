@@ -7,52 +7,51 @@
 // (c) Copyright 2021 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
-
 // RUN: aie-opt --aie-localize-locks %s | FileCheck %s
 
-// CHECK:  module @test_xaie0  {
-// CHECK:    %0 = AIE.tile(1, 1)
-// CHECK:    %1 = AIE.tile(3, 4)
-// CHECK:    %2 = AIE.tile(3, 2)
-// CHECK:    %3 = AIE.tile(3, 3)
-// CHECK:    %4 = AIE.tile(4, 3)
-// CHECK:    %5 = AIE.lock(%0, 0)
-// CHECK:    %6 = AIE.lock(%3, 8)
-// CHECK:    %7 = AIE.lock(%4, 8)
-// CHECK:    %8 = AIE.core(%0)  {
-// CHECK:      %c48 = arith.constant 48 : index
-// CHECK:      AIE.useLock(%c48, Acquire, 0)
-// CHECK:      AIE.useLock(%c48, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %9 = AIE.core(%1)  {
-// CHECK:      %c8 = arith.constant 8 : index
-// CHECK:      AIE.useLock(%c8, Acquire, 0)
-// CHECK:      AIE.useLock(%c8, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %10 = AIE.core(%2)  {
-// CHECK:      %c40 = arith.constant 40 : index
-// CHECK:      AIE.useLock(%c40, Acquire, 0)
-// CHECK:      AIE.useLock(%c40, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %11 = AIE.core(%3)  {
-// CHECK:      %c56 = arith.constant 56 : index
-// CHECK:      AIE.useLock(%c56, Acquire, 0)
-// CHECK:      AIE.useLock(%c56, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:    %12 = AIE.core(%4)  {
-// CHECK:      %c56 = arith.constant 56 : index
-// CHECK:      %c24 = arith.constant 24 : index
-// CHECK:      AIE.useLock(%c24, Acquire, 0)
-// CHECK:      AIE.useLock(%c24, Release, 1)
-// CHECK:      AIE.useLock(%c56, Acquire, 0)
-// CHECK:      AIE.useLock(%c56, Release, 1)
-// CHECK:      AIE.end
-// CHECK:    }
-// CHECK:  }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 1)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(3, 4)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(3, 2)
+// CHECK:           %[[VAL_3:.*]] = AIE.tile(3, 3)
+// CHECK:           %[[VAL_4:.*]] = AIE.tile(4, 3)
+// CHECK:           %[[VAL_5:.*]] = AIE.lock(%[[VAL_0]], 0)
+// CHECK:           %[[VAL_6:.*]] = AIE.lock(%[[VAL_3]], 8)
+// CHECK:           %[[VAL_7:.*]] = AIE.lock(%[[VAL_4]], 8)
+// CHECK:           %[[VAL_8:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             %[[VAL_9:.*]] = arith.constant 48 : index
+// CHECK:             AIE.useLock(%[[VAL_9]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_9]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_10:.*]] = AIE.core(%[[VAL_1]]) {
+// CHECK:             %[[VAL_11:.*]] = arith.constant 8 : index
+// CHECK:             AIE.useLock(%[[VAL_11]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_11]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_12:.*]] = AIE.core(%[[VAL_2]]) {
+// CHECK:             %[[VAL_13:.*]] = arith.constant 40 : index
+// CHECK:             AIE.useLock(%[[VAL_13]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_13]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_14:.*]] = AIE.core(%[[VAL_3]]) {
+// CHECK:             %[[VAL_15:.*]] = arith.constant 56 : index
+// CHECK:             AIE.useLock(%[[VAL_15]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_15]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_16:.*]] = AIE.core(%[[VAL_4]]) {
+// CHECK:             %[[VAL_17:.*]] = arith.constant 56 : index
+// CHECK:             %[[VAL_18:.*]] = arith.constant 24 : index
+// CHECK:             AIE.useLock(%[[VAL_18]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_18]], Release, 1)
+// CHECK:             AIE.useLock(%[[VAL_17]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_17]], Release, 1)
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:         }
 
 module @test_xaie0 {
  AIE.device(xcvc1902) {

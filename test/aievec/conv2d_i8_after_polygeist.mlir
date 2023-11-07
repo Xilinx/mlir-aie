@@ -37,11 +37,11 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
 //      CHECK:    %[[C1:.*]] = arith.constant 1 : index
 //      CHECK:    %[[C16:.*]] = arith.constant 16 : index
 //      CHECK:    %[[C0:.*]] = arith.constant 0 : index
-//      CHECK:    %[[T0:.*]] = aievec.upd %[[A1]][%[[C0:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?xi8>, vector<64xi8>
+//      CHECK:    %[[T0:.*]] = aievec.upd %[[A1]][%[[C0:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?xi8>, vector<64xi8>
 //      CHECK:    %[[T1:.*]] = aievec.shuffle %[[T0:.*]] {mode = 0 : i32} : vector<64xi8>, vector<64xi8>
 //      CHECK:    scf.for %[[A3:.*]] = %[[C0:.*]] to %[[C16:.*]] step %[[C1:.*]] {
 //      CHECK:      scf.for %[[A4:.*]] = %[[C0:.*]] to %[[C256:.*]] step %[[C32:.*]] {
-//      CHECK:        %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x288xi8>, vector<64xi8>
+//      CHECK:        %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x288xi8>, vector<64xi8>
 //      CHECK:        %[[T3:.*]] = aievec.mul_conv %[[T2:.*]], %[[T1:.*]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
 //      CHECK:        %[[T4:.*]] = aievec.cast %[[T3:.*]] {isResAcc = false} : vector<32xi32>, vector<32xi32>
 //      CHECK:        vector.transfer_write %[[T4:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] {in_bounds = [true]} : vector<32xi32>, memref<?x256xi32>

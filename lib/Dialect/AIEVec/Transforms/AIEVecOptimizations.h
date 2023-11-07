@@ -18,7 +18,7 @@ namespace aievec {
 
 /// Build a pipeline to replace simple AIEVec operations with complex, more
 /// performant AIEVec operations.
-void buildOptimizeAIEVec(OpPassManager &pm,
+void buildOptimizeAIEVec(mlir::OpPassManager &pm,
                          const OptimizeAIEVecOptions &options);
 
 } // namespace aievec

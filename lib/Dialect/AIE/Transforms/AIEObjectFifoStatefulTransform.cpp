@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -65,18 +66,18 @@ public:
     for (auto lockOp : device.getOps<LockOp>()) {
       auto tile = lockOp.getTile();
       auto lockID = lockOp.getLockIDValue();
-      locksPerTile[std::make_pair(tile, lockID)] = 1;
+      locksPerTile[{tile, lockID}] = 1;
     }
   }
 
   /// Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
-    const auto &target_model = xilinx::AIE::getTargetModel(tileOp);
+    const auto &targetModel = xilinx::AIE::getTargetModel(tileOp);
     for (unsigned i = 0;
-         i < target_model.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
-      int usageCnt = locksPerTile[std::make_pair(tileOp, i)];
+         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
+      int usageCnt = locksPerTile[{tileOp, i}];
       if (usageCnt == 0) {
-        locksPerTile[std::make_pair(tileOp, i)] = 1;
+        locksPerTile[{tileOp, i}] = 1;
         return i;
       }
     }
@@ -125,7 +126,7 @@ public:
       }());
       masterChannelsPerTile[tile]++;
     }
-    dmaChan = std::make_pair(DMAChannelDir::MM2S, masterChannelsPerTile[tile]);
+    dmaChan = {DMAChannelDir::MM2S, masterChannelsPerTile[tile]};
     return dmaChan;
   }
 
@@ -146,7 +147,7 @@ public:
       }());
       slaveChannelsPerTile[tile]++;
     }
-    dmaChan = std::make_pair(DMAChannelDir::S2MM, slaveChannelsPerTile[tile]);
+    dmaChan = {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]};
     return dmaChan;
   }
 };
@@ -177,24 +178,24 @@ struct AIEObjectFifoStatefulTransformPass
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
   bool isSharedMemory(TileOp a, TileOp b, int *share_direction) {
-    const auto &target_model = getTargetModel(a.getOperation());
+    const auto &targetModel = getTargetModel(a.getOperation());
 
     if ((a.isShimTile() && !b.isShimTile()) ||
         (!a.isShimTile() && b.isShimTile())) {
       *share_direction = 0;
       return false;
     }
-    if ((target_model.isMemTile(a.getCol(), a.getRow()) &&
-         !target_model.isMemTile(b.getCol(), b.getRow())) ||
-        (!target_model.isMemTile(a.getCol(), a.getRow()) &&
-         target_model.isMemTile(b.getCol(), b.getRow()))) {
+    if ((targetModel.isMemTile(a.getCol(), a.getRow()) &&
+         !targetModel.isMemTile(b.getCol(), b.getRow())) ||
+        (!targetModel.isMemTile(a.getCol(), a.getRow()) &&
+         targetModel.isMemTile(b.getCol(), b.getRow()))) {
       *share_direction = 0;
       return false;
     }
-    bool rightShared = target_model.isLegalMemAffinity(
+    bool rightShared = targetModel.isLegalMemAffinity(
         a.colIndex(), a.rowIndex(), b.colIndex(), b.rowIndex());
 
-    bool leftShared = target_model.isLegalMemAffinity(
+    bool leftShared = targetModel.isLegalMemAffinity(
         b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
     if (leftShared)
@@ -712,7 +713,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoIn.name() == op.name())
                 break;
               else
-                extraOffset += (int)getMemrefTypeSize(elemType);
+                extraOffset += getMemrefTypeSize(elemType);
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -730,7 +731,7 @@ struct AIEObjectFifoStatefulTransformPass
               if (fifoOut.name() == op.name())
                 break;
               else
-                extraOffset += (int)getMemrefTypeSize(elemType);
+                extraOffset += getMemrefTypeSize(elemType);
             }
           }
         } else {
@@ -1358,15 +1359,15 @@ struct AIEObjectFifoStatefulTransformPass
       // create producer tile DMA
       xilinx::AIE::DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
-      createDMA(device, builder, producer, producerChan.first,
-                producerChan.second, 0, producer.getDimensionsToStreamAttr());
+      createDMA(device, builder, producer, producerChan.direction,
+                producerChan.channel, 0, producer.getDimensionsToStreamAttr());
       // generate objectFifo allocation info
       builder.setInsertionPoint(&device.getBody()->back());
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.first,
-            producerChan.second);
+            producer.getProducerTileOp().colIndex(), producerChan.direction,
+            producerChan.channel);
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
@@ -1374,22 +1375,22 @@ struct AIEObjectFifoStatefulTransformPass
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
         DimTupleArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
-        createDMA(device, builder, consumer, consumerChan.first,
-                  consumerChan.second, 1, consumerDims);
+        createDMA(device, builder, consumer, consumerChan.direction,
+                  consumerChan.channel, 1, consumerDims);
         // generate objectFifo allocation info
         builder.setInsertionPoint(&device.getBody()->back());
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              consumer.getProducerTileOp().colIndex(), consumerChan.first,
-              consumerChan.second);
+              consumer.getProducerTileOp().colIndex(), consumerChan.direction,
+              consumerChan.channel);
 
         // create flow
         builder.setInsertionPointAfter(producer);
         builder.create<FlowOp>(builder.getUnknownLoc(),
                                producer.getProducerTile(), WireBundle::DMA,
-                               producerChan.second, consumer.getProducerTile(),
-                               WireBundle::DMA, consumerChan.second);
+                               producerChan.channel, consumer.getProducerTile(),
+                               WireBundle::DMA, consumerChan.channel);
       }
     }
 

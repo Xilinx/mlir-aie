@@ -12,6 +12,8 @@
 #define AIEX_TOKENANALYSIS_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -25,19 +27,22 @@
 
 #include <map>
 
-using namespace mlir;
+namespace xilinx::AIEX {
 
-namespace xilinx {
-namespace AIEX {
+using namespace xilinx::AIE;
 
 class TokenAnalysis {
   AIE::DeviceOp &device;
-  DenseMap<StringRef, int> tokenSymbols;
-  DenseMap<StringRef, SmallVector<Operation *, 4>> tokenAcqMap;
-  DenseMap<StringRef, SmallVector<Operation *, 4>> tokenRelMap;
-  SmallVector<std::pair<Operation *, Operation *>, 4> tokenChains;
-  SmallVector<std::pair<Operation *, Operation *>, 4> tokenPairs;
-  DenseMap<std::pair<int, int>, Operation *> tiles;
+  llvm::DenseMap<llvm::StringRef, int> tokenSymbols;
+  llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Operation *, 4>>
+      tokenAcqMap;
+  llvm::DenseMap<llvm::StringRef, llvm::SmallVector<mlir::Operation *, 4>>
+      tokenRelMap;
+  llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
+      tokenChains;
+  llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
+      tokenPairs;
+  llvm::DenseMap<TileID, mlir::Operation *> tiles;
 
 public:
   TokenAnalysis(AIE::DeviceOp &d) : device(d) {}
@@ -57,14 +62,14 @@ public:
   auto getTiles() const { return tiles; }
 
   // CoreOp or MemOp
-  Operation *getTokenUserOp(Operation *Op);
-  Operation *getShareableTileOp(Operation *Op1, Operation *Op2);
-  std::pair<int, int> getCoord(Operation *Op);
+  mlir::Operation *getTokenUserOp(mlir::Operation *Op);
+  mlir::Operation *getShareableTileOp(mlir::Operation *Op1,
+                                      mlir::Operation *Op2);
+  TileID getCoord(mlir::Operation *Op);
 
-  void print(raw_ostream &os);
+  void print(llvm::raw_ostream &os);
 };
 
-} // namespace AIEX
-} // namespace xilinx
+} // namespace xilinx::AIEX
 
 #endif

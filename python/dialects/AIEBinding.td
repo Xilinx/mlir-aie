@@ -9,6 +9,6 @@
 #ifndef AIE_BINDING_TD
 #define AIE_BINDING_TD
 
-include "aie/Dialect/AIE/IR/AIE.td"
+include "aie/Dialect/AIE/IR/AIEOps.td"
 
 #endif // AIE_BINDING_TD

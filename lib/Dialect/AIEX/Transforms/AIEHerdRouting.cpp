@@ -8,11 +8,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
@@ -28,7 +27,7 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
 
-  AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
+  explicit AIEOpRemoval(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern<MyOp>(context, benefit) {}
 
   LogicalResult
@@ -41,11 +40,12 @@ struct AIEOpRemoval : public OpConversionPattern<MyOp> {
   }
 };
 
-int getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
-                            WireBundle destBundle) {
+std::optional<int> getAvailableDestChannel(SmallVector<Connect, 8> &connects,
+                                           Port sourcePort,
+                                           WireBundle destBundle) {
 
-  if (connects.size() == 0)
-    return 0;
+  if (connects.empty())
+    return {0};
 
   int numChannels;
 
@@ -59,41 +59,40 @@ int getAvailableDestChannel(SmallVector<Connect, 8> &connects, Port sourcePort,
 
   // look for existing connect
   for (int i = 0; i < numChannels; i++) {
-    Port port = std::make_pair(destBundle, i);
+    Port port = {destBundle, i};
     if (std::find(connects.begin(), connects.end(),
-                  std::make_pair(sourcePort, port)) != connects.end())
-      return i;
+                  Connect{sourcePort, port}) != connects.end())
+      return {i};
   }
 
   // if not, look for available destination port
   for (int i = 0; i < numChannels; i++) {
-    Port port = std::make_pair(destBundle, i);
+    Port port = {destBundle, i};
     SmallVector<Port, 8> ports;
     for (auto connect : connects)
-      ports.push_back(connect.second);
+      ports.push_back(connect.dst);
 
     if (std::find(ports.begin(), ports.end(), port) == ports.end())
-      return i;
+      return {i};
   }
 
-  return -1;
+  return std::nullopt;
 }
 
 void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
                 WireBundle sourceBundle, int sourceChannel,
                 WireBundle destBundle, int destChannel, Operation *herdOp,
-                DenseMap<std::pair<Operation *, std::pair<int, int>>,
+                DenseMap<std::pair<Operation *, TileID>,
                          SmallVector<Connect, 8>> &switchboxes) {
 
   int xCur = xSrc;
   int yCur = ySrc;
   WireBundle curBundle;
   int curChannel;
-  int xLast, yLast;
   WireBundle lastBundle;
-  Port lastPort = std::make_pair(sourceBundle, sourceChannel);
+  Port lastPort = {sourceBundle, sourceChannel};
 
-  SmallVector<std::pair<int, int>, 4> congestion;
+  SmallVector<TileID, 4> congestion;
 
   llvm::dbgs() << "Build route: " << xSrc << " " << ySrc << " --> " << xDest
                << " " << yDest << '\n';
@@ -101,9 +100,7 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
   while (!((xCur == xDest) && (yCur == yDest))) {
     llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
 
-    auto curCoord = std::make_pair(xCur, yCur);
-    xLast = xCur;
-    yLast = yCur;
+    TileID curCoord = {xCur, yCur};
 
     SmallVector<WireBundle, 4> moves;
 
@@ -125,11 +122,11 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
     if (std::find(moves.begin(), moves.end(), WireBundle::South) == moves.end())
       moves.push_back(WireBundle::South);
 
-    for (unsigned i = 0; i < moves.size(); i++) {
-      WireBundle move = moves[i];
-      curChannel = getAvailableDestChannel(
-          switchboxes[std::make_pair(herdOp, curCoord)], lastPort, move);
-      if (curChannel == -1)
+    for (auto move : moves) {
+      if (auto maybeDestChannel = getAvailableDestChannel(
+              switchboxes[std::make_pair(herdOp, curCoord)], lastPort, move))
+        curChannel = maybeDestChannel.value();
+      else
         continue;
 
       if (move == lastBundle)
@@ -149,8 +146,8 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
         yCur = yCur - 1;
       }
 
-      if (std::find(congestion.begin(), congestion.end(),
-                    std::make_pair(xCur, yCur)) != congestion.end())
+      if (std::find(congestion.begin(), congestion.end(), TileID{xCur, yCur}) !=
+          congestion.end())
         continue;
 
       curBundle = move;
@@ -164,40 +161,33 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
 
     assert(curChannel >= 0 && "Could not find available destination port!");
 
-    if (curChannel == -1) {
-      congestion.push_back(
-          std::make_pair(xLast, yLast)); // this switchbox is congested
-      switchboxes[std::make_pair(herdOp, curCoord)]
-          .pop_back(); // back up, remove the last connection
-    } else {
-      llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : "
-                   << lastPort.second
-                   << "], "
-                      "["
-                   << stringifyWireBundle(curBundle) << " : " << curChannel
-                   << "]\n";
+    llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle) << " : "
+                 << lastPort.channel
+                 << "], "
+                    "["
+                 << stringifyWireBundle(curBundle) << " : " << curChannel
+                 << "]\n";
 
-      Port curPort = std::make_pair(curBundle, curChannel);
-      Connect connect = std::make_pair(lastPort, curPort);
-      if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
-                    switchboxes[std::make_pair(herdOp, curCoord)].end(),
-                    connect) ==
-          switchboxes[std::make_pair(herdOp, curCoord)].end())
-        switchboxes[std::make_pair(herdOp, curCoord)].push_back(connect);
-      lastPort = std::make_pair(lastBundle, curChannel);
-    }
+    Port curPort = {curBundle, curChannel};
+    Connect connect = {lastPort, curPort};
+    if (std::find(switchboxes[std::make_pair(herdOp, curCoord)].begin(),
+                  switchboxes[std::make_pair(herdOp, curCoord)].end(),
+                  connect) ==
+        switchboxes[std::make_pair(herdOp, curCoord)].end())
+      switchboxes[std::make_pair(herdOp, curCoord)].push_back(connect);
+    lastPort = {lastBundle, curChannel};
   }
 
   llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
-  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.first) << " : "
-               << lastPort.second
+  llvm::dbgs() << "[" << stringifyWireBundle(lastPort.bundle) << " : "
+               << lastPort.channel
                << "], "
                   "["
                << stringifyWireBundle(destBundle) << " : " << destChannel
                << "]\n";
 
-  switchboxes[std::make_pair(herdOp, std::make_pair(xCur, yCur))].push_back(
-      std::make_pair(lastPort, std::make_pair(destBundle, destChannel)));
+  switchboxes[std::make_pair(herdOp, TileID{xCur, yCur})].push_back(
+      {lastPort, Port{destBundle, destChannel}});
 }
 
 struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
@@ -212,8 +202,7 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
     DenseMap<std::pair<Operation *, Operation *>, std::pair<int, int>>
         distances;
     SmallVector<std::pair<std::pair<int, int>, std::pair<int, int>>, 4> routes;
-    DenseMap<std::pair<Operation *, std::pair<int, int>>,
-             SmallVector<Connect, 8>>
+    DenseMap<std::pair<Operation *, TileID>, SmallVector<Connect, 8>>
         switchboxes;
 
     for (auto herd : device.getOps<HerdOp>()) {
@@ -314,35 +303,32 @@ struct AIEHerdRoutingPass : public AIEHerdRoutingBase<AIEHerdRoutingPass> {
       }
     }
 
-    for (auto swboxCfg : switchboxes) {
+    for (const auto &swboxCfg : switchboxes) {
       Operation *herdOp = swboxCfg.first.first;
-      int x = swboxCfg.first.second.first;
-      int y = swboxCfg.first.second.second;
+      int x = swboxCfg.first.second.col;
+      int y = swboxCfg.first.second.row;
       auto connects = swboxCfg.second;
       HerdOp herd = dyn_cast<HerdOp>(herdOp);
 
       builder.setInsertionPoint(device.getBody()->getTerminator());
 
-      IterOp iterx =
-          builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
-      IterOp itery =
-          builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
-      AIEX::SelectOp sel = builder.create<AIEX::SelectOp>(
-          builder.getUnknownLoc(), herd, iterx, itery);
-      SwitchboxOp swbox =
-          builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
-      swbox.ensureTerminator(swbox.getConnections(), builder,
-                             builder.getUnknownLoc());
+      auto iterx = builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
+      auto itery = builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
+      auto sel = builder.create<AIEX::SelectOp>(builder.getUnknownLoc(), herd,
+                                                iterx, itery);
+      auto swbox = builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
+      SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
+                                    builder.getUnknownLoc());
       Block &b = swbox.getConnections().front();
       builder.setInsertionPoint(b.getTerminator());
 
       for (auto connect : connects) {
-        Port sourcePort = connect.first;
-        Port destPort = connect.second;
-        WireBundle sourceBundle = sourcePort.first;
-        int sourceChannel = sourcePort.second;
-        WireBundle destBundle = destPort.first;
-        int destChannel = destPort.second;
+        Port sourcePort = connect.src;
+        Port destPort = connect.dst;
+        WireBundle sourceBundle = sourcePort.bundle;
+        int sourceChannel = sourcePort.channel;
+        WireBundle destBundle = destPort.bundle;
+        int destChannel = destPort.channel;
 
         builder.create<ConnectOp>(builder.getUnknownLoc(), sourceBundle,
                                   sourceChannel, destBundle, destChannel);

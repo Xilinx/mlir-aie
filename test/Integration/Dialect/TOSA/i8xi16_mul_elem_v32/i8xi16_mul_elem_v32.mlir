@@ -14,7 +14,7 @@ module {
   func.func @dut(%arg0: tensor<1024xi8>, %arg1: tensor<1024xi16>) -> (tensor<1024xi32>) {
     %0 = "tosa.cast"(%arg0) : (tensor<1024xi8>) -> tensor<1024xi32>
     %1 = "tosa.cast"(%arg1) : (tensor<1024xi16>) -> tensor<1024xi32>
-    %2 = "tosa.mul"(%0,%1) {shift = 0 : i32} : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
+    %2 = "tosa.mul"(%0,%1) {shift = 0 : i8} : (tensor<1024xi32>, tensor<1024xi32>)  -> (tensor<1024xi32>)
     return %2 : tensor<1024xi32>
   }
 }

@@ -11,8 +11,9 @@ add_mlir_dialect_library(AIEX
   ${AIE_BINARY_DIR}/include
 
   DEPENDS
+  MLIRAIEAttrDefsIncGen
+  MLIRAIEEnumsIncGen
   MLIRAIEXIncGen
-  MLIRAIEXEnumsIncGen
 
   LINK_LIBS PUBLIC
   AIE

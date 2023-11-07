@@ -11,7 +11,10 @@
 #ifndef MLIR_AIE_DIALECT_H
 #define MLIR_AIE_DIALECT_H
 
+#include "AIEEnums.h"
+
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -27,35 +30,30 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
+
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
+
 #include <map>
 #include <set>
 
-using namespace mlir;
-
-#include "AIEEnums.h"
-
 namespace xilinx {
 namespace AIE {
-// template <typename ConcreteType>
-// class FlowEndPoint : public OpTrait::TraitBase<ConcreteType, FlowEndPoint>
-// {};
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>
-struct HasValidBDs : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
-  static LogicalResult verifyTrait(Operation *op);
+struct HasValidBDs
+    : public mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid channels.
 template <typename ConcreteType>
 struct HasValidDMAChannels
-    : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
-  static LogicalResult verifyTrait(Operation *op);
+    : public mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
 class TileOp;
@@ -102,8 +100,9 @@ public:
   static AIEObjectFifoType get(mlir::Type elementType);
 
   /// This method is used to verify the construction invariants.
-  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
-                              mlir::Type elementType);
+  static mlir::LogicalResult
+  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+         mlir::Type elementType);
 
   /// Returns the element type of this ObjectFifoType.
   mlir::Type getElementType();
@@ -125,8 +124,9 @@ public:
   static AIEObjectFifoSubviewType get(mlir::Type elementType);
 
   /// This method is used to verify the construction invariants.
-  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
-                              mlir::Type elementType);
+  static mlir::LogicalResult
+  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+         mlir::Type elementType);
 
   /// Returns the element type of this SubviewType.
   mlir::Type getElementType();
@@ -140,7 +140,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 #define GET_ATTRDEF_CLASSES
-#include "aie/Dialect/AIE/IR/AIEAttrDefs.h.inc"
+#include "aie/Dialect/AIE/IR/AIEAttrs.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
@@ -149,77 +149,78 @@ public:
 namespace xilinx {
 namespace AIE {
 
-// #include "AIEOpInterfaces.h.inc"
+typedef struct Port {
+  WireBundle bundle;
+  int channel;
 
-typedef std::pair<WireBundle, int> Port;
-typedef std::pair<Port, Port> Connect;
-typedef std::pair<DMAChannelDir, int> DMAChannel;
+  inline bool operator==(const Port &rhs) const {
+    return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
+  }
 
-struct AIEArchDesc {
-  bool checkerboard;
-};
+  inline bool operator!=(const Port &rhs) const { return !(*this == rhs); }
 
-// xcve2302 17x2, xcvc1902 50x8
-struct AIEDevDesc {
-  unsigned int rows;
-  unsigned int cols;
-  AIEArchDesc arch;
-};
+  inline bool operator<(const Port &rhs) const {
+    return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
+  }
 
-const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op);
+} Port;
+
+typedef struct Connect {
+  Port src;
+  Port dst;
+
+  inline bool operator==(const Connect &rhs) const {
+    return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
+  }
+} Connect;
+
+typedef struct DMAChannel {
+  DMAChannelDir direction;
+  int channel;
+
+  inline bool operator==(const DMAChannel &rhs) const {
+    return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
+  }
+} DMAChannel;
+
+const xilinx::AIE::AIETargetModel &getTargetModel(mlir::Operation *op);
 
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             mlir::OpAsmParser::UnresolvedOperand &operand,
                             DimTupleArrayAttr &dimensions);
 
-void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter, Operation *op,
-                                 Value tile, Attribute dimensions);
+void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter,
+                                 mlir::Operation *op, mlir::Value tile,
+                                 mlir::Attribute dimensions);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
-    SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
+    llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     DimTupleArrayArrayAttr &dimensions);
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
-                                  Operation *op, OperandRange tiles,
-                                  Attribute dimensions);
+                                  mlir::Operation *op, mlir::OperandRange tiles,
+                                  mlir::Attribute dimensions);
+
+uint64_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 } // namespace AIE
 } // namespace xilinx
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
-#include "aie/Dialect/AIE/IR/AIE.h.inc"
+#include "aie/Dialect/AIE/IR/AIEOps.h.inc"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
-#define GEN_PASS_CLASSES
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+void collectTiles(DeviceOp &device,
+                  llvm::DenseMap<TileID, mlir::Operation *> &tiles);
 
-std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignBufferAddressesPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEAssignLockIDsPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIECanonicalizeDevicePass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIECoreToStandardPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEFindFlowsPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIELocalizeLocksPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIENormalizeAddressSpacesPass();
-std::unique_ptr<OperationPass<ModuleOp>> createAIERouteFlowsPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIERoutePacketFlowsPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createAIEVectorOptPass();
-std::unique_ptr<OperationPass<DeviceOp>> createAIEPathfinderPass();
-std::unique_ptr<OperationPass<DeviceOp>>
-createAIEObjectFifoStatefulTransformPass();
-std::unique_ptr<OperationPass<DeviceOp>>
-createAIEObjectFifoRegisterProcessPass();
-
-/// Generate the code for registering passes.
-#define GEN_PASS_REGISTRATION
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
-
-} // namespace AIE
-} // namespace xilinx
+void collectBuffers(
+    DeviceOp &device,
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<BufferOp, 4>> &buffers);
+} // namespace xilinx::AIE
 
 namespace llvm {
 // Functions hash just like pointers.
@@ -261,6 +262,60 @@ template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
     return lhs == rhs;
   }
 };
+
+template <> struct DenseMapInfo<xilinx::AIE::DMAChannel> {
+  using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
+  using SecondInfo = DenseMapInfo<int>;
+  static inline xilinx::AIE::DMAChannel getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static inline xilinx::AIE::DMAChannel getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const xilinx::AIE::DMAChannel &d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const xilinx::AIE::DMAChannel &lhs,
+                      const xilinx::AIE::DMAChannel &rhs) {
+    return lhs == rhs;
+  }
+};
+
+template <> struct DenseMapInfo<xilinx::AIE::Port> {
+  using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
+  using SecondInfo = DenseMapInfo<int>;
+  static inline xilinx::AIE::Port getEmptyKey() {
+    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
+  }
+
+  static inline xilinx::AIE::Port getTombstoneKey() {
+    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
+  }
+
+  static unsigned getHashValue(const xilinx::AIE::Port &d) {
+    return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),
+                                    SecondInfo::getHashValue(d.channel));
+  }
+
+  static bool isEqual(const xilinx::AIE::Port &lhs,
+                      const xilinx::AIE::Port &rhs) {
+    return lhs == rhs;
+  }
+};
+
 } // namespace llvm
+
+namespace std {
+template <> struct less<xilinx::AIE::Port> {
+  bool operator()(const xilinx::AIE::Port &a,
+                  const xilinx::AIE::Port &b) const {
+    return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
+  }
+};
+} // namespace std
 
 #endif

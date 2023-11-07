@@ -12,7 +12,6 @@ add_mlir_public_c_api_library(
   ADF
   MLIRAIEVec
   AIETransforms
-  AIEUtils
   MLIRAIEVecTransforms
   MLIRAIEVecUtils
   AIEXTransforms

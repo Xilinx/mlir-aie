@@ -11,14 +11,15 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/AIETokenAnalysis.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 #define DEBUG_TYPE "aie-create-locks"
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -116,9 +117,9 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
 static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
                      Operation *op) {
   auto tileOp = cast<TileOp>(op);
-  const auto &target_model = xilinx::AIE::getTargetModel(op);
+  const auto &targetModel = xilinx::AIE::getTargetModel(op);
   for (unsigned i = 0;
-       i < target_model.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
+       i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
     int usageCnt = locks[std::make_pair(tileOp, i)];
     if (usageCnt == 0) {
       locks[std::make_pair(tileOp, i)] = 1;
@@ -146,7 +147,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
         TA.getTokenChains());
     SmallVector<std::pair<Operation *, Operation *>, 4> tokenPairs(
         TA.getTokenPairs());
-    DenseMap<std::pair<int, int>, Operation *> tiles(TA.getTiles());
+    DenseMap<TileID, Operation *> tiles(TA.getTiles());
 
     DenseMap<std::pair<Operation *, int>, int> locks;
     DenseMap<std::pair<Operation *, Operation *>, std::pair<Value, int>>
@@ -169,13 +170,13 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
                  release->print(llvm::dbgs());
                  if (IsRelUserCore) llvm::dbgs() << " @Core";
                  else llvm::dbgs() << " @DMA";
-                 llvm::dbgs() << " (" << TA.getCoord(relUser).first << ", "
-                              << TA.getCoord(relUser).second << ")" << '\n';
+                 llvm::dbgs() << " (" << TA.getCoord(relUser).col << ", "
+                              << TA.getCoord(relUser).row << ")" << '\n';
                  acquire->print(llvm::dbgs());
                  if (IsAcqUserCore) llvm::dbgs() << " @Core";
                  else llvm::dbgs() << " @DMA";
-                 llvm::dbgs() << " (" << TA.getCoord(acqUser).first << ", "
-                              << TA.getCoord(acqUser).second << ")" << '\n';);
+                 llvm::dbgs() << " (" << TA.getCoord(acqUser).col << ", "
+                              << TA.getCoord(acqUser).row << ")" << '\n';);
 
       // ignore chain that involves a MemOp (DMA) user and CoreOp user and they
       // don't have a shareable tile. This might be caused by MemcpyOp lowering

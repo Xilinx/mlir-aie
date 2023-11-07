@@ -20,7 +20,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -30,24 +29,26 @@
 namespace xilinx {
 namespace AIE {
 
-std::string tileLocStr(StringRef col, StringRef row);
+std::string tileLocStr(llvm::StringRef col, llvm::StringRef row);
 
 std::string tileLocStr(int col, int row);
 
-std::string tileDMAInstStr(StringRef col, StringRef row, StringRef bdNum);
+std::string tileDMAInstStr(llvm::StringRef col, llvm::StringRef row,
+                           llvm::StringRef bdNum);
 
 std::string tileDMAInstStr(int col, int row, int bdNum);
 
-std::string tileDMAInstRefStr(StringRef col, StringRef row, StringRef bdNum);
+std::string tileDMAInstRefStr(llvm::StringRef col, llvm::StringRef row,
+                              llvm::StringRef bdNum);
 
 std::string tileDMAInstRefStr(int col, int row, int bdNum);
 
-std::string packetStr(StringRef id, StringRef type);
+std::string packetStr(llvm::StringRef id, llvm::StringRef type);
 
 std::string packetStr(int id, int type);
 
-void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
-                                    ArrayRef<DimTupleAttr> dims, int col,
+void generateXAieDmaSetMultiDimAddr(llvm::raw_ostream &output, int ndims,
+                                    llvm::ArrayRef<DimTupleAttr> dims, int col,
                                     int row, int bdNum, int baseAddrA,
                                     int offsetA, int lenA, int bytesA,
                                     const char *error_ret);
