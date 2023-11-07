@@ -13,7 +13,7 @@
 module {
   func.func @dut(%arg0: tensor<16x1024xi32>, %arg1: tensor<1024xi32>) -> (tensor<16x1024xi32>) {
     %0 = "tosa.reshape"(%arg1) { new_shape = array<i64: 1, 1024>} : (tensor<1024xi32>)  -> (tensor<1x1024xi32>)
-    %1 = "tosa.mul"(%arg0,%0) {shift = 0 : i32} : (tensor<16x1024xi32>, tensor<1x1024xi32>)  -> (tensor<16x1024xi32>)
+    %1 = "tosa.mul"(%arg0,%0) {shift = 0 : i8} : (tensor<16x1024xi32>, tensor<1x1024xi32>)  -> (tensor<16x1024xi32>)
     return %1 : tensor<16x1024xi32>
   }
 }

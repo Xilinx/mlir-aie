@@ -14,7 +14,7 @@
 
 module {
   func.func @dut(%arg0: tensor<16x1024xi16>, %arg1: tensor<1024xi16>) -> (tensor<16x1024xi16>) {
-    %1 = "tosa.mul"(%arg0,%arg1) {shift = 0 : i32} : (tensor<16x1024xi16>, tensor<1024xi16>)  -> (tensor<16x1024xi16>)
+    %1 = "tosa.mul"(%arg0,%arg1) {shift = 0 : i8} : (tensor<16x1024xi16>, tensor<1024xi16>)  -> (tensor<16x1024xi16>)
     return %1 : tensor<16x1024xi16>
   }
 }
