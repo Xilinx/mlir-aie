@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 
-// Need the later LLVM version from `catch up to TOM MLIR #590`
-// XFAIL: *
 // REQUIRES: valid_xchess_license
 // RUN: mkdir -p %t/data
 // RUN: aie-opt %s %tosa-to-linalg% | aie-opt %linalg-to-vector-v16% --convert-vector-to-aievec="aie-target=aieml" -lower-affine -o %t/aievec.mlir
@@ -14,7 +12,7 @@
 
 module {
   func.func @dut(%arg0: tensor<16x1024xi32>, %arg1: tensor<1024xi32>) -> (tensor<16x1024xi32>) {
-    %1 = "tosa.mul"(%arg0,%arg1) {shift = 0 : i32} : (tensor<16x1024xi32>, tensor<1024xi32>)  -> (tensor<16x1024xi32>)
+    %1 = "tosa.mul"(%arg0,%arg1) {shift = 0 : i8} : (tensor<16x1024xi32>, tensor<1024xi32>)  -> (tensor<16x1024xi32>)
     return %1 : tensor<16x1024xi32>
   }
 }
