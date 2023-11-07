@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
@@ -406,12 +405,6 @@ struct AIECoreToStandardPass
     DenseMap<std::pair<Operation *, int>, LockOp> locks;
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
     DenseMap<Operation *, SwitchboxOp> switchboxes;
-
-    NetlistAnalysis NL(device, tiles, cores, mems, locks, tileToBuffers,
-                       switchboxes);
-    NL.collectTiles(tiles);
-    NL.collectCores(cores);
-    NL.collectBuffers(tileToBuffers);
 
     // Populate intrinsic functions
     // Intrinsic information:

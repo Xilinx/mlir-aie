@@ -11,7 +11,6 @@
 #include "AIETargetShared.h"
 #include "AIETargets.h"
 
-#include "aie/Dialect/AIE/AIENetlistAnalysis.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -77,7 +76,6 @@ static std::string tileLockStr(StringRef id, StringRef val) {
 template <typename OpType>
 mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                                       const AIETargetModel &target_model,
-                                      NetlistAnalysis &NL,
                                       DenseMap<Block *, int> blockMap) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
@@ -319,10 +317,6 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
   const auto &target_model = targetOp.getTargetModel();
 
-  NetlistAnalysis NL(targetOp, tiles, cores, mems, locks, buffers, switchboxes);
-  NL.collectTiles(tiles);
-  NL.collectBuffers(buffers);
-
   //---------------------------------------------------------------------------
   // mlir_aie_init_libxaie
   //---------------------------------------------------------------------------
@@ -488,7 +482,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
         bdNum++;
       }
     }
-    auto result = generateDMAConfig(memOp, output, target_model, NL, blockMap);
+    auto result = generateDMAConfig(memOp, output, target_model, blockMap);
     if (result.failed())
       return result;
   }
@@ -525,7 +519,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
       else
         blockMap[&block] = evenBdNum++;
     }
-    auto result = generateDMAConfig(memOp, output, target_model, NL, blockMap);
+    auto result = generateDMAConfig(memOp, output, target_model, blockMap);
     if (result.failed())
       return result;
   }
@@ -589,7 +583,7 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
 
     output << "int mlir_aie_configure_shimdma_" << col << row << "(" << ctx_p
            << ") {\n";
-    auto result = generateDMAConfig(op, output, target_model, NL, blockMap);
+    auto result = generateDMAConfig(op, output, target_model, blockMap);
     if (result.failed())
       return result;
     output << "return XAIE_OK;\n";
