@@ -17,8 +17,7 @@
 
 #include <utility>
 
-namespace xilinx {
-namespace aievec {
+namespace xilinx::aievec {
 
 // The IntervalReuse class.
 // This class captures the potential data reuse in the AIE vector. Each load
@@ -73,72 +72,76 @@ namespace aievec {
 
 class IntervalReuse {
   // differentiate arrays (e.g., A vs. B)
-  Value memref;
+  mlir::Value memref;
   // differentiate accesses coming from the same array, but with different base
   // expression along the non-vectorized dimension (e.g., A[i+1][j:j+8] vs.
   // A[i][j:j+8];
-  AffineExpr base;
+  mlir::AffineExpr base;
   // A map from each read operation to the extent of bits it reads (aligned to
   // vector size).
-  DenseMap<Operation *, std::pair<int32_t, int32_t>> extentMap;
+  llvm::DenseMap<mlir::Operation *, std::pair<int32_t, int32_t>> extentMap;
   // Disjoint intervals of all the data accesses (i.e., read bits). Each
   // interval entry corresponds to memory load into an AIE vec.
-  SmallVector<std::pair<int32_t, int32_t>, 8> intervals;
+  llvm::SmallVector<std::pair<int32_t, int32_t>, 8> intervals;
   // Identify all the vectors that are only used as LHS operands of mul/mac op.
   // The LHS operand of mul/mac ops have specific size requirement.
-  SmallVector<bool, 8> vecIsLHSOperand;
+  llvm::SmallVector<bool, 8> vecIsLHSOperand;
 
   // Return true if this array access comes from the same array
-  bool sameMemRef(Value m) { return memref == m; }
+  bool sameMemRef(mlir::Value m) { return memref == m; }
   // Return true if this array access has the same invariant base
   // expression.
-  bool sameInvariantIndices(AffineExpr b) { return base == b; }
+  bool sameInvariantIndices(mlir::AffineExpr b) { return base == b; }
   // Return true if this array access is enclosed within the same loop nest as
   // other accesses belonging to the same IntervalReuse object.
   bool sameEnclosingLoops(
-      Operation *op,
-      DenseMap<Block *, SmallVector<Operation *, 8>> &blockToEnclosingLoops);
+      mlir::Operation *op,
+      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *, 8>>
+          &blockToEnclosingLoops);
   // For an operation, get the index into intervals that subsumes the
   // operation's access extent.
-  size_t getIntervalIndex(Operation *op);
+  size_t getIntervalIndex(mlir::Operation *op);
 
 public:
   // Return true if this read operation has a potential data reuse with other
   // read operations in this IntervalReuse.
   bool potentialReuse(
-      vector::TransferReadOp readOp, AffineExpr invariantBase,
-      DenseMap<Block *, SmallVector<Operation *, 8>> &blockToEnclosingLoops);
+      mlir::vector::TransferReadOp readOp, mlir::AffineExpr invariantBase,
+      llvm::DenseMap<mlir::Block *, llvm::SmallVector<mlir::Operation *, 8>>
+          &blockToEnclosingLoops);
   // Insert the access extent of this read operation into intervals
-  void insertInterval(
-      vector::TransferReadOp readOp,
-      DenseMap<Operation *, IntervalReuse *> &dataAccessToIntervalMap,
-      int32_t offset, int32_t forLoopStepSize, bool isSplat = false,
-      unsigned minVecSize = 128 /*min AIE vec size*/);
+  void insertInterval(mlir::vector::TransferReadOp readOp,
+                      llvm::DenseMap<mlir::Operation *, IntervalReuse *>
+                          &dataAccessToIntervalMap,
+                      int32_t offset, int32_t forLoopStepSize,
+                      bool isSplat = false,
+                      unsigned minVecSize = 128 /*min AIE vec size*/);
   // For a read operation, return the width of the interval its access extent
   // belongs to. The interval width corresponds to the size of the vector that
   // will hold the load from read operation.
-  int32_t getIntervalWidth(Operation *op);
+  int32_t getIntervalWidth(mlir::Operation *op);
   // Get the read access extent of this read operation. The returned value
   // indicates the start and end offsets of the access from the base (in bits).
-  std::pair<int32_t, int32_t> getAccessExtent(Operation *op);
+  std::pair<int32_t, int32_t> getAccessExtent(mlir::Operation *op);
   // Set the read access extent of this read operation.
-  void setAccessExtent(Operation *op, std::pair<int32_t, int32_t> &extent);
+  void setAccessExtent(mlir::Operation *op,
+                       std::pair<int32_t, int32_t> &extent);
   // Get the interval that contains this read operation's extent
-  std::pair<int32_t, int32_t> getInterval(Operation *op);
+  std::pair<int32_t, int32_t> getInterval(mlir::Operation *op);
   // Given that the read operation 'op' is only LHS operand of some mul/mac
   // op, mark the vector that will load its access extent.
-  void markLHSOperandVec(Operation *op);
+  void markLHSOperandVec(mlir::Operation *op);
   // If the interval corresponds to a vector that is marked as the exclusive
   // LHS operand of some mul/mac op, and if its size is <= 256, try to coalesce
   // it with the next interval.
   void coalesceIntervals();
   // Constructors
-  IntervalReuse(vector::TransferReadOp readOp, AffineExpr b)
+  IntervalReuse(mlir::vector::TransferReadOp readOp, mlir::AffineExpr b)
       : memref(readOp.getSource()), base(b) {}
   IntervalReuse() : memref(nullptr), base(nullptr) {}
 };
 
-} // end namespace aievec
-} // end namespace xilinx
+} // namespace xilinx::aievec
+// end namespace xilinx
 
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_INTERVALREUSE_H

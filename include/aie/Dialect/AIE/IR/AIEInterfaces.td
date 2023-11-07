@@ -25,14 +25,14 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                       "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                        "cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                       "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                       "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
+                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
 def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
@@ -66,7 +66,7 @@ def Interconnect : OpInterface<"Interconnect"> {
 
   let methods = [
     InterfaceMethod<[{}],
-      "Region &", "getConnections", (ins )
+      "mlir::Region &", "getConnections", (ins )
     >,
     InterfaceMethod<[{}],
       "int", "colIndex", (ins )
@@ -95,7 +95,7 @@ def TileElement : OpInterface<"TileElement"> {
       "xilinx::AIE::TileID", "getTileID", (ins ),
       /*methodBody=*/[{}],
       /*defaultImpl=*/[{
-        ConcreteOp op = cast<ConcreteOp>(this->getOperation());
+        ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
         return op.getTileOp().getTileID();
       }]
     >

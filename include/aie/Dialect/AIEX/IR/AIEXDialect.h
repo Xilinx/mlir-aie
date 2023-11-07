@@ -29,21 +29,19 @@
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
+
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/Debug.h"
 
 #include <map>
 #include <set>
 
 namespace xilinx::AIEX {
 
-using namespace mlir;
-
 // The Dialect
-class AIEXDialect : public Dialect {
+class AIEXDialect : public mlir::Dialect {
 public:
-  explicit AIEXDialect(MLIRContext *ctx);
-  static StringRef getDialectNamespace() { return "AIEX"; }
+  explicit AIEXDialect(mlir::MLIRContext *ctx);
+  static llvm::StringRef getDialectNamespace() { return "AIEX"; }
 };
 
 } // namespace xilinx::AIEX
@@ -57,12 +55,14 @@ namespace xilinx::AIEX {
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIECreateLocksPass();
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIEHerdRoutingPass();
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIELowerMemcpyPass();
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIELowerMulticastPass();
-std::unique_ptr<OperationPass<AIE::DeviceOp>> createAIEBroadcastPacketPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateLocksPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEHerdRoutingPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerMemcpyPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerMulticastPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEBroadcastPacketPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

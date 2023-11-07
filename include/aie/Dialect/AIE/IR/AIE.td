@@ -71,7 +71,7 @@ def AnyScalar : TypeConstraint<Or<[Index.predicate,
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"ModuleOp">,
+    AIETarget, HasParent<"mlir::ModuleOp">,
     SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
@@ -145,7 +145,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     MemOp getMemOp() {
       auto users = getResult().getUsers();
       for(auto user : users)
-        if(auto memOp = dyn_cast<MemOp>(*user))
+        if(auto memOp = llvm::dyn_cast<MemOp>(*user))
           return memOp;
       return nullptr;
     }
@@ -153,7 +153,7 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
     CoreOp getCoreOp() {
       auto users = getResult().getUsers();
       for(auto user : users)
-        if(auto coreOp = dyn_cast<CoreOp>(*user))
+        if(auto coreOp = llvm::dyn_cast<CoreOp>(*user))
           return coreOp;
       return nullptr;
     }
@@ -216,7 +216,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   }];
 
   let builders = [
-    OpBuilder<(ins "Value":$tile),
+    OpBuilder<(ins "mlir::Value":$tile),
     [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
@@ -283,7 +283,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [
   }];
 
  let builders = [
-    OpBuilder<(ins "Value":$tile), [{
+    OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
  ];
@@ -327,7 +327,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    static StringRef getDefaultDialect() { return "AIE"; }
+    static llvm::StringRef getDefaultDialect() { return "AIE"; }
   }];
 }
 
@@ -381,7 +381,7 @@ def AIE_CoreOp: AIE_Op<"core", [
   }];
 
   let builders = [
-    OpBuilder<(ins "Value":$tile), [{
+    OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
@@ -890,7 +890,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "int":$AB), [{
       odsState.addOperands(buffer);
       odsState.addAttribute(getOffsetAttrName(odsState.name), $_builder.getI32IntegerAttr(offset));
       odsState.addAttribute(getLenAttrName(odsState.name), $_builder.getI32IntegerAttr(len));
@@ -900,7 +900,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
 }
 
 def AIE_DMAStartOp: AIE_Op<"dmaStart", [
-    ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>,
+    ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>,
     Terminator
   ]>, Results<(outs I1:$valid)> {
 
@@ -943,7 +943,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [
   }];
 
   let builders = [
-    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "Block *":$dest, "Block *":$chain),
+    OpBuilder<(ins "DMAChannelDir":$channelDir, "int":$channelIndex, "mlir::Block *":$dest, "mlir::Block *":$chain),
     [{
       build($_builder, $_state, $_builder.getIntegerType(1), channelDir, channelIndex, dest, chain);
     }]>
@@ -989,14 +989,14 @@ def AIE_MemOp: AIE_Op<"mem", [
     TileOp getTileOp();
     int maxSizeInBytes() { return 32768; }
     // CallableOpInterface
-    Region *getCallableRegion();
-    ArrayRef<Type> getArgumentTypes() { return getOperand().getType(); }
-    ArrayRef<Type> getResultTypes() { return getType(); }
-    static StringRef getDefaultDialect() { return "AIE"; }
+    mlir::Region *getCallableRegion();
+    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
+    llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
+    static llvm::StringRef getDefaultDialect() { return "AIE"; }
   }];
 
   let builders = [
-    OpBuilder<(ins "Value":$tile), [{
+    OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
@@ -1044,21 +1044,21 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
     int rowIndex();
     TileOp getTileOp();
     // CallableOpInterface
-    Region *getCallableRegion();
-    ArrayRef<Type> getArgumentTypes() { return getOperand().getType(); }
-    ArrayRef<Type> getResultTypes() { return getType(); }
-    static StringRef getDefaultDialect() { return "AIE"; }
+    mlir::Region *getCallableRegion();
+    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
+    llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
+    static llvm::StringRef getDefaultDialect() { return "AIE"; }
   }];
 
   let builders = [
-    OpBuilder<(ins "Value":$tile), [{
+    OpBuilder<(ins "mlir::Value":$tile), [{
       build($_builder, $_state, $_builder.getIndexType(), tile);
     }]>
   ];
 }
 
 def AIE_NextBDOp: AIE_Op<"nextBd", [
-    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "func::FuncOp", "ShimDMAOp"]>
+    Terminator, ParentOneOf<["MemOp", "MemTileDMAOp", "mlir::func::FuncOp", "ShimDMAOp"]>
   ]> {
   let summary = "The next buffer descriptor";
   let description = [{
@@ -1117,12 +1117,12 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
 
   let extraClassDeclaration = [{
     bool hasName() {
-      return bool(getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()));
+      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()));
     }
-    StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+    mlir::StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
       llvm::report_fatal_error("couldn't get name");
     }
     int getLockIDValue() {
@@ -1135,7 +1135,7 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
   }];
 
   let builders = [
-    OpBuilder<(ins "Value":$tile, "int":$lockID, "int":$init), [{
+    OpBuilder<(ins "mlir::Value":$tile, "int":$lockID, "int":$init), [{
       build($_builder, $_state,
         $_builder.getIndexType(),
         tile,
@@ -1170,7 +1170,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
 
   let hasVerifier = 1;
   let builders = [
-    OpBuilder<(ins "Value":$lock,
+    OpBuilder<(ins "mlir::Value":$lock,
                    "uint32_t":$value,
                    "xilinx::AIE::LockAction":$action), [{
       build($_builder, $_state, lock, value, action, nullptr);
@@ -1183,7 +1183,7 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
     bool release() { return (getAction() == LockAction::Release); }
     int getLockValue() { return getValue(); }
     int getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
-    LockOp getLockOp() { return dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp()); }
+    LockOp getLockOp() { return llvm::dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp()); }
   }];
 }
 
@@ -1208,19 +1208,19 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let extraClassDeclaration = [{
     bool hasName() {
-      return bool(getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()));
+      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()));
     }
 
-    StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+    mlir::StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
       llvm::report_fatal_error("couldn't get name");
     }
 
     // Return the address of this buffer
     int64_t address() {
-      if(auto attr = getOperation()->getAttrOfType<IntegerAttr>("address"))
+      if(auto attr = getOperation()->getAttrOfType<mlir::IntegerAttr>("address"))
         return attr.getInt();
       emitOpError("does not have 'address' attribute specified");
       llvm::report_fatal_error("couldn't get name");
@@ -1256,13 +1256,13 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
 
   let extraClassDeclaration = [{
     bool hasName() {
-      return bool(getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()));
+      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()));
     }
 
-    StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+    mlir::StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
       llvm::report_fatal_error("couldn't get name");
     }
   }];
@@ -1297,7 +1297,7 @@ def AIE_GetStreamOp: AIE_Op<"getStream", [
 
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
-    bool isFloatStream() { return getStreamValue().getType().isa<FloatType>(); }
+    bool isFloatStream() { return getStreamValue().getType().isa<mlir::FloatType>(); }
   }];
 }
 
@@ -1318,7 +1318,7 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
 
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
-    bool isFloatStream() { return getStreamValue().getType().isa<FloatType>(); }
+    bool isFloatStream() { return getStreamValue().getType().isa<mlir::FloatType>(); }
   }];
 }
 
@@ -1482,24 +1482,24 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
 
   let extraClassDeclaration = [{
     int size(int index = 0) {
-      if (isa<ArrayAttr>(getElemNumber()))
-        return dyn_cast<IntegerAttr>(dyn_cast<ArrayAttr>(getElemNumber())[index]).getInt();
+      if (llvm::isa<mlir::ArrayAttr>(getElemNumber()))
+        return llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(getElemNumber())[index]).getInt();
       else 
-        return dyn_cast<IntegerAttr>(getElemNumber()).getInt();
+        return llvm::dyn_cast<mlir::IntegerAttr>(getElemNumber()).getInt();
     }
 
     TileOp getProducerTileOp();
 
-    StringAttr name() {
-      return getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    mlir::StringAttr name() {
+      return getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
     }
   }];
 
   let builders = [
-    OpBuilder<(ins "StringAttr":$sym_name, "Value":$producerTile,
-                   "ValueRange":$consumerTiles, "Attribute":$elemNumber, "Type":$elem_type,
-                   CArg<"ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
-                   CArg<"ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
+    OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
+                   "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
+                   CArg<"llvm::ArrayRef<AIE::DimTupleAttr>", "{}">:$dimensionsToStream,
+                   CArg<"llvm::ArrayRef<AIE::DimTupleArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
@@ -1563,7 +1563,7 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectFifo.link", [HasParent<"DeviceOp">]> {
       return getFifoOuts().size() > 1;
     }
 
-    std::optional<Value> getOptionalSharedTile();
+    std::optional<mlir::Value> getOptionalSharedTile();
   }];
 }
 
@@ -1713,7 +1713,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectFifo.subview.access", []> {
 
   // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
   let builders = [
-    OpBuilder<(ins "Value":$subview, "size_t":$index)>
+    OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
   ];
 }
 
@@ -1767,25 +1767,25 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectFifo.registerProcess", []> {
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
 
-    DenseIntElementsAttr getAcquirePattern() {
+    mlir::DenseIntElementsAttr getAcquirePattern() {
       return getAcquirePatternTensor()
-          .getDefiningOp<arith::ConstantOp>()
+          .getDefiningOp<mlir::arith::ConstantOp>()
           .getValue()
-          .cast<DenseIntElementsAttr>();
+          .cast<mlir::DenseIntElementsAttr>();
     }
 
-    DenseIntElementsAttr getReleasePattern() {
+    mlir::DenseIntElementsAttr getReleasePattern() {
       return getReleasePatternTensor()
-          .getDefiningOp<arith::ConstantOp>()
+          .getDefiningOp<mlir::arith::ConstantOp>()
           .getValue()
-          .cast<DenseIntElementsAttr>();
+          .cast<mlir::DenseIntElementsAttr>();
     }
 
     int getProcessLength() {
       return getLength()
-          .getDefiningOp<arith::ConstantOp>()
+          .getDefiningOp<mlir::arith::ConstantOp>()
           .getValue()
-          .cast<IntegerAttr>()
+          .cast<mlir::IntegerAttr>()
           .getInt();
     }
   }];

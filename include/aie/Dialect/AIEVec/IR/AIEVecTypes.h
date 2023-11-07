@@ -21,8 +21,6 @@
 
 namespace xilinx::aievec {
 
-using namespace mlir;
-
 // Base class of all AIE types
 class AIEVecType : public mlir::Type {
 public:

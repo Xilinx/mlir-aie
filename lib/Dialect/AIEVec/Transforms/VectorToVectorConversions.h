@@ -18,7 +18,7 @@ namespace aievec {
 
 /// Build a pipeline to canonicalize vector operations for AIEVec conversion.
 void buildCanonicalizeVectorForAIEVec(
-    OpPassManager &pm, const CanonicalizeVectorForAIEVecOptions &options);
+    mlir::OpPassManager &pm, const CanonicalizeVectorForAIEVecOptions &options);
 
 } // namespace aievec
 } // namespace xilinx

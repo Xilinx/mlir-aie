@@ -32,10 +32,4 @@
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/ADF/ADFTypes.h.inc"
 
-namespace xilinx {
-namespace ADF {
-using namespace mlir;
-} // namespace ADF
-} // namespace xilinx
-
 #endif // XILINX_ADF_DIALECT_H

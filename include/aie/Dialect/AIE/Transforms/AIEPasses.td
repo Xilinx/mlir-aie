@@ -36,7 +36,7 @@ def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignLockIDsPass()";
 }
 
-def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "ModuleOp"> {
+def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "mlir::ModuleOp"> {
   let summary = "Canonicalize Designs to include a toplevel device";
   let description = [{
     This pass inserts a toplevel device operation in designs that do not have one.
@@ -47,7 +47,7 @@ def AIECanonicalizeDevice : Pass<"aie-canonicalize-device", "ModuleOp"> {
   let constructor = "xilinx::AIE::createAIECanonicalizeDevicePass()";
 }
 
-def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
+def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
   let summary = "Lowering operations in AIE cores' regions to Standard";
   let description = [{
 
@@ -69,8 +69,8 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "ModuleOp"> {
 
   let constructor = "xilinx::AIE::createAIECoreToStandardPass()";
   let dependentDialects = [
-    "func::FuncDialect",
-    "memref::MemRefDialect",
+    "mlir::func::FuncDialect",
+    "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -109,8 +109,8 @@ def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp">
 
   let constructor = "xilinx::AIE::createAIENormalizeAddressSpacesPass()";
   let dependentDialects = [
-    "func::FuncDialect",
-    "memref::MemRefDialect",
+    "mlir::func::FuncDialect",
+    "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -158,7 +158,7 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   ];
 }
 
-def AIEVectorOpt : Pass<"aie-vector-opt", "func::FuncOp"> {
+def AIEVectorOpt : Pass<"aie-vector-opt", "mlir::func::FuncOp"> {
   let summary = "optimize vector instructions for AIE";
   let description = [{
     After super-vectorization, some additional optimizations are important
@@ -186,10 +186,10 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
   let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
   let dependentDialects = [
-    "scf::SCFDialect",
-    "func::FuncDialect",
-    "arith::ArithDialect",
-    "memref::MemRefDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::func::FuncDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }
@@ -204,9 +204,9 @@ def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> 
 
   let constructor = "xilinx::AIE::createAIEObjectFifoRegisterProcessPass()";
   let dependentDialects = [
-    "scf::SCFDialect",
-    "func::FuncDialect",
-    "arith::ArithDialect",
+    "mlir::scf::SCFDialect",
+    "mlir::func::FuncDialect",
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
   ];
 }

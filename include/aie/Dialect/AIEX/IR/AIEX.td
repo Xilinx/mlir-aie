@@ -342,11 +342,11 @@ def AIE_HerdOp: AIEX_Op<"herd", []>, Results<(outs Index)> {
     int getHerdWidth()   { return getWidth(); }
     int getHerdHeight()  { return getHeight(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
-    StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()))
+    mlir::StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << SymbolTable::getSymbolAttrName() << "' attribute specified";
-      report_fatal_error("couldn't get name");
+      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
   }];
   let assemblyFormat = [{ `[` $width `]` `[` $height `]` attr-dict }];
@@ -456,7 +456,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   );
   let assemblyFormat = [{ `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict }];
   let builders = [
-    OpBuilder<(ins "Value":$startHerd, "Value":$iterX, "Value":$iterY), [{
+    OpBuilder<(ins "mlir::Value":$startHerd, "mlir::Value":$iterX, "mlir::Value":$iterY), [{
       build($_builder, $_state, $_builder.getIndexType(),
             startHerd, iterX, iterY);
     }]>

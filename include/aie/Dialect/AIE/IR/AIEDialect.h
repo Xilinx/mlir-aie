@@ -40,21 +40,20 @@
 namespace xilinx {
 namespace AIE {
 
-using namespace mlir;
-
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>
-struct HasValidBDs : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
-  static LogicalResult verifyTrait(Operation *op);
+struct HasValidBDs
+    : public mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid channels.
 template <typename ConcreteType>
 struct HasValidDMAChannels
-    : public OpTrait::TraitBase<ConcreteType, HasValidBDs> {
-  static LogicalResult verifyTrait(Operation *op);
+    : public mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+  static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
 class TileOp;
@@ -101,8 +100,9 @@ public:
   static AIEObjectFifoType get(mlir::Type elementType);
 
   /// This method is used to verify the construction invariants.
-  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
-                              mlir::Type elementType);
+  static mlir::LogicalResult
+  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+         mlir::Type elementType);
 
   /// Returns the element type of this ObjectFifoType.
   mlir::Type getElementType();
@@ -124,8 +124,9 @@ public:
   static AIEObjectFifoSubviewType get(mlir::Type elementType);
 
   /// This method is used to verify the construction invariants.
-  static LogicalResult verify(function_ref<InFlightDiagnostic()> emitError,
-                              mlir::Type elementType);
+  static mlir::LogicalResult
+  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+         mlir::Type elementType);
 
   /// Returns the element type of this SubviewType.
   mlir::Type getElementType();
@@ -182,24 +183,25 @@ typedef struct DMAChannel {
   }
 } DMAChannel;
 
-const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op);
+const xilinx::AIE::AIETargetModel &getTargetModel(mlir::Operation *op);
 
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             mlir::OpAsmParser::UnresolvedOperand &operand,
                             DimTupleArrayAttr &dimensions);
 
-void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter, Operation *op,
-                                 Value tile, Attribute dimensions);
+void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter,
+                                 mlir::Operation *op, mlir::Value tile,
+                                 mlir::Attribute dimensions);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
-    SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
+    llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     DimTupleArrayArrayAttr &dimensions);
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
-                                  Operation *op, OperandRange tiles,
-                                  Attribute dimensions);
+                                  mlir::Operation *op, mlir::OperandRange tiles,
+                                  mlir::Attribute dimensions);
 
 } // namespace AIE
 } // namespace xilinx
