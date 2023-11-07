@@ -37,7 +37,7 @@ struct AIELocalizeLocksPass
 
     for (auto coreOp : deviceOp.getOps<CoreOp>()) {
       // Collect the locks used in this core.
-      const auto &target_model = xilinx::AIE::getTargetModel(coreOp);
+      const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
 
       TileOp thisTile = dyn_cast<TileOp>(coreOp.getTile().getDefiningOp());
       int col = thisTile.colIndex();
@@ -49,7 +49,7 @@ struct AIELocalizeLocksPass
         int dstCol = tile.colIndex();
         int dstRow = tile.rowIndex();
 
-        if (target_model.isLegalMemAffinity(col, row, dstCol, dstRow))
+        if (targetModel.isLegalMemAffinity(col, row, dstCol, dstRow))
           accessibleTiles.push_back(tile);
       }
 
@@ -58,17 +58,17 @@ struct AIELocalizeLocksPass
         int dstRow = tile.rowIndex();
         int cardinalMemOffset = 0;
 
-        const auto &target_model = xilinx::AIE::getTargetModel(tile);
-        int numLocks = target_model.getNumLocks(dstCol, dstRow);
+        const auto &targetModel = xilinx::AIE::getTargetModel(tile);
+        int numLocks = targetModel.getNumLocks(dstCol, dstRow);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
-            if (target_model.isMemSouth(col, row, dstCol, dstRow))
+            if (targetModel.isMemSouth(col, row, dstCol, dstRow))
               cardinalMemOffset = 0;
-            else if (target_model.isMemWest(col, row, dstCol, dstRow))
+            else if (targetModel.isMemWest(col, row, dstCol, dstRow))
               cardinalMemOffset = numLocks;
-            else if (target_model.isMemNorth(col, row, dstCol, dstRow))
+            else if (targetModel.isMemNorth(col, row, dstCol, dstRow))
               cardinalMemOffset = 2 * numLocks;
-            else if (target_model.isMemEast(col, row, dstCol, dstRow))
+            else if (targetModel.isMemEast(col, row, dstCol, dstRow))
               cardinalMemOffset = 3 * numLocks;
             else
               llvm_unreachable("Found illegal lock user!");

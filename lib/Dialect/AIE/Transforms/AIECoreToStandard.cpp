@@ -200,19 +200,19 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
       if (!device) {
         return module.emitOpError("Device Not found!");
       }
-      const auto &target_model = device.getTargetModel();
+      const auto &targetModel = device.getTargetModel();
 
       // Generate the intrinsic name
       std::string funcName = "";
-      if (target_model.getTargetArch() == AIEArch::AIE1)
+      if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName = "llvm.aie.lock.";
       else
         funcName = "llvm.aie2.";
-      if (useLock.acquire() || useLock.acquire_ge())
+      if (useLock.acquire() || useLock.acquireGE())
         funcName += "acquire";
       else if (useLock.release())
         funcName += "release";
-      if (target_model.getTargetArch() == AIEArch::AIE1)
+      if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName += ".reg";
 
       auto useLockFunc = module.lookupSymbol<func::FuncOp>(funcName);
@@ -223,7 +223,7 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
       auto lockValue = useLock.getLockValue();
 
       // AIE2 acquire greater equal is encoded as a negative value.
-      if (useLock.acquire_ge()) {
+      if (useLock.acquireGE()) {
         lockValue = -lockValue;
       }
       args.push_back(rewriter.create<arith::IndexCastOp>(
@@ -378,9 +378,9 @@ struct AIECoreToStandardPass
       signalPassFailure();
     }
     DeviceOp device = *(m.getOps<DeviceOp>().begin());
-    const auto &target_model = device.getTargetModel();
+    const auto &targetModel = device.getTargetModel();
     const char *triple;
-    switch (target_model.getTargetArch()) {
+    switch (targetModel.getTargetArch()) {
     case AIEArch::AIE1:
       triple = "aie";
       break;

@@ -59,12 +59,12 @@ struct AIEAssignBufferAddressesPass
     }
 
     for (auto tile : device.getOps<TileOp>()) {
-      const auto &target_model = getTargetModel(tile);
+      const auto &targetModel = getTargetModel(tile);
       int max_data_memory_size = 0;
       if (tile.isMemTile())
-        max_data_memory_size = target_model.getMemTileSize();
+        max_data_memory_size = targetModel.getMemTileSize();
       else
-        max_data_memory_size = target_model.getLocalMemorySize();
+        max_data_memory_size = targetModel.getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
       for (auto buffer : device.getOps<BufferOp>())

@@ -412,9 +412,8 @@ xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   for (auto &bodyOp : element.getBody().getOps()) {
     // check for duplicate DMA channels within the same MemTileDMAOp
     if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = {
-          dmaStart.getChannelDir(),
-          static_cast<int>(dmaStart.getChannelIndex())};
+      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                                         dmaStart.getChannelIndex()};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -799,7 +798,7 @@ LogicalResult xilinx::AIE::ObjectFifoSubviewAccessOp::verify() {
     return emitOpError("must be called from inside a CoreOp");
 
   ObjectFifoAcquireOp acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-  if ((int)getIndex() >= acqOp.acqNumber())
+  if (getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
 
@@ -1247,9 +1246,8 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same MemOp
     if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = {
-          dmaStart.getChannelDir(),
-          static_cast<int>(dmaStart.getChannelIndex())};
+      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                                         dmaStart.getChannelIndex()};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -1476,8 +1474,7 @@ LogicalResult xilinx::AIE::LockOp::verify() {
   if (getLockID().has_value()) {
     const auto &targetModel = xilinx::AIE::getTargetModel(getTileOp());
     auto tileOp = getTileOp();
-    uint32_t numLocks =
-        targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
+    int numLocks = targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
     if (getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
              << numLocks - 1 << ")";
@@ -1507,7 +1504,7 @@ struct AcquireReleaseOneStateInDMABlock {
     auto block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
-      if (op.acquire() || op.acquire_ge()) {
+      if (op.acquire() || op.acquireGE()) {
         if (acqValue != -1 && acqValue != op.getLockValue()) {
           return failure();
         }
@@ -1543,7 +1540,7 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
     return (*this)->emitOpError("must be used in a core or memory operation.");
 
   const auto &targetModel = getTargetModel(*this);
-  if (targetModel.getTargetArch() == xilinx::AIE::AIEArch::AIE1 && acquire_ge())
+  if (targetModel.getTargetArch() == xilinx::AIE::AIEArch::AIE1 && acquireGE())
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
 

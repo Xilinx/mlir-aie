@@ -98,7 +98,7 @@ private:
         LLVM_DEBUG(llvm::dbgs()
                    << "Packet From: "
                    << stringifyWireBundle(connectOp.sourcePort().bundle) << " "
-                   << (int)sourcePort.channel << "\n");
+                   << sourcePort.channel << "\n");
         for (auto masterSetOp : b.getOps<MasterSetOp>())
           for (Value amsel : masterSetOp.getAmsels())
             for (auto ruleOp :
@@ -160,7 +160,7 @@ public:
 
     LLVM_DEBUG(llvm::dbgs()
                << "getConnectedTile(" << stringifyWireBundle(port.bundle) << " "
-               << (int)port.channel << ")");
+               << port.channel << ")");
     LLVM_DEBUG(tileOp.dump());
 
     // The accumulated result;
@@ -257,9 +257,9 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
           OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
           rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
           rewriter.create<PacketSourceOp>(Op->getLoc(), Op->getResult(0),
-                                          bundle, (int)i);
+                                          bundle, i);
           rewriter.create<PacketDestOp>(Op->getLoc(), destOp->getResult(0),
-                                        destPort.bundle, (int)destPort.channel);
+                                        destPort.bundle, destPort.channel);
           rewriter.restoreInsertionPoint(ip);
         }
       }

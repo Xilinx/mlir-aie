@@ -337,13 +337,15 @@ def AIE_HerdOp: AIEX_Op<"herd", []>, Results<(outs Index)> {
         AIEI32Attr:$height
   );
   let extraClassDeclaration = [{
-    int getHerdWidth()   { return getWidth(); }
-    int getHerdHeight()  { return getHeight(); }
+    int getHerdWidth() { return getWidth(); }
+    int getHerdHeight() { return getHeight(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
     mlir::StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '")
+          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
       llvm::report_fatal_error("couldn't get name");
     }
   }];

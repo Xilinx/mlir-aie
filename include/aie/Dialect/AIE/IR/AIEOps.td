@@ -1044,17 +1044,24 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
 
   let extraClassDeclaration = [{
     bool hasName() {
-      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()));
+      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
+          mlir::SymbolTable::getSymbolAttrName()));
     }
+
     mlir::StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '")
+          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
+
     int getLockIDValue() {
       assert(getLockID().has_value() && "Lock has no ID value");
       return getLockID().value();
     }
+
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
@@ -1105,11 +1112,18 @@ def AIE_UseLockOp: AIE_Op<"useLock", []> {
 
   let extraClassDeclaration = [{
     bool acquire() { return (getAction() == LockAction::Acquire); }
-    bool acquire_ge() { return (getAction() == LockAction::AcquireGreaterEqual); }
+    bool acquireGE() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
     int getLockValue() { return getValue(); }
-    int getTimeout() { if(auto val = getBlocking()) return (int)*val; else return 1;}
-    LockOp getLockOp() { return llvm::dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp()); }
+    int getTimeout() {
+      // LockBlocking is an EnumAttr.
+      if (auto val = getBlocking())
+        return (int)*val;
+      return 1;
+    }
+    LockOp getLockOp() {
+      return llvm::dyn_cast<xilinx::AIE::LockOp>(getLock().getDefiningOp());
+    }
   }];
 }
 
@@ -1134,20 +1148,25 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let extraClassDeclaration = [{
     bool hasName() {
-      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()));
+      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
+          mlir::SymbolTable::getSymbolAttrName()));
     }
 
     mlir::StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '")
+          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
 
     // Return the address of this buffer
     int64_t address() {
-      if(auto attr = getOperation()->getAttrOfType<mlir::IntegerAttr>("address"))
+      if (auto attr = getOperation()->getAttrOfType<mlir::IntegerAttr>("address"))
         return attr.getInt();
       emitOpError("does not have 'address' attribute specified");
+      llvm::report_fatal_error("couldn't address");
     }
 
     // Return the number of bytes that need to be allocated for this buffer.
@@ -1180,13 +1199,17 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
 
   let extraClassDeclaration = [{
     bool hasName() {
-      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()));
+      return bool(getOperation()->getAttrOfType<mlir::StringAttr>(
+          mlir::SymbolTable::getSymbolAttrName()));
     }
 
     mlir::StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+      if (auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(
+              mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      emitOpError("does not have '")
+          << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
   }];
 }
@@ -1220,7 +1243,9 @@ def AIE_GetStreamOp: AIE_Op<"getStream", [
 
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
-    bool isFloatStream() { return getStreamValue().getType().isa<mlir::FloatType>(); }
+    bool isFloatStream() {
+      return getStreamValue().getType().isa<mlir::FloatType>();
+    }
   }];
 }
 
@@ -1241,7 +1266,9 @@ def AIE_PutStreamOp: AIE_Op<"putStream", [HasParent<"CoreOp">]> {
 
   let extraClassDeclaration = [{
     bool isWideStream() { return getStreamValue().getType().isInteger(128); }
-    bool isFloatStream() { return getStreamValue().getType().isa<mlir::FloatType>(); }
+    bool isFloatStream() {
+      return getStreamValue().getType().isa<mlir::FloatType>();
+    }
   }];
 }
 
@@ -1406,15 +1433,18 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectFifo", [HasParent<"DeviceOp">, Symbol]
   let extraClassDeclaration = [{
     int size(int index = 0) {
       if (llvm::isa<mlir::ArrayAttr>(getElemNumber()))
-        return llvm::dyn_cast<mlir::IntegerAttr>(llvm::dyn_cast<mlir::ArrayAttr>(getElemNumber())[index]).getInt();
-      else 
+        return llvm::dyn_cast<mlir::IntegerAttr>(
+                   llvm::dyn_cast<mlir::ArrayAttr>(getElemNumber())[index])
+            .getInt();
+      else
         return llvm::dyn_cast<mlir::IntegerAttr>(getElemNumber()).getInt();
     }
 
     TileOp getProducerTileOp();
 
     mlir::StringAttr name() {
-      return getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName());
+      return getOperation()->getAttrOfType<mlir::StringAttr>(
+          mlir::SymbolTable::getSymbolAttrName());
     }
   }];
 
