@@ -9,14 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 #include "../PassDetail.h"
-#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
-#include "mlir/Conversion/LLVMCommon/Pattern.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
-#include "mlir/IR/TypeUtilities.h"
 
 #include "aie/Conversion/AIEVecToLLVM/AIEVecToLLVM.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
+
+#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
+#include "mlir/Conversion/LLVMCommon/Pattern.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/IR/TypeUtilities.h"
 
 #include <sstream>
 
@@ -380,11 +381,12 @@ public:
       // we can do a direct load into the vector register
       // look at the indices to calculate the address
       auto vectorPtrType = LLVM::LLVMPointerType::get(
-          cast<VectorType>(op.getResult().getType()),
+          getContext(),
           cast<MemRefType>(op.getSource().getType()).getMemorySpaceAsInt());
       auto castedPtr =
           rewriter.create<LLVM::BitcastOp>(op->getLoc(), vectorPtrType, ptr);
-      rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, castedPtr, 1);
+      auto vecType = cast<VectorType>(op.getResult().getType());
+      rewriter.replaceOpWithNewOp<LLVM::LoadOp>(op, vecType, castedPtr, 1);
     } else {
       // Total >256-bit updates will require upd ops to fill the whole vector
       // each UDP op represents one of these 256-bit loads and updates
@@ -405,12 +407,12 @@ public:
 
       // Load the vector
       auto vectorPtrType = LLVM::LLVMPointerType::get(
-          loadType,
+          getContext(),
           cast<MemRefType>(op.getSource().getType()).getMemorySpaceAsInt());
       auto castedPtr =
           rewriter.create<LLVM::BitcastOp>(op->getLoc(), vectorPtrType, ptr);
       auto loadValue =
-          rewriter.create<LLVM::LoadOp>(op->getLoc(), castedPtr, 1);
+          rewriter.create<LLVM::LoadOp>(op->getLoc(), loadType, castedPtr, 1);
 
       // Get set up for the intrinsic
       std::string intrinsicName = getIntrinsicName(op, loadSize);
