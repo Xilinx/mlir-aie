@@ -345,7 +345,7 @@ SECTIONS
       },
       registerDialects);
 
-  //   _entry_point _main_init
+  // _entry_point _main_init
   // _symbol      _main _after _main_init
   // _symbol      _main_init 0
   // _reserved DMb      0x00000 0x20000
@@ -493,11 +493,11 @@ SECTIONS
           int col = tileOp.colIndex();
           int row = tileOp.rowIndex();
           if (auto coreOp = tileOp.getCoreOp()) {
-            std::string elf_file = "None";
+            std::string elfFile = "None";
             if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
-              elf_file = "\"" + std::string(fileAttr.getValue()) + "\"";
+              elfFile = "\"" + std::string(fileAttr.getValue()) + "\"";
             output << '(' << std::to_string(col) << ',' << std::to_string(row)
-                   << ',' << elf_file << "),";
+                   << ',' << elfFile << "),";
           }
         }
         output << "]\n";

@@ -1476,7 +1476,7 @@ LogicalResult xilinx::AIE::LockOp::verify() {
   if (getLockID().has_value()) {
     const auto &targetModel = xilinx::AIE::getTargetModel(getTileOp());
     auto tileOp = getTileOp();
-    unsigned int numLocks =
+    uint32_t numLocks =
         targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
     if (getLockID().value() >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
@@ -1563,10 +1563,9 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
       return (*this)->emitOpError(
           "acquires/releases the lock in a DMA block from/to multiple states.");
 
-    if (HasSomeParent<xilinx::AIE::MemOp>::verifyTrait(*this).succeeded()) {
-      if (AccessesLocalLocks::verifyTrait(*this).failed())
-        return (*this)->emitOpError("can only access a lock in the same tile");
-    }
+    if (HasSomeParent<xilinx::AIE::MemOp>::verifyTrait(*this).succeeded() &&
+        AccessesLocalLocks::verifyTrait(*this).failed())
+      return (*this)->emitOpError("can only access a lock in the same tile");
     return success();
 
     // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
