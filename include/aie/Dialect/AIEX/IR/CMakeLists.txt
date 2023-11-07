@@ -6,9 +6,4 @@
 # (c) Copyright 2022 Xilinx Inc.
 
 add_mlir_dialect(AIEX AIEX)
-add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc)
-
-set(LLVM_TARGET_DEFINITIONS AIEX.td)
-mlir_tablegen(AIEXEnums.h.inc -gen-enum-decls)
-mlir_tablegen(AIEXEnums.cpp.inc -gen-enum-defs)
-add_public_tablegen_target(MLIRAIEXEnumsIncGen)
+add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=AIEX)

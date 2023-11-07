@@ -11,14 +11,14 @@
 #ifndef AIEX_OPS
 #define AIEX_OPS
 
+include "aie/Dialect/AIE/IR/AIEAttrs.td"
+
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
-
-include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 
 def AIEX_Dialect : Dialect {
   let name = "AIEX";
@@ -55,10 +55,10 @@ def AIE_ConnectionOp: AIEX_Op<"connection", []> {
   let arguments = (
     ins Index:$source,
         WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel,
+        AIEI32Attr:$sourceChannel,
         Index:$dest,
         WireBundle:$destBundle,
-        I32Attr:$destChannel
+        AIEI32Attr:$destChannel
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
@@ -89,7 +89,7 @@ def AIE_MulticastOp: AIEX_Op<"multicast", [SingleBlockImplicitTerminator<"AIE::E
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        AIEI32Attr:$channel
   );
   let regions = (region AnyRegion:$ports);
   let summary = "An abstraction of multicast";
@@ -124,7 +124,7 @@ def AIE_MultiDestOp: AIEX_Op<"multi_dest", [HasParent<"MulticastOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        AIEI32Attr:$channel
   );
   let summary = "A destination port of multicast flow";
   let description = [{
@@ -147,7 +147,7 @@ def AIE_BroadcastPacketOp: AIEX_Op<"broadcast_packet", [SingleBlockImplicitTermi
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        AIEI32Attr:$channel
   );
   let regions = (region AnyRegion:$ports);
   let summary = "Combination of broadcast and packet-switch";
@@ -184,9 +184,7 @@ def AIE_BroadcastPacketOp: AIEX_Op<"broadcast_packet", [SingleBlockImplicitTermi
 }
 
 def AIE_BPIDOp: AIEX_Op<"bp_id", [SingleBlockImplicitTerminator<"AIE::EndOp">]> {
-  let arguments = (
-    ins I8Attr:$ID
-  );
+  let arguments = (ins AIEI8Attr:$ID);
   let regions = (region AnyRegion:$ports);
   let summary = "A set of packets that share the same ID";
   let description = [{
@@ -204,7 +202,7 @@ def AIE_BPDestOp: AIEX_Op<"bp_dest", [HasParent<"BPIDOp">]> {
   let arguments = (
     ins Index:$tile,
         WireBundle:$bundle,
-        I32Attr:$channel
+        AIEI32Attr:$channel
   );
   let summary = "A destination port";
   let description = [{
@@ -243,7 +241,7 @@ def AIE_TokenOp: AIEX_Op<"token", [Symbol]> {
       AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
   }];
-  let arguments = (ins I32Attr:$value);
+  let arguments = (ins AIEI32Attr:$value);
   let assemblyFormat = [{ `(` $value `)` attr-dict }];
   let extraClassDeclaration = [{
     int getTokenValue() { return getValue(); }
@@ -258,7 +256,7 @@ def AIE_UseTokenOp: AIEX_Op<"useToken", []> {
   }];
   let arguments = (
     ins FlatSymbolRefAttr:$tokenName,
-        I32Attr:$value,
+        AIEI32Attr:$value,
         LockAction:$action
   );
   let assemblyFormat = [{ $tokenName `(` $action `,` $value `)` attr-dict }];
@@ -281,16 +279,16 @@ def AIE_MemcpyOp: AIEX_Op<"memcpy", []> {
   }];
   let arguments = (
     ins FlatSymbolRefAttr:$tokenName,
-        I32Attr:$acqValue,
-        I32Attr:$relValue,
+        AIEI32Attr:$acqValue,
+        AIEI32Attr:$relValue,
         Index:$srcTile,
         AnyMemRef:$srcBuf,
-        I32Attr:$srcOffset,
-        I32Attr:$srcLen,
+        AIEI32Attr:$srcOffset,
+        AIEI32Attr:$srcLen,
         Index:$dstTile,
         AnyMemRef:$dstBuf,
-        I32Attr:$dstOffset,
-        I32Attr:$dstLen
+        AIEI32Attr:$dstOffset,
+        AIEI32Attr:$dstLen
   );
   let assemblyFormat = [{
     $tokenName `(` $acqValue `,` $relValue `)` `(`
@@ -335,8 +333,8 @@ def AIE_HerdOp: AIEX_Op<"herd", []>, Results<(outs Index)> {
       }
   }];
   let arguments = (
-    ins I32Attr:$width,
-        I32Attr:$height
+    ins AIEI32Attr:$width,
+        AIEI32Attr:$height
   );
   let extraClassDeclaration = [{
     int getHerdWidth()   { return getWidth(); }
@@ -368,8 +366,8 @@ def AIE_PlaceOp: AIEX_Op<"place", []> {
   let arguments = (
     ins Index:$sourceHerd,
         Index:$destHerd,
-        I32Attr:$distX,
-        I32Attr:$distY
+        AIEI32Attr:$distX,
+        AIEI32Attr:$distY
   );
   let assemblyFormat = [{ `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict }];
   let extraClassDeclaration = [{
@@ -386,10 +384,10 @@ def AIE_RouteOp: AIEX_Op<"route", []> {
   let arguments = (
     ins Index:$sourceHerds,
         WireBundle:$sourceBundle,
-        I32Attr:$sourceChannel,
+        AIEI32Attr:$sourceChannel,
         Index:$destHerds,
         WireBundle:$destBundle,
-        I32Attr:$destChannel
+        AIEI32Attr:$destChannel
   );
   let assemblyFormat = [{
     `(` `<` $sourceHerds `,` $sourceBundle `:` $sourceChannel `>` `,`
@@ -412,9 +410,9 @@ def AIE_IterOp: AIEX_Op<"iter", []>, Results<(outs Index)> {
       %iter1 = AIE.iter(2, 8, 2)  // 2, 4, 6
   }];
   let arguments = (
-    ins I32Attr:$start,
-        I32Attr:$end,
-        I32Attr:$stride
+    ins AIEI32Attr:$start,
+        AIEI32Attr:$end,
+        AIEI32Attr:$stride
   );
   let assemblyFormat = [{ `(` $start `,` $end `,` $stride `)` attr-dict }];
   let extraClassDeclaration = [{

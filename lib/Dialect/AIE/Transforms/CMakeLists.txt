@@ -24,11 +24,14 @@ add_mlir_dialect_library(
   ${AIE_BINARY_DIR}/include
 
   DEPENDS
-  MLIRAIEIncGen
+  MLIRAIEAttrDefsIncGen
   MLIRAIEEnumsIncGen
+  MLIRAIEIncGen
   MLIRAIEInterfacesIncGen
-  MLIRAIEPassIncGen
   MLIRAIENormalizeAddressSpacesIncGen
+  MLIRAIEOpsIncGen
+  MLIRAIEPassIncGen
+  MLIRAIETypesIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR

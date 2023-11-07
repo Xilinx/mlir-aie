@@ -6,7 +6,7 @@ module {
     %i = arith.constant 1 : index
     %j = arith.constant 2 : index
     %k = arith.constant 3 : index
-    %0 = aievec.upd %arg0[%i, %j, %k] {index = 0 : i8, offset = 0: si32} : memref<4x32x64xi16>, vector<16xi16>
+    %0 = aievec.upd %arg0[%i, %j, %k] {index = 0 : i8, offset = 0: i32} : memref<4x32x64xi16>, vector<16xi16>
     return
   }
 }

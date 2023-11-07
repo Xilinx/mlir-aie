@@ -339,135 +339,135 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
 //      CHECK:    %[[C1:.*]] = arith.constant 1 : index
 //      CHECK:    scf.for %[[A3:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C1:.*]] {
 //      CHECK:      scf.for %[[A4:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C32:.*]] {
-//      CHECK:        %[[T0:.*]] = aievec.upd %[[A2]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:        %[[T0:.*]] = aievec.upd %[[A2]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:        %[[T1:.*]] = aievec.ups %[[T0:.*]] {shift = 0 : i8} : vector<32xi16>, vector<32xi32>
 //      CHECK:        scf.for %[[A5:.*]] = %[[C0:.*]] to %[[C64:.*]] step %[[C32:.*]] {
-//      CHECK:          %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A5:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
-//      CHECK:          %[[T3:.*]] = aievec.upd %[[A1]][%[[A5:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A5:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T3:.*]] = aievec.upd %[[A1]][%[[A5:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T4:.*]] = aievec.broadcast %[[T2:.*]] {idx = 0 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T5:.*]] = aievec.mac_elem %[[T3:.*]], %[[T4:.*]], %[[T1:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T6:.*]] = arith.addi %[[A5:.*]], %[[C1:.*]] : index
-//      CHECK:          %[[T7:.*]] = aievec.upd %[[A1]][%[[T6:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T7:.*]] = aievec.upd %[[A1]][%[[T6:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T8:.*]] = aievec.broadcast %[[T2:.*]] {idx = 1 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T9:.*]] = aievec.mac_elem %[[T7:.*]], %[[T8:.*]], %[[T5:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T10:.*]] = arith.addi %[[A5:.*]], %[[C2:.*]] : index
-//      CHECK:          %[[T11:.*]] = aievec.upd %[[A1]][%[[T10:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T11:.*]] = aievec.upd %[[A1]][%[[T10:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T12:.*]] = aievec.broadcast %[[T2:.*]] {idx = 2 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T13:.*]] = aievec.mac_elem %[[T11:.*]], %[[T12:.*]], %[[T9:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T14:.*]] = arith.addi %[[A5:.*]], %[[C3:.*]] : index
-//      CHECK:          %[[T15:.*]] = aievec.upd %[[A1]][%[[T14:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T15:.*]] = aievec.upd %[[A1]][%[[T14:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T16:.*]] = aievec.broadcast %[[T2:.*]] {idx = 3 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T17:.*]] = aievec.mac_elem %[[T15:.*]], %[[T16:.*]], %[[T13:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T18:.*]] = arith.addi %[[A5:.*]], %[[C4:.*]] : index
-//      CHECK:          %[[T19:.*]] = aievec.upd %[[A1]][%[[T18:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T19:.*]] = aievec.upd %[[A1]][%[[T18:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T20:.*]] = aievec.broadcast %[[T2:.*]] {idx = 4 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T21:.*]] = aievec.mac_elem %[[T19:.*]], %[[T20:.*]], %[[T17:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T22:.*]] = arith.addi %[[A5:.*]], %[[C5:.*]] : index
-//      CHECK:          %[[T23:.*]] = aievec.upd %[[A1]][%[[T22:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T23:.*]] = aievec.upd %[[A1]][%[[T22:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T24:.*]] = aievec.broadcast %[[T2:.*]] {idx = 5 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T25:.*]] = aievec.mac_elem %[[T23:.*]], %[[T24:.*]], %[[T21:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T26:.*]] = arith.addi %[[A5:.*]], %[[C6:.*]] : index
-//      CHECK:          %[[T27:.*]] = aievec.upd %[[A1]][%[[T26:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T27:.*]] = aievec.upd %[[A1]][%[[T26:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T28:.*]] = aievec.broadcast %[[T2:.*]] {idx = 6 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T29:.*]] = aievec.mac_elem %[[T27:.*]], %[[T28:.*]], %[[T25:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T30:.*]] = arith.addi %[[A5:.*]], %[[C7:.*]] : index
-//      CHECK:          %[[T31:.*]] = aievec.upd %[[A1]][%[[T30:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T31:.*]] = aievec.upd %[[A1]][%[[T30:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T32:.*]] = aievec.broadcast %[[T2:.*]] {idx = 7 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T33:.*]] = aievec.mac_elem %[[T31:.*]], %[[T32:.*]], %[[T29:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T34:.*]] = arith.addi %[[A5:.*]], %[[C8:.*]] : index
-//      CHECK:          %[[T35:.*]] = aievec.upd %[[A1]][%[[T34:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T35:.*]] = aievec.upd %[[A1]][%[[T34:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T36:.*]] = aievec.broadcast %[[T2:.*]] {idx = 8 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T37:.*]] = aievec.mac_elem %[[T35:.*]], %[[T36:.*]], %[[T33:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T38:.*]] = arith.addi %[[A5:.*]], %[[C9:.*]] : index
-//      CHECK:          %[[T39:.*]] = aievec.upd %[[A1]][%[[T38:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T39:.*]] = aievec.upd %[[A1]][%[[T38:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T40:.*]] = aievec.broadcast %[[T2:.*]] {idx = 9 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T41:.*]] = aievec.mac_elem %[[T39:.*]], %[[T40:.*]], %[[T37:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T42:.*]] = arith.addi %[[A5:.*]], %[[C10:.*]] : index
-//      CHECK:          %[[T43:.*]] = aievec.upd %[[A1]][%[[T42:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T43:.*]] = aievec.upd %[[A1]][%[[T42:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T44:.*]] = aievec.broadcast %[[T2:.*]] {idx = 10 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T45:.*]] = aievec.mac_elem %[[T43:.*]], %[[T44:.*]], %[[T41:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T46:.*]] = arith.addi %[[A5:.*]], %[[C11:.*]] : index
-//      CHECK:          %[[T47:.*]] = aievec.upd %[[A1]][%[[T46:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T47:.*]] = aievec.upd %[[A1]][%[[T46:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T48:.*]] = aievec.broadcast %[[T2:.*]] {idx = 11 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T49:.*]] = aievec.mac_elem %[[T47:.*]], %[[T48:.*]], %[[T45:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T50:.*]] = arith.addi %[[A5:.*]], %[[C12:.*]] : index
-//      CHECK:          %[[T51:.*]] = aievec.upd %[[A1]][%[[T50:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T51:.*]] = aievec.upd %[[A1]][%[[T50:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T52:.*]] = aievec.broadcast %[[T2:.*]] {idx = 12 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T53:.*]] = aievec.mac_elem %[[T51:.*]], %[[T52:.*]], %[[T49:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T54:.*]] = arith.addi %[[A5:.*]], %[[C13:.*]] : index
-//      CHECK:          %[[T55:.*]] = aievec.upd %[[A1]][%[[T54:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T55:.*]] = aievec.upd %[[A1]][%[[T54:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T56:.*]] = aievec.broadcast %[[T2:.*]] {idx = 13 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T57:.*]] = aievec.mac_elem %[[T55:.*]], %[[T56:.*]], %[[T53:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T58:.*]] = arith.addi %[[A5:.*]], %[[C14:.*]] : index
-//      CHECK:          %[[T59:.*]] = aievec.upd %[[A1]][%[[T58:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T59:.*]] = aievec.upd %[[A1]][%[[T58:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T60:.*]] = aievec.broadcast %[[T2:.*]] {idx = 14 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T61:.*]] = aievec.mac_elem %[[T59:.*]], %[[T60:.*]], %[[T57:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T62:.*]] = arith.addi %[[A5:.*]], %[[C15:.*]] : index
-//      CHECK:          %[[T63:.*]] = aievec.upd %[[A1]][%[[T62:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T63:.*]] = aievec.upd %[[A1]][%[[T62:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T64:.*]] = aievec.broadcast %[[T2:.*]] {idx = 15 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T65:.*]] = aievec.mac_elem %[[T63:.*]], %[[T64:.*]], %[[T61:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T66:.*]] = arith.addi %[[A5:.*]], %[[C16:.*]] : index
-//      CHECK:          %[[T67:.*]] = aievec.upd %[[A1]][%[[T66:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T67:.*]] = aievec.upd %[[A1]][%[[T66:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T68:.*]] = aievec.broadcast %[[T2:.*]] {idx = 16 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T69:.*]] = aievec.mac_elem %[[T67:.*]], %[[T68:.*]], %[[T65:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T70:.*]] = arith.addi %[[A5:.*]], %[[C17:.*]] : index
-//      CHECK:          %[[T71:.*]] = aievec.upd %[[A1]][%[[T70:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T71:.*]] = aievec.upd %[[A1]][%[[T70:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T72:.*]] = aievec.broadcast %[[T2:.*]] {idx = 17 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T73:.*]] = aievec.mac_elem %[[T71:.*]], %[[T72:.*]], %[[T69:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T74:.*]] = arith.addi %[[A5:.*]], %[[C18:.*]] : index
-//      CHECK:          %[[T75:.*]] = aievec.upd %[[A1]][%[[T74:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T75:.*]] = aievec.upd %[[A1]][%[[T74:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T76:.*]] = aievec.broadcast %[[T2:.*]] {idx = 18 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T77:.*]] = aievec.mac_elem %[[T75:.*]], %[[T76:.*]], %[[T73:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T78:.*]] = arith.addi %[[A5:.*]], %[[C19:.*]] : index
-//      CHECK:          %[[T79:.*]] = aievec.upd %[[A1]][%[[T78:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T79:.*]] = aievec.upd %[[A1]][%[[T78:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T80:.*]] = aievec.broadcast %[[T2:.*]] {idx = 19 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T81:.*]] = aievec.mac_elem %[[T79:.*]], %[[T80:.*]], %[[T77:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T82:.*]] = arith.addi %[[A5:.*]], %[[C20:.*]] : index
-//      CHECK:          %[[T83:.*]] = aievec.upd %[[A1]][%[[T82:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T83:.*]] = aievec.upd %[[A1]][%[[T82:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T84:.*]] = aievec.broadcast %[[T2:.*]] {idx = 20 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T85:.*]] = aievec.mac_elem %[[T83:.*]], %[[T84:.*]], %[[T81:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T86:.*]] = arith.addi %[[A5:.*]], %[[C21:.*]] : index
-//      CHECK:          %[[T87:.*]] = aievec.upd %[[A1]][%[[T86:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T87:.*]] = aievec.upd %[[A1]][%[[T86:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T88:.*]] = aievec.broadcast %[[T2:.*]] {idx = 21 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T89:.*]] = aievec.mac_elem %[[T87:.*]], %[[T88:.*]], %[[T85:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T90:.*]] = arith.addi %[[A5:.*]], %[[C22:.*]] : index
-//      CHECK:          %[[T91:.*]] = aievec.upd %[[A1]][%90, %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T91:.*]] = aievec.upd %[[A1]][%90, %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T92:.*]] = aievec.broadcast %[[T2:.*]] {idx = 22 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T93:.*]] = aievec.mac_elem %[[T91:.*]], %[[T92:.*]], %[[T89:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T94:.*]] = arith.addi %[[A5:.*]], %[[C23:.*]] : index
-//      CHECK:          %[[T95:.*]] = aievec.upd %[[A1]][%[[T94:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T95:.*]] = aievec.upd %[[A1]][%[[T94:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T96:.*]] = aievec.broadcast %[[T2:.*]] {idx = 23 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T97:.*]] = aievec.mac_elem %[[T95:.*]], %[[T96:.*]], %[[T93:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T98:.*]] = arith.addi %[[A5:.*]], %[[C24:.*]] : index
-//      CHECK:          %[[T99:.*]] = aievec.upd %[[A1]][%[[T98:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T99:.*]] = aievec.upd %[[A1]][%[[T98:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T100:.*]] = aievec.broadcast %[[T2:.*]] {idx = 24 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T101:.*]] = aievec.mac_elem %[[T99:.*]], %[[T100:.*]], %[[T97:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T102:.*]] = arith.addi %[[A5:.*]], %[[C25:.*]] : index
-//      CHECK:          %[[T103:.*]] = aievec.upd %[[A1]][%[[T102:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T103:.*]] = aievec.upd %[[A1]][%[[T102:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T104:.*]] = aievec.broadcast %[[T2:.*]] {idx = 25 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T105:.*]] = aievec.mac_elem %[[T103:.*]], %[[T104:.*]], %[[T101:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T106:.*]] = arith.addi %[[A5:.*]], %[[C26:.*]] : index
-//      CHECK:          %[[T107:.*]] = aievec.upd %[[A1]][%[[T106:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T107:.*]] = aievec.upd %[[A1]][%[[T106:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T108:.*]] = aievec.broadcast %[[T2:.*]] {idx = 26 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T109:.*]] = aievec.mac_elem %[[T107:.*]], %[[T108:.*]], %[[T105:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T110:.*]] = arith.addi %[[A5:.*]], %[[C27:.*]] : index
-//      CHECK:          %[[T111:.*]] = aievec.upd %[[A1]][%[[T110:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T111:.*]] = aievec.upd %[[A1]][%[[T110:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T112:.*]] = aievec.broadcast %[[T2:.*]] {idx = 27 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T113:.*]] = aievec.mac_elem %[[T111:.*]], %[[T112:.*]], %[[T109:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T114:.*]] = arith.addi %[[A5:.*]], %[[C28:.*]] : index
-//      CHECK:          %[[T115:.*]] = aievec.upd %[[A1]][%[[T114:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T115:.*]] = aievec.upd %[[A1]][%[[T114:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T116:.*]] = aievec.broadcast %[[T2:.*]] {idx = 28 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T117:.*]] = aievec.mac_elem %[[T115:.*]], %[[T116:.*]], %[[T113:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T118:.*]] = arith.addi %[[A5:.*]], %[[C29:.*]] : index
-//      CHECK:          %[[T119:.*]] = aievec.upd %[[A1]][%[[T118:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T119:.*]] = aievec.upd %[[A1]][%[[T118:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T120:.*]] = aievec.broadcast %[[T2:.*]] {idx = 29 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T121:.*]] = aievec.mac_elem %[[T119:.*]], %[[T120:.*]], %[[T117:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T122:.*]] = arith.addi %[[A5:.*]], %[[C30:.*]] : index
-//      CHECK:          %[[T123:.*]] = aievec.upd %[[A1]][%[[T122:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T123:.*]] = aievec.upd %[[A1]][%[[T122:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T124:.*]] = aievec.broadcast %[[T2:.*]] {idx = 30 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T125:.*]] = aievec.mac_elem %[[T123:.*]], %[[T124:.*]], %[[T121:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T126:.*]] = arith.addi %[[A5:.*]], %[[C31:.*]] : index
-//      CHECK:          %[[T127:.*]] = aievec.upd %[[A1]][%[[T126:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : si32} : memref<?x64xi16>, vector<32xi16>
+//      CHECK:          %[[T127:.*]] = aievec.upd %[[A1]][%[[T126:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x64xi16>, vector<32xi16>
 //      CHECK:          %[[T128:.*]] = aievec.broadcast %[[T2:.*]] {idx = 31 : i8} : vector<32xi16>, vector<32xi16>
 //      CHECK:          %[[T129:.*]] = aievec.mac_elem %[[T127:.*]], %[[T128:.*]], %[[T125:.*]] : vector<32xi16>, vector<32xi16>, vector<32xi32>
 //      CHECK:          %[[T130:.*]] = aievec.srs %[[T129:.*]] {shift = 0 : i8} : vector<32xi32>, vector<32xi16>
