@@ -305,17 +305,16 @@ mlir::LogicalResult AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output) {
   StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
 
   DenseMap<TileID, Operation *> tiles;
-  DenseMap<Operation *, CoreOp> cores;
-  DenseMap<Operation *, MemOp> mems;
-  DenseMap<std::pair<Operation *, int>, LockOp> locks;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
-  DenseMap<Operation *, SwitchboxOp> switchboxes;
 
   if (module.getOps<DeviceOp>().empty()) {
     return module.emitOpError("expected AIE.device operation at toplevel");
   }
   DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
   const auto &targetModel = targetOp.getTargetModel();
+
+  collectTiles(targetOp, tiles);
+  collectBuffers(targetOp, buffers);
 
   //---------------------------------------------------------------------------
   // mlir_aie_init_libxaie
