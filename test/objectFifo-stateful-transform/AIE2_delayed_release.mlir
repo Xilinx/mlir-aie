@@ -88,27 +88,27 @@
 // CHECK:       AIE.useLock(%[[fifo_cons_lock]], AcquireGreaterEqual, 2)
 // # Objects Held: 2
 
-// CHECK:       %11 = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %11, %[[buf23]][%c0] : memref<4xi32>
+// CHECK:       %[[VAL_11:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %[[VAL_11]], %[[buf23]][%c0] : memref<4xi32>
 
 // -- Requested: 1 --
 // Since we already hold 2, we expect not to see any lock acquires here.
 // # Objects Held: 2     # Objects Requested: 1    # Acquire Needed: 0
-// CHECK:       %12 = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %12, %[[buf23]][%c1] : memref<4xi32>
+// CHECK:       %[[VAL_12:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %[[VAL_12]], %[[buf23]][%c1] : memref<4xi32>
 
 // -- Requested: 3 --
 // Since we already hold 2 and are requesting 3, we expect one acquire here.
 // # Objects Held: 2     # Objects Requested: 3    # Acquire Needed: 1
 // CHECK:       AIE.useLock(%[[fifo_cons_lock]], AcquireGreaterEqual, 1)
 // # Objects Held: 3
-// CHECK:       %13 = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %13, %[[buf23]][%c2] : memref<4xi32>
+// CHECK:       %[[VAL_13:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %[[VAL_13]], %[[buf23]][%c2] : memref<4xi32>
 
 // -- Requested: 1 --
 // # Objects Held: 3     # Objects Requested: 1    # Acquire Needed: 0
-// CHECK:       %14 = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %14, %[[buf23]][%c3] : memref<4xi32>
+// CHECK:       %[[VAL_14:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
+// CHECK:       memref.store %[[VAL_14]], %[[buf23]][%c3] : memref<4xi32>
 
 // These releases should all succeed.
 // CHECK:       AIE.useLock(%[[fifo_prod_lock]], Release, 3)

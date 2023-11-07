@@ -175,7 +175,7 @@
 // ////////////////////////////////////////////////////////////////////////// //
 
 // CHECK:     %[[memtile:.*]] = AIE.memTileDMA(%[[t1]]) {
-// CHECK:       %25 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb5)
+// CHECK:       %[[VAL_25:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb5)
 
 // Fill our four buffers, fifo0_cons_buff_0 through fif0_cons_buff_3, 
 // allocated inside the memory tile, one by one (round robin) as we receive
@@ -203,7 +203,7 @@
 
 // Now map everything we read in back out onto the stream towards tile 2:
 // CHECK:     ^bb5:  // pred: ^bb0
-// CHECK:       %26 = AIE.dmaStart(MM2S, 0, ^bb6, ^bb10)
+// CHECK:       %[[VAL_26:.*]] = AIE.dmaStart(MM2S, 0, ^bb6, ^bb10)
 // CHECK:     ^bb6:  // 2 preds: ^bb5, ^bb9
 // CHECK:       AIE.useLock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, 1)
 // CHECK:       AIE.dmaBd(<%[[fifo0_cons_buff_0]] : memref<1xi32>, 0, 1>, 0)

@@ -10,28 +10,28 @@
 
 // RUN: aie-opt --aie-create-locks %s | FileCheck %s
 
-// CHECK-LABEL: module @test_lock1 {
-// CHECK:  %0 = AIE.tile(3, 3)
-// CHECK:  %1 = AIE.lock(%0, 0)
-// CHECK:  %2 = AIE.tile(2, 3)
-// CHECK:  %3 = AIE.lock(%2, 0)
-// CHECK:  %4 = AIE.tile(4, 3)
-// CHECK:  AIEX.token(0) {sym_name = "token0"}
-// CHECK:  %8 = AIE.core(%2) {
-// CHECK:    AIE.useLock(%3, Acquire, 0)
-// CHECK:    AIE.useLock(%3, Release, 1)
-// CHECK:  }
-// CHECK:  %9 = AIE.core(%0) {
-// CHECK:    AIE.useLock(%1, Acquire, 0)
-// CHECK:    AIE.useLock(%3, Acquire, 1)
-// CHECK:    AIE.useLock(%3, Release, 0)
-// CHECK:    AIE.useLock(%1, Release, 1)
-// CHECK:  }
-// CHECK:  %10 = AIE.core(%4) {
-// CHECK:    AIE.useLock(%1, Acquire, 1)
-// CHECK:    AIE.useLock(%1, Release, 0)
-// CHECK:  }
-// CHECK:}
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(3, 3)
+// CHECK:           %[[VAL_1:.*]] = AIE.lock(%[[VAL_0]], 0)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(2, 3)
+// CHECK:           %[[VAL_3:.*]] = AIE.lock(%[[VAL_2]], 0)
+// CHECK:           %[[VAL_4:.*]] = AIE.tile(4, 3)
+// CHECK:           AIEX.token(0) {sym_name = "token0"}
+// CHECK:           %[[VAL_8:.*]] = AIE.core(%[[VAL_2]]) {
+// CHECK:             AIE.useLock(%[[VAL_3]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_3]], Release, 1)
+// CHECK:           }
+// CHECK:           %[[VAL_9:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             AIE.useLock(%[[VAL_1]], Acquire, 0)
+// CHECK:             AIE.useLock(%[[VAL_3]], Acquire, 1)
+// CHECK:             AIE.useLock(%[[VAL_3]], Release, 0)
+// CHECK:             AIE.useLock(%[[VAL_1]], Release, 1)
+// CHECK:           }
+// CHECK:           %[[VAL_10:.*]] = AIE.core(%[[VAL_4]]) {
+// CHECK:             AIE.useLock(%[[VAL_1]], Acquire, 1)
+// CHECK:             AIE.useLock(%[[VAL_1]], Release, 0)
+// CHECK:           }
+// CHECK:         }
 
 // Generate LockOp in the top-level module
 // Lower UseTokenOp to UseLockOp

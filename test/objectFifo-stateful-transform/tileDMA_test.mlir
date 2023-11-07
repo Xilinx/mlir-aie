@@ -8,99 +8,97 @@
 // Copyright (C) 2022, Advanced Micro Devices, Inc.
 //
 // Date: September 22nd 2022
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-//CHECK: module @tileDMA_channels {
-//CHECK:   AIE.device(xcvc1902) {
-//CHECK:     %0 = AIE.tile(1, 2)
-//CHECK:     %1 = AIE.tile(3, 3)
-//CHECK:     %2 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-//CHECK:     %3 = AIE.buffer(%1) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-//CHECK:     %4 = AIE.lock(%1, 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
-//CHECK:     %5 = AIE.lock(%1, 1) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
-//CHECK:     %6 = AIE.buffer(%0) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-//CHECK:     %7 = AIE.buffer(%0) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-//CHECK:     %8 = AIE.lock(%0, 3) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-//CHECK:     %9 = AIE.lock(%0, 4) {init = 0 : i32, sym_name = "objfifo_lock_1"}
-//CHECK:     %10 = AIE.buffer(%0) : memref<16xi32>
-//CHECK:     %11 = AIE.lock(%0, 0)
-//CHECK:     %12 = AIE.buffer(%0) : memref<16xi32>
-//CHECK:     %13 = AIE.lock(%0, 1)
-//CHECK:     %14 = AIE.buffer(%0) : memref<16xi32>
-//CHECK:     %15 = AIE.lock(%0, 2)
-//CHECK:     AIE.flow(%0, DMA : 1, %1, DMA : 0)
-//CHECK:     func.func @some_work(%arg0: memref<16xi32>) {
-//CHECK:       return
-//CHECK:     }
-//CHECK:     %16 = AIE.core(%0) {
-//CHECK:       %c0 = arith.constant 0 : index
-//CHECK:       %c1 = arith.constant 1 : index
-//CHECK:       %c12 = arith.constant 12 : index
-//CHECK:       %c2 = arith.constant 2 : index
-//CHECK:       scf.for %arg0 = %c0 to %c12 step %c2 {
-//CHECK:         AIE.useLock(%8, Acquire, 0)
-//CHECK:         func.call @some_work(%6) : (memref<16xi32>) -> ()
-//CHECK:         AIE.useLock(%8, Release, 1)
-//CHECK:         AIE.useLock(%9, Acquire, 0)
-//CHECK:         func.call @some_work(%7) : (memref<16xi32>) -> ()
-//CHECK:         AIE.useLock(%9, Release, 1)
-//CHECK:       }
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:     %17 = AIE.mem(%0) {
-//CHECK:       %19 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-//CHECK:       AIE.useLock(%11, Acquire, 1)
-//CHECK:       AIE.dmaBd(<%10 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%11, Release, 0)
-//CHECK:       AIE.nextBd ^bb2
-//CHECK:     ^bb2:  // pred: ^bb1
-//CHECK:       AIE.useLock(%13, Acquire, 1)
-//CHECK:       AIE.dmaBd(<%12 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%13, Release, 0)
-//CHECK:       AIE.nextBd ^bb1
-//CHECK:     ^bb3:  // pred: ^bb0
-//CHECK:       %20 = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
-//CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb4
-//CHECK:       AIE.useLock(%15, Acquire, 0)
-//CHECK:       AIE.dmaBd(<%14 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%15, Release, 1)
-//CHECK:       AIE.nextBd ^bb4
-//CHECK:     ^bb5:  // pred: ^bb3
-//CHECK:       %21 = AIE.dmaStart(MM2S, 1, ^bb6, ^bb8)
-//CHECK:     ^bb6:  // 2 preds: ^bb5, ^bb7
-//CHECK:       AIE.useLock(%8, Acquire, 1)
-//CHECK:       AIE.dmaBd(<%6 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%8, Release, 0)
-//CHECK:       AIE.nextBd ^bb7
-//CHECK:     ^bb7:  // pred: ^bb6
-//CHECK:       AIE.useLock(%9, Acquire, 1)
-//CHECK:       AIE.dmaBd(<%7 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%9, Release, 0)
-//CHECK:       AIE.nextBd ^bb6
-//CHECK:     ^bb8:  // pred: ^bb5
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:     %18 = AIE.mem(%1) {
-//CHECK:       %19 = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
-//CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-//CHECK:       AIE.useLock(%4, Acquire, 0)
-//CHECK:       AIE.dmaBd(<%2 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%4, Release, 1)
-//CHECK:       AIE.nextBd ^bb2
-//CHECK:     ^bb2:  // pred: ^bb1
-//CHECK:       AIE.useLock(%5, Acquire, 0)
-//CHECK:       AIE.dmaBd(<%3 : memref<16xi32>, 0, 16>, 0)
-//CHECK:       AIE.useLock(%5, Release, 1)
-//CHECK:       AIE.nextBd ^bb1
-//CHECK:     ^bb3:  // pred: ^bb0
-//CHECK:       AIE.end
-//CHECK:     }
-//CHECK:   }
-//CHECK: }
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(1, 2)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(3, 3)
+// CHECK:           %[[VAL_2:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = AIE.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = AIE.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK:           %[[VAL_5:.*]] = AIE.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
+// CHECK:           %[[VAL_6:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_7:.*]] = AIE.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_8:.*]] = AIE.lock(%[[VAL_0]], 3) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK:           %[[VAL_9:.*]] = AIE.lock(%[[VAL_0]], 4) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK:           %[[VAL_10:.*]] = AIE.buffer(%[[VAL_0]]) : memref<16xi32>
+// CHECK:           %[[VAL_11:.*]] = AIE.lock(%[[VAL_0]], 0)
+// CHECK:           %[[VAL_12:.*]] = AIE.buffer(%[[VAL_0]]) : memref<16xi32>
+// CHECK:           %[[VAL_13:.*]] = AIE.lock(%[[VAL_0]], 1)
+// CHECK:           %[[VAL_14:.*]] = AIE.buffer(%[[VAL_0]]) : memref<16xi32>
+// CHECK:           %[[VAL_15:.*]] = AIE.lock(%[[VAL_0]], 2)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 1, %[[VAL_1]], DMA : 0)
+// CHECK:           func.func @some_work(%[[VAL_16:.*]]: memref<16xi32>) {
+// CHECK:             return
+// CHECK:           }
+// CHECK:           %[[VAL_17:.*]] = AIE.core(%[[VAL_0]]) {
+// CHECK:             %[[VAL_18:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_20:.*]] = arith.constant 12 : index
+// CHECK:             %[[VAL_21:.*]] = arith.constant 2 : index
+// CHECK:             scf.for %[[VAL_22:.*]] = %[[VAL_18]] to %[[VAL_20]] step %[[VAL_21]] {
+// CHECK:               AIE.useLock(%[[VAL_8]], Acquire, 0)
+// CHECK:               func.call @some_work(%[[VAL_6]]) : (memref<16xi32>) -> ()
+// CHECK:               AIE.useLock(%[[VAL_8]], Release, 1)
+// CHECK:               AIE.useLock(%[[VAL_9]], Acquire, 0)
+// CHECK:               func.call @some_work(%[[VAL_7]]) : (memref<16xi32>) -> ()
+// CHECK:               AIE.useLock(%[[VAL_9]], Release, 1)
+// CHECK:             }
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_23:.*]] = AIE.mem(%[[VAL_0]]) {
+// CHECK:             %[[VAL_24:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:             AIE.useLock(%[[VAL_11]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_10]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_11]], Release, 0)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:  // pred: ^bb1
+// CHECK:             AIE.useLock(%[[VAL_13]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_12]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_13]], Release, 0)
+// CHECK:             AIE.nextBd ^bb1
+// CHECK:           ^bb3:  // pred: ^bb0
+// CHECK:             %[[VAL_25:.*]] = AIE.dmaStart(S2MM, 0, ^bb4, ^bb5)
+// CHECK:           ^bb4:  // 2 preds: ^bb3, ^bb4
+// CHECK:             AIE.useLock(%[[VAL_15]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_14]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_15]], Release, 1)
+// CHECK:             AIE.nextBd ^bb4
+// CHECK:           ^bb5:  // pred: ^bb3
+// CHECK:             %[[VAL_26:.*]] = AIE.dmaStart(MM2S, 1, ^bb6, ^bb8)
+// CHECK:           ^bb6:  // 2 preds: ^bb5, ^bb7
+// CHECK:             AIE.useLock(%[[VAL_8]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_6]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_8]], Release, 0)
+// CHECK:             AIE.nextBd ^bb7
+// CHECK:           ^bb7:  // pred: ^bb6
+// CHECK:             AIE.useLock(%[[VAL_9]], Acquire, 1)
+// CHECK:             AIE.dmaBd(<%[[VAL_7]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_9]], Release, 0)
+// CHECK:             AIE.nextBd ^bb6
+// CHECK:           ^bb8:  // pred: ^bb5
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:           %[[VAL_27:.*]] = AIE.mem(%[[VAL_1]]) {
+// CHECK:             %[[VAL_28:.*]] = AIE.dmaStart(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:             AIE.useLock(%[[VAL_4]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_2]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_4]], Release, 1)
+// CHECK:             AIE.nextBd ^bb2
+// CHECK:           ^bb2:  // pred: ^bb1
+// CHECK:             AIE.useLock(%[[VAL_5]], Acquire, 0)
+// CHECK:             AIE.dmaBd(<%[[VAL_3]] : memref<16xi32>, 0, 16>, 0)
+// CHECK:             AIE.useLock(%[[VAL_5]], Release, 1)
+// CHECK:             AIE.nextBd ^bb1
+// CHECK:           ^bb3:  // pred: ^bb0
+// CHECK:             AIE.end
+// CHECK:           }
+// CHECK:         }
 
 module @tileDMA_channels {
     AIE.device(xcvc1902) {

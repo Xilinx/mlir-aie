@@ -110,7 +110,10 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let hasVerifier = 1;
 }
 
-def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
+def AIE_TileOp: AIE_Op<"tile", [
+    FlowEndPoint,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+  ]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<I32Attr, [IntMinValue<0>]>:$col,
         ConfinedAttr<I32Attr, [IntMinValue<0>]>:$row
@@ -173,6 +176,17 @@ def AIE_TileOp: AIE_Op<"tile", [FlowEndPoint]>, Results<(outs Index:$result)> {
             $_builder.getI32IntegerAttr(row));
     }]>
   ];
+
+  let extraClassDefinition = [{
+    void $cppClass::getAsmResultNames(
+        function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
+       std::string nameWithoutDialect =
+             getOperationName().str().substr(getOperationName().find('.') + 1);
+       setNameFn(getResult(), nameWithoutDialect + "_" +
+                                  std::to_string(getCol()) + "_" +
+                                  std::to_string(getRow()));
+    }
+  }];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -213,6 +227,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    using ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames;
   }];
 
   let builders = [
@@ -280,6 +295,7 @@ def AIE_ShimMuxOp: AIE_Op<"shimmux", [
     int getNumSourceConnections(WireBundle bundle);
     int getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
+    using ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames;
   }];
 
  let builders = [
@@ -327,7 +343,7 @@ def AIE_ShimDMAOp: AIE_Op<"shimDMA", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    static llvm::StringRef getDefaultDialect() { return "AIE"; }
+    using ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames;
   }];
 }
 
@@ -378,6 +394,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     TileOp getTileOp();
+    using ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames;
   }];
 
   let builders = [
@@ -751,7 +768,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
   let description = [{
     This operation enables packet headers for a block descriptor for DMA operations. In particular, it specifies
     the packet type (3-bits) and packet ID (5-bits).
-    
+
     This operation must be used in an MLIR block that lives inside a MemOp's region, and before AIE.dmaBd.
     The block descriptor specifies what lock to use and the buffer configuration.
 
@@ -765,6 +782,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dmaBdPacket", []> {
         AIE.useLock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
     ```
+
   }];
 
   let arguments = (
@@ -802,7 +820,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
   let description = [{
     This operation describes a block descriptor for DMA operations. In particular, it specifies
     what buffer addresss to use, the transfer length, and the buffer type (A or B).
-    
+
     This operation must be used in an MLIR block that lives inside a MemOp's region.
     The block descriptor specifies what lock to use and the buffer configuration.
 
@@ -836,7 +854,7 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     wrap, the last element of the array gives the lowest-dimension.
 
     Strides are always expressed in units of `i32`s; this is an architectural
-    requirement, as data is moved by the DMA at this fundamental size. 
+    requirement, as data is moved by the DMA at this fundamental size.
 
     We can model the access pattern strides and wraps generate by a series of
     nested loops. In general, a set of strides and wraps like this...
@@ -852,14 +870,14 @@ def AIE_DMABDOp: AIE_Op<"dmaBd", []> {
     for(int i = 0; i < wrap_2; i++)
       for(int j = 0; j < wrap_1; j++)
         for(int k = 0; k < wrap_0; k++)
-          // access/store element at/to buffer[  i * stride_2 
-          //                                   + j * stride_1 
+          // access/store element at/to buffer[  i * stride_2
+          //                                   + j * stride_1
           //                                   + k * stride_0]
     ```
 
-    The following example shows an access pattern that corresponds to 
-    alternating between even and odd elements of the buffer/stream every 8 
-    elements: 
+    The following example shows an access pattern that corresponds to
+    alternating between even and odd elements of the buffer/stream every 8
+    elements:
 
     ```
     AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
@@ -950,7 +968,7 @@ def AIE_DMAStartOp: AIE_Op<"dmaStart", [
   ];
 }
 
-// MemOps are not actually Callable, but we want to inline code into them, so we have to 
+// MemOps are not actually Callable, but we want to inline code into them, so we have to
 // implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
     TileElement, FlowEndPoint, CallableOpInterface,
@@ -992,7 +1010,7 @@ def AIE_MemOp: AIE_Op<"mem", [
     mlir::Region *getCallableRegion();
     llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
     llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
-    static llvm::StringRef getDefaultDialect() { return "AIE"; }
+    using ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames;
   }];
 
   let builders = [
@@ -1047,7 +1065,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memTileDMA", [
     mlir::Region *getCallableRegion();
     llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
     llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
-    static llvm::StringRef getDefaultDialect() { return "AIE"; }
+    using ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames;
   }];
 
   let builders = [
@@ -1132,6 +1150,7 @@ def AIE_LockOp: AIE_Op<"lock", [TileElement]>, Results<(outs Index)> {
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    using ::xilinx::AIE::TileElement::Trait<LockOp>::getAsmResultNames;
   }];
 
   let builders = [
@@ -1229,6 +1248,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
     TileOp getTileOp();
+    using ::xilinx::AIE::TileElement::Trait<BufferOp>::getAsmResultNames;
   }];
 }
 
@@ -1603,6 +1623,8 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectFifo.registerExternal
   let extraClassDeclaration = [{
     TileOp getTileOp();
     ObjectFifoCreateOp getObjectFifo();
+    // No results so just use default impl.
+    using ::mlir::OpAsmOpInterface::Trait<ObjectFifoRegisterExternalBuffersOp>::getAsmResultNames;
   }];
 }
 

@@ -11,18 +11,19 @@
 // RUN: aie-opt --canonicalize %s | FileCheck %s
 // Verify that canonicalize does not remove chained AIE.nextBd
 
-// CHECK:      module @test {
-// CHECK-NEXT:   %0 = AIE.tile(1, 1)
-// CHECK-NEXT:   %1 = AIE.mem(%0) {
-// CHECK-NEXT:     %2 = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
-// CHECK-NEXT:   ^bb1:  // pred: ^bb0
-// CHECK-NEXT:     AIE.nextBd ^bb2
-// CHECK-NEXT:   ^bb2:  // pred: ^bb1
-// CHECK-NEXT:     AIE.nextBd ^bb3
-// CHECK-NEXT:   ^bb3:  // 2 preds: ^bb0, ^bb2
-// CHECK-NEXT:     AIE.end
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
+// CHECK-LABEL:  module @test {
+// CHECK-NEXT:     %[[VAL_0:.*]] = AIE.tile(1, 1)
+// CHECK-NEXT:     %[[VAL_1:.*]] = AIE.mem(%[[VAL_0]]) {
+// CHECK-NEXT:       %[[VAL_2:.*]] = AIE.dmaStart(MM2S, 0, ^bb1, ^bb3)
+// CHECK-NEXT:     ^bb1:  // pred: ^bb0
+// CHECK-NEXT:       AIE.nextBd ^bb2
+// CHECK-NEXT:     ^bb2:  // pred: ^bb1
+// CHECK-NEXT:       AIE.nextBd ^bb3
+// CHECK-NEXT:     ^bb3:  // 2 preds: ^bb0, ^bb2
+// CHECK-NEXT:       AIE.end
+// CHECK-NEXT:     }
+// CHECK-NEXT:  }
+
 module @test {
   %t1 = AIE.tile(1, 1)
 

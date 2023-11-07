@@ -7,26 +7,24 @@
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 // Date: May 20th 2023
-// 
+//
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK: module @alloc {
-// CHECK:   AIE.device(xcve2302) {
-// CHECK:     %0 = AIE.tile(2, 0)
-// CHECK:     %1 = AIE.tile(2, 2)
-// CHECK:     %2 = AIE.tile(2, 3)
-// CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
-// CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
-// CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
-// CHECK:     AIE.flow({{.*}}, DMA : {{.*}}, {{.*}}, DMA : {{.*}})
-// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
-// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
-// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
-// CHECK:     AIE.shimDMAAllocation {{.*}}({{.*}}, {{.*}}, 2)
-// CHECK:   }
-// CHECK: }
+// CHECK-LABEL:   AIE.device(xcve2302) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 0)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 2)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(2, 3)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_0]], DMA : 1, %[[VAL_2]], DMA : 0)
+// CHECK:           AIE.flow(%[[VAL_2]], DMA : 0, %[[VAL_0]], DMA : 1)
+// CHECK:           AIE.shimDMAAllocation @of_in_0(MM2S, 0, 2)
+// CHECK:           AIE.shimDMAAllocation @of_out_0(S2MM, 0, 2)
+// CHECK:           AIE.shimDMAAllocation @of_in_1(MM2S, 1, 2)
+// CHECK:           AIE.shimDMAAllocation @of_out_1(S2MM, 1, 2)
+// CHECK:         }
 
 module @alloc {
     AIE.device(xcve2302) {

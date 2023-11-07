@@ -31,8 +31,8 @@ def tileOp():
 
 
 # CHECK-LABEL: coreOp
-# CHECK: %[[VAL_1:.*]] = AIE.tile(1, 1)
-# CHECK: %[[VAL_2:.*]] = AIE.core(%[[VAL_1]]) {
+# CHECK: %[[VAL1:.*]] = AIE.tile(1, 1)
+# CHECK: %[[VAL2:.*]] = AIE.core(%[[VAL1]]) {
 # CHECK:   AIE.end
 # CHECK: }
 @constructAndPrintInModule
@@ -48,8 +48,8 @@ def coreOp():
 
 
 # CHECK-LABEL: memOp
-# CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: %[[VAL_2:.*]] = AIE.mem(%[[VAL_1]]) {
+# CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
+# CHECK: %[[VAL2:.*]] = AIE.mem(%[[VAL1]]) {
 # CHECK:   AIE.end
 # CHECK: }
 @constructAndPrintInModule
@@ -97,9 +97,9 @@ def dim_tuple_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None
 
 
 # CHECK-LABEL: objFifo
-# CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(2, 2)
-# CHECK: AIE.objectFifo @of0(%[[VAL_0]] toStream [<1, 2>], {%[[VAL_1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
+# CHECK: %[[VAL0:.*]] = AIE.tile(6, 6)
+# CHECK: %[[VAL1:.*]] = AIE.tile(2, 2)
+# CHECK: AIE.objectFifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 @constructAndPrintInModule
 def objFifo():
     iTy = IntegerType.get_signless(32)
