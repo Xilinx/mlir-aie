@@ -53,11 +53,11 @@ def core_ext_kernel():
 
         C = Core(T, "test.o")
         bb = Block.create_at_start(C.body)
-        with InsertionPoint(bb):    
+        with InsertionPoint(bb):
             loop = For(lowerBound = 0, upperBound = 10, step = 1)
             with InsertionPoint(loop.body):
-                elem0 = Acquire("of1", "Consume", 1, memRef_64_ty).acquiredElem()
+                elem0 = Acquire("of1", ObjectFifoPort.Consume, 1, memRef_64_ty).acquiredElem()
                 res = Call("test_func", [elem0, integerConstant(4)], [int_ty])
-                Release("of1", "Consume", 1)
+                Release(ObjectFifoPort.Consume, "of1", 1)
                 YieldOp([])
             EndOp()          

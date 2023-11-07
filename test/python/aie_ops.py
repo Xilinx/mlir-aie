@@ -141,7 +141,7 @@ def objFifoAcquire():
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):    
-            acq = Acquire(of_name="of0", port="Consume", num_elem=1, datatype=memTy)
+            acq = Acquire(of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy)
             EndOp()
 
 
@@ -164,8 +164,8 @@ def objFifoSubviewAccess():
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = Acquire(of_name="of0", port="Consume", num_elem=1, datatype=memTy)
-            subview = SubviewAccess(subview=acq, index=0, datatype=memTy)
+            acq = Acquire(of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy)
+            subview = SubviewAccess(memTy, subview=acq, index=0)
             EndOp()
 
 
@@ -187,7 +187,7 @@ def objFifoRelease():
         C = Core(tile0)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = Release(of_name="of0", port="Produce", num_elem=1)
+            acq = Release(ObjectFifoPort.Produce, "of0", 1)
             EndOp()
 
 
@@ -199,7 +199,7 @@ def objFifoRelease():
 def flowOp():
     S = Tile(0, 0)
     T = Tile(0, 2)
-    Flow(T, "Trace", 0, S, "DMA", 1)
+    Flow(T, WireBundle.Trace, 0, S, WireBundle.DMA, 1)
 
 
 # CHECK-LABEL: packetFlowOp
@@ -213,4 +213,4 @@ def flowOp():
 def packetFlowOp():
     S = Tile(0, 0)
     T = Tile(0, 2)
-    PacketFlow(0, T, "Trace", 0, S, "DMA", 1)
+    PacketFlow(0, T, WireBundle.Trace, 0, S, WireBundle.DMA, 1)

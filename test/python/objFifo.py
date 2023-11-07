@@ -40,7 +40,7 @@ def objFifo_example():
         C = Core(T)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):    
-            elem0 = Acquire("of0", "Consume", 1, memRef_ty).acquiredElem()
+            elem0 = Acquire("of0", ObjectFifoPort.Consume, 1, memRef_ty).acquiredElem()
             Store(10, elem0, 0)
-            Release("of0", "Consume", 1)
+            Release(ObjectFifoPort.Consume, "of0", 1)
             EndOp()        
