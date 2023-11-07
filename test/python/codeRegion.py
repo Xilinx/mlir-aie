@@ -31,7 +31,7 @@ from aie.dialects.aie import *
 # CHECK:  }
 @constructAndPrintInModule
 def codeRegion():
-    @device("xcve2802")
+    @device(AIEDevice.xcve2802)
     def deviceBody():
         int_ty = IntegerType.get_signless(32)
         memRef_256_ty = MemRefType.get((256,), int_ty)

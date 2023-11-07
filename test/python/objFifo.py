@@ -26,7 +26,7 @@ from aie.dialects.scf import *
 # CHECK:  }
 @constructAndPrintInModule
 def objFifo_example():
-    dev = Device("xcve2302")
+    dev = Device(AIEDevice.xcve2302)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
         int_ty = IntegerType.get_signless(32)

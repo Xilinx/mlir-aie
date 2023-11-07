@@ -57,7 +57,7 @@ def memOp():
 # CHECK: AIE.device
 @constructAndPrintInModule
 def deviceOp():
-    dev = Device("xcvc1902")
+    dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         EndOp()
@@ -87,7 +87,7 @@ def externalBufferOp():
 # CHECK: AIE.objectFifo @of0(%[[VAL0]] toStream [<1, 2>], {%[[VAL1]] fromStream [<1, 2>]}, 2 : i32) : !AIE.objectFifo<memref<12xf16>>
 @constructAndPrintInModule
 def objFifo():
-    dev = Device("xcvc1902")
+    dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         tile0 = Tile(col=6, row=6)
@@ -109,7 +109,7 @@ def objFifo():
 # CHECK: AIE.objectFifo.link [@[[VAL_3]]] -> [@[[VAL_4]]]()
 @constructAndPrintInModule
 def objFifoLink():
-    dev = Device("xcvc1902")
+    dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         tile0 = Tile(col=6, row=6)
@@ -130,7 +130,7 @@ def objFifoLink():
 # CHECK: %[[VAL_3:.*]] = AIE.objectFifo.acquire @[[VAL_2]](Consume, 1) : !AIE.objectFifoSubview<memref<12xf16>>
 @constructAndPrintInModule
 def objFifoAcquire():
-    dev = Device("xcvc1902")
+    dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         tile0 = Tile(col=6, row=6)
@@ -153,7 +153,7 @@ def objFifoAcquire():
 # CHECK: %[[VAL_4:.*]] = AIE.objectFifo.subview.access %[[VAL_3]][0] : !AIE.objectFifoSubview<memref<12xf16>> -> memref<12xf16>
 @constructAndPrintInModule
 def objFifoSubviewAccess():
-    dev = Device("xcvc1902")
+    dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         tile0 = Tile(col=6, row=6)
@@ -176,7 +176,7 @@ def objFifoSubviewAccess():
 # CHECK: AIE.objectFifo.release @[[VAL_2]](Produce, 1)
 @constructAndPrintInModule
 def objFifoRelease():
-    dev = Device("xcvc1902")
+    dev = Device(AIEDevice.xcvc1902)
     bb = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(bb):
         tile0 = Tile(col=6, row=6)

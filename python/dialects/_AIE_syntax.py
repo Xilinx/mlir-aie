@@ -1,11 +1,11 @@
 from ._AIE_ops_gen import *
+from ._AIE_enum_gen import *
 from ._AIE_util import *
 from .._mlir_libs._aieMlir import register_dialect, ObjectFifoType, ObjectFifoSubviewType
 
 
 # Helper function that returns the index of a named objectFifo port.
 def objectFifoPortToIndex(port):
-    port_index = -1
     if (port == "Produce"):
         port_index = 0
     elif (port == "Consume"):
@@ -17,7 +17,6 @@ def objectFifoPortToIndex(port):
 
 # Helper function that returns the index of a named WireBundle.
 def wireBundleToIndex(port):
-    port_index = -1
     if (port == "Core"):
         port_index = 0
     elif (port == "DMA"):
@@ -76,24 +75,7 @@ def constructAndPrintInModule(f):
         print(module)
 
 
-# Create an aie device on specified target architecture.
-class Device(DeviceOp):
-    """Specialize DeviceOp class constructor to take python integers"""
-    def __init__(self, device):
-        index = 0
-        if (device == "xcvc1902"):
-            index = 1
-        elif (device == "xcve2302"):
-            index = 2
-        elif (device == "xcve2802"):
-            index = 3
-        elif (device == "ipu"):
-            index = 4
-        else:
-            index = device
-        iTy = IntegerType.get_signless(32)
-        intDevice = IntegerAttr.get(iTy, index)
-        super().__init__(device=intDevice)
+Device = DeviceOp
 
 
 # Create an aie tile on specified (col, row).

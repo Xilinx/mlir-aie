@@ -34,7 +34,7 @@ from aie.dialects.aie import *
 # CHECK:  }
 @constructAndPrintInModule
 def core_ext_kernel():
-    dev = Device("xcve2802")
+    dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
         int_ty = IntegerType.get_signless(32)
