@@ -47,8 +47,7 @@ WireBundle getConnectingBundle(WireBundle bundle) {
 }
 
 // returns coordinates in the direction indicated by bundle
-std::pair<uint32_t, uint32_t> getNextCoords(uint32_t col, uint32_t row,
-                                            WireBundle bundle) {
+TileID getNextCoords(int col, int row, WireBundle bundle) {
   switch (bundle) {
   case WireBundle::North:
     return {col, row + 1};
@@ -99,8 +98,8 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
 
     // write routing demand info
     uint32_t connectCounts[10];
-    for (unsigned int &connect_count : connectCounts)
-      connect_count = 0;
+    for (auto &connectCount : connectCounts)
+      connectCount = 0;
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>())
       connectCounts[int(connectOp.getDestBundle())]++;
 
@@ -124,8 +123,7 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
   std::set<std::pair<TileOp, Port>> flowSources;
   for (FlowOp flowOp : targetOp.getOps<FlowOp>()) {
     // objects used to trace through the flow
-    Port currPort = {flowOp.getSourceBundle(),
-                     static_cast<int>(flowOp.getSourceChannel())};
+    Port currPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
     SwitchboxOp currSwitchbox;
 
     TileOp source = cast<TileOp>(flowOp.getSource().getDefiningOp());
@@ -185,16 +183,16 @@ mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
         if (connectOp.getSourceBundle() == currPort.bundle &&
             connectOp.getSourceChannel() == currPort.channel) {
           nextPorts.push({getConnectingBundle(connectOp.getDestBundle()),
-                          static_cast<int>(connectOp.getDestChannel())});
+                          connectOp.getDestChannel()});
 
-          std::pair<uint32_t, uint32_t> next_coords =
+          TileID nextCoords =
               getNextCoords(currSwitchbox.colIndex(), currSwitchbox.rowIndex(),
                             connectOp.getDestBundle());
 
           // search for next switchbox to connect to
           for (SwitchboxOp switchboxOp : targetOp.getOps<SwitchboxOp>()) {
-            if (uint32_t(switchboxOp.colIndex()) == next_coords.first &&
-                uint32_t(switchboxOp.rowIndex()) == next_coords.second) {
+            if (switchboxOp.colIndex() == nextCoords.col &&
+                switchboxOp.rowIndex() == nextCoords.row) {
               nextSwitches.push(switchboxOp);
               break;
             }

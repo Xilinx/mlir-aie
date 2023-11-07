@@ -12,6 +12,7 @@
 #define AIE_NORMALIZE_ADDRESS_SPACES
 
 include "aie/Dialect/AIE/IR/AIE.td"
+
 include "mlir/Dialect/MemRef/IR/MemRefOps.td"
 include "mlir/IR/PatternBase.td"
 

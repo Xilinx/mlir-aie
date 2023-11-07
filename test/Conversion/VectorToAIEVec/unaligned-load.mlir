@@ -3,8 +3,8 @@
 
 // CHECK-LABEL: func @unaligned_read
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[V0B:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : si32} : memref<64xi32>, vector<16xi32>
-// CHECK: %[[V0T:.*]] = aievec.upd %{{.*}}[%[[C0]]], %[[V0B]] {index = 1 : i8, offset = 256 : si32} : memref<64xi32>, vector<16xi32>
+// CHECK: %[[V0B:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<64xi32>, vector<16xi32>
+// CHECK: %[[V0T:.*]] = aievec.upd %{{.*}}[%[[C0]]], %[[V0B]] {index = 1 : i8, offset = 256 : i32} : memref<64xi32>, vector<16xi32>
 // CHECK: %[[V0ROT:.*]] = aievec.select %[[V0T]] {select = "0", xoffsets = "0x76543210", xsquare = "0x3210", xstart = "3",
 // CHECK-SAME:                                                  yoffsets = "0", ysquare = "0", ystart = "0"}
 // CHECK-SAME:                                   : vector<16xi32>, vector<16xi32>
@@ -19,7 +19,7 @@
 // CHECK-V2: %[[C24i32:.*]] = arith.constant 24 : i32
 // CHECK-V2: %[[C12i32:.*]] = arith.constant 12 : i32
 // CHECK-V2: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-V2: %[[LV:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : si32} : memref<64xi32>, vector<16xi32>
+// CHECK-V2: %[[LV:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<64xi32>, vector<16xi32>
 // CHECK-V2: %[[LV0:.*]] = aievec.ext %[[LV]] {index = 0 : i8} : vector<16xi32>, vector<8xi32>
 // CHECK-V2: %[[LV1:.*]] = aievec.ext %[[LV]] {index = 1 : i8} : vector<16xi32>, vector<8xi32>
 // CHECK-V2: %[[R0:.*]] = aievec.shift %[[LV0]], %[[LV1]], %[[C12i32]] {isAcc = false} : vector<8xi32>, vector<8xi32>, i32, vector<8xi32>
@@ -38,8 +38,8 @@ func.func @unaligned_read(%m: memref<64xi32>) -> (vector<8xi32>, vector<8xi32>) 
 
 // CHECK-LABEL: func @unaligned_read
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
-// CHECK: %[[V0B:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : si32} : memref<64xi16>, vector<32xi16>
-// CHECK: %[[V0T:.*]] = aievec.upd %{{.*}}[%[[C0]]], %[[V0B]] {index = 1 : i8, offset = 256 : si32} : memref<64xi16>, vector<32xi16>
+// CHECK: %[[V0B:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<64xi16>, vector<32xi16>
+// CHECK: %[[V0T:.*]] = aievec.upd %{{.*}}[%[[C0]]], %[[V0B]] {index = 1 : i8, offset = 256 : i32} : memref<64xi16>, vector<32xi16>
 // CHECK: %[[V0ROT:.*]] = aievec.select %[[V0T]] {select = "0x11111111", xoffsets = "0x06040200", xoffsets_hi = "0x0e0c0a08", xsquare = "0x2103", xstart = "4",
 // CHECK-SAME:                                                           yoffsets = "0x0503010f", yoffsets_hi = "0x0d0b0907", ysquare = "0x2103", ystart = "2"}
 // CHECK-SAME:                                   : vector<32xi16>, vector<32xi16>
@@ -54,7 +54,7 @@ func.func @unaligned_read(%m: memref<64xi32>) -> (vector<8xi32>, vector<8xi32>) 
 // CHECK-V2: %[[C12i32:.*]] = arith.constant 12 : i32
 // CHECK-V2: %[[C6i32:.*]] = arith.constant 6 : i32
 // CHECK-V2: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-V2: %[[LV:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : si32} : memref<64xi16>, vector<32xi16>
+// CHECK-V2: %[[LV:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<64xi16>, vector<32xi16>
 // CHECK-V2: %[[LV0:.*]] = aievec.ext %[[LV]] {index = 0 : i8} : vector<32xi16>, vector<16xi16>
 // CHECK-V2: %[[LV1:.*]] = aievec.ext %[[LV]] {index = 1 : i8} : vector<32xi16>, vector<16xi16>
 // CHECK-V2: %[[R0:.*]] = aievec.shift %[[LV0]], %[[LV1]], %[[C6i32]] {isAcc = false} : vector<16xi16>, vector<16xi16>, i32, vector<16xi16>

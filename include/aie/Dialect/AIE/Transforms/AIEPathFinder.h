@@ -39,8 +39,7 @@ public:
 class Channel : public ChannelBase {
 public:
   explicit Channel(Switchbox &target) = delete;
-  Channel(Switchbox &src, Switchbox &target, WireBundle bundle,
-          uint32_t maxCapacity)
+  Channel(Switchbox &src, Switchbox &target, WireBundle bundle, int maxCapacity)
       : ChannelBase(target), src(src), bundle(bundle),
         maxCapacity(maxCapacity) {}
 
@@ -66,11 +65,11 @@ public:
 
   Switchbox &src;
   WireBundle bundle;
-  uint32_t maxCapacity = 0; // maximum number of routing resources
-  double demand = 0.0;      // indicates how many flows want to use this Channel
-  uint32_t usedCapacity = 0; // how many flows are actually using this Channel
-  std::set<uint32_t> fixedCapacity; // channels not available to the algorithm
-  uint32_t overCapacityCount = 0;   // history of Channel being over capacity
+  int maxCapacity = 0;  // maximum number of routing resources
+  double demand = 0.0;  // indicates how many flows want to use this Channel
+  int usedCapacity = 0; // how many flows are actually using this Channel
+  std::set<int> fixedCapacity; // channels not available to the algorithm
+  int overCapacityCount = 0;   // history of Channel being over capacity
 };
 
 class SwitchboxGraph : public SwitchboxGraphBase {

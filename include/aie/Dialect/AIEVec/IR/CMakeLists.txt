@@ -6,4 +6,4 @@
 # (c) Copyright 2022 Xilinx Inc.
 
 add_mlir_dialect(AIEVecOps aievec)
-add_mlir_doc(AIEVecOps AIEVecDialect ./ -gen-dialect-doc)
+add_mlir_doc(AIEVecOps AIEVecDialect ./ -gen-dialect-doc -dialect=aievec)

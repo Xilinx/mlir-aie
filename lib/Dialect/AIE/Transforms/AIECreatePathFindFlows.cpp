@@ -119,7 +119,7 @@ public:
                  << ")" << stringifyWireBundle(srcPort.bundle)
                  << srcPort.channel << " -> (" << dstCoords.col << ", "
                  << dstCoords.row << ")" << stringifyWireBundle(dstPort.bundle)
-                 << (int)dstPort.channel << "\n");
+                 << dstPort.channel << "\n");
       pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
     }
 
@@ -288,7 +288,7 @@ struct ConvertFlowsToInterconnect : public OpConversionPattern<AIE::FlowOp> {
                << ", " << srcCoords.row << ")" << stringifyWireBundle(srcBundle)
                << srcChannel << " -> (" << dstCoords.col << ", "
                << dstCoords.row << ")" << stringifyWireBundle(dstBundle)
-               << (int)dstChannel << "\n\t");
+               << dstChannel << "\n\t");
 #endif
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
@@ -536,14 +536,14 @@ struct AIEPathfinderPass
   bool attemptFixupMemTileRouting(OpBuilder builder, SwitchboxOp memtileSwOp,
                                   SwitchboxOp northSwOp, SwitchboxOp southSwOp,
                                   ConnectOp &problemConnect) {
-    unsigned problemNorthChannel;
+    int problemNorthChannel;
     if (problemConnect.getSourceBundle() == WireBundle::North) {
       problemNorthChannel = problemConnect.getSourceChannel();
     } else if (problemConnect.getDestBundle() == WireBundle::North) {
       problemNorthChannel = problemConnect.getDestChannel();
     } else
       return false; // Problem is not about n-s routing
-    unsigned problemSouthChannel;
+    int problemSouthChannel;
     if (problemConnect.getSourceBundle() == WireBundle::South) {
       problemSouthChannel = problemConnect.getSourceChannel();
     } else if (problemConnect.getDestBundle() == WireBundle::South) {
@@ -574,15 +574,15 @@ struct AIEPathfinderPass
 
   bool reconnectConnectOps(OpBuilder builder, SwitchboxOp sw,
                            ConnectOp problemConnect, bool isIncomingToSW,
-                           WireBundle problemBundle, unsigned ProblemChan,
-                           unsigned emptyChan) {
+                           WireBundle problemBundle, int problemChan,
+                           int emptyChan) {
     bool hasEmptyChannelSlot = true;
     bool foundCandidateForFixup = false;
     ConnectOp candidate;
     if (isIncomingToSW) {
       for (ConnectOp connect : sw.getOps<ConnectOp>()) {
         if (connect.getDestBundle() == problemBundle &&
-            connect.getDestChannel() == ProblemChan) {
+            connect.getDestChannel() == problemChan) {
           candidate = connect;
           foundCandidateForFixup = true;
         }
@@ -594,7 +594,7 @@ struct AIEPathfinderPass
     } else {
       for (ConnectOp connect : sw.getOps<ConnectOp>()) {
         if (connect.getSourceBundle() == problemBundle &&
-            connect.getSourceChannel() == ProblemChan) {
+            connect.getSourceChannel() == problemChan) {
           candidate = connect;
           foundCandidateForFixup = true;
         }

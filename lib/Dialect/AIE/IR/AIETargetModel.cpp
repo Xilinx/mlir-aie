@@ -540,13 +540,13 @@ void AIETargetModel::validate() const {
   }
 
   // Every tile in a memtile row must be a memtile.
-  for (int i = 1; i < 1 + (int)getNumMemTileRows(); i++)
+  for (int i = 1; i < 1 + getNumMemTileRows(); i++)
     for (int j = 0; j < columns(); j++)
       assert(isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
              !isCoreTile(j, i));
 
   // Every other tile is a coretile.
-  for (int i = 1 + (int)getNumMemTileRows(); i < rows(); i++)
+  for (int i = 1 + getNumMemTileRows(); i < rows(); i++)
     for (int j = 0; j < columns(); j++)
       assert(!isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
              isCoreTile(j, i));

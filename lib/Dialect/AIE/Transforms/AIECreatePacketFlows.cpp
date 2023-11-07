@@ -167,7 +167,6 @@ void buildPSRoute(
   int yCur = ySrc;
   WireBundle curBundle;
   int curChannel;
-  int xLast, yLast;
   WireBundle lastBundle;
   Port lastPort = sourcePort;
 
@@ -180,9 +179,6 @@ void buildPSRoute(
     LLVM_DEBUG(llvm::dbgs() << "Tile " << xCur << " " << yCur << " ");
 
     TileID curCoord = {xCur, yCur};
-    xLast = xCur;
-    yLast = yCur;
-
     SmallVector<WireBundle, 4> moves;
 
     if (xCur < xDest)

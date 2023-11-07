@@ -140,7 +140,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 #define GET_ATTRDEF_CLASSES
-#include "aie/Dialect/AIE/IR/AIEAttrDefs.h.inc"
+#include "aie/Dialect/AIE/IR/AIEAttrs.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
@@ -210,7 +210,7 @@ uint64_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
-#include "aie/Dialect/AIE/IR/AIE.h.inc"
+#include "aie/Dialect/AIE/IR/AIEOps.h.inc"
 
 namespace xilinx::AIE {
 

@@ -89,7 +89,6 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
   int yCur = ySrc;
   WireBundle curBundle;
   int curChannel;
-  int xLast, yLast;
   WireBundle lastBundle;
   Port lastPort = {sourceBundle, sourceChannel};
 
@@ -102,8 +101,6 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
     llvm::dbgs() << "coord " << xCur << " " << yCur << '\n';
 
     TileID curCoord = {xCur, yCur};
-    xLast = xCur;
-    yLast = yCur;
 
     SmallVector<WireBundle, 4> moves;
 
