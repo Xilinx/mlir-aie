@@ -244,7 +244,7 @@ Syntax:
 
 ```
 !ADF.interface<
-  Type   # type
+  mlir::Type   # type
 >
 ```
 
@@ -253,7 +253,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 
 ### ParameterType
 
@@ -263,7 +263,7 @@ Syntax:
 
 ```
 !ADF.parameter<
-  Type   # type
+  mlir::Type   # type
 >
 ```
 
@@ -272,7 +272,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 
 ### StreamType
 
@@ -282,7 +282,7 @@ Syntax:
 
 ```
 !ADF.stream<
-  Type   # type
+  mlir::Type   # type
 >
 ```
 
@@ -291,7 +291,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 
 ### WindowType
 
@@ -301,7 +301,7 @@ Syntax:
 
 ```
 !ADF.window<
-  Type,   # type
+  mlir::Type,   # type
   int,   # size
   int   # overlap
 >
@@ -312,7 +312,7 @@ Syntax:
 
 | Parameter | C++ type | Description |
 | :-------: | :-------: | ----------- |
-| type | `Type` |  |
+| type | `mlir::Type` |  |
 | size | `int` |  |
 | overlap | `int` |  |
 

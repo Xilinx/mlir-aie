@@ -267,7 +267,7 @@ aie.device(xcvc1902) {
 }
 ```
 
-Traits: HasParent<ModuleOp>, IsolatedFromAbove, NoTerminator, SingleBlock, SymbolTable
+Traits: HasParent<mlir::ModuleOp>, IsolatedFromAbove, NoTerminator, SingleBlock, SymbolTable
 
 Interfaces: AIETarget
 
@@ -445,7 +445,7 @@ Conceptually, the AIE.dmaStart operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
 or to a basic block for another dmaStart, to an AIE.end operation.
 
-Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
+Traits: HasParent<MemOp, MemTileDMAOp, mlir::func::FuncOp, ShimDMAOp>, Terminator
 
 #### Attributes:
 
@@ -894,7 +894,7 @@ Example:
   }
 ```
 
-Traits: HasParent<MemOp, MemTileDMAOp, func::FuncOp, ShimDMAOp>, Terminator
+Traits: HasParent<MemOp, MemTileDMAOp, mlir::func::FuncOp, ShimDMAOp>, Terminator
 
 #### Successors:
 
