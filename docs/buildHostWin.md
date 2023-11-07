@@ -51,7 +51,7 @@ All steps in WSL Ubuntu terminal.
 All steps in Win11 (powershell where needed).
 
 1. Upgrade the IPU driver IPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
-1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
+1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
     - Install and compile boost: [https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html)
@@ -59,19 +59,21 @@ All steps in Win11 (powershell where needed).
     - Run `bootstrap.bat` and after that `b2.exe`
 1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) and add this install to your PATH environmental variable, for instance `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`
 
-1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and checkout release 2023.2
+1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2023.2`
 1. Create a .lib file from the .dll shipping with the driver
     - In wsl, generate a .def file (see above)
     - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtIPUfromDLL` and run command: 
       ```
       lib /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib
       ```
-7. Clone [https://gitenterprise.xilinx.com/XRLabs/pynqMLIR-AIE](https://gitenterprise.xilinx.com/XRLabs/pynqMLIR-AIE) for instance under C:\Technical to be used to build designs (yourPathToDesignsWithPynqMLIR-AIE) 
+1. Clone [https://github.com/Xilinx/mlir-aie.git]([https://gitenterprise.xilinx.com/XRLabs/pynqMLIR-AIE](https://github.com/Xilinx/mlir-aie.git)) for instance under C:\Technical to be used to build designs (yourPathToDesignsWithMLIR-AIE) 
 
 
 ## Build a Design
- 
-### Build device AIE part: wsl ubuntu terminal
+
+For your design of interest, for instance [add_one_objFifo](../test/ipu-xrt/add_one_objFifo/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
+
+### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (build during Prerequisites part of this guide)
 
     ```
@@ -80,18 +82,21 @@ All steps in Win11 (powershell where needed).
     source yourVitisSetupScript (example shown above)
     source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
     ```
-2. Goto the design of interest and run `make`
+1. Goto the design of interest and run `make`
 
 ### Build and run host part: powershell
+
+Note that your design of interest might need an adapted CMakelists.txt file. Also pay attention to accurately set the paths CMake parameters BOOST_ROOT, XRT_INC_DIR and XRT_LIB_DIR used in the CMakelists.txt, either in the file or as CMake command line parameters.
 
 1. Build: Goto the same design of interest folder where the AIE design just got build (see above)
     ```
     mkdir buildMSVS
     cd buildMSVS
-    cmake .. -G <Visual Studio 17 2022>
+    cmake .. -G "Visual Studio 17 2022"
     cmake --build . --config Release
     ```
-2. Run (program arguments are just an example for add_one design)
+    
+1. Run (program arguments are just an example for add_one design)
    ```
     cd Release
     .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
