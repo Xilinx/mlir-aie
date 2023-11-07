@@ -79,7 +79,7 @@ Example:
 ```
 This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
 
-Interfaces: TileElement
+Interfaces: OpAsmOpInterface, TileElement
 
 #### Operands:
 
@@ -192,7 +192,7 @@ AIE.core(%tile) {
 } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
 ```
 
-Interfaces: FlowEndPoint, TileElement
+Interfaces: FlowEndPoint, OpAsmOpInterface, TileElement
 
 #### Attributes:
 
@@ -330,7 +330,7 @@ The first element of this array gives the _highest-dimension_ stride and
 wrap, the last element of the array gives the lowest-dimension.
 
 Strides are always expressed in units of `i32`s; this is an architectural
-requirement, as data is moved by the DMA at this fundamental size. 
+requirement, as data is moved by the DMA at this fundamental size.
 
 We can model the access pattern strides and wraps generate by a series of
 nested loops. In general, a set of strides and wraps like this...
@@ -346,14 +346,14 @@ int *buffer;  // i32
 for(int i = 0; i < wrap_2; i++)
   for(int j = 0; j < wrap_1; j++)
     for(int k = 0; k < wrap_0; k++)
-      // access/store element at/to buffer[  i * stride_2 
-      //                                   + j * stride_1 
+      // access/store element at/to buffer[  i * stride_2
+      //                                   + j * stride_1
       //                                   + k * stride_0]
 ```
 
-The following example shows an access pattern that corresponds to 
-alternating between even and odd elements of the buffer/stream every 8 
-elements: 
+The following example shows an access pattern that corresponds to
+alternating between even and odd elements of the buffer/stream every 8
+elements:
 
 ```
 AIE.dmaBd(<%buf : memref<128xi32>, 0, 128>, 0, [<8, 16>, <2, 1>, <8, 2>])
@@ -403,6 +403,7 @@ Example:
     AIE.useLock(%lck, "Release", 1)
     br ^bd6 // point to the next Block, which is also a different Block Descriptor
 ```
+
 
 #### Attributes:
 
@@ -678,7 +679,7 @@ Case when LockID is not assigned:
   Before AIEAssignLockIDs: %tile33 = AIE.tile(3)
   After AIEAssignLockIDs: %tile33 = AIE.tile(3, $assigned_value)
 
-Interfaces: TileElement
+Interfaces: OpAsmOpInterface, TileElement
 
 #### Attributes:
 
@@ -798,7 +799,7 @@ Create the memory module for tile %t73 and setup one DMA channel and one Buffer 
 
 Traits: HasValidBDs, HasValidDMAChannels
 
-Interfaces: CallableOpInterface, FlowEndPoint, TileElement
+Interfaces: CallableOpInterface, FlowEndPoint, OpAsmOpInterface, TileElement
 
 #### Operands:
 
@@ -849,7 +850,7 @@ Create a description for tile %t73 and setup one DMA channel and one Buffer Desc
 
 Traits: HasValidBDs, HasValidDMAChannels
 
-Interfaces: CallableOpInterface, FlowEndPoint, TileElement
+Interfaces: CallableOpInterface, FlowEndPoint, OpAsmOpInterface, TileElement
 
 #### Operands:
 
@@ -1137,7 +1138,7 @@ This operation registers external buffers %buffer_in_0 and %buffer_in_1 to use i
 
 Traits: HasParent<DeviceOp>
 
-Interfaces: TileElement
+Interfaces: OpAsmOpInterface, TileElement
 
 #### Attributes:
 
@@ -1613,7 +1614,7 @@ Create the shimDMA for tile %t70 and setup one DMA channel and one Buffer Descri
 
 Traits: HasValidBDs, HasValidDMAChannels
 
-Interfaces: FlowEndPoint, TileElement
+Interfaces: FlowEndPoint, OpAsmOpInterface, TileElement
 
 #### Operands:
 
@@ -1698,7 +1699,7 @@ aie.shimmux(%tile) {
 
 Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
 
-Interfaces: Interconnect, TileElement
+Interfaces: Interconnect, OpAsmOpInterface, TileElement
 
 #### Operands:
 
@@ -1776,7 +1777,7 @@ aie.switchbox(%tile) {
 
 Traits: SingleBlock, SingleBlockImplicitTerminator<EndOp>
 
-Interfaces: Interconnect, TileElement
+Interfaces: Interconnect, OpAsmOpInterface, TileElement
 
 #### Operands:
 
@@ -1812,7 +1813,7 @@ to it.
 Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
 the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
 
-Interfaces: FlowEndPoint
+Interfaces: FlowEndPoint, OpAsmOpInterface
 
 #### Attributes:
 
