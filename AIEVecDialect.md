@@ -503,12 +503,12 @@ Effects: MemoryEffects::Effect{}
 _AIE vector fused multiply-add_
 
 AMD-specific multiply-add operation. It multiplies two 1-D vectors,
-and adds the result to an accumulator. The vector sizes are at least 
-256 bits, and the left operand vector is at least twice the size of 
+and adds the result to an accumulator. The vector sizes are at least
+256 bits, and the left operand vector is at least twice the size of
 right operand vector. For integers, the lhs and rhs are 8/16/32 bits;
 the result and acc are 48-bit or 80-bit accumulator.
 `$result = `$lhs * $rhs + $acc`.
-Note: the same operator can be used as fmsub operator by setting the 
+Note: the same operator can be used as fmsub operator by setting the
 'fmsub' bool to true.
 
 Traits: AlwaysSpeculatableImplTrait
@@ -980,8 +980,8 @@ Effects: MemoryEffects::Effect{}
 
 _AIE srs_
 
-AMD-specific shift-round-saturate intrinsic. Moves values from 
-accumulator data type to AIE vector data types. The adjustment in 
+AMD-specific shift-round-saturate intrinsic. Moves values from
+accumulator data type to AIE vector data types. The adjustment in
 precision is controlled by the shift parameter.
 `$result = srs($source, $shift)`
 
@@ -1015,7 +1015,7 @@ Effects: MemoryEffects::Effect{}
 
 _AIE vector subtract_
 
-AMD-specific advanced sub operation that subtracts two 1-D vectors 
+AMD-specific advanced sub operation that subtracts two 1-D vectors
 with lane selection. The vector sizes are at least 256 bits.
 `$result = `$lhs - $rhs`.
 
@@ -1064,7 +1064,7 @@ Syntax:
 operation ::= `aievec.sub_elem` $lhs `,` $rhs attr-dict `:` type($result)
 ```
 
-AMD-specific aie-ml intrinsic that allows you to perform substraction operation 
+AMD-specific aie-ml intrinsic that allows you to perform substraction operation
 on all types of vectors.`$result = `$lhs - $rhs`.
 
 Traits: AlwaysSpeculatableImplTrait
@@ -1134,7 +1134,7 @@ Effects: MemoryEffects::Effect{}
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signed integer attribute</td></tr>
+<tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute whose minimum value is 0 whose maximum value is 1</td></tr>
 </table>
 
