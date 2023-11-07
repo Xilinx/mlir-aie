@@ -11,7 +11,8 @@
 #ifndef AIE_PATHFINDER_H
 #define AIE_PATHFINDER_H
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h" // for WireBundle and Port
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "llvm/ADT/DirectedGraph.h"
 #include "llvm/ADT/GraphTraits.h"
@@ -140,21 +141,21 @@ public:
 } // namespace xilinx::AIE
 
 namespace llvm {
-using namespace xilinx::AIE;
 
-template <> struct GraphTraits<Switchbox *> {
-  using NodeRef = Switchbox *;
+template <> struct GraphTraits<xilinx::AIE::Switchbox *> {
+  using NodeRef = xilinx::AIE::Switchbox *;
 
-  static Switchbox *SwitchboxGraphGetSwitchbox(DGEdge<Switchbox, Channel> *P) {
+  static xilinx::AIE::Switchbox *SwitchboxGraphGetSwitchbox(
+      DGEdge<xilinx::AIE::Switchbox, xilinx::AIE::Channel> *P) {
     return &P->getTargetNode();
   }
 
   // Provide a mapped iterator so that the GraphTrait-based implementations can
   // find the target nodes without having to explicitly go through the edges.
   using ChildIteratorType =
-      mapped_iterator<Switchbox::iterator,
+      mapped_iterator<xilinx::AIE::Switchbox::iterator,
                       decltype(&SwitchboxGraphGetSwitchbox)>;
-  using ChildEdgeIteratorType = Switchbox::iterator;
+  using ChildEdgeIteratorType = xilinx::AIE::Switchbox::iterator;
 
   static NodeRef getEntryNode(NodeRef N) { return N; }
   static ChildIteratorType child_begin(NodeRef N) {
@@ -171,19 +172,27 @@ template <> struct GraphTraits<Switchbox *> {
 };
 
 template <>
-struct GraphTraits<SwitchboxGraph *> : public GraphTraits<Switchbox *> {
-  using nodes_iterator = SwitchboxGraph::iterator;
-  static NodeRef getEntryNode(SwitchboxGraph *DG) { return *DG->begin(); }
-  static nodes_iterator nodes_begin(SwitchboxGraph *DG) { return DG->begin(); }
-  static nodes_iterator nodes_end(SwitchboxGraph *DG) { return DG->end(); }
+struct GraphTraits<xilinx::AIE::SwitchboxGraph *>
+    : public GraphTraits<xilinx::AIE::Switchbox *> {
+  using nodes_iterator = xilinx::AIE::SwitchboxGraph::iterator;
+  static NodeRef getEntryNode(xilinx::AIE::SwitchboxGraph *DG) {
+    return *DG->begin();
+  }
+  static nodes_iterator nodes_begin(xilinx::AIE::SwitchboxGraph *DG) {
+    return DG->begin();
+  }
+  static nodes_iterator nodes_end(xilinx::AIE::SwitchboxGraph *DG) {
+    return DG->end();
+  }
 };
 
-inline raw_ostream &operator<<(raw_ostream &OS, const Switchbox &S) {
+inline raw_ostream &operator<<(raw_ostream &OS,
+                               const xilinx::AIE::Switchbox &S) {
   OS << "Switchbox(" << S.col << ", " << S.row << ")";
   return OS;
 }
 
-inline raw_ostream &operator<<(raw_ostream &OS, const Channel &C) {
+inline raw_ostream &operator<<(raw_ostream &OS, const xilinx::AIE::Channel &C) {
   OS << "Channel(src=" << C.src << ", dst=" << C.getTargetNode() << ")";
   return OS;
 }
@@ -191,9 +200,9 @@ inline raw_ostream &operator<<(raw_ostream &OS, const Channel &C) {
 } // namespace llvm
 
 namespace std {
-using namespace xilinx::AIE;
-template <> struct less<Switchbox *> {
-  bool operator()(const Switchbox *a, const Switchbox *b) const {
+template <> struct less<xilinx::AIE::Switchbox *> {
+  bool operator()(const xilinx::AIE::Switchbox *a,
+                  const xilinx::AIE::Switchbox *b) const {
     return a->col == b->col ? a->row < b->row : a->col < b->col;
   }
 };

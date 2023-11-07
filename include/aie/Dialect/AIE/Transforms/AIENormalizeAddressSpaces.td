@@ -17,7 +17,7 @@ include "mlir/IR/PatternBase.td"
 
 def toDefaultAddressSpace : NativeCodeCall<"TypeAttr::get(memRefToDefaultAddressSpace($0.getValue()))">;
 def hasNonDefaultAddressSpace : Constraint<
-    CPred<"$0.getValue().cast<MemRefType>().getMemorySpace() != 0">,
+    CPred<"$0.getValue().cast<mlir::MemRefType>().getMemorySpace() != 0">,
     "has non-default address space">;
 def : Pat<
         /*pattern*/ (MemRef_GlobalOp $sym_name, $sym_visibility, $type, $initial_value, $constant, $attrs),

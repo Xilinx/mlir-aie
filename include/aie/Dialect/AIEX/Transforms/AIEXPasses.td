@@ -45,7 +45,7 @@ def AIECreateCores : Pass<"aie-create-cores", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIECreateCoresPass()";
   let dependentDialects = [
-    "func::FuncDialect",
+    "mlir::func::FuncDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
@@ -110,7 +110,7 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIELowerMemcpyPass()";
   let dependentDialects = [
-    "func::FuncDialect",
+    "mlir::func::FuncDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];

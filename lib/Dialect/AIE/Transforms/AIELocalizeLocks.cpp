@@ -10,6 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
@@ -19,6 +21,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #define DEBUG_TYPE "aie-localize-locks"
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;

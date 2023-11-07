@@ -16,8 +16,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 typedef struct TileID {
   int col;
@@ -463,29 +462,28 @@ public:
   }
 };
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 namespace llvm {
-using namespace xilinx::AIE;
-template <> struct DenseMapInfo<TileID> {
+template <> struct DenseMapInfo<xilinx::AIE::TileID> {
   using FirstInfo = DenseMapInfo<int>;
   using SecondInfo = DenseMapInfo<int>;
 
-  static inline TileID getEmptyKey() {
+  static inline xilinx::AIE::TileID getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static inline TileID getTombstoneKey() {
+  static inline xilinx::AIE::TileID getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 
-  static unsigned getHashValue(const TileID &t) {
+  static unsigned getHashValue(const xilinx::AIE::TileID &t) {
     return detail::combineHashValue(FirstInfo::getHashValue(t.col),
                                     SecondInfo::getHashValue(t.row));
   }
 
-  static bool isEqual(const TileID &lhs, const TileID &rhs) {
+  static bool isEqual(const xilinx::AIE::TileID &lhs,
+                      const xilinx::AIE::TileID &rhs) {
     return lhs == rhs;
   }
 };

@@ -8,21 +8,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
+#ifndef AIEX_OPS
+#define AIEX_OPS
+
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
-
-#ifdef AIEX_OPS
-#else
-#define AIEX_OPS
-#endif
-
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 
 def AIEX_Dialect : Dialect {
@@ -30,9 +25,9 @@ def AIEX_Dialect : Dialect {
   let cppNamespace = "::xilinx::AIEX";
   let description = [{
 
-This is a dialect for experimental work related to AIEngine processors.
-The expectation is that new ideas can be developed here before migration
-to the more mature AIE dialect.
+    This is a dialect for experimental work related to AIEngine processors.
+    The expectation is that new ideas can be developed here before migration
+    to the more mature AIE dialect.
 
   }];
   let useDefaultTypePrinterParser = 1;
@@ -347,24 +342,21 @@ def AIE_HerdOp: AIEX_Op<"herd", []>, Results<(outs Index)> {
     int getHerdWidth()   { return getWidth(); }
     int getHerdHeight()  { return getHeight(); }
     int getNumAIETiles() { return getHerdWidth() * getHerdHeight(); }
-    StringAttr name() {
-      if(auto attr = getOperation()->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+    mlir::StringAttr name() {
+      if(auto attr = getOperation()->getAttrOfType<mlir::StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
         return attr;
-      } else {
-        emitOpError("does not have '") << SymbolTable::getSymbolAttrName() <<
-          "' attribute specified";
-      }
-      llvm_unreachable("unreachable");
+      emitOpError("does not have '") << mlir::SymbolTable::getSymbolAttrName() << "' attribute specified";
+      llvm::report_fatal_error("couldn't get name");
     }
   }];
   let assemblyFormat = [{ `[` $width `]` `[` $height `]` attr-dict }];
   let builders = [
     OpBuilder<(ins "int":$width, "int":$height),
     [{
-              build($_builder, $_state, $_builder.getIndexType(),
-                    $_builder.getI32IntegerAttr(width),
-                    $_builder.getI32IntegerAttr(height));
-              }]>
+      build($_builder, $_state, $_builder.getIndexType(),
+            $_builder.getI32IntegerAttr(width),
+            $_builder.getI32IntegerAttr(height));
+    }]>
   ];
 }
 
@@ -464,9 +456,11 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   );
   let assemblyFormat = [{ `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict }];
   let builders = [
-    OpBuilder<(ins "Value":$startHerd, "Value":$iterX, "Value":$iterY), [{
+    OpBuilder<(ins "mlir::Value":$startHerd, "mlir::Value":$iterX, "mlir::Value":$iterY), [{
       build($_builder, $_state, $_builder.getIndexType(),
             startHerd, iterX, iterY);
-      }]>
+    }]>
   ];
 }
+
+#endif // AIEX_OPS

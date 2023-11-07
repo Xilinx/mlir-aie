@@ -15,7 +15,7 @@
 
 #include "mlir/Pass/Pass.h"
 
-namespace aie {
+namespace xilinx::AIE {
 
 //===----------------------------------------------------------------------===//
 // Registration
@@ -25,6 +25,6 @@ namespace aie {
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
-} // namespace aie
+} // namespace xilinx::AIE
 
 #endif // AIEX_PASSES_H

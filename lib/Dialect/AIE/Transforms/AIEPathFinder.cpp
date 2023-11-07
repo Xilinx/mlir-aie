@@ -13,6 +13,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
 
+using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 

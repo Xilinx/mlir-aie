@@ -8,6 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
@@ -17,8 +20,6 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 
 #define DEBUG_TYPE "aie-vector-opt"
 

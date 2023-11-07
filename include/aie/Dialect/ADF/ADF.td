@@ -47,23 +47,23 @@ class ADF_Op<string mnemonic, list<Trait> traits = []> :
 //===----------------------------------------------------------------------===//
 def ADF_InterfaceType : TypeDef<ADF_Dialect, "Interface"> {
   let mnemonic = "interface";
-  let parameters = (ins "Type":$type);
+  let parameters = (ins "mlir::Type":$type);
   let assemblyFormat = "`<` $type `>`";
 }
 
 def ADF_WindowType : TypeDef<ADF_Dialect, "Window"> {
   let mnemonic = "window";
-  let parameters = (ins "Type":$type, "int":$size, "int":$overlap);
+  let parameters = (ins "mlir::Type":$type, "int":$size, "int":$overlap);
   let assemblyFormat = "`<` $type `,` $size `,` $overlap `>`";
 }
 def ADF_StreamType : TypeDef<ADF_Dialect, "Stream"> {
   let mnemonic = "stream";
-  let parameters = (ins "Type":$type);
+  let parameters = (ins "mlir::Type":$type);
   let assemblyFormat = "`<` $type `>`";
 }
 def ADF_ParameterType : TypeDef<ADF_Dialect, "Parameter"> {
   let mnemonic = "parameter";
-  let parameters = (ins "Type":$type);
+  let parameters = (ins "mlir::Type":$type);
   let assemblyFormat = "`<` $type `>`";
 }
 

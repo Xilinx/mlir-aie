@@ -16,12 +16,13 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecTypes.h"
+
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include <assert.h>
 
-namespace xilinx {
-namespace aievec {
+#include <cassert>
+
+namespace xilinx::aievec {
 
 // For input val, return its value in hex. Since we currently support each
 // offset value to be only 4 bits, the val must be < 16
@@ -36,19 +37,20 @@ inline char getHexValue(int val) {
 inline bool isPowerOfTwo(int32_t n) { return (n & (n - 1)) == 0; }
 
 // Create a vector type, given the lanes and underlying element type
-inline VectorType createVectorType(unsigned lanes, Type elementType) {
-  SmallVector<int64_t, 4> vecShape = {lanes};
-  return VectorType::get(vecShape, elementType);
+inline mlir::VectorType createVectorType(unsigned lanes,
+                                         mlir::Type elementType) {
+  llvm::SmallVector<int64_t, 4> vecShape = {lanes};
+  return mlir::VectorType::get(vecShape, elementType);
 }
 
 // Return the size (in bits) of the underlying element type of the vector
-inline int32_t getElementSizeInBits(VectorType type) {
-  return type.cast<ShapedType>().getElementTypeBitWidth();
+inline int32_t getElementSizeInBits(mlir::VectorType type) {
+  return type.cast<mlir::ShapedType>().getElementTypeBitWidth();
 }
 
 // Return the number of lanes along the vectorized dimension for the vector
 // type. For a multidimensional vector, return the innermost dimension size
-inline unsigned getVectorLaneSize(VectorType type) {
+inline unsigned getVectorLaneSize(mlir::VectorType type) {
   assert(type.getRank() > 0 && "Cannot handle rank-0 vectors");
   auto dimSize = type.getDimSize(type.getRank() - 1);
   assert(dimSize >= 0 && "Vector dimension cannot be negative");
@@ -57,23 +59,23 @@ inline unsigned getVectorLaneSize(VectorType type) {
 
 // For a 1D vector, return its size in bits. For an nD vector, return the size
 // of the innerost dimension in bits.
-inline int32_t getVectorSizeInBits(VectorType type) {
+inline int32_t getVectorSizeInBits(mlir::VectorType type) {
   int32_t veclen = getVectorLaneSize(type) * getElementSizeInBits(type);
   assert(veclen >= 128 && "AIE vector size should be greater than 128 bits");
   return veclen;
 }
 
 // Return true if this is an operation defined in AIE dialect
-inline bool isAIEOp(Operation *op) {
+inline bool isAIEOp(mlir::Operation *op) {
   return llvm::isa<AIEVecDialect>(op->getDialect());
 }
 
 // Determine the output type for a vector operation based on whether
 // it operates on integer or floating point data.
-inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
-  Type stype = type.getElementType();
+inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIEML) {
+  mlir::Type stype = type.getElementType();
 
-  if (IntegerType itype = stype.dyn_cast<IntegerType>()) {
+  if (auto itype = stype.dyn_cast<mlir::IntegerType>()) {
     // Integer vector types are sized for the appropriate accumulators
     assert(itype.getWidth() <= 64);
     unsigned width = 0;
@@ -83,24 +85,26 @@ inline VectorType getVectorOpDestType(VectorType type, bool AIEML) {
       width = itype.getWidth() <= 16 ? 48 : 80;
     }
 
-    Type ctype = mlir::IntegerType::get(itype.getContext(), width);
-    return VectorType::get(type.getShape(), ctype);
-  } else if (FloatType ftype = stype.dyn_cast<FloatType>()) {
+    mlir::Type ctype = mlir::IntegerType::get(itype.getContext(), width);
+    return mlir::VectorType::get(type.getShape(), ctype);
+  } else if (auto ftype = stype.dyn_cast<mlir::FloatType>()) {
     if (AIEML && ftype.getWidth() == 16) {
-      return VectorType::get(type.getShape(), ftype.getF32(ftype.getContext()));
+      return mlir::VectorType::get(type.getShape(),
+                                   ftype.getF32(ftype.getContext()));
     }
 
     // Floating point vector types for aie1 are returned as is since the
     // floating point operations write back to registers and not accumulators
     return type;
   } else
-    llvm_unreachable("Unsupported destination type");
+    llvm::report_fatal_error("Unsupported destination type");
 }
 
 // Linearize the exprVec as a strided access, but do not simplify
-inline AffineExpr flattenedStridedExpr(ArrayRef<int64_t> sizes,
-                                       ArrayRef<AffineExpr> exprs,
-                                       MLIRContext *context) {
+inline mlir::AffineExpr
+flattenedStridedExpr(llvm::ArrayRef<int64_t> sizes,
+                     llvm::ArrayRef<mlir::AffineExpr> exprs,
+                     mlir::MLIRContext *context) {
   // Expect non-empty sizes and exprs
   if (sizes.empty() || exprs.empty())
     return nullptr;
@@ -108,14 +112,14 @@ inline AffineExpr flattenedStridedExpr(ArrayRef<int64_t> sizes,
   if (llvm::is_contained(sizes, 0))
     return getAffineConstantExpr(0, context);
 
-  auto maps = AffineMap::inferFromExprList(exprs);
+  auto maps = mlir::AffineMap::inferFromExprList(exprs);
   if (maps.empty()) {
     return nullptr;
   }
 
   unsigned nSymbols = maps[0].getNumSymbols();
 
-  AffineExpr expr;
+  mlir::AffineExpr expr;
   bool dynamicPoisonBit = false;
   int64_t runningSize = 1;
   for (auto en : llvm::zip(llvm::reverse(exprs), llvm::reverse(sizes))) {
@@ -123,10 +127,10 @@ inline AffineExpr flattenedStridedExpr(ArrayRef<int64_t> sizes,
 
     if (size == 0)
       continue;
-    AffineExpr dimExpr = std::get<0>(en);
-    AffineExpr stride = dynamicPoisonBit
-                            ? getAffineSymbolExpr(nSymbols++, context)
-                            : getAffineConstantExpr(runningSize, context);
+    mlir::AffineExpr dimExpr = std::get<0>(en);
+    mlir::AffineExpr stride = dynamicPoisonBit
+                                  ? getAffineSymbolExpr(nSymbols++, context)
+                                  : getAffineConstantExpr(runningSize, context);
     expr = expr ? expr + dimExpr * stride : dimExpr * stride;
     if (size > 0) {
       runningSize *= size;
@@ -141,26 +145,27 @@ inline AffineExpr flattenedStridedExpr(ArrayRef<int64_t> sizes,
 }
 
 // Construct a linearized affine expression for the upd op.
-inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
-  MemRefType memRefType = updOp.getSource().getType().cast<MemRefType>();
-  MLIRContext *context = memRefType.getContext();
+inline mlir::AffineExpr
+constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
+  mlir::MemRefType memRefType =
+      updOp.getSource().getType().cast<mlir::MemRefType>();
+  mlir::MLIRContext *context = memRefType.getContext();
 
-  SmallVector<AffineExpr, 8> exprVec;
-  llvm::SmallDenseMap<Value, AffineExpr, 8> indexToExprDimMap;
+  llvm::SmallVector<mlir::AffineExpr, 8> exprVec;
+  llvm::SmallDenseMap<mlir::Value, mlir::AffineExpr, 8> indexToExprDimMap;
   for (auto idxAndValue : llvm::enumerate(updOp.getIndices())) {
     auto value = idxAndValue.value();
-    if (affine::AffineApplyOp apOf =
-            value.getDefiningOp<affine::AffineApplyOp>()) {
-      AffineMap map = apOf.getAffineMap();
-      // Cannot create linearized affineExpr for complicated index.
+    if (auto apOf = value.getDefiningOp<mlir::affine::AffineApplyOp>()) {
+      mlir::AffineMap map = apOf.getAffineMap();
+      // Cannot create linearized mlir::AffineExpr for complicated index.
       if (map.getNumResults() != 1) {
         return nullptr;
       }
-      SmallVector<AffineExpr, 4> indexExprs;
+      llvm::SmallVector<mlir::AffineExpr, 4> indexExprs;
 
       for (auto index : apOf.getMapOperands()) {
-        if (auto cIdx = index.getDefiningOp<arith::ConstantOp>()) {
-          auto idxVal = cIdx.getValue().cast<IntegerAttr>().getValue();
+        if (auto cIdx = index.getDefiningOp<mlir::arith::ConstantOp>()) {
+          auto idxVal = cIdx.getValue().cast<mlir::IntegerAttr>().getValue();
           unsigned idx = idxVal.getSExtValue();
           indexExprs.push_back(getAffineConstantExpr(idx, context));
         } else {
@@ -172,8 +177,8 @@ inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
       }
 
       exprVec.push_back(map.getResult(0).replaceDims(indexExprs));
-    } else if (auto cOp = value.getDefiningOp<arith::ConstantOp>()) {
-      auto idxVal = cOp.getValue().cast<IntegerAttr>().getValue();
+    } else if (auto cOp = value.getDefiningOp<mlir::arith::ConstantOp>()) {
+      auto idxVal = cOp.getValue().cast<mlir::IntegerAttr>().getValue();
       unsigned idx = idxVal.getSExtValue();
       exprVec.push_back(getAffineConstantExpr(idx, context));
     } else {
@@ -198,21 +203,22 @@ inline AffineExpr constructLinearizedAffineExprForUPDOp(aievec::UPDOp updOp) {
 // offset. If the access is A[i][j+2] for an N*N array A, the linearized
 // expression will be A[i*N+j+2]. The base in this case will be (i*N+j), and the
 // offset will be 2.
-inline std::pair<AffineExpr, int32_t> extractBaseAndOffset(AffineExpr expr) {
-  AffineExpr base = expr;
+inline std::pair<mlir::AffineExpr, int32_t>
+extractBaseAndOffset(mlir::AffineExpr expr) {
+  mlir::AffineExpr base = expr;
   int32_t offset = 0;
 
-  if (auto constExpr = expr.dyn_cast<AffineConstantExpr>()) {
+  if (auto constExpr = expr.dyn_cast<mlir::AffineConstantExpr>()) {
     base = nullptr;
     offset += constExpr.getValue();
-  } else if (auto binopExpr = expr.dyn_cast<AffineBinaryOpExpr>()) {
-    if (binopExpr.getKind() == AffineExprKind::Add) {
-      AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
-      if (auto constExpr = lhs.dyn_cast<AffineConstantExpr>()) {
+  } else if (auto binopExpr = expr.dyn_cast<mlir::AffineBinaryOpExpr>()) {
+    if (binopExpr.getKind() == mlir::AffineExprKind::Add) {
+      mlir::AffineExpr lhs = binopExpr.getLHS(), rhs = binopExpr.getRHS();
+      if (auto constExpr = lhs.dyn_cast<mlir::AffineConstantExpr>()) {
         base = rhs;
         offset += constExpr.getValue();
       }
-      if (auto constExpr = rhs.dyn_cast<AffineConstantExpr>()) {
+      if (auto constExpr = rhs.dyn_cast<mlir::AffineConstantExpr>()) {
         base = base == rhs ? nullptr : lhs;
         offset += constExpr.getValue();
       }
@@ -227,8 +233,8 @@ inline std::pair<AffineExpr, int32_t> extractBaseAndOffset(AffineExpr expr) {
 // broadcasting scenarios. We let lowerings assume this on a per-scope basis if
 // the tosa.no_implicit_broadcast_of_dynamic_sizes attribute presents on any
 // parent of the block.
-inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(Block *block) {
-  for (Operation *parentOp = block->getParentOp(); parentOp;
+inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(mlir::Block *block) {
+  for (mlir::Operation *parentOp = block->getParentOp(); parentOp;
        parentOp = parentOp->getParentOp()) {
     if (parentOp->hasAttr("tosa.no_implicit_broadcast_of_dynamic_sizes"))
       return true;
@@ -238,11 +244,12 @@ inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(Block *block) {
 
 // Helper that uses the block from an OpBuilder for determining whether we
 // are assuming no implict broadcast of dynamic sizes
-inline bool isAssumingNoImplicitBroadcastOfDynamicSizes(OpBuilder &builder) {
+inline bool
+isAssumingNoImplicitBroadcastOfDynamicSizes(mlir::OpBuilder &builder) {
   return isAssumingNoImplicitBroadcastOfDynamicSizes(builder.getBlock());
 }
 
-} // end namespace aievec
-} // end namespace xilinx
+} // namespace xilinx::aievec
+// end namespace xilinx
 
 #endif // AIE_DIALECT_AIEVEC_AIEVECUTILS_H

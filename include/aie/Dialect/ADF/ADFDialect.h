@@ -27,24 +27,9 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Debug.h"
 
-using namespace mlir;
-
 #include "aie/Dialect/ADF/ADFDialect.h.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/ADF/ADFTypes.h.inc"
-
-namespace xilinx {
-namespace ADF {
-
-#define GEN_PASS_CLASSES
-#include "aie/Dialect/ADF/ADFPasses.h.inc"
-
-/// Generate the code for registering passes.
-#define GEN_PASS_REGISTRATION
-#include "aie/Dialect/ADF/ADFPasses.h.inc"
-
-} // namespace ADF
-} // namespace xilinx
 
 #endif // XILINX_ADF_DIALECT_H
