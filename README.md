@@ -9,6 +9,12 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for A
 
 This project is primarily intended to support the open-source community, particularily tool builders, with low-level access to AIE devices and enable the development of a wide variety of programming models from higher level abstractions.  As such, although it contains some examples, this project is not intended to represent an end-to-end compilation flow for application design. If you're looking for an out-of-the-box experience for highly efficient machine learning, check out the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/)
 
+[Getting Started](docs/Building.md)
+
+[Running on a Versal™ board](docs/Platform.md)
+
+[Getting Started and Running on Windows Ryzen™ AI](docs/buildHostWin.md)
+
 [Full Documentation](https://xilinx.github.io/mlir-aie/)
 
 -----
