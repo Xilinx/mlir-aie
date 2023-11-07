@@ -203,12 +203,24 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &_odsPrinter,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   mlir::Attribute dimensions);
 
+uint64_t getBufferBaseAddress(mlir::Operation *bufOp);
+
 } // namespace AIE
 } // namespace xilinx
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIE.h.inc"
+
+namespace xilinx::AIE {
+
+void collectTiles(DeviceOp &device,
+                  llvm::DenseMap<TileID, mlir::Operation *> &tiles);
+
+void collectBuffers(
+    DeviceOp &device,
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<BufferOp, 4>> &buffers);
+} // namespace xilinx::AIE
 
 namespace llvm {
 // Functions hash just like pointers.

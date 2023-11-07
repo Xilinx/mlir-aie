@@ -27,7 +27,6 @@ set(LIBS
   ADF
   AIE
   AIETransforms
-  AIEUtils
   AIEX
   AIEXTransforms
   AIEXUtils

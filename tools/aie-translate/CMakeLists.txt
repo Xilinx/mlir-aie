@@ -30,7 +30,6 @@ target_link_libraries(aie-translate
   ${translation_libs}
   AIE
   AIETransforms
-  AIEUtils
   AIEX
   AIEXTransforms
   AIEXUtils

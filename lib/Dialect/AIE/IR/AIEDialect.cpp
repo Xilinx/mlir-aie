@@ -15,6 +15,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -1216,6 +1217,36 @@ LogicalResult xilinx::AIE::BufferOp::verify() {
   if (result.failed())
     return result;
   return success();
+}
+
+// FIXME: make address assignment for buffers explicit and move this function to
+// an interface
+uint64_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
+  if (auto buf = dyn_cast<BufferOp>(bufOp))
+    return buf.address();
+  else if (isa_and_nonnull<ExternalBufferOp>(bufOp))
+    llvm::report_fatal_error(
+        "External buffer addresses are assigned at runtime.");
+  llvm::report_fatal_error("unknown buffer type");
+}
+
+void xilinx::AIE::collectTiles(DeviceOp &device,
+                               DenseMap<TileID, Operation *> &tiles) {
+  for (auto tile : device.getOps<TileOp>()) {
+    int colIndex = tile.colIndex();
+    int rowIndex = tile.rowIndex();
+    tiles[{colIndex, rowIndex}] = tile;
+  }
+}
+
+void xilinx::AIE::collectBuffers(
+    DeviceOp &device,
+    DenseMap<Operation *, SmallVector<BufferOp, 4>> &buffers) {
+
+  for (auto buffer : device.getOps<BufferOp>()) {
+    Operation *tileOp = buffer.getTile().getDefiningOp();
+    buffers[tileOp].push_back(buffer);
+  }
 }
 
 // MemOp
