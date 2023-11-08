@@ -15,7 +15,7 @@
 namespace py = pybind11;
 using namespace mlir::python::adaptors;
 
-PYBIND11_MODULE(_aieMlir, m) {
+PYBIND11_MODULE(_aie, m) {
 
   ::aieRegisterAllPasses();
 
@@ -23,7 +23,7 @@ PYBIND11_MODULE(_aieMlir, m) {
     AIE MLIR Python bindings
     --------------------------
 
-    .. currentmodule:: _aieMlir
+    .. currentmodule:: _aie
 
     .. autosummary::
         :toctree: _generate

@@ -172,9 +172,6 @@ add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(runtime_lib)
 add_subdirectory(aie_runtime_lib)
-add_subdirectory(reference_designs)
-add_subdirectory(test)
-add_subdirectory(tutorials)
 add_subdirectory(tools)
 add_subdirectory(data)
 add_subdirectory(python)
@@ -211,3 +208,9 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
 endif()
 
 add_subdirectory(cmake/modules)
+
+# Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
+add_subdirectory(reference_designs)
+add_subdirectory(test)
+add_subdirectory(tutorials)
+

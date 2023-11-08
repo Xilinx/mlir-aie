@@ -19,8 +19,6 @@ declare_mlir_python_sources(AIEPythonSources
   ROOT_DIR "${AIE_PYTHON_ROOT_DIR}"
 )
 
-declare_mlir_python_sources(AIEPythonExtensions)
-
 declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
 )
@@ -51,43 +49,11 @@ declare_mlir_dialect_python_bindings(
 # Extensions
 ################################################################################
 
-set(LIBS
-  LLVMSupport
-
-  ${MLIR_DIALECT_LIBS}
-  ${MLIR_CONVERSION_LIBS}
-  ${MLIR_EXTENSION_LIBS}
-  ${MLIR_TRANSLATION_LIBS}
-
-  ADF
-  AIE
-  AIETransforms
-  AIEX
-  AIEXTransforms
-  AIEXUtils
-  MLIRAIEVec
-  MLIRAIEVecToLLVM
-  MLIRAIEVecTransformOps
-  MLIRAIEVecTransforms
-
-  AIECAPI
-
-  MLIRCAPIAsync
-  MLIRCAPIConversion
-  MLIRCAPIDebug
-  MLIRCAPIExecutionEngine
-  MLIRCAPIFunc
-  MLIRCAPIGPU
-  MLIRCAPIIR
-  MLIRCAPIInterfaces
-  MLIRCAPILinalg
-  MLIRCAPIPDL
-  MLIRCAPIQuant
-  MLIRCAPIRegisterEverything
-  MLIRCAPISparseTensor
-  MLIRCAPITransformDialect
-  MLIRCAPITransforms
-)
+get_property(MLIR_CONVERSION_LIBS GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+get_property(MLIR_DIALECT_LIBS GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(MLIR_EXTENSION_LIBS GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+get_property(MLIR_TRANSLATION_LIBS GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
+get_property(MLIR_UPSTREAM_CAPI_LIBS GLOBAL PROPERTY MLIR_UPSTREAM_CAPI_LIBS)
 
 get_target_property(CoreSources MLIRPythonExtension.Core INTERFACE_SOURCES)
 
@@ -103,14 +69,8 @@ get_target_property(GPUDialectPassesSources MLIRPythonExtension.GPUDialectPasses
 get_target_property(SparseTensorDialectPassesSources MLIRPythonExtension.SparseTensorDialectPasses INTERFACE_SOURCES)
 get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
 
-get_property(MLIR_DIALECT_LIBS GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-get_property(MLIR_CONVERSION_LIBS GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-get_property(MLIR_EXTENSION_LIBS GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
-get_property(MLIR_TRANSLATION_LIBS GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
-
-declare_mlir_python_extension(AIEPythonExtensionsOmni.MLIR
-  MODULE_NAME _aieMlirOmni
-  ADD_TO_PARENT AIEPythonExtensions
+declare_mlir_python_extension(AIEPythonExtensions
+  MODULE_NAME _aie
   ROOT_DIR "/"
 
   SOURCES
@@ -132,7 +92,13 @@ declare_mlir_python_extension(AIEPythonExtensionsOmni.MLIR
   ${RegisterEverythingSources}
 
   PRIVATE_LINK_LIBS
-  ${LIBS}
+  LLVMSupport
+  AIECAPI
+  ${MLIR_CONVERSION_LIBS}
+  ${MLIR_DIALECT_LIBS}
+  ${MLIR_EXTENSION_LIBS}
+  ${MLIR_TRANSLATION_LIBS}
+  ${MLIR_UPSTREAM_CAPI_LIBS}
 )
 
 _flatten_mlir_python_targets(mlir_python_sources_deps MLIRPythonSources)
@@ -160,8 +126,7 @@ add_mlir_python_modules(AIEPythonModules
 add_subdirectory(compiler)
 add_dependencies(AIEPythonModules AIECompilerPythonModules)
 
-set(_extensions
-  _aieMlir
+set(_other_extensions
   _mlir
   _mlirAsyncPasses
   _mlirDialectsLinalg
@@ -179,21 +144,20 @@ set(_extensions
 
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/python/aie/_mlir_libs")
 
-foreach(ext ${_extensions})
+foreach(ext ${_other_extensions})
   add_custom_target("symlink_${ext}"
     COMMAND ${CMAKE_COMMAND} -E create_symlink
-      "_aieMlirOmni${PYTHON_MODULE_EXTENSION}"
+      "_aie${PYTHON_MODULE_EXTENSION}"
       "${ext}${PYTHON_MODULE_EXTENSION}"
-    DEPENDS AIEPythonExtensionsOmni.MLIR
+    DEPENDS AIEPythonExtensions
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/python/aie/_mlir_libs"
   )
   add_dependencies(AIEPythonModules "symlink_${ext}")
   install(CODE "execute_process(
     COMMAND ${CMAKE_COMMAND} -E create_symlink
-            _aieMlirOmni${PYTHON_MODULE_EXTENSION}
+            _aie${PYTHON_MODULE_EXTENSION}
             ${ext}${PYTHON_MODULE_EXTENSION}
             WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/python/aie/_mlir_libs
     )"
   )
-
 endforeach()
