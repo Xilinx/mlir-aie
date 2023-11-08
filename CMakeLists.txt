@@ -170,7 +170,6 @@ endif()
 
 add_subdirectory(include)
 add_subdirectory(lib)
-add_subdirectory(python)
 add_subdirectory(runtime_lib)
 add_subdirectory(aie_runtime_lib)
 add_subdirectory(reference_designs)
@@ -178,6 +177,7 @@ add_subdirectory(test)
 add_subdirectory(tutorials)
 add_subdirectory(tools)
 add_subdirectory(data)
+add_subdirectory(python)
 
 if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   install(
