@@ -380,7 +380,8 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
       int row = tileOp.rowIndex();
 
       // NOTE: row == 0 assumes shim always row 0
-      if (row == 0 || row > targetOp.getTargetModel().getNumMemTileRows())
+      if (row == 0 ||
+          row > static_cast<int>(targetOp.getTargetModel().getNumMemTileRows()))
         continue; // Skip regular tiles (handled above)
 
       output << "      <MEM name=\"MEM(" << std::to_string(col) << ", "

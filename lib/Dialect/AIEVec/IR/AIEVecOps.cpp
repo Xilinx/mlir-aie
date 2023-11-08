@@ -1177,7 +1177,7 @@ LogicalResult ExtOp::verify() {
 
   // Verify validity of index
   unsigned factor = sourceLanes / resultLanes;
-  if (getIndex() >= factor)
+  if (static_cast<unsigned>(getIndex()) >= factor)
     return emitError("index out of bounds");
 
   // The datatype of source and result must match
