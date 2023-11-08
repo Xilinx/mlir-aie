@@ -587,6 +587,57 @@ Effects: MemoryEffects::Effect{}
 | `result` | vector of any type values
 
 
+### `aievec.matmul` (::xilinx::aievec::MatMulOp)
+
+_AIEML matrix-multiply and accummulate_
+
+
+Syntax:
+
+```
+operation ::= `aievec.matmul` $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
+              type($rhs) `into` type($acc)
+```
+
+AMD AIEv2-specific intrinsic that performs a matrix multiplications
+between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+Currently, this intrinsic supports the following type combinations:
+
+     lhs                | rhs                | Accumulator
+    :------------------:|:------------------:|:-----------------:
+     `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
+     `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
+     `vector<4x4xi16>`  | `vector<4x8xi8>`   | `vector<4x8xi32>`
+     `vector<4x2xi16>`  | `vector<2x8xi16>`  | `vector<4x8xi32>`
+     `vector<2x8xi16>`  | `vector<8x8xi8>`   | `vector<2x8xi64>`
+     `vector<4x8xi16>`  | `vector<8x4xi8>`   | `vector<4x4xi64>`
+     `vector<2x4xi16>`  | `vector<4x8xi16>`  | `vector<2x8xi64>`
+     `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
+     `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
+     `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+
+Traits: AlwaysSpeculatableImplTrait
+
+Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
+
+Effects: MemoryEffects::Effect{}
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | a vector compatible with a lhs operand of matrix-multiply and accumulate
+| `rhs` | a vector compatible with a rhs operand of matrix-multiply and accumulate
+| `acc` | a vector compatible with an accumulator of matrix-multiply and accumulate
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | a vector compatible with an accumulator of matrix-multiply and accumulate
+
+
 ### `aievec.max` (::xilinx::aievec::MaxOp)
 
 _AIE vector maximum_
