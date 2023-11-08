@@ -273,6 +273,199 @@ Example:
 &laquo;unnamed&raquo; | index
 
 
+### `AIEX.ipu.dma_memcpy_nd` (::xilinx::AIEX::IpuDmaMemcpyNdOp)
+
+_Half dma operator_
+
+
+Syntax:
+
+```
+operation ::= `AIEX.ipu.dma_memcpy_nd` `(` $x `,`$y `,`$memref
+              `[` $offset3`,`$offset2`,`$offset1`,`$offset0 `]`
+              `[` $length3`,`$length2`,`$length1`,`$length0 `]`
+              `[` $stride3`,`$stride2`,`$stride1 `]` `)` attr-dict `:`
+              `(` type($x)`,`type($y)`,`type($memref)`,`
+              `[` type($offset3)`,`type($offset2)`,`type($offset1)`,` type($offset0) `]` `,`
+              `[` type($length3)`,`type($length2)`,`type($length1)`,` type($length0) `]` `,`
+              `[` type($stride3)`,`type($stride2)`,`type($stride1) `]` `)`
+```
+
+nd half dma operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `x` | 32-bit signless integer
+| `y` | 32-bit signless integer
+| `memref` | memref of any type values
+| `offset3` | 32-bit signless integer
+| `offset2` | 32-bit signless integer
+| `offset1` | 32-bit signless integer
+| `offset0` | 32-bit signless integer
+| `length3` | 32-bit signless integer
+| `length2` | 32-bit signless integer
+| `length1` | 32-bit signless integer
+| `length0` | 32-bit signless integer
+| `stride3` | 32-bit signless integer
+| `stride2` | 32-bit signless integer
+| `stride1` | 32-bit signless integer
+
+
+### `AIEX.ipu.rtp_write` (::xilinx::AIEX::IpuWriteRTPOp)
+
+_Rtp write operator_
+
+
+Syntax:
+
+```
+operation ::= `AIEX.ipu.rtp_write` `(` $col `,` $row `,` $index `,` $value `)` attr-dict
+```
+
+rtp write operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>buffer_sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `AIEX.ipu.shimtile_push_queue` (::xilinx::AIEX::IpuShimTilePushQueueOp)
+
+_Bd queue push operator_
+
+
+Syntax:
+
+```
+operation ::= `AIEX.ipu.shimtile_push_queue` attr-dict
+```
+
+bd queue push operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `AIEX.ipu.sync` (::xilinx::AIEX::IpuSyncOp)
+
+_Sync operator_
+
+
+Syntax:
+
+```
+operation ::= `AIEX.ipu.sync` attr-dict
+```
+
+tct sync operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>direction</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+### `AIEX.ipu.write32` (::xilinx::AIEX::IpuWrite32Op)
+
+_Write32 operator_
+
+
+Syntax:
+
+```
+operation ::= `AIEX.ipu.write32` attr-dict
+```
+
+write32 operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+</table>
+
+
+### `AIEX.ipu.writebd_shimtile` (::xilinx::AIEX::IpuWriteBdExShimTileOp)
+
+_Dma operator_
+
+
+Syntax:
+
+```
+operation ::= `AIEX.ipu.writebd_shimtile` attr-dict
+```
+
+writebd_shimtile operator
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>ddr_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>buffer_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>buffer_offset</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>enable_packet</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>out_of_order_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet_type</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d0_wrap</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d0_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d1_wrap</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d1_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>d2_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_current</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_wrap</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>iteration_stepsize</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>use_next_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>valid_bd</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_rel_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_rel_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_acq_enable</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_acq_val</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>lock_acq_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
 ### `AIEX.iter` (::xilinx::AIEX::IterOp)
 
 _An iter operation_
