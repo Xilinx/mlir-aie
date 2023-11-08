@@ -91,7 +91,7 @@ def AIEBitwiseOperand :
              AIEOperand_32xi16,
              AIEOperand_16xi32,
              AIEOperand_32xbf16],
-            "a vector compatible with a operand of bitwise operators">;
+            "a vector compatible with an operand of bitwise operators">;
 
 class ShapeDimsMatch<string lhs, int ld, string rhs, int rd> :
   CPred<Shape<lhs>.result # "[" # ld # "] == " #
