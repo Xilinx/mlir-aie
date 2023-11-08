@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // (c) Copyright 2022 Xilinx Inc.
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // This file defines helpers to emit C++ code for AIE vector dialect.
@@ -14,18 +15,13 @@
 #define TARGET_TRANSLATEAIEVECTOCPP_H
 
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Value.h"
-#include "llvm/ADT/ScopedHashTable.h"
-#include "llvm/Support/raw_ostream.h"
-#include <stack>
 
 namespace xilinx {
 namespace aievec {
-using namespace mlir;
 
 /// Translates the AIE vector dialect MLIR to C++ code.
-LogicalResult translateAIEVecToCpp(Operation *op, raw_ostream &os);
+mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op,
+                                         mlir::raw_ostream &os);
 
 } // namespace aievec
 } // namespace xilinx
