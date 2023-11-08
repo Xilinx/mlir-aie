@@ -168,6 +168,9 @@ jobs:
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DHOST_COMPILER=NONE \

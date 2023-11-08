@@ -55,6 +55,9 @@ CMAKE_CONFIGS="\
     -DLLVM_ENABLE_RTTI=ON \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+    -DCMAKE_C_VISIBILITY_PRESET=hidden \
+    -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
     -Wno-dev"
 
 if [ -x "$(command -v lld)" ]; then

@@ -51,25 +51,6 @@ declare_mlir_dialect_python_bindings(
 # Extensions
 ################################################################################
 
-get_target_property(CoreSources MLIRPythonExtension.Core INTERFACE_SOURCES)
-
-get_target_property(DialectsLinalgPybindSources MLIRPythonExtension.Dialects.Linalg.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsQuantPybindSources MLIRPythonExtension.Dialects.Quant.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsPDLPybindSources MLIRPythonExtension.Dialects.PDL.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsSparseTensorPybindSources MLIRPythonExtension.Dialects.SparseTensor.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsTransformPybindSources MLIRPythonExtension.Dialects.Transform.Pybind INTERFACE_SOURCES)
-
-get_target_property(AsyncDialectPassesSources MLIRPythonExtension.AsyncDialectPasses INTERFACE_SOURCES)
-get_target_property(ExecutionEngineSources MLIRPythonExtension.ExecutionEngine INTERFACE_SOURCES)
-get_target_property(GPUDialectPassesSources MLIRPythonExtension.GPUDialectPasses INTERFACE_SOURCES)
-get_target_property(SparseTensorDialectPassesSources MLIRPythonExtension.SparseTensorDialectPasses INTERFACE_SOURCES)
-get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
-
-get_property(MLIR_DIALECT_LIBS GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-get_property(MLIR_CONVERSION_LIBS GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-get_property(MLIR_EXTENSION_LIBS GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
-get_property(MLIR_TRANSLATION_LIBS GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
-
 set(LIBS
   LLVMSupport
 
@@ -107,6 +88,25 @@ set(LIBS
   MLIRCAPITransformDialect
   MLIRCAPITransforms
 )
+
+get_target_property(CoreSources MLIRPythonExtension.Core INTERFACE_SOURCES)
+
+get_target_property(DialectsLinalgPybindSources MLIRPythonExtension.Dialects.Linalg.Pybind INTERFACE_SOURCES)
+get_target_property(DialectsQuantPybindSources MLIRPythonExtension.Dialects.Quant.Pybind INTERFACE_SOURCES)
+get_target_property(DialectsPDLPybindSources MLIRPythonExtension.Dialects.PDL.Pybind INTERFACE_SOURCES)
+get_target_property(DialectsSparseTensorPybindSources MLIRPythonExtension.Dialects.SparseTensor.Pybind INTERFACE_SOURCES)
+get_target_property(DialectsTransformPybindSources MLIRPythonExtension.Dialects.Transform.Pybind INTERFACE_SOURCES)
+
+get_target_property(AsyncDialectPassesSources MLIRPythonExtension.AsyncDialectPasses INTERFACE_SOURCES)
+get_target_property(ExecutionEngineSources MLIRPythonExtension.ExecutionEngine INTERFACE_SOURCES)
+get_target_property(GPUDialectPassesSources MLIRPythonExtension.GPUDialectPasses INTERFACE_SOURCES)
+get_target_property(SparseTensorDialectPassesSources MLIRPythonExtension.SparseTensorDialectPasses INTERFACE_SOURCES)
+get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
+
+get_property(MLIR_DIALECT_LIBS GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(MLIR_CONVERSION_LIBS GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+get_property(MLIR_EXTENSION_LIBS GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+get_property(MLIR_TRANSLATION_LIBS GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 
 declare_mlir_python_extension(AIEPythonExtensionsOmni.MLIR
   MODULE_NAME _aieMlirOmni
