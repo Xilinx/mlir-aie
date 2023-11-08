@@ -204,7 +204,8 @@ Pathfinder::findPaths(const int maxIterations) {
                << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
     for (auto &ch : edges) {
-      if (ch.fixedCapacity.size() >= ch.maxCapacity) {
+      if (ch.fixedCapacity.size() >=
+          static_cast<unsigned int>(ch.maxCapacity)) {
         ch.demand = INF;
       } else {
         double history = 1.0 + OVER_CAPACITY_COEFF * ch.overCapacityCount;

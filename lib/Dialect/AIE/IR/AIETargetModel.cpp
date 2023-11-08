@@ -540,7 +540,7 @@ void AIETargetModel::validate() const {
   }
 
   // Every tile in a memtile row must be a memtile.
-  for (int i = 1; i < 1 + getNumMemTileRows(); i++)
+  for (int i = 1; i < 1 + static_cast<int>(getNumMemTileRows()); i++)
     for (int j = 0; j < columns(); j++)
       assert(isMemTile(j, i) && !isShimPLTile(j, i) && !isShimNOCTile(j, i) &&
              !isCoreTile(j, i));
