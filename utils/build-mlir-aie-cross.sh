@@ -44,20 +44,27 @@ mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
 set -o pipefail
 set -e
-cmake -GNinja \
+
+CMAKE_CONFIGS="\
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
     -DCMAKE_TOOLCHAIN_FILE=${CMAKEMODULES_DIR}/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake \
     -DSysroot=${SYSROOT_DIR} \
     -DArch=arm64 \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
-    -DLLVM_USE_LINKER=lld \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DCMAKE_BUILD_TYPE=Debug \
-    -Wno-dev \
-    .. 2>&1 | tee cmake.log
+    -Wno-dev"
 
+if [ -x "$(command -v lld)" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"
+fi
+
+if [ -x "$(command -v ccache)" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"
+fi
+
+cmake $CMAKE_CONFIGS ../llvm 2>&1 | tee cmake.log
 ninja 2>&1 | tee ninja.log
 ninja install 2>&1 | tee ninja-install.log
-#ninja check-aie 2>&1 | tee ninja-check-aie.log
 cd ..
