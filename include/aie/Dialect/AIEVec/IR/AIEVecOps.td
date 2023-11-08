@@ -751,8 +751,8 @@ def AIEVec_BxorOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AIEBitwiseOperand:$lhs, AIEBitwiseOperand:$rhs)>,
+  Results<(outs AIEBitwiseOperand:$result)> {
   let summary = "AIE vector bitwise xor";
   let description = [{
     AMD-specific intrinsic that computes bitwise xor of two vectors and returns the result.
@@ -767,8 +767,8 @@ def AIEVec_BnegOp:
     Pure,
     AllTypesMatch<["source", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$source)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AIEBitwiseOperand:$source)>,
+  Results<(outs AIEBitwiseOperand:$result)> {
   let summary = "AIE vector bitwise negation";
   let description = [{
     AMD-specific intrinsic that computes bitwise negation of a vector and returns the result.
@@ -783,8 +783,8 @@ def AIEVec_BorOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AIEBitwiseOperand:$lhs, AIEBitwiseOperand:$rhs)>,
+  Results<(outs AIEBitwiseOperand:$result)> {
   let summary = "AIE vector bitwise or";
   let description = [{
     AMD-specific intrinsic that computes bitwise or of two vectors and returns the result.
@@ -799,8 +799,8 @@ def AIEVec_BandOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins AIEBitwiseOperand:$lhs, AIEBitwiseOperand:$rhs)>,
+  Results<(outs AIEBitwiseOperand:$result)> {
   let summary = "AIE vector bitwise and";
   let description = [{
     AMD-specific intrinsic that computes bitwise and of two vectors and returns the result.
