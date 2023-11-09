@@ -79,9 +79,9 @@ the tools are largely board and device independent and can be adapted to other e
 
     If you have already an LLVM repository, you can instead of cloning
     just make a new worktree from it by using:
-    ````
+    ```
     ./utils/clone-llvm.sh --llvm-worktree <directory-of-existing-LLVM-repository>
-    ````
+    ```
 
     To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory where `llvm` has
     been cloned. See `utils/build-llvm-local.sh` for additional shell script arguments.
@@ -91,7 +91,7 @@ the tools are largely board and device independent and can be adapted to other e
     https://github.com/Xilinx/mlir-aie/blob/main/.github/workflows/buildAndTest.yml
     and output https://github.com/Xilinx/mlir-aie/actions/ might help
     in the case of compilation problem.)
-```
+    ```
     ./utils/build-llvm-local.sh
     ```
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
