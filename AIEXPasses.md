@@ -35,6 +35,7 @@ _Generate physical lock ops from logical lock (token) ops_
 Tokens represent high-level buffer synchronization through a sequence of
 pipeline stages.  This pass lowers token operations into physical aie.lock
 operations.
+### `-aie-dma-to-ipu`
 ### `-aie-herd-routing`
 
 _Lowering herds with place and route ops to AIE cores, mems, and switchboxes_
