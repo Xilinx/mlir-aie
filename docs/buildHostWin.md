@@ -37,12 +37,12 @@ All steps in WSL Ubuntu terminal.
       ip link set vmnic0 addr <yourMACaddress> || true
       ```
 
-1. Before building the MLIR-AIE tools copy the base XCLBIN to the data directory:
-    ```
-    cp /mnt/c/Windows/System32/AMD/ (youPathToMLIR-AIE)/data
-    ```
-
 1. Build MLIR-AIE tools under WSL2 following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
+
+1. After building the MLIR-AIE tools copy the base XCLBIN to the data directory in the installation:
+    ```
+    cp /mnt/c/Windows/System32/AMD/ (youPathToMLIR-AIE)/install/data
+    ```
 
 1. After installing the updated RyzenAI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
     ```
