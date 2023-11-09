@@ -63,6 +63,7 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerMulticastPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEBroadcastPacketPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToIpuPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
