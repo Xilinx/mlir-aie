@@ -12,6 +12,7 @@
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
@@ -67,6 +68,7 @@ namespace AIE {
 
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
+  registry.insert<xilinx::AIEX::AIEXDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<scf::SCFDialect>();
   registry.insert<cf::ControlFlowDialect>();
@@ -531,6 +533,12 @@ SECTIONS
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
+  TranslateFromMLIRRegistration registrationIPU(
+      "aie-ipu-instgen", "Generate instructions for IPU",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToIPU(module, output);
+      },
+      registerDialects);
 }
 } // namespace AIE
 } // namespace xilinx
