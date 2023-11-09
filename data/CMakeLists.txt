@@ -6,6 +6,7 @@
 # (c) Copyright 2023, Advanced Micro Devices, Inc.
 
 set(DATA_FILES
+  1x4.xclbin
   generated-source/gen_cdo.h
   generated-source/gen_cdo.cpp
   generated-source/cdo_main.cpp
