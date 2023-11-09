@@ -426,7 +426,7 @@ module @objectFIFO  {
 
     %ext_buffer_in_0 = AIE.external_buffer {sym_name = "ext_buffer_in_0"}: memref<64xi32>
     %ext_buffer_in_1 = AIE.external_buffer {sym_name = "ext_buffer_in_1"}: memref<64xi32>
-    AIE.objectFifo.registerExternalBuffers @of1 (%tile10, {%ext_buffer_in_0, %ext_buffer_in_1}) : (memref<64xi32>, memref<64xi32>)
+    AIE.objectFifo.registerExternalBuffers @of1 (%tile10, { %ext_buffer_in_0, %ext_buffer_in_1 }) : (memref<64xi32>, memref<64xi32>)
 }
 ```
 
@@ -437,8 +437,8 @@ module @objectFIFO  {
     %tile22 = AIE.tile(2, 2)
     %tile24 = AIE.tile(2, 4)
 
-    AIE.objectFifo @of1 (%tile20, {%tile22}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
-	AIE.objectFifo @of2 (%tile22, {%tile24}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+    AIE.objectFifo @of1 (%tile20, { %tile22 }, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+	AIE.objectFifo @of2 (%tile22, { %tile24 }, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
 
 	AIE.objectFifo.link [@of1] -> [@of2] ()
 }
