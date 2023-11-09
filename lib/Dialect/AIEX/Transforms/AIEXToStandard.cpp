@@ -66,6 +66,6 @@ struct AIEXToStandardPass : public AIEXToStandardBase<AIEXToStandardPass> {
 };
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-xilinx::AIEX::createAIEXCoreToStandardPass() {
-  return std::make_unique<AIEXCoreToStandardPass>();
+xilinx::AIEX::createAIEXToStandardPass() {
+  return std::make_unique<AIEXToStandardPass>();
 }
