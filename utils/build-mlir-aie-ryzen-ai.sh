@@ -35,7 +35,8 @@ mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
 
 ##
-## build phoenix branch of aie-rt
+## FIXME: move to CMake and reduce aie-rt differences
+## build phoenix branch of aie-rt 
 ##
 
 git clone --branch xlnx_rel_v2023.2 --depth 1 https://github.com/Xilinx/aie-rt.git ${BUILD_DIR}/aie-rt
