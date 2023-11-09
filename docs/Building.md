@@ -79,29 +79,34 @@ the tools are largely board and device independent and can be adapted to other e
 
     If you have already an LLVM repository, you can instead of cloning
     just make a new worktree from it by using:
-    ````
+    ```
     ./utils/clone-llvm.sh --llvm-worktree <directory-of-existing-LLVM-repository>
-    ````
+    ```
 
-    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory that `llvm` is cloned in. See `utils/build-llvm-local.sh` for additional shell script arguments.
+    To build (compile and install) LLVM, run `utils/build-llvm-local.sh` in the directory where `llvm` has
+    been cloned. See `utils/build-llvm-local.sh` for additional shell script arguments.
     (Note that `build-llvm-local.sh` and `build-llvm.sh` are a
     variation of the LLVM build script used for CI on GitHub and
     looking at the continuous integration recipe
     https://github.com/Xilinx/mlir-aie/blob/main/.github/workflows/buildAndTest.yml
     and output https://github.com/Xilinx/mlir-aie/actions/ might help
     in the case of compilation problem.)
-```
+    ```
     ./utils/build-llvm-local.sh
     ```
     This will build LLVM in `llvm/build` and install the LLVM binaries under `llvm/install`.
 
-4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` with
-    the path to the `llvm/build` directory. The Vitis environment will
-    have to be set up for this to succeed.
+4. Build the MLIR-AIE tools by calling `utils/build-mlir-aie.sh` for Versal or 
+    `utils/build-mlir-aie-ryzen-ai.sh` for Ryzen AI with the path to the `llvm/build`
+    directory. The Vitis environment will have to be set up for this to succeed.
 
     ```
     source <Vitis Install Path>/settings64.sh
     ./utils/build-mlir-aie.sh <llvm dir>/<build dir>
+    ```
+    or
+    ```
+    ./utils/build-mlir-aie-ryzen-ai.sh <llvm dir>/<build dir>
     ```
     This will create a `build` and `install` folder in the directory that you cloned MLIR AIE into. 
 
