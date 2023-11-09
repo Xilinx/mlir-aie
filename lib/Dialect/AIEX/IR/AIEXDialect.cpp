@@ -83,23 +83,34 @@ LogicalResult xilinx::AIEX::IpuDmaMemcpyNdOp::verify() {
   ::mlir::MemRefType buffer = getMemref().getType();
   if (!buffer.getElementType().isInteger(32))
     return emitOpError("must be used with memref type i32.");
-  uint32_t strides[3]{};
-  strides[2] = static_cast<uint32_t>(
-      getStride3().getDefiningOp<arith::ConstantIntOp>().value());
-  strides[1] = static_cast<uint32_t>(
-      getStride2().getDefiningOp<arith::ConstantIntOp>().value());
-  strides[0] = static_cast<uint32_t>(
-      getStride1().getDefiningOp<arith::ConstantIntOp>().value());
-  if (static_cast<uint32_t>(
-          getLength3().getDefiningOp<arith::ConstantIntOp>().value()) > 64)
+  uint32_t strides[3]{0, 0, 0};
+  uint32_t lengths[4]{0, 0, 0, 0};
+  if (auto const_op = getStride3().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[2] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getStride2().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[1] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getStride1().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[0] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength3().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[3] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength2().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[2] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength1().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[1] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[0] = static_cast<uint32_t>(const_op.value());
+  }
+  if (static_cast<uint32_t>(lengths[2]) > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
-  if (strides[1] &&
-      static_cast<uint32_t>(
-          getLength1().getDefiningOp<arith::ConstantIntOp>().value()) > 0x3FF)
+  if (strides[1] && static_cast<uint32_t>(lengths[0]) > 0x3FF)
     return emitOpError("Length 1 exceeds the [0:1023] range.");
-  if (strides[0] &&
-      static_cast<uint32_t>(
-          getLength0().getDefiningOp<arith::ConstantIntOp>().value()) > 0x3FF)
+  if (strides[0] && static_cast<uint32_t>(lengths[0]) > 0x3FF)
     return emitOpError("Length 0 exceeds the [0:1023] range.");
   if (strides[2] > 0x100000)
     return emitOpError("Stride 3 exceeds the [1:1M] range.");
