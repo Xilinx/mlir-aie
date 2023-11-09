@@ -61,3 +61,9 @@ _Lower AIE.multicast operation to AIE.flow operations_
 This pass replaces AIE.multicast operation with the equivalent number of AIE.flow
 operations. The lowered AIE.flow operations have the same source port but different
 destinations.
+### `-aiex-standard-lowering`
+
+_Lower AIEX operations_
+
+AIEX Ipu Ops are removed.
+
