@@ -55,19 +55,19 @@ get_property(MLIR_EXTENSION_LIBS GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
 get_property(MLIR_TRANSLATION_LIBS GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 get_property(MLIR_UPSTREAM_CAPI_LIBS GLOBAL PROPERTY MLIR_UPSTREAM_CAPI_LIBS)
 
-get_target_property(CoreSources MLIRPythonExtension.Core INTERFACE_SOURCES)
-
-get_target_property(DialectsLinalgPybindSources MLIRPythonExtension.Dialects.Linalg.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsQuantPybindSources MLIRPythonExtension.Dialects.Quant.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsPDLPybindSources MLIRPythonExtension.Dialects.PDL.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsSparseTensorPybindSources MLIRPythonExtension.Dialects.SparseTensor.Pybind INTERFACE_SOURCES)
-get_target_property(DialectsTransformPybindSources MLIRPythonExtension.Dialects.Transform.Pybind INTERFACE_SOURCES)
-
-get_target_property(AsyncDialectPassesSources MLIRPythonExtension.AsyncDialectPasses INTERFACE_SOURCES)
-get_target_property(ExecutionEngineSources MLIRPythonExtension.ExecutionEngine INTERFACE_SOURCES)
-get_target_property(GPUDialectPassesSources MLIRPythonExtension.GPUDialectPasses INTERFACE_SOURCES)
-get_target_property(SparseTensorDialectPassesSources MLIRPythonExtension.SparseTensorDialectPasses INTERFACE_SOURCES)
 get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
+
+_flatten_mlir_python_targets(mlir_python_sources MLIRPythonSources)
+set(_mlir_python_cpp_sources)
+foreach(s ${mlir_python_sources})
+  get_target_property(_sources ${s} INTERFACE_SOURCES)
+  list(FILTER _sources INCLUDE REGEX "(\.cpp|\.h)$")
+  if(_sources)
+    list(APPEND _mlir_python_cpp_sources ${_sources})
+  endif()
+endforeach()
+
+list(SORT _mlir_python_cpp_sources)
 
 declare_mlir_python_extension(AIEPythonExtensions
   MODULE_NAME _aie
@@ -77,18 +77,7 @@ declare_mlir_python_extension(AIEPythonExtensions
   ${CMAKE_CURRENT_SOURCE_DIR}/AIEMLIRModule.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/PythonPass.cpp
 
-  ${CoreSources}
-
-  ${DialectsLinalgPybindSources}
-  ${DialectsQuantPybindSources}
-  ${DialectsPDLPybindSources}
-  ${DialectsSparseTensorPybindSources}
-  ${DialectsTransformPybindSources}
-
-  ${AsyncDialectPassesSources}
-  ${ExecutionEngineSources}
-  ${GPUDialectPassesSources}
-  ${SparseTensorDialectPassesSources}
+  ${_mlir_python_cpp_sources}
   ${RegisterEverythingSources}
 
   PRIVATE_LINK_LIBS
@@ -106,6 +95,7 @@ list(FILTER mlir_python_sources_deps INCLUDE REGEX "^MLIRPythonSources.Dialects"
 foreach(t ${mlir_python_sources_deps})
   set_property(TARGET ${t} PROPERTY mlir_python_DEPENDS "")
 endforeach()
+set_property(TARGET MLIRPythonSources.ExecutionEngine PROPERTY mlir_python_DEPENDS "")
 
 add_mlir_python_modules(AIEMLIRPythonModules
   ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
@@ -113,6 +103,7 @@ add_mlir_python_modules(AIEMLIRPythonModules
   DECLARED_SOURCES
     ${mlir_python_sources_deps}
     MLIRPythonSources.Core.Python
+    MLIRPythonSources.ExecutionEngine
     AIEPythonExtensions
 )
 
@@ -161,3 +152,30 @@ foreach(ext ${_other_extensions})
     )"
   )
 endforeach()
+
+set(_runtimes
+  mlir_async_runtime
+  mlir_c_runner_utils
+  mlir_float16_utils
+  mlir_runner_utils
+)
+
+if (TARGET mlir_rocm_runtime)
+  list(APPEND _runtimes mlir_rocm_runtime)
+endif()
+
+foreach(r ${_runtimes})
+  add_custom_command(
+    TARGET AIEPythonModules PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+    $<TARGET_FILE:${r}>
+    ${CMAKE_BINARY_DIR}/lib
+  )
+endforeach()
+
+install(IMPORTED_RUNTIME_ARTIFACTS
+  ${_runtimes}
+  COMPONENT aie-python
+  LIBRARY DESTINATION "python/aie/_mlir_libs"
+)
+

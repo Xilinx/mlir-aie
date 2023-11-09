@@ -50,6 +50,11 @@ project(AIE LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
+# Disables generation of "version soname" (i.e. libFoo.so.<version>), which
+# causes pure duplication as part of Python wheels.
+set(CMAKE_PLATFORM_NO_VERSIONED_SONAME ON)
+
+
 set(AIE_COMPILER
     "XCHESSCC"
     CACHE STRING "Backend compiler selection")
@@ -207,10 +212,9 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   endif()
 endif()
 
-add_subdirectory(cmake/modules)
 
 # Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
 add_subdirectory(reference_designs)
 add_subdirectory(test)
 add_subdirectory(tutorials)
-
+add_subdirectory(cmake/modules)
