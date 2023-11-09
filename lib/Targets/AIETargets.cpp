@@ -533,6 +533,12 @@ SECTIONS
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
       AIETranslateShimSolution, registerDialects);
+  TranslateFromMLIRRegistration registrationCDO(
+      "aie-generate-cdo", "Generate libxaie for CDO",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToCDO(module, output);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationIPU(
       "aie-ipu-instgen", "Generate instructions for IPU",
       [](ModuleOp module, raw_ostream &output) {

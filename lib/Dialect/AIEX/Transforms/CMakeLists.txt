@@ -6,6 +6,7 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 add_mlir_dialect_library(AIEXTransforms
+  AIEXToStandard.cpp
   AIECreateCores.cpp
   AIECreateLocks.cpp
   AIEHerdRouting.cpp
