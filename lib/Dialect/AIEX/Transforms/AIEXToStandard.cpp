@@ -1,4 +1,4 @@
-//===- AIECoreToStandard.cpp ------------------------------------*- C++ -*-===//
+//===- AIEXToStandard.cpp ---------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"

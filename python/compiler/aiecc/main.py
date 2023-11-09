@@ -260,7 +260,7 @@ class flow_runner:
       if(task):
         self.progress_bar.update(task,advance=0,visible=False)
 
-  async def emit_design_partition_json(self, output_filename, kernel_id='0x201'):
+  async def emit_design_partition_json(self, output_filename, kernel_id='0x901'):
 
     with Context() as ctx, Location.unknown():
       aiedialect.register_dialect(ctx)
@@ -752,6 +752,7 @@ def run(mlir_module, args=None):
         print("Found Vitis at " + vitis_path)
         os.environ['PATH'] = os.pathsep.join([os.environ['PATH'], vitis_bin_path])
 
+    opts.aietools_path = ""
     if('VITIS' in os.environ):
       vitis_path = os.environ['VITIS']
       vitis_bin_path = os.path.join(vitis_path, "bin")

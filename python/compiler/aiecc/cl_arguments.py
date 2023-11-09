@@ -167,15 +167,15 @@ def parse_args(args=None):
             help='Output xclbin filename for CDO/XCLBIN target')
     parser.add_argument('--xclbin-kernel-name',
             dest="kernel_name",
-            default="PP_FD_PRE",
+            default="MLIR_AIE",
             help='Kernel name in xclbin file')
     parser.add_argument('--xclbin-instance-name',
             dest="instance_name",
-            default="MLIRAIE",
+            default="MLIRAIEV1",
             help='Instance name in xclbin metadata')
     parser.add_argument('--xclbin-kernel-id',
             dest="kernel_id",
-            default="0x201",
+            default="0x901",
             help='Kernel id in xclbin file')
 
     opts = parser.parse_args(args)
