@@ -340,6 +340,7 @@ class flow_runner:
                 "kernels" : [{"name" : kernel_name,
                               "type" : "dpu",
                               "extended-data" : {
+                                "subtype" : "DPU",
                                 "functional" : "1",
                                 "dpu_kernel_id" : kernel_id
                               },
