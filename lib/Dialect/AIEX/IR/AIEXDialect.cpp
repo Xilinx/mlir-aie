@@ -106,7 +106,7 @@ LogicalResult xilinx::AIEX::IpuDmaMemcpyNdOp::verify() {
   if (auto const_op = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
     lengths[0] = static_cast<uint32_t>(const_op.value());
   }
-  if (static_cast<uint32_t>(lengths[2]) > 64)
+  if (static_cast<uint32_t>(lengths[3]) > 64)
     return emitOpError("Length 3 exceeds the [1:64] range.");
   if (strides[1] && static_cast<uint32_t>(lengths[1]) > 0x3FF)
     return emitOpError("Length 1 exceeds the [0:1023] range.");
