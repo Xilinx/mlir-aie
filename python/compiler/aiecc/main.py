@@ -679,8 +679,6 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
         if (opts.ipu or opts.only_ipu):
           generated_insts_mlir = os.path.join(self.tmpdirname, 'generated_ipu_insts.mlir')
           await self.do_call(progress_bar.task, ['aie-opt',
-                                    '--aie-img-to-dma',
-                                    '--canonicalize',
                                     '--aie-dma-to-ipu', self.file_with_addresses, '-o', generated_insts_mlir])
           await self.do_call(progress_bar.task, ['aie-translate', '--aie-ipu-instgen', generated_insts_mlir, '-o', opts.insts_name])
           if (opts.only_ipu):
