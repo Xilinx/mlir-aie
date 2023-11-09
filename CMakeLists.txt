@@ -173,11 +173,47 @@ add_subdirectory(lib)
 add_subdirectory(python)
 add_subdirectory(runtime_lib)
 add_subdirectory(aie_runtime_lib)
-add_subdirectory(reference_designs)
+add_subdirectory(data)
+add_subdirectory(tools)
+
+option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ${DEFAULT_ENABLE_CHESS_TESTS})
+option(ENABLE_BOARD_TESTS "Enable board tests" ${DEFAULT_ENABLE_BOARD_TESTS})
+
+if(Vitis_FOUND)
+  set(DEFAULT_ENABLE_CHESS_TESTS ON)
+else()
+  set(DEFAULT_ENABLE_CHESS_TESTS OFF)
+endif()
+
+if(${CMAKE_HOST_SYSTEM_PROCESSOR} STREQUAL aarch64)
+  set(DEFAULT_ENABLE_BOARD_TESTS ON)
+else()
+  set(DEFAULT_ENABLE_BOARD_TESTS OFF)
+endif()
+
+if(ENABLE_CHESS_TESTS)
+  set(CONFIG_ENABLE_CHESS_TESTS 1)
+else()
+  set(CONFIG_ENABLE_CHESS_TESTS 0)
+endif()
+
+if(ENABLE_BOARD_TESTS)
+  set(CONFIG_ENABLE_BOARD_TESTS 1)
+else()
+  set(CONFIG_ENABLE_BOARD_TESTS 0)
+endif()
+
+if(LibXAIE_FOUND)
+  set(CONFIG_HAS_LIBXAIE 1)
+else()
+  set(CONFIG_HAS_LIBXAIE 0)
+endif()
+
+set(ENABLE_PYTHON_TESTS 1)
+
 add_subdirectory(test)
 add_subdirectory(tutorials)
-add_subdirectory(tools)
-add_subdirectory(data)
+add_subdirectory(reference_designs)
 
 if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   install(
