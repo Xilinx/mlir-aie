@@ -751,14 +751,19 @@ def AIEVec_BxorOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AIEBitwiseOperand:$lhs, AIEBitwiseOperand:$rhs)>,
-  Results<(outs AIEBitwiseOperand:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise xor";
   let description = [{
-    AMD-specific intrinsic that computes bitwise xor of two vectors and returns the result.
+    AMD-specific intrinsic that computes bitwise xor of two vectors and returns
+    the result.
     `$result = bxor(`$lhs, $rhs`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let assemblyFormat = [{$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+                         `,` type($result)}];
   let hasVerifier = 0;
 }
 
@@ -767,11 +772,14 @@ def AIEVec_BnegOp:
     Pure,
     AllTypesMatch<["source", "result"]>
   ]>,
-  Arguments<(ins AIEBitwiseOperand:$source)>,
-  Results<(outs AIEBitwiseOperand:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$source)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise negation";
   let description = [{
-    AMD-specific intrinsic that computes bitwise negation of a vector and returns the result.
+    AMD-specific intrinsic that computes bitwise negation of a vector and
+    returns the result.
     `$result = bneg(`$source`).
   }];
   let assemblyFormat = "$source attr-dict `:` type($result)";
@@ -783,14 +791,19 @@ def AIEVec_BorOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AIEBitwiseOperand:$lhs, AIEBitwiseOperand:$rhs)>,
-  Results<(outs AIEBitwiseOperand:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise or";
   let description = [{
-    AMD-specific intrinsic that computes bitwise or of two vectors and returns the result.
+    AMD-specific intrinsic that computes bitwise or of two vectors and returns
+    the result.
     `$result = bor(`$lhs, $rhs`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let assemblyFormat = [{$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+                         `,` type($result)}];
   let hasVerifier = 0;
 }
 
@@ -799,14 +812,19 @@ def AIEVec_BandOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AIEBitwiseOperand:$lhs, AIEBitwiseOperand:$rhs)>,
-  Results<(outs AIEBitwiseOperand:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise and";
   let description = [{
-    AMD-specific intrinsic that computes bitwise and of two vectors and returns the result.
+    AMD-specific intrinsic that computes bitwise and of two vectors and returns
+    the result.
     `$result = band(`$lhs, $rhs`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let assemblyFormat = [{$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+                         `,` type($result)}];
   let hasVerifier = 0;
 }
 
