@@ -9,6 +9,7 @@
 @LIT_SITE_CFG_IN_HEADER@
 
 import sys
+import lit.util
 
 config.host_triple = "@LLVM_HOST_TRIPLE@"
 config.target_triple = "@TARGET_TRIPLE@"
@@ -44,16 +45,18 @@ config.aie_obj_root = "@AIE_BINARY_DIR@"
 config.test_exec_root = "@CMAKE_CURRENT_BINARY_DIR@"
 
 # pass on vitis settings
-config.enable_chess_tests = @CONFIG_ENABLE_CHESS_TESTS@
-config.enable_board_tests = @CONFIG_ENABLE_BOARD_TESTS@
+config.enable_board_tests = lit.util.pythonize_bool("@ENABLE_BOARD_TESTS@")
+config.enable_chess_tests = lit.util.pythonize_bool("@ENABLE_CHESS_TESTS@")
+config.has_libxaie = lit.util.pythonize_bool("@LibXAIE_FOUND@")
+config.enable_python_tests = lit.util.pythonize_bool("@ENABLE_PYTHON_TESTS@")
+config.aie_include_integration_tests = lit.util.pythonize_bool("@AIE_INCLUDE_INTEGRATION_TESTS@")
+
 config.vitis_root = "@VITIS_ROOT@"
 config.vitis_aietools_dir = "@VITIS_AIETOOLS_DIR@"
 config.vitis_sysroot = "@Sysroot@"
-config.has_libxaie = @CONFIG_HAS_LIBXAIE@
 config.extraAieCcFlags = "@extraAieCcFlags@"
 config.aieHostTarget = "@AIE_RUNTIME_TEST_TARGET@"
 config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
-config.enable_python_tests = @ENABLE_PYTHON_TESTS@
 
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.
@@ -65,7 +68,6 @@ except KeyError:
     key, = e.args
     lit_config.fatal("unable to find %r parameter, use '--param=%s=VALUE'" % (key,key))
 
-config.aie_include_integration_tests = "@AIE_INCLUDE_INTEGRATION_TESTS@"
 
 import lit.llvm
 lit.llvm.initialize(lit_config, config)
