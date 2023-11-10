@@ -106,14 +106,14 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
+| `lhs` | a vector compatible with an operand of bitwise operators
+| `rhs` | a vector compatible with an operand of bitwise operators
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | vector of any type values
+| `result` | a vector compatible with an operand of bitwise operators
 
 
 ### `aievec.bneg` (::xilinx::aievec::BnegOp)
@@ -140,13 +140,13 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `source` | vector of any type values
+| `source` | a vector compatible with an operand of bitwise operators
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | vector of any type values
+| `result` | a vector compatible with an operand of bitwise operators
 
 
 ### `aievec.bor` (::xilinx::aievec::BorOp)
@@ -173,14 +173,14 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
+| `lhs` | a vector compatible with an operand of bitwise operators
+| `rhs` | a vector compatible with an operand of bitwise operators
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | vector of any type values
+| `result` | a vector compatible with an operand of bitwise operators
 
 
 ### `aievec.broadcast` (::xilinx::aievec::BroadcastOp)
@@ -267,14 +267,14 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | vector of any type values
-| `rhs` | vector of any type values
+| `lhs` | a vector compatible with an operand of bitwise operators
+| `rhs` | a vector compatible with an operand of bitwise operators
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | vector of any type values
+| `result` | a vector compatible with an operand of bitwise operators
 
 
 ### `aievec.cast` (::xilinx::aievec::CastOp)
