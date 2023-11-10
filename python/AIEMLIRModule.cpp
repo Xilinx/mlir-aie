@@ -5,8 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PythonPass.h"
-
 #include "aie-c/Dialects.h"
 #include "aie-c/Registration.h"
 
@@ -45,10 +43,6 @@ PYBIND11_MODULE(_aie, m) {
         }
       },
       py::arg("context"), py::arg("load") = true);
-
-  m.def("register_python_pass_demo_pass", [](py::function func) {
-    registerPythonPassDemoPassWithFunc(std::move(func));
-  });
 
   // AIE types bindings
   mlir_type_subclass(m, "ObjectFifoType", aieTypeIsObjectFifoType)

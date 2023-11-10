@@ -125,17 +125,27 @@ set(LLVM_LIT_ARGS
 
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+
 include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)
 include(ExternalProject)
+include(CMakeDependentOption)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
 include_directories(${PROJECT_BINARY_DIR}/include)
 add_definitions(${LLVM_DEFINITIONS})
+
+
+cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
+  "Enables building of Python bindings." ON "MLIR_ENABLE_BINDINGS_PYTHON" OFF)
+
+cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
+  "Enables building of passes that connect to python." ON "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
+
 
 # Silence a false positive GCC -Wunused-but-set-parameter warning in constexpr
 # cases, by marking SelectedCase as used. See
@@ -159,18 +169,17 @@ if(AIE_INCLUDE_DOCS)
   add_dependencies(docs mlir-doc)
 endif()
 
-# setup python
-include(MLIRDetectPythonEnv)
-mlir_configure_python_dev_packages()
+if(AIE_ENABLE_BINDINGS_PYTHON)
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
 
-# python install directory
-if(NOT AIE_PYTHON_PACKAGES_DIR)
-  set(AIE_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python")
-endif()
+  if(NOT AIE_PYTHON_PACKAGES_DIR)
+    set(AIE_PYTHON_PACKAGES_DIR "${CMAKE_CURRENT_BINARY_DIR}/python")
+  endif()
 
-# python install directory
-if(NOT AIE_PYTHON_INSTALL_DIR)
-  set(AIE_PYTHON_INSTALL_DIR "python")
+  if(NOT AIE_PYTHON_INSTALL_DIR)
+    set(AIE_PYTHON_INSTALL_DIR "python")
+  endif()
 endif()
 
 add_subdirectory(include)
@@ -179,7 +188,10 @@ add_subdirectory(runtime_lib)
 add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
 add_subdirectory(data)
-add_subdirectory(python)
+
+if(AIE_ENABLE_BINDINGS_PYTHON)
+  add_subdirectory(python)
+endif()
 
 if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   install(

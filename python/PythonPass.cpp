@@ -1,11 +1,9 @@
-//===- PythonPassDemo.cpp -------------------------------*- C++ -*-===//
+//===- PythonPassDemo.cpp ---------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
-#include "PythonPass.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
@@ -15,9 +13,10 @@
 #include "mlir/Pass/Pass.h"
 
 using namespace mlir;
-namespace py = pybind11;
 using namespace mlir::python::adaptors;
 using namespace xilinx::AIE;
+
+namespace py = pybind11;
 
 struct PythonPassDemo
     : public PassWrapper<PythonPassDemo, OperationPass<ModuleOp>> {
@@ -39,4 +38,11 @@ createPythonPassDemoPassWithFunc(py::function func) {
 
 void registerPythonPassDemoPassWithFunc(py::function func) {
   registerPass([func]() { return createPythonPassDemoPassWithFunc(func); });
+}
+
+PYBIND11_MODULE(_aie_python_passes, m) {
+
+  m.def("register_python_pass_demo_pass", [](py::function func) {
+    registerPythonPassDemoPassWithFunc(std::move(func));
+  });
 }

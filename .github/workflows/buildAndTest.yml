@@ -157,7 +157,7 @@ jobs:
           max-size: 1G
 
       - name: Build and install LLVM
-        run: utils/build-llvm.sh
+        run: LLVM_ENABLE_RTTI=ON utils/build-llvm.sh
 
       # Build the repo test target in debug mode to build and test.
       - name: Build and test (Assert)
