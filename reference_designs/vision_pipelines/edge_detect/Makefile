@@ -1,7 +1,6 @@
 include ../../../test/ipu-xrt/makefile-common
 
-VISION_KERNELS_VPATH_BASE := ../vision_kernels
-VPATH := $(VISION_KERNELS_VPATH_BASE)/filter2d $(VISION_KERNELS_VPATH_BASE)/threshold $(VISION_KERNELS_VPATH_BASE)/rgba2gray $(VISION_KERNELS_VPATH_BASE)/gray2rgba $(VISION_KERNELS_VPATH_BASE)/addWeighted
+VPATH := ../vision_kernels
 
 all: build/final_tiny.xclbin
 
