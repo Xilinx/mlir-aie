@@ -59,7 +59,7 @@ All steps in Win11 (powershell where needed).
 1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
-    - Install and compile boost: [https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html)
+    - [Download](https://boostorg.jfrog.io/artifactory/main/release/1.83.0/source/boost_1_83_0.zip) and [compile](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html) boost (current version 1.83). 
     - Extract zip file into `C:\Technical\thirdParty`
     - Run `bootstrap.bat` and after that `b2.exe`
 1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) and add this install to your PATH environmental variable, for instance `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`
