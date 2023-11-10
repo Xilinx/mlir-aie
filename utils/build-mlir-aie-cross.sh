@@ -7,10 +7,10 @@
 # 
 ##===----------------------------------------------------------------------===##
 #
-# This script build mlir-aie given the <sysroot dir>, <llvm dir>
+# This script build mlir-aie given the <sysroot dir>, <llvm build dir>
 # Assuming they are all in the same subfolder, it would look like:
 #
-# build-mlir-aie.sh <sysroot dir> <llvm dir> <build dir> <install dir>
+# build-mlir-aie.sh <sysroot dir> <llvm build dir> <build dir> <install dir>
 #
 # e.g. build-mlir-aie.sh /scratch/vck190_bare_prod_sysroot 10.2.0 /scratch/llvm 
 #          /scratch/cmakeModules/cmakeModulesXilinx
@@ -64,7 +64,7 @@ if [ -x "$(command -v ccache)" ]; then
   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"
 fi
 
-cmake $CMAKE_CONFIGS ../llvm 2>&1 | tee cmake.log
+cmake $CMAKE_CONFIGS 2>&1 | tee cmake.log
 ninja 2>&1 | tee ninja.log
 ninja install 2>&1 | tee ninja-install.log
 cd ..
