@@ -9,7 +9,7 @@
 # This script builds mlir-aie given <llvm dir>.
 # Assuming they are all in the same subfolder, it would look like:
 #
-# build-mlir-aie.sh <llvm dir> <build dir> <install dir>
+# build-mlir-aie.sh <llvm build dir> <build dir> <install dir>
 #
 # e.g. build-mlir-aie.sh /scratch/llvm/build
 #
@@ -92,7 +92,7 @@ if [ -x "$(command -v ccache)" ]; then
   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"
 fi
 
-cmake $CMAKE_CONFIGS ../llvm 2>&1 | tee cmake.log
+cmake $CMAKE_CONFIGS  2>&1 | tee cmake.log
 ninja 2>&1 | tee mlir-aie-ninja.log
 ninja install 2>&1 | tee mlir-aie-ninja-install.log
 success=$?
