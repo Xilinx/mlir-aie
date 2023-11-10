@@ -209,18 +209,7 @@ class CMakeBuild(build_ext):
         )
 
 
-commit_hash = None
-try:
-    commit_hash = (
-        subprocess.check_output(shlex.split("git rev-parse --short HEAD"))
-        .decode()
-        .strip()
-    )
-except subprocess.CalledProcessError:
-    pass
-if not bool(commit_hash):
-    commit_hash = "deadbeef"
-
+commit_hash = os.environ.get("AIE_COMMIT", "deadbeef")
 release_version = "0.0.1"
 now = datetime.now()
 datetime = os.environ.get(

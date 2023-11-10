@@ -106,6 +106,7 @@ jobs:
 
     - name: Checkout
       working-directory: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}
+      id: get_aie
       shell: bash
       run: |
         
@@ -114,6 +115,8 @@ jobs:
         if [ x"$AIE_COMMIT" != x"" ]; then
           pushd mlir-aie && git reset --hard $AIE_COMMIT && popd
         fi
+        pushd mlir-aie && AIE_COMMIT=$(git rev-parse --short HEAD) && popd
+        echo "AIE_COMMIT=${AIE_COMMIT}" | tee -a $GITHUB_OUTPUT
 
 # https://stackoverflow.com/a/73467112
     - name: Split os
@@ -134,8 +137,10 @@ jobs:
         PIP_FIND_LINKS="https://github.com/makslevental/mlir-wheels/releases/expanded_assets/latest https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels" \
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR="Ninja" \
+        DATETIME=${{ needs.set_datetime.outputs.DATETIME }} \
         HOST_CCACHE_DIR=${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }} \
         MATRIX_OS=${{ matrix.OS }} \
+        AIE_COMMIT=${{ steps.get_aie.outputs.AIE_COMMIT }} \
         MLIR_WHEEL_VERSION="18.0.0.2023110822+950f689" \
         PARALLEL_LEVEL=${{ matrix.OS == 'windows-2019' && '2' || '4' }} \
         cibuildwheel --output-dir wheelhouse
@@ -156,6 +161,8 @@ jobs:
         ./scripts/pip_install_mlir.sh
         
         CMAKE_GENERATOR=Ninja \
+        AIE_COMMIT=${{ steps.get_aie.outputs.AIE_COMMIT }} \
+        DATETIME=${{ needs.set_datetime.outputs.DATETIME }} \
         pip wheel . -v -w wheelhouse --no-build-isolation
 
     - name: Get wheel version

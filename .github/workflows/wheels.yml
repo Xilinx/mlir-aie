@@ -204,11 +204,54 @@ jobs:
           path: ${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
           name: build_artifact
 
+  smoke_test_wheels:
+
+    name: Smoke test on ${{ matrix.OS }} ${{ matrix.ARCH }}
+
+    needs: [build_x86_wheels]
+
+    runs-on: ${{ matrix.OS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        OS: [ubuntu-20.04, macos-11, windows-2019]
+        ARCH: [x86_64, arm64, AMD64]
+        exclude:
+          - OS: ubuntu-20.04
+            ARCH: arm64
+          - OS: ubuntu-20.04
+            ARCH: AMD64
+
+          - OS: macos-11
+            ARCH: AMD64
+
+          - OS: windows-2019
+            ARCH: x86_64
+
+          - OS: windows-2019
+            ARCH: arm64
+
+    steps:
+    - uses: actions/download-artifact@v3
+      with:
+        name: build_artifact
+        path: dist
+
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: test
+      shell: bash
+      run: |
+        pip install aie -f dist --no-index
+        python -c 'import aie.dialects.aie'
+
   upload_wheels:
 
     name: Upload wheels
 
-    needs: [build_aarch64_wheels, build_x86_wheels]
+    needs: [build_aarch64_wheels, build_x86_wheels, smoke_test_wheels]
 
     runs-on: ubuntu-latest
 #    environment: pypi
@@ -217,7 +260,6 @@ jobs:
       id-token: write
       contents: write
     steps:
-      - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
         with:
           # unpacks default artifact into dist/
