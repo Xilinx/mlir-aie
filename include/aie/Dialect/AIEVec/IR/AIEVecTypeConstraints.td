@@ -76,6 +76,23 @@ def AIE2MatMulACC :
             # "accumulate",
             "::mlir::VectorType">;
 
+def AIEOperand_64xi8  : VectorOfShapeAndType<[64], I8>;
+def AIEOperand_32xi8  : VectorOfShapeAndType<[32], I8>;
+def AIEOperand_32xi16 : VectorOfShapeAndType<[32], I16>;
+def AIEOperand_16xi16  : VectorOfShapeAndType<[16], I16>;
+def AIEOperand_32xi32  : VectorOfShapeAndType<[32], I32>;
+def AIEOperand_16xi32  : VectorOfShapeAndType<[16], I32>;
+def AIEOperand_32xbf16 : VectorOfShapeAndType<[32], BF16>;
+def AIEOperand_16xbf16 : VectorOfShapeAndType<[16], BF16>;
+def AIEOperand_16xf32 : VectorOfShapeAndType<[16], F32>;
+
+def AIEBitwiseOperand :
+  AnyTypeOf<[AIEOperand_64xi8,
+             AIEOperand_32xi16,
+             AIEOperand_16xi32,
+             AIEOperand_32xbf16],
+            "a vector compatible with an operand of bitwise operators">;
+
 class ShapeDimsMatch<string lhs, int ld, string rhs, int rd> :
   CPred<Shape<lhs>.result # "[" # ld # "] == " #
         Shape<rhs>.result # "[" # rd # "]">;
