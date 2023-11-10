@@ -33,15 +33,15 @@ All steps in WSL Ubuntu terminal.
     - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
       ```
       export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-      ip link add vmnic0 type dummy || true
-      ip link set vmnic0 addr <yourMACaddress> || true
+      ip link add vmnic0 type dummy
+      ip link set vmnic0 addr <yourMACaddress>
       ```
 
 1. Build MLIR-AIE tools under WSL2 following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
 
 1. After building the MLIR-AIE tools copy the base XCLBIN to the data directory in the installation:
     ```
-    cp /mnt/c/Windows/System32/AMD/ (youPathToMLIR-AIE)/install/data
+    cp /mnt/c/Windows/System32/AMD/1x4.xclbin (youPathToMLIR-AIE)/install/data
     ```
 
 1. After installing the updated RyzenAI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
@@ -59,7 +59,7 @@ All steps in Win11 (powershell where needed).
 1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
 
 1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
-    - Install and compile boost: [https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html)
+    - [Download](https://boostorg.jfrog.io/artifactory/main/release/1.83.0/source/boost_1_83_0.zip) and [compile](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html) boost (current version 1.83). 
     - Extract zip file into `C:\Technical\thirdParty`
     - Run `bootstrap.bat` and after that `b2.exe`
 1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) and add this install to your PATH environmental variable, for instance `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`
