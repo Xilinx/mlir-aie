@@ -15,16 +15,26 @@
 
 #include "mlir/Pass/Pass.h"
 
-namespace xilinx::AIE {
+namespace xilinx::AIEX {
 
-//===----------------------------------------------------------------------===//
-// Registration
-//===----------------------------------------------------------------------===//
+#define GEN_PASS_CLASSES
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateLocksPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEHerdRoutingPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerMemcpyPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerMulticastPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEBroadcastPacketPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToIpuPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
 
-} // namespace xilinx::AIE
+} // namespace xilinx::AIEX
 
 #endif // AIEX_PASSES_H
