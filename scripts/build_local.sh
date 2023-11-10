@@ -17,7 +17,7 @@ if [ ! -d mlir-aie ]; then
   git clone --recursive https://github.com/Xilinx/mlir-aie.git
 fi
 
-export MLIR_WHEEL_VERSION="18.0.0.2023102707+7046202c"
+export MLIR_WHEEL_VERSION="18.0.0.2023110822+950f689"
 
 if [ "$machine" == "linux" ]; then
   export CIBW_ARCHS=${CIBW_ARCHS:-x86_64}
