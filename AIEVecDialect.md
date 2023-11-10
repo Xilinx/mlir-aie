@@ -90,10 +90,12 @@ _AIE vector bitwise and_
 Syntax:
 
 ```
-operation ::= `aievec.band` $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)
+operation ::= `aievec.band` $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+              `,` type($result)
 ```
 
-AMD-specific intrinsic that computes bitwise and of two vectors and returns the result.
+AMD-specific intrinsic that computes bitwise and of two vectors and returns
+the result.
 `$result = band(`$lhs, $rhs`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -106,14 +108,14 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | a vector compatible with an operand of bitwise operators
-| `rhs` | a vector compatible with an operand of bitwise operators
+| `lhs` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
+| `rhs` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | a vector compatible with an operand of bitwise operators
+| `result` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 
 ### `aievec.bneg` (::xilinx::aievec::BnegOp)
@@ -127,7 +129,8 @@ Syntax:
 operation ::= `aievec.bneg` $source attr-dict `:` type($result)
 ```
 
-AMD-specific intrinsic that computes bitwise negation of a vector and returns the result.
+AMD-specific intrinsic that computes bitwise negation of a vector and
+returns the result.
 `$result = bneg(`$source`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -140,13 +143,13 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `source` | a vector compatible with an operand of bitwise operators
+| `source` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | a vector compatible with an operand of bitwise operators
+| `result` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 
 ### `aievec.bor` (::xilinx::aievec::BorOp)
@@ -157,10 +160,12 @@ _AIE vector bitwise or_
 Syntax:
 
 ```
-operation ::= `aievec.bor` $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)
+operation ::= `aievec.bor` $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+              `,` type($result)
 ```
 
-AMD-specific intrinsic that computes bitwise or of two vectors and returns the result.
+AMD-specific intrinsic that computes bitwise or of two vectors and returns
+the result.
 `$result = bor(`$lhs, $rhs`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -173,14 +178,14 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | a vector compatible with an operand of bitwise operators
-| `rhs` | a vector compatible with an operand of bitwise operators
+| `lhs` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
+| `rhs` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | a vector compatible with an operand of bitwise operators
+| `result` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 
 ### `aievec.broadcast` (::xilinx::aievec::BroadcastOp)
@@ -251,10 +256,12 @@ _AIE vector bitwise xor_
 Syntax:
 
 ```
-operation ::= `aievec.bxor` $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)
+operation ::= `aievec.bxor` $lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+              `,` type($result)
 ```
 
-AMD-specific intrinsic that computes bitwise xor of two vectors and returns the result.
+AMD-specific intrinsic that computes bitwise xor of two vectors and returns
+the result.
 `$result = bxor(`$lhs, $rhs`).
 
 Traits: AlwaysSpeculatableImplTrait
@@ -267,14 +274,14 @@ Effects: MemoryEffects::Effect{}
 
 | Operand | Description |
 | :-----: | ----------- |
-| `lhs` | a vector compatible with an operand of bitwise operators
-| `rhs` | a vector compatible with an operand of bitwise operators
+| `lhs` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
+| `rhs` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 #### Results:
 
 | Result | Description |
 | :----: | ----------- |
-| `result` | a vector compatible with an operand of bitwise operators
+| `result` | 512-bit wide vector, of 8-bit signless integer or 16-bit signless integer or 32-bit signless integer or bfloat16 type
 
 
 ### `aievec.cast` (::xilinx::aievec::CastOp)
