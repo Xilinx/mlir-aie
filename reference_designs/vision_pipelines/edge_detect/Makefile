@@ -2,11 +2,7 @@ include ../../../test/ipu-xrt/makefile-common
 
 VPATH := ../vision_kernels
 
-all: build/final_tiny.xclbin
-
-all_720: build/final_720.xclbin
-
-all_1080: build/final_1080.xclbin
+all: build/final_1080.xclbin
 
 build/insts%.txt: aie2_lineBased_8b%.mlir
 	mkdir -p ${@D}
