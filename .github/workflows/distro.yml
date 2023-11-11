@@ -110,7 +110,8 @@ jobs:
       shell: bash
       run: |
         
-        AIE_COMMIT=${{ inputs.AIE_COMMIT }}
+        # AIE_COMMIT=${{ inputs.AIE_COMMIT }}
+        AIE_COMMIT=11b98d7
         git clone --recursive https://github.com/Xilinx/mlir-aie.git
         if [ x"$AIE_COMMIT" != x"" ]; then
           pushd mlir-aie && git reset --hard $AIE_COMMIT && popd
