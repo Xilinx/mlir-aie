@@ -21,7 +21,7 @@ env:
   DEBIAN_FRONTEND: noninteractive
 
 jobs:
-  build-repo:
+  build-repo-local:
     name: Build and Test
 
     # By latest GitHub means actually latest LTS only
@@ -40,10 +40,12 @@ jobs:
     # Action has also the advantage of having 2 CPU instead of 1, so
     # it runs faster. But these images have quite less software
     # installed compared to the GitHub Ubuntu distribution for example.
+
     container:
-      image: ubuntu:${{matrix.ubuntu_version}}
+      image:  amd/acdcbuild:1.1
 
     steps:
+      
       - name: Display environment variables
         run: env
 
@@ -104,15 +106,16 @@ jobs:
           echo "::endgroup::"
 
       - name: Configure environment
-        run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
-
-      - name: Install git
+        run:  echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
+      - name: Configure ccache environment
+        run :  echo "/usr/lib/ccache:/usr/local/opt/ccache/libexec" >> $GITHUB_PATH  
+        
+      - name: Install Dependencies
         run: |
           apt-get update
-          apt-get install -y git
-          
-      - name: Install node
-        run: apt-get install -y nodejs
+          apt-get install -y git nodejs pip ninja-build clang lld zstd
+          pip install cmake numpy psutil pybind11 rich
+        
 
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
@@ -121,24 +124,6 @@ jobs:
         with:
           fetch-depth: 2
           submodules: "true"
-
-      - name: Install Python and other packages
-        # Install cmake here to get the latest version to compile
-        # LLVM. The Ubuntu 20.04 cmake version is only 3.16.3
-        run: |
-          apt-get install -y pip
-          pip install cmake numpy psutil pybind11 rich
-
-      - name: Install Ninja
-        # Can not use the following since it wants to use `sudo` not
-        # available in the case of Docker execution
-        # https://github.com/llvm/actions/tree/main/install-ninja
-        # uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c
-        # So just use the specific implementation instead:
-        run: apt-get install -y ninja-build
-
-      - name: Install lld and clang (for aiecc)
-        run: apt-get install -y clang lld
 
       - name: Get LLVM
         id: clone-llvm
@@ -158,6 +143,7 @@ jobs:
           # use a different key per job to avoid a ccache writing race condition
           key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}
           max-size: 1G
+          append-timestamp: false
 
       - name: Build and install LLVM
         run: utils/build-llvm.sh
