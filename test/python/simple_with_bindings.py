@@ -5,6 +5,7 @@
 
 from aie.ir import *
 from aie.dialects.aie import *
+import aie.types as T
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
@@ -26,11 +27,10 @@ def simple_with_bindings_example():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        int_ty = IntegerType.get_signless(32)
-        T = Tile(1, 4)
-        buff = Buffer(tile=T, size=(256,), datatype=int_ty)
+        tile = Tile(1, 4)
+        buff = Buffer(tile=tile, size=(256,), datatype=T.i32)
 
-        C = Core(T)
+        C = Core(tile)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             val = Load(buff, 3)

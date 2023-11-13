@@ -1,7 +1,7 @@
 import ctypes
 import warnings
 from functools import partial
-from typing import Union
+from typing import Union, Tuple
 
 import numpy as np
 from .ir import (
@@ -249,7 +249,7 @@ def memref(
     *args,
     element_type: Type = None,
     memory_space: int = None,
-    layout: tuple[tuple[int, ...], int] = None,
+    layout: Tuple[Tuple[int, ...], int] = None,
 ):
     if memory_space is None:
         memory_space = 0
