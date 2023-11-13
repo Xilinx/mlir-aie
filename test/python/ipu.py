@@ -72,7 +72,6 @@ def my_vector_scalar():
     N = 4096
     n = 1024
     N_div_n = N // n
-    N_in_bytes = N * 3
 
     buffer_depth = 2
 
@@ -570,7 +569,7 @@ def edge_detect():
                     ObjectFifoPort.Produce, "OF_2to3", 1, memRef_64_ty
                 ).acquiredElem()
 
-                Call(rgba2grayLine, [elemIn, elemOut, integerConstant(64)])
+                Call(rgba2grayLine, [elemIn, elemOut, constant(64)])
 
                 Release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
                 Release(ObjectFifoPort.Produce, "OF_2to3", 1)
@@ -578,9 +577,9 @@ def edge_detect():
         @core(T3, "filter2d.cc.o")
         def coreBody():
             kernel = memref.AllocOp(memRef_3x3_ty, [], [])
-            v0 = integerConstant(0, int16_ty)
-            v1 = integerConstant(4096, int16_ty)
-            vMinus4 = integerConstant(-16384, int16_ty)
+            v0 = constant(0, int16_ty)
+            v1 = constant(4096, int16_ty)
+            vMinus4 = constant(-16384, int16_ty)
             Store(v0, kernel, [0, 0])
             Store(v1, kernel, [0, 1])
             Store(v0, kernel, [0, 2])
@@ -605,7 +604,7 @@ def edge_detect():
                     elemsInPre[0],
                     elemsInPre[1],
                     elemPreOut,
-                    integerConstant(64),
+                    constant(64),
                     kernel,
                 ],
             )
@@ -627,7 +626,7 @@ def edge_detect():
                         elemsIn[1],
                         elemsIn[2],
                         elemOut,
-                        integerConstant(64),
+                        constant(64),
                         kernel,
                     ],
                 )
@@ -648,7 +647,7 @@ def edge_detect():
                     elemsInPost[1],
                     elemsInPost[1],
                     elemPostOut,
-                    integerConstant(64),
+                    constant(64),
                     kernel,
                 ],
             )
@@ -657,9 +656,9 @@ def edge_detect():
 
         @core(T4, "threshold.cc.o")
         def coreBody():
-            vThr = integerConstant(10, int16_ty)
-            vMax = integerConstant(255, int16_ty)
-            vTyp = integerConstant(0, int8_ty)
+            vThr = constant(10, int16_ty)
+            vMax = constant(255, int16_ty)
+            vTyp = constant(0, int8_ty)
 
             @forLoop(lowerBound=0, upperBound=36, step=1)
             def loopBody():
@@ -672,7 +671,7 @@ def edge_detect():
 
                 Call(
                     thresholdLine,
-                    [elemIn, elemOut, integerConstant(64), vThr, vMax, vTyp],
+                    [elemIn, elemOut, constant(64), vThr, vMax, vTyp],
                 )
 
                 Release(ObjectFifoPort.Consume, "OF_3to4", 1)
@@ -689,7 +688,7 @@ def edge_detect():
                     ObjectFifoPort.Produce, "OF_5to5", 1, memRef_256_ty
                 ).acquiredElem()
 
-                Call(gray2rgbaLine, [elemIn, elemOut, integerConstant(64)])
+                Call(gray2rgbaLine, [elemIn, elemOut, constant(64)])
 
                 Release(ObjectFifoPort.Consume, "OF_4to5", 1)
                 Release(ObjectFifoPort.Produce, "OF_5to5", 1)
@@ -704,9 +703,9 @@ def edge_detect():
                     ObjectFifoPort.Produce, "outOF_L1L2", 1, memRef_256_ty
                 ).acquiredElem()
 
-                alpha = integerConstant(16384, int16_ty)
-                beta = integerConstant(16384, int16_ty)
-                gamma = integerConstant(0, int8_ty)
+                alpha = constant(16384, int16_ty)
+                beta = constant(16384, int16_ty)
+                gamma = constant(0, int8_ty)
 
                 Call(
                     addWeightedLine,
@@ -714,7 +713,7 @@ def edge_detect():
                         elemIn1,
                         elemIn2,
                         elemOut2,
-                        integerConstant(256),
+                        constant(256),
                         alpha,
                         beta,
                         gamma,

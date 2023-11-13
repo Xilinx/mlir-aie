@@ -65,7 +65,7 @@ def core_ext_kernel():
                 elem0 = Acquire(
                     ObjectFifoPort.Consume, "of1", 1, memRef_64_ty
                 ).acquiredElem()
-                res = Call("test_func", [elem0, integerConstant(4)], [int_ty])
+                res = Call("test_func", [elem0, constant(4)], [int_ty])
                 Release(ObjectFifoPort.Consume, "of1", 1)
                 YieldOp([])
             EndOp()

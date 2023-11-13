@@ -21,29 +21,7 @@ from ..dialects import memref
 from ..dialects.func import *
 from ..dialects.scf import *
 from ..ir import *
-
-
-# Create a signless arith constant of given width (default is i32).
-class integerConstant(arith.ConstantOp):
-    """Specialize ConstantOp class constructor to take python integers"""
-
-    def __init__(self, val, width=32):
-        if isinstance(width, int):
-            int_ty = IntegerType.get_signless(width)
-        else:
-            int_ty = width
-        intAttr = IntegerAttr.get(int_ty, val)
-        super().__init__(result=int_ty, value=intAttr)
-
-
-# Create an index arith constant.
-class indexConstant(arith.ConstantOp):
-    """Specialize ConstantOp class constructor to take python integers"""
-
-    def __init__(self, val):
-        idx_ty = IndexType.get()
-        idxAttr = IntegerAttr.get(idx_ty, val)
-        super().__init__(result=idx_ty, value=idxAttr)
+from ..util import constant
 
 
 class AddI(arith.AddIOp):
@@ -51,20 +29,19 @@ class AddI(arith.AddIOp):
 
     def __init__(self, lhs, rhs):
         if isinstance(lhs, int):
-            intLhs = integerConstant(lhs)
-        else:
-            intLhs = lhs
-        intRhs = integerConstant(rhs)
-        super().__init__(lhs=intLhs, rhs=intRhs)
+            lhs = constant(lhs)
+        if isinstance(rhs, int):
+            rhs = constant(rhs)
+        super().__init__(lhs=lhs, rhs=rhs)
 
 
 class For(ForOp):
     """Specialize ForOp class constructor to take python integers"""
 
     def __init__(self, lowerBound, upperBound, step):
-        idxLowerBound = indexConstant(lowerBound)
-        idxUpperBound = indexConstant(upperBound)
-        idxStep = indexConstant(step)
+        idxLowerBound = constant(lowerBound, index=True)
+        idxUpperBound = constant(upperBound, index=True)
+        idxStep = constant(step, index=True)
         super().__init__(
             lower_bound=idxLowerBound, upper_bound=idxUpperBound, step=idxStep
         )
@@ -101,7 +78,7 @@ class Call(CallOp):
         attrInputs = []
         for i in inputs:
             if isinstance(i, int):
-                attrInputs.append(integerConstant(i))
+                attrInputs.append(constant(i))
             else:
                 attrInputs.append(i)
         if isinstance(calleeOrResults, FuncOp):
@@ -123,9 +100,9 @@ class Load(memref.LoadOp):
         valueIndices = []
         if isinstance(indices, list):
             for i in indices:
-                valueIndices.append(indexConstant(i))
+                valueIndices.append(constant(i, index=True))
         else:
-            valueIndices.append(indexConstant(indices))
+            valueIndices.append(constant(indices, index=True))
         super().__init__(memref=mem, indices=valueIndices)
 
 
@@ -134,15 +111,15 @@ class Store(memref.StoreOp):
 
     def __init__(self, val, mem, indices):
         if isinstance(val, int):
-            intVal = integerConstant(val)
+            intVal = constant(val)
         else:
             intVal = val
         valueIndices = []
         if isinstance(indices, list):
             for i in indices:
-                valueIndices.append(indexConstant(i))
+                valueIndices.append(constant(i, index=True))
         else:
-            valueIndices.append(indexConstant(indices))
+            valueIndices.append(constant(indices, index=True))
         super().__init__(value=intVal, memref=mem, indices=valueIndices)
 
 
