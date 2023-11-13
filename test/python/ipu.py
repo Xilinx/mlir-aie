@@ -14,6 +14,8 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.passmanager import PassManager
 
+range_ = for_
+
 
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
@@ -91,11 +93,9 @@ def my_vector_scalar():
         @core(T, "scale.o")
         def coreBody():
             # Effective while(1)
-            @forLoop(lowerBound=0, upperBound=0xFFFFFFFF, step=1)
-            def loopReps():
+            for _ in range_(0xFFFFFFFF):
                 # Number of sub-vector "tile" iterations
-                @forLoop(lowerBound=0, upperBound=N_div_n, step=1)
-                def loopTile():
+                for _ in range_(N_div_n):
                     elemOut = Acquire(
                         ObjectFifoPort.Produce, "out", 1, memRef_ty
                     ).acquiredElem()
@@ -105,6 +105,8 @@ def my_vector_scalar():
                     Call(scale_int32, [elemIn, elemOut])
                     Release(ObjectFifoPort.Consume, "in", 1)
                     Release(ObjectFifoPort.Produce, "out", 1)
+                    yield_([])
+                yield_([])
 
         memRef_mem_ty = MemRefType.get((N,), int32_ty)
 
@@ -255,10 +257,8 @@ def my_matmul():
 
         @core(T, "mm.o")
         def coreBody():
-            @forLoop(lowerBound=0, upperBound=0xFFFFFFFF, step=1)
-            def loopReps():
-                @forLoop(lowerBound=0, upperBound=tiles, step=1)
-                def loopTile():
+            for _ in range_(0xFFFFFFFF):
+                for _ in range_(tiles):
                     elemOut = Acquire(
                         ObjectFifoPort.Produce, "outC", 1, memRef_C_ty
                     ).acquiredElem()
@@ -267,8 +267,7 @@ def my_matmul():
                     else:
                         Call(zero_scalar, [elemOut])
 
-                    @forLoop(lowerBound=0, upperBound=K_div_k, step=1)
-                    def loopK():
+                    for _ in range_(K_div_k):
                         elemInA = Acquire(
                             ObjectFifoPort.Consume, "inA", 1, memRef_A_ty
                         ).acquiredElem()
@@ -281,8 +280,11 @@ def my_matmul():
                             Call(matmul_scalar, [elemInA, elemInB, elemOut])
                         Release(ObjectFifoPort.Consume, "inA", 1)
                         Release(ObjectFifoPort.Consume, "inB", 1)
+                        yield_([])
 
                     Release(ObjectFifoPort.Produce, "outC", 1)
+                    yield_([])
+                yield_([])
 
         int32_ty = IntegerType.get_signless(32)
         memRef_Ain_ty = MemRefType.get((A_sz_in_i32s,), int32_ty)
@@ -560,8 +562,7 @@ def edge_detect():
 
         @core(T2, "rgba2gray.cc.o")
         def coreBody():
-            @forLoop(lowerBound=0, upperBound=36, step=1)
-            def loopBody():
+            for _ in range_(36):
                 elemIn = Acquire(
                     ObjectFifoPort.Consume, "inOF_L2L1", 1, memRef_256_ty
                 ).acquiredElem()
@@ -573,6 +574,7 @@ def edge_detect():
 
                 Release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
                 Release(ObjectFifoPort.Produce, "OF_2to3", 1)
+                yield_([])
 
         @core(T3, "filter2d.cc.o")
         def coreBody():
@@ -611,8 +613,7 @@ def edge_detect():
             Release(ObjectFifoPort.Produce, "OF_3to4", 1)
 
             # Steady State : Middle
-            @forLoop(lowerBound=1, upperBound=35, step=1)
-            def loopBody():
+            for _ in range_(1, 35):
                 elemsIn = Acquire(
                     ObjectFifoPort.Consume, "OF_2to3", 3, memRef_64_ty
                 ).acquiredElem()
@@ -632,6 +633,7 @@ def edge_detect():
                 )
                 Release(ObjectFifoPort.Consume, "OF_2to3", 1)
                 Release(ObjectFifoPort.Produce, "OF_3to4", 1)
+                yield_([])
 
             # Postamble : Bottom Border
             elemsInPost = Acquire(
@@ -660,8 +662,7 @@ def edge_detect():
             vMax = constant(255, int16_ty)
             vTyp = constant(0, int8_ty)
 
-            @forLoop(lowerBound=0, upperBound=36, step=1)
-            def loopBody():
+            for _ in range_(36):
                 elemIn = Acquire(
                     ObjectFifoPort.Consume, "OF_3to4", 1, memRef_64_ty
                 ).acquiredElem()
@@ -676,11 +677,11 @@ def edge_detect():
 
                 Release(ObjectFifoPort.Consume, "OF_3to4", 1)
                 Release(ObjectFifoPort.Produce, "OF_4to5", 1)
+                yield_([])
 
         @core(T5, "combined_gray2rgba_addWeighted.a")
         def coreBody():
-            @forLoop(lowerBound=0, upperBound=36, step=1)
-            def loopBody():
+            for _ in range_(36):
                 elemIn = Acquire(
                     ObjectFifoPort.Consume, "OF_4to5", 1, memRef_64_ty
                 ).acquiredElem()
@@ -723,6 +724,7 @@ def edge_detect():
                 Release(ObjectFifoPort.Consume, "OF_5to5", 1)
                 Release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
                 Release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
+                yield_([])
 
         memRef_mem_ty = MemRefType.get((2304,), int32_ty)
 

@@ -1,22 +1,24 @@
-from typing import Union, Optional
+from typing import Union, Optional, Sequence
 
 import numpy as np
 
-from .dialects import arith as arith_dialect
-from .dialects import complex as complex_dialect
+from .dialects import arith
+from .dialects import complex
+from .dialects import scf
 from .dialects.linalg.opdsl.lang.emitter import (
     _is_floating_point_type,
     _is_complex_type,
 )
 from .ir import (
     DenseElementsAttr,
+    FloatAttr,
     IndexType,
     InsertionPoint,
+    IntegerAttr,
     Location,
     RankedTensorType,
     Type,
     Value,
-    FloatAttr,
 )
 from .types import infer_mlir_type, mlir_type_to_np_dtype
 
@@ -52,7 +54,7 @@ def constant(
 
     if _is_complex_type(type):
         value = complex(value)
-        return complex_dialect.ConstantOp(
+        return complex.ConstantOp(
             type,
             list(
                 map(
@@ -81,4 +83,4 @@ def constant(
             type=type,
         )
 
-    return arith_dialect.ConstantOp(type, value, loc=loc, ip=ip)
+    return arith.ConstantOp(type, value, loc=loc, ip=ip)

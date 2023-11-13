@@ -35,18 +35,6 @@ class AddI(arith.AddIOp):
         super().__init__(lhs=lhs, rhs=rhs)
 
 
-class For(ForOp):
-    """Specialize ForOp class constructor to take python integers"""
-
-    def __init__(self, lowerBound, upperBound, step):
-        idxLowerBound = constant(lowerBound, index=True)
-        idxUpperBound = constant(upperBound, index=True)
-        idxStep = constant(step, index=True)
-        super().__init__(
-            lower_bound=idxLowerBound, upper_bound=idxUpperBound, step=idxStep
-        )
-
-
 # Wrapper for func FuncOp with "private" visibility.
 class privateFunc(FuncOp):
     """Specialize FuncOp class constructor to take python integers"""
@@ -396,4 +384,3 @@ class PacketFlow(PacketFlowOp):
 #### Global Wrappers ####
 core = region_op(Core, terminator=lambda *args: EndOp())
 device = region_op(Device)
-forLoop = region_op(For, terminator=YieldOp)

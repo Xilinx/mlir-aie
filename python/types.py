@@ -27,11 +27,8 @@ from .ir import (
     StridedLayoutAttr,
 )
 
-try:
-    from ..dialects import transform
-    from ..dialects import pdl
-except ImportError:
-    warnings.warn("no transform dialect registered; transform extensions won't work")
+from .dialects import transform
+from .dialects import pdl
 
 _index = lambda: IndexType.get()
 _bool = lambda: IntegerType.get_signless(1)
