@@ -65,14 +65,15 @@ def constructAndPrintInModule(f):
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
+
 @constructAndPrintInModule
 def my_vector_scalar():
-    N = 4095
-    n = 1023
+    N = 4096
+    n = 1024
     N_div_n = N // n
     N_in_bytes = N * 3
 
-    buffer_depth = 1
+    buffer_depth = 2
 
     @device(AIEDevice.ipu)
     def deviceBody():
@@ -170,6 +171,7 @@ def my_vector_scalar():
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
+
 @constructAndPrintInModule
 def my_matmul():
     M = 128
@@ -481,6 +483,7 @@ def my_matmul():
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
+
 @constructAndPrintInModule
 def edge_detect():
     @device(AIEDevice.ipu)
