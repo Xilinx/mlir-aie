@@ -409,10 +409,8 @@ struct AIEObjectFifoStatefulTransformPass
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
-        BufferOp buff = builder.create<BufferOp>(builder.getUnknownLoc(),
-                                                 elemType, creation_tile);
-        buff.getOperation()->setAttr(
-            mlir::SymbolTable::getSymbolAttrName(),
+        BufferOp buff = builder.create<BufferOp>(
+            builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)));
         buffers.push_back(buff);
