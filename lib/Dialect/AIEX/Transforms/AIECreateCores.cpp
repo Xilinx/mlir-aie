@@ -123,10 +123,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
           assert(t && "Unsupported type!");
           coreBufTypes.push_back({t, i});
-          BufferOp buf =
-              builder.create<BufferOp>(builder.getUnknownLoc(), t, tile);
-          //          buf.setAttr("sym_name",
-          //          builder.getStringAttr("test_name"));
+          BufferOp buf = builder.create<BufferOp>(builder.getUnknownLoc(), t,
+                                                  tile, nullptr);
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }
@@ -157,8 +155,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           Block *currentBlock;
 
           if (!cores[tileOp]) {
-            core = builder.create<CoreOp>(builder.getUnknownLoc(),
-                                          builder.getIndexType(), tile);
+            core = builder.create<CoreOp>(builder.getUnknownLoc(), tile);
             Region &r = core.getBody();
             currentBlock = builder.createBlock(&r);
             builder.setInsertionPointToStart(currentBlock);

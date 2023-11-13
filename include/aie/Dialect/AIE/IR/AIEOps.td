@@ -304,7 +304,8 @@ def AIE_CoreOp: AIE_Op<"core", [
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
-    DefaultValuedAttr<AIEI32Attr, "0x400">:$stackSize
+    DefaultValuedAttr<AIEI32Attr, "0x400">:$stackSize,
+    OptionalAttr<StrAttr>:$link_with
   );
   let summary = "Declare a core module";
   let description = [{
@@ -1159,7 +1160,12 @@ def AIE_BufferOp: AIE_Op<"buffer", [
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
   }];
-  let arguments = (ins Index:$tile);
+
+  let arguments = (
+    ins Index:$tile,
+    OptionalAttr<StrAttr>:$sym_name
+  );
+
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ `(` $tile `)` attr-dict `:` type($buffer) }];
   let hasVerifier = 1;
@@ -1212,6 +1218,8 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", []>, Results<(outs AnyMemRef
     ```
     This operation represents an external buffer.
   }];
+
+  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];

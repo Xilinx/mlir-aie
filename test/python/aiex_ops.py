@@ -9,6 +9,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects import arith
 
+
 def constructAndPrintInModule(f):
     with Context() as ctx, Location.unknown():
         aie.dialects.aiex.register_dialect(ctx)
