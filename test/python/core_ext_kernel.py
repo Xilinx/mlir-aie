@@ -11,21 +11,21 @@ from aie.dialects.aie import *
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
 # CHECK:      func.func private @test_func(memref<8x8xi32>, i32) -> i32
-# CHECK:      %0 = AIE.tile(0, 2)
-# CHECK:      %1 = AIE.tile(1, 2)
-# CHECK:      %2 = AIE.tile(3, 3)
-# CHECK:      AIE.objectFifo @of0(%0, {%1}, 2 : i32) : !AIE.objectFifo<memref<256xi32>>
-# CHECK:      AIE.objectFifo @of1(%1, {%2}, 2 : i32) : !AIE.objectFifo<memref<8x8xi32>>
+# CHECK:      %tile_0_2 = AIE.tile(0, 2)
+# CHECK:      %tile_1_2 = AIE.tile(1, 2)
+# CHECK:      %tile_3_3 = AIE.tile(3, 3)
+# CHECK:      AIE.objectFifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !AIE.objectFifo<memref<256xi32>>
+# CHECK:      AIE.objectFifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) : !AIE.objectFifo<memref<8x8xi32>>
 # CHECK:      AIE.objectFifo.link [@of0] -> [@of1]()
-# CHECK:      %3 = AIE.core(%2) {
+# CHECK:      %core_3_3 = AIE.core(%tile_3_3) {
 # CHECK:        %c0 = arith.constant 0 : index
 # CHECK:        %c10 = arith.constant 10 : index
 # CHECK:        %c1 = arith.constant 1 : index
 # CHECK:        scf.for %arg0 = %c0 to %c10 step %c1 {
-# CHECK:          %4 = AIE.objectFifo.acquire @of1(Consume, 1) : !AIE.objectFifoSubview<memref<8x8xi32>>
-# CHECK:          %5 = AIE.objectFifo.subview.access %4[0] : !AIE.objectFifoSubview<memref<8x8xi32>> -> memref<8x8xi32>
+# CHECK:          %0 = AIE.objectFifo.acquire @of1(Consume, 1) : !AIE.objectFifoSubview<memref<8x8xi32>>
+# CHECK:          %1 = AIE.objectFifo.subview.access %0[0] : !AIE.objectFifoSubview<memref<8x8xi32>> -> memref<8x8xi32>
 # CHECK:          %c4_i32 = arith.constant 4 : i32
-# CHECK:          %6 = func.call @test_func(%5, %c4_i32) : (memref<8x8xi32>, i32) -> i32
+# CHECK:          %2 = func.call @test_func(%1, %c4_i32) : (memref<8x8xi32>, i32) -> i32
 # CHECK:          AIE.objectFifo.release @of1(Consume, 1)
 # CHECK:        }
 # CHECK:        AIE.end

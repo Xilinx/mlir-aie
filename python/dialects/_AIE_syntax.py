@@ -26,6 +26,30 @@ def dim_tuple_array_array_attr_builder(tup_arrs: List[List[tuple]], context=None
     )
 
 
+@register_attribute_builder("AIEI1Attr")
+def _i1Attr(x, context):
+    return IntegerAttr.get(IntegerType.get_signless(1, context=context), x)
+
+
+@register_attribute_builder("AIEI8Attr")
+def _i8Attr(x, context):
+    return IntegerAttr.get(IntegerType.get_signless(8, context=context), x)
+
+
+@register_attribute_builder("AIEI16Attr")
+def _i16Attr(x, context):
+    return IntegerAttr.get(IntegerType.get_signless(16, context=context), x)
+
+
+@register_attribute_builder("AIEI32Attr")
+def _i32Attr(x, context):
+    return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
+
+
+@register_attribute_builder("AIEI64Attr")
+def _i64Attr(x, context):
+    return IntegerAttr.get(IntegerType.get_signless(64, context=context), x)
+
 #### AIE Wrappers ####
 
 
