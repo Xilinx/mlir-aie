@@ -43,7 +43,8 @@ jobs:
 
     container:
       image:  amd/acdcbuild:1.1
-
+      volumes: 
+        - ${{github.workspace}}/llvm-central-repo:/workspace/llvm-central-repo
     steps:
       
       - name: Display environment variables
@@ -110,13 +111,6 @@ jobs:
       - name: Configure ccache environment
         run :  echo "/usr/lib/ccache:/usr/local/opt/ccache/libexec" >> $GITHUB_PATH  
         
-      - name: Install Dependencies
-        run: |
-          apt-get update
-          apt-get install -y git nodejs pip ninja-build clang lld zstd
-          pip install cmake numpy psutil pybind11 rich
-        
-
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
@@ -127,7 +121,7 @@ jobs:
 
       - name: Get LLVM
         id: clone-llvm
-        run: utils/clone-llvm.sh
+        run: ${{github.workspace}}/utils/clone-llvm.sh --llvm-worktree /workspace/llvm-central-repo
 
       - name: Get LLVM commit hash
         id: get-llvm-commit-hash
