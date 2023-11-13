@@ -3,7 +3,11 @@ from typing import List
 from ._AIE_ops_gen import *
 from ._AIE_enum_gen import *
 from ._AIE_util import *
-from .._mlir_libs._aieMlir import register_dialect, ObjectFifoType, ObjectFifoSubviewType
+from .._mlir_libs._aieMlir import (
+    register_dialect,
+    ObjectFifoType,
+    ObjectFifoSubviewType,
+)
 
 
 def dim_tuple_attr_builder(wrap, stepsize):
@@ -50,6 +54,7 @@ def _i32Attr(x, context):
 def _i64Attr(x, context):
     return IntegerAttr.get(IntegerType.get_signless(64, context=context), x)
 
+
 #### AIE Wrappers ####
 
 
@@ -69,6 +74,7 @@ Device = DeviceOp
 # Create an aie tile on specified (col, row).
 class Tile(TileOp):
     """Specialize TileOp class constructor to take python integers"""
+
     def __init__(self, col, row):
         idx_ty = IndexType.get()
         super().__init__(result=idx_ty, col=col, row=row)
@@ -77,11 +83,12 @@ class Tile(TileOp):
 # Create an aie core on specified aie tile.
 class Core(CoreOp):
     """Specialize CoreOp class constructor to take python integers"""
+
     def __init__(self, tile, link_with=None):
         idx_ty = IndexType.get()
-        if (link_with != None):
+        if link_with != None:
             super().__init__(result=idx_ty, tile=tile, link_with=link_with)
-        else :    
+        else:
             super().__init__(result=idx_ty, tile=tile)
 
 
@@ -89,6 +96,7 @@ class Core(CoreOp):
 # size examples: [256], [256, 256], [256, 256,]
 class Buffer(BufferOp):
     """Specialize BufferOp class constructor to take python integers"""
+
     def __init__(self, tile, size, datatype, name=None):
         memRef_ty = MemRefType.get(size, datatype)
         if name is None:
@@ -101,6 +109,7 @@ class Buffer(BufferOp):
 # size examples: [256], [256, 256], [256, 256,]
 class ExternalBuffer(ExternalBufferOp):
     """Specialize ExternalBufferOp class constructor to take python integers"""
+
     def __init__(self, size, datatype, name=None):
         memRef_ty = MemRefType.get(size, datatype)
         if name is None:
@@ -112,8 +121,17 @@ class ExternalBuffer(ExternalBufferOp):
 # depth examples: 2, [2,2,7]
 class OrderedObjectBuffer(ObjectFifoCreateOp):
     """Specialize ObjectFifoCreateOp class constructor to take python integers"""
-    def __init__(self, name, tile0, tile1, depth, datatype, dimensionsToStream=None,
-                 dimensionsFromStreamPerConsumer=None):
+
+    def __init__(
+        self,
+        name,
+        tile0,
+        tile1,
+        depth,
+        datatype,
+        dimensionsToStream=None,
+        dimensionsFromStreamPerConsumer=None,
+    ):
         if dimensionsFromStreamPerConsumer is None:
             dimensionsFromStreamPerConsumer = []
         if dimensionsToStream is None:
@@ -128,19 +146,20 @@ class OrderedObjectBuffer(ObjectFifoCreateOp):
             int_depth = ArrayAttr.get(int_depths)
         of_Ty = ObjectFifoType.get(datatype)
         super().__init__(
-            sym_name=name, 
-            producerTile=tile0, 
+            sym_name=name,
+            producerTile=tile0,
             consumerTiles=tile1,
-            elemNumber=int_depth, 
-            elem_type=TypeAttr.get(of_Ty), 
-            dimensionsToStream=dimensionsToStream, 
-            dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer
+            elemNumber=int_depth,
+            elem_type=TypeAttr.get(of_Ty),
+            dimensionsToStream=dimensionsToStream,
+            dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
         )
 
 
 # Create an aie objectFifo link op between specified input and output arrays of objFifos.
 class Link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python integers"""
+
     def __init__(self, ofIns, ofOuts):
         ofIns_sym = []
         ofOuts_sym = []
@@ -155,10 +174,13 @@ class Link(ObjectFifoLinkOp):
 # from objFifo with given name.
 class Acquire(ObjectFifoAcquireOp):
     """Specialize ObjectFifoAcquireOp class constructor to take python integers"""
+
     def __init__(self, of_name, port, num_elem, datatype):
         subview_Ty = ObjectFifoSubviewType.get(datatype)
         self.datatype = datatype
-        super().__init__(subview=subview_Ty, port=port, objFifo_name=of_name, size=num_elem)
+        super().__init__(
+            subview=subview_Ty, port=port, objFifo_name=of_name, size=num_elem
+        )
 
     def acquiredElem(self):
         objects = []
@@ -177,21 +199,27 @@ Release = ObjectFifoReleaseOp
 # Create a flow between source and destination tile ports.
 class Flow(FlowOp):
     """Specialize FlowOp class constructor to take python integers"""
-    def __init__(self, source, source_port, source_channel, dest, dest_port, dest_channel):
+
+    def __init__(
+        self, source, source_port, source_channel, dest, dest_port, dest_channel
+    ):
         super().__init__(
-            source=source, 
+            source=source,
             sourceBundle=source_port,
-            sourceChannel=source_channel, 
-            dest=dest, 
+            sourceChannel=source_channel,
+            dest=dest,
             destBundle=dest_port,
-            destChannel=dest_channel
+            destChannel=dest_channel,
         )
 
 
 # Create a packet flow between source and destination tile ports.
 class PacketFlow(PacketFlowOp):
     """Specialize PacketFlowOp class constructor to take python integers"""
-    def __init__(self, pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel):
+
+    def __init__(
+        self, pkt_id, source, source_port, source_channel, dest, dest_port, dest_channel
+    ):
         super().__init__(ID=pkt_id)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):

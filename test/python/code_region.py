@@ -35,9 +35,15 @@ def codeRegion():
     def deviceBody():
         int_ty = IntegerType.get_signless(32)
         memRef_256_ty = MemRefType.get((256,), int_ty)
-        memRef_64_ty = MemRefType.get((8,8,), int_ty)
+        memRef_64_ty = MemRefType.get(
+            (
+                8,
+                8,
+            ),
+            int_ty,
+        )
 
-        privateFunc("test_func", inputs = [memRef_64_ty], outputs = [int_ty])
+        privateFunc("test_func", inputs=[memRef_64_ty], outputs=[int_ty])
 
         S = Tile(0, 2)
         M = Tile(1, 2)
@@ -49,8 +55,10 @@ def codeRegion():
 
         @core(T, "test.o")
         def coreBody():
-            @forLoop(lowerBound = 0, upperBound = 10, step = 1)
+            @forLoop(lowerBound=0, upperBound=10, step=1)
             def loopBody():
-                elem0 = Acquire("of1", ObjectFifoPort.Consume, 1, memRef_64_ty).acquiredElem()
+                elem0 = Acquire(
+                    "of1", ObjectFifoPort.Consume, 1, memRef_64_ty
+                ).acquiredElem()
                 res = Call("test_func", [elem0], [int_ty])
                 Release(ObjectFifoPort.Consume, "of1", 1)

@@ -94,11 +94,9 @@ def objFifo():
         tile1 = Tile(col=2, row=2)
         dtype = F16Type.get()
         memTy = MemRefType.get((12,), dtype)
-        OrderedObjectBuffer(
-            "of0", tile0, tile1, 2, memTy, [(1, 2)], [[(1, 2)]]
-        )
+        OrderedObjectBuffer("of0", tile0, tile1, 2, memTy, [(1, 2)], [[(1, 2)]])
         EndOp()
-    
+
 
 # CHECK-LABEL: objFifoLink
 # CHECK: %[[VAL_0:.*]] = AIE.tile(6, 6)
@@ -140,8 +138,10 @@ def objFifoAcquire():
         OrderedObjectBuffer("of0", tile0, tile1, 2, memTy)
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
-        with InsertionPoint(bb):    
-            acq = Acquire(of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy)
+        with InsertionPoint(bb):
+            acq = Acquire(
+                of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy
+            )
             EndOp()
 
 
@@ -164,7 +164,9 @@ def objFifoSubviewAccess():
         C = Core(tile1)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            acq = Acquire(of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy)
+            acq = Acquire(
+                of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy
+            )
             subview = SubviewAccess(memTy, subview=acq, index=0)
             EndOp()
 

@@ -11,7 +11,8 @@ from ..dialects.scf import *
 # Create a signless arith constant of given width (default is i32).
 class integerConstant(arith.ConstantOp):
     """Specialize ConstantOp class constructor to take python integers"""
-    def __init__(self, val, width = 32):
+
+    def __init__(self, val, width=32):
         if isinstance(width, int):
             int_ty = IntegerType.get_signless(width)
         else:
@@ -23,6 +24,7 @@ class integerConstant(arith.ConstantOp):
 # Create an index arith constant.
 class indexConstant(arith.ConstantOp):
     """Specialize ConstantOp class constructor to take python integers"""
+
     def __init__(self, val):
         idx_ty = IndexType.get()
         idxAttr = IntegerAttr.get(idx_ty, val)
@@ -31,6 +33,7 @@ class indexConstant(arith.ConstantOp):
 
 class AddI(arith.AddIOp):
     """Specialize AddIOp class constructor to take python integers"""
+
     def __init__(self, lhs, rhs):
         if isinstance(lhs, int):
             intLhs = integerConstant(lhs)
@@ -42,40 +45,44 @@ class AddI(arith.AddIOp):
 
 class For(ForOp):
     """Specialize ForOp class constructor to take python integers"""
+
     def __init__(self, lowerBound, upperBound, step):
-        idxLowerBound = indexConstant(lowerBound) 
+        idxLowerBound = indexConstant(lowerBound)
         idxUpperBound = indexConstant(upperBound)
         idxStep = indexConstant(step)
-        super().__init__(lower_bound=idxLowerBound, upper_bound=idxUpperBound, step=idxStep)
+        super().__init__(
+            lower_bound=idxLowerBound, upper_bound=idxUpperBound, step=idxStep
+        )
 
 
 # Wrapper for func FuncOp with "private" visibility.
 class privateFunc(FuncOp):
     """Specialize FuncOp class constructor to take python integers"""
-    def __init__(self, name, inputs, outputs = [], visibility = "private"):
+
+    def __init__(self, name, inputs, outputs=[], visibility="private"):
         super().__init__(
-            name=name, 
-            type=FunctionType.get(inputs, outputs), 
-            visibility=visibility
+            name=name, type=FunctionType.get(inputs, outputs), visibility=visibility
         )
 
 
 # Wrapper for func FuncOp with "private" visibility.
 class publicFunc(FuncOp):
     """Specialize FuncOp class constructor to take python integers"""
-    def __init__(self, name, callbackFunc, inputs, outputs = [], visibility = "public"):
+
+    def __init__(self, name, callbackFunc, inputs, outputs=[], visibility="public"):
         super().__init__(
-            name=name, 
-            type=FunctionType.get(inputs, outputs), 
-            visibility=visibility, 
-            body_builder=callbackFunc
+            name=name,
+            type=FunctionType.get(inputs, outputs),
+            visibility=visibility,
+            body_builder=callbackFunc,
         )
 
 
 # Wrapper for func CallOp.
 class Call(CallOp):
     """Specialize CallOp class constructor to take python integers"""
-    def __init__(self, calleeOrResults, inputs = [], input_types = []):
+
+    def __init__(self, calleeOrResults, inputs=[], input_types=[]):
         attrInputs = []
         for i in inputs:
             if isinstance(i, int):
@@ -83,17 +90,20 @@ class Call(CallOp):
             else:
                 attrInputs.append(i)
         if isinstance(calleeOrResults, FuncOp):
-            super().__init__(calleeOrResults=calleeOrResults, argumentsOrCallee=attrInputs)
+            super().__init__(
+                calleeOrResults=calleeOrResults, argumentsOrCallee=attrInputs
+            )
         else:
             super().__init__(
-                calleeOrResults=input_types, 
-                argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults), 
-                arguments=attrInputs
+                calleeOrResults=input_types,
+                argumentsOrCallee=FlatSymbolRefAttr.get(calleeOrResults),
+                arguments=attrInputs,
             )
 
 
 class Load(memref.LoadOp):
     """Specialize LoadOp class constructor to take python integers"""
+
     def __init__(self, mem, indices):
         valueIndices = []
         if isinstance(indices, list):
@@ -106,6 +116,7 @@ class Load(memref.LoadOp):
 
 class Store(memref.StoreOp):
     """Specialize StoreOp class constructor to take python integers"""
+
     def __init__(self, val, mem, indices):
         if isinstance(val, int):
             intVal = integerConstant(val)

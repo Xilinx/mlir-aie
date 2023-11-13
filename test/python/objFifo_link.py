@@ -37,4 +37,12 @@ def link_example():
         OrderedObjectBuffer("of1", M, [T0, T1], 2, memRef_64_ty)
         Link(["of0"], ["of1"])
 
-        OrderedObjectBuffer("of2", M, [T0, T1], [2,2,7], MemRefType.get((256,), int_8_ty), [(1, 2)], [[(1, 2)], [(1, 2)]])
+        OrderedObjectBuffer(
+            "of2",
+            M,
+            [T0, T1],
+            [2, 2, 7],
+            MemRefType.get((256,), int_8_ty),
+            [(1, 2)],
+            [[(1, 2)], [(1, 2)]],
+        )
