@@ -1,0 +1,175 @@
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2021 Xilinx Inc.
+
+import aie
+from aie.mlir.ir import *
+from aie.dialects import aie as aiedialect
+from aie.mlir.dialects.func import *
+from aie.mlir.dialects.scf import *
+from aie.dialects.aie import *
+from aie.dialects.aiex import *
+
+width = 1920 #64 // 8
+height = 1080 #36 // 8
+heightMinus1 = 1079
+
+lineWidth         = width
+lineWidthInBytes  = width*4
+lineWidthInInt32s = lineWidthInBytes // 4
+
+enableTrace = False
+traceSizeInBytes = 8192
+traceSizeInInt32s = traceSizeInBytes // 4
+
+@constructAndPrintInModule
+def edge_detect():
+    @device("ipu")
+    def deviceBody():
+        uint8_ty = IntegerType.get_unsigned(8)
+        int8_ty = IntegerType.get_signless(8)
+        int16_ty = IntegerType.get_signless(16)
+        int32_ty = IntegerType.get_signless(32)
+
+        line_bytes_ty = MemRefType.get((lineWidthInBytes,), uint8_ty)
+        line_ty = MemRefType.get((lineWidth,), uint8_ty)
+        memRef_3x3_ty = MemRefType.get((3,3,), int16_ty)
+
+        rgba2grayLine   = privateFunc("rgba2grayLine", inputs = [line_bytes_ty, line_ty, int32_ty])
+        filter2dLine    = privateFunc("filter2dLine", inputs = [line_ty, line_ty, line_ty, line_ty, int32_ty, memRef_3x3_ty])
+        thresholdLine   = privateFunc("thresholdLine", inputs = [line_ty, line_ty, int32_ty, int16_ty, int16_ty, int8_ty])
+        gray2rgbaLine   = privateFunc("gray2rgbaLine", inputs = [line_ty, line_bytes_ty, int32_ty])
+        addWeightedLine = privateFunc("addWeightedLine", inputs = [line_bytes_ty, line_bytes_ty, line_bytes_ty, int32_ty, int16_ty, int16_ty, int8_ty])
+    
+        ShimTile = Tile(0, 0)
+        MemTile = Tile(0, 1)
+        ComputeTile2 = Tile(0, 2)
+        ComputeTile3 = Tile(0, 3)
+        ComputeTile4 = Tile(0, 4)
+        ComputeTile5 = Tile(0, 5)
+
+        # OrderedObjectBuffer("inOF_L3L2", ShimTile, MemTile, 2, line_bytes_ty)
+        # OrderedObjectBuffer("inOF_L2L1", MemTile, [ComputeTile2, ComputeTile5], [2, 2, 7], line_bytes_ty)
+        OrderedObjectBuffer("inOF_L3L2", ShimTile, [ComputeTile2, MemTile], [2, 2, 7], line_bytes_ty)
+        OrderedObjectBuffer("inOF_L2L1", MemTile, [ComputeTile5], 7, line_bytes_ty)
+        Link(["inOF_L3L2"], ["inOF_L2L1"])
+
+        OrderedObjectBuffer("outOF_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
+        OrderedObjectBuffer("outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty)
+        Link(["outOF_L1L2"], ["outOF_L2L3"])
+
+        OrderedObjectBuffer("OF_2to3", ComputeTile2, ComputeTile3, 4, line_ty)
+        OrderedObjectBuffer("OF_3to4", ComputeTile3, ComputeTile4, 2, line_ty)
+        OrderedObjectBuffer("OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty)
+        OrderedObjectBuffer("OF_5to5", ComputeTile5, ComputeTile5, 1, line_bytes_ty)
+
+        @core(ComputeTile2, "rgba2gray.cc.o")
+        def coreBody():
+            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            def loopBody():
+                elemIn = Acquire("inOF_L3L2", "Consume", 1, line_bytes_ty).acquiredElem()
+                elemOut = Acquire("OF_2to3", "Produce", 1, line_ty).acquiredElem()
+
+                call(rgba2grayLine, [elemIn, elemOut, lineWidth])
+
+                Release("inOF_L3L2", "Consume", 1)
+                Release("OF_2to3", "Produce", 1)
+
+        @core(ComputeTile3, "filter2d.cc.o")
+        def coreBody():  
+            kernel = memref.AllocOp(memRef_3x3_ty, [], [])
+            v0 = integerConstant(0, int16_ty)
+            v1 = integerConstant(4096, int16_ty)
+            vMinus4 = integerConstant(-16384, int16_ty)
+            c0 = indexConstant(0)     
+            c1 = indexConstant(1)   
+            c2 = indexConstant(2)
+            store(v0, kernel, [c0, c0])
+            store(v1, kernel, [c0, c1])
+            store(v0, kernel, [c0, c2])
+            store(v1, kernel, [c1, c0])
+            store(vMinus4, kernel, [c1, c1])
+            store(v1, kernel, [c1, c2])
+            store(v0, kernel, [c2, c0])
+            store(v1, kernel, [c2, c1])
+            store(v0, kernel, [c2, c2])
+            
+            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            def loopBody():
+
+                # Preamble : Top Border
+                elemsInPre = Acquire("OF_2to3", "Consume", 2, line_ty).acquiredElem()
+                elemPreOut = Acquire("OF_3to4", "Produce", 1, line_ty).acquiredElem()
+                call(filter2dLine, [elemsInPre[0], elemsInPre[0], elemsInPre[1], elemPreOut, lineWidth, kernel])
+                Release("OF_3to4", "Produce", 1) 
+
+                # Steady State : Middle
+                @forLoop(lowerBound = 1, upperBound = heightMinus1, step = 1)
+                def loopBody():
+                    elemsIn = Acquire("OF_2to3", "Consume", 3, line_ty).acquiredElem()
+                    elemOut = Acquire("OF_3to4", "Produce", 1, line_ty).acquiredElem()
+                    call(filter2dLine, [elemsIn[0], elemsIn[1], elemsIn[2], elemOut, lineWidth, kernel])
+                    Release("OF_2to3", "Consume", 1)
+                    Release("OF_3to4", "Produce", 1)
+
+                # Postamble : Bottom Border
+                elemsInPost = Acquire("OF_2to3", "Consume", 2, line_ty).acquiredElem()
+                elemPostOut = Acquire("OF_3to4", "Produce", 1, line_ty).acquiredElem()
+                call(filter2dLine, [elemsInPost[0], elemsInPost[1], elemsInPost[1], elemPostOut, lineWidth, kernel])
+                Release("OF_2to3", "Consume", 2)
+                Release("OF_3to4", "Produce", 1) 
+
+        @core(ComputeTile4, "threshold.cc.o")
+        def coreBody():  
+            vThr = integerConstant(10, int16_ty)
+            vMax = integerConstant(255, int16_ty)
+            vTyp = integerConstant(0, int8_ty)
+            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            def loopBody():
+                elemIn = Acquire("OF_3to4", "Consume", 1, line_ty).acquiredElem()
+                elemOut = Acquire("OF_4to5", "Produce", 1, line_ty).acquiredElem()
+
+                call(thresholdLine, [elemIn, elemOut, lineWidth, vThr, vMax, vTyp])
+
+                Release("OF_3to4", "Consume", 1)
+                Release("OF_4to5", "Produce", 1)
+
+        @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
+        def coreBody():
+            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            def loopBody():
+                elemIn = Acquire("OF_4to5", "Consume", 1, line_ty).acquiredElem()
+                elemOut = Acquire("OF_5to5", "Produce", 1, line_bytes_ty).acquiredElem()
+
+                call(gray2rgbaLine, [elemIn, elemOut, lineWidth])
+
+                Release("OF_4to5", "Consume", 1)
+                Release("OF_5to5", "Produce", 1)
+
+                elemIn1 = Acquire("OF_5to5", "Consume", 1, line_bytes_ty).acquiredElem()
+                elemIn2 = Acquire("inOF_L2L1", "Consume", 1, line_bytes_ty).acquiredElem()
+                elemOut2 = Acquire("outOF_L1L2", "Produce", 1, line_bytes_ty).acquiredElem()
+
+                alpha = integerConstant(16384, int16_ty)
+                beta = integerConstant(16384, int16_ty)
+                gamma = integerConstant(0, int8_ty)
+
+                call(addWeightedLine, [elemIn1, elemIn2, elemOut2, lineWidthInBytes, alpha, beta, gamma])
+
+                Release("OF_5to5", "Consume", 1)
+                Release("inOF_L2L1", "Consume", 1)
+                Release("outOF_L1L2", "Produce", 1)
+
+        tensorSize = width*height
+        tensorSizeInInt32s = tensorSize // 4
+        # memRef_mem_ty =  MemRefType.get((2304,), int32_ty)
+        tensor_ty =  MemRefType.get((tensorSize,), int32_ty)
+        memRef_16x16_ty = MemRefType.get((16,16,), int32_ty)
+        @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
+        def sequence(inTensor, notUsed, outTensor):
+            IpuDmaMemcpyNd(metadata = "inOF_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, 1, tensorSize]) 
+            IpuDmaMemcpyNd(metadata = "outOF_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, 1, tensorSize]) 
+            IpuSync(column = 0, row = 0, direction = 0, channel = 0)
