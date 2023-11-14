@@ -66,6 +66,7 @@ def constructAndPrintInModule(f):
 # CHECK:   }
 # CHECK: }
 
+
 @constructAndPrintInModule
 def my_vector_scalar():
     N = 4096
@@ -171,6 +172,7 @@ def my_vector_scalar():
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
+
 
 @constructAndPrintInModule
 def my_matmul():
@@ -484,6 +486,7 @@ def my_matmul():
 # CHECK:   }
 # CHECK: }
 
+
 @constructAndPrintInModule
 def edge_detect():
     @device(AIEDevice.ipu)
@@ -740,4 +743,99 @@ def edge_detect():
                 lengths=[1, 1, 36, 64],
                 strides=[0, 0, 64],
             )
+            IpuSync(column=0, row=0, direction=0, channel=0)
+
+
+# CHECK-LABEL: my_add_one_objFifo
+# module {
+#   AIE.device(ipu) {
+#     %t00 = AIE.tile(0, 0)
+#     %t01 = AIE.tile(0, 1)
+#     %t02 = AIE.tile(0, 2)
+#
+#     AIE.objectFifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+#     AIE.objectFifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
+#     AIE.objectFifo.link [@objFifo_in0] -> [@objFifo_in1] ()
+#     AIE.objectFifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !AIE.objectFifo<memref<16xi32>>
+#     AIE.objectFifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !AIE.objectFifo<memref<8xi32>>
+#     AIE.objectFifo.link [@objFifo_out1] -> [@objFifo_out0] ()
+#
+#     AIE.core(%t02) {
+#       %c8 = arith.constant 8 : index
+#       %c0 = arith.constant 0 : index
+#       %c1 = arith.constant 1 : index
+#       %c1_32 = arith.constant 1 : i32
+#
+#       scf.for %steps = %c0 to %c8 step %c1 {
+#         %subview0 = AIE.objectFifo.acquire @objFifo_in1(Consume, 1) : !AIE.objectFifoSubview<memref<8xi32>>
+#         %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
+#         %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : !AIE.objectFifoSubview<memref<8xi32>>
+#         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
+#         // scf.for %arg3 = %c0 to %c8 step %c1 {
+#         //     %0 = memref.load %elem0[%arg3] : memref<8xi32>
+#         //     %1 = arith.addi %0, %c1_32 : i32
+#         //     memref.store %1, %elem1[%arg3] : memref<8xi32>
+#         // }
+#         AIE.objectFifo.release @objFifo_in1(Consume, 1)
+#         AIE.objectFifo.release @objFifo_out1(Produce, 1)
+#       }
+#       AIE.end
+#     }
+#     func.func @sequence(%in : memref<64xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
+#       %c0 = arith.constant 0 : i32
+#       %c1 = arith.constant 1 : i32
+#       %c64 = arith.constant 64 : i32
+#       AIEX.ipu.dma_memcpy_nd (%c0, %c0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0]) { metadata = @objFifo_out0, id = 1 : i32 } : (i32, i32, memref<64xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
+#       AIEX.ipu.dma_memcpy_nd (%c0, %c0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0]) { metadata = @objFifo_in0, id = 0 : i32 } : (i32, i32, memref<64xi32>, [i32,i32,i32,i32], [i32,i32,i32,i32], [i32,i32,i32])
+#       AIEX.ipu.sync { column = 0 : i32, row = 0 : i32, direction = 0 : i32, channel = 0 : i32, column_num = 1 : i32, row_num = 1 : i32 }
+#       return
+#     }
+#   }
+# }
+@constructAndPrintInModule
+def my_add_one_objFifo():
+    @device(AIEDevice.ipu)
+    def deviceBody():
+        int32_ty = IntegerType.get_signless(32)
+        memRef_16_ty = MemRefType.get((16,), int32_ty)
+        memRef_8_ty = MemRefType.get((8,), int32_ty)
+
+        ShimTile = Tile(0, 0)
+        MemTile = Tile(0, 1)
+        ComputeTile2 = Tile(0, 2)
+
+        OrderedObjectBuffer("in0", ShimTile, MemTile, 2, memRef_16_ty)
+        OrderedObjectBuffer("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
+        Link(["in0"], ["in1"])
+        OrderedObjectBuffer("out0", MemTile, ShimTile, 2, memRef_8_ty)
+        OrderedObjectBuffer("out1", ComputeTile2, MemTile, 2, memRef_16_ty)
+        Link(["out1"], ["out0"])
+
+        @core(ComputeTile2)
+        def coreBody():
+            # Effective while(1)
+            @forLoop(lowerBound=0, upperBound=8, step=1)
+            def loopTile():
+                elemIn = Acquire(
+                    "in1", ObjectFifoPort.Consume, 1, memRef_8_ty
+                ).acquiredElem()
+                elemOut = Acquire(
+                    "out1", ObjectFifoPort.Produce, 1, memRef_8_ty
+                ).acquiredElem()
+                # @forLoop(lowerBound=0, upperBound=8, step=1)
+                #   load elemIn[idx]
+                #   add 1
+                #   store elemOut[idx]
+                Release(ObjectFifoPort.Consume, "in1", 1)
+                Release(ObjectFifoPort.Produce, "out1", 1)
+
+        memRef_64_ty = MemRefType.get((64,), int32_ty)
+        memRef_32_ty = MemRefType.get((64,), int32_ty)
+
+        @FuncOp.from_py_func(memRef_64_ty, memRef_32_ty, memRef_64_ty)
+        def sequence(inTensor, notUsed, outTensor):
+            IpuDmaMemcpyNd(
+                metadata="out0", bd_id=0, mem=outTensor, lengths=[1, 1, 1, 64]
+            )
+            IpuDmaMemcpyNd(metadata="in0", bd_id=1, mem=inTensor, lengths=[1, 1, 1, 64])
             IpuSync(column=0, row=0, direction=0, channel=0)
