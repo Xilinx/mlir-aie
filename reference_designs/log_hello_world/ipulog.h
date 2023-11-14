@@ -14,9 +14,7 @@ class IPULogger{
             _dropped_msgs = 0;
         }
 
-	~IPULogger(){
-	    _write("~~~~~~~~~~~~~");
-	}
+	~IPULogger(){ }
 
         //----------------------------------
         // peel parameters of write
