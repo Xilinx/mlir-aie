@@ -44,7 +44,7 @@ module @passThroughLine_aie2 {
                 AIE.objectFifo.release @outOF(Produce, 1)
             }
             AIE.end
-        } { link_with="passThrough_aie2_8b.o" } // indicate kernel object name used by this core
+        } { link_with="passThrough.cc.o" } // indicate kernel object name used by this core
 
         func.func @sequence(%in : memref<518400xi32>, %arg1 : memref<1xi32>, %out : memref<518400xi32>) {
             %c0 = arith.constant 0 : i32
