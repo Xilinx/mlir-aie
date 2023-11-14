@@ -9,7 +9,9 @@
 import aie
 from aie.ir import *
 from aie.dialects.func import *
+from aie.dialects.arith import *
 from aie.dialects.scf import *
+from aie.dialects.memref import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.passmanager import PassManager
@@ -591,10 +593,10 @@ def edge_detect():
             # Steady State : Middle
             for _ in range_(1, 35):
                 elemsIn = Acquire(
-                    "OF_2to3", ObjectFifoPort.Consume, 3, T.memref(64, T.ui8)
+                    ObjectFifoPort.Consume, "OF_2to3", 3, T.memref(64, T.ui8)
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "OF_3to4", ObjectFifoPort.Produce, 1, T.memref(64, T.ui8)
+                    ObjectFifoPort.Produce, "OF_3to4", 1, T.memref(64, T.ui8)
                 ).acquiredElem()
                 Call(
                     filter2dLine,
@@ -748,11 +750,11 @@ def edge_detect():
 #         %elem0 = AIE.objectFifo.subview.access %subview0[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
 #         %subview1 = AIE.objectFifo.acquire @objFifo_out1(Produce, 1) : !AIE.objectFifoSubview<memref<8xi32>>
 #         %elem1 = AIE.objectFifo.subview.access %subview1[0] : !AIE.objectFifoSubview<memref<8xi32>> -> memref<8xi32>
-#         // scf.for %arg3 = %c0 to %c8 step %c1 {
-#         //     %0 = memref.load %elem0[%arg3] : memref<8xi32>
-#         //     %1 = arith.addi %0, %c1_32 : i32
-#         //     memref.store %1, %elem1[%arg3] : memref<8xi32>
-#         // }
+#         scf.for %arg3 = %c0 to %c8 step %c1 {
+#             %0 = memref.load %elem0[%arg3] : memref<8xi32>
+#             %1 = arith.addi %0, %c1_32 : i32
+#             memref.store %1, %elem1[%arg3] : memref<8xi32>
+#         }
 #         AIE.objectFifo.release @objFifo_in1(Consume, 1)
 #         AIE.objectFifo.release @objFifo_out1(Produce, 1)
 #       }
@@ -773,43 +775,39 @@ def edge_detect():
 def my_add_one_objFifo():
     @device(AIEDevice.ipu)
     def deviceBody():
-        int32_ty = IntegerType.get_signless(32)
-        memRef_16_ty = MemRefType.get((16,), int32_ty)
-        memRef_8_ty = MemRefType.get((8,), int32_ty)
-
         ShimTile = Tile(0, 0)
         MemTile = Tile(0, 1)
         ComputeTile2 = Tile(0, 2)
 
-        OrderedObjectBuffer("in0", ShimTile, MemTile, 2, memRef_16_ty)
-        OrderedObjectBuffer("in1", MemTile, ComputeTile2, 2, memRef_8_ty)
+        OrderedObjectBuffer("in0", ShimTile, MemTile, 2, T.memref(16, T.i32))
+        OrderedObjectBuffer("in1", MemTile, ComputeTile2, 2, T.memref(8, T.i32))
         Link(["in0"], ["in1"])
-        OrderedObjectBuffer("out0", MemTile, ShimTile, 2, memRef_8_ty)
-        OrderedObjectBuffer("out1", ComputeTile2, MemTile, 2, memRef_16_ty)
+        OrderedObjectBuffer("out0", MemTile, ShimTile, 2, T.memref(8, T.i32))
+        OrderedObjectBuffer("out1", ComputeTile2, MemTile, 2, T.memref(16, T.i32))
         Link(["out1"], ["out0"])
 
         @core(ComputeTile2)
         def coreBody():
             # Effective while(1)
-            @forLoop(lowerBound=0, upperBound=8, step=1)
-            def loopTile():
+            for _ in range_(8):
                 elemIn = Acquire(
-                    ObjectFifoPort.Consume, "in1", 1, memRef_8_ty
+                    ObjectFifoPort.Consume, "in1", 1, T.memref(8, T.i32)
                 ).acquiredElem()
                 elemOut = Acquire(
-                    ObjectFifoPort.Produce, "out1", 1, memRef_8_ty
+                    ObjectFifoPort.Produce, "out1", 1, T.memref(8, T.i32)
                 ).acquiredElem()
-                # @forLoop(lowerBound=0, upperBound=8, step=1)
-                #   load elemIn[idx]
-                #   add 1
-                #   store elemOut[idx]
+                for i in range_(8):
+                    v0 = memref.load(elemIn, [i])
+                    v1 = arith.addi(v0, constant(1, T.i32))
+                    memref.store(v1, elemOut, [i])
+                    yield_([])
                 Release(ObjectFifoPort.Consume, "in1", 1)
                 Release(ObjectFifoPort.Produce, "out1", 1)
+                yield_([])
 
-        memRef_64_ty = MemRefType.get((64,), int32_ty)
-        memRef_32_ty = MemRefType.get((64,), int32_ty)
-
-        @FuncOp.from_py_func(memRef_64_ty, memRef_32_ty, memRef_64_ty)
+        @FuncOp.from_py_func(
+            T.memref(64, T.i32), T.memref(32, T.i32), T.memref(64, T.i32)
+        )
         def sequence(inTensor, notUsed, outTensor):
             IpuDmaMemcpyNd(
                 metadata="out0", bd_id=0, mem=outTensor, lengths=[1, 1, 1, 64]
