@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 //===- test.cpp -------------------------------------------000---*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -9,8 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-=======
->>>>>>> 7dfe8e2d (Added small README for simple printf example reference design)
 #include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
