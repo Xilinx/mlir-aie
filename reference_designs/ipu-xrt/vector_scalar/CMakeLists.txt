@@ -16,8 +16,8 @@ set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost 
 set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
 set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 
-SET (ProjectName addOneObjFIFO)
-SET (currentTarget addOneObjFIFO)
+SET (ProjectName vectorScalar)
+SET (currentTarget vectorScalar)
 
 project(${ProjectName})
 
