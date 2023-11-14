@@ -163,13 +163,13 @@ def edge_detect():
                 Release("inOF_L2L1", "Consume", 1)
                 Release("outOF_L1L2", "Produce", 1)
 
-        tensorSize = width*height*4 # 4 channels
+        tensorSize = width*height
         tensorSizeInInt32s = tensorSize // 4
         # memRef_mem_ty =  MemRefType.get((2304,), int32_ty)
-        tensor_ty =  MemRefType.get((tensorSizeInInt32s,), int32_ty)
+        tensor_ty =  MemRefType.get((tensorSize,), int32_ty)
         memRef_16x16_ty = MemRefType.get((16,16,), int32_ty)
         @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
         def sequence(inTensor, notUsed, outTensor):
-            IpuDmaMemcpyNd(metadata = "inOF_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, 1, tensorSizeInInt32s]) 
-            IpuDmaMemcpyNd(metadata = "outOF_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, 1, tensorSizeInInt32s]) 
+            IpuDmaMemcpyNd(metadata = "inOF_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, 1, tensorSize]) 
+            IpuDmaMemcpyNd(metadata = "outOF_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, 1, tensorSize]) 
             IpuSync(column = 0, row = 0, direction = 0, channel = 0)
