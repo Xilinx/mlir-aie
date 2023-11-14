@@ -176,16 +176,28 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
+<<<<<<< HEAD
   srand(static_cast<unsigned>(time(0)));
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec;
   for (int i = 0; i < A_VOLUME; i++)
     AVec.push_back(random_int16_t());
+=======
+  srand (static_cast <unsigned> (time(0)));
+  A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
+  std::vector<A_DATATYPE> AVec;
+  for (int i = 0; i < A_VOLUME; i++)
+    AVec.push_back(random_bfloat16());
+>>>>>>> 75ee0eec (Add ipu examples)
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec;
   for (int i = 0; i < B_VOLUME; i++)
+<<<<<<< HEAD
     BVec.push_back(random_int16_t());
+=======
+    BVec.push_back(random_bfloat16());
+>>>>>>> 75ee0eec (Add ipu examples)
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
   C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
   std::vector<C_DATATYPE> CVec;
