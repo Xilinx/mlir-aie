@@ -22,7 +22,7 @@
 #include "OpenCVUtils.h"
 #include "xrtUtils.h"
 
-constexpr int testImageWidth = 1920;//64*8;
+constexpr int testImageWidth = 1920*4;//64*8;
 constexpr int testImageHeight = 1080;//9;
 constexpr int testImageSize = testImageWidth*testImageHeight;
 
