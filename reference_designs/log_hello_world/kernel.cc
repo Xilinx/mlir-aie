@@ -23,8 +23,7 @@ void kernel(uint32_t* in_buffer, uint32_t* out_buffer, uint8_t* logbuffer){
 
 	aie::tile tile=aie::tile::current();
         uint64_t Tstart = tile.cycles(); 
-	log.write("Core col=%u\n", col); 
-	log.write("Core row=%u\n", row); 
+	log.write("Core Location col=%u row=%u\n", col, row); 
 
 	memcpy(out_buffer, in_buffer, 2048);
 
