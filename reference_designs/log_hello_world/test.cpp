@@ -48,13 +48,17 @@ int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
   po::options_description desc("Allowed options");
-  desc.add_options()
-    ("help,h", "produce help message")
-    ("xclbin,x", po::value<std::string>()->required(), "the input xclbin path")
-    ("kernel,k", po::value<std::string>()->required(), "the kernel name in the XCLBIN (for instance PP_PRE_FD)")
-    ("verbosity,v", po::value<int>()->default_value(0), "the verbosity of the output")
-    ("elfstrings,e", po::value<std::string>()->required(), "CSV file of format strings and addresses")
-    ("instr,i", po::value<std::string>()->required(), "path of file containing userspace instructions to be sent to the LX6");
+  desc.add_options()("help,h", "produce help message")(
+      "xclbin,x", po::value<std::string>()->required(),
+      "the input xclbin path")(
+      "kernel,k", po::value<std::string>()->required(),
+      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
+      "verbosity,v", po::value<int>()->default_value(0),
+      "the verbosity of the output")(
+      "elfstrings,e", po::value<std::string>()->required(),
+      "CSV file of format strings and addresses")(
+      "instr,i", po::value<std::string>()->required(),
+      "path of file containing userspace instructions to be sent to the LX6");
   po::variables_map vm;
 
   try {
@@ -76,7 +80,8 @@ int main(int argc, const char *argv[]) {
   check_arg_file_exists(vm, "elfstrings");
 
   // Load instruction sequence
-  std::vector<uint32_t> instr_v = load_instr_sequence(vm["instr"].as<std::string>());
+  std::vector<uint32_t> instr_v =
+      load_instr_sequence(vm["instr"].as<std::string>());
 
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
@@ -121,20 +126,23 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
   auto kernel = xrt::kernel(context, kernelName);
 
-
   // set up the buffer objects
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int), XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_in = xrt::bo(device, 2048, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_out = xrt::bo(device, 2048, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_logout = xrt::bo(device, 2048, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
+  auto bo_in =
+      xrt::bo(device, 2048, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
+  auto bo_out =
+      xrt::bo(device, 2048, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_logout =
+      xrt::bo(device, 2048, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
-  uint32_t* bufIn= bo_in.map<uint32_t*>();
+  uint32_t *bufIn = bo_in.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
-  for(int i=0; i<256; i++) {
-      srcVecA.push_back(42);
+  for (int i = 0; i < 256; i++) {
+    srcVecA.push_back(42);
   }
   memcpy(bufIn, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
@@ -153,7 +161,7 @@ int main(int argc, const char *argv[]) {
   run.wait();
 
   if (verbosity >= 1)
-	  std::cout << "Status after run: " << run.state() << "\n";
+    std::cout << "Status after run: " << run.state() << "\n";
 
   // Sync device to host memories
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -165,8 +173,8 @@ int main(int argc, const char *argv[]) {
 
   IPULogDecoder logdecode(vm["elfstrings"].as<std::string>());
   std::vector<std::string> logout = logdecode.decode(bo_out);
-  for(const std::string& str : logout) {
-	  std::cout << str << std::endl;	
+  for (const std::string &str : logout) {
+    std::cout << str << std::endl;
   }
 
   return 0;
