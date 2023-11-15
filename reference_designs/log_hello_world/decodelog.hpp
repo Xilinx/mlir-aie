@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "xrt/xrt_bo.h"
-#include <boost/filesystem.hpp>
+#include <filesystem>
 #include <boost/tokenizer.hpp>
 #include <fstream>
 #include <iostream>
