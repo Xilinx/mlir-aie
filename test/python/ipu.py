@@ -98,10 +98,10 @@ def my_vector_scalar():
                 @forLoop(lowerBound=0, upperBound=N_div_n, step=1)
                 def loopTile():
                     elemOut = Acquire(
-                        "out", ObjectFifoPort.Produce, 1, memRef_ty
+                        ObjectFifoPort.Produce, "out", 1, memRef_ty
                     ).acquiredElem()
                     elemIn = Acquire(
-                        "in", ObjectFifoPort.Consume, 1, memRef_ty
+                        ObjectFifoPort.Consume, "in", 1, memRef_ty
                     ).acquiredElem()
                     Call(scale_int32, [elemIn, elemOut])
                     Release(ObjectFifoPort.Consume, "in", 1)
@@ -261,7 +261,7 @@ def my_matmul():
                 @forLoop(lowerBound=0, upperBound=tiles, step=1)
                 def loopTile():
                     elemOut = Acquire(
-                        "outC", ObjectFifoPort.Produce, 1, memRef_C_ty
+                        ObjectFifoPort.Produce, "outC", 1, memRef_C_ty
                     ).acquiredElem()
                     if vectorized:
                         Call(zero, [elemOut])
@@ -271,10 +271,10 @@ def my_matmul():
                     @forLoop(lowerBound=0, upperBound=K_div_k, step=1)
                     def loopK():
                         elemInA = Acquire(
-                            "inA", ObjectFifoPort.Consume, 1, memRef_A_ty
+                            ObjectFifoPort.Consume, "inA", 1, memRef_A_ty
                         ).acquiredElem()
                         elemInB = Acquire(
-                            "inB", ObjectFifoPort.Consume, 1, memRef_B_ty
+                            ObjectFifoPort.Consume, "inB", 1, memRef_B_ty
                         ).acquiredElem()
                         if vectorized:
                             Call(matmul, [elemInA, elemInB, elemOut])
@@ -564,10 +564,10 @@ def edge_detect():
             @forLoop(lowerBound=0, upperBound=36, step=1)
             def loopBody():
                 elemIn = Acquire(
-                    "inOF_L2L1", ObjectFifoPort.Consume, 1, memRef_256_ty
+                    ObjectFifoPort.Consume, "inOF_L2L1", 1, memRef_256_ty
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "OF_2to3", ObjectFifoPort.Produce, 1, memRef_64_ty
+                    ObjectFifoPort.Produce, "OF_2to3", 1, memRef_64_ty
                 ).acquiredElem()
 
                 Call(rgba2grayLine, [elemIn, elemOut, integerConstant(64)])
@@ -593,10 +593,10 @@ def edge_detect():
 
             # Preamble : Top Border
             elemsInPre = Acquire(
-                "OF_2to3", ObjectFifoPort.Consume, 2, memRef_64_ty
+                ObjectFifoPort.Consume, "OF_2to3", 2, memRef_64_ty
             ).acquiredElem()
             elemPreOut = Acquire(
-                "OF_3to4", ObjectFifoPort.Produce, 1, memRef_64_ty
+                ObjectFifoPort.Produce, "OF_3to4", 1, memRef_64_ty
             ).acquiredElem()
             Call(
                 filter2dLine,
@@ -615,10 +615,10 @@ def edge_detect():
             @forLoop(lowerBound=1, upperBound=35, step=1)
             def loopBody():
                 elemsIn = Acquire(
-                    "OF_2to3", ObjectFifoPort.Consume, 3, memRef_64_ty
+                    ObjectFifoPort.Consume, "OF_2to3", 3, memRef_64_ty
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "OF_3to4", ObjectFifoPort.Produce, 1, memRef_64_ty
+                    ObjectFifoPort.Produce, "OF_3to4", 1, memRef_64_ty
                 ).acquiredElem()
                 Call(
                     filter2dLine,
@@ -636,10 +636,10 @@ def edge_detect():
 
             # Postamble : Bottom Border
             elemsInPost = Acquire(
-                "OF_2to3", ObjectFifoPort.Consume, 2, memRef_64_ty
+                ObjectFifoPort.Consume, "OF_2to3", 2, memRef_64_ty
             ).acquiredElem()
             elemPostOut = Acquire(
-                "OF_3to4", ObjectFifoPort.Produce, 1, memRef_64_ty
+                ObjectFifoPort.Produce, "OF_3to4", 1, memRef_64_ty
             ).acquiredElem()
             Call(
                 filter2dLine,
@@ -664,10 +664,10 @@ def edge_detect():
             @forLoop(lowerBound=0, upperBound=36, step=1)
             def loopBody():
                 elemIn = Acquire(
-                    "OF_3to4", ObjectFifoPort.Consume, 1, memRef_64_ty
+                    ObjectFifoPort.Consume, "OF_3to4", 1, memRef_64_ty
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "OF_4to5", ObjectFifoPort.Produce, 1, memRef_64_ty
+                    ObjectFifoPort.Produce, "OF_4to5", 1, memRef_64_ty
                 ).acquiredElem()
 
                 Call(
@@ -683,10 +683,10 @@ def edge_detect():
             @forLoop(lowerBound=0, upperBound=36, step=1)
             def loopBody():
                 elemIn = Acquire(
-                    "OF_4to5", ObjectFifoPort.Consume, 1, memRef_64_ty
+                    ObjectFifoPort.Consume, "OF_4to5", 1, memRef_64_ty
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "OF_5to5", ObjectFifoPort.Produce, 1, memRef_256_ty
+                    ObjectFifoPort.Produce, "OF_5to5", 1, memRef_256_ty
                 ).acquiredElem()
 
                 Call(gray2rgbaLine, [elemIn, elemOut, integerConstant(64)])
@@ -695,13 +695,13 @@ def edge_detect():
                 Release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
                 elemIn1 = Acquire(
-                    "OF_5to5", ObjectFifoPort.Consume, 1, memRef_256_ty
+                    ObjectFifoPort.Consume, "OF_5to5", 1, memRef_256_ty
                 ).acquiredElem()
                 elemIn2 = Acquire(
-                    "inOF_L2L1", ObjectFifoPort.Consume, 1, memRef_256_ty
+                    ObjectFifoPort.Consume, "inOF_L2L1", 1, memRef_256_ty
                 ).acquiredElem()
                 elemOut2 = Acquire(
-                    "outOF_L1L2", ObjectFifoPort.Produce, 1, memRef_256_ty
+                    ObjectFifoPort.Produce, "outOF_L1L2", 1, memRef_256_ty
                 ).acquiredElem()
 
                 alpha = integerConstant(16384, int16_ty)
@@ -817,10 +817,10 @@ def my_add_one_objFifo():
             @forLoop(lowerBound=0, upperBound=8, step=1)
             def loopTile():
                 elemIn = Acquire(
-                    "in1", ObjectFifoPort.Consume, 1, memRef_8_ty
+                    ObjectFifoPort.Consume, "in1", 1, memRef_8_ty
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "out1", ObjectFifoPort.Produce, 1, memRef_8_ty
+                    ObjectFifoPort.Produce, "out1", 1, memRef_8_ty
                 ).acquiredElem()
                 # @forLoop(lowerBound=0, upperBound=8, step=1)
                 #   load elemIn[idx]
