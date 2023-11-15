@@ -119,7 +119,6 @@ int main(int argc, const char *argv[]) {
     std::cout << "Writing data into buffer objects.\n";
 
   uint8_t *bufIn = bo_in.map<uint8_t *>();
-
   // Copy cv::Mat input image to xrt buffer object
   std::vector<uint8_t> srcVec;
   for (int i = 0; i < IMAGE_AREA_IN; i++)
