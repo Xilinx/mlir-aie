@@ -212,8 +212,8 @@ public:
 
   void runAnalysis(DeviceOp &device);
 
-  int getMaxCol() { return maxCol; }
-  int getMaxRow() { return maxRow; }
+  int getMaxCol() const { return maxCol; }
+  int getMaxRow() const { return maxRow; }
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
 
@@ -252,10 +252,10 @@ template <> struct GraphTraits<xilinx::AIE::Switchbox *> {
 
   static NodeRef getEntryNode(NodeRef N) { return N; }
   static ChildIteratorType child_begin(NodeRef N) {
-    return ChildIteratorType(N->begin(), &SwitchboxGraphGetSwitchbox);
+    return {N->begin(), &SwitchboxGraphGetSwitchbox};
   }
   static ChildIteratorType child_end(NodeRef N) {
-    return ChildIteratorType(N->end(), &SwitchboxGraphGetSwitchbox);
+    return {N->end(), &SwitchboxGraphGetSwitchbox};
   }
 
   static ChildEdgeIteratorType child_edge_begin(NodeRef N) {
