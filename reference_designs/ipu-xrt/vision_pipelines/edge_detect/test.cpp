@@ -1,3 +1,12 @@
+//===- test.cpp -------------------------------------------000---*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
 
 #include <cstdint>
 #include <fstream>
@@ -24,7 +33,11 @@ namespace po = boost::program_options;
 
 int main(int argc, const char *argv[]) {
 
-  // Program arguments parsing
+  /*
+   ****************************************************************************
+   * Program arguments parsing
+   ****************************************************************************
+   */
   po::options_description desc("Allowed options");
   desc.add_options()("help,h", "produce help message")(
       "xclbin,x", po::value<std::string>()->required(),
@@ -58,15 +71,20 @@ int main(int argc, const char *argv[]) {
   check_arg_file_exists(vm, "xclbin");
   check_arg_file_exists(vm, "instr");
 
-  // Read the input image or generate random one if no input file argument
-  // provided
+  /*
+   ****************************************************************************
+   * Read the input image or generate random one if no input file argument
+   * provided
+   ****************************************************************************
+   */
   cv::Mat inImage, inImageRGBA;
   cv::String fileIn;
   if (vm.count("image")) {
     fileIn =
         vm["image"]
             .as<std::
-                    string>(); //"/group/xrlabs/imagesAndVideos/images/minion128x128.jpg";
+                    string>(); 
+                    //"/group/xrlabs/imagesAndVideos/images/minion128x128.jpg";
     initializeSingleImageTest(fileIn, inImage);
   } else {
     fileIn = "RANDOM";
@@ -81,7 +99,11 @@ int main(int argc, const char *argv[]) {
   cv::resize(inImage, inImage, cv::Size(testImageWidth, testImageHeight));
   cv::cvtColor(inImage, inImageRGBA, cv::COLOR_BGR2RGBA);
 
-  // Calculate OpenCV refence for edgeDetect
+  /*
+   ****************************************************************************
+   * Calculate OpenCV referennce for edgeDetect
+   ****************************************************************************
+   */
   cv::Mat inImageGray, imageFiltered, imageThreshold, imageThresholdBRG,
       outImageReference, outImageTestBGR;
   cv::cvtColor(inImage, inImageGray, cv::COLOR_BGR2GRAY);
@@ -106,7 +128,11 @@ int main(int argc, const char *argv[]) {
 
   cv::Mat outImageTest(testImageHeight, testImageWidth, CV_8UC4);
 
-  // Load instruction sequence
+  /*
+   ****************************************************************************
+   * Load instruction sequence
+   ****************************************************************************
+   */
   std::vector<uint32_t> instr_v =
       load_instr_sequence(vm["instr"].as<std::string>());
 
@@ -114,14 +140,22 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
-  // Start the XRT context and load the kernel
+  /*
+   ****************************************************************************
+   * Start the XRT context and load the kernel
+   ****************************************************************************
+   */
   xrt::device device;
   xrt::kernel kernel;
 
   initXrtLoadKernel(device, kernel, verbosity, vm["xclbin"].as<std::string>(),
                     vm["kernel"].as<std::string>());
 
-  // set up the buffer objects
+  /*
+   ****************************************************************************
+   * Set up the buffer objects
+   ****************************************************************************
+   */
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
   auto bo_inA = xrt::bo(device, inImageRGBA.total() * inImageRGBA.elemSize(),
@@ -136,7 +170,7 @@ int main(int argc, const char *argv[]) {
 
   uint8_t *bufInA = bo_inA.map<uint8_t *>();
 
-  // Copyt cv::Mat input image to xrt buffer object
+  // Copy cv::Mat input image to xrt buffer object
   memcpy(bufInA, inImageRGBA.data,
          (inImageRGBA.total() * inImageRGBA.elemSize()));
 
@@ -144,7 +178,7 @@ int main(int argc, const char *argv[]) {
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
-  // sync host to device memories
+  // Sync host to device memories
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -163,7 +197,11 @@ int main(int argc, const char *argv[]) {
   memcpy(outImageTest.data, bufOut,
          (outImageTest.total() * outImageTest.elemSize()));
 
-  // Compare to OpenCV reference
+  /*
+   ****************************************************************************
+   * Compare to OpenCV reference
+   ****************************************************************************
+   */
   int numberOfDifferences = 0;
   double errorPerPixel = 0;
   imageCompare(outImageTest, outImageReference, numberOfDifferences,
