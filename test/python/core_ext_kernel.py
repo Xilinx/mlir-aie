@@ -63,7 +63,7 @@ def core_ext_kernel():
             loop = For(lowerBound=0, upperBound=10, step=1)
             with InsertionPoint(loop.body):
                 elem0 = Acquire(
-                    "of1", ObjectFifoPort.Consume, 1, memRef_64_ty
+                    ObjectFifoPort.Consume, "of1", 1, memRef_64_ty
                 ).acquiredElem()
                 res = Call("test_func", [elem0, integerConstant(4)], [int_ty])
                 Release(ObjectFifoPort.Consume, "of1", 1)

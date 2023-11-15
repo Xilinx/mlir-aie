@@ -140,7 +140,7 @@ def objFifoAcquire():
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             acq = Acquire(
-                of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy
+                port=ObjectFifoPort.Consume, of_name="of0", num_elem=1, datatype=memTy
             )
             EndOp()
 
@@ -165,7 +165,7 @@ def objFifoSubviewAccess():
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
             acq = Acquire(
-                of_name="of0", port=ObjectFifoPort.Consume, num_elem=1, datatype=memTy
+                port=ObjectFifoPort.Consume, of_name="of0", num_elem=1, datatype=memTy
             )
             subview = SubviewAccess(memTy, subview=acq, index=0)
             EndOp()

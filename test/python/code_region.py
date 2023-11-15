@@ -58,7 +58,7 @@ def codeRegion():
             @forLoop(lowerBound=0, upperBound=10, step=1)
             def loopBody():
                 elem0 = Acquire(
-                    "of1", ObjectFifoPort.Consume, 1, memRef_64_ty
+                    ObjectFifoPort.Consume, "of1", 1, memRef_64_ty
                 ).acquiredElem()
                 res = Call("test_func", [elem0], [int_ty])
                 Release(ObjectFifoPort.Consume, "of1", 1)

@@ -363,7 +363,7 @@ class Link(ObjectFifoLinkOp):
 class Acquire(ObjectFifoAcquireOp):
     """Specialize ObjectFifoAcquireOp class constructor to take python integers"""
 
-    def __init__(self, of_name, port, num_elem, datatype):
+    def __init__(self, port, of_name, num_elem, datatype):
         subview_Ty = ObjectFifoSubviewType.get(datatype)
         self.datatype = datatype
         super().__init__(
