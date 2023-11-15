@@ -6,7 +6,7 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-include ../../../test/ipu-xrt/makefile-common
+include ../../makefile-common
 
 VPATH := ../vision_kernels
 
