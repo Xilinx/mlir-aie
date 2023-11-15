@@ -27,18 +27,13 @@
 #define K 128
 #define N 128
 
-// L1 tile size, for testbench data layout preprocessing
-#define mm 4
-#define kk 4
-#define nn 4
-
 #define A_VOLUME M *K
 #define B_VOLUME N *K
 #define C_VOLUME M *N
 
-#define A_DATATYPE bfloat16
-#define B_DATATYPE bfloat16
-#define C_DATATYPE float
+#define A_DATATYPE int16_t
+#define B_DATATYPE int16_t
+#define C_DATATYPE int16_t
 
 constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
@@ -75,31 +70,21 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-static inline tensorflow::bfloat16 float_to_bfloat16(float float_val) {
-    tensorflow::bfloat16 retval;
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    memcpy(&retval, &float_val, sizeof retval);
-#else
-    memcpy(&retval, reinterpret_cast<char *>(&float_val) + sizeof float_val - sizeof retval, sizeof retval);
-#endif
-    return retval;
-}
-
-static inline bfloat16 random_bfloat16() {
-    return float_to_bfloat16((float)(rand()) / (float)(rand()));
+static inline int16_t random_int16_t() { 
+  return (int16_t)(rand()) / (int16_t)(rand());
 }
 
 template <typename Tin, typename Tout>
-void mm(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
-    for (int row=0; row < M; row++) {
-        for (int col=0; col < N ; col++) {
-            Tout running_sum = 0;
-            for (int i=0; i < K; i++) {
-                running_sum += a[row*K + i] * b[i*N + col];
-            }
-            c[row*N + col] += running_sum;
-        }
+void matmul(std::vector<Tin> a, std::vector<Tin> b, std::vector<Tout> &c) {
+  for (int row = 0; row < M; row++) {
+    for (int col = 0; col < N; col++) {
+      Tout running_sum = 0;
+      for (int i = 0; i < K; i++) {
+        running_sum += a[row * K + i] * b[i * N + col];
+      }
+      c[row * N + col] += running_sum;
     }
+  }
 }
 
 int main(int argc, const char *argv[]) {
@@ -192,16 +177,16 @@ int main(int argc, const char *argv[]) {
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
-  srand (static_cast <unsigned> (time(0)));
+  srand(static_cast<unsigned>(time(0)));
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec;
   for (int i = 0; i < A_VOLUME; i++)
-    AVec.push_back(random_bfloat16());
+    AVec.push_back(random_int16_t());
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
   std::vector<B_DATATYPE> BVec;
   for (int i = 0; i < B_VOLUME; i++)
-    BVec.push_back(random_bfloat16());
+    BVec.push_back(random_int16_t());
   memcpy(bufB, BVec.data(), (BVec.size() * sizeof(B_DATATYPE)));
   C_DATATYPE *bufC = bo_c.map<C_DATATYPE *>();
   std::vector<C_DATATYPE> CVec;
@@ -232,7 +217,7 @@ int main(int argc, const char *argv[]) {
   std::vector<C_DATATYPE> output_ref0;
   for (uint32_t i = 0; i < C_VOLUME; i++)
     output_ref0.push_back(0);
-  mm(AVec, BVec, output_ref0);
+  matmul(AVec, BVec, output_ref0);
 
   for (uint32_t i = 0; i < C_VOLUME; i++) {
     if (bufOut[i] != output_ref0[i]) {

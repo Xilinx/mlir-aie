@@ -47,7 +47,7 @@ def my_matmul():
     N_in_i32s_out     = N*word_size_out//4
     m_x_N_in_i32s_out = m*N*word_size_out//4
 
-    vectorized = True
+    vectorized = False 
 
     @device(AIEDevice.ipu)
     def deviceBody():
