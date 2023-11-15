@@ -110,6 +110,42 @@ int main(int argc, const char *argv[]) {
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
+  if (vm.count("live")) {
+    std::cout << "Using live webcam input" << std::endl;
+
+    cv::VideoCapture cap;
+    try {
+      initializeVideoCapture(cap);
+    } catch (const std::exception &ex) {
+      std::cerr << ex.what() << "\n\n";
+      return 1;
+    }
+
+    //--- GRAB AND SHOW LOOP
+    std:: cout << "Start grabbing" << std::endl << "Press any key to terminate" << std::endl;
+    cv::Mat frame;
+    for (;;)
+    {
+        // wait for a new frame from camera and store it into 'frame'
+        cap.read(frame);
+        // check if we succeeded
+        if (frame.empty()) {
+            std::cerr << "ERROR! blank frame grabbed\n";
+            break;
+        }
+
+        cv::Mat edgeFrame;
+        edgeDetect(frame,edgeFrame);
+
+        // show live and wait for a key with timeout long enough to show images
+        cv::imshow("Live", edgeFrame);
+        if (cv::waitKey(5) >= 0)
+            break;
+    }
+  }
+
+  else { 
+
   /*
   ****************************************************************************
   * Read the input image or generate random one if no input file argument
@@ -314,4 +350,5 @@ int main(int argc, const char *argv[]) {
 
   printf("Testing edgeDetect done!\n");
   return res;
+  }
 }
