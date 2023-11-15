@@ -1,14 +1,18 @@
-include ../../../../test/ipu-xrt/makefile-common
+##===- Makefile -----------------------------------------------------------===##
+# 
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# 
+##===----------------------------------------------------------------------===##
+
+include ../../makefile-common
 
 VPATH := ../vision_kernels
 
 #all: build/final_1080.xclbin
 #all: build/final_vga.xclbin
 all: build/final_tiny.xclbin
-
-build/insts%.txt: aie2_lineBased_8b%.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-only-generate-ipu --ipu-insts-name=${@F} $(<:%=../%)
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
