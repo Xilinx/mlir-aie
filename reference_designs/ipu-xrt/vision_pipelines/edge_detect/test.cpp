@@ -24,8 +24,14 @@
 
 double epsilon = 0.1;
 
-constexpr int testImageWidth = 64;
-constexpr int testImageHeight = 36;
+constexpr int testImageWidth = EDGEDETECT_WIDTH;
+constexpr int testImageHeight = EDGEDETECT_HEIGHT;
+
+//constexpr int testImageWidth = 64;
+//constexpr int testImageHeight = 36;
+
+//constexpr int testImageWidth = 1920;
+//constexpr int testImageHeight = 1080;
 constexpr int testImageSize = testImageWidth * testImageHeight;
 constexpr int kernelSize = 3;
 
@@ -68,8 +74,15 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
+  try {
+    check_arg_file_exists(vm, "xclbin");
+    check_arg_file_exists(vm, "instr");
+  } catch (const std::exception &ex) {
+    std::cerr << ex.what() << "\n\n";
+    return 1;
+  }
+
+  std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x" << testImageHeight << std::endl;
 
   /*
    ****************************************************************************
