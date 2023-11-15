@@ -17,6 +17,10 @@ double epsilon = 0.1;
 
 constexpr int testImageWidth = 64;
 constexpr int testImageHeight = 36;
+//constexpr int testImageWidth = 640;
+//constexpr int testImageHeight = 480;
+//constexpr int testImageWidth = 1920;
+//constexpr int testImageHeight = 1080;
 constexpr int testImageSize = testImageWidth*testImageHeight;
 constexpr int kernelSize = 3;
 
