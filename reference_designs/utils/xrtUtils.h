@@ -20,8 +20,11 @@
 #include "xrt/xrt_kernel.h"
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
-void check_arg_file_exists(boost::program_options::variables_map &vm_in, std::string name) ;
+void check_arg_file_exists(boost::program_options::variables_map &vm_in,
+                           std::string name);
 
-void initXrtLoadKernel(xrt::device &device, xrt::kernel &kernel, int verbosity, std::string xclbinFileName, std::string kernelNameInXclbin);
+void initXrtLoadKernel(xrt::device &device, xrt::kernel &kernel, int verbosity,
+                       std::string xclbinFileName,
+                       std::string kernelNameInXclbin);
 
 #endif //_XRTUTILS_H_

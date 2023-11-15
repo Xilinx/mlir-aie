@@ -8,12 +8,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #include "xrtUtils.h"
 
 #include <fstream>
-#include <sstream>
 #include <iostream>
+#include <sstream>
 
 namespace po = boost::program_options;
 
@@ -45,45 +44,46 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-void initXrtLoadKernel(xrt::device &device, xrt::kernel &kernel, int verbosity, std::string xclbinFileName, std::string kernelNameInXclbin)
-{
-    // Start the XRT test code
-    // Get a device handle
-    unsigned int device_index = 0;
-    device = xrt::device(device_index);
+void initXrtLoadKernel(xrt::device &device, xrt::kernel &kernel, int verbosity,
+                       std::string xclbinFileName,
+                       std::string kernelNameInXclbin) {
+  // Start the XRT test code
+  // Get a device handle
+  unsigned int device_index = 0;
+  device = xrt::device(device_index);
 
-    // Load the xclbin
-    if (verbosity >= 1)
-        std::cout << "Loading xclbin: " << xclbinFileName << "\n";
-    auto xclbin = xrt::xclbin(xclbinFileName);
+  // Load the xclbin
+  if (verbosity >= 1)
+    std::cout << "Loading xclbin: " << xclbinFileName << "\n";
+  auto xclbin = xrt::xclbin(xclbinFileName);
 
-    if (verbosity >= 1)
-        std::cout << "Kernel opcode: " << kernelNameInXclbin << "\n";
+  if (verbosity >= 1)
+    std::cout << "Kernel opcode: " << kernelNameInXclbin << "\n";
 
-    // Get the kernel from the xclbin
-    auto xkernels = xclbin.get_kernels();
-    auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(), 
+  // Get the kernel from the xclbin
+  auto xkernels = xclbin.get_kernels();
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
                                [kernelNameInXclbin](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
                                  std::cout << "Name: " << name << std::endl;
                                  return name.rfind(kernelNameInXclbin, 0) == 0;
                                });
-    auto kernelName = xkernel.get_name();
+  auto kernelName = xkernel.get_name();
 
-    if (verbosity >= 1)
-        std::cout << "Registering xclbin: " << xclbinFileName << "\n";
+  if (verbosity >= 1)
+    std::cout << "Registering xclbin: " << xclbinFileName << "\n";
 
-    device.register_xclbin(xclbin);
+  device.register_xclbin(xclbin);
 
-    // get a hardware context
-    if (verbosity >= 1)
-        std::cout << "Getting hardware context.\n";
-    xrt::hw_context context(device, xclbin.get_uuid());
+  // get a hardware context
+  if (verbosity >= 1)
+    std::cout << "Getting hardware context.\n";
+  xrt::hw_context context(device, xclbin.get_uuid());
 
-    // get a kernel handle
-    if (verbosity >= 1)
-        std::cout << "Getting handle to kernel:" << kernelName << "\n";
-    kernel = xrt::kernel(context, kernelName);
+  // get a kernel handle
+  if (verbosity >= 1)
+    std::cout << "Getting handle to kernel:" << kernelName << "\n";
+  kernel = xrt::kernel(context, kernelName);
 
-    return;
+  return;
 }
