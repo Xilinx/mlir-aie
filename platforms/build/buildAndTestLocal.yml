@@ -1,12 +1,5 @@
 name: Build and Test
-
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [assigned, opened, synchronize, reopened]
-  workflow_dispatch:
+on :
 
 defaults:
   run:
@@ -25,7 +18,7 @@ jobs:
     name: Build and Test
 
     # By latest GitHub means actually latest LTS only
-    runs-on: ubuntu-latest
+    runs-on: build-latest
 
     strategy:
       # Run all the test even if there are some which fail
@@ -41,12 +34,18 @@ jobs:
     # it runs faster. But these images have quite less software
     # installed compared to the GitHub Ubuntu distribution for example.
 
-    container:
-      image:  amd/acdcbuild:1.1
-      volumes: 
-        - ${{github.workspace}}/llvm-central-repo:/workspace/llvm-central-repo
+    #container:
+     # image:  amd/acdcbuild:1.1
+     # Replicated this using container-options
+ 
+      # Attempted using options
+      #volumes:
+       # - /scratch/samuelb/source-mlir-aie/llvm-central-repo:/scratch/samuelb/source-mlir-aie/llvm-central-repo
+
     steps:
-      
+      - name : Echo workspace
+        run : echo `ls ${{github.workspace}}`
+
       - name: Display environment variables
         run: env
 
@@ -118,10 +117,12 @@ jobs:
         with:
           fetch-depth: 2
           submodules: "true"
+      - name: printthecommithash
+        run: echo "mlir-aie hash=$(git log -1 --format='%H')"
 
       - name: Get LLVM
         id: clone-llvm
-        run: ${{github.workspace}}/utils/clone-llvm.sh --llvm-worktree /workspace/llvm-central-repo
+        run: ${{github.workspace}}/utils/clone-llvm.sh --llvm-worktree ${{github.workspace}}/llvm-central-repo
 
       - name: Get LLVM commit hash
         id: get-llvm-commit-hash
