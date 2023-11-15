@@ -26,9 +26,9 @@ build/final_%.xclbin: aie2_lineBased_8b_%.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-clean:
-	rm -rf build
-
 #build/test.exe: test.cpp
 #	mkdir -p ${@D}
 #	cd ${@D} && $(CXX) $(LD_FLAGS) $(OpenCV_LIBS) ../../utils/OpenCVUtils.cpp ../../utils/xrtUtils.cpp $(<:%=../%) -o ${@F} $(CFLAGS) $(INC) $(LD_PATHS) 
+
+clean:
+	rm -rf build
