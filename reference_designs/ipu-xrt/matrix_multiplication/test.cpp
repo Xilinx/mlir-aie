@@ -23,22 +23,21 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#define M 128
-#define K 128
-#define N 128
+constexpr int M = 128;
+constexpr int K = 128;
+constexpr int N = 128;
 
-#define A_VOLUME M *K
-#define B_VOLUME N *K
-#define C_VOLUME M *N
+constexpr int A_VOLUME = M * K;
+constexpr int B_VOLUME = N * K;
+constexpr int C_VOLUME = M * N;
 
-#define A_DATATYPE int16_t
-#define B_DATATYPE int16_t
-#define C_DATATYPE int16_t
+using A_DATATYPE = std::int16_t;
+using B_DATATYPE = std::int16_t;
+using C_DATATYPE = std::int16_t;
 
 constexpr int A_SIZE = (A_VOLUME * sizeof(A_DATATYPE));
 constexpr int B_SIZE = (B_VOLUME * sizeof(B_DATATYPE));
 constexpr int C_SIZE = (C_VOLUME * sizeof(C_DATATYPE));
-constexpr int TRACE_SIZE = (0 * sizeof(uint32_t));
 
 namespace po = boost::program_options;
 
@@ -70,8 +69,8 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
   return instr_v;
 }
 
-static inline int16_t random_int16_t() { 
-  return (int16_t)(rand()) / (int16_t)(rand());
+static inline std::int16_t random_int16_t() {
+  return (std::int16_t)(rand()) / (std::int16_t)(rand());
 }
 
 template <typename Tin, typename Tout>
