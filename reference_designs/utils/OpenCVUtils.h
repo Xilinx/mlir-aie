@@ -12,6 +12,7 @@
 #define _OPENCVUTILS_H_
 
 #include <opencv2/core/core.hpp>
+#include <opencv2/videoio.hpp>
 
 bool imageCompare(cv::Mat &test, cv::Mat &golden, int &numberOfDifferences,
                   double &error, bool listPositionFirstDifference = false,
@@ -19,6 +20,8 @@ bool imageCompare(cv::Mat &test, cv::Mat &golden, int &numberOfDifferences,
 void readImage(const std::string &fileName, cv::Mat &image, int flags = 1);
 void initializeSingleGrayImageTest(std::string fileName, cv::Mat &src);
 void initializeSingleImageTest(std::string fileName, cv::Mat &src);
+
+void initializeVideoCapture(cv::VideoCapture &cap);
 
 void addSaltPepperNoise(cv::Mat &src, float percentWhite, float percentBlack);
 void medianBlur1D(cv::Mat src, cv::Mat &dst, int ksizeHor);
