@@ -13,7 +13,9 @@
 
 #include <opencv2/core/core.hpp>
 
-bool imageCompare(cv::Mat &test, cv::Mat &golden, int &numberOfDifferences, double &error, bool listPositionFirstDifference = false, bool displayResult = false, double epsilon = 0.01);
+bool imageCompare(cv::Mat &test, cv::Mat &golden, int &numberOfDifferences,
+                  double &error, bool listPositionFirstDifference = false,
+                  bool displayResult = false, double epsilon = 0.01);
 void readImage(const std::string &fileName, cv::Mat &image, int flags = 1);
 void initializeSingleGrayImageTest(std::string fileName, cv::Mat &src);
 void initializeSingleImageTest(std::string fileName, cv::Mat &src);
