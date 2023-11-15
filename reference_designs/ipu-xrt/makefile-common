@@ -10,11 +10,9 @@ CHESSCC1_FLAGS = -f -p me -P ${VITIS_AIE_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/i
 CHESSCC2_FLAGS = -f -p me -P ${VITIS_AIE2_INCLUDE_DIR} -I ${VITIS_AIETOOLS_DIR}/include -D__AIENGINE__=2 -D__AIEARCH__=20
 CHESS_FLAGS = -P ${VITIS_AIE_INCLUDE_DIR}
 
-# windows stuff
-
-CXX=x86_64-conda-linux-gnu-g++
+CXX=clang
 CFLAGS=-std=c++11 -Wall -Ofast -march=native -Wunused-parameter -Wunused-function
-INC=-I/root/miniconda3/include/opencv4 -I/root/miniconda3/include/ -I/opt/xilinx/xrt/include -I../utils
-LD_PATHS=-L/root/miniconda3/lib -L/opt/xilinx/xrt/lib -L/usr/lib64
-LD_FLAGS=-lrt -lstdc++ -luuid -lboost_program_options -lboost_filesystem -lprotobuf -lxrt_hwemu -lxrt_coreutil
+INC=-I/opt/xilinx/xrt/include -I../utils -I/usr/include/opencv4
+LD_PATHS=-L/opt/xilinx/xrt/lib -L/usr/lib64
+LD_FLAGS=-lrt -lstdc++ -luuid -lboost_program_options -lboost_filesystem -lprotobuf -lxrt_coreutil
 OpenCV_LIBS := -lopencv_core -lopencv_imgproc -lopencv_imgcodecs
