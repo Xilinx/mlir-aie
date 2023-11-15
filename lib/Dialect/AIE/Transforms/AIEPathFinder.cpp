@@ -37,8 +37,145 @@ WireBundle getConnectingBundle(WireBundle dir) {
   }
 }
 
-Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
-  const auto &targetModel = d.getTargetModel();
+void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
+  LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
+  // find the maxCol and maxRow
+  maxCol = 0;
+  maxRow = 0;
+  for (TileOp tileOp : device.getOps<TileOp>()) {
+    maxCol = std::max(maxCol, tileOp.colIndex());
+    maxRow = std::max(maxRow, tileOp.rowIndex());
+  }
+
+  pathfinder = Pathfinder(maxCol, maxRow, device.getTargetModel());
+
+  // for each flow in the device, add it to pathfinder
+  // each source can map to multiple different destinations (fanout)
+  for (FlowOp flowOp : device.getOps<FlowOp>()) {
+    TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
+    TileOp dstTile = cast<TileOp>(flowOp.getDest().getDefiningOp());
+    TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+    TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
+    Port srcPort = {flowOp.getSourceBundle(), flowOp.getSourceChannel()};
+    Port dstPort = {flowOp.getDestBundle(), flowOp.getDestChannel()};
+    LLVM_DEBUG(llvm::dbgs()
+               << "\tAdding Flow: (" << srcCoords.col << ", " << srcCoords.row
+               << ")" << stringifyWireBundle(srcPort.bundle) << srcPort.channel
+               << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
+               << stringifyWireBundle(dstPort.bundle) << dstPort.channel
+               << "\n");
+    pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
+  }
+
+  // add existing connections so Pathfinder knows which resources are
+  // available search all existing SwitchBoxOps for exising connections
+  for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
+    for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
+      TileID existingCoord = {switchboxOp.colIndex(), switchboxOp.rowIndex()};
+      Port existingPort = {connectOp.getDestBundle(),
+                           connectOp.getDestChannel()};
+      if (!pathfinder.addFixedConnection(existingCoord, existingPort))
+        switchboxOp.emitOpError(
+            "Couldn't connect tile (" + std::to_string(existingCoord.col) +
+            ", " + std::to_string(existingCoord.row) + ") to port (" +
+            stringifyWireBundle(existingPort.bundle) + ", " +
+            std::to_string(existingPort.channel) + ")\n");
+    }
+  }
+
+  // all flows are now populated, call the congestion-aware pathfinder
+  // algorithm
+  // check whether the pathfinder algorithm creates a legal routing
+  flowSolutions = pathfinder.findPaths(maxIterations);
+  if (!pathfinder.isLegal())
+    device.emitError("Unable to find a legal routing");
+
+  // initialize all flows as unprocessed to prep for rewrite
+  for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
+    processedFlows[pathEndPoint] = false;
+    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb->col
+                            << "," << pathEndPoint.sb->row << "):\t");
+    LLVM_DEBUG(llvm::dbgs() << switchSetting);
+  }
+
+  // fill in coords to TileOps, SwitchboxOps, and ShimMuxOps
+  for (auto tileOp : device.getOps<TileOp>()) {
+    int col, row;
+    col = tileOp.colIndex();
+    row = tileOp.rowIndex();
+    maxCol = std::max(maxCol, col);
+    maxRow = std::max(maxRow, row);
+    assert(coordToTile.count({col, row}) == 0);
+    coordToTile[{col, row}] = tileOp;
+  }
+  for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
+    int col, row;
+    col = switchboxOp.colIndex();
+    row = switchboxOp.rowIndex();
+    assert(coordToSwitchbox.count({col, row}) == 0);
+    coordToSwitchbox[{col, row}] = switchboxOp;
+  }
+  for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
+    int col, row;
+    col = shimmuxOp.colIndex();
+    row = shimmuxOp.rowIndex();
+    assert(coordToShimMux.count({col, row}) == 0);
+    coordToShimMux[{col, row}] = shimmuxOp;
+  }
+
+  LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
+}
+
+TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
+  if (coordToTile.count({col, row})) {
+    return coordToTile[{col, row}];
+  } else {
+    TileOp tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
+    coordToTile[{col, row}] = tileOp;
+    maxCol = std::max(maxCol, col);
+    maxRow = std::max(maxRow, row);
+    return tileOp;
+  }
+}
+
+SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
+                                              int row) {
+  assert(col >= 0);
+  assert(row >= 0);
+  if (coordToSwitchbox.count({col, row})) {
+    return coordToSwitchbox[{col, row}];
+  } else {
+    SwitchboxOp switchboxOp = builder.create<SwitchboxOp>(
+        builder.getUnknownLoc(), getTile(builder, col, row));
+    switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
+                                 builder.getUnknownLoc());
+    coordToSwitchbox[{col, row}] = switchboxOp;
+    maxCol = std::max(maxCol, col);
+    maxRow = std::max(maxRow, row);
+    return switchboxOp;
+  }
+}
+
+ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
+  assert(col >= 0);
+  int row = 0;
+  if (coordToShimMux.count({col, row})) {
+    return coordToShimMux[{col, row}];
+  } else {
+    assert(getTile(builder, col, row).isShimNOCTile());
+    ShimMuxOp switchboxOp = builder.create<ShimMuxOp>(
+        builder.getUnknownLoc(), getTile(builder, col, row));
+    switchboxOp.ensureTerminator(switchboxOp.getConnections(), builder,
+                                 builder.getUnknownLoc());
+    coordToShimMux[{col, row}] = switchboxOp;
+    maxCol = std::max(maxCol, col);
+    maxRow = std::max(maxRow, row);
+    return switchboxOp;
+  }
+}
+
+Pathfinder::Pathfinder(int maxCol, int maxRow,
+                       const AIETargetModel &targetModel) {
   // make grid of switchboxes
   for (int col = 0; col <= maxCol; col++) {
     for (int row = 0; row <= maxRow; row++) {

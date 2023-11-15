@@ -139,6 +139,13 @@ public:
 namespace xilinx {
 namespace AIE {
 
+#define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                             \
+  friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) {              \
+    std::ostringstream ss;                                                     \
+    ss << s;                                                                   \
+    return ss.str();                                                           \
+  }
+
 typedef struct Port {
   WireBundle bundle;
   int channel;
@@ -151,6 +158,41 @@ typedef struct Port {
 
   bool operator<(const Port &rhs) const {
     return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const Port &port) {
+    switch (port.bundle) {
+    case xilinx::AIE::WireBundle::Core:
+      os << "Core";
+      break;
+    case xilinx::AIE::WireBundle::DMA:
+      os << "DMA";
+      break;
+    case xilinx::AIE::WireBundle::North:
+      os << "N";
+      break;
+    case xilinx::AIE::WireBundle::East:
+      os << "E";
+      break;
+    case xilinx::AIE::WireBundle::South:
+      os << "S";
+      break;
+    case xilinx::AIE::WireBundle::West:
+      os << "W";
+      break;
+    default:
+      os << "X";
+      break;
+    }
+    return os;
+  }
+
+  GENERATE_TO_STRING(Port)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const Port &port) {
+    os << to_string(port);
+    return os;
   }
 
 } Port;

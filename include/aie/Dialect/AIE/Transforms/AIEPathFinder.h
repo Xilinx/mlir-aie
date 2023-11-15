@@ -12,7 +12,6 @@
 #define AIE_PATHFINDER_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "llvm/ADT/DirectedGraph.h"
 #include "llvm/ADT/GraphTraits.h"
@@ -33,6 +32,21 @@ class Switchbox : public SwitchboxBase {
 public:
   Switchbox() = delete;
   Switchbox(const int col, const int row) : col(col), row(row) {}
+
+  // friend definition (will define the function as a non-member function in the
+  // namespace surrounding the class).
+  friend std::ostream &operator<<(std::ostream &os, const Switchbox &s) {
+    os << "Switchbox(" << s.col << ", " << s.row << ")";
+    return os;
+  }
+
+  GENERATE_TO_STRING(Switchbox)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const Switchbox &s) {
+    os << to_string(s);
+    return os;
+  }
 
   int col, row;
 };
@@ -64,6 +78,19 @@ public:
     return *this;
   }
 
+  friend std::ostream &operator<<(std::ostream &os, const Channel &c) {
+    os << "Channel(src=" << c.src << ", dst=" << c.getTargetNode() << ")";
+    return os;
+  }
+
+  GENERATE_TO_STRING(Channel)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const Channel &c) {
+    os << to_string(c);
+    return os;
+  }
+
   Switchbox &src;
   WireBundle bundle;
   int maxCapacity = 0;  // maximum number of routing resources
@@ -85,6 +112,31 @@ public:
 typedef struct SwitchSetting {
   Port src;
   std::set<Port> dsts;
+
+  // friend definition (will define the function as a non-member function of the
+  // namespace surrounding the class).
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const SwitchSetting &setting) {
+    os << setting.src << " -> "
+       << "{"
+       << llvm::join(llvm::map_range(setting.dsts,
+                                     [](const Port &port) {
+                                       std::ostringstream ss;
+                                       ss << port;
+                                       return ss.str();
+                                     }),
+                     ", ")
+       << "}";
+    return os;
+  }
+
+  GENERATE_TO_STRING(SwitchSetting)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const SwitchSetting &s) {
+    os << to_string(s);
+    return os;
+  }
 } SwitchSetting;
 
 typedef std::map<Switchbox *, SwitchSetting> SwitchSettings;
@@ -123,7 +175,7 @@ class Pathfinder {
 
 public:
   Pathfinder() = default;
-  Pathfinder(int maxCol, int maxRow, DeviceOp &d);
+  Pathfinder(int maxCol, int maxRow, const AIETargetModel &targetModel);
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
   bool addFixedConnection(TileID coords, Port port);
   bool isLegal();
@@ -138,7 +190,48 @@ public:
   }
 };
 
+// DynamicTileAnalysis integrates the Pathfinder class into the MLIR
+// environment. It passes flows to the Pathfinder as ordered pairs of ints.
+// Detailed routing is received as SwitchboxSettings
+// It then converts these settings to MLIR operations
+class DynamicTileAnalysis {
+public:
+  int maxCol, maxRow;
+  Pathfinder pathfinder;
+  std::map<PathEndPoint, SwitchSettings> flowSolutions;
+  std::map<PathEndPoint, bool> processedFlows;
+
+  llvm::DenseMap<TileID, TileOp> coordToTile;
+  llvm::DenseMap<TileID, SwitchboxOp> coordToSwitchbox;
+  llvm::DenseMap<TileID, ShimMuxOp> coordToShimMux;
+  llvm::DenseMap<int, PLIOOp> coordToPLIO;
+
+  const int maxIterations = 1000; // how long until declared unroutable
+
+  DynamicTileAnalysis() = default;
+
+  void runAnalysis(DeviceOp &device);
+
+  int getMaxCol() { return maxCol; }
+  int getMaxRow() { return maxRow; }
+
+  TileOp getTile(mlir::OpBuilder &builder, int col, int row);
+
+  SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
+
+  ShimMuxOp getShimMux(mlir::OpBuilder &builder, int col);
+};
+
 } // namespace xilinx::AIE
+
+namespace std {
+template <> struct less<xilinx::AIE::Switchbox *> {
+  bool operator()(const xilinx::AIE::Switchbox *a,
+                  const xilinx::AIE::Switchbox *b) const {
+    return a->col == b->col ? a->row < b->row : a->col < b->col;
+  }
+};
+} // namespace std
 
 namespace llvm {
 
@@ -186,26 +279,18 @@ struct GraphTraits<xilinx::AIE::SwitchboxGraph *>
   }
 };
 
-inline raw_ostream &operator<<(raw_ostream &OS,
-                               const xilinx::AIE::Switchbox &S) {
-  OS << "Switchbox(" << S.col << ", " << S.row << ")";
-  return OS;
-}
-
-inline raw_ostream &operator<<(raw_ostream &OS, const xilinx::AIE::Channel &C) {
-  OS << "Channel(src=" << C.src << ", dst=" << C.getTargetNode() << ")";
-  return OS;
+inline raw_ostream &operator<<(llvm::raw_ostream &os,
+                               const xilinx::AIE::SwitchSettings &ss) {
+  std::stringstream s;
+  s << "\tSwitchSettings: ";
+  for (const auto &[sb, setting] : ss) {
+    s << sb << ": " << setting << " | ";
+  }
+  s << "\n";
+  os << s.str();
+  return os;
 }
 
 } // namespace llvm
-
-namespace std {
-template <> struct less<xilinx::AIE::Switchbox *> {
-  bool operator()(const xilinx::AIE::Switchbox *a,
-                  const xilinx::AIE::Switchbox *b) const {
-    return a->col == b->col ? a->row < b->row : a->col < b->col;
-  }
-};
-} // namespace std
 
 #endif
