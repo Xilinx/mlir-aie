@@ -224,7 +224,7 @@ int main(int argc, const char *argv[]) {
       errors++;
       if (errors < max_errors) {
         std::cout << "\nerror, id " << i << " expected "
-                  << std::to_string(output_ref0[i]) << ", got"
+                  << std::to_string(output_ref0[i]) << ", got "
                   << std::to_string(bufOut[i]) << "\n";
       }
     }
