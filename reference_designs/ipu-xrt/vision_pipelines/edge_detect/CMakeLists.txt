@@ -31,15 +31,15 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 
 add_executable(${currentTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/xrtUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/OpenCVUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils/xrtUtils.cpp
     test.cpp
 )
 
 target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 
 target_include_directories (${currentTarget} PUBLIC 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
     ${Boost_INCLUDE_DIRS}
