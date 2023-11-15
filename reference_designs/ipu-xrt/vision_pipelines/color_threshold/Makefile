@@ -25,12 +25,12 @@ build/final.xclbin: aie.mlir build/threshold.o
 colorThreshold.exe: test.cpp 
 	rm -rf _build
 	mkdir _build
-	cd _build && powershell.exe cmake ../ 
-	cd _build && powershell.exe cmake --build . --config Release
-	cp _build/Release/colorThreshold.exe ./
+	cd _build && ${powershell} cmake ../ 
+	cd _build && ${powershell} cmake --build . --config Release
+	cp _build/Release/$@ ./
 
 run: colorThreshold.exe build/final.xclbin
-	powershell.exe ./colorThreshold.exe -x ./build/final.xclbin -i ./build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x ./build/final.xclbin -i ./build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build colorThreshold.exe

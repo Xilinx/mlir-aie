@@ -100,7 +100,7 @@ def my_matmul():
                 @forLoop(lowerBound = 0, upperBound = tiles, step = 1)
                 def loopTile():
                     elemOut = Acquire(
-                        "memC", ObjectFifoPort.Produce, 1, memRef_C_ty
+                        ObjectFifoPort.Produce, "memC", 1, memRef_C_ty
                     ).acquiredElem() 
                     if vectorized:
                         Call(zero, [elemOut])
@@ -110,10 +110,10 @@ def my_matmul():
                     @forLoop(lowerBound = 0, upperBound = K_div_k, step = 1)
                     def loopK():
                         elemInA = Acquire(
-                            "memA", ObjectFifoPort.Consume, 1, memRef_A_ty
+                            ObjectFifoPort.Consume, "memA", 1, memRef_A_ty
                         ).acquiredElem()
                         elemInB = Acquire(
-                            "memB", ObjectFifoPort.Consume, 1, memRef_B_ty
+                            ObjectFifoPort.Consume, "memB", 1, memRef_B_ty
                         ).acquiredElem()
                         if vectorized:
                             Call(matmul, [elemInA, elemInB, elemOut])
