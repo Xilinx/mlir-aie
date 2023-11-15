@@ -11,9 +11,9 @@ from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 
-width = 1920 #64 // 8
-height = 1080 #36 // 8
-heightMinus1 = 1079
+width = 640 #64 // 8
+height = 480 #36 // 8
+heightMinus1 = 479
 
 lineWidth         = width
 lineWidthInBytes  = width*4

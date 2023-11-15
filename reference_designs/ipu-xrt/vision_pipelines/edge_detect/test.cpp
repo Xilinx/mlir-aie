@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 //===- test.cpp -------------------------------------------000---*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -8,8 +7,6 @@
 // Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-=======
->>>>>>> d5e972de (move to prepare fore merge)
 
 #include <cstdint>
 #include <fstream>
