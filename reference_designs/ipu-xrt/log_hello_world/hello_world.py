@@ -44,13 +44,13 @@ def printf():
         @core(ComputeTile, "kernel.o")
         def coreBody():
             elemOut = Acquire(
-                "outOF", ObjectFifoPort.Produce, 1, memRef_ty
+                ObjectFifoPort.Produce, "outOF", 1, memRef_ty
             ).acquiredElem()
             elemIn = Acquire(
-                "inOF", ObjectFifoPort.Consume, 1, memRef_ty
+                ObjectFifoPort.Consume, "inOF", 1, memRef_ty
             ).acquiredElem()
             elemLogout = Acquire(
-                "logoutOF", ObjectFifoPort.Produce, 1, memRef_ty
+                ObjectFifoPort.Produce, "logoutOF", 1, memRef_ty
             ).acquiredElem()
             Call(kernel, [elemIn, elemOut, elemLogout])
             Release(ObjectFifoPort.Consume, "inOF", 1)

@@ -43,10 +43,10 @@ def my_vector_scalar():
                 @forLoop(lowerBound=0, upperBound=N_div_n, step=1)
                 def loopTile():
                     elemOut = Acquire(
-                        "out", ObjectFifoPort.Produce, 1, memRef_ty
+                        ObjectFifoPort.Produce, "out", 1, memRef_ty
                     ).acquiredElem()
                     elemIn = Acquire(
-                        "in", ObjectFifoPort.Consume, 1, memRef_ty
+                        ObjectFifoPort.Consume, "in", 1, memRef_ty
                     ).acquiredElem()
                     Call(scale_int32, [elemIn, elemOut])
                     Release(ObjectFifoPort.Consume, "in", 1)

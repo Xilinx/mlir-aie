@@ -31,7 +31,7 @@ helloWorld.exe: test.cpp
 	cp _build/Release/helloWorld.exe ./
 
 run: helloWorld.exe hello_world_elfstrings.csv
-	powershell.exe ./helloWorld.exe -x hello_world.xclbin -i insts.txt -k PP_FD_PRE -e hello_world_elfstrings.csv
+	powershell.exe ./helloWorld.exe -x hello_world.xclbin -i insts.txt -k MLIR_AIE -e hello_world_elfstrings.csv
 
 clean:
 	rm -rf *.elf* *.bif aie.mlir.prj *.xclbin insts.txt \
