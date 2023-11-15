@@ -18,6 +18,9 @@ set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV
 set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
 set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 
+set(EDGEDETECT_WIDTH 1920 CACHE STRING "image width")
+set(EDGEDETECT_HEIGHT 1080 CACHE STRING "image height")
+
 SET (ProjectName edgeDetect)
 SET (currentTarget edgeDetect)
 
@@ -36,7 +39,11 @@ add_executable(${currentTarget}
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
+target_compile_definitions(${currentTarget} PUBLIC 
+        EDGEDETECT_WIDTH=${EDGEDETECT_WIDTH}
+        EDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT}
+        DISABLE_ABI_CHECK=1 
+        )
 
 target_include_directories (${currentTarget} PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../utils
