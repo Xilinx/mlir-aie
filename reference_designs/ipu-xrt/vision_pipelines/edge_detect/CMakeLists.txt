@@ -61,4 +61,8 @@ target_link_directories(${currentTarget} PUBLIC
 target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
     ${OpenCV_LIBS}
+<<<<<<< HEAD
 )
+=======
+)
+>>>>>>> d5e972de (move to prepare fore merge)

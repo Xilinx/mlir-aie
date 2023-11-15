@@ -199,6 +199,7 @@ extern "C" {
 
 //#if BIT_WIDTH == 8
 
+<<<<<<< HEAD
 void filter2dLine(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
                   uint8_t *out, int32_t lineWidth, int16_t *filterKernel) {
   filter2d_3lines_aie(lineIn0, lineIn1, lineIn2, out, lineWidth, filterKernel);
@@ -217,6 +218,23 @@ void filter2dLine(int32_t *in, int32_t *out, int32_t lineWidth, int32_t
 filter2dValue, int32_t maxValue) { filter2d_3lines_aie<int32_t, 16>(in, out,
 lineWidth, 1, filter2dValue, maxValue);
 }
+=======
+void filter2dLine(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2, uint8_t *out, int32_t lineWidth, int16_t *filterKernel) {
+    filter2d_3lines_aie(lineIn0, lineIn1, lineIn2, out, lineWidth, filterKernel);
+} 
+
+/* #elif BIT_WIDTH == 16
+
+void filter2dLine(int16_t *in, int16_t *out, int32_t lineWidth, int16_t filter2dValue, int16_t maxValue) {
+    filter2d_3lines_aie<int16_t, 32>(in, out, lineWidth, 1, filter2dValue, maxValue);
+} 
+
+#else // 32
+
+void filter2dLine(int32_t *in, int32_t *out, int32_t lineWidth, int32_t filter2dValue, int32_t maxValue) {
+    filter2d_3lines_aie<int32_t, 16>(in, out, lineWidth, 1, filter2dValue, maxValue);
+} 
+>>>>>>> d5e972de (move to prepare fore merge)
 
 #endif */
 
