@@ -18,7 +18,7 @@ AIE.device(ipu) {
         
         // Declare tile object of the AIE class located at position col 1, row 4
         %tile00 = AIE.tile(0, 0)
-        %tile02 = AIE.tile(0, 2)
+        %tile02 = AIE.tile(0, 4)
 
         AIE.objectFifo @inOF(%tile00, {%tile02}, 2 : i32) : !AIE.objectFifo<memref<512xui32>>
         AIE.objectFifo @outOF(%tile02, {%tile00}, 2 : i32) : !AIE.objectFifo<memref<512xui32>>

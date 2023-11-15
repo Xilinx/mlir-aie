@@ -8,6 +8,7 @@
 import argparse
 import subprocess
 import re
+import os
 from typing import Dict
 
 def call_unix_proc(cmd:str)->str:
@@ -53,11 +54,21 @@ def main():
     parser.add_argument("--output", default="elfstrings.csv")
     args = parser.parse_args()
     
-    ofile = args.input+"/core_0_2.elf"
-    strings_cmd = f"strings --radix x -a {ofile}"
-    object_strings_str = call_unix_proc(strings_cmd)
-    ro_offset = _get_ro_offset(ofile)
-    res = _gen_string_dict(object_strings_str, ro_offset)
+    # Collect all the elfs
+    ofiles = []
+    for filename in os.listdir(args.input):
+        if filename.endswith('.elf'):
+            filepath = os.path.join(args.input, filename)
+            ofiles.append(filepath)
+    print(ofiles)
+
+    res = {}
+    for ofile in ofiles:
+        strings_cmd = f"strings --radix x -a {ofile}"
+        object_strings_str = call_unix_proc(strings_cmd)
+        ro_offset = _get_ro_offset(ofile)
+        d = _gen_string_dict(object_strings_str, ro_offset) 
+        res = {**res, **d}
     with open(args.output, "w") as fp:
         for addr,s in res.items():
             fp.write(f"{addr},{s}\n")
