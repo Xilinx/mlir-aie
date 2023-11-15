@@ -17,8 +17,9 @@ from typing import List
 def testPathfinderFlowsWithPython():
     print("\nTEST: testPathfinderFlowsWithPython")
 
-    def print_ops(op):
-        print(op.name)
+    def print_hello(max_col, max_row, is_legal):
+        print(f"{max_col=} {max_row=} {is_legal=}")
+        print("hello from PythonDynamicTileAnalysis::runAnalysis!")
 
     module = """
     AIE.device(xcvc1902) {
@@ -55,7 +56,7 @@ def testPathfinderFlowsWithPython():
 
     with Context() as ctx, Location.unknown():
         aie.dialects.aie.register_dialect(ctx)
-        _aie_python_passes.register_pathfinder_flows_with_python(print_ops)
+        _aie_python_passes.register_pathfinder_flows_with_python(print_hello)
         mlir_module = Module.parse(module)
         device = mlir_module.body.operations[0]
         PassManager.parse("AIE.device(aie-create-pathfinder-flows-with-python)").run(
@@ -66,6 +67,8 @@ def testPathfinderFlowsWithPython():
 
 
 # CHECK-LABEL: TEST: testPathfinderFlowsWithPython
+# CHECK: max_col=8 max_row=3 is_legal=True
+# CHECK: hello from PythonDynamicTileAnalysis::runAnalysis!
 # CHECK:  AIE.device(xcvc1902) {
 # CHECK:    %tile_0_3 = AIE.tile(0, 3)
 # CHECK:    %tile_0_2 = AIE.tile(0, 2)

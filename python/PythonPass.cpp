@@ -21,29 +21,39 @@ using namespace xilinx::AIE;
 
 namespace py = pybind11;
 
-struct PathfinderFlowsWithPython : public AIEPathfinderPass {
+class PythonPathFinder : public Pathfinder {
+public:
+  PythonPathFinder(py::function func) : func(std::move(func)) {}
+  void initialize(int maxCol, int maxRow,
+                  const AIETargetModel &targetModel) override {
+    Pathfinder::initialize(maxCol, maxRow, targetModel);
+    func(maxCol, maxRow, isLegal());
+  }
+  py::function func;
+};
 
-  PathfinderFlowsWithPython(py::function func) : func(func) {}
+struct PathfinderFlowsWithPython : public AIEPathfinderPass {
+  using AIEPathfinderPass::AIEPathfinderPass;
+
   StringRef getArgument() const final {
     return "aie-create-pathfinder-flows-with-python";
   }
-
-  py::function func;
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
 createPathfinderFlowsWithPythonPassWithFunc(py::function func) {
-  return std::make_unique<PathfinderFlowsWithPython>(func);
+  return std::make_unique<PathfinderFlowsWithPython>(
+      DynamicTileAnalysis(std::make_shared<PythonPathFinder>(std::move(func))));
 }
 
-void registerPathfinderFlowsWithPythonPassWithFunc(py::function func) {
+void registerPathfinderFlowsWithPythonPassWithFunc(const py::function &func) {
   registerPass(
       [func]() { return createPathfinderFlowsWithPythonPassWithFunc(func); });
 }
 
 PYBIND11_MODULE(_aie_python_passes, m) {
 
-  m.def("register_pathfinder_flows_with_python", [](py::function func) {
-    registerPathfinderFlowsWithPythonPassWithFunc(std::move(func));
+  m.def("register_pathfinder_flows_with_python", [](const py::function &func) {
+    registerPathfinderFlowsWithPythonPassWithFunc(func);
   });
 }
