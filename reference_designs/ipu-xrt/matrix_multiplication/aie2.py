@@ -20,6 +20,9 @@ def my_matmul():
     m = 64
     k = 32
     n = 64
+    r = 4
+    s = 4
+    t = 4
     word_size_in = 2
     word_size_out = 2
 
@@ -47,7 +50,7 @@ def my_matmul():
     N_in_i32s_out     = N*word_size_out//4
     m_x_N_in_i32s_out = m*N*word_size_out//4
 
-    vectorized = False 
+    vectorized = True
 
     @device(AIEDevice.ipu)
     def deviceBody():
@@ -66,9 +69,29 @@ def my_matmul():
         MemTile      = Tile(0, 1)
         ComputeTile2 = Tile(0, 2)
 
-        OrderedObjectBuffer("inA", ShimTile, ComputeTile2, 2, memRef_A_ty)
-        OrderedObjectBuffer("inB", ShimTile, ComputeTile2, 2, memRef_B_ty)
-        OrderedObjectBuffer("outC", ComputeTile2, ShimTile, 2, memRef_C_ty)
+        OrderedObjectBuffer("inA", ShimTile, MemTile, 2, memRef_A_ty)
+        OrderedObjectBuffer("memA", MemTile, ComputeTile2, 2, memRef_A_ty,
+                                    [(m//r, r*k*word_size_in//4), 
+                                     (k//s, s*word_size_in//4), 
+                                     (r, k*word_size_in//4), 
+                                     (s*word_size_in//4, 1)])
+        Link(["inA"], ["memA"])
+        
+        OrderedObjectBuffer("inB", ShimTile, MemTile, 2, memRef_B_ty)
+        OrderedObjectBuffer("memB", MemTile, ComputeTile2, 2, memRef_B_ty,
+                                    [(k//s, s*n*word_size_in//4), 
+                                     (n//t, t*word_size_in//4), 
+                                     (s, n*word_size_in//4), 
+                                     (t*word_size_in//4, 1)])
+        Link(["inB"], ["memB"])
+        
+        OrderedObjectBuffer("memC", ComputeTile2, MemTile, 2, memRef_C_ty)
+        OrderedObjectBuffer("outC", MemTile, ShimTile, 2, memRef_C_ty,
+                                    [(m//r, r*n*word_size_out//4), 
+                                     (r, t*word_size_out//4), 
+                                     (n//t, r*t*word_size_out//4), 
+                                     (t*word_size_out//4, 1)])
+        Link(["memC"], ["outC"])
 
         @core(ComputeTile2, "mm.o")
         def coreBody():
@@ -77,7 +100,7 @@ def my_matmul():
                 @forLoop(lowerBound = 0, upperBound = tiles, step = 1)
                 def loopTile():
                     elemOut = Acquire(
-                        "outC", ObjectFifoPort.Produce, 1, memRef_C_ty
+                        "memC", ObjectFifoPort.Produce, 1, memRef_C_ty
                     ).acquiredElem() 
                     if vectorized:
                         Call(zero, [elemOut])
@@ -87,19 +110,19 @@ def my_matmul():
                     @forLoop(lowerBound = 0, upperBound = K_div_k, step = 1)
                     def loopK():
                         elemInA = Acquire(
-                            "inA", ObjectFifoPort.Consume, 1, memRef_A_ty
+                            "memA", ObjectFifoPort.Consume, 1, memRef_A_ty
                         ).acquiredElem()
                         elemInB = Acquire(
-                            "inB", ObjectFifoPort.Consume, 1, memRef_B_ty
+                            "memB", ObjectFifoPort.Consume, 1, memRef_B_ty
                         ).acquiredElem()
                         if vectorized:
                             Call(matmul, [elemInA, elemInB, elemOut])
                         else:
                             Call(matmul_scalar, [elemInA, elemInB, elemOut])
-                        Release(ObjectFifoPort.Consume, "inA", 1)
-                        Release(ObjectFifoPort.Consume, "inB", 1)
+                        Release(ObjectFifoPort.Consume, "memA", 1)
+                        Release(ObjectFifoPort.Consume, "memB", 1)
 
-                    Release(ObjectFifoPort.Produce, "outC", 1)
+                    Release(ObjectFifoPort.Produce, "memC", 1)
 
 
         int32_ty = IntegerType.get_signless(32)
