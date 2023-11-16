@@ -10,8 +10,8 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
-EDGEDETECT_WIDTH = 64
-EDGEDETECT_HEIGHT = 36
+EDGEDETECT_WIDTH = 1920
+EDGEDETECT_HEIGHT = 1080
 
 #all: build/final_1080.xclbin
 all: build/final_${EDGEDETECT_WIDTH}.xclbin
