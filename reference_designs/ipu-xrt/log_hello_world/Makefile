@@ -11,7 +11,7 @@ include ../makefile-common
 all: hello_world_elfstrings.csv
 
 kernel.o: kernel.cc
-	xchesscc ${CHESSCC2_FLAGS} -c kernel.cc -o kernel.o
+	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c kernel.cc -o kernel.o
 
 hello_world.mlir: hello_world.py
 	python3 $< > $@

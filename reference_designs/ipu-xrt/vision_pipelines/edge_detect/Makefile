@@ -10,18 +10,22 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
-EDGEDETECT_WIDTH = 1920
-EDGEDETECT_HEIGHT = 1080
+#EDGEDETECT_WIDTH = 1920
+#EDGEDETECT_HEIGHT = 1080
 
-#all: build/final_1080.xclbin
+EDGEDETECT_WIDTH = 64
+EDGEDETECT_HEIGHT = 36
+
+#EDGEDETECT_WIDTH = 640
+#EDGEDETECT_HEIGHT = 480
+
 all: build/final_${EDGEDETECT_WIDTH}.xclbin
-#all: build/final_tiny.xclbin
 
 mlir: build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc ${CHESSCC2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 
 build/combined_gray2rgba_addWeighted.a: build/gray2rgba.cc.o build/addWeighted.cc.o
 	mkdir -p ${@D}

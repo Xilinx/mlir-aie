@@ -14,7 +14,7 @@ all: build/final.xclbin
 
 build/threshold.o: threshold.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc -d ${CHESSCC2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -d -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 	
 #build/final_%.xclbin: aie_%.mlir build/threshold.o
 build/final.xclbin: aie.mlir build/threshold.o
