@@ -285,29 +285,29 @@ void AIEPathfinderPass::runOnOperation() {
     }
   }
 
-    // If the routing violates architecture-specific routing constraints, then
-    // attempt to partially reroute.
-    const auto &targetModel = d.getTargetModel();
-    std::vector<ConnectOp> problemConnects;
-    d.walk([&](ConnectOp connect) {
-      if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
-        // Constraint: memtile stream switch constraints
-        if (auto tile = sw.getTileOp(); tile.isMemTile() &&
-                                        !targetModel.isLegalMemtileConnection(
-                                            connect.getSourceBundle(), connect.getSourceChannel(),
-                                            connect.getDestBundle(), connect.getDestChannel())) {
-          problemConnects.push_back(connect);
-        }
+  // If the routing violates architecture-specific routing constraints, then
+  // attempt to partially reroute.
+  const auto &targetModel = d.getTargetModel();
+  std::vector<ConnectOp> problemConnects;
+  d.walk([&](ConnectOp connect) {
+    if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
+      // Constraint: memtile stream switch constraints
+      if (auto tile = sw.getTileOp(); tile.isMemTile() &&
+          !targetModel.isLegalMemtileConnection(
+              connect.getSourceBundle(), connect.getSourceChannel(),
+              connect.getDestBundle(), connect.getDestChannel())) {
+        problemConnects.push_back(connect);
       }
-    });
-
-    for (auto connect : problemConnects) {
-      auto swBox = connect->getParentOfType<SwitchboxOp>();
-      builder.setInsertionPoint(connect);
-      auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
-      auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
-      attemptFixupMemTileRouting(builder, swBox, northSw, southSw, connect);
     }
+  });
+
+  for (auto connect : problemConnects) {
+    auto swBox = connect->getParentOfType<SwitchboxOp>();
+    builder.setInsertionPoint(connect);
+    auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
+    auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
+    attemptFixupMemTileRouting(builder, swBox, northSw, southSw, connect);
+  }
 }
 
 bool AIEPathfinderPass::attemptFixupMemTileRouting(OpBuilder builder,

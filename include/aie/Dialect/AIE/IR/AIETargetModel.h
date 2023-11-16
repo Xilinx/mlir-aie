@@ -11,28 +11,45 @@
 #ifndef MLIR_AIE_DEVICEMODEL_H
 #define MLIR_AIE_DEVICEMODEL_H
 
+#include "aie/Dialect/AIE/IR/AIEEnums.h"
+
 #include "llvm/ADT/DenseSet.h"
 
-#include "aie/Dialect/AIE/IR/AIEEnums.h"
+#include <iostream>
 
 namespace xilinx::AIE {
 
 typedef struct TileID {
-  int col;
-  int row;
-
-  bool operator==(const TileID &rhs) const {
-    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+  // friend definition (will define the function as a non-member function in the
+  // namespace surrounding the class).
+  friend std::ostream &operator<<(std::ostream &os, const TileID &s) {
+    os << "TileID(" << s.col << ", " << s.row << ")";
+    return os;
   }
 
-  bool operator!=(const TileID &rhs) const {
-    return std::tie(col, row) != std::tie(rhs.col, rhs.row);
+  friend std::string to_string(const TileID &s) {
+    std::ostringstream ss;
+    ss << s;
+    return ss.str();
+  }
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TileID &s) {
+    os << to_string(s);
+    return os;
   }
 
   // Imposes a lexical order on TileIDs.
   bool operator<(const TileID &rhs) const {
     return col == rhs.col ? row < rhs.row : col < rhs.col;
   }
+
+  bool operator==(const TileID &rhs) const {
+    return std::tie(col, row) == std::tie(rhs.col, rhs.row);
+  }
+
+  bool operator!=(const TileID &rhs) const { return !(*this == rhs); }
+
+  int col, row;
 } TileID;
 
 class AIETargetModel {
