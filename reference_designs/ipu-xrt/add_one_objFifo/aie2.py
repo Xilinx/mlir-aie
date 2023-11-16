@@ -37,10 +37,10 @@ def my_add_one_objFifo():
             @forLoop(lowerBound=0, upperBound=8, step=1)
             def loopTile():
                 elemIn = Acquire(
-                    "in1", ObjectFifoPort.Consume, 1, memRef_8_ty
+                    ObjectFifoPort.Consume, "in1", 1, memRef_8_ty
                 ).acquiredElem()
                 elemOut = Acquire(
-                    "out1", ObjectFifoPort.Produce, 1, memRef_8_ty
+                    ObjectFifoPort.Produce, "out1", 1, memRef_8_ty
                 ).acquiredElem()
                 # @forLoop(lowerBound=0, upperBound=8, step=1)
                 #   load elemIn[idx]

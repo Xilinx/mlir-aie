@@ -17,12 +17,5 @@ TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes
 ifeq ($(TEST_POWERSHELL),yes)
 	powershell = powershell.exe
 else
-	powershell = ""
+	powershell = 
 endif
-
-CXX=clang
-CFLAGS=-std=c++11 -Wall -Ofast -march=native -Wunused-parameter -Wunused-function
-INC=-I/opt/xilinx/xrt/include -I../utils -I/usr/include/opencv4
-LD_PATHS=-L/opt/xilinx/xrt/lib -L/usr/lib64
-LD_FLAGS=-lrt -lstdc++ -luuid -lboost_program_options -lboost_filesystem -lprotobuf -lxrt_coreutil
-OpenCV_LIBS := -lopencv_core -lopencv_imgproc -lopencv_imgcodecs
