@@ -10,30 +10,31 @@ include ../makefile-common
 
 all: hello_world_elfstrings.csv
 
-kernel.o: kernel.cc
-	xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c kernel.cc -o kernel.o
+build/%.o: %.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
 
-hello_world.mlir: hello_world.py
+build/hello_world.mlir: hello_world.py
+	mkdir -p ${@D}
 	python3 $< > $@
 
-hello_world.xclbin: hello_world.mlir kernel.o
-	aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=$@ --ipu-insts-name=insts.txt $<
+build/hello_world.xclbin: build/hello_world.mlir build/kernel.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-hello_world_elfstrings.csv: hello_world.xclbin
-	python3 elfStringParser.py --input ./ --output $@
+hello_world_elfstrings.csv: build/hello_world.xclbin
+	python3 elfStringParser.py --input ./build --output $@
 
 helloWorld.exe: test.cpp
 	rm -rf _build
 	mkdir _build
-	cd _build && powershell.exe cmake ../
-	cd _build && powershell.exe cmake --build . --config Release
-	cp _build/Release/helloWorld.exe ./
+	cd _build && ${powershell} cmake ../
+	cd _build && ${powershell} cmake --build . --config Release
+	cp _build/Release/$@ ./
 
 run: helloWorld.exe hello_world_elfstrings.csv
-	powershell.exe ./helloWorld.exe -x hello_world.xclbin -i insts.txt -k MLIR_AIE -e hello_world_elfstrings.csv
+	${powershell} ./$< -x hello_world.xclbin -i insts.txt -k MLIR_AIE -e $(word 2,$^)
 
 clean:
-	rm -rf *.elf* *.bif aie.mlir.prj *.xclbin insts.txt \
-		*.log aie_partition.json *.bin BOOT.BIN _x hello_world.mlir \
-		*.csv *.mlir.prj *.o _build CMakeCache.txt CMakeFiles *.exe
+	rm -rf build _build helloWorld.exe *.csv
