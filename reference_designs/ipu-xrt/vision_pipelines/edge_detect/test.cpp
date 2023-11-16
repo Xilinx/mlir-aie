@@ -27,32 +27,35 @@ double epsilon = 0.1;
 constexpr int testImageWidth = EDGEDETECT_WIDTH;
 constexpr int testImageHeight = EDGEDETECT_HEIGHT;
 
-//constexpr int testImageWidth = 64;
-//constexpr int testImageHeight = 36;
+// constexpr int testImageWidth = 64;
+// constexpr int testImageHeight = 36;
 
-//constexpr int testImageWidth = 1920;
-//constexpr int testImageHeight = 1080;
+// constexpr int testImageWidth = 1920;
+// constexpr int testImageHeight = 1080;
 constexpr int testImageSize = testImageWidth * testImageHeight;
 constexpr int kernelSize = 3;
 
 namespace po = boost::program_options;
 
 void edgeDetect(cv::Mat &inImage, cv::Mat &outImage) {
-  cv::Mat inImageGray, imageFiltered, imageThreshold, imageThresholdBRG, outImageReference;
-  cv::resize(inImage,inImage,cv::Size(testImageWidth,testImageHeight));
-  cv::cvtColor(inImage,inImageGray,cv::COLOR_BGR2GRAY);
+  cv::Mat inImageGray, imageFiltered, imageThreshold, imageThresholdBRG,
+      outImageReference;
+  cv::resize(inImage, inImage, cv::Size(testImageWidth, testImageHeight));
+  cv::cvtColor(inImage, inImageGray, cv::COLOR_BGR2GRAY);
   cv::Mat filterKernel;
-  cv::Point anchor( -1, -1 );
-	double delta = 0.0; //no delta added to filtered pixels
-	int ddepth = -1; //dst type equals src type
-  filterKernel = (cv::Mat_<float>(kernelSize,kernelSize) << 0, 1, 0, 1, -4, 1, 0, 1, 0); // Laplacian, high pass
-  cv::filter2D(inImageGray, imageFiltered, ddepth , filterKernel, anchor, delta, cv::BORDER_REPLICATE );
-  cv::threshold(imageFiltered, imageThreshold, 10,255,cv::THRESH_BINARY);
-  cv::cvtColor(imageThreshold,imageThresholdBRG,cv::COLOR_GRAY2BGR);
+  cv::Point anchor(-1, -1);
+  double delta = 0.0; // no delta added to filtered pixels
+  int ddepth = -1;    // dst type equals src type
+  filterKernel = (cv::Mat_<float>(kernelSize, kernelSize) << 0, 1, 0, 1, -4, 1,
+                  0, 1, 0); // Laplacian, high pass
+  cv::filter2D(inImageGray, imageFiltered, ddepth, filterKernel, anchor, delta,
+               cv::BORDER_REPLICATE);
+  cv::threshold(imageFiltered, imageThreshold, 10, 255, cv::THRESH_BINARY);
+  cv::cvtColor(imageThreshold, imageThresholdBRG, cv::COLOR_GRAY2BGR);
   double alpha = 1.0;
   double beta = 1.0;
   double gamma = 0.0;
-  cv::addWeighted(imageThresholdBRG,alpha,inImage,beta,gamma,outImage);
+  cv::addWeighted(imageThresholdBRG, alpha, inImage, beta, gamma, outImage);
 
   return;
 }
@@ -77,7 +80,8 @@ int main(int argc, const char *argv[]) {
       "verbosity,v", po::value<int>()->default_value(0),
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6")("live,l", "capture from webcam");
+      "path of file containing userspace instructions to be sent to the LX6")(
+      "live,l", "capture from webcam");
   po::variables_map vm;
 
   try {
@@ -102,22 +106,20 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x" << testImageHeight << std::endl;
+  std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
+            << testImageHeight << std::endl;
 
-   /*
-   ****************************************************************************
-   * Read the input image or generate random one if no input file argument
-   * provided
-   ****************************************************************************
-   */
+  /*
+  ****************************************************************************
+  * Read the input image or generate random one if no input file argument
+  * provided
+  ****************************************************************************
+  */
   cv::Mat inImage, inImageRGBA;
   cv::String fileIn;
   if (vm.count("image")) {
-    fileIn =
-        vm["image"]
-            .as<std::
-                    string>(); 
-                    //"/group/xrlabs/imagesAndVideos/images/minion128x128.jpg";
+    fileIn = vm["image"].as<std::string>();
+    //"/group/xrlabs/imagesAndVideos/images/minion128x128.jpg";
     initializeSingleImageTest(fileIn, inImage);
   } else {
     fileIn = "RANDOM";
@@ -137,10 +139,10 @@ int main(int argc, const char *argv[]) {
    * Calculate OpenCV referennce for edgeDetect
    ****************************************************************************
    */
-  
+
   cv::Mat outImageReference, outImageTestBGR;
-  edgeDetect(inImage,outImageReference);
- 
+  edgeDetect(inImage, outImageReference);
+
   cv::cvtColor(outImageReference, outImageReference, cv::COLOR_BGR2RGBA);
   cv::Mat outImageTest(testImageHeight, testImageWidth, CV_8UC4);
 
@@ -250,10 +252,10 @@ int main(int argc, const char *argv[]) {
     }
 
     //--- frame grab + process
-    std:: cout << "Start grabbing" << std::endl << "Press any key to terminate" << std::endl;
+    std::cout << "Start grabbing" << std::endl
+              << "Press any key to terminate" << std::endl;
     cv::Mat frame;
-    for (;;)
-    {
+    for (;;) {
       // wait for a new frame from camera and store it into 'frame'
       cap.read(frame);
       // check if we succeeded
@@ -262,13 +264,14 @@ int main(int argc, const char *argv[]) {
         break;
       }
 
-      //cv::Mat edgeFrame;
-      //edgeDetect(frame,edgeFrame);
+      // cv::Mat edgeFrame;
+      // edgeDetect(frame,edgeFrame);
 
       cv::resize(frame, inImage, cv::Size(testImageWidth, testImageHeight));
       cv::cvtColor(inImage, inImageRGBA, cv::COLOR_BGR2RGBA);
       // Copy cv::Mat input image to xrt buffer object
-      memcpy(bufInA, inImageRGBA.data, (inImageRGBA.total() * inImageRGBA.elemSize()));
+      memcpy(bufInA, inImageRGBA.data,
+             (inImageRGBA.total() * inImageRGBA.elemSize()));
 
       // Copy instruction stream to xrt buffer object
       void *bufInstr = bo_instr.map<void *>();
@@ -282,7 +285,7 @@ int main(int argc, const char *argv[]) {
       // Execute the kernel and wait to finish
       if (verbosity >= 1)
         std::cout << "Running Kernel.\n";
-      
+
       auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
       run.wait();
 
@@ -291,17 +294,17 @@ int main(int argc, const char *argv[]) {
 
       // Store result in cv::Mat
       uint8_t *bufOut = bo_out.map<uint8_t *>();
-      memcpy(outImageTest.data, bufOut, (outImageTest.total() * outImageTest.elemSize()));
+      memcpy(outImageTest.data, bufOut,
+             (outImageTest.total() * outImageTest.elemSize()));
 
       // show live and wait for a key with timeout long enough to show images
       cv::cvtColor(outImageTest, outImageTestBGR, cv::COLOR_RGBA2BGR);
       cv::imshow("Edge AIE", outImageTestBGR);
-        if (cv::waitKey(5) >= 0)
-            break;
+      if (cv::waitKey(5) >= 0)
+        break;
     }
   }
 
   printf("Testing edgeDetect done!\n");
   return res;
-  
 }
