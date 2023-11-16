@@ -13,8 +13,8 @@ from aie.dialects.scf import *
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 
-width = 640 #64 // 8
-height = 480 #36 // 8
+width = 64
+height = 36
 if len(sys.argv) == 3:
     width = int(sys.argv[1])
     height = int(sys.argv[2])
@@ -53,33 +53,40 @@ def edge_detect():
         ComputeTile4 = Tile(0, 4)
         ComputeTile5 = Tile(0, 5)
 
-        # OrderedObjectBuffer("inOF_L3L2", ShimTile, MemTile, 2, line_bytes_ty)
-        # OrderedObjectBuffer("inOF_L2L1", MemTile, [ComputeTile2, ComputeTile5], [2, 2, 7], line_bytes_ty)
-        OrderedObjectBuffer("inOF_L3L2", ShimTile, [ComputeTile2, MemTile], [2, 2, 7], line_bytes_ty)
-        OrderedObjectBuffer("inOF_L2L1", MemTile, [ComputeTile5], 7, line_bytes_ty)
-        Link(["inOF_L3L2"], ["inOF_L2L1"])
+       # set up AIE-array data movement with Ordered Object Bufferss
 
-        OrderedObjectBuffer("outOF_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
-        OrderedObjectBuffer("outOF_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty)
-        Link(["outOF_L1L2"], ["outOF_L2L3"])
+        # input RGBA broadcast + memtile for skip
+        OrderedObjectBuffer("inOOB_L3L2", ShimTile, [ComputeTile2, MemTile], [2, 2, 7], line_bytes_ty)
+        OrderedObjectBuffer("inOOB_L2L1", MemTile, [ComputeTile5], 7, line_bytes_ty)
+        Link(["inOOB_L3L2"], ["inOOB_L2L1"])
 
+        # output RGBA 
+        OrderedObjectBuffer("outOOB_L2L3", MemTile, ShimTile, 2, line_bytes_ty)
+        OrderedObjectBuffer("outOOB_L1L2", ComputeTile5, MemTile, 2, line_bytes_ty)
+        Link(["outOOB_L1L2"], ["outOOB_L2L3"])
+
+        # between computeTiles
         OrderedObjectBuffer("OF_2to3", ComputeTile2, ComputeTile3, 4, line_ty)
         OrderedObjectBuffer("OF_3to4", ComputeTile3, ComputeTile4, 2, line_ty)
         OrderedObjectBuffer("OF_4to5", ComputeTile4, ComputeTile5, 2, line_ty)
         OrderedObjectBuffer("OF_5to5", ComputeTile5, ComputeTile5, 1, line_bytes_ty)
 
+        # set up compute tiles
+        
+        #compute tile 2
         @core(ComputeTile2, "rgba2gray.cc.o")
         def coreBody():
             @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
             def loopBody():
-                elemIn = Acquire(ObjectFifoPort.Consume, "inOF_L3L2", 1, line_bytes_ty).acquiredElem()
+                elemIn = Acquire(ObjectFifoPort.Consume, "inOOB_L3L2", 1, line_bytes_ty).acquiredElem()
                 elemOut = Acquire(ObjectFifoPort.Produce, "OF_2to3", 1, line_ty).acquiredElem()
 
                 Call(rgba2grayLine, [elemIn, elemOut, lineWidth])
 
-                Release(ObjectFifoPort.Consume, "inOF_L3L2", 1)
+                Release(ObjectFifoPort.Consume, "inOOB_L3L2", 1)
                 Release(ObjectFifoPort.Produce, "OF_2to3", 1)
 
+        #compute tile 3
         @core(ComputeTile3, "filter2d.cc.o")
         def coreBody():  
             kernel = memref.AllocOp(memRef_3x3_ty, [], [])
@@ -96,7 +103,7 @@ def edge_detect():
             Store(v1, kernel, [2, 1])
             Store(v0, kernel, [2, 2])
             
-            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            @forLoop(lowerBound = 0, upperBound = sys.maxsize, step = 1)
             def loopBody():
 
                 # Preamble : Top Border
@@ -121,12 +128,13 @@ def edge_detect():
                 Release(ObjectFifoPort.Consume, "OF_2to3", 2)
                 Release(ObjectFifoPort.Produce, "OF_3to4", 1) 
 
+        #compute tile 4
         @core(ComputeTile4, "threshold.cc.o")
         def coreBody():  
             vThr = integerConstant(10, int16_ty)
             vMax = integerConstant(255, int16_ty)
             vTyp = integerConstant(0, int8_ty)
-            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            @forLoop(lowerBound = 0, upperBound = sys.maxsize, step = 1)
             def loopBody():
                 elemIn = Acquire(ObjectFifoPort.Consume, "OF_3to4",  1, line_ty).acquiredElem()
                 elemOut = Acquire(ObjectFifoPort.Produce, "OF_4to5", 1, line_ty).acquiredElem()
@@ -136,9 +144,10 @@ def edge_detect():
                 Release(ObjectFifoPort.Consume, "OF_3to4", 1)
                 Release(ObjectFifoPort.Produce, "OF_4to5", 1)
 
+        #compute tile 5
         @core(ComputeTile5, "combined_gray2rgba_addWeighted.a")
         def coreBody():
-            @forLoop(lowerBound = 0, upperBound = 4294967295, step = 1)
+            @forLoop(lowerBound = 0, upperBound = sys.maxsize, step = 1)
             def loopBody():
                 elemIn = Acquire(ObjectFifoPort.Consume, "OF_4to5", 1, line_ty).acquiredElem()
                 elemOut = Acquire(ObjectFifoPort.Produce, "OF_5to5", 1, line_bytes_ty).acquiredElem()
@@ -149,8 +158,8 @@ def edge_detect():
                 Release(ObjectFifoPort.Produce, "OF_5to5", 1)
 
                 elemIn1 = Acquire(ObjectFifoPort.Consume, "OF_5to5", 1, line_bytes_ty).acquiredElem()
-                elemIn2 = Acquire(ObjectFifoPort.Consume, "inOF_L2L1", 1, line_bytes_ty).acquiredElem()
-                elemOut2 = Acquire(ObjectFifoPort.Produce, "outOF_L1L2", 1, line_bytes_ty).acquiredElem()
+                elemIn2 = Acquire(ObjectFifoPort.Consume, "inOOB_L2L1", 1, line_bytes_ty).acquiredElem()
+                elemOut2 = Acquire(ObjectFifoPort.Produce, "outOOB_L1L2", 1, line_bytes_ty).acquiredElem()
 
                 alpha = integerConstant(16384, int16_ty)
                 beta = integerConstant(16384, int16_ty)
@@ -159,16 +168,18 @@ def edge_detect():
                 Call(addWeightedLine, [elemIn1, elemIn2, elemOut2, lineWidthInBytes, alpha, beta, gamma])
 
                 Release(ObjectFifoPort.Consume, "OF_5to5", 1)
-                Release(ObjectFifoPort.Consume, "inOF_L2L1", 1)
-                Release(ObjectFifoPort.Produce, "outOF_L1L2", 1)
+                Release(ObjectFifoPort.Consume, "inOOB_L2L1", 1)
+                Release(ObjectFifoPort.Produce, "outOOB_L1L2", 1)
 
+        
+        # to/from AIE-array data movement
+        
         tensorSize = width*height*4 # 4 channels
         tensorSizeInInt32s = tensorSize // 4
-        # memRef_mem_ty =  MemRefType.get((2304,), int32_ty)
         tensor_ty =  MemRefType.get((tensorSizeInInt32s,), int32_ty)
         memRef_16x16_ty = MemRefType.get((16,16,), int32_ty)
         @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
         def sequence(inTensor, notUsed, outTensor):
-            IpuDmaMemcpyNd(metadata = "inOF_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, height, lineWidthInInt32s], strides = [0,0,lineWidthInInt32s]) 
-            IpuDmaMemcpyNd(metadata = "outOF_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, height, lineWidthInInt32s], strides = [0,0,lineWidthInInt32s,1]) 
+            IpuDmaMemcpyNd(metadata = "inOOB_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, height, lineWidthInInt32s], strides = [0,0,lineWidthInInt32s]) 
+            IpuDmaMemcpyNd(metadata = "outOOB_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, height, lineWidthInInt32s], strides = [0,0,lineWidthInInt32s,1]) 
             IpuSync(column = 0, row = 0, direction = 0, channel = 0)
