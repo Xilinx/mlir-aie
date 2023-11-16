@@ -12,6 +12,10 @@
 
 The vision pipeline reference designs show how to complex vision pipelines can be constructed from basic vision kernel building blocks. Those building blocks can be found in [./vision_kernels](./vision_kernels) and contain example kernels written for AI engines in both scalar and unoptimized vector format. 
 
-## <ins>Edge Detect</ins>
+## <ins>[Edge Detect](./edge_detect/)</ins>
 
 The [Edge Detect pipeline design](./edge_detect/) consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images (rgba2gray, filter2D, threshold, addWeighted, gray2rgba).
+
+## <ins>[Color Threshold](./color_threshold/)</ins>
+
+The [Color Threshold pipeline design](./color_threshold/) consists of a 4 threshold blocks in separate tiles that process a different region of an input image. The results are then merged back together and sent to the output.

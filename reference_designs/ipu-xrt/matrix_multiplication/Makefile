@@ -66,7 +66,7 @@ matrixMultiplication.exe: test.cpp build/final.xclbin
 	cp _build/Release/$@ ./
 
 run: matrixMultiplication.exe
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build matrixMultiplication.exe
