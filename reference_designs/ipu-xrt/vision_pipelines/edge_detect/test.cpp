@@ -104,43 +104,7 @@ int main(int argc, const char *argv[]) {
 
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x" << testImageHeight << std::endl;
 
-  if (vm.count("live")) {
-    std::cout << "Using live webcam input" << std::endl;
-
-    cv::VideoCapture cap;
-    try {
-      initializeVideoCapture(cap);
-    } catch (const std::exception &ex) {
-      std::cerr << ex.what() << "\n\n";
-      return 1;
-    }
-
-    //--- GRAB AND SHOW LOOP
-    std:: cout << "Start grabbing" << std::endl << "Press any key to terminate" << std::endl;
-    cv::Mat frame;
-    for (;;)
-    {
-        // wait for a new frame from camera and store it into 'frame'
-        cap.read(frame);
-        // check if we succeeded
-        if (frame.empty()) {
-            std::cerr << "ERROR! blank frame grabbed\n";
-            break;
-        }
-
-        cv::Mat edgeFrame;
-        edgeDetect(frame,edgeFrame);
-
-        // show live and wait for a key with timeout long enough to show images
-        cv::imshow("Live", edgeFrame);
-        if (cv::waitKey(5) >= 0)
-            break;
-    }
-  }
-
-  else { 
-
-  /*
+   /*
    ****************************************************************************
    * Read the input image or generate random one if no input file argument
    * provided
@@ -266,7 +230,7 @@ int main(int argc, const char *argv[]) {
 
   // Print Pass/Fail result of our test
   int res = 0;
-  if (numberOfDifferences == 0) {
+  if (errorPerPixel < 0.5) {
     printf("PASS!\n");
     res = 0;
   } else {
@@ -274,7 +238,70 @@ int main(int argc, const char *argv[]) {
     res = -1;
   }
 
+  if (vm.count("live")) {
+    std::cout << "Using live webcam input" << std::endl;
+
+    cv::VideoCapture cap;
+    try {
+      initializeVideoCapture(cap);
+    } catch (const std::exception &ex) {
+      std::cerr << ex.what() << "\n\n";
+      return 1;
+    }
+
+    //--- frame grab + process
+    std:: cout << "Start grabbing" << std::endl << "Press any key to terminate" << std::endl;
+    cv::Mat frame;
+    for (;;)
+    {
+      // wait for a new frame from camera and store it into 'frame'
+      cap.read(frame);
+      // check if we succeeded
+      if (frame.empty()) {
+        std::cerr << "ERROR! blank frame grabbed\n";
+        break;
+      }
+
+      //cv::Mat edgeFrame;
+      //edgeDetect(frame,edgeFrame);
+
+      cv::resize(frame, inImage, cv::Size(testImageWidth, testImageHeight));
+      cv::cvtColor(inImage, inImageRGBA, cv::COLOR_BGR2RGBA);
+      // Copy cv::Mat input image to xrt buffer object
+      memcpy(bufInA, inImageRGBA.data, (inImageRGBA.total() * inImageRGBA.elemSize()));
+
+      // Copy instruction stream to xrt buffer object
+      void *bufInstr = bo_instr.map<void *>();
+      memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
+
+      // Sync host to device memories
+      bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+      bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+      // Execute the kernel and wait to finish
+      if (verbosity >= 1)
+        std::cout << "Running Kernel.\n";
+      
+      auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+      run.wait();
+
+      // Sync device to host memories
+      bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+      // Store result in cv::Mat
+      uint8_t *bufOut = bo_out.map<uint8_t *>();
+      memcpy(outImageTest.data, bufOut, (outImageTest.total() * outImageTest.elemSize()));
+
+      // show live and wait for a key with timeout long enough to show images
+      cv::cvtColor(outImageTest, outImageTestBGR, cv::COLOR_RGBA2BGR);
+      cv::imshow("Edge AIE", outImageTestBGR);
+        if (cv::waitKey(5) >= 0)
+            break;
+    }
+  }
+
   printf("Testing edgeDetect done!\n");
   return res;
-  }
+  
 }
