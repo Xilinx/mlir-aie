@@ -78,6 +78,16 @@ void initializeVideoCapture(cv::VideoCapture &cap) {
   return;
 }
 
+void initializeVideoFile(cv::VideoCapture &cap, std::string fileName) {
+  cap = cv::VideoCapture(fileName);
+  // check if file is opened
+  if (!cap.isOpened()) {
+    throw std::runtime_error("Unable to open mpg file");
+    return;
+  }
+  return;
+}
+
 template <typename T>
 void listFirstDifferenceTwoMatrices(Mat &test, Mat &golden, double epsilon) {
   bool foundFirstDifference = false;

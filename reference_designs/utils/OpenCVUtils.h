@@ -22,6 +22,7 @@ void initializeSingleGrayImageTest(std::string fileName, cv::Mat &src);
 void initializeSingleImageTest(std::string fileName, cv::Mat &src);
 
 void initializeVideoCapture(cv::VideoCapture &cap);
+void initializeVideoFile(cv::VideoCapture &cap, std::string fileName);
 
 void addSaltPepperNoise(cv::Mat &src, float percentWhite, float percentBlack);
 void medianBlur1D(cv::Mat src, cv::Mat &dst, int ksizeHor);

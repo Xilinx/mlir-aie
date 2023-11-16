@@ -81,7 +81,8 @@ int main(int argc, const char *argv[]) {
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
-      "live,l", "capture from webcam");
+      "live,l", "capture from webcam")(
+      "video,m", po::value<std::string>(),"optional video input file name");
   po::variables_map vm;
 
   try {
@@ -240,12 +241,18 @@ int main(int argc, const char *argv[]) {
     res = -1;
   }
 
-  if (vm.count("live")) {
-    std::cout << "Using live webcam input" << std::endl;
+  if (vm.count("live") || vm.count("video")) {
+    if(vm.count("live"))
+      std::cout << "Using live webcam input" << std::endl;
+    else
+      std::cout << "Reading movie file " << vm["video"].as<std::string>() << std::endl;
 
     cv::VideoCapture cap;
     try {
-      initializeVideoCapture(cap);
+      if(vm.count("live"))
+        initializeVideoCapture(cap);
+      else
+        initializeVideoFile(cap, vm["video"].as<std::string>());
     } catch (const std::exception &ex) {
       std::cerr << ex.what() << "\n\n";
       return 1;
