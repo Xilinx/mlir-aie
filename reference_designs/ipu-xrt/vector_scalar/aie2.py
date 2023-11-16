@@ -5,6 +5,8 @@
 #
 # (c) Copyright 2023 AMD Inc.
 
+import sys
+
 import aie
 from aie.ir import *
 from aie.dialects.func import *
@@ -28,16 +30,19 @@ def my_vector_scalar():
 
         scale_int32 = privateFunc("scale_int32", inputs=[memRef_ty, memRef_ty])
 
+        # tile declarations
         ShimTile     = Tile(0, 0)
         ComputeTile2 = Tile(0, 2)
 
+        # set up AIE-array data movement with Ordered Object Buffers
         OrderedObjectBuffer("in", ShimTile, ComputeTile2, buffer_depth, memRef_ty)
         OrderedObjectBuffer("out", ComputeTile2, ShimTile, buffer_depth, memRef_ty)
 
+        # set up compute tiles
         @core(ComputeTile2, "scale.o")
         def coreBody():
             # Effective while(1)
-            @forLoop(lowerBound=0, upperBound=0xFFFFFFFF, step=1)
+            @forLoop(lowerBound=0, upperBound=sys.maxsize, step=1)
             def loopReps():
                 # Number of sub-vector "tile" iterations
                 @forLoop(lowerBound=0, upperBound=N_div_n, step=1)
@@ -54,6 +59,7 @@ def my_vector_scalar():
 
         memRef_mem_ty = MemRefType.get((N,), int32_ty)
 
+        # to/from AIE-array data movement 
         @FuncOp.from_py_func(memRef_mem_ty, memRef_mem_ty, memRef_mem_ty)
         def sequence(A, B, C):
             IpuDmaMemcpyNd(metadata="out", bd_id=0, mem=C, lengths=[1, 1, 1, N])
