@@ -27,11 +27,6 @@ double epsilon = 2.0;
 constexpr int testImageWidth = EDGEDETECT_WIDTH;
 constexpr int testImageHeight = EDGEDETECT_HEIGHT;
 
-// constexpr int testImageWidth = 64;
-// constexpr int testImageHeight = 36;
-
-// constexpr int testImageWidth = 1920;
-// constexpr int testImageHeight = 1080;
 constexpr int testImageSize = testImageWidth * testImageHeight;
 constexpr int kernelSize = 3;
 
@@ -81,8 +76,8 @@ int main(int argc, const char *argv[]) {
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
-      "live,l", "capture from webcam")(
-      "video,m", po::value<std::string>(),"optional video input file name");
+      "live,l", "capture from webcam")("video,m", po::value<std::string>(),
+                                       "optional video input file name");
   po::variables_map vm;
 
   try {
@@ -278,14 +273,15 @@ int main(int argc, const char *argv[]) {
   }
 
   if (vm.count("live") || vm.count("video")) {
-    if(vm.count("live"))
+    if (vm.count("live"))
       std::cout << "Using live webcam input" << std::endl;
     else
-      std::cout << "Reading movie file " << vm["video"].as<std::string>() << std::endl;
+      std::cout << "Reading movie file " << vm["video"].as<std::string>()
+                << std::endl;
 
     cv::VideoCapture cap;
     try {
-      if(vm.count("live"))
+      if (vm.count("live"))
         initializeVideoCapture(cap);
       else
         initializeVideoFile(cap, vm["video"].as<std::string>());
