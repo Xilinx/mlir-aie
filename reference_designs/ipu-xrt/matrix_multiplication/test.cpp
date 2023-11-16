@@ -70,7 +70,7 @@ std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
 }
 
 static inline std::int16_t random_int16_t() {
-  return (std::int16_t)(rand()) / (std::int16_t)(rand());
+  return ((std::int16_t)rand()%0x10000);
 }
 
 template <typename Tin, typename Tout>
