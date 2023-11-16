@@ -60,14 +60,14 @@ void initializeSingleImageTest(std::string fileName, Mat &src) {
   }
 }
 
-//from: https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html
+// from: https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html
 void initializeVideoCapture(cv::VideoCapture &cap) {
   cap = cv::VideoCapture();
   // open the default camera using default API
   // cap.open(0);
   // OR advance usage: select any API backend
-  int deviceID = 0;             // 0 = open default camera
-  int apiID = cv::CAP_ANY;      // 0 = autodetect default API
+  int deviceID = 0;        // 0 = open default camera
+  int apiID = cv::CAP_ANY; // 0 = autodetect default API
   // open selected camera using selected API
   cap.open(deviceID, apiID);
   // check if we succeeded

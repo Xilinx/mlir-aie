@@ -119,7 +119,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Writing data into buffer objects.\n";
 
   uint8_t *bufIn = bo_in.map<uint8_t *>();
-  
+
   // Copy cv::Mat input image to xrt buffer object
   std::vector<uint8_t> srcVec;
   for (int i = 0; i < IMAGE_AREA_IN; i++)
@@ -159,28 +159,26 @@ int main(int argc, const char *argv[]) {
     if (srcVec[i] <= 50) { // Obviously change this back to 100
       if (*(bufOut + i) != 0) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint8_t)*(bufOut + i) << " at " << i
-                    << " should be zero " 
-                    << " : input " << (uint8_t)srcVec[i]
-                    << std::endl;
+          std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
+                    << " should be zero "
+                    << " : input " << (uint8_t)srcVec[i] << std::endl;
         errors++;
       } else {
-        std::cout << "Wow:   " << (uint8_t)*(bufOut + i) << " at " << i << " is correct "
-                  << " : input " << (uint8_t)srcVec[i]
-                  << std::endl;
+        std::cout << "Wow:   " << (uint8_t) * (bufOut + i) << " at " << i
+                  << " is correct "
+                  << " : input " << (uint8_t)srcVec[i] << std::endl;
       }
     } else {
       if (*(bufOut + i) != UINT8_MAX) {
         if (errors < max_errors)
-          std::cout << "Error: " << (uint8_t)*(bufOut + i) << " at " << i
+          std::cout << "Error: " << (uint8_t) * (bufOut + i) << " at " << i
                     << " should be UINT8_MAX "
-                    << " : input " << (uint8_t)srcVec[i]
-                    << std::endl;
+                    << " : input " << (uint8_t)srcVec[i] << std::endl;
         errors++;
       } else {
-        std::cout << "WowT:  " << (uint8_t)*(bufOut + i) << " at " << i << " is correct "
-                  << " : input " << (uint8_t)srcVec[i]
-                  << std::endl;
+        std::cout << "WowT:  " << (uint8_t) * (bufOut + i) << " at " << i
+                  << " is correct "
+                  << " : input " << (uint8_t)srcVec[i] << std::endl;
       }
     }
   }
