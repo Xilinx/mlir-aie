@@ -81,8 +81,12 @@ int main(int argc, const char *argv[]) {
       "the verbosity of the output")(
       "instr,i", po::value<std::string>()->required(),
       "path of file containing userspace instructions to be sent to the LX6")(
+<<<<<<< HEAD
       "live,l", "capture from webcam")(
       "video,m", po::value<std::string>(),"optional video input file name");
+=======
+      "live,l", "capture from webcam");
+>>>>>>> 9c1263ca (apply clang format patch)
   po::variables_map vm;
 
   try {
@@ -110,6 +114,7 @@ int main(int argc, const char *argv[]) {
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
+<<<<<<< HEAD
   if (vm.count("live")) {
     std::cout << "Using live webcam input" << std::endl;
 
@@ -146,6 +151,8 @@ int main(int argc, const char *argv[]) {
 
   else { 
 
+=======
+>>>>>>> 9c1263ca (apply clang format patch)
   /*
   ****************************************************************************
   * Read the input image or generate random one if no input file argument
@@ -349,5 +356,4 @@ int main(int argc, const char *argv[]) {
 
   printf("Testing edgeDetect done!\n");
   return res;
-  
 }
