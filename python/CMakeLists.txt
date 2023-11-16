@@ -93,7 +93,8 @@ if (AIE_ENABLE_PYTHON_PASSES)
     SOURCES
 
     ${CMAKE_CURRENT_SOURCE_DIR}/AIEMLIRModule.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/PythonPass.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PythonPathFinderPass.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PybindTypes.cpp
 
     ${_mlir_python_cpp_sources}
     ${RegisterEverythingSources}
