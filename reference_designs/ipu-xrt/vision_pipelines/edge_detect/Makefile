@@ -59,7 +59,7 @@ edgeDetect.exe: test.cpp
 	cp _build/Release/$@ ./
 
 run: edgeDetect.exe
-	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLR_AIE
+	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build edgeDetect.exe
