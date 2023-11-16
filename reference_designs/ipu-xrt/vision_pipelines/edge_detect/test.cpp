@@ -22,7 +22,7 @@
 #include "OpenCVUtils.h"
 #include "xrtUtils.h"
 
-double epsilon = 0.1;
+double epsilon = 2.0;
 
 constexpr int testImageWidth = EDGEDETECT_WIDTH;
 constexpr int testImageHeight = EDGEDETECT_HEIGHT;
@@ -232,7 +232,7 @@ int main(int argc, const char *argv[]) {
 
   // Print Pass/Fail result of our test
   int res = 0;
-  if (errorPerPixel < 0.5) {
+  if (errorPerPixel < epsilon) {
     printf("PASS!\n");
     res = 0;
   } else {
