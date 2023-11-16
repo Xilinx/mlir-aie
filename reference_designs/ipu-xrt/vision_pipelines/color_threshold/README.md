@@ -15,7 +15,7 @@ The Color Threshold pipeline design consists of a 4 threshold blocks in separate
 To compile desing in Windows:
 ```
 make
-make matrixMultiplication.exe
+make colorThreshold.exe
 ```
 
 To run the design:
