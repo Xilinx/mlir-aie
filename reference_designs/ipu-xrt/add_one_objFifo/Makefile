@@ -10,13 +10,31 @@ include ../makefile-common
 
 all: final.xclbin
 
-final.xclbin: aie.mlir
-	aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+targetname = addOneObjfifo
+
+# build/aie.mlir: aie2.py
+# 	mkdir -p ${@D}
+# 	python3 $< ${EDGEDETECT_WIDTH} ${EDGEDETECT_HEIGHT} > $@
+
+build/aie.mlir: aie.mlir
+	mkdir -p ${@D}
+	cp $< $@
+
+build/final.xclbin: build/aie.mlir
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=$@ --ipu-insts-name=insts.txt $<
 
-clean:
-	rm -rf *.elf* *.bif aie.mlir.prj *.xclbin insts.txt \
-		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
+build/${targetname}.exe: test.cpp
+	mkdir -p ${@D}
+	rm -rf _build
+	mkdir _build
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake --build . --config Release
+	cp _build/${targetname}* $@
 
-test.exe: test.cpp
-	$(CXX) $(LD_FLAGS) $< -o $@ $(CFLAGS) $(INC) $(LD_PATHS) 
+run: build/${targetname}.exe build/final.xclbin build/insts.txt
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+
+clean:
+	rm -rf build _build
