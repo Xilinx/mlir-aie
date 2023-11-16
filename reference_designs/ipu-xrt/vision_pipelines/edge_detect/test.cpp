@@ -328,7 +328,6 @@ int main(int argc, const char *argv[]) {
       // Execute the kernel and wait to finish
       if (verbosity >= 1)
         std::cout << "Running Kernel.\n";
-
       auto run = kernel(bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
       run.wait();
 
@@ -350,5 +349,5 @@ int main(int argc, const char *argv[]) {
 
   printf("Testing edgeDetect done!\n");
   return res;
-  }
+  
 }
