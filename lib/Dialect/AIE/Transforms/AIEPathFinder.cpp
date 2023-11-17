@@ -47,13 +47,13 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
       Switchbox &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
         Switchbox &southernNeighbor = grid.at({col, row - 1});
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
+        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
                 col, row, WireBundle::South)) {
           edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
                              maxCapacity);
           (void)graph.connect(southernNeighbor, thisNode, edges.back());
         }
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
+        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
                 col, row, WireBundle::South)) {
           edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
                              maxCapacity);
@@ -63,13 +63,13 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
 
       if (col > 0) { // if not in col 0 add channel to East/West
         Switchbox &westernNeighbor = grid.at({col - 1, row});
-        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
+        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
                 col, row, WireBundle::West)) {
           edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
                              maxCapacity);
           (void)graph.connect(westernNeighbor, thisNode, edges.back());
         }
-        if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
+        if (uint32_t maxCapacity = targetModel.getNumSourceSwitchboxConnections(
                 col, row, WireBundle::West)) {
           edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
                              maxCapacity);
