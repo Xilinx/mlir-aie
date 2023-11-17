@@ -180,6 +180,6 @@ def edge_detect():
         memRef_16x16_ty = MemRefType.get((16,16,), int32_ty)
         @FuncOp.from_py_func(tensor_ty, memRef_16x16_ty, tensor_ty)
         def sequence(inTensor, notUsed, outTensor):
-            IpuDmaMemcpyNd(metadata = "inOOB_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, height, lineWidthInInt32s], strides = [0,0,lineWidthInInt32s]) 
-            IpuDmaMemcpyNd(metadata = "outOOB_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, height, lineWidthInInt32s], strides = [0,0,lineWidthInInt32s,1]) 
+            IpuDmaMemcpyNd(metadata = "inOOB_L3L2", bd_id = 1, mem = inTensor, lengths = [1, 1, 1, height * lineWidthInInt32s]) 
+            IpuDmaMemcpyNd(metadata = "outOOB_L2L3", bd_id = 0, mem = outTensor, lengths = [1, 1, 1, height * lineWidthInInt32s]) 
             IpuSync(column = 0, row = 0, direction = 0, channel = 0)

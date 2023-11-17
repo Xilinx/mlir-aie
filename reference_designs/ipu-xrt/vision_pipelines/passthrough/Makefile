@@ -10,25 +10,38 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
+WIDTH = 1920
+HEIGHT = 1080
+
+targetname = passThrough
+
 .PHONY: all template clean
 
-all: build/final_tiny.xclbin
+all: build/final_${WIDTH}.xclbin
 
-all_1080: build/final_1080.xclbin
-
-all_8k: build/final_8k.xclbin
+build/aie2_lineBased_8b_${WIDTH}.mlir: aie2.py
+	mkdir -p ${@D}
+	python3 $< ${WIDTH} ${HEIGHT} > $@
 
 build/passThrough.cc.o: passThrough.cc
 	mkdir -p ${@D}
-	cd ${@D} && xchesscc -d ${CHESSCC2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
+	cd ${@D} && xchesscc_wrapper -d ${CHESSCCWRAP2_FLAGS} -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 	
-build/final_%.xclbin: aie2_lineBased_8b_%.mlir build/passThrough.cc.o
+build/final_${WIDTH}.xclbin: build/aie2_lineBased_8b_${WIDTH}.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-#build/test.exe: test.cpp
-#	mkdir -p ${@D}
-#	cd ${@D} && $(CXX) $(LD_FLAGS) $(OpenCV_LIBS) ../../utils/OpenCVUtils.cpp ../../utils/xrtUtils.cpp $(<:%=../%) -o ${@F} $(CFLAGS) $(INC) $(LD_PATHS) 
+build/${targetname}.exe: test.cpp
+	mkdir -p ${@D}
+	rm -rf _build
+	mkdir -p _build
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DWIDTH=${WIDTH} -DHEIGHT=${HEIGHT} 
+	cd _build && ${powershell} cmake --build . --config Release
+	cp _build/${targetname}* $@
+
+run: build/${targetname}.exe build/final_${WIDTH}.xclbin build/insts.txt
+	${powershell} ./$< -x build/final_${WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build

@@ -10,6 +10,8 @@ include ../makefile-common
 
 all: hello_world_elfstrings.csv
 
+targetname = helloWorld
+
 build/%.o: %.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $(<:%=../%) -o ${@F}
@@ -26,19 +28,17 @@ build/hello_world.xclbin: build/hello_world.mlir build/kernel.o
 hello_world_elfstrings.csv: build/hello_world.xclbin
 	python3 elfStringParser.py --input ./build --output $@
 
-helloWorld.exe: test.cpp
+build/${targetname}.exe: test.cpp
+	mkdir -p ${@D}
 	rm -rf _build
-	mkdir _build
-	cd _build && ${powershell} cmake ../
+	mkdir -p _build
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
-	ifdef ${powershell}
-		cp _build/Release/$(@F) $@
-	else 
-		cp _build/$(@F) $@
-	endif
+	cp _build/${targetname}* $@
 
-run: helloWorld.exe hello_world_elfstrings.csv
-	${powershell} ./$< -x hello_world.xclbin -i insts.txt -k MLIR_AIE -e $(word 2,$^)
+run: build/${targetname}.exe hello_world_elfstrings.csv
+	${powershell} ./$< -x build/hello_world.xclbin -i build/insts.txt \
+		-k MLIR_AIE -e $(word 2,$^)
 
 clean:
-	rm -rf build _build helloWorld.exe *.csv
+	rm -rf build _build *.csv

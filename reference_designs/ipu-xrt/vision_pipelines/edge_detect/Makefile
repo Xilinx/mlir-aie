@@ -13,6 +13,8 @@ VPATH := ../vision_kernels
 EDGEDETECT_WIDTH = 1920
 EDGEDETECT_HEIGHT = 1080
 
+targetname = edgeDetect
+
 #EDGEDETECT_WIDTH = 64
 #EDGEDETECT_HEIGHT = 36
 
@@ -39,27 +41,23 @@ build/combined_gray2rgba_addWeighted.a: build/gray2rgba.cc.o build/addWeighted.c
 
 build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir: aie2_edgeDetect.py
 	mkdir -p ${@D}
-	python3 $< ${EDGEDETECT_WIDTH} ${EDGEDETECT_HEIGHT} > build/tmp.mlir
-	aie-opt --canonicalize build/tmp.mlir -o $@
-	rm build/tmp.mlir
+	python3 $< ${EDGEDETECT_WIDTH} ${EDGEDETECT_HEIGHT} > $@
 
 build/final_${EDGEDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${EDGEDETECT_WIDTH}.mlir build/rgba2gray.cc.o build/gray2rgba.cc.o build/filter2d.cc.o build/threshold.cc.o build/addWeighted.cc.o build/combined_gray2rgba_addWeighted.a
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host --xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-# build/test.exe: test.cpp
-# 	mkdir -p ${@D}
-# 	$(CXX) $(LD_FLAGS) $(OpenCV_LIBS) ../utils/OpenCVUtils.cpp ../utils/xrtUtils.cpp $< -o $@ $(CFLAGS) $(INC) $(LD_PATHS)
-
-edgeDetect.exe: test.cpp
+build/${targetname}.exe: test.cpp
+	mkdir -p ${@D}
 	rm -rf _build
-	mkdir _build
-	cd _build && ${powershell} cmake .. -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT}
+	mkdir -p _build
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} 
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/Release/$@ ./
+	cp _build/${targetname}* $@
 
-run: edgeDetect.exe
+run: build/${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build edgeDetect.exe
+	rm -rf build _build

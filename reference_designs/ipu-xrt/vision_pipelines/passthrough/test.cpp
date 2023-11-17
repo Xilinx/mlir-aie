@@ -22,8 +22,9 @@
 #include "OpenCVUtils.h"
 #include "xrtUtils.h"
 
-constexpr int testImageWidth = 1920 * 4; // 64*8;
-constexpr int testImageHeight = 1080;    // 9;
+constexpr int channels = 4;
+constexpr int testImageWidth = WIDTH * channels;
+constexpr int testImageHeight = HEIGHT;
 constexpr int testImageSize = testImageWidth * testImageHeight;
 
 namespace po = boost::program_options;

@@ -14,7 +14,7 @@ targetname = addOneObjfifo
 
 # build/aie.mlir: aie2.py
 # 	mkdir -p ${@D}
-# 	python3 $< ${EDGEDETECT_WIDTH} ${EDGEDETECT_HEIGHT} > $@
+# 	python3 $< > $@
 
 build/aie.mlir: aie.mlir
 	mkdir -p ${@D}
