@@ -4,6 +4,7 @@
 func.func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: memref<2046x2046xi32>) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
+  %c0_i32 = arith.constant 0 : i32
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<9xi32>, vector<8xi32>
   %1 = aievec.upd %arg1[%c8] {index = 0 : i8, offset = 0 : i32} : memref<9xi32>, vector<8xi32>
   %c0_0 = arith.constant 0 : index
@@ -37,7 +38,7 @@ func.func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: m
       %19 = aievec.upd %arg0[%3, %8], %17 {index = 1 : i8, offset = 224 : i32} : memref<2048x2048xi32>, vector<16xi32>
       %20 = aievec.mac %19, %0, %18 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
       %21 = aievec.mac %19, %1, %20 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-      %22 = aievec.srs %21 {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
+      %22 = aievec.srs %21, %c0_i32: vector<8xi80>, i32, vector<8xi32>
       vector.transfer_write %22, %arg2[%arg3, %arg4] : vector<8xi32>, memref<2046x2046xi32>
     }
   }
@@ -46,61 +47,60 @@ func.func @conv2d_0(%arg0: memref<2048x2048xi32>, %arg1: memref<9xi32>, %arg2: m
 
 //CHECK-NEXT:  size_t v4 = 8;
 //CHECK-NEXT:  size_t v5 = 0;
-//CHECK-NEXT:  v8int32 v6 = *(v8int32 *)(v2 + v5);
-//CHECK-NEXT:  v8int32 v7 = *(v8int32 *)(v2 + v4);
-//CHECK-NEXT:  size_t v8 = 0;
-//CHECK-NEXT:  size_t v9 = 2046;
-//CHECK-NEXT:  size_t v10 = 1;
-//CHECK-NEXT:  for (size_t v11 = v8; v11 < v9; v11 += v10)
+//CHECK-NEXT:  int32_t v6 = 0;
+//CHECK-NEXT:  v8int32 v7 = *(v8int32 *)(v2 + v5);
+//CHECK-NEXT:  v8int32 v8 = *(v8int32 *)(v2 + v4);
+//CHECK-NEXT:  size_t v9 = 0;
+//CHECK-NEXT:  size_t v10 = 2046;
+//CHECK-NEXT:  size_t v11 = 1;
+//CHECK-NEXT:  for (size_t v12 = v9; v12 < v10; v12 += v11)
 //CHECK-NEXT:  chess_prepare_for_pipelining
 //CHECK-NEXT:  chess_loop_range(2046, 2046)
 //CHECK-NEXT:  {
-//CHECK-NEXT:    size_t v12 = 1;
-//CHECK-NEXT:    size_t v13 = v11 + v12;
-//CHECK-NEXT:    size_t v14 = 2;
-//CHECK-NEXT:    size_t v15 = v11 + v14;
-//CHECK-NEXT:    size_t v16 = 0;
-//CHECK-NEXT:    size_t v17 = 2046;
-//CHECK-NEXT:    size_t v18 = 8;
-//CHECK-NEXT:    for (size_t v19 = v16; v19 < v17; v19 += v18)
+//CHECK-NEXT:    size_t v13 = 1;
+//CHECK-NEXT:    size_t v14 = v12 + v13;
+//CHECK-NEXT:    size_t v15 = 2;
+//CHECK-NEXT:    size_t v16 = v12 + v15;
+//CHECK-NEXT:    size_t v17 = 0;
+//CHECK-NEXT:    size_t v18 = 2046;
+//CHECK-NEXT:    size_t v19 = 8;
+//CHECK-NEXT:    for (size_t v20 = v17; v20 < v18; v20 += v19)
 //CHECK-NEXT:    chess_prepare_for_pipelining
 //CHECK-NEXT:    chess_loop_range(255, 256)
 //CHECK-NEXT:    {
-//CHECK-NEXT:      v8int32 v20 = *(v8int32 *)(v3 + 2046*v11+v19);
-//CHECK-NEXT:      v16int32 v21;
-//CHECK-NEXT:      int32_t * restrict r_v21_v1 = v1;
-//CHECK-NEXT:      v21 = upd_w(v21, 0, *(v8int32 *)(r_v21_v1 + 2048*v11+v19));
-//CHECK-NEXT:      v8acc80 v22 = lups(v20, 0);
-//CHECK-NEXT:      v22 = lmac8(v22, v21, 0, 0x76543210, v6, 0, 0x00000000);
-//CHECK-NEXT:      size_t v23 = 1;
-//CHECK-NEXT:      size_t v24 = v19 + v23;
-//CHECK-NEXT:      v21 = upd_w(v21, 1, *(v8int32 *)(r_v21_v1 + 2048*v11+v24 + 7));
-//CHECK-NEXT:      v22 = lmac8(v22, v21, 1, 0x76543210, v6, 1, 0x00000000);
-//CHECK-NEXT:      v22 = lmac8(v22, v21, 2, 0x76543210, v6, 2, 0x00000000);
-//CHECK-NEXT:      v16int32 v25;
-//CHECK-NEXT:      int32_t * restrict r_v25_v1 = v1;
-//CHECK-NEXT:      v25 = upd_w(v25, 0, *(v8int32 *)(r_v25_v1 + 2048*v13+v19));
-//CHECK-NEXT:      v22 = lmac8(v22, v25, 0, 0x76543210, v6, 3, 0x00000000);
-//CHECK-NEXT:      v25 = upd_w(v25, 1, *(v8int32 *)(r_v25_v1 + 2048*v13+v24 + 7));
-//CHECK-NEXT:      v22 = lmac8(v22, v25, 1, 0x76543210, v6, 4, 0x00000000);
-//CHECK-NEXT:      v22 = lmac8(v22, v25, 2, 0x76543210, v6, 5, 0x00000000);
+//CHECK-NEXT:      v8int32 v21 = *(v8int32 *)(v3 + 2046*v12+v20);
+//CHECK-NEXT:      v16int32 v22;
+//CHECK-NEXT:      int32_t * restrict r_v22_v1 = v1;
+//CHECK-NEXT:      v22 = upd_w(v22, 0, *(v8int32 *)(r_v22_v1 + 2048*v12+v20));
+//CHECK-NEXT:      v8acc80 v23 = lups(v21, 0);
+//CHECK-NEXT:      v23 = lmac8(v23, v22, 0, 0x76543210, v7, 0, 0x00000000);
+//CHECK-NEXT:      size_t v24 = 1;
+//CHECK-NEXT:      size_t v25 = v20 + v24;
+//CHECK-NEXT:      v22 = upd_w(v22, 1, *(v8int32 *)(r_v22_v1 + 2048*v12+v25 + 7));
+//CHECK-NEXT:      v23 = lmac8(v23, v22, 1, 0x76543210, v7, 1, 0x00000000);
+//CHECK-NEXT:      v23 = lmac8(v23, v22, 2, 0x76543210, v7, 2, 0x00000000);
 //CHECK-NEXT:      v16int32 v26;
 //CHECK-NEXT:      int32_t * restrict r_v26_v1 = v1;
-//CHECK-NEXT:      v26 = upd_w(v26, 0, *(v8int32 *)(r_v26_v1 + 2048*v15+v19));
-//CHECK-NEXT:      v22 = lmac8(v22, v26, 0, 0x76543210, v6, 6, 0x00000000);
-//CHECK-NEXT:      v26 = upd_w(v26, 1, *(v8int32 *)(r_v26_v1 + 2048*v15+v24 + 7));
-//CHECK-NEXT:      v22 = lmac8(v22, v26, 1, 0x76543210, v6, 7, 0x00000000);
-//CHECK-NEXT:      v22 = lmac8(v22, v26, 2, 0x76543210, v7, 0, 0x00000000);
-//CHECK-NEXT:      v8int32 v27 = srs(v22, 0);
-//CHECK-NEXT:      *(v8int32 *)(v3 + 2046*v11+v19) = v27;
-//CHECK-NEXT:    }
-//CHECK-NEXT:  }
-
+//CHECK-NEXT:      v26 = upd_w(v26, 0, *(v8int32 *)(r_v26_v1 + 2048*v14+v20));
+//CHECK-NEXT:      v23 = lmac8(v23, v26, 0, 0x76543210, v7, 3, 0x00000000);
+//CHECK-NEXT:      v26 = upd_w(v26, 1, *(v8int32 *)(r_v26_v1 + 2048*v14+v25 + 7));
+//CHECK-NEXT:      v23 = lmac8(v23, v26, 1, 0x76543210, v7, 4, 0x00000000);
+//CHECK-NEXT:      v23 = lmac8(v23, v26, 2, 0x76543210, v7, 5, 0x00000000);
+//CHECK-NEXT:      v16int32 v27;
+//CHECK-NEXT:      int32_t * restrict r_v27_v1 = v1;
+//CHECK-NEXT:      v27 = upd_w(v27, 0, *(v8int32 *)(r_v27_v1 + 2048*v16+v20));
+//CHECK-NEXT:      v23 = lmac8(v23, v27, 0, 0x76543210, v7, 6, 0x00000000);
+//CHECK-NEXT:      v27 = upd_w(v27, 1, *(v8int32 *)(r_v27_v1 + 2048*v16+v25 + 7));
+//CHECK-NEXT:      v23 = lmac8(v23, v27, 1, 0x76543210, v7, 7, 0x00000000);
+//CHECK-NEXT:      v23 = lmac8(v23, v27, 2, 0x76543210, v8, 0, 0x00000000);
+//CHECK-NEXT:      v8int32 v28 = srs(v23, v6);
+//CHECK-NEXT:      *(v8int32 *)(v3 + 2046*v12+v20) = v28;
 
 // CHECK-LABEL: void conv2d_1(int32_t * restrict v6, size_t m1, size_t m2, int32_t * restrict v7, size_t m3, int32_t * restrict v8, size_t m4, size_t m5, size_t v9, size_t v10) {
 func.func @conv2d_1(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>, %arg3: index, %arg4: index) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
+  %c0_i32 = arith.constant 0 : i32
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<?xi32>, vector<8xi32>
   %1 = aievec.upd %arg1[%c8] {index = 0 : i8, offset = 0 : i32} : memref<?xi32>, vector<8xi32>
   %c0_0 = arith.constant 0 : index
@@ -132,67 +132,66 @@ func.func @conv2d_1(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<
       %19 = aievec.upd %arg0[%3, %8], %17 {index = 1 : i8, offset = 224 : i32} : memref<?x?xi32>, vector<16xi32>
       %20 = aievec.mac %19, %0, %18 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
       %21 = aievec.mac %19, %1, %20 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-      %22 = aievec.srs %21 {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
+      %22 = aievec.srs %21, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
       vector.transfer_write %22, %arg2[%arg5, %arg6] : vector<8xi32>, memref<?x?xi32>
     }
   }
   return
 }
 
-//  size_t v11 = 8;
-//  size_t v12 = 0;
-//  v8int32 v13 = *(v8int32 *)(v7 + v12);
-//  v8int32 v14 = *(v8int32 *)(v7 + v11);
-//  size_t v15 = 0;
-//  size_t v16 = 1;
-//  for (size_t v17 = v15; v17 < v9; v17 += v16)
-//  chess_prepare_for_pipelining
-//  {
-//    size_t v18 = 1;
-//    size_t v19 = v17 + v18;
-//    size_t v20 = 2;
-//    size_t v21 = v17 + v20;
-//    size_t v22 = 0;
-//    size_t v23 = 8;
-//    for (size_t v24 = v22; v24 < v10; v24 += v23)
-//    chess_prepare_for_pipelining
-//    {
-//      v8int32 v25 = *(v8int32 *)(v8 + m5*v17+v24);
-//      v16int32 v26;
-//      int32_t * restrict r_v26_v6 = v6;
-//      v26 = upd_w(v26, 0, *(v8int32 *)(r_v26_v6 + m2*v17+v24));
-//      v8acc80 v27 = lups(v25, 0);
-//      v27 = lmac8(v27, v26, 0, 0x76543210, v13, 0, 0x00000000);
-//      size_t v28 = 1;
-//      size_t v29 = v24 + v28;
-//      v26 = upd_w(v26, 1, *(v8int32 *)(r_v26_v6 + m2*v17+v29 + 7));
-//      v27 = lmac8(v27, v26, 1, 0x76543210, v13, 1, 0x00000000);
-//      v27 = lmac8(v27, v26, 2, 0x76543210, v13, 2, 0x00000000);
-//      v16int32 v30;
-//      int32_t * restrict r_v30_v6 = v6;
-//      v30 = upd_w(v30, 0, *(v8int32 *)(r_v30_v6 + m2*v19+v24));
-//      v27 = lmac8(v27, v30, 0, 0x76543210, v13, 3, 0x00000000);
-//      v30 = upd_w(v30, 1, *(v8int32 *)(r_v30_v6 + m2*v19+v29 + 7));
-//      v27 = lmac8(v27, v30, 1, 0x76543210, v13, 4, 0x00000000);
-//      v27 = lmac8(v27, v30, 2, 0x76543210, v13, 5, 0x00000000);
-//      v16int32 v31;
-//      int32_t * restrict r_v31_v6 = v6;
-//      v31 = upd_w(v31, 0, *(v8int32 *)(r_v31_v6 + m2*v21+v24));
-//      v27 = lmac8(v27, v31, 0, 0x76543210, v13, 6, 0x00000000);
-//      v31 = upd_w(v31, 1, *(v8int32 *)(r_v31_v6 + m2*v21+v29 + 7));
-//      v27 = lmac8(v27, v31, 1, 0x76543210, v13, 7, 0x00000000);
-//      v27 = lmac8(v27, v31, 2, 0x76543210, v14, 0, 0x00000000);
-//      v8int32 v32 = srs(v27, 0);
-//      *(v8int32 *)(v8 + m5*v17+v24) = v32;
-//    }
-//  }
-
+//CHECK-NEXT:  size_t v11 = 8;
+//CHECK-NEXT:  size_t v12 = 0;
+//CHECK-NEXT:  int32_t v13 = 0;
+//CHECK-NEXT:  v8int32 v14 = *(v8int32 *)(v7 + v12);
+//CHECK-NEXT:  v8int32 v15 = *(v8int32 *)(v7 + v11);
+//CHECK-NEXT:  size_t v16 = 0;
+//CHECK-NEXT:  size_t v17 = 1;
+//CHECK-NEXT:  for (size_t v18 = v16; v18 < v9; v18 += v17)
+//CHECK-NEXT:  chess_prepare_for_pipelining
+//CHECK-NEXT:  {
+//CHECK-NEXT:    size_t v19 = 1;
+//CHECK-NEXT:    size_t v20 = v18 + v19;
+//CHECK-NEXT:    size_t v21 = 2;
+//CHECK-NEXT:    size_t v22 = v18 + v21;
+//CHECK-NEXT:    size_t v23 = 0;
+//CHECK-NEXT:    size_t v24 = 8;
+//CHECK-NEXT:    for (size_t v25 = v23; v25 < v10; v25 += v24)
+//CHECK-NEXT:    chess_prepare_for_pipelining
+//CHECK-NEXT:    {
+//CHECK-NEXT:      v8int32 v26 = *(v8int32 *)(v8 + m5*v18+v25);
+//CHECK-NEXT:      v16int32 v27;
+//CHECK-NEXT:      int32_t * restrict r_v27_v6 = v6;
+//CHECK-NEXT:      v27 = upd_w(v27, 0, *(v8int32 *)(r_v27_v6 + m2*v18+v25));
+//CHECK-NEXT:      v8acc80 v28 = lups(v26, 0);
+//CHECK-NEXT:      v28 = lmac8(v28, v27, 0, 0x76543210, v14, 0, 0x00000000);
+//CHECK-NEXT:      size_t v29 = 1;
+//CHECK-NEXT:      size_t v30 = v25 + v29;
+//CHECK-NEXT:      v27 = upd_w(v27, 1, *(v8int32 *)(r_v27_v6 + m2*v18+v30 + 7));
+//CHECK-NEXT:      v28 = lmac8(v28, v27, 1, 0x76543210, v14, 1, 0x00000000);
+//CHECK-NEXT:      v28 = lmac8(v28, v27, 2, 0x76543210, v14, 2, 0x00000000);
+//CHECK-NEXT:      v16int32 v31;
+//CHECK-NEXT:      int32_t * restrict r_v31_v6 = v6;
+//CHECK-NEXT:      v31 = upd_w(v31, 0, *(v8int32 *)(r_v31_v6 + m2*v20+v25));
+//CHECK-NEXT:      v28 = lmac8(v28, v31, 0, 0x76543210, v14, 3, 0x00000000);
+//CHECK-NEXT:      v31 = upd_w(v31, 1, *(v8int32 *)(r_v31_v6 + m2*v20+v30 + 7));
+//CHECK-NEXT:      v28 = lmac8(v28, v31, 1, 0x76543210, v14, 4, 0x00000000);
+//CHECK-NEXT:      v28 = lmac8(v28, v31, 2, 0x76543210, v14, 5, 0x00000000);
+//CHECK-NEXT:      v16int32 v32;
+//CHECK-NEXT:      int32_t * restrict r_v32_v6 = v6;
+//CHECK-NEXT:      v32 = upd_w(v32, 0, *(v8int32 *)(r_v32_v6 + m2*v22+v25));
+//CHECK-NEXT:      v28 = lmac8(v28, v32, 0, 0x76543210, v14, 6, 0x00000000);
+//CHECK-NEXT:      v32 = upd_w(v32, 1, *(v8int32 *)(r_v32_v6 + m2*v22+v30 + 7));
+//CHECK-NEXT:      v28 = lmac8(v28, v32, 1, 0x76543210, v14, 7, 0x00000000);
+//CHECK-NEXT:      v28 = lmac8(v28, v32, 2, 0x76543210, v15, 0, 0x00000000);
+//CHECK-NEXT:      v8int32 v33 = srs(v28, v13);
+//CHECK-NEXT:      *(v8int32 *)(v8 + m5*v18+v25) = v33;
 
 // CHECK-LABEL: void conv2d_2(int32_t * restrict v6, size_t m1, size_t m2, int32_t * restrict v7, size_t m3, int32_t * restrict v8, size_t m4, size_t m5) {
 func.func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<?x?xi32>) {
   %c8 = arith.constant 8 : index
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
+  %c0_i32 = arith.constant 0 : i32
   %0 = memref.dim %arg0, %c0 : memref<?x?xi32>
   %1 = memref.dim %arg0, %c1 : memref<?x?xi32>
   %2 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<?xi32>, vector<8xi32>
@@ -226,7 +225,7 @@ func.func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<
       %21 = aievec.upd %arg0[%5, %10], %19 {index = 1 : i8, offset = 224 : i32} : memref<?x?xi32>, vector<16xi32>
       %22 = aievec.mac %21, %2, %20 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
       %23 = aievec.mac %21, %3, %22 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-      %24 = aievec.srs %23 {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
+      %24 = aievec.srs %23, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
       vector.transfer_write %24, %arg2[%arg3, %arg4] : vector<8xi32>, memref<?x?xi32>
     }
   }
@@ -235,57 +234,56 @@ func.func @conv2d_2(%arg0: memref<?x?xi32>, %arg1: memref<?xi32>, %arg2: memref<
 
 //CHECK-NEXT:  size_t v9 = 8;
 //CHECK-NEXT:  size_t v10 = 0;
-//CHECK-NEXT:  v8int32 v11 = *(v8int32 *)(v7 + v10);
-//CHECK-NEXT:  v8int32 v12 = *(v8int32 *)(v7 + v9);
-//CHECK-NEXT:  size_t v13 = 0;
-//CHECK-NEXT:  size_t v14 = 1;
-//CHECK-NEXT:  for (size_t v15 = v13; v15 < m1; v15 += v14)
+//CHECK-NEXT:  int32_t v11 = 0;
+//CHECK-NEXT:  v8int32 v12 = *(v8int32 *)(v7 + v10);
+//CHECK-NEXT:  v8int32 v13 = *(v8int32 *)(v7 + v9);
+//CHECK-NEXT:  size_t v14 = 0;
+//CHECK-NEXT:  size_t v15 = 1;
+//CHECK-NEXT:  for (size_t v16 = v14; v16 < m1; v16 += v15)
 //CHECK-NEXT:  chess_prepare_for_pipelining
 //CHECK-NEXT:  {
-//CHECK-NEXT:    size_t v16 = 1;
-//CHECK-NEXT:    size_t v17 = v15 + v16;
-//CHECK-NEXT:    size_t v18 = 2;
-//CHECK-NEXT:    size_t v19 = v15 + v18;
-//CHECK-NEXT:    size_t v20 = 0;
-//CHECK-NEXT:    size_t v21 = 8;
-//CHECK-NEXT:    for (size_t v22 = v20; v22 < m2; v22 += v21)
+//CHECK-NEXT:    size_t v17 = 1;
+//CHECK-NEXT:    size_t v18 = v16 + v17;
+//CHECK-NEXT:    size_t v19 = 2;
+//CHECK-NEXT:    size_t v20 = v16 + v19;
+//CHECK-NEXT:    size_t v21 = 0;
+//CHECK-NEXT:    size_t v22 = 8;
+//CHECK-NEXT:    for (size_t v23 = v21; v23 < m2; v23 += v22)
 //CHECK-NEXT:    chess_prepare_for_pipelining
 //CHECK-NEXT:    {
-//CHECK-NEXT:      v8int32 v23 = *(v8int32 *)(v8 + m5*v15+v22);
-//CHECK-NEXT:      v16int32 v24;
-//CHECK-NEXT:      int32_t * restrict r_v24_v6 = v6;
-//CHECK-NEXT:      v24 = upd_w(v24, 0, *(v8int32 *)(r_v24_v6 + m2*v15+v22));
-//CHECK-NEXT:      v8acc80 v25 = lups(v23, 0);
-//CHECK-NEXT:      v25 = lmac8(v25, v24, 0, 0x76543210, v11, 0, 0x00000000);
-//CHECK-NEXT:      size_t v26 = 1;
-//CHECK-NEXT:      size_t v27 = v22 + v26;
-//CHECK-NEXT:      v24 = upd_w(v24, 1, *(v8int32 *)(r_v24_v6 + m2*v15+v27 + 7));
-//CHECK-NEXT:      v25 = lmac8(v25, v24, 1, 0x76543210, v11, 1, 0x00000000);
-//CHECK-NEXT:      v25 = lmac8(v25, v24, 2, 0x76543210, v11, 2, 0x00000000);
-//CHECK-NEXT:      v16int32 v28;
-//CHECK-NEXT:      int32_t * restrict r_v28_v6 = v6;
-//CHECK-NEXT:      v28 = upd_w(v28, 0, *(v8int32 *)(r_v28_v6 + m2*v17+v22));
-//CHECK-NEXT:      v25 = lmac8(v25, v28, 0, 0x76543210, v11, 3, 0x00000000);
-//CHECK-NEXT:      v28 = upd_w(v28, 1, *(v8int32 *)(r_v28_v6 + m2*v17+v27 + 7));
-//CHECK-NEXT:      v25 = lmac8(v25, v28, 1, 0x76543210, v11, 4, 0x00000000);
-//CHECK-NEXT:      v25 = lmac8(v25, v28, 2, 0x76543210, v11, 5, 0x00000000);
+//CHECK-NEXT:      v8int32 v24 = *(v8int32 *)(v8 + m5*v16+v23);
+//CHECK-NEXT:      v16int32 v25;
+//CHECK-NEXT:      int32_t * restrict r_v25_v6 = v6;
+//CHECK-NEXT:      v25 = upd_w(v25, 0, *(v8int32 *)(r_v25_v6 + m2*v16+v23));
+//CHECK-NEXT:      v8acc80 v26 = lups(v24, 0);
+//CHECK-NEXT:      v26 = lmac8(v26, v25, 0, 0x76543210, v12, 0, 0x00000000);
+//CHECK-NEXT:      size_t v27 = 1;
+//CHECK-NEXT:      size_t v28 = v23 + v27;
+//CHECK-NEXT:      v25 = upd_w(v25, 1, *(v8int32 *)(r_v25_v6 + m2*v16+v28 + 7));
+//CHECK-NEXT:      v26 = lmac8(v26, v25, 1, 0x76543210, v12, 1, 0x00000000);
+//CHECK-NEXT:      v26 = lmac8(v26, v25, 2, 0x76543210, v12, 2, 0x00000000);
 //CHECK-NEXT:      v16int32 v29;
 //CHECK-NEXT:      int32_t * restrict r_v29_v6 = v6;
-//CHECK-NEXT:      v29 = upd_w(v29, 0, *(v8int32 *)(r_v29_v6 + m2*v19+v22));
-//CHECK-NEXT:      v25 = lmac8(v25, v29, 0, 0x76543210, v11, 6, 0x00000000);
-//CHECK-NEXT:      v29 = upd_w(v29, 1, *(v8int32 *)(r_v29_v6 + m2*v19+v27 + 7));
-//CHECK-NEXT:      v25 = lmac8(v25, v29, 1, 0x76543210, v11, 7, 0x00000000);
-//CHECK-NEXT:      v25 = lmac8(v25, v29, 2, 0x76543210, v12, 0, 0x00000000);
-//CHECK-NEXT:      v8int32 v30 = srs(v25, 0);
-//CHECK-NEXT:      *(v8int32 *)(v8 + m5*v15+v22) = v30;
-//CHECK-NEXT:    }
-//CHECK-NEXT:  }
-
+//CHECK-NEXT:      v29 = upd_w(v29, 0, *(v8int32 *)(r_v29_v6 + m2*v18+v23));
+//CHECK-NEXT:      v26 = lmac8(v26, v29, 0, 0x76543210, v12, 3, 0x00000000);
+//CHECK-NEXT:      v29 = upd_w(v29, 1, *(v8int32 *)(r_v29_v6 + m2*v18+v28 + 7));
+//CHECK-NEXT:      v26 = lmac8(v26, v29, 1, 0x76543210, v12, 4, 0x00000000);
+//CHECK-NEXT:      v26 = lmac8(v26, v29, 2, 0x76543210, v12, 5, 0x00000000);
+//CHECK-NEXT:      v16int32 v30;
+//CHECK-NEXT:      int32_t * restrict r_v30_v6 = v6;
+//CHECK-NEXT:      v30 = upd_w(v30, 0, *(v8int32 *)(r_v30_v6 + m2*v20+v23));
+//CHECK-NEXT:      v26 = lmac8(v26, v30, 0, 0x76543210, v12, 6, 0x00000000);
+//CHECK-NEXT:      v30 = upd_w(v30, 1, *(v8int32 *)(r_v30_v6 + m2*v20+v28 + 7));
+//CHECK-NEXT:      v26 = lmac8(v26, v30, 1, 0x76543210, v12, 7, 0x00000000);
+//CHECK-NEXT:      v26 = lmac8(v26, v30, 2, 0x76543210, v13, 0, 0x00000000);
+//CHECK-NEXT:      v8int32 v31 = srs(v26, v11);
+//CHECK-NEXT:      *(v8int32 *)(v8 + m5*v16+v23) = v31;
 
 // CHECK-LABEL: void conv2d_3(int32_t * restrict v4, size_t m1, int32_t * restrict v5, size_t m2, int32_t * restrict v6, size_t m3) {
 func.func @conv2d_3(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memref<?x256xi32>) {
   %c8 = arith.constant 8 : index
   %c0 = arith.constant 0 : index
+  %c0_i32 = arith.constant 0 : i32
   %0 = memref.dim %arg0, %c0 : memref<?x256xi32>
   %1 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<?xi32>, vector<8xi32>
   %2 = aievec.upd %arg1[%c8] {index = 0 : i8, offset = 0 : i32} : memref<?xi32>, vector<8xi32>
@@ -319,7 +317,7 @@ func.func @conv2d_3(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memre
       %20 = aievec.upd %arg0[%4, %9], %18 {index = 1 : i8, offset = 224 : i32} : memref<?x256xi32>, vector<16xi32>
       %21 = aievec.mac %20, %1, %19 {xoffsets = "0x76543210", xstart = "1", zoffsets = "0x00000000", zstart = "7"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
       %22 = aievec.mac %20, %2, %21 {xoffsets = "0x76543210", xstart = "2", zoffsets = "0x00000000", zstart = "0"} : vector<16xi32>, vector<8xi32>, vector<8xi80>
-      %23 = aievec.srs %22 {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
+      %23 = aievec.srs %22, %c0_i32 : vector<8xi80>, i32, vector<8xi32>
       vector.transfer_write %23, %arg2[%arg3, %arg4] : vector<8xi32>, memref<?x256xi32>
     }
   }
@@ -328,50 +326,49 @@ func.func @conv2d_3(%arg0: memref<?x256xi32>, %arg1: memref<?xi32>, %arg2: memre
 
 //CHECK-NEXT:  size_t v7 = 8;
 //CHECK-NEXT:  size_t v8 = 0;
-//CHECK-NEXT:  v8int32 v9 = *(v8int32 *)(v5 + v8);
-//CHECK-NEXT:  v8int32 v10 = *(v8int32 *)(v5 + v7);
-//CHECK-NEXT:  size_t v11 = 0;
-//CHECK-NEXT:  size_t v12 = 1;
-//CHECK-NEXT:  for (size_t v13 = v11; v13 < m1; v13 += v12)
+//CHECK-NEXT:  int32_t v9 = 0;
+//CHECK-NEXT:  v8int32 v10 = *(v8int32 *)(v5 + v8);
+//CHECK-NEXT:  v8int32 v11 = *(v8int32 *)(v5 + v7);
+//CHECK-NEXT:  size_t v12 = 0;
+//CHECK-NEXT:  size_t v13 = 1;
+//CHECK-NEXT:  for (size_t v14 = v12; v14 < m1; v14 += v13)
 //CHECK-NEXT:  chess_prepare_for_pipelining
 //CHECK-NEXT:  {
-//CHECK-NEXT:    size_t v14 = 1;
-//CHECK-NEXT:    size_t v15 = v13 + v14;
-//CHECK-NEXT:    size_t v16 = 2;
-//CHECK-NEXT:    size_t v17 = v13 + v16;
-//CHECK-NEXT:    size_t v18 = 0;
-//CHECK-NEXT:    size_t v19 = 256;
-//CHECK-NEXT:    size_t v20 = 8;
-//CHECK-NEXT:    for (size_t v21 = v18; v21 < v19; v21 += v20)
+//CHECK-NEXT:    size_t v15 = 1;
+//CHECK-NEXT:    size_t v16 = v14 + v15;
+//CHECK-NEXT:    size_t v17 = 2;
+//CHECK-NEXT:    size_t v18 = v14 + v17;
+//CHECK-NEXT:    size_t v19 = 0;
+//CHECK-NEXT:    size_t v20 = 256;
+//CHECK-NEXT:    size_t v21 = 8;
+//CHECK-NEXT:    for (size_t v22 = v19; v22 < v20; v22 += v21)
 //CHECK-NEXT:    chess_prepare_for_pipelining
 //CHECK-NEXT:    chess_loop_range(32, 32)
 //CHECK-NEXT:    {
-//CHECK-NEXT:      v8int32 v22 = *(v8int32 *)(v6 + 256*v13+v21);
-//CHECK-NEXT:      v16int32 v23;
-//CHECK-NEXT:      int32_t * restrict r_v23_v4 = v4;
-//CHECK-NEXT:      v23 = upd_w(v23, 0, *(v8int32 *)(r_v23_v4 + 256*v13+v21));
-//CHECK-NEXT:      v8acc80 v24 = lups(v22, 0);
-//CHECK-NEXT:      v24 = lmac8(v24, v23, 0, 0x76543210, v9, 0, 0x00000000);
-//CHECK-NEXT:      size_t v25 = 1;
-//CHECK-NEXT:      size_t v26 = v21 + v25;
-//CHECK-NEXT:      v23 = upd_w(v23, 1, *(v8int32 *)(r_v23_v4 + 256*v13+v26 + 7));
-//CHECK-NEXT:      v24 = lmac8(v24, v23, 1, 0x76543210, v9, 1, 0x00000000);
-//CHECK-NEXT:      v24 = lmac8(v24, v23, 2, 0x76543210, v9, 2, 0x00000000);
-//CHECK-NEXT:      v16int32 v27;
-//CHECK-NEXT:      int32_t * restrict r_v27_v4 = v4;
-//CHECK-NEXT:      v27 = upd_w(v27, 0, *(v8int32 *)(r_v27_v4 + 256*v15+v21));
-//CHECK-NEXT:      v24 = lmac8(v24, v27, 0, 0x76543210, v9, 3, 0x00000000);
-//CHECK-NEXT:      v27 = upd_w(v27, 1, *(v8int32 *)(r_v27_v4 + 256*v15+v26 + 7));
-//CHECK-NEXT:      v24 = lmac8(v24, v27, 1, 0x76543210, v9, 4, 0x00000000);
-//CHECK-NEXT:      v24 = lmac8(v24, v27, 2, 0x76543210, v9, 5, 0x00000000);
+//CHECK-NEXT:      v8int32 v23 = *(v8int32 *)(v6 + 256*v14+v22);
+//CHECK-NEXT:      v16int32 v24;
+//CHECK-NEXT:      int32_t * restrict r_v24_v4 = v4;
+//CHECK-NEXT:      v24 = upd_w(v24, 0, *(v8int32 *)(r_v24_v4 + 256*v14+v22));
+//CHECK-NEXT:      v8acc80 v25 = lups(v23, 0);
+//CHECK-NEXT:      v25 = lmac8(v25, v24, 0, 0x76543210, v10, 0, 0x00000000);
+//CHECK-NEXT:      size_t v26 = 1;
+//CHECK-NEXT:      size_t v27 = v22 + v26;
+//CHECK-NEXT:      v24 = upd_w(v24, 1, *(v8int32 *)(r_v24_v4 + 256*v14+v27 + 7));
+//CHECK-NEXT:      v25 = lmac8(v25, v24, 1, 0x76543210, v10, 1, 0x00000000);
+//CHECK-NEXT:      v25 = lmac8(v25, v24, 2, 0x76543210, v10, 2, 0x00000000);
 //CHECK-NEXT:      v16int32 v28;
 //CHECK-NEXT:      int32_t * restrict r_v28_v4 = v4;
-//CHECK-NEXT:      v28 = upd_w(v28, 0, *(v8int32 *)(r_v28_v4 + 256*v17+v21));
-//CHECK-NEXT:      v24 = lmac8(v24, v28, 0, 0x76543210, v9, 6, 0x00000000);
-//CHECK-NEXT:      v28 = upd_w(v28, 1, *(v8int32 *)(r_v28_v4 + 256*v17+v26 + 7));
-//CHECK-NEXT:      v24 = lmac8(v24, v28, 1, 0x76543210, v9, 7, 0x00000000);
-//CHECK-NEXT:      v24 = lmac8(v24, v28, 2, 0x76543210, v10, 0, 0x00000000);
-//CHECK-NEXT:      v8int32 v29 = srs(v24, 0);
-//CHECK-NEXT:      *(v8int32 *)(v6 + 256*v13+v21) = v29;
-//CHECK-NEXT:    }
-//CHECK-NEXT:  }
+//CHECK-NEXT:      v28 = upd_w(v28, 0, *(v8int32 *)(r_v28_v4 + 256*v16+v22));
+//CHECK-NEXT:      v25 = lmac8(v25, v28, 0, 0x76543210, v10, 3, 0x00000000);
+//CHECK-NEXT:      v28 = upd_w(v28, 1, *(v8int32 *)(r_v28_v4 + 256*v16+v27 + 7));
+//CHECK-NEXT:      v25 = lmac8(v25, v28, 1, 0x76543210, v10, 4, 0x00000000);
+//CHECK-NEXT:      v25 = lmac8(v25, v28, 2, 0x76543210, v10, 5, 0x00000000);
+//CHECK-NEXT:      v16int32 v29;
+//CHECK-NEXT:      int32_t * restrict r_v29_v4 = v4;
+//CHECK-NEXT:      v29 = upd_w(v29, 0, *(v8int32 *)(r_v29_v4 + 256*v18+v22));
+//CHECK-NEXT:      v25 = lmac8(v25, v29, 0, 0x76543210, v10, 6, 0x00000000);
+//CHECK-NEXT:      v29 = upd_w(v29, 1, *(v8int32 *)(r_v29_v4 + 256*v18+v27 + 7));
+//CHECK-NEXT:      v25 = lmac8(v25, v29, 1, 0x76543210, v10, 7, 0x00000000);
+//CHECK-NEXT:      v25 = lmac8(v25, v29, 2, 0x76543210, v11, 0, 0x00000000);
+//CHECK-NEXT:      v8int32 v30 = srs(v25, v9);
+//CHECK-NEXT:      *(v8int32 *)(v6 + 256*v14+v22) = v30;
