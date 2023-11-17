@@ -31,7 +31,7 @@ SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
 
 if ( WSL )
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_SOURCE_DIR})
+	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
 endif ()
 
 project(${ProjectName})
