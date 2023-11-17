@@ -104,11 +104,13 @@ int main(int argc, const char *argv[]) {
 
   // Load the xclbin
   if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << std::endl;
+    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>()
+              << std::endl;
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
 
   if (verbosity >= 1)
-    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << std::endl;
+    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>()
+              << std::endl;
   std::string Node = vm["kernel"].as<std::string>();
 
   // Get the kernel from the xclbin
@@ -139,12 +141,12 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(0));
-  auto bo_inA = xrt::bo(device, N * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(2));
-  auto bo_inB = xrt::bo(device, N * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(2));
+  auto bo_inB = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(3));
+  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                        kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -183,7 +185,9 @@ int main(int argc, const char *argv[]) {
     std::cout << std::endl << "PASS!" << std::endl << std::endl;
     return 0;
   } else {
-    std::cout << std::endl << errors << " mismatches." << std::endl << std::endl;
+    std::cout << std::endl
+              << errors << " mismatches." << std::endl
+              << std::endl;
     std::cout << std::endl << "fail." << std::endl << std::endl;
     return 1;
   }
