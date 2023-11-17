@@ -3025,12 +3025,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
       return true;
     }
 
-    auto bcastOp = dyn_cast<aievec::BroadcastOp>(rsOp.getRhs().getDefiningOp());
-
-    if (!bcastOp) {
-      return true;
-    }
-
     Type scalarType = srcType.getElementType();
 
     unsigned laneSize = getVectorLaneSize(srcType);
