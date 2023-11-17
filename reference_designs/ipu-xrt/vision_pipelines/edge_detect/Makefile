@@ -54,7 +54,11 @@ build/${targetname}.exe: test.cpp
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DEDGEDETECT_WIDTH=${EDGEDETECT_WIDTH} -DEDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT} 
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/${targetname}* $@
+ifeq "${powershell}" "powershell.exe"
+	cp _build/${targetname}.exe $@
+else
+	cp _build/${targetname} $@ 
+endif
 
 run: build/${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE

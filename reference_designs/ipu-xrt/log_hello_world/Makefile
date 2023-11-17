@@ -34,7 +34,11 @@ build/${targetname}.exe: test.cpp
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/${targetname}* $@
+ifeq "${powershell}" "powershell.exe"
+	cp _build/${targetname}.exe $@
+else
+	cp _build/${targetname} $@ 
+endif
 
 run: build/${targetname}.exe hello_world_elfstrings.csv
 	${powershell} ./$< -x build/hello_world.xclbin -i build/insts.txt \
