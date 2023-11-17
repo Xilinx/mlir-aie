@@ -38,7 +38,11 @@ build/${targetname}.exe: test.cpp
 	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname} -DWIDTH=${WIDTH} -DHEIGHT=${HEIGHT} 
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/${targetname}* $@
+ifeq "${powershell}" "powershell.exe"
+	cp _build/${targetname}.exe $@
+else
+	cp _build/${targetname} $@ 
+endif
 
 run: build/${targetname}.exe build/final_${WIDTH}.xclbin build/insts.txt
 	${powershell} ./$< -x build/final_${WIDTH}.xclbin -i build/insts.txt -k MLIR_AIE
