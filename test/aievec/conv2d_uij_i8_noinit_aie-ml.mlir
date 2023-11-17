@@ -75,6 +75,7 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
 //      CHECK:    %[[C2:.*]] = arith.constant 2 : index
 //      CHECK:    %[[C1:.*]] = arith.constant 1 : index
 //      CHECK:    %[[C16:.*]] = arith.constant 16 : index
+//      CHECK:    %[[C0I32:.*]] = arith.constant 0 : i32
 //      CHECK:    %[[C16_i32:.*]] = arith.constant 16 : i32
 //      CHECK:    %[[C8:.*]] = arith.constant 8 : i32
 //      CHECK:    %[[C0:.*]] = arith.constant 0 : index
@@ -92,5 +93,5 @@ func.func @conv2d (%A: memref<18x288xi8>, %B: memref<48xi8>, %C: memref<16x256xi
 //      CHECK:        %[[T9:.*]] = aievec.fma_conv %[[T8]], %[[T2]], %[[T7]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
 //      CHECK:        %[[T10:.*]] = aievec.upd %[[A0]][%[[T5]], %[[A4]]] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<64xi8>
 //      CHECK:        %[[T11:.*]] = aievec.fma_conv %[[T10]], %[[T3]], %[[T9]] {M = 32 : i32, N = 8 : i32} : vector<64xi8>, vector<64xi8>, vector<32xi32>
-//      CHECK:        %[[T12:.*]] = aievec.srs %[[T11]] {shift = 0 : i8} : vector<32xi32>, vector<32xi8>
+//      CHECK:        %[[T12:.*]] = aievec.srs %[[T11]], %[[C0I32]] : vector<32xi32>, i32, vector<32xi8>
 //      CHECK:        vector.transfer_write %[[T12]], %[[A2]][%[[A3]], %[[A4]]] {in_bounds = [true]} : vector<32xi8>, memref<16x256xi8>

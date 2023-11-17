@@ -565,8 +565,11 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
     auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
         addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
+
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        addOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-        addOp, resultType, fmaElemOp.getResult(), shiftParam);
+        addOp, resultType, fmaElemOp.getResult(), shiftParamOp.getResult());
 
     return success();
   }
@@ -659,8 +662,10 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
     } else if (mulElemResultElWidth > resultElWidth) {
+      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+          mulOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-          mulOp, resultType, mulElemOp.getResult(), shiftParam);
+          mulOp, resultType, mulElemOp.getResult(), shiftParamOp.getResult());
     } else {
       return failure();
     }
@@ -748,8 +753,10 @@ struct ConvertMulIToAIEVecMulElemOpPattern
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
     } else if (mulElemResultElWidth > resultElWidth) {
+      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+          mulOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-          mulOp, resultType, mulElemOp.getResult(), shiftParam);
+          mulOp, resultType, mulElemOp.getResult(), shiftParamOp.getResult());
     } else {
       return failure();
     }
@@ -841,8 +848,10 @@ struct ConvertMulAddToAIEVecFMAOpPattern
         /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xstep=*/"",
         /*xsquare=*/"", /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"",
         /*zstep=*/"", /*zsquare=*/"", /*fmsub=*/false);
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(addOp, vecType,
-                                               fmaOp.getResult());
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        addOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        addOp, vecType, fmaOp.getResult(), shiftParamOp.getResult());
     return success();
   }
 };
@@ -982,8 +991,10 @@ struct LowerVectorMulIOpToAIEVecMulOp
     auto accTy = getVectorOpDestType(resTy, /*AIEML =*/false);
     auto newMulOp = rewriter.create<aievec::MulOp>(
         mulOp.getLoc(), accTy, adaptor.getLhs(), adaptor.getRhs());
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(mulOp, resTy,
-                                               newMulOp.getResult());
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        mulOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        mulOp, resTy, newMulOp.getResult(), shiftParamOp.getResult());
     return success();
   }
 };
@@ -1125,8 +1136,11 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
                 srcOp.getLoc(), lUpsOp->getResult(0).getType(),
                 lUpsOp->getResult(0), rUpsOp->getResult(0));
 
-            rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, srcOp.getType(),
-                                                       elemOp.getResult());
+            auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+                srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+            rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+                srcOp, srcOp.getType(), elemOp.getResult(),
+                shiftParamOp.getResult());
             return success();
           }
         }
@@ -1215,8 +1229,10 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
       auto elemOp = rewriter.create<DstOpTy>(
           srcOp.getLoc(), lUpsOp->getResult(0).getType(), lUpsOp->getResult(0),
           rUpsOp->getResult(0));
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, srcOp.getType(),
-                                                 elemOp.getResult());
+      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+          srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          srcOp, srcOp.getType(), elemOp.getResult(), shiftParamOp.getResult());
       return success();
     }
     return failure();
@@ -1579,7 +1595,10 @@ struct LowerVectorReductionAddBfloat16Op
       curValue = curOp.getResult();
     }
 
-    auto srsOp = rewriter.create<aievec::SRSOp>(loc, vType, curOp.getResult());
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto srsOp = rewriter.create<aievec::SRSOp>(loc, vType, curOp.getResult(),
+                                                shiftParamOp.getResult());
     SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
     auto concatOp =
         rewriter.create<aievec::ConcatOp>(loc, vecType, concatSources);
@@ -1771,8 +1790,10 @@ struct ComputeExpOpByLUTPattern : public OpConversionPattern<math::ExpOp> {
     auto funcOp = rewriter.create<emitc::CallOp>(
         expOp.getLoc(), TypeRange{accType}, "getExpBf16", nullptr, nullptr,
         expOperands);
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(expOp, srcType,
-                                               funcOp.getResult(0));
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        expOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        expOp, srcType, funcOp.getResult(0), shiftParamOp.getResult());
 
     return success();
   }
@@ -2039,8 +2060,10 @@ struct LowerExtOpPattern : public OpConversionPattern<SrcOpTy> {
         rewriter.create<aievec::UPSOp>(extOp.getLoc(), accType, extOp.getIn());
 
     if (dstType.getElementType().getIntOrFloatBitWidth() == 16) {
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(extOp, dstType,
-                                                 upsOp.getResult());
+      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+          extOp.getLoc(), rewriter.getI32IntegerAttr(0));
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          extOp, dstType, upsOp.getResult(), shiftParamOp.getResult());
     } else {
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           extOp, dstType, upsOp.getResult(), /*isResAcc*/ false);
@@ -2070,17 +2093,18 @@ struct LowerTruncOpPattern : public OpConversionPattern<SrcOpTy> {
                        ? createVectorType(laneSize, scalarType)
                        : getVectorOpDestType(srcType, /*AIEML =*/true);
 
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        truncOp.getLoc(), rewriter.getI32IntegerAttr(0));
     if (elWidth == 16) {
       auto upsOp = rewriter.create<aievec::UPSOp>(truncOp.getLoc(), accType,
                                                   truncOp.getIn());
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(truncOp, dstType,
-                                                 upsOp.getResult());
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          truncOp, dstType, upsOp.getResult(), shiftParamOp.getResult());
     } else {
       auto castOp = rewriter.create<aievec::CastOp>(truncOp.getLoc(), accType,
                                                     truncOp.getIn(), true);
-
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(truncOp, dstType,
-                                                 castOp.getResult());
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          truncOp, dstType, castOp.getResult(), shiftParamOp.getResult());
     }
     return success();
   }
@@ -2382,8 +2406,10 @@ struct ComputeNegOpPattern : public OpConversionPattern<arith::NegFOp> {
       auto aieNegOp =
           rewriter.create<aievec::NegOp>(loc, accType, upsOp.getResult());
 
-      rewriter.replaceOpWithNewOp<aievec::SRSOp>(negOp, srcType,
-                                                 aieNegOp.getResult());
+      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+          negOp.getLoc(), rewriter.getI32IntegerAttr(0));
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          negOp, srcType, aieNegOp.getResult(), shiftParamOp.getResult());
     } else {
       auto castOp = rewriter.create<aievec::CastOp>(
           loc, accType, adaptor.getOperand(), /*isResAcc*/ true);
@@ -2495,6 +2521,87 @@ using ComputeBorOpPattern =
     ComputeBandAndBorOpPattern<arith::OrIOp, aievec::BorOp>;
 using ComputeBandOpPattern =
     ComputeBandAndBorOpPattern<arith::AndIOp, aievec::BandOp>;
+
+// Convert arith.shrsi to a combination of aievec.ups and aievec.srs to compute
+// arithmetic right shift for integer types. Currently, only support the shift
+// value with a broadcast vector.
+struct ComputeSignedIntRightShiftOpPattern
+    : public OpConversionPattern<arith::ShRSIOp> {
+  using OpConversionPattern<arith::ShRSIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ShRSIOp rsOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    VectorType srcType = dyn_cast<VectorType>(adaptor.getLhs().getType());
+    if (!srcType) {
+      return failure();
+    }
+
+    Type scalarType = srcType.getElementType();
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    if (laneSize * elWidth != 512) {
+      return failure();
+    }
+
+    auto bcastOp =
+        dyn_cast<aievec::BroadcastOp>(adaptor.getRhs().getDefiningOp());
+
+    if (!bcastOp) {
+      return failure();
+    }
+
+    arith::ConstantOp constOp = rewriter.create<arith::ConstantOp>(
+        bcastOp.getLoc(), rewriter.getI32IntegerAttr(bcastOp.getIdx()));
+
+    auto extElemOp = rewriter.create<aievec::ExtElemOp>(
+        bcastOp.getLoc(), scalarType, bcastOp, constOp.getResult());
+
+    Location loc = rsOp.getLoc();
+
+    // The vector with v64int8 type can be divided into two v32int8 vectors and
+    // be processed individually and be concatenated at the end.
+    if (elWidth == 8) {
+      VectorType halfSrcType = createVectorType(laneSize / 2, scalarType);
+
+      auto rsOpLow =
+          rewriter.create<aievec::ExtOp>(loc, halfSrcType, adaptor.getLhs(), 0);
+      auto rsOpHigh =
+          rewriter.create<aievec::ExtOp>(loc, halfSrcType, adaptor.getLhs(), 1);
+
+      Type accType = getVectorOpDestType(halfSrcType, /*AIEML =*/true);
+
+      auto upsOpLow =
+          rewriter.create<aievec::UPSOp>(loc, accType, rsOpLow.getResult());
+
+      auto srsOpLow = rewriter.create<aievec::SRSOp>(
+          loc, halfSrcType, upsOpLow.getResult(), extElemOp.getResult());
+
+      auto upsOpHigh =
+          rewriter.create<aievec::UPSOp>(loc, accType, rsOpHigh.getResult());
+
+      auto srsOpHigh = rewriter.create<aievec::SRSOp>(
+          loc, halfSrcType, upsOpHigh.getResult(), extElemOp.getResult());
+
+      SmallVector<Value> inputSources = {srsOpLow.getResult(),
+                                         srsOpHigh.getResult()};
+      rewriter.replaceOpWithNewOp<aievec::ConcatOp>(rsOp, srcType,
+                                                    inputSources);
+    } else {
+      Type accType = getVectorOpDestType(srcType, /*AIEML =*/true);
+
+      auto upsOp =
+          rewriter.create<aievec::UPSOp>(loc, accType, adaptor.getLhs());
+
+      rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+          rsOp, srcType, upsOp.getResult(), extElemOp.getResult());
+    }
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2539,6 +2646,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       ComputeBxorAndBnegOpPattern,
       ComputeBorOpPattern,
       ComputeBandOpPattern,
+      ComputeSignedIntRightShiftOpPattern,
       ConvertMulIToAIEVecMulElemOpPattern,
       LowerVectorAddFOpToAIEVecAddElemOp,
       LowerVectorSubFOpToAIEVecSubElemOp,
@@ -2905,6 +3013,20 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(scalarType)) {
       return true;
     }
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+
+    return laneSize * elWidth != 512;
+  });
+
+  target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
+    VectorType srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
+    if (!srcType) {
+      return true;
+    }
+
+    Type scalarType = srcType.getElementType();
+
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
@@ -3288,8 +3410,7 @@ struct ProcessExtOpsPass
     ConversionTarget target(*context);
     patterns.add<LowerExtFOpPattern, LowerExtSIOpPattern, LowerTruncFOpPattern,
                  LowerTruncIOpPattern>(patterns.getContext());
-    target.addLegalDialect<aievec::AIEVecDialect>();
-
+    target.addLegalDialect<aievec::AIEVecDialect, arith::ArithDialect>();
     target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
       VectorType srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
       VectorType dstType = dyn_cast<VectorType>(extfOp.getOut().getType());

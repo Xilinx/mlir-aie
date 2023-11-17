@@ -7,10 +7,11 @@
 func.func @muladd2mac_i32(%a : vector<8xi32>,
                           %b : vector<8xi32>,
                           %c : vector<8xi32>) -> vector<8xi32> {
+    // CHECK:  %[[C0:.*]] = arith.constant 0 : i32
     // CHECK: %[[AA:.*]] = aievec.concat %[[A]], %[[A]] : vector<8xi32>, vector<16xi32>
     // CHECK: %[[ACC:.*]] = aievec.ups %[[C]] {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
     // CHECK: %[[MAC:.*]] = aievec.mac %[[AA]], %[[B]], %[[ACC]] : vector<16xi32>, vector<8xi32>, vector<8xi80>
-    // CHECK: %[[RES:.*]] = aievec.srs %[[MAC]] {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
+    // CHECK: %[[RES:.*]] = aievec.srs %[[MAC]], %[[C0]] : vector<8xi80>, i32, vector<8xi32>
     %0 = arith.muli %a, %b : vector<8xi32>
     %1 = arith.addi %0, %c : vector<8xi32>
     // CHECK: return %[[RES]] : vector<8xi32>
@@ -24,10 +25,11 @@ func.func @muladd2mac_i32(%a : vector<8xi32>,
 func.func @muladd2mac_inv(%a : vector<8xi32>,
                           %b : vector<8xi32>,
                           %c : vector<8xi32>) -> vector<8xi32> {
+    // CHECK:  %[[C0:.*]] = arith.constant 0 : i32
     // CHECK: %[[AA:.*]] = aievec.concat %[[A]], %[[A]] : vector<8xi32>, vector<16xi32>
     // CHECK: %[[ACC:.*]] = aievec.ups %[[C]] {shift = 0 : i8} : vector<8xi32>, vector<8xi80>
     // CHECK: %[[MAC:.*]] = aievec.mac %[[AA]], %[[B]], %[[ACC]] : vector<16xi32>, vector<8xi32>, vector<8xi80>
-    // CHECK: %[[RES:.*]] = aievec.srs %[[MAC]] {shift = 0 : i8} : vector<8xi80>, vector<8xi32>
+    // CHECK: %[[RES:.*]] = aievec.srs %[[MAC]], %[[C0]] : vector<8xi80>, i32, vector<8xi32>
     %0 = arith.muli %a, %b : vector<8xi32>
     %1 = arith.addi %c, %0 : vector<8xi32>
     // CHECK: return %[[RES]] : vector<8xi32>

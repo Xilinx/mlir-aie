@@ -405,8 +405,7 @@ def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure
   ]>,
-  Arguments<(ins AnyVector:$source,
-          DefaultValuedAttr<ConfinedAttr<AIEI8Attr, [IntNonNegative]>, "0">:$shift)>,
+  Arguments<(ins AnyVector:$source, AnyInteger:$shift)>,
   Results<(outs AnyVector:$result)> {
   let summary = "AIE srs";
   let description = [{

@@ -42,10 +42,11 @@ func.func @vecaddi_i16_i32(%arg0 : vector<32xi16>, %arg1 : vector<32xi16>) -> ve
 // CHECK-SAME: %[[LHS:.*]]: vector<16xi16>,
 // CHECK-SAME: %[[RHS:.*]]: vector<16xi32>)
 func.func @vecaddi_i16_i32_2(%arg0 : vector<16xi16>, %arg1 : vector<16xi32>) -> vector<16xi32> {
+  // CHECK:  %[[C0:.*]] = arith.constant 0 : i32
   // CHECK:  %[[LUPS:.*]] = aievec.ups %[[LHS]] {shift = 0 : i8} : vector<16xi16>, vector<16xi64>
   // CHECK:  %[[RUPS:.*]] = aievec.ups %[[RHS]] {shift = 0 : i8} : vector<16xi32>, vector<16xi64>
   // CHECK:  %[[ADD:.*]] = aievec.add_elem %[[LUPS]], %[[RUPS]] : vector<16xi64>
-  // CHECK:  %[[SRS:.*]] = aievec.srs %[[ADD]] {shift = 0 : i8} : vector<16xi64>, vector<16xi32>
+  // CHECK:  %[[SRS:.*]] = aievec.srs %[[ADD]], %[[C0]] : vector<16xi64>, i32, vector<16xi32>
   %1 = arith.extsi %arg0 : vector<16xi16> to vector<16xi32>
   %2 = arith.addi %1, %arg1 : vector<16xi32>
   // CHECK: return %[[SRS]] : vector<16xi32>
@@ -177,10 +178,11 @@ func.func @vecaddf_f32(%arg0: vector<16xf32>, %arg1: vector<16xf32>) -> vector<1
 // CHECK-SAME: %[[LHS:.*]]: vector<16xbf16>,
 // CHECK-SAME: %[[RHS:.*]]: vector<16xbf16>)
 func.func @vecaddf_bf16(%arg0: vector<16xbf16>, %arg1: vector<16xbf16>) -> vector<16xbf16> {
+  // CHECK:  %[[C0:.*]] = arith.constant 0 : i32
   // CHECK:  %[[LUPS:.*]] = aievec.ups %[[LHS]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
   // CHECK:  %[[RUPS:.*]] = aievec.ups %[[RHS]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
   // CHECK:  %[[SUB:.*]] = aievec.add_elem %[[LUPS]], %[[RUPS]] : vector<16xf32>
-  // CHECK:  %[[SRS:.*]] = aievec.srs %[[SUB]] {shift = 0 : i8} : vector<16xf32>, vector<16xbf16>
+  // CHECK:  %[[SRS:.*]] = aievec.srs %[[SUB]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
   %0 = arith.addf %arg0, %arg1 : vector<16xbf16>
   // CHECK: return %[[SRS]] : vector<16xbf16>
   return %0 : vector<16xbf16>
@@ -203,10 +205,11 @@ func.func @vecsubf_f32(%arg0: vector<16xf32>, %arg1: vector<16xf32>) -> vector<1
 // CHECK-SAME: %[[LHS:.*]]: vector<16xbf16>,
 // CHECK-SAME: %[[RHS:.*]]: vector<16xbf16>)
 func.func @vecsubf_bf16(%arg0: vector<16xbf16>, %arg1: vector<16xbf16>) -> vector<16xbf16> {
+  // CHECK:  %[[C0:.*]] = arith.constant 0 : i32
   // CHECK:  %[[LUPS:.*]] = aievec.ups %[[LHS]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
   // CHECK:  %[[RUPS:.*]] = aievec.ups %[[RHS]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
   // CHECK:  %[[SUB:.*]] = aievec.sub_elem %[[LUPS]], %[[RUPS]] : vector<16xf32>
-  // CHECK:  %[[SRS:.*]] = aievec.srs %[[SUB]] {shift = 0 : i8} : vector<16xf32>, vector<16xbf16>
+  // CHECK:  %[[SRS:.*]] = aievec.srs %[[SUB]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
   %0 = arith.subf %arg0, %arg1 : vector<16xbf16>
   // CHECK: return %[[SRS]] : vector<16xbf16>
   return %0 : vector<16xbf16>

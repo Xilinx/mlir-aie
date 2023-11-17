@@ -20,6 +20,7 @@
 // CHECK-SAME: %[[MB:[A-Za-z0-9]+]]: memref<?x64xi16>,
 // CHECK-SAME: %[[MC:[A-Za-z0-9]+]]: memref<?x64xi16>
 func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memref<?x64xi16>) {
+  // CHECK-DAG: %[[C0I32:.*]] = arith.constant 0 : i32
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
@@ -224,7 +225,7 @@ func.func @matmul(%arg0: memref<?x64xi16>, %arg1: memref<?x64xi16>, %arg2: memre
         // CHECK: %[[ACCk14:.*]] = aievec.mac %[[VBef]], %[[VA]], %[[ACCk12]]
         // CHECK-SAME:                       {xoffsets = "0x73727170", xoffsets_hi = "0x77767574", xsquare = "0x3120",
         // CHECK-SAME:                        xstart = "0", zoffsets = "0", zoffsets_hi = "0", zstart = "14", zstep = "1"}
-        // CHECK: %[[ACC:.*]] = aievec.srs %[[ACCk14]] {shift = 0 : i8} : vector<16xi48>, vector<16xi16>
+        // CHECK: %[[ACC:.*]] = aievec.srs %[[ACCk14]], %[[C0I32]] : vector<16xi48>, i32, vector<16xi16>
         %76 = affine.apply #map15(%arg5)
         %77 = vector.transfer_read %arg0[%arg3, %76], %c0_i16 {permutation_map = #map} : memref<?x64xi16>, vector<16xi16>
         %78 = vector.transfer_read %arg1[%76, %arg4], %c0_i16 : memref<?x64xi16>, vector<16xi16>

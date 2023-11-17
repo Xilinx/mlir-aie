@@ -4,6 +4,7 @@
 func.func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
   %c32 = arith.constant 32 : index
   %c0 = arith.constant 0 : index
+  %c10 = arith.constant 10 : i32
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<48xi8>, vector<64xi8>
   %1 = aievec.upd %arg1[%c32], %0 {index = 1 : i8, offset = 0 : i32} : memref<48xi8>, vector<64xi8>
   %c0_0 = arith.constant 0 : index
@@ -29,8 +30,8 @@ func.func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
       %12 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
       %13 = aievec.mac %1, %12, %10 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %14 = aievec.mac %1, %12, %11 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %15 = aievec.srs %13 {shift = 10 : i8} : vector<16xi48>, vector<16xi16>
-      %16 = aievec.srs %14 {shift = 10 : i8} : vector<16xi48>, vector<16xi16>
+      %15 = aievec.srs %13, %c10 : vector<16xi48>, i32, vector<16xi16>
+      %16 = aievec.srs %14, %c10 : vector<16xi48>, i32, vector<16xi16>
       %17 = aievec.concat %15, %16 : vector<16xi16>, vector<32xi16>
       %18 = aievec.select %17 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
       %19 = aievec.ext %18 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
@@ -43,53 +44,53 @@ func.func @conv2d_0(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
 
 //CHECK-NEXT:  size_t v4 = 32;
 //CHECK-NEXT:  size_t v5 = 0;
-//CHECK-NEXT:  v64int8 v6;
-//CHECK-NEXT:  int8_t * restrict r_v6_v2 = v2;
-//CHECK-NEXT:  v6 = upd_w(v6, 0, *(v32int8 *)(r_v6_v2 + v5));
-//CHECK-NEXT:  v6 = upd_w(v6, 1, *(v32int8 *)(r_v6_v2 + v4));
-//CHECK-NEXT:  size_t v7 = 0;
-//CHECK-NEXT:  size_t v8 = 16;
-//CHECK-NEXT:  size_t v9 = 1;
-//CHECK-NEXT:  for (size_t v10 = v7; v10 < v8; v10 += v9)
+//CHECK-NEXT:  int32_t v6 = 10;
+//CHECK-NEXT:  v64int8 v7;
+//CHECK-NEXT:  int8_t * restrict r_v7_v2 = v2;
+//CHECK-NEXT:  v7 = upd_w(v7, 0, *(v32int8 *)(r_v7_v2 + v5));
+//CHECK-NEXT:  v7 = upd_w(v7, 1, *(v32int8 *)(r_v7_v2 + v4));
+//CHECK-NEXT:  size_t v8 = 0;
+//CHECK-NEXT:  size_t v9 = 16;
+//CHECK-NEXT:  size_t v10 = 1;
+//CHECK-NEXT:  for (size_t v11 = v8; v11 < v9; v11 += v10)
 //CHECK-NEXT:  chess_prepare_for_pipelining
 //CHECK-NEXT:  chess_loop_range(16, 16)
 //CHECK-NEXT:  {
-//CHECK-NEXT:    size_t v11 = 1;
-//CHECK-NEXT:    size_t v12 = v10 + v11;
-//CHECK-NEXT:    size_t v13 = 2;
-//CHECK-NEXT:    size_t v14 = v10 + v13;
-//CHECK-NEXT:    size_t v15 = 0;
-//CHECK-NEXT:    size_t v16 = 256;
-//CHECK-NEXT:    size_t v17 = 16;
-//CHECK-NEXT:    for (size_t v18 = v15; v18 < v16; v18 += v17)
+//CHECK-NEXT:    size_t v12 = 1;
+//CHECK-NEXT:    size_t v13 = v11 + v12;
+//CHECK-NEXT:    size_t v14 = 2;
+//CHECK-NEXT:    size_t v15 = v11 + v14;
+//CHECK-NEXT:    size_t v16 = 0;
+//CHECK-NEXT:    size_t v17 = 256;
+//CHECK-NEXT:    size_t v18 = 16;
+//CHECK-NEXT:    for (size_t v19 = v16; v19 < v17; v19 += v18)
 //CHECK-NEXT:    chess_prepare_for_pipelining
 //CHECK-NEXT:    chess_loop_range(16, 16)
 //CHECK-NEXT:    {
-//CHECK-NEXT:      v16int8 v19 = *(v16int8 *)(v3 + 256*v10+v18);
-//CHECK-NEXT:      v32int8 v20 = *(v32int8 *)(v1 + 288*v10+v18);
-//CHECK-NEXT:      v16acc48 v21 = ups(v19, 10);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 0, 0x00000000, 4, 0x1010, v20, 0, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 0, 0x00000000, 4, 0x1010, v20, 4, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v32int8 v22 = *(v32int8 *)(v1 + 288*v12+v18);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 16, 0x00000000, 4, 0x1010, v22, 0, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 16, 0x00000000, 4, 0x1010, v22, 4, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v32int8 v23 = *(v32int8 *)(v1 + 288*v14+v18);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 32, 0x00000000, 4, 0x1010, v23, 0, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 32, 0x00000000, 4, 0x1010, v23, 4, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v16int16 v24 = srs(v21, 10);
-//CHECK-NEXT:      v16int16 v25 = srs(v21, 10);
-//CHECK-NEXT:      v32int16 v26 = concat(v24, v25);
-//CHECK-NEXT:      v32int16 v27 = select32(0xcccccccc, v26, 0, 0x0c080400, 0x0, 0x1010, 4, 0x0c080400, 0x0, 0x1010);
-//CHECK-NEXT:      v16int16 v28 = ext_w(v27, 0);
-//CHECK-NEXT:      v16int8 v29 = pack(v28);
-//CHECK-NEXT:      *(v16int8 *)(v3 + 256*v10+v18) = v29;
-//CHECK-NEXT:    }
-//CHECK-NEXT:  }
+//CHECK-NEXT:      v16int8 v20 = *(v16int8 *)(v3 + 256*v11+v19);
+//CHECK-NEXT:      v32int8 v21 = *(v32int8 *)(v1 + 288*v11+v19);
+//CHECK-NEXT:      v16acc48 v22 = ups(v20, 10);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 0, 0x00000000, 4, 0x1010, v21, 0, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 0, 0x00000000, 4, 0x1010, v21, 4, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v32int8 v23 = *(v32int8 *)(v1 + 288*v13+v19);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 16, 0x00000000, 4, 0x1010, v23, 0, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 16, 0x00000000, 4, 0x1010, v23, 4, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v32int8 v24 = *(v32int8 *)(v1 + 288*v15+v19);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 32, 0x00000000, 4, 0x1010, v24, 0, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 32, 0x00000000, 4, 0x1010, v24, 4, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v16int16 v25 = srs(v22, v6);
+//CHECK-NEXT:      v16int16 v26 = srs(v22, v6);
+//CHECK-NEXT:     v32int16 v27 = concat(v25, v26);
+//CHECK-NEXT:      v32int16 v28 = select32(0xcccccccc, v27, 0, 0x0c080400, 0x0, 0x1010, 4, 0x0c080400, 0x0, 0x1010);
+//CHECK-NEXT:      v16int16 v29 = ext_w(v28, 0);
+//CHECK-NEXT:      v16int8 v30 = pack(v29);
+//CHECK-NEXT:      *(v16int8 *)(v3 + 256*v11+v19) = v30;
 
 // CHECK-LABEL: void conv2d_1(int8_t * restrict v1, int8_t * restrict v2, int8_t * restrict v3) {
 func.func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memref<16x256xi8>) {
   %c32 = arith.constant 32 : index
   %c0 = arith.constant 0 : index
+  %c10 = arith.constant 10 : i32
   %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<48xi8>, vector<64xi8>
   %1 = aievec.upd %arg1[%c32], %0 {index = 1 : i8, offset = 0 : i32} : memref<48xi8>, vector<64xi8>
   %c0_0 = arith.constant 0 : index
@@ -113,8 +114,8 @@ func.func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
       %10 = aievec.upd %arg0[%3, %arg4] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi8>, vector<32xi8>
       %11 = aievec.mac %1, %10, %8 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "0", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
       %12 = aievec.mac %1, %10, %9 {xoffsets = "0x00000000", xsquare = "0x1010", xstart = "32", xstep = "4", zoffsets = "0x43322110", zsquare = "0x2110", zstart = "4", zstep = "2"} : vector<64xi8>, vector<32xi8>, vector<16xi48>
-      %13 = aievec.srs %11 {shift = 10 : i8} : vector<16xi48>, vector<16xi16>
-      %14 = aievec.srs %12 {shift = 10 : i8} : vector<16xi48>, vector<16xi16>
+      %13 = aievec.srs %11, %c10 : vector<16xi48>, i32, vector<16xi16>
+      %14 = aievec.srs %12, %c10 : vector<16xi48>, i32, vector<16xi16>
       %15 = aievec.concat %13, %14 : vector<16xi16>, vector<32xi16>
       %16 = aievec.select %15 {select = "0xcccccccc", xoffsets = "0x0c080400", xoffsets_hi = "0x0", xsquare = "0x1010", xstart = "0", yoffsets = "0x0c080400", yoffsets_hi = "0x0", ysquare = "0x1010", ystart = "4"} : vector<32xi16>, vector<32xi16>
       %17 = aievec.ext %16 {index = 0 : i8} : vector<32xi16>, vector<16xi16>
@@ -127,43 +128,42 @@ func.func @conv2d_1(%arg0: memref<18x288xi8>, %arg1: memref<48xi8>, %arg2: memre
 
 //CHECK-NEXT:  size_t v4 = 32;
 //CHECK-NEXT:  size_t v5 = 0;
-//CHECK-NEXT:  v64int8 v6;
-//CHECK-NEXT:  int8_t * restrict r_v6_v2 = v2;
-//CHECK-NEXT:  v6 = upd_w(v6, 0, *(v32int8 *)(r_v6_v2 + v5));
-//CHECK-NEXT:  v6 = upd_w(v6, 1, *(v32int8 *)(r_v6_v2 + v4));
-//CHECK-NEXT:  size_t v7 = 0;
-//CHECK-NEXT:  size_t v8 = 16;
-//CHECK-NEXT:  size_t v9 = 1;
-//CHECK-NEXT:  for (size_t v10 = v7; v10 < v8; v10 += v9)
+//CHECK-NEXT:  int32_t v6 = 10;
+//CHECK-NEXT:  v64int8 v7;
+//CHECK-NEXT:  int8_t * restrict r_v7_v2 = v2;
+//CHECK-NEXT:  v7 = upd_w(v7, 0, *(v32int8 *)(r_v7_v2 + v5));
+//CHECK-NEXT:  v7 = upd_w(v7, 1, *(v32int8 *)(r_v7_v2 + v4));
+//CHECK-NEXT:  size_t v8 = 0;
+//CHECK-NEXT:  size_t v9 = 16;
+//CHECK-NEXT:  size_t v10 = 1;
+//CHECK-NEXT:  for (size_t v11 = v8; v11 < v9; v11 += v10)
 //CHECK-NEXT:  chess_prepare_for_pipelining
 //CHECK-NEXT:  chess_loop_range(16, 16)
 //CHECK-NEXT:  {
-//CHECK-NEXT:    size_t v11 = 1;
-//CHECK-NEXT:    size_t v12 = v10 + v11;
-//CHECK-NEXT:    size_t v13 = 2;
-//CHECK-NEXT:    size_t v14 = v10 + v13;
-//CHECK-NEXT:    size_t v15 = 0;
-//CHECK-NEXT:    size_t v16 = 256;
-//CHECK-NEXT:    size_t v17 = 16;
-//CHECK-NEXT:    for (size_t v18 = v15; v18 < v16; v18 += v17)
+//CHECK-NEXT:    size_t v12 = 1;
+//CHECK-NEXT:    size_t v13 = v11 + v12;
+//CHECK-NEXT:    size_t v14 = 2;
+//CHECK-NEXT:    size_t v15 = v11 + v14;
+//CHECK-NEXT:    size_t v16 = 0;
+//CHECK-NEXT:    size_t v17 = 256;
+//CHECK-NEXT:    size_t v18 = 16;
+//CHECK-NEXT:    for (size_t v19 = v16; v19 < v17; v19 += v18)
 //CHECK-NEXT:    chess_prepare_for_pipelining
 //CHECK-NEXT:    chess_loop_range(16, 16)
 //CHECK-NEXT:    {
-//CHECK-NEXT:      v32int8 v19 = *(v32int8 *)(v1 + 288*v10+v18);
-//CHECK-NEXT:      v16acc48 v20 = mul16(v6, 0, 0x00000000, 4, 0x1010, v19, 0, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v16acc48 v21 = mul16(v6, 0, 0x00000000, 4, 0x1010, v19, 4, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v32int8 v22 = *(v32int8 *)(v1 + 288*v12+v18);
-//CHECK-NEXT:      v20 = mac16(v20, v6, 16, 0x00000000, 4, 0x1010, v22, 0, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 16, 0x00000000, 4, 0x1010, v22, 4, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v32int8 v23 = *(v32int8 *)(v1 + 288*v14+v18);
-//CHECK-NEXT:      v20 = mac16(v20, v6, 32, 0x00000000, 4, 0x1010, v23, 0, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v21 = mac16(v21, v6, 32, 0x00000000, 4, 0x1010, v23, 4, 0x43322110, 2, 0x2110);
-//CHECK-NEXT:      v16int16 v24 = srs(v20, 10);
-//CHECK-NEXT:      v16int16 v25 = srs(v21, 10);
-//CHECK-NEXT:      v32int16 v26 = concat(v24, v25);
-//CHECK-NEXT:      v32int16 v27 = select32(0xcccccccc, v26, 0, 0x0c080400, 0x0, 0x1010, 4, 0x0c080400, 0x0, 0x1010);
-//CHECK-NEXT:      v16int16 v28 = ext_w(v27, 0);
-//CHECK-NEXT:      v16int8 v29 = pack(v28);
-//CHECK-NEXT:      *(v16int8 *)(v3 + 256*v10+v18) = v29;
-//CHECK-NEXT:    }
-//CHECK-NEXT:  }
+//CHECK-NEXT:      v32int8 v20 = *(v32int8 *)(v1 + 288*v11+v19);
+//CHECK-NEXT:      v16acc48 v21 = mul16(v7, 0, 0x00000000, 4, 0x1010, v20, 0, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v16acc48 v22 = mul16(v7, 0, 0x00000000, 4, 0x1010, v20, 4, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v32int8 v23 = *(v32int8 *)(v1 + 288*v13+v19);
+//CHECK-NEXT:      v21 = mac16(v21, v7, 16, 0x00000000, 4, 0x1010, v23, 0, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 16, 0x00000000, 4, 0x1010, v23, 4, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v32int8 v24 = *(v32int8 *)(v1 + 288*v15+v19);
+//CHECK-NEXT:      v21 = mac16(v21, v7, 32, 0x00000000, 4, 0x1010, v24, 0, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v22 = mac16(v22, v7, 32, 0x00000000, 4, 0x1010, v24, 4, 0x43322110, 2, 0x2110);
+//CHECK-NEXT:      v16int16 v25 = srs(v21, v6);
+//CHECK-NEXT:      v16int16 v26 = srs(v22, v6);
+//CHECK-NEXT:      v32int16 v27 = concat(v25, v26);
+//CHECK-NEXT:      v32int16 v28 = select32(0xcccccccc, v27, 0, 0x0c080400, 0x0, 0x1010, 4, 0x0c080400, 0x0, 0x1010);
+//CHECK-NEXT:      v16int16 v29 = ext_w(v28, 0);
+//CHECK-NEXT:      v16int8 v30 = pack(v29);
+//CHECK-NEXT:      *(v16int8 *)(v3 + 256*v11+v19) = v30;

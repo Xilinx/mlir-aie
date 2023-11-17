@@ -30,6 +30,7 @@ func.func @conv2d(%arg0: memref<18x288xi16>, %arg1: memref<9xi16>, %arg2: memref
 //  CHECK-SAME: %[[A0:[A-Za-z0-9]+]]: memref<18x288xi16>
 //  CHECK-SAME: %[[A1:[A-Za-z0-9]+]]: memref<9xi16>
 //  CHECK-SAME: %[[A2:[A-Za-z0-9]+]]: memref<16x256xi16>
+//       CHECK:    %[[C10:.*]] = arith.constant 10 : i32
 //       CHECK:    %[[C0:.*]] = arith.constant 0 : index
 //       CHECK:    %[[T0:.*]] = aievec.upd %[[A1]][%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<9xi16>, vector<16xi16>
 //       CHECK:    %[[T1:.*]] = aievec.concat %[[T0]], %[[T0]] : vector<16xi16>, vector<32xi16>
@@ -37,5 +38,5 @@ func.func @conv2d(%arg0: memref<18x288xi16>, %arg1: memref<9xi16>, %arg2: memref
 //       CHECK:      affine.for %[[A4:.*]] = 0 to 256 step 16 {
 //       CHECK:        %[[T2:.*]] = aievec.upd %[[A0]][%[[A3]], %[[A4]]] {index = 0 : i8, offset = 0 : i32} : memref<18x288xi16>, vector<32xi16>
 //       CHECK:        %[[T3:.*]] = aievec.mul_conv %[[T2]], %[[T1]] {M = 16 : i32, N = 4 : i32} : vector<32xi16>, vector<32xi16>, vector<16xi64>
-//       CHECK:        %[[T4:.*]] = aievec.srs %[[T3]] {shift = 10 : i8} : vector<16xi64>, vector<16xi16>
+//       CHECK:        %[[T4:.*]] = aievec.srs %[[T3]], %[[C10]] : vector<16xi64>, i32, vector<16xi16>
 //       CHECK:        vector.transfer_write %[[T4]], %[[A2]][%[[A3]], %[[A4]]] {in_bounds = [true]} : vector<16xi16>, memref<16x256xi16>
