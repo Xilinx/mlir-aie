@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 Xilinx Inc.
+# (c) Copyright 2023 Advanced Micro Devices, Inc.
 
 # parameters
 # -DBOOST_ROOT: Path to Boost install
@@ -13,14 +13,16 @@
 # cmake needs this line
 cmake_minimum_required(VERSION 3.1)
 
-if (${powershell} MATCHES "powershell.exe")
-    set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
-    set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
-else()
+find_program(WSL NAMES powershell.exe)
+
+if (NOT WSL)
     set(BOOST_ROOT /usr/include/boost CACHE STRING "Path to Boost install")
     set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
+else()
+    set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
+    set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
+    set(XRT_LIB_DIR C:/Technical/xrtIPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif()
 
 set(TARGET_NAME test CACHE STRING "Target to be built")
@@ -28,11 +30,9 @@ set(TARGET_NAME test CACHE STRING "Target to be built")
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
 
-if ( MSVC )
-    set_target_properties( ${currentTarget} PROPERTIES LIBRARY_OUTPUT_DIRECTORY . )
-    set_target_properties( ${currentTarget} PROPERTIES LIBRARY_OUTPUT_DIRECTORY_DEBUG . )
-    set_target_properties( ${currentTarget} PROPERTIES LIBRARY_OUTPUT_DIRECTORY_RELEASE . )
-endif ( MSVC )
+if ( WSL )
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_SOURCE_DIR})
+endif ()
 
 project(${ProjectName})
 
@@ -55,8 +55,14 @@ target_link_directories(${currentTarget} PUBLIC
     ${Boost_LIBRARY_DIRS}
 )
 
-target_link_libraries(${currentTarget} PUBLIC
-    xrt_coreutil
-    boost_program_options
-    boost_filesystem
-)
+if (NOT WSL)
+    target_link_libraries(${currentTarget} PUBLIC
+        xrt_coreutil
+        boost_program_options
+        boost_filesystem
+    )
+else()
+    target_link_libraries(${currentTarget} PUBLIC
+        xrt_coreutil
+    )
+endif()

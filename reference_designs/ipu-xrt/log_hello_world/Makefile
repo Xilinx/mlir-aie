@@ -31,7 +31,11 @@ helloWorld.exe: test.cpp
 	mkdir _build
 	cd _build && ${powershell} cmake ../
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/Release/$@ ./
+	ifdef ${powershell}
+		cp _build/Release/$(@F) $@
+	else 
+		cp _build/$(@F) $@
+	endif
 
 run: helloWorld.exe hello_world_elfstrings.csv
 	${powershell} ./$< -x hello_world.xclbin -i insts.txt -k MLIR_AIE -e $(word 2,$^)
