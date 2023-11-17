@@ -8,7 +8,7 @@
 
 include ../makefile-common
 
-all: final.xclbin
+all: build/final.xclbin
 
 targetname = addOneObjfifo
 
@@ -23,12 +23,12 @@ build/aie.mlir: aie.mlir
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
-		--xclbin-name=$@ --ipu-insts-name=insts.txt $<
+		--xclbin-name=${@F} --ipu-insts-name=insts.txt ${<F}
 
 build/${targetname}.exe: test.cpp
 	mkdir -p ${@D}
 	rm -rf _build
-	mkdir _build
+	mkdir -p _build
 	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 	cp _build/${targetname}* $@
