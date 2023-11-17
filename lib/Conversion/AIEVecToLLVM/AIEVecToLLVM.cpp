@@ -335,10 +335,8 @@ public:
     }
 
     // Create a constant for the shift value
-    auto shiftVal = rewriter.create<LLVM::ConstantOp>(
-        op->getLoc(), shiftType, rewriter.getI32IntegerAttr(op.getShift()));
     rewriter.replaceOpWithNewOp<LLVM::CallOp>(
-        op, func, ValueRange{op.getSource(), shiftVal});
+        op, func, ValueRange{op.getSource(), op.getShift()});
     return success();
   }
 };

@@ -546,9 +546,12 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
   unsigned lanes = getVectorLaneSize(accType.cast<VectorType>());
   // Now generate the new vector type for the SRS intrinsic
   VectorType srsType = createVectorType(lanes, scalarType);
+
+  auto shiftParamOp = state->builder.create<arith::ConstantOp>(
+      loc, state->builder.getI32IntegerAttr(state->shift));
   // Create the SRS op
-  aievec::SRSOp srsOp =
-      state->builder.create<aievec::SRSOp>(loc, srsType, source, state->shift);
+  aievec::SRSOp srsOp = state->builder.create<aievec::SRSOp>(
+      loc, srsType, source, shiftParamOp.getResult());
 
   assert(srsOp && "could not create srs op");
   return srsOp;

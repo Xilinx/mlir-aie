@@ -501,8 +501,11 @@ struct FoldMulAddChainToConvOpPattern
                                            grpRhs, grpAcc, M, N, false)
                 .getResult();
     }
+
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        srcOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, vecTy, grpAcc,
-                                               shiftParam);
+                                               shiftParamOp.getResult());
     return success();
   }
 

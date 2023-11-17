@@ -213,22 +213,36 @@ OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
   auto srcDefOp = getSource().getDefiningOp();
   if (!srcDefOp)
     return nullptr;
+
   auto upsOp = dyn_cast<UPSOp>(srcDefOp);
   if (!upsOp)
     return nullptr;
+
+  auto shiftDefOp = getShift().getDefiningOp();
+  if (!shiftDefOp)
+    return nullptr;
+
+  auto constOp = dyn_cast<arith::ConstantOp>(shiftDefOp);
+  if (!constOp)
+    return nullptr;
+
+  if (upsOp.getSource().getType() != getResult().getType())
+    return nullptr;
+
   return upsOp.getSource();
 }
 
 // Print out SRS op.
 void SRSOp::print(OpAsmPrinter &p) {
   // Print the source accumulator
-  p << " " << getSource();
+  p << " " << getSource() << ", ";
 
-  // Print the attributes
-  p.printOptionalAttrDict((*this)->getAttrs());
+  // Print the shift
+  p << getShift();
 
   // And now print the types
-  p << " : " << getSource().getType() << ", " << getResult().getType();
+  p << " : " << getSource().getType() << ", " << getShift().getType() << ", "
+    << getResult().getType();
 }
 
 // Verify SRS op.
@@ -268,35 +282,38 @@ LogicalResult SRSOp::verify() {
 // Parse SRS op.
 ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
   llvm::SMLoc typesLoc;
-  SmallVector<Type, 2> types;
-  OpAsmParser::UnresolvedOperand source;
+  SmallVector<Type, 3> types;
+  OpAsmParser::UnresolvedOperand source, shift;
 
   // Parse the source accumulator
-  if (parser.parseOperand(source))
+  if (parser.parseOperand(source) || parser.parseComma() ||
+      parser.parseOperand(shift))
     return failure();
 
-  // Parse all the attributes and types
-  if (parser.parseOptionalAttrDict(result.attributes) ||
-      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
+  // Parse types
+  if (parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
-
-  if (result.attributes.getAttrs().size() != 1)
-    return parser.emitError(typesLoc, "requires one attribute");
 
   // Assert that there are two types (accumulator source and vector result)
-  if (types.size() != 2)
-    return parser.emitError(typesLoc, "requires two types");
+  if (types.size() != 3)
+    return parser.emitError(typesLoc, "requires three types");
 
   // Some verification of types
   VectorType accType = types[0].dyn_cast<VectorType>();
   if (!accType)
     return parser.emitError(typesLoc, "requires vector type");
-  VectorType vectorType = types[1].dyn_cast<VectorType>();
+
+  IntegerType shiftType = types[1].dyn_cast<IntegerType>();
+  if (!shiftType)
+    return parser.emitError(typesLoc, "requires integer type");
+
+  VectorType vectorType = types[2].dyn_cast<VectorType>();
   if (!vectorType)
     return parser.emitError(typesLoc, "requires vector type");
 
   // Populate the source in result
-  if (parser.resolveOperand(source, accType, result.operands))
+  if (parser.resolveOperand(source, accType, result.operands) ||
+      parser.resolveOperand(shift, shiftType, result.operands))
     return failure();
 
   return parser.addTypeToList(vectorType, result.types);
@@ -1177,7 +1194,7 @@ LogicalResult ExtOp::verify() {
 
   // Verify validity of index
   unsigned factor = sourceLanes / resultLanes;
-  if (getIndex() >= factor)
+  if (getIndex() >= (int8_t)factor)
     return emitError("index out of bounds");
 
   // The datatype of source and result must match

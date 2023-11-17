@@ -348,7 +348,8 @@ static LogicalResult createLinearizedAccess(CppEmitter &emitter, Value source,
   ArrayRef<int64_t> stride = memRefType.getShape();
 
   // The stride and indices size must match
-  if (stride.size() != indices.size() || stride.size() != memRefType.getRank())
+  if (stride.size() != indices.size() ||
+      stride.size() != (size_t)memRefType.getRank())
     return failure();
 
   // A stride contains two parts:
@@ -702,7 +703,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 // Generate the srs intrinsic
 static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   Value source = srsOp.getSource();
-  int32_t shift = srsOp.getShift();
+  Value shift = srsOp.getShift();
 
   // Get the datatype of the source accumulator and result vector
   VectorType accType = srsOp.getSource().getType().cast<VectorType>();
@@ -764,7 +765,10 @@ static LogicalResult printOperation(CppEmitter &emitter, aievec::SRSOp srsOp) {
   os << "(";
   os << emitter.getOrCreateName(source);
   os << ", ";
-  os << std::to_string(shift);
+  if (srsOp.getShift().getType().cast<IntegerType>().getWidth() != 32) {
+    os << "(int32_t)";
+  }
+  os << emitter.getOrCreateName(shift);
   os << ")";
   return success();
 }

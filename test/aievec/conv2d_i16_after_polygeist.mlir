@@ -36,6 +36,7 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
 //      CHECK:    %[[C256:.*]] = arith.constant 256 : index
 //      CHECK:    %[[C1:.*]] = arith.constant 1 : index
 //      CHECK:    %[[C16:.*]] = arith.constant 16 : index
+//      CHECK:    %[[C10:.*]] = arith.constant 10 : i32
 //      CHECK:    %[[C0:.*]] = arith.constant 0 : index
 //      CHECK:    %[[T0:.*]] = aievec.upd %arg1[%[[C0:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?xi16>, vector<16xi16>
 //      CHECK:    %[[T1:.*]] = aievec.concat %[[T0:.*]], %[[T0:.*]] : vector<16xi16>, vector<32xi16>
@@ -43,5 +44,5 @@ module attributes {dlti.dl_spec = #dlti.dl_spec<#dlti.dl_entry<"dlti.endianness"
 //      CHECK:      scf.for %[[A4:.*]] = %[[C0:.*]] to %[[C256:.*]] step %[[C16:.*]] {
 //      CHECK:        %[[T2:.*]] = aievec.upd %[[A0]][%[[A3:.*]], %[[A4:.*]]] {index = 0 : i8, offset = 0 : i32} : memref<?x288xi16>, vector<32xi16>
 //      CHECK:        %[[T3:.*]] = aievec.mul_conv %[[T2:.*]], %[[T1:.*]] {M = 16 : i32, N = 4 : i32} : vector<32xi16>, vector<32xi16>, vector<16xi64>
-//      CHECK:        %[[T4:.*]] = aievec.srs %[[T3:.*]] {shift = 10 : i8} : vector<16xi64>, vector<16xi16>
+//      CHECK:        %[[T4:.*]] = aievec.srs %[[T3:.*]], %[[C10]] : vector<16xi64>, i32, vector<16xi16>
 //      CHECK:        vector.transfer_write %[[T4:.*]], %[[A2]][%[[A3:.*]], %[[A4:.*]]] {in_bounds = [true]} : vector<16xi16>, memref<?x256xi16>
