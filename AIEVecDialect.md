@@ -1049,18 +1049,12 @@ Interfaces: ConditionallySpeculatable, NoMemoryEffect (MemoryEffectOpInterface)
 
 Effects: MemoryEffects::Effect{}
 
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>shift</code></td><td>::mlir::IntegerAttr</td><td>8-bit signless integer attribute whose value is non-negative</td></tr>
-</table>
-
 #### Operands:
 
 | Operand | Description |
 | :-----: | ----------- |
 | `source` | vector of any type values
+| `shift` | integer
 
 #### Results:
 
