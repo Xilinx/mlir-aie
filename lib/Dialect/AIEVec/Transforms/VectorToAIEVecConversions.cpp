@@ -2523,8 +2523,8 @@ using ComputeBandOpPattern =
     ComputeBandAndBorOpPattern<arith::AndIOp, aievec::BandOp>;
 
 // Convert arith.shrsi to a combination of aievec.ups and aievec.srs to compute
-// arithmetic right shift for integer types Currently, only support the shift
-// value with a broadcast vector
+// arithmetic right shift for integer types. Currently, only support the shift
+// value with a broadcast vector.
 struct ComputeSignedIntRightShiftOpPattern
     : public OpConversionPattern<arith::ShRSIOp> {
   using OpConversionPattern<arith::ShRSIOp>::OpConversionPattern;
@@ -3024,14 +3024,14 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     if (!srcType) {
       return true;
     }
-    /*
+    
         auto bcastOp =
        dyn_cast<aievec::BroadcastOp>(rsOp.getRhs().getDefiningOp());
 
         if(!bcastOp){
           return true;
         }
-    */
+   
     Type scalarType = srcType.getElementType();
 
     unsigned laneSize = getVectorLaneSize(srcType);
