@@ -10,7 +10,7 @@
 
 # <ins>Matrix Multiplication</ins>
 
-Single tile performs a matrix * matrix multiply on int16 data type where MxKxN is 128x128x128. The kernel itself computes 64x32x64 (MxKxN) so it is invoked multiple times to complete the full matmul compute.
+Single tile performs a `matrix * matrix` multiply on int16 data type where `MxKxN` is `128x128x128`. The kernel itself computes `64x32x64 (MxKxN)` so it is invoked multiple times to complete the full matmul compute.
 
 To compile desing in Windows:
 ```
