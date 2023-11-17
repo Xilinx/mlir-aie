@@ -3,6 +3,8 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import sys
+
 from aie.ir import *
 from aie.dialects.func import *
 from aie.dialects.scf import *
@@ -11,6 +13,9 @@ from aie.dialects.aiex import *
 
 width = 512 #1920 // 8
 height = 9 #1080 // 8
+if len(sys.argv) == 3:
+    width = int(sys.argv[1])
+    height = int(sys.argv[2])
 
 lineWidthInBytes = width
 lineWidthInInt32s = lineWidthInBytes // 4
@@ -21,7 +26,7 @@ traceSizeInInt32s = traceSizeInBytes // 4
 
 @constructAndPrintInModule
 def passThroughAIE2():
-    @device("ipu")
+    @device(AIEDevice.ipu)
     def deviceBody():
         # define types
         uint8_ty = IntegerType.get_unsigned(8)

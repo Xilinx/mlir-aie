@@ -8,10 +8,9 @@
 
 include ../makefile-common
 
-all: build/final.xclbin build/insts.txt
+targetname = vectorScalar
 
-#run: all test.exe
-#	pushd build; ./test.exe -x ./final.xclbin -k MLIR_AIE -i ./insts.txt; popd
+all: build/final.xclbin build/insts.txt
 
 build/%.o: %.cc
 	mkdir -p ${@D}
@@ -19,28 +18,23 @@ build/%.o: %.cc
 
 build/aie.mlir: aie2.py
 	mkdir -p ${@D}
-	python3 $< > build/tmp.mlir
-	aie-opt --canonicalize build/tmp.mlir -o $@
-	rm build/tmp.mlir
+	python3 $< > $@
 
 build/final.xclbin: build/aie.mlir build/scale.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
 				--aie-generate-ipu --ipu-insts-name=insts.txt $(<:%=../%)
 
-# build/test.exe: test.cpp
-# 	mkdir -p ${@D}
-# 	$(CXX) $(LD_FLAGS) $< -o $@ $(CFLAGS) $(INC) $(LD_PATHS) 
-
-vectorScalar.exe: test.cpp build/final.xclbin
+build/${targetname}.exe: test.cpp
+	mkdir -p ${@D}
 	rm -rf _build
-	mkdir _build
-	cd _build && ${powershell} cmake .. 
+	mkdir -p _build
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/Release/$@ ./
+	cp _build/${targetname}* $@
 
-run: vectorScalar.exe
+run: build/${targetname}.exe build/final.xclbin build/insts.txt
 	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
-	rm -rf build _build vectorScalar.exe
+	rm -rf build _build

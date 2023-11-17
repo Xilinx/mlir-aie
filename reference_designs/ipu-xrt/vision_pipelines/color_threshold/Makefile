@@ -10,27 +10,37 @@ include ../../makefile-common
 
 VPATH := ../vision_kernels
 
+targetname = colorThreshold
+
 all: build/final.xclbin
 
 build/threshold.o: threshold.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -d -DBIT_WIDTH=8 -c $(<:%=../%) -o ${@F}
 	
-#build/final_%.xclbin: aie_%.mlir build/threshold.o
-build/final.xclbin: aie.mlir build/threshold.o
+# build/aie.mlir: aie2.py
+# 	mkdir -p ${@D}
+# 	python3 $< > $@
+
+build/aie.mlir: aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py -v --aie-generate-cdo --aie-generate-ipu --no-compile-host \
+	cp $< $@
+
+build/final.xclbin: build/aie.mlir build/threshold.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-ipu --no-compile-host \
 		--xclbin-name=${@F} --ipu-insts-name=insts.txt $(<:%=../%)
 
-colorThreshold.exe: test.cpp 
+build/${targetname}.exe: test.cpp
+	mkdir -p ${@D}
 	rm -rf _build
-	mkdir _build
-	cd _build && ${powershell} cmake ../ 
+	mkdir -p _build
+	cd _build && ${powershell} cmake .. -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
-	cp _build/Release/$@ ./
+	cp _build/${targetname}* $@
 
-run: colorThreshold.exe build/final.xclbin
-	${powershell} ./$< -x ./build/final.xclbin -i ./build/insts.txt -k MLIR_AIE
+run: build/${targetname}.exe build/final.xclbin build/insts.txt
+	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
 
 clean:
 	rm -rf build _build colorThreshold.exe
