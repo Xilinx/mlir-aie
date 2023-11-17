@@ -20,20 +20,28 @@ mkdir -p llvm/$INSTALL_DIR
 cd llvm/$BUILD_DIR
 set -o pipefail
 set -e
-cmake ../llvm \
+
+CMAKE_CONFIGS="\
   -GNinja \
   -DLLVM_BUILD_EXAMPLES=OFF \
-  -DLLVM_TARGETS_TO_BUILD="host" \
+  -DLLVM_TARGETS_TO_BUILD=host \
   -DCMAKE_INSTALL_PREFIX=../$INSTALL_DIR \
-  -DLLVM_ENABLE_PROJECTS='mlir' \
+  -DLLVM_ENABLE_PROJECTS=mlir \
   -DLLVM_OPTIMIZED_TABLEGEN=OFF \
   -DLLVM_ENABLE_OCAMLDOC=OFF \
   -DLLVM_ENABLE_BINDINGS=OFF \
   -DLLVM_INSTALL_UTILS=ON \
-  -DLLVM_CCACHE_BUILD=ON \
-  -DLLVM_ENABLE_LLD=ON \
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
   -DCMAKE_BUILD_TYPE=Release \
-  -DLLVM_ENABLE_ASSERTIONS=ON
+  -DLLVM_ENABLE_ASSERTIONS=ON"
 
+if [ -x "$(command -v lld)" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"
+fi
+
+if [ -x "$(command -v ccache)" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"
+fi
+
+cmake $CMAKE_CONFIGS ../llvm 2>&1 | tee cmake.log
 cmake --build . --target install -- -j$(nproc)

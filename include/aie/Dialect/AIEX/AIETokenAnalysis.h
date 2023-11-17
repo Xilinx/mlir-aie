@@ -5,31 +5,27 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // (c) Copyright 2019 Xilinx Inc.
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #ifndef AIEX_TOKENANALYSIS_H
 #define AIEX_TOKENANALYSIS_H
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Debug.h"
 
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/TypeSupport.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Interfaces/FunctionImplementation.h"
-#include "llvm/ADT/StringSwitch.h"
+namespace mlir {
+class Operation;
+} // namespace mlir
 
-#include <map>
+namespace xilinx::AIE {
+class DeviceOp;
+struct TileID;
+} // namespace xilinx::AIE
 
 namespace xilinx::AIEX {
-
-using namespace xilinx::AIE;
 
 class TokenAnalysis {
   AIE::DeviceOp &device;
@@ -42,7 +38,7 @@ class TokenAnalysis {
       tokenChains;
   llvm::SmallVector<std::pair<mlir::Operation *, mlir::Operation *>, 4>
       tokenPairs;
-  llvm::DenseMap<TileID, mlir::Operation *> tiles;
+  llvm::DenseMap<xilinx::AIE::TileID, mlir::Operation *> tiles;
 
 public:
   TokenAnalysis(AIE::DeviceOp &d) : device(d) {}
@@ -65,7 +61,7 @@ public:
   mlir::Operation *getTokenUserOp(mlir::Operation *Op);
   mlir::Operation *getShareableTileOp(mlir::Operation *Op1,
                                       mlir::Operation *Op2);
-  TileID getCoord(mlir::Operation *Op);
+  xilinx::AIE::TileID getCoord(mlir::Operation *Op);
 
   void print(llvm::raw_ostream &os);
 };

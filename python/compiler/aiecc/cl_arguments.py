@@ -142,6 +142,41 @@ def parse_args(args=None):
             default=False,
             action='store_true',
             help='Show progress visualization')
+    parser.add_argument('--aie-generate-ipu',
+            dest="ipu",
+            default=False,
+            action='store_const', const=True,
+            help='Generate ipu instruction stream')
+    parser.add_argument('--aie-only-generate-ipu',
+            dest="only_ipu",
+            default=False,
+            action='store_const', const=True,
+            help='Generate ipu instruction stream only')
+    parser.add_argument('--ipu-insts-name',
+            dest="insts_name",
+            default="ipu_insts.txt",
+            help='Output instructions filename for IPU target')
+    parser.add_argument('--aie-generate-cdo',
+            dest="cdo",
+            default=False,
+            action='store_const', const=True,
+            help='Generate libxaie v2 for CDO')
+    parser.add_argument('--xclbin-name',
+            dest="xclbin_name",
+            default="final.xclbin",
+            help='Output xclbin filename for CDO/XCLBIN target')
+    parser.add_argument('--xclbin-kernel-name',
+            dest="kernel_name",
+            default="MLIR_AIE",
+            help='Kernel name in xclbin file')
+    parser.add_argument('--xclbin-instance-name',
+            dest="instance_name",
+            default="MLIRAIEV1",
+            help='Instance name in xclbin metadata')
+    parser.add_argument('--xclbin-kernel-id',
+            dest="kernel_id",
+            default="0x901",
+            help='Kernel id in xclbin file')
 
     opts = parser.parse_args(args)
     return opts

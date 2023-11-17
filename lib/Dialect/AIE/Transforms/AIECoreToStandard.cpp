@@ -395,16 +395,7 @@ struct AIECoreToStandardPass
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
                builder.getStringAttr(triple));
 
-    // Extract all CoreOps
-    // Create an LLVM func for each CoreOp
-    // Clone the region body of each CoreOp to the newly created LLVM func
-
-    DenseMap<TileID, Operation *> tiles;
-    DenseMap<Operation *, CoreOp> cores;
-    DenseMap<Operation *, MemOp> mems;
-    DenseMap<std::pair<Operation *, int>, LockOp> locks;
     DenseMap<Operation *, SmallVector<BufferOp, 4>> tileToBuffers;
-    DenseMap<Operation *, SwitchboxOp> switchboxes;
 
     // Populate intrinsic functions
     // Intrinsic information:

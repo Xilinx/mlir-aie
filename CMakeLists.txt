@@ -177,6 +177,7 @@ add_subdirectory(reference_designs)
 add_subdirectory(test)
 add_subdirectory(tutorials)
 add_subdirectory(tools)
+add_subdirectory(data)
 
 if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
   install(

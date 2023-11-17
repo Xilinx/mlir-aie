@@ -9,9 +9,9 @@
 # This script builds mlir-aie given <llvm dir>.
 # Assuming they are all in the same subfolder, it would look like:
 #
-# build-mlir-aie.sh <llvm dir> <build dir> <install dir>
+# build-mlir-aie.sh <llvm build dir> <build dir> <install dir>
 #
-# e.g. build-mlir-aie.sh /scratch/llvm
+# e.g. build-mlir-aie.sh /scratch/llvm/build
 #
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
@@ -27,26 +27,36 @@ BASE_DIR=`realpath $(dirname $0)/..`
 CMAKEMODULES_DIR=$BASE_DIR/cmake
 
 LLVM_BUILD_DIR=`realpath $1`
+echo "LLVM BUILD DIR: $LLVM_BUILD_DIR"
 
-BUILD_DIR=${3:-"build"}
-INSTALL_DIR=${4:-"install"}
+BUILD_DIR=${2:-"build"}
+INSTALL_DIR=${3:-"install"}
 
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
 set -o pipefail
 set -e
-cmake -GNinja\
+
+CMAKE_CONFIGS="\
+    -GNinja \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_ASSERTIONS=ON \
-    "-DAIE_RUNTIME_TARGETS=x86_64;aarch64" \
-    -DAIE_RUNTIME_TEST_TARGET=aarch64 \
-    .. 2>&1 | tee cmake.log
+    -DAIE_RUNTIME_TARGETS=x86_64;aarch64 \
+    -DAIE_RUNTIME_TEST_TARGET=aarch64"
 
+if [ -x "$(command -v lld)" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"
+fi
+
+if [ -x "$(command -v ccache)" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"
+fi
+
+cmake $CMAKE_CONFIGS .. 2>&1 | tee cmake.log
 ninja 2>&1 | tee ninja.log
 ninja install 2>&1 | tee ninja-install.log
-#ninja check-aie 2>&1 | tee ninja-check-aie.log

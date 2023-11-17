@@ -9,6 +9,8 @@ add_subdirectory(AIEVecToCpp)
 
 add_mlir_library(AIETargets
   AIETargets.cpp
+  AIETargetCDO.cpp
+  AIETargetIPU.cpp
   AIETargetXAIEV2.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp

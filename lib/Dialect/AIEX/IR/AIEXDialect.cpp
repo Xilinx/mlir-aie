@@ -19,6 +19,8 @@
 #include "llvm/ADT/DenseSet.h"
 
 using namespace mlir;
+using namespace xilinx;
+using namespace xilinx::AIE;
 
 namespace xilinx {
 namespace AIEX {
@@ -74,5 +76,79 @@ LogicalResult xilinx::AIEX::BroadcastPacketOp::verify() {
     }
   }
 
+  return success();
+}
+
+LogicalResult xilinx::AIEX::IpuDmaMemcpyNdOp::verify() {
+  ::mlir::MemRefType buffer = getMemref().getType();
+  if (!buffer.getElementType().isInteger(32))
+    return emitOpError("must be used with memref type i32.");
+  uint32_t strides[3]{0, 0, 0};
+  uint32_t lengths[4]{0, 0, 0, 0};
+  if (auto const_op = getStride3().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[2] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getStride2().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[1] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getStride1().getDefiningOp<arith::ConstantIntOp>()) {
+    strides[0] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength3().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[3] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength2().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[2] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength1().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[1] = static_cast<uint32_t>(const_op.value());
+  }
+  if (auto const_op = getLength0().getDefiningOp<arith::ConstantIntOp>()) {
+    lengths[0] = static_cast<uint32_t>(const_op.value());
+  }
+  if (static_cast<uint32_t>(lengths[3]) > 64)
+    return emitOpError("Length 3 exceeds the [1:64] range.");
+  if (strides[1] && static_cast<uint32_t>(lengths[1]) > 0x3FF)
+    return emitOpError("Length 1 exceeds the [0:1023] range.");
+  if (strides[0] && static_cast<uint32_t>(lengths[0]) > 0x3FF)
+    return emitOpError("Length 0 exceeds the [0:1023] range.");
+  if (strides[2] > 0x100000)
+    return emitOpError("Stride 3 exceeds the [1:1M] range.");
+  if (strides[1] > 0x100000)
+    return emitOpError("Stride 2 exceeds the [1:1M] range.");
+  if (strides[0] > 0x100000)
+    return emitOpError("Stride 1 exceeds the [1:1M] range.");
+  return success();
+}
+
+LogicalResult xilinx::AIEX::IpuShimTilePushQueueOp::verify() {
+  const auto &target_model = getTargetModel(*this);
+  auto num_bds = target_model.getNumBDs(0, 0); // assume shim
+  if (getBdId() > num_bds)
+    return emitOpError("BD ID exceeds the maximum ID.");
+  if (getRepeatCount() > 255)
+    return emitOpError("Repeat count exceeds the [0:255] range.");
+  return success();
+}
+
+LogicalResult xilinx::AIEX::IpuWriteBdExShimTileOp::verify() {
+  const auto &target_model = getTargetModel(*this);
+  auto num_bds = target_model.getNumBDs(0, 0); // assume shim
+  if (getBdId() > num_bds)
+    return emitOpError("BD ID exceeds the maximum ID.");
+  if (getD0Wrap() > 0x3FF)
+    return emitOpError("D0 Wrap exceeds the [0:1023] range.");
+  if (getD0Stepsize() > 0xFFFFF)
+    return emitOpError("D0 Stepsize exceeds the [0:1M-1] range.");
+  if (getD1Wrap() > 0x3FF)
+    return emitOpError("D1 Wrap exceeds the [0:1023] range.");
+  if (getD1Stepsize() > 0xFFFFF)
+    return emitOpError("D1 Stepsize exceeds the [0:1M-1] range.");
+  if (getD2Stepsize() > 0xFFFFF)
+    return emitOpError("D2 Stepsize exceeds the [0:1M-1] range.");
+  if (getIterationWrap() > 0x3F)
+    return emitOpError("Iteration Wrap exceeds the [0:63] range.");
+  if (getIterationStepsize() > 0xFFFFF)
+    return emitOpError("Iteration Stepsize exceeds the [0:1M-1] range.");
   return success();
 }

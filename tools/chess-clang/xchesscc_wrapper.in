@@ -10,6 +10,8 @@
 TARGET_AIE_LIBDIR="@VITIS_AIE_INCLUDE_DIR@"
 TARGET_AIE2_LIBDIR="@VITIS_AIE2_INCLUDE_DIR@"
 
+AIETOOLS="@VITIS_AIETOOLS_DIR@"
+
 TARGET=${1^^}
 shift
 
@@ -25,6 +27,12 @@ elif [ $TARGET == "AIE2" ]
   then
     EXTRA_DEFS="-D__AIE_ARCH__=20 -D__AIEARCH__=20"
 fi
+if [ -z "$AIETOOLS" ]
+  then
+    echo "xchesscc_wrapper needs a valid Vitis installation"
+    exit 1
+fi
+
 if [ -z "$AIETOOLS" ]
   then
     echo "xchesscc_wrapper needs a valid Vitis installation"

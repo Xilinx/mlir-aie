@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // (c) Copyright 2022 Xilinx Inc.
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // This file defines helpers to emit C++ code for AIE vector dialect.
@@ -27,6 +28,7 @@
 #include "mlir/Support/IndentedOstream.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -36,6 +38,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <limits>
+#include <stack>
 
 #define DEBUG_TYPE "aievec-to-cpp"
 
@@ -349,7 +352,7 @@ static LogicalResult createLinearizedAccess(CppEmitter &emitter, Value source,
 
   // The stride and indices size must match
   if (stride.size() != indices.size() ||
-      stride.size() != (size_t)memRefType.getRank())
+      static_cast<int64_t>(stride.size()) != memRefType.getRank())
     return failure();
 
   // A stride contains two parts:

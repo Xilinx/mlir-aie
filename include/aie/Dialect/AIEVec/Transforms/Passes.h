@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // (c) Copyright 2022 Xilinx Inc.
+// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Register all the AIE vectorization passes
@@ -17,8 +18,6 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassOptions.h"
-
-#include <limits>
 
 namespace mlir {
 
@@ -60,8 +59,6 @@ class FuncOp;
 
 namespace xilinx {
 namespace aievec {
-
-using mlir::affine::AffineDialect;
 
 #define GEN_PASS_DECL
 #define GEN_PASS_CLASSES

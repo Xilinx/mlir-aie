@@ -13,6 +13,23 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AIEXToStandard : Pass<"aiex-standard-lowering", "mlir::ModuleOp"> {
+  let summary = "Lower AIEX operations";
+  let description = [{
+
+    AIEX Ipu Ops are removed.
+
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEXToStandardPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIECreateCores : Pass<"aie-create-cores", "AIE::DeviceOp"> {
   let summary = "Create CoreOp, MemOp, and FlowOp of AIE dialect";
   let description = [{
@@ -109,6 +126,20 @@ def AIELowerMemcpy : Pass<"aie-lower-memcpy", "AIE::DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIELowerMemcpyPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEDmaToIpu : Pass<"aie-dma-to-ipu", "AIE::DeviceOp"> {
+  let summary = "";
+  let description = [{
+
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEDmaToIpuPass()";
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "xilinx::AIE::AIEDialect",

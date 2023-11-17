@@ -13,9 +13,9 @@
 #ifndef AIEVEC_OPS
 #define AIEVEC_OPS
 
-include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
 include "aie/Dialect/AIE/IR/AIEAttrs.td"
-
+include "aie/Dialect/AIEVec/IR/AIEVecTypes.td"
+include "aie/Dialect/AIEVec/IR/AIEVecTypeConstraints.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 // Base class for AIE dialect ops.
@@ -750,14 +750,19 @@ def AIEVec_BxorOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise xor";
   let description = [{
-    AMD-specific intrinsic that computes bitwise xor of two vectors and returns the result.
+    AMD-specific intrinsic that computes bitwise xor of two vectors and returns
+    the result.
     `$result = bxor(`$lhs, $rhs`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let assemblyFormat = [{$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+                         `,` type($result)}];
   let hasVerifier = 0;
 }
 
@@ -766,11 +771,14 @@ def AIEVec_BnegOp:
     Pure,
     AllTypesMatch<["source", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$source)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$source)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise negation";
   let description = [{
-    AMD-specific intrinsic that computes bitwise negation of a vector and returns the result.
+    AMD-specific intrinsic that computes bitwise negation of a vector and
+    returns the result.
     `$result = bneg(`$source`).
   }];
   let assemblyFormat = "$source attr-dict `:` type($result)";
@@ -782,14 +790,19 @@ def AIEVec_BorOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise or";
   let description = [{
-    AMD-specific intrinsic that computes bitwise or of two vectors and returns the result.
+    AMD-specific intrinsic that computes bitwise or of two vectors and returns
+    the result.
     `$result = bor(`$lhs, $rhs`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let assemblyFormat = [{$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+                         `,` type($result)}];
   let hasVerifier = 0;
 }
 
@@ -798,14 +811,56 @@ def AIEVec_BandOp:
     Pure,
     AllTypesMatch<["lhs", "rhs", "result"]>
   ]>,
-  Arguments<(ins AnyVector:$lhs, AnyVector:$rhs)>,
-  Results<(outs AnyVector:$result)> {
+  Arguments<(ins
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$lhs,
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$rhs)>,
+  Results<(outs
+      VectorOfBitWidthAndElementTypes<512, [I8, I16, I32, BF16]>:$result)> {
   let summary = "AIE vector bitwise and";
   let description = [{
-    AMD-specific intrinsic that computes bitwise and of two vectors and returns the result.
+    AMD-specific intrinsic that computes bitwise and of two vectors and returns
+    the result.
     `$result = band(`$lhs, $rhs`).
   }];
-  let assemblyFormat = "$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs) `,` type($result)";
+  let assemblyFormat = [{$lhs `,` $rhs attr-dict `:` type($lhs) `,` type($rhs)
+                         `,` type($result)}];
+  let hasVerifier = 0;
+}
+
+def AIEVec_MatMulOp:
+  AIEVec_Op<"matmul", [
+    Pure,
+    AllRanksMatch<["lhs", "rhs", "acc"]>,
+    AllTypesMatch<["acc", "result"]>,
+    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
+    IsValidAIE2MatMulShapeAndType<"lhs", "rhs", "acc">
+  ]>,
+  Arguments<(ins AIE2MatMulLHS:$lhs,
+                 AIE2MatMulRHS:$rhs,
+                 AIE2MatMulACC:$acc)>,
+  Results<(outs AIE2MatMulACC:$result)> {
+  let summary = "AIEML matrix-multiply and accummulate";
+  let description = [{
+    AMD AIEv2-specific intrinsic that performs a matrix multiplications
+    between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+    Currently, this intrinsic supports the following type combinations:
+
+         lhs                | rhs                | Accumulator
+        :------------------:|:------------------:|:-----------------:
+         `vector<4x16xi8>`  | `vector<16x8xi4>`  | `vector<4x8xi32>`
+         `vector<4x8xi8>`   | `vector<8x8xi8>`   | `vector<4x8xi32>`
+         `vector<4x4xi16>`  | `vector<4x8xi8>`   | `vector<4x8xi32>`
+         `vector<4x2xi16>`  | `vector<2x8xi16>`  | `vector<4x8xi32>`
+         `vector<2x8xi16>`  | `vector<8x8xi8>`   | `vector<2x8xi64>`
+         `vector<4x8xi16>`  | `vector<8x4xi8>`   | `vector<4x4xi64>`
+         `vector<2x4xi16>`  | `vector<4x8xi16>`  | `vector<2x8xi64>`
+         `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
+         `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
+         `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+  }];
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
+                         type($rhs) `into` type($acc)}];
   let hasVerifier = 0;
 }
 

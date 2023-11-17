@@ -175,7 +175,7 @@ jobs:
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
             -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
             -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
-            -DCMAKE_LINKER=lld \
+            -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
           ninja
@@ -198,7 +198,7 @@ jobs:
             -DCMAKE_MODULE_PATH=`pwd`/../cmake/modulesXilinx \
             -DMLIR_DIR=../llvm/install/lib/cmake/mlir \
             -DLLVM_DIR=../llvm/install/lib/cmake/llvm \
-            -DCMAKE_LINKER=lld \
+            -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=`pwd`/../llvm/build/bin/llvm-lit
           make -j$(nproc)
           make check-aie

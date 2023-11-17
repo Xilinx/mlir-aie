@@ -463,4 +463,155 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
+def AIE_IpuDmaMemcpyNdOp: AIEX_Op<"ipu.dma_memcpy_nd", []> {
+  let summary = "half dma operator";
+  let arguments = (
+    ins FlatSymbolRefAttr:$metadata,
+        I32Attr:$id,
+        I32:$x,
+        I32:$y,
+        AnyMemRef:$memref,
+        I32:$offset3,
+        I32:$offset2,
+        I32:$offset1,
+        I32:$offset0,
+        I32:$length3,
+        I32:$length2,
+        I32:$length1,
+        I32:$length0,
+        I32:$stride3,
+        I32:$stride2,
+        I32:$stride1
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $x `,`$y `,`$memref
+    `[` $offset3`,`$offset2`,`$offset1`,`$offset0 `]`
+    `[` $length3`,`$length2`,`$length1`,`$length0 `]`
+    `[` $stride3`,`$stride2`,`$stride1 `]` `)` attr-dict `:`
+    `(` type($x)`,`type($y)`,`type($memref)`,`
+    `[` type($offset3)`,`type($offset2)`,`type($offset1)`,` type($offset0) `]` `,`
+    `[` type($length3)`,`type($length2)`,`type($length1)`,` type($length0) `]` `,`
+    `[` type($stride3)`,`type($stride2)`,`type($stride1) `]` `)`
+  }];
+  let hasVerifier = 1;
+  let description = [{
+    nd half dma operator
+  }];
+}
+
+// Write RTP
+def AIE_IpuWriteRTPOp: AIEX_Op<"ipu.rtp_write", []> {
+  let summary = "rtp write operator";
+  let arguments = (
+    ins StrAttr:$buffer_sym_name,
+        UI32Attr:$col,
+        UI32Attr:$row,
+        UI32Attr:$index,
+        I32Attr:$value
+  );
+  let results = (outs );
+  let assemblyFormat = [{ `(` $col `,` $row `,` $index `,` $value `)` attr-dict 
+  }];
+  let description = [{
+    rtp write operator
+  }];
+}
+
+// Push BD to Queue
+def AIE_IpuShimTilePushQueueOp: AIEX_Op<"ipu.shimtile_push_queue", []> {
+  let summary = "bd queue push operator";
+  let arguments = (
+    ins FlatSymbolRefAttr:$metadata,
+        BoolAttr:$issue_token,
+        I32Attr:$repeat_count,
+        I32Attr:$bd_id
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let hasVerifier = 1;
+  let description = [{
+    bd queue push operator
+  }];
+}
+
+// WRITE32
+def AIE_IpuWrite32Op: AIEX_Op<"ipu.write32", []> {
+  let summary = "write32 operator";
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row,
+        UI32Attr:$address,
+        UI32Attr:$value
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    write32 operator
+  }];
+}
+
+// OP_SYNC
+def AIE_IpuSyncOp: AIEX_Op<"ipu.sync", []> {
+  let summary = "sync operator";
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row,
+        I32Attr:$direction,
+        I32Attr:$channel,
+        I32Attr:$column_num,
+        I32Attr:$row_num
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    tct sync operator
+  }];
+}
+
+// WRITEBD_EXTEND_SHIMTILE
+def AIE_IpuWriteBdExShimTileOp: AIEX_Op<"ipu.writebd_shimtile", []> {
+  let summary = "dma operator";
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$column_num,
+        I32Attr:$ddr_id,
+        I32Attr:$bd_id,
+        I32Attr:$buffer_length,
+        I32Attr:$buffer_offset,
+        I32Attr:$enable_packet,
+        I32Attr:$out_of_order_id,
+        I32Attr:$packet_id,
+        I32Attr:$packet_type,
+        I32Attr:$d0_wrap,
+        I32Attr:$d0_stepsize,
+        I32Attr:$d1_wrap,
+        I32Attr:$d1_stepsize,
+        I32Attr:$d2_stepsize,
+        I32Attr:$iteration_current,
+        I32Attr:$iteration_wrap,
+        I32Attr:$iteration_stepsize,
+        I32Attr:$next_bd,
+        I32Attr:$use_next_bd,
+        I32Attr:$valid_bd,
+        I32Attr:$lock_rel_val,
+        I32Attr:$lock_rel_id,
+        I32Attr:$lock_acq_enable,
+        I32Attr:$lock_acq_val,
+        I32Attr:$lock_acq_id
+  );
+  let results = (outs );
+  let assemblyFormat = [{ attr-dict }];
+  let hasVerifier = 1;
+  let description = [{
+    writebd_shimtile operator
+  }];
+}
+
 #endif // AIEX_OPS
