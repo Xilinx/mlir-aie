@@ -10,7 +10,7 @@
 
 # <ins>Color Threshold</ins>
 
-The Color Threshold pipeline design consists of a 4 threshold blocks in separate tiles that process a different region of an input image. The results are then merged back together and sent to the output.
+The Color Threshold pipeline design consists of 4 threshold blocks in separate tiles that process a different region of an input image. The results are then merged back together and sent to the output.
 
 To compile desing in Windows:
 ```

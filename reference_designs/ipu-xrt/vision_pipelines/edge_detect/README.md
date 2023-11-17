@@ -10,7 +10,7 @@
 
 # <ins>Edge Detect</ins>
 
-The Edge Detect pipeline design consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images (rgba2gray, filter2D, threshold, addWeighted, gray2rgba).
+The Edge Detect pipeline design consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `addWeighted`, `gray2rgba`.
 
 To compile desing in Windows:
 ```

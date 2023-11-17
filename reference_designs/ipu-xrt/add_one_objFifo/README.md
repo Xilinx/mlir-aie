@@ -10,7 +10,7 @@
 
 # <ins>Add One (with ObjectFIFOs)</ins>
 
-Single tile performs a very simpler + operateion where the kernel loads data from local memory, increments the value by 1 and stores it back.
+Single tile performs a very simple `+` operation where the kernel loads data from local memory, increments the value by `1` and stores it back.
 
 To compile desing in Windows:
 ```

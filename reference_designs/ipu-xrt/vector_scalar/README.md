@@ -10,7 +10,7 @@
 
 # <ins>Vector Scalar</ins>
 
-Single tile performs vector * scalar of size 4096. The kernel does a 1024 vector multiply and is invoked multiple times to complete the full vector*scalar compute.
+Single tile performs `vector * scalar` of size `4096`. The kernel does a `1024` vector multiply and is invoked multiple times to complete the full vector*scalar compute.
 
 To compile desing in Windows:
 ```
