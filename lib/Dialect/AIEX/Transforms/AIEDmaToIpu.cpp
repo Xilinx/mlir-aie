@@ -19,29 +19,20 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
-struct RtpToIpuPattern : public OpConversionPattern<IpuWriteRTPOp> {
-  using OpConversionPattern<IpuWriteRTPOp>::OpConversionPattern;
+struct RtpToIpuPattern : OpConversionPattern<IpuWriteRTPOp> {
+  using OpConversionPattern::OpConversionPattern;
 
   RtpToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<IpuWriteRTPOp>(context, benefit) {}
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(IpuWriteRTPOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
-    auto zero = IntegerAttr::get(i32ty, 0);
     auto ui32ty =
         IntegerType::get(ctx, 32, IntegerType::SignednessSemantics::Unsigned);
-    auto uzero = IntegerAttr::get(ui32ty, 0);
-
     auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    // initialize fields to zero
-    auto column = zero;
-    auto row = zero;
-    auto address = uzero;
-    auto value = zero;
 
     uint32_t rtp_buffer_addr = UINT_MAX;
     int c = op.getCol();
@@ -49,33 +40,21 @@ struct RtpToIpuPattern : public OpConversionPattern<IpuWriteRTPOp> {
     uint32_t v = op.getValue();
     uint32_t idx = op.getIndex();
 
-    if (AIE::BufferOp buffer =
-            device.lookupSymbol<AIE::BufferOp>(op.getBufferSymName())) {
-      AIE::TileOp tile = buffer.getTileOp();
-      if ((tile.colIndex() == c) && (tile.rowIndex() == r)) {
-        rtp_buffer_addr = uint32_t(buffer.address());
-      }
-    }
+    if (auto buffer = device.lookupSymbol<AIE::BufferOp>(op.getBufferSymName()))
+      if (AIE::TileOp tile = buffer.getTileOp();
+          tile.colIndex() == c && tile.rowIndex() == r)
+        rtp_buffer_addr = static_cast<uint32_t>(buffer.address());
 
-    if (rtp_buffer_addr == UINT_MAX) {
+    if (rtp_buffer_addr == UINT_MAX)
       return op.emitOpError("RTP buffer address cannot be found. Has an RTP "
                             "buffer been allocated?\n");
-    }
 
     rtp_buffer_addr += idx * sizeof(uint32_t);
 
-    // column
-    column = IntegerAttr::get(i32ty, c);
-
-    // row
-    row = IntegerAttr::get(i32ty, r);
-
-    // address
-    address = IntegerAttr::get(ui32ty, rtp_buffer_addr);
-
-    // value
-    value = IntegerAttr::get(i32ty, v);
-
+    IntegerAttr column = IntegerAttr::get(i32ty, c);
+    IntegerAttr row = IntegerAttr::get(i32ty, r);
+    IntegerAttr address = IntegerAttr::get(ui32ty, rtp_buffer_addr);
+    IntegerAttr value = IntegerAttr::get(i32ty, v);
     rewriter.create<IpuWrite32Op>(op->getLoc(), column.getInt(), row.getInt(),
                                   address.getUInt(), value.getInt());
 
@@ -98,11 +77,11 @@ getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
   return std::nullopt;
 }
 
-struct PushToIpuPattern : public OpConversionPattern<IpuShimTilePushQueueOp> {
-  using OpConversionPattern<IpuShimTilePushQueueOp>::OpConversionPattern;
+struct PushToIpuPattern : OpConversionPattern<IpuShimTilePushQueueOp> {
+  using OpConversionPattern::OpConversionPattern;
 
   PushToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<IpuShimTilePushQueueOp>(context, benefit) {}
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(IpuShimTilePushQueueOp op, OpAdaptor adaptor,
@@ -112,17 +91,10 @@ struct PushToIpuPattern : public OpConversionPattern<IpuShimTilePushQueueOp> {
     auto zero = IntegerAttr::get(i32ty, 0);
     auto ui32ty =
         IntegerType::get(ctx, 32, IntegerType::SignednessSemantics::Unsigned);
-    auto uzero = IntegerAttr::get(ui32ty, 0);
-
     bool send_tct = op.getIssueToken();
     uint32_t channel_num = 0;
 
     // initialize fields to zero
-    auto column = zero;
-    auto row = zero;
-    auto address = uzero;
-    auto value = uzero;
-
     auto dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
       return failure();
@@ -135,30 +107,28 @@ struct PushToIpuPattern : public OpConversionPattern<IpuShimTilePushQueueOp> {
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
     channel_num += infoOp->getChannelIndex();
 
-    // column
-    column = IntegerAttr::get(i32ty, infoOp->getCol());
+    IntegerAttr column = IntegerAttr::get(i32ty, infoOp->getCol());
 
-    // address
-    uint32_t queue_offset = 0;
+    uint32_t queue_offset;
     if (isMM2S)
       queue_offset = 0x1D214;
     else
       queue_offset = 0x1D204;
     if (channel_num == 1)
       queue_offset += 0x8;
-    address = IntegerAttr::get(ui32ty, queue_offset);
+    IntegerAttr address = IntegerAttr::get(ui32ty, queue_offset);
 
     // value
     uint32_t bd_id = op.getBdId();
     uint32_t repeat_cnt = op.getRepeatCount();
     uint32_t cmd = 0;
-    cmd |= (bd_id & 0xF);
-    cmd |= ((repeat_cnt & 0xFF) << 16);
+    cmd |= bd_id & 0xF;
+    cmd |= (repeat_cnt & 0xFF) << 16;
     if (send_tct)
       cmd |= 0x80000000;
-    value = IntegerAttr::get(ui32ty, cmd);
+    IntegerAttr value = IntegerAttr::get(ui32ty, cmd);
 
-    rewriter.create<IpuWrite32Op>(op->getLoc(), column.getInt(), row.getInt(),
+    rewriter.create<IpuWrite32Op>(op->getLoc(), column.getInt(), zero.getInt(),
                                   address.getUInt(), value.getUInt());
 
     rewriter.eraseOp(op);
@@ -166,11 +136,11 @@ struct PushToIpuPattern : public OpConversionPattern<IpuShimTilePushQueueOp> {
   }
 };
 
-struct DmaToIpuPattern : public OpConversionPattern<IpuDmaMemcpyNdOp> {
-  using OpConversionPattern<IpuDmaMemcpyNdOp>::OpConversionPattern;
+struct DmaToIpuPattern : OpConversionPattern<IpuDmaMemcpyNdOp> {
+  using OpConversionPattern::OpConversionPattern;
 
   DmaToIpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<IpuDmaMemcpyNdOp>(context, benefit) {}
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(IpuDmaMemcpyNdOp op, OpAdaptor adaptor,
@@ -357,7 +327,7 @@ struct DmaToIpuPattern : public OpConversionPattern<IpuDmaMemcpyNdOp> {
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    auto new_op = rewriter.create<IpuWriteBdExShimTileOp>(
+    (void)rewriter.create<IpuWriteBdExShimTileOp>(
         op->getLoc(), column, column_num, ddr_id, bd_id, buffer_length,
         buffer_offset, enable_packet, out_of_order_id, packet_id, packet_type,
         d0_wrap, d0_stepsize, d1_wrap, d1_stepsize, d2_stepsize,
@@ -373,7 +343,7 @@ struct DmaToIpuPattern : public OpConversionPattern<IpuDmaMemcpyNdOp> {
   }
 };
 
-struct AIEDmaToIpuPass : public AIEDmaToIpuBase<AIEDmaToIpuPass> {
+struct AIEDmaToIpuPass : AIEDmaToIpuBase<AIEDmaToIpuPass> {
   void runOnOperation() override {
 
     AIE::DeviceOp device = getOperation();
@@ -396,7 +366,6 @@ struct AIEDmaToIpuPass : public AIEDmaToIpuBase<AIEDmaToIpuPass> {
   }
 };
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
-xilinx::AIEX::createAIEDmaToIpuPass() {
+std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToIpuPass() {
   return std::make_unique<AIEDmaToIpuPass>();
 }

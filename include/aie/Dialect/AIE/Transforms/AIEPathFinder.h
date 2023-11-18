@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <list>
+#include <set>
 
 namespace xilinx::AIE {
 
@@ -94,7 +95,7 @@ typedef struct PathEndPoint {
   Switchbox *sb;
   Port port;
 
-  inline bool operator<(const PathEndPoint &rhs) const {
+  bool operator<(const PathEndPoint &rhs) const {
     return sb->col == rhs.sb->col
                ? (sb->row == rhs.sb->row
                       ? (port.bundle == rhs.port.bundle
@@ -172,7 +173,7 @@ template <> struct GraphTraits<xilinx::AIE::Switchbox *> {
 
 template <>
 struct GraphTraits<xilinx::AIE::SwitchboxGraph *>
-    : public GraphTraits<xilinx::AIE::Switchbox *> {
+    : GraphTraits<xilinx::AIE::Switchbox *> {
   using nodes_iterator = xilinx::AIE::SwitchboxGraph::iterator;
   static NodeRef getEntryNode(xilinx::AIE::SwitchboxGraph *DG) {
     return *DG->begin();

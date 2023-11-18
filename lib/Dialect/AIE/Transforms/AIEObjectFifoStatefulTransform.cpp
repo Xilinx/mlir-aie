@@ -24,6 +24,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 #include <numeric>
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -31,13 +32,12 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-objectFifo-stateful-transform"
 
-#define LOOP_VAR_DEPENDENCY -2
+#define LOOP_VAR_DEPENDENCY (-2)
 
 //===----------------------------------------------------------------------===//
 // Conversion Pattern
 //===----------------------------------------------------------------------===//
-template <typename MyOp>
-struct AIEOpRemoval : public OpConversionPattern<MyOp> {
+template <typename MyOp> struct AIEOpRemoval : OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
 
@@ -72,15 +72,13 @@ public:
 
   /// Given a tile, returns next usable lockID for that tile.
   int getLockID(TileOp &tileOp) {
-    const auto &targetModel = xilinx::AIE::getTargetModel(tileOp);
+    const auto &targetModel = getTargetModel(tileOp);
     for (unsigned i = 0;
-         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++) {
-      int usageCnt = locksPerTile[{tileOp, i}];
-      if (usageCnt == 0) {
+         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
+      if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
         locksPerTile[{tileOp, i}] = 1;
         return i;
       }
-    }
     return -1;
   }
 };
@@ -110,15 +108,14 @@ public:
   }
 
   /// Given an AIE tile, returns its next usable master channel.
-  xilinx::AIE::DMAChannel getMasterDMAChannel(Value tile) {
-    xilinx::AIE::DMAChannel dmaChan;
+  DMAChannel getMasterDMAChannel(Value tile) {
     if (masterChannelsPerTile.find(tile) == masterChannelsPerTile.end()) {
       masterChannelsPerTile[tile] = 0;
     } else {
       assert([&] {
-        TileOp tileOp = tile.getDefiningOp<TileOp>();
+        auto tileOp = tile.getDefiningOp<TileOp>();
         int numChannels = tileOp.getNumSourceConnections(WireBundle::DMA);
-        if (masterChannelsPerTile[tile] >= (numChannels - 1)) {
+        if (masterChannelsPerTile[tile] >= numChannels - 1) {
           printf("All tile DMA master channels are already in use.\n");
           return false;
         }
@@ -126,20 +123,19 @@ public:
       }());
       masterChannelsPerTile[tile]++;
     }
-    dmaChan = {DMAChannelDir::MM2S, masterChannelsPerTile[tile]};
+    DMAChannel dmaChan = {DMAChannelDir::MM2S, masterChannelsPerTile[tile]};
     return dmaChan;
   }
 
   /// Given an AIE tile, returns its next usable slave channel.
-  xilinx::AIE::DMAChannel getSlaveDMAChannel(Value tile) {
-    xilinx::AIE::DMAChannel dmaChan;
+  DMAChannel getSlaveDMAChannel(Value tile) {
     if (slaveChannelsPerTile.find(tile) == slaveChannelsPerTile.end()) {
       slaveChannelsPerTile[tile] = 0;
     } else {
       assert([&] {
-        TileOp tileOp = tile.getDefiningOp<TileOp>();
+        auto tileOp = tile.getDefiningOp<TileOp>();
         int numChannels = tileOp.getNumDestConnections(WireBundle::DMA);
-        if (slaveChannelsPerTile[tile] >= (numChannels - 1)) {
+        if (slaveChannelsPerTile[tile] >= numChannels - 1) {
           printf("All tile DMA slave channels are already in use.\n");
           return false;
         }
@@ -147,7 +143,7 @@ public:
       }());
       slaveChannelsPerTile[tile]++;
     }
-    dmaChan = {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]};
+    DMAChannel dmaChan = {DMAChannelDir::S2MM, slaveChannelsPerTile[tile]};
     return dmaChan;
   }
 };
@@ -156,21 +152,20 @@ public:
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoStatefulTransformPass
-    : public AIEObjectFifoStatefulTransformBase<
-          AIEObjectFifoStatefulTransformPass> {
+    : AIEObjectFifoStatefulTransformBase<AIEObjectFifoStatefulTransformPass> {
   DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>>
       buffersPerFifo; // maps each objFifo to its corresponding buffer
   DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
       externalBuffersPerFifo; // maps each objFifo to its corresponding
-                              // external buffers
+  // external buffers
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
   std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
       splitFifos; // maps each objFifo between non-adjacent tiles to its
-                  // corresponding consumer objectFifos
+  // corresponding consumer objectFifos
   DenseMap<ObjectFifoLinkOp, ObjectFifoCreateOp>
       objFifoLinks; // maps each ObjectFifoLinkOp to objFifo whose elements
-                    // have been created and should be used
+  // have been created and should be used
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
@@ -218,16 +213,15 @@ struct AIEObjectFifoStatefulTransformPass
     bool atLeastOneConsumerWantsTransform = false;
 
     if (createOp.getConsumerTiles().size() == 1 &&
-        (createOp.getDimensionsToStream().size() == 0)) {
+        createOp.getDimensionsToStream().empty()) {
 
       // Test for shared memory
       for (auto consumerTile : createOp.getConsumerTiles()) {
-        TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
-        bool memoryAdjacent = isSharedMemory(createOp.getProducerTileOp(),
-                                             consumerTileOp, &share_direction);
-        if (memoryAdjacent) {
+        if (auto consumerTileOp =
+                dyn_cast<TileOp>(consumerTile.getDefiningOp());
+            isSharedMemory(createOp.getProducerTileOp(), consumerTileOp,
+                           &share_direction))
           hasSharedMemory = true;
-        }
       }
     }
 
@@ -237,12 +231,11 @@ struct AIEObjectFifoStatefulTransformPass
       // Even if just one of the consumers in the list of consumers wants to
       // perform a memory transform, we need to use DMAs.
       for (DimTupleArrayAttr dims :
-           createOp.getDimensionsFromStreamPerConsumer()) {
-        if (dims.size() > 0) {
+           createOp.getDimensionsFromStreamPerConsumer())
+        if (!dims.empty()) {
           atLeastOneConsumerWantsTransform = true;
           break;
         }
-      }
     }
 
     return !hasSharedMemory || atLeastOneConsumerWantsTransform;
@@ -259,7 +252,7 @@ struct AIEObjectFifoStatefulTransformPass
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
   /// if it belongs to one.
   std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
-    DeviceOp device = op->getParentOfType<DeviceOp>();
+    auto device = op->getParentOfType<DeviceOp>();
     for (ObjectFifoLinkOp linkOp : device.getOps<ObjectFifoLinkOp>()) {
       for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos())
         if (in == op)
@@ -277,7 +270,7 @@ struct AIEObjectFifoStatefulTransformPass
                    Attribute depth, DimTupleArrayAttr dimensionsToStream,
                    DimTupleArrayArrayAttr dimensionsFromStreamPerConsumer) {
     auto ofName = builder.getStringAttr(name);
-    ObjectFifoCreateOp fifo = builder.create<ObjectFifoCreateOp>(
+    auto fifo = builder.create<ObjectFifoCreateOp>(
         builder.getUnknownLoc(), ofName, prodTile, consTile, depth, datatype,
         dimensionsToStream, dimensionsFromStreamPerConsumer);
     return fifo;
@@ -290,20 +283,20 @@ struct AIEObjectFifoStatefulTransformPass
                                             ObjectFifoCreateOp op, int numElem,
                                             TileOp creation_tile) {
     std::vector<LockOp> locks;
-    auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
+    auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
     if (creation_tile.isShimTile())
       numElem = externalBuffersPerFifo[op].size();
-    if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
+    if (target.getTargetArch() == AIEArch::AIE1) {
       int of_elem_index = 0; // used to give objectFifo elements a symbolic name
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int lockID = lockAnalysis.getLockID(creation_tile);
         assert(lockID >= 0 && "No more locks to allocate!");
-        LockOp lock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                             creation_tile, lockID, 0);
+        auto lock = builder.create<LockOp>(builder.getUnknownLoc(),
+                                           creation_tile, lockID, 0);
         lock.getOperation()->setAttr(
-            mlir::SymbolTable::getSymbolAttrName(),
+            SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_lock_" +
                                   std::to_string(of_elem_index)));
         locks.push_back(lock);
@@ -313,19 +306,19 @@ struct AIEObjectFifoStatefulTransformPass
       // create corresponding aie2 locks
       int prodLockID = lockAnalysis.getLockID(creation_tile);
       assert(prodLockID >= 0 && "No more locks to allocate!");
-      LockOp prodLock = builder.create<LockOp>(
+      auto prodLock = builder.create<LockOp>(
           builder.getUnknownLoc(), creation_tile, prodLockID, numElem);
       prodLock.getOperation()->setAttr(
-          mlir::SymbolTable::getSymbolAttrName(),
+          SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_prod_lock"));
       locks.push_back(prodLock);
 
       int consLockID = lockAnalysis.getLockID(creation_tile);
       assert(consLockID >= 0 && "No more locks to allocate!");
-      LockOp consLock = builder.create<LockOp>(builder.getUnknownLoc(),
-                                               creation_tile, consLockID, 0);
+      auto consLock = builder.create<LockOp>(builder.getUnknownLoc(),
+                                             creation_tile, consLockID, 0);
       consLock.getOperation()->setAttr(
-          mlir::SymbolTable::getSymbolAttrName(),
+          SymbolTable::getSymbolAttrName(),
           builder.getStringAttr(op.name().str() + "_cons_lock"));
       locks.push_back(consLock);
     }
@@ -340,9 +333,8 @@ struct AIEObjectFifoStatefulTransformPass
       return;
 
     std::vector<BufferOp> buffers;
-    std::vector<LockOp> locks;
-    AIEObjectFifoType fifo = op.getElemType().cast<AIEObjectFifoType>();
-    MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
+    auto elemType = fifo.getElementType().cast<MemRefType>();
     int numElem = op.size();
     int of_elem_index = 0; // used to give objectFifo elements a symbolic name
 
@@ -366,20 +358,18 @@ struct AIEObjectFifoStatefulTransformPass
         if (op.name() != fifoIn.name())
           return;
       } else {
-        AIEObjectFifoType fifoInType = linkOp->getInputObjectFifos()[0]
-                                           .getElemType()
-                                           .cast<AIEObjectFifoType>();
-        MemRefType elemInType = fifoInType.getElementType().cast<MemRefType>();
+        auto fifoInType = linkOp->getInputObjectFifos()[0]
+                              .getElemType()
+                              .cast<AIEObjectFifoType>();
+        auto elemInType = fifoInType.getElementType().cast<MemRefType>();
         int inSize = getMemrefTypeSize(elemInType);
 
-        AIEObjectFifoType fifoOutType = linkOp->getOutputObjectFifos()[0]
-                                            .getElemType()
-                                            .cast<AIEObjectFifoType>();
-        MemRefType elemOutType =
-            fifoOutType.getElementType().cast<MemRefType>();
-        int outSize = getMemrefTypeSize(elemOutType);
+        auto fifoOutType = linkOp->getOutputObjectFifos()[0]
+                               .getElemType()
+                               .cast<AIEObjectFifoType>();
+        auto elemOutType = fifoOutType.getElementType().cast<MemRefType>();
 
-        if (inSize >= outSize) {
+        if (int outSize = getMemrefTypeSize(elemOutType); inSize >= outSize) {
           if (op.name() != fifoIn.name())
             return;
         } else {
@@ -393,15 +383,15 @@ struct AIEObjectFifoStatefulTransformPass
     if (share_direction == 0 || share_direction == -1)
       creation_tile = op.getProducerTileOp();
     else {
-      TileOp consumerTileOp =
+      auto consumerTileOp =
           dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
       creation_tile = consumerTileOp;
     }
 
     // Reset opbuilder location to after the last tile declaration
     Operation *t = nullptr;
-    auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
-    for (auto tile_op : dev.getBody()->getOps<AIE::TileOp>()) {
+    auto dev = op->getParentOfType<DeviceOp>();
+    for (auto tile_op : dev.getBody()->getOps<TileOp>()) {
       t = tile_op.getOperation();
     }
     builder.setInsertionPointAfter(t);
@@ -409,7 +399,7 @@ struct AIEObjectFifoStatefulTransformPass
       // if shimTile external buffers are collected from input code
       // create as many locks as there are external buffers
       if (!creation_tile.isShimTile()) {
-        BufferOp buff = builder.create<BufferOp>(
+        auto buff = builder.create<BufferOp>(
             builder.getUnknownLoc(), elemType, creation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)));
@@ -424,8 +414,8 @@ struct AIEObjectFifoStatefulTransformPass
         numElem *= linkOp->getFifoIns().size();
       objFifoLinks[*linkOp] = op;
     }
-    locks = createObjectFifoLocks(builder, lockAnalysis, op, numElem,
-                                  creation_tile);
+    std::vector<LockOp> locks = createObjectFifoLocks(builder, lockAnalysis, op,
+                                                      numElem, creation_tile);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -448,7 +438,7 @@ struct AIEObjectFifoStatefulTransformPass
                 DimTupleArrayAttr dims) {
     builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqMode,
                               acqLockAction);
-    if (dims && dims.getValue().size() > 0) {
+    if (!dims.getValue().empty()) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, 0,
                               dims);
     } else {
@@ -471,10 +461,10 @@ struct AIEObjectFifoStatefulTransformPass
     LockOp relLock;
     int acqMode = 1;
     int relMode = 1;
-    LockAction acqLockAction = LockAction::Acquire;
-    auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
-    auto &target = dev.getTargetModel();
-    if (target.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
+    auto acqLockAction = LockAction::Acquire;
+    auto dev = op->getParentOfType<DeviceOp>();
+    if (auto &target = dev.getTargetModel();
+        target.getTargetArch() == AIEArch::AIE1) {
       acqMode = lockMode == 0 ? 1 : 0;
       relMode = lockMode == 0 ? 0 : 1;
       acqLock = locksPerFifo[op][blockIndex];
@@ -483,10 +473,10 @@ struct AIEObjectFifoStatefulTransformPass
       acqMode = acqNum;
       relMode = relNum;
       acqLockAction = LockAction::AcquireGreaterEqual;
-      acqLock = (channelDir == DMAChannelDir::S2MM) ? locksPerFifo[op][0]
-                                                    : locksPerFifo[op][1];
-      relLock = (channelDir == DMAChannelDir::S2MM) ? locksPerFifo[op][1]
-                                                    : locksPerFifo[op][0];
+      acqLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][0]
+                                                  : locksPerFifo[op][1];
+      relLock = channelDir == DMAChannelDir::S2MM ? locksPerFifo[op][1]
+                                                  : locksPerFifo[op][0];
     }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
              offset, len, succ, dims);
@@ -523,14 +513,14 @@ struct AIEObjectFifoStatefulTransformPass
     int relNum = 1;
     int offset = 0;
 
-    AIEObjectFifoType fifo = op.getElemType().cast<AIEObjectFifoType>();
-    MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
+    auto elemType = fifo.getElementType().cast<MemRefType>();
     int len = getMemrefTypeSize(elemType);
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
-    std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
-    if (linkOp.has_value())
+    if (std::optional<ObjectFifoLinkOp> linkOp = getOptionalLinkOp(op);
+        linkOp.has_value())
       if (objFifoLinks.find(linkOp.value()) != objFifoLinks.end())
         target = objFifoLinks[linkOp.value()];
 
@@ -550,7 +540,7 @@ struct AIEObjectFifoStatefulTransformPass
         assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
-      MemOp newMemOp =
+      auto newMemOp =
           builder.create<MemOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
         OpBuilder::InsertionGuard g(builder);
@@ -572,7 +562,7 @@ struct AIEObjectFifoStatefulTransformPass
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
     // create Bd blocks
-    Block *succ = nullptr;
+    Block *succ;
     Block *curr = bdBlock;
     size_t blockIndex = 0;
     for (size_t i = 0; i < numBlocks; i++) {
@@ -621,7 +611,7 @@ struct AIEObjectFifoStatefulTransformPass
         assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
-      ShimDMAOp newDMAOp = builder.create<ShimDMAOp>(
+      auto newDMAOp = builder.create<ShimDMAOp>(
           builder.getUnknownLoc(), builder.getIndexType(), objFifoTileOp);
       {
         OpBuilder::InsertionGuard g(builder);
@@ -678,8 +668,8 @@ struct AIEObjectFifoStatefulTransformPass
       return;
 
     int offset = 0;
-    AIEObjectFifoType fifo = op.getElemType().cast<AIEObjectFifoType>();
-    MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+    auto fifo = op.getElemType().cast<AIEObjectFifoType>();
+    auto elemType = fifo.getElementType().cast<MemRefType>();
     int lenOut = getMemrefTypeSize(elemType);
     int bytes = elemType.getElementTypeBitWidth() / 8;
     int acqNum = 1;
@@ -691,8 +681,7 @@ struct AIEObjectFifoStatefulTransformPass
     bool isDistribute = false;
     bool isJoin = false;
     int extraOffset = 0;
-    auto linkOp = getOptionalLinkOp(op);
-    if (linkOp) {
+    if (auto linkOp = getOptionalLinkOp(op)) {
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
         target = objFifoLinks[*linkOp];
 
@@ -704,14 +693,11 @@ struct AIEObjectFifoStatefulTransformPass
             relNum = linkOp->getFifoIns().size();
           } else {
             for (auto fifoIn : linkOp->getInputObjectFifos()) {
-              AIEObjectFifoType fifoType =
-                  fifoIn.getElemType().cast<AIEObjectFifoType>();
-              MemRefType elemType =
-                  fifoType.getElementType().cast<MemRefType>();
+              auto fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
+              auto elemType = fifoType.getElementType().cast<MemRefType>();
               if (fifoIn.name() == op.name())
                 break;
-              else
-                extraOffset += getMemrefTypeSize(elemType);
+              extraOffset += getMemrefTypeSize(elemType);
             }
           }
         } else if (linkOp->isDistribute()) {
@@ -722,21 +708,17 @@ struct AIEObjectFifoStatefulTransformPass
             relNum = linkOp->getFifoOuts().size();
           } else {
             for (auto fifoOut : linkOp->getOutputObjectFifos()) {
-              AIEObjectFifoType fifoType =
-                  fifoOut.getElemType().cast<AIEObjectFifoType>();
-              MemRefType elemType =
-                  fifoType.getElementType().cast<MemRefType>();
+              auto fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
+              auto elemType = fifoType.getElementType().cast<MemRefType>();
               if (fifoOut.name() == op.name())
                 break;
-              else
-                extraOffset += getMemrefTypeSize(elemType);
+              extraOffset += getMemrefTypeSize(elemType);
             }
           }
         } else {
           if (target != op) {
-            AIEObjectFifoType targetFifo =
-                target.getElemType().cast<AIEObjectFifoType>();
-            MemRefType targetElemType =
+            auto targetFifo = target.getElemType().cast<AIEObjectFifoType>();
+            auto targetElemType =
                 targetFifo.getElementType().cast<MemRefType>();
             lenOut = getMemrefTypeSize(targetElemType);
           }
@@ -764,7 +746,7 @@ struct AIEObjectFifoStatefulTransformPass
         assert(false && "expected num regions for device op");
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPointToEnd(device.getBody());
-      MemTileDMAOp newDMAOp =
+      auto newDMAOp =
           builder.create<MemTileDMAOp>(builder.getUnknownLoc(), objFifoTileOp);
       {
         OpBuilder::InsertionGuard g(builder);
@@ -814,15 +796,14 @@ struct AIEObjectFifoStatefulTransformPass
   int computeLCM(std::set<int> values) {
     int lcm = 1;
     for (int i : values)
-      lcm = (i * lcm) / std::gcd(i, lcm);
+      lcm = i * lcm / std::gcd(i, lcm);
     return lcm;
   }
 
   // Recursively calls itself if it finds a nested for loop.
   // Returns the next index to use to uniquely identify operations
   // on the body of the innerLoop.
-  int identifyDependencies(mlir::scf::ForOp outerLoop,
-                           mlir::scf::ForOp innerLoop,
+  int identifyDependencies(scf::ForOp outerLoop, scf::ForOp innerLoop,
                            std::vector<Operation *> &operations,
                            DenseMap<Operation *, int> &opIndex,
                            std::vector<std::vector<int>> &dependencies,
@@ -830,22 +811,22 @@ struct AIEObjectFifoStatefulTransformPass
     Block *body = innerLoop.getBody();
     auto withoutTerminator = --body->end();
     int index = startIndex;
-    for (auto op = body->begin(); op != withoutTerminator; op++) {
-      operations.push_back(&(*op));
-      opIndex[&(*op)] = index;
+    for (auto op = body->begin(); op != withoutTerminator; ++op) {
+      operations.push_back(&*op);
+      opIndex[&*op] = index;
 
       // identify dependencies
-      auto numOperands = (&(*op))->getNumOperands();
+      auto numOperands = op->getNumOperands();
       std::vector<int> dependecyIndices;
-      for (int i = 0; (unsigned)i < numOperands; i++) {
-        auto operand = (&(*op))->getOperand(i);
+      for (int i = 0; static_cast<unsigned>(i) < numOperands; i++) {
+        auto operand = op->getOperand(i);
         int dependencyIndex = -1;
 
         if (operand == outerLoop.getInductionVar()) {
           dependencyIndex = LOOP_VAR_DEPENDENCY;
         } else {
-          auto definingOp = operand.getDefiningOp();
-          if (opIndex.find(definingOp) != opIndex.end())
+          if (auto definingOp = operand.getDefiningOp();
+              opIndex.find(definingOp) != opIndex.end())
             dependencyIndex = opIndex[definingOp];
         }
         dependecyIndices.push_back(dependencyIndex);
@@ -855,7 +836,7 @@ struct AIEObjectFifoStatefulTransformPass
       index++;
 
       // if op was a nested for-loop, also keep track of dependencies inside it
-      if (auto nestedLoop = dyn_cast<mlir::scf::ForOp>(op))
+      if (auto nestedLoop = dyn_cast<scf::ForOp>(op))
         index = identifyDependencies(outerLoop, nestedLoop, operations, opIndex,
                                      dependencies, index);
     }
@@ -866,35 +847,36 @@ struct AIEObjectFifoStatefulTransformPass
   // duplicated operations based on the index of the original
   // operation and its dependencies.
   void replaceOperands(OpBuilder &builder, Operation *clone,
-                       int originalOpIndex, mlir::Value base, int64_t step,
+                       int originalOpIndex, Value base, int64_t step,
                        bool inLoop, int currentDuplication,
                        std::vector<std::vector<int>> &dependencies,
                        std::vector<Operation *> &duplicatedOperations) {
     auto numOperands = clone->getNumOperands();
-    for (int operandIndex = 0; (unsigned)operandIndex < numOperands;
-         operandIndex++) {
-      int originalDependencyIndex = dependencies[originalOpIndex][operandIndex];
+    for (int operandIndex = 0;
+         static_cast<unsigned>(operandIndex) < numOperands; operandIndex++) {
 
-      if (originalDependencyIndex >= 0) {
+      if (int originalDependencyIndex =
+              dependencies[originalOpIndex][operandIndex];
+          originalDependencyIndex >= 0) {
         // replace the operand with the result of operation with
         // same index in current duplication
         auto duplicatedOp = duplicatedOperations[originalDependencyIndex];
-        mlir::Value result = duplicatedOp->getResult(0);
+        Value result = duplicatedOp->getResult(0);
         clone->setOperand(operandIndex, result);
 
       } else if (originalDependencyIndex == LOOP_VAR_DEPENDENCY) {
-        int64_t increment_value = 0;
+        int64_t increment_value;
         if (inLoop)
           // +1 because we do not duplicate original loop body
           increment_value = (currentDuplication + 1) * step;
         else
           increment_value = currentDuplication * step;
 
-        arith::ConstantOp increment = builder.create<arith::ConstantOp>(
+        auto increment = builder.create<arith::ConstantOp>(
             builder.getUnknownLoc(), builder.getIndexAttr(increment_value));
-        arith::AddIOp sum = builder.create<arith::AddIOp>(
-            builder.getUnknownLoc(), builder.getIndexType(), base,
-            increment->getResult(0));
+        auto sum = builder.create<arith::AddIOp>(builder.getUnknownLoc(),
+                                                 builder.getIndexType(), base,
+                                                 increment->getResult(0));
         clone->setOperand(operandIndex, sum->getResult(0));
       }
     }
@@ -907,10 +889,10 @@ struct AIEObjectFifoStatefulTransformPass
   // base mlir::Value is used to resolve it.
   void duplicateBlock(OpBuilder &builder, int numDuplications,
                       std::vector<Operation *> &operations,
-                      std::vector<std::vector<int>> &dependencies,
-                      mlir::Value base, int64_t step, bool inLoop) {
+                      std::vector<std::vector<int>> &dependencies, Value base,
+                      int64_t step, bool inLoop) {
     std::vector<Operation *> duplicatedOperations; // operations in current
-                                                   // duplication iteration
+    // duplication iteration
     for (int i = 0; i < numDuplications; i++) {
       duplicatedOperations.clear();
       for (unsigned opIndex = 0; opIndex < operations.size(); opIndex++) {
@@ -921,13 +903,13 @@ struct AIEObjectFifoStatefulTransformPass
                         dependencies, duplicatedOperations);
         builder.insert(clone);
 
-        if (auto nestedLoop = dyn_cast<mlir::scf::ForOp>(clone)) {
+        if (auto nestedLoop = dyn_cast<scf::ForOp>(clone)) {
           Block *body = nestedLoop.getBody();
           auto withoutTerminator = --body->end();
           for (auto loopOp = body->begin(); loopOp != withoutTerminator;
-               loopOp++) {
+               ++loopOp) {
             opIndex++;
-            replaceOperands(builder, &(*loopOp), opIndex, base, step, inLoop, i,
+            replaceOperands(builder, &*loopOp, opIndex, base, step, inLoop, i,
                             dependencies, duplicatedOperations);
           }
         }
@@ -940,13 +922,12 @@ struct AIEObjectFifoStatefulTransformPass
                       std::set<TileOp> objectFifoTiles) {
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        coreOp.walk([&](mlir::scf::ForOp forLoop) {
+        coreOp.walk([&](scf::ForOp forLoop) {
           // look for operations on objectFifos
           // when multiple fifos in same loop, must use the smallest
           // common multiplier as the unroll factor
           bool found = false;
           std::set<int> objFifoSizes;
-          int unrollFactor = 0;
           Block *body = forLoop.getBody();
 
           for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
@@ -957,27 +938,27 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
 
-          unrollFactor =
+          int unrollFactor =
               computeLCM(objFifoSizes); // also counts original loop body
 
           if (found) {
             std::vector<Operation *>
                 operations; // operations in original loop body, without
-                            // terminator operation
+            // terminator operation
             DenseMap<Operation *, int>
                 opIndex; // maps operations of original loop body to their
-                         // position in it
+            // position in it
             std::vector<std::vector<int>>
                 dependencies; // index in first vecotr corresponds to position
-                              // in original loop body dependency vector has
-                              // size equal to number of operands of that
-                              // operation:
-                              //    * if LOOP_VAR_DEPENDENCY : operand is
-                              //    dependent on loop induction variable
-                              //    * if -1 : operand is not dependent on any
-                              //    operation in loop body
-                              //    * if >=0: operand is dependent on operation
-                              //    with that index in original loop body
+            // in original loop body dependency vector has
+            // size equal to number of operands of that
+            // operation:
+            //    * if LOOP_VAR_DEPENDENCY : operand is
+            //    dependent on loop induction variable
+            //    * if -1 : operand is not dependent on any
+            //    operation in loop body
+            //    * if >=0: operand is dependent on operation
+            //    with that index in original loop body
 
             // find new loop size and step
             auto old_upper_bound = forLoop.getUpperBound()
@@ -996,8 +977,8 @@ struct AIEObjectFifoStatefulTransformPass
             int64_t num_iter =
                 (old_upper_value - old_lower_value) / old_step_value;
 
-            int64_t num_unrolls =
-                0; // number of times to unroll loop, not counting original body
+            int64_t num_unrolls; // number of times to unroll loop, not counting
+                                 // original body
 
             identifyDependencies(forLoop, forLoop, operations, opIndex,
                                  dependencies, 0);
@@ -1014,27 +995,26 @@ struct AIEObjectFifoStatefulTransformPass
               num_unrolls = unrollFactor - 1; // -1 without original loop body
 
               // create new upper bound and step
-              int64_t new_step_value = (int64_t)unrollFactor * old_step_value;
-              int64_t remainder =
-                  ((old_upper_value - old_lower_value) % new_step_value) /
-                  old_step_value;
+              int64_t new_step_value =
+                  static_cast<int64_t>(unrollFactor) * old_step_value;
+              int64_t remainder = (old_upper_value - old_lower_value) %
+                                  new_step_value / old_step_value;
               builder.setInsertionPoint(forLoop);
               if (remainder > 0) {
-                int64_t new_upper_bound =
-                    ((old_upper_value - old_lower_value) / new_step_value) *
-                    new_step_value;
-                arith::ConstantOp uBound = builder.create<arith::ConstantOp>(
+                int64_t new_upper_bound = (old_upper_value - old_lower_value) /
+                                          new_step_value * new_step_value;
+                auto uBound = builder.create<arith::ConstantOp>(
                     builder.getUnknownLoc(),
                     builder.getIndexAttr(new_upper_bound));
                 forLoop.setUpperBound(uBound);
               }
-              arith::ConstantOp new_step = builder.create<arith::ConstantOp>(
+              auto new_step = builder.create<arith::ConstantOp>(
                   builder.getUnknownLoc(),
                   builder.getIndexAttr(new_step_value));
               forLoop.setStep(new_step);
 
               // duplicate loop body, insert before terminator operation
-              builder.setInsertionPoint(&(body->back()));
+              builder.setInsertionPoint(&body->back());
               duplicateBlock(builder, num_unrolls, operations, dependencies,
                              forLoop.getInductionVar(), old_step_value, true);
               // duplicate remainder operations after loop body
@@ -1057,15 +1037,14 @@ struct AIEObjectFifoStatefulTransformPass
                       DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc,
                       int numLocks, LockAction lockAction) {
     ObjectFifoCreateOp target = op;
-    auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
-    auto linkOp = getOptionalLinkOp(op);
-    if (linkOp)
+    auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
+    if (auto linkOp = getOptionalLinkOp(op))
       if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
         target = objFifoLinks[*linkOp];
 
-    auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
-    auto &targetArch = dev.getTargetModel();
-    if (targetArch.getTargetArch() == xilinx::AIE::AIEArch::AIE1) {
+    auto dev = op->getParentOfType<DeviceOp>();
+    if (auto &targetArch = dev.getTargetModel();
+        targetArch.getTargetArch() == AIEArch::AIE1) {
       int lockMode = 0;
       if ((port == ObjectFifoPort::Produce &&
            lockAction == LockAction::Release) ||
@@ -1130,13 +1109,11 @@ struct AIEObjectFifoStatefulTransformPass
   /// objectFifo and tile then map them to child objectFifo.
   void detectExternalBuffers(DeviceOp &device, ObjectFifoCreateOp parent,
                              ObjectFifoCreateOp child, Value tile) {
-    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-      auto objFifo = regOp.getObjectFifo();
-      if (regOp.getTile() == tile && objFifo == parent) {
+    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
+      if (auto objFifo = regOp.getObjectFifo();
+          regOp.getTile() == tile && objFifo == parent)
         for (auto extBuff : regOp.getExternalBuffers())
           addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
-      }
-    }
   }
 
   /// Function used to replace uses of split objectFifos.
@@ -1147,12 +1124,11 @@ struct AIEObjectFifoStatefulTransformPass
     auto newSymbol =
         newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     for (auto user : tile->getUsers())
-      if (auto coreOp = dyn_cast<CoreOp>(user)) {
-        auto res =
-            mlir::SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
-        if (res.failed())
+      if (isa<CoreOp>(user))
+        if (auto res =
+                SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
+            res.failed())
           llvm_unreachable("unreachable");
-      }
   }
 
   /// Function used to find the size of an objectFifo after split based on
@@ -1169,28 +1145,23 @@ struct AIEObjectFifoStatefulTransformPass
       return objFifo.size();
 
     // if shimTile, size is equal to number of external buffers
-    if (tile.getDefiningOp<TileOp>().isShimTile()) {
+    if (tile.getDefiningOp<TileOp>().isShimTile())
       for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-        auto objFifo = regOp.getObjectFifo();
-        if (regOp.getTile() == tile && objFifo == objFifo)
+        if (regOp.getTile() == tile)
           return regOp.getExternalBuffers().size();
       }
-    }
 
     int maxAcquire = 0;
-    for (auto coreOp : device.getOps<CoreOp>()) {
-      if (coreOp.getTile() == tile) {
+    for (auto coreOp : device.getOps<CoreOp>())
+      if (coreOp.getTile() == tile)
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
-          auto createOp = acqOp.getObjectFifo();
-          if (createOp == objFifo)
+          if (auto createOp = acqOp.getObjectFifo(); createOp == objFifo)
             if (acqOp.acqNumber() > maxAcquire)
               maxAcquire = acqOp.acqNumber();
         });
-      }
-    }
 
     if (maxAcquire > 0) {
-      if ((maxAcquire == 1) && (objFifo.size() == 1))
+      if (maxAcquire == 1 && objFifo.size() == 1)
         return 1;
       return maxAcquire + 1;
       // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
@@ -1233,7 +1204,6 @@ struct AIEObjectFifoStatefulTransformPass
     createFifoOps.insert(createFifoOps.end(), range.begin(), range.end());
     for (auto createOp : createFifoOps) {
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
-      int share_direction = 0;
       int consumerIndex = 0;
       int consumerDepth = createOp.size();
       ArrayRef<DimTupleArrayAttr> consumerDims =
@@ -1241,12 +1211,11 @@ struct AIEObjectFifoStatefulTransformPass
 
       // Only FIFOs using DMA are split into two ends;
       // skip in shared memory case
-      if (!requiresDMAs(createOp, share_direction)) {
+      if (int share_direction = 0; !requiresDMAs(createOp, share_direction))
         continue;
-      }
 
       for (auto consumerTile : createOp.getConsumerTiles()) {
-        TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
 
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
@@ -1256,8 +1225,7 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         builder.setInsertionPointAfter(createOp);
-        AIEObjectFifoType datatype =
-            createOp.getElemType().cast<AIEObjectFifoType>();
+        auto datatype = createOp.getElemType().cast<AIEObjectFifoType>();
         auto consumerObjFifoSize =
             builder.getIntegerAttr(builder.getI32Type(), consumerDepth);
         // rename and replace split objectFifo
@@ -1271,7 +1239,8 @@ struct AIEObjectFifoStatefulTransformPass
         DimTupleArrayAttr emptyDims =
             DimTupleArrayAttr::get(builder.getContext(), {});
         DimTupleArrayAttr singletonFromStreamDims = DimTupleArrayAttr::get(
-            builder.getContext(), {consumerDims[consumerIndex]});
+            builder.getContext(),
+            ArrayRef<DimTupleAttr>{consumerDims[consumerIndex]});
         DimTupleArrayArrayAttr fromStreamDims = DimTupleArrayArrayAttr::get(
             builder.getContext(), singletonFromStreamDims);
 
@@ -1288,21 +1257,19 @@ struct AIEObjectFifoStatefulTransformPass
         splitConsumerFifos.push_back(consumerFifo);
 
         // update the linkOp if the split objFifo was originally its start point
-        auto linkOp = getOptionalLinkOp(createOp);
-        if (linkOp) {
+        if (auto linkOp = getOptionalLinkOp(createOp))
           for (ObjectFifoCreateOp fifoIn : linkOp->getInputObjectFifos())
             if (fifoIn.name() == createOp.name() &&
-                consumerTile == *(linkOp->getOptionalSharedTile()))
+                consumerTile == *linkOp->getOptionalSharedTile())
               if (failed(SymbolTable::replaceAllSymbolUses(
                       createOp, consumerFifo.name(), linkOp->getOperation())))
                 llvm::report_fatal_error("unable to update all symbol uses");
-        }
 
         consumerIndex++;
       }
 
-      if (splitConsumerFifos.size() > 0) {
-        splitFifos.push_back({createOp, splitConsumerFifos});
+      if (!splitConsumerFifos.empty()) {
+        splitFifos.emplace_back(createOp, splitConsumerFifos);
       }
     }
 
@@ -1319,7 +1286,7 @@ struct AIEObjectFifoStatefulTransformPass
       // loop unrolling pass
       objectFifoTiles.insert(createOp.getProducerTileOp());
       for (auto consumerTile : createOp.getConsumerTiles()) {
-        TileOp consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
+        auto consumerTileOp = dyn_cast<TileOp>(consumerTile.getDefiningOp());
         objectFifoTiles.insert(consumerTileOp);
       }
 
@@ -1355,7 +1322,7 @@ struct AIEObjectFifoStatefulTransformPass
     // rely on shared memory and share the same buffers.
     for (auto &[producer, consumers] : splitFifos) {
       // create producer tile DMA
-      xilinx::AIE::DMAChannel producerChan =
+      DMAChannel producerChan =
           dmaAnalysis.getMasterDMAChannel(producer.getProducerTile());
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr());
@@ -1369,7 +1336,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       for (auto consumer : consumers) {
         // create consumer tile DMA
-        xilinx::AIE::DMAChannel consumerChan =
+        DMAChannel consumerChan =
             dmaAnalysis.getSlaveDMAChannel(consumer.getProducerTile());
         DimTupleArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
@@ -1403,21 +1370,21 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
-                    // are created by AcquireOps)
+      // are created by AcquireOps)
       DenseMap<std::pair<ObjectFifoCreateOp, int>, std::vector<int>>
           acquiresPerFifo; // maps each objFifo to indices of buffers acquired
-                           // in latest subview of that objFifo (useful to
-                           // cascade acquired elements to next AcquireOp)
+      // in latest subview of that objFifo (useful to
+      // cascade acquired elements to next AcquireOp)
       DenseMap<std::pair<ObjectFifoCreateOp, int>,
                std::vector<ObjectFifoReleaseOp>>
           releaseOps; // useful to check which ReleaseOp has taken place before
-                      // an AcquireOp per objFifo
+      // an AcquireOp per objFifo
       DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
           acqPerFifo; // maps each objFifo to its next index to acquire within
-                      // this CoreOp
+      // this CoreOp
       DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
           relPerFifo; // maps each objFifo to its next index to release within
-                      // this CoreOp
+      // this CoreOp
 
       //===----------------------------------------------------------------===//
       // Replace objectFifo.release ops
@@ -1426,12 +1393,11 @@ struct AIEObjectFifoStatefulTransformPass
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op = releaseOp.getObjectFifo();
         auto port = releaseOp.getPort();
-        auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
+        auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
         auto core = releaseOp->getParentOfType<CoreOp>();
 
-        auto linkOp = getOptionalLinkOp(op);
-        if (linkOp) {
-          if (core.getTile() == *(linkOp->getOptionalSharedTile())) {
+        if (auto linkOp = getOptionalLinkOp(op)) {
+          if (core.getTile() == *linkOp->getOptionalSharedTile()) {
             releaseOp->emitOpError("currently cannot access objectFifo used in "
                                    "ObjectFifoLinkOp");
             return;
@@ -1450,7 +1416,7 @@ struct AIEObjectFifoStatefulTransformPass
         if (releaseOps.find({op, portNum}) != releaseOps.end()) {
           releaseOps[{op, portNum}].push_back(releaseOp);
         } else {
-          std::vector<ObjectFifoReleaseOp> release = {releaseOp};
+          std::vector release = {releaseOp};
           releaseOps[{op, portNum}] = release;
         }
       });
@@ -1462,12 +1428,12 @@ struct AIEObjectFifoStatefulTransformPass
         ObjectFifoCreateOp op = acquireOp.getObjectFifo();
         builder.setInsertionPointAfter(acquireOp);
         auto port = acquireOp.getPort();
-        auto portNum = (port == ObjectFifoPort::Produce) ? 0 : 1;
+        auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
         auto core = acquireOp->getParentOfType<CoreOp>();
 
         auto linkOp = getOptionalLinkOp(op);
         if (linkOp) {
-          if (core.getTile() == *(linkOp->getOptionalSharedTile())) {
+          if (core.getTile() == *linkOp->getOptionalSharedTile()) {
             acquireOp->emitOpError("currently cannot access objectFifo used in "
                                    "ObjectFifoLinkOp");
             return;
@@ -1477,17 +1443,17 @@ struct AIEObjectFifoStatefulTransformPass
         // index of next element to acquire for this objectFifo
         int start = updateAndReturnIndex(
             acqPerFifo, {op, portNum}); // useful for keeping track of which
-                                        // indices are acquired
+        // indices are acquired
 
         // check how many elements have been released in between this AcquireOp
         // and the previous one
         int numRel = 0;
         for (auto relOp : releaseOps[{op, portNum}]) {
-          ObjectFifoCreateOp otherOp = relOp.getObjectFifo();
           // TODO: operations may not be in the same block: currently only
           // support one block level of difference
 
-          if (op == otherOp) {
+          if (ObjectFifoCreateOp otherOp = relOp.getObjectFifo();
+              op == otherOp) {
             // if they are already in the same block, check if releaseOp
             // happened before
             if (acquireOp.getOperation()->getBlock() ==
@@ -1501,37 +1467,37 @@ struct AIEObjectFifoStatefulTransformPass
                 numRel += relOp.relNumber();
               }
             } else {
-              Operation *acqBlockDefOp =
-                  acquireOp.getOperation()->getBlock()->getParentOp();
 
               // else, check if releaseOp happened before the block region
               // with the acquireOp
-              if (relOp.getOperation()->getBlock() ==
+              if (Operation *acqBlockDefOp =
+                      acquireOp.getOperation()->getBlock()->getParentOp();
+                  relOp.getOperation()->getBlock() ==
                   acqBlockDefOp->getBlock()) {
                 if (!acqBlockDefOp->isBeforeInBlock(relOp)) {
                   releaseOps[{op, portNum}].erase(
                       releaseOps[{op, portNum}]
                           .begin()); // to ensure that we do not account
-                                     // the ReleaseOps again later, after
-                                     // the subview is created
+                  // the ReleaseOps again later, after
+                  // the subview is created
                   numRel += relOp.relNumber();
                 }
 
                 // else, check if the block region with releaseOp happened
                 // before...
               } else {
-                Operation *relBlockDefOp =
-                    relOp.getOperation()->getBlock()->getParentOp();
 
                 // ...the acquireOp
-                if (acquireOp.getOperation()->getBlock() ==
+                if (Operation *relBlockDefOp =
+                        relOp.getOperation()->getBlock()->getParentOp();
+                    acquireOp.getOperation()->getBlock() ==
                     relBlockDefOp->getBlock()) {
                   if (!acquireOp->isBeforeInBlock(relBlockDefOp)) {
                     releaseOps[{op, portNum}].erase(
                         releaseOps[{op, portNum}]
                             .begin()); // to ensure that we do not account
-                                       // the ReleaseOps again later,
-                                       // after the subview is created
+                    // the ReleaseOps again later,
+                    // after the subview is created
                     numRel += relOp.relNumber();
                   }
 
@@ -1542,8 +1508,8 @@ struct AIEObjectFifoStatefulTransformPass
                     releaseOps[{op, portNum}].erase(
                         releaseOps[{op, portNum}]
                             .begin()); // to ensure that we do not account
-                                       // the ReleaseOps again later,
-                                       // after the subview is created
+                    // the ReleaseOps again later,
+                    // after the subview is created
                     numRel += relOp.relNumber();
                   }
                 }
@@ -1554,12 +1520,12 @@ struct AIEObjectFifoStatefulTransformPass
 
         // track indices of elements to acquire
         std::vector<int> acquiredIndices;
-        if (acquiresPerFifo[{op, portNum}].size() != 0) {
+        if (!acquiresPerFifo[{op, portNum}].empty()) {
           // take into account what has already been acquired by previous
           // AcquireOp in program order
           acquiredIndices = acquiresPerFifo[{op, portNum}];
           // take into account what has been released in-between
-          assert((size_t)numRel <= acquiredIndices.size() &&
+          assert(static_cast<size_t>(numRel) <= acquiredIndices.size() &&
                  "Cannot release more elements than are already acquired.");
           for (int i = 0; i < numRel; i++)
             acquiredIndices.erase(acquiredIndices.begin());
@@ -1574,9 +1540,9 @@ struct AIEObjectFifoStatefulTransformPass
         else
           numCreate = 0;
 
-        auto dev = op->getParentOfType<xilinx::AIE::DeviceOp>();
-        auto &targetArch = dev.getTargetModel();
-        if (targetArch.getTargetArch() == xilinx::AIE::AIEArch::AIE1)
+        auto dev = op->getParentOfType<DeviceOp>();
+        if (auto &targetArch = dev.getTargetModel();
+            targetArch.getTargetArch() == AIEArch::AIE1)
           createUseLocks(builder, op, port, acqPerFifo, numCreate,
                          LockAction::Acquire);
         else
@@ -1596,6 +1562,7 @@ struct AIEObjectFifoStatefulTransformPass
           start = (start + 1) % op.size();
         }
         std::vector<BufferOp *> subviewRefs;
+        subviewRefs.reserve(acquiredIndices.size());
         for (auto index : acquiredIndices)
           subviewRefs.push_back(&buffersPerFifo[target][index]);
 
@@ -1607,11 +1574,9 @@ struct AIEObjectFifoStatefulTransformPass
       // Replace subview.access ops
       //===----------------------------------------------------------------===//
       coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
-        ObjectFifoAcquireOp acqOp =
-            accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-        ObjectFifoCreateOp op = acqOp.getObjectFifo();
-        auto linkOp = getOptionalLinkOp(op);
-        if (linkOp) {
+        auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+        if (ObjectFifoCreateOp op = acqOp.getObjectFifo();
+            getOptionalLinkOp(op)) {
           accessOp->emitOpError("currently cannot access objectFifo used in "
                                 "ObjectFifoLinkOp");
           return;
@@ -1623,9 +1588,9 @@ struct AIEObjectFifoStatefulTransformPass
 
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      builder.setInsertionPointToStart(&(device.getBodyRegion().front()));
+      builder.setInsertionPointToStart(&device.getBodyRegion().front());
       auto sym_name = createOp.getName();
-      createOp->setAttr(mlir::SymbolTable::getSymbolAttrName(),
+      createOp->setAttr(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr("__erase_" + sym_name));
       auto memrefType = cast<MemRefType>(
           cast<AIEObjectFifoType>(createOp.getElemType()).getElementType());
@@ -1652,6 +1617,6 @@ struct AIEObjectFifoStatefulTransformPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEObjectFifoStatefulTransformPass() {
+AIE::createAIEObjectFifoStatefulTransformPass() {
   return std::make_unique<AIEObjectFifoStatefulTransformPass>();
 }
