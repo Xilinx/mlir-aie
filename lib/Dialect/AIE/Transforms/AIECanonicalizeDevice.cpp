@@ -13,9 +13,7 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
 #define DEBUG_TYPE "aie-canonicalize-device"
 
@@ -24,7 +22,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 struct AIECanonicalizeDevicePass
-    : public AIECanonicalizeDeviceBase<AIECanonicalizeDevicePass> {
+    : AIECanonicalizeDeviceBase<AIECanonicalizeDevicePass> {
   void runOnOperation() override {
 
     ModuleOp moduleOp = getOperation();
@@ -40,7 +38,7 @@ struct AIECanonicalizeDevicePass
     OpBuilder builder(moduleOp->getContext());
 
     Location location = builder.getUnknownLoc();
-    DeviceOp deviceOp = builder.create<DeviceOp>(
+    auto deviceOp = builder.create<DeviceOp>(
         location,
         AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902));
 
@@ -53,6 +51,6 @@ struct AIECanonicalizeDevicePass
 };
 
 std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIECanonicalizeDevicePass() {
+AIE::createAIECanonicalizeDevicePass() {
   return std::make_unique<AIECanonicalizeDevicePass>();
 }

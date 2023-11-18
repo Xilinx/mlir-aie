@@ -89,7 +89,7 @@ Pathfinder::Pathfinder(int maxCol, int maxRow, DeviceOp &d) {
   }
 
   // initialize maximum iterations flag
-  Pathfinder::maxIterReached = false;
+  maxIterReached = false;
 }
 
 // Add a flow from src to dst can have an arbitrary number of dst locations due
@@ -100,9 +100,9 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   for (auto &flow : flows) {
     Switchbox *existingSrc = flow.src.sb;
     assert(existingSrc && "nullptr flow source");
-    Port existingPort = flow.src.port;
-    if (existingSrc->col == srcCoords.col &&
-        existingSrc->row == srcCoords.row && existingPort == srcPort) {
+    if (Port existingPort = flow.src.port; existingSrc->col == srcCoords.col &&
+                                           existingSrc->row == srcCoords.row &&
+                                           existingPort == srcPort) {
       // find the vertex corresponding to the destination
       auto matchingSb =
           std::find_if(graph.begin(), graph.end(), [&](const Switchbox *sb) {
@@ -169,8 +169,8 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, Switchbox *src) {
     src = priorityQueue.begin()->second;
     priorityQueue.erase(priorityQueue.begin());
     for (Channel *e : src->getEdges()) {
-      Switchbox *dst = &e->getTargetNode();
-      if (demand[src] + e->demand < demand[dst]) {
+      if (Switchbox *dst = &e->getTargetNode();
+          demand[src] + e->demand < demand[dst]) {
         priorityQueue.erase({demand[dst], dst});
 
         demand[dst] = demand[src] + e->demand;

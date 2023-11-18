@@ -12,7 +12,6 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -24,19 +23,18 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 Type memRefToDefaultAddressSpace(Type t) {
-  auto memRefType = t.dyn_cast<MemRefType>();
-  if (memRefType && memRefType.getMemorySpace() != 0)
+  if (auto memRefType = t.dyn_cast<MemRefType>();
+      memRefType && memRefType.getMemorySpace() != nullptr)
     return MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
-                           memRefType.getLayout(), 0 /* Address Space */);
-  else
-    return t;
+                           memRefType.getLayout(), nullptr /* Address Space */);
+  return t;
 }
 
 #include "aie/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.inc"
 
 struct AIENormalizeAddressSpacesPass
-    : public AIENormalizeAddressSpacesBase<AIENormalizeAddressSpacesPass> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+    : AIENormalizeAddressSpacesBase<AIENormalizeAddressSpacesPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
   }
   void runOnOperation() override {
@@ -48,8 +46,9 @@ struct AIENormalizeAddressSpacesPass
     });
 
     ConversionTarget target(getContext());
-    target.addDynamicallyLegalOp<memref::GlobalOp>(
-        [](memref::GlobalOp op) { return op.getType().getMemorySpace() == 0; });
+    target.addDynamicallyLegalOp<memref::GlobalOp>([](memref::GlobalOp op) {
+      return op.getType().getMemorySpace() == nullptr;
+    });
 
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType());
@@ -64,7 +63,7 @@ struct AIENormalizeAddressSpacesPass
       signalPassFailure();
 
     // Convert any output types to have the default address space
-    device.walk([&](mlir::Operation *op) {
+    device.walk([&](Operation *op) {
       for (Value r : op->getResults())
         r.setType(memRefToDefaultAddressSpace(r.getType()));
     });
@@ -72,6 +71,6 @@ struct AIENormalizeAddressSpacesPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIENormalizeAddressSpacesPass() {
+AIE::createAIENormalizeAddressSpacesPass() {
   return std::make_unique<AIENormalizeAddressSpacesPass>();
 }

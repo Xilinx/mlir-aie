@@ -15,17 +15,12 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-
-#include "llvm/Support/Debug.h"
 
 #include <queue>
 
@@ -39,11 +34,11 @@ using namespace xilinx::AIE;
 // Conversion Patterns
 //===----------------------------------------------------------------------===//
 struct RemoveAIERegisterProcess
-    : public OpConversionPattern<ObjectFifoRegisterProcessOp> {
-  using OpConversionPattern<ObjectFifoRegisterProcessOp>::OpConversionPattern;
+    : OpConversionPattern<ObjectFifoRegisterProcessOp> {
+  using OpConversionPattern::OpConversionPattern;
 
   RemoveAIERegisterProcess(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern<ObjectFifoRegisterProcessOp>(context, benefit) {}
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(ObjectFifoRegisterProcessOp op, OpAdaptor adaptor,
@@ -58,27 +53,26 @@ struct RemoveAIERegisterProcess
 // Register objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoRegisterProcessPass
-    : public AIEObjectFifoRegisterProcessBase<
-          AIEObjectFifoRegisterProcessPass> {
+    : AIEObjectFifoRegisterProcessBase<AIEObjectFifoRegisterProcessPass> {
 
-  mlir::scf::ForOp createForLoop(OpBuilder &builder, int length) {
-    arith::ConstantOp lowerBound = builder.create<arith::ConstantOp>(
+  scf::ForOp createForLoop(OpBuilder &builder, int length) {
+    auto lowerBound = builder.create<arith::ConstantOp>(
         builder.getUnknownLoc(), builder.getIndexAttr(0));
-    arith::ConstantOp upperBound = builder.create<arith::ConstantOp>(
+    auto upperBound = builder.create<arith::ConstantOp>(
         builder.getUnknownLoc(), builder.getIndexAttr(length));
-    arith::ConstantOp step = builder.create<arith::ConstantOp>(
-        builder.getUnknownLoc(), builder.getIndexAttr(1));
-    mlir::scf::ForOp forLoop = builder.create<mlir::scf::ForOp>(
-        builder.getUnknownLoc(), lowerBound, upperBound, step);
+    auto step = builder.create<arith::ConstantOp>(builder.getUnknownLoc(),
+                                                  builder.getIndexAttr(1));
+    auto forLoop = builder.create<scf::ForOp>(builder.getUnknownLoc(),
+                                              lowerBound, upperBound, step);
     return forLoop;
   }
 
   void createPattern(OpBuilder &builder, DeviceOp &device,
-                     ObjectFifoRegisterProcessOp regOp, mlir::Type elementType,
+                     ObjectFifoRegisterProcessOp regOp, Type elementType,
                      IntegerAttr acqNumber, IntegerAttr relNumber, int length) {
     auto ctx = device->getContext();
     // create for loop
-    mlir::scf::ForOp forLoop;
+    scf::ForOp forLoop;
     if (length > 1) {
       forLoop = createForLoop(builder, length);
       Region &forRegion = forLoop.getRegion();
@@ -93,12 +87,10 @@ struct AIEObjectFifoRegisterProcessPass
           SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);
 
       // subview accesses
-      ObjectFifoSubviewAccessOp acc;
-      for (int i = 0; i < acqNumber.getInt(); i++) {
-        acc = builder.create<ObjectFifoSubviewAccessOp>(
+      for (int i = 0; i < acqNumber.getInt(); i++)
+        (void)builder.create<ObjectFifoSubviewAccessOp>(
             builder.getUnknownLoc(), elementType, acqOp.getSubview(),
             builder.getIntegerAttr(builder.getI32Type(), i));
-      }
 
       // apply kernel
       func::FuncOp func;
@@ -165,8 +157,8 @@ struct AIEObjectFifoRegisterProcessPass
         }
       }
       if (core == nullptr) {
-        CoreOp coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
-                                               builder.getIndexType(), tile);
+        auto coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
+                                             builder.getIndexType(), tile);
         Region &r = coreOp.getBody();
         r.push_back(new Block);
         Block &block = r.back();
@@ -180,9 +172,9 @@ struct AIEObjectFifoRegisterProcessPass
 
       // analyze pattern
       auto acqSize = registerOp.getAcquirePattern().size();
-      auto relSize = registerOp.getReleasePattern().size();
 
-      if (acqSize == 1 && relSize == 1) {
+      if (auto relSize = registerOp.getReleasePattern().size();
+          acqSize == 1 && relSize == 1) {
         IntegerAttr acqNumber =
             registerOp.getAcquirePattern().getValues<IntegerAttr>()[0];
         IntegerAttr relNumber =
@@ -209,8 +201,7 @@ struct AIEObjectFifoRegisterProcessPass
           // duplicate acquire pattern
           IntegerAttr acqNumber =
               registerOp.getAcquirePattern().getValues<IntegerAttr>()[0];
-          std::vector<IntegerAttr> values(registerOp.getProcessLength(),
-                                          acqNumber);
+          std::vector values(registerOp.getProcessLength(), acqNumber);
           acqVector = values;
           acqSize = registerOp.getProcessLength();
 
@@ -218,10 +209,8 @@ struct AIEObjectFifoRegisterProcessPass
           // duplicate release pattern
           IntegerAttr relNumber =
               registerOp.getReleasePattern().getValues<IntegerAttr>()[0];
-          std::vector<IntegerAttr> values(registerOp.getProcessLength(),
-                                          relNumber);
+          std::vector values(registerOp.getProcessLength(), relNumber);
           relVector = values;
-          relSize = registerOp.getProcessLength();
         }
 
         int length = 1;
@@ -230,10 +219,10 @@ struct AIEObjectFifoRegisterProcessPass
           auto currRel = relVector[i];
           if (i < acqSize - 1) {
             auto nextAcq = acqVector[i + 1];
-            auto nextRel = relVector[i + 1];
 
-            if ((currAcq.getInt() == nextAcq.getInt()) &&
-                (currRel.getInt() == nextRel.getInt())) {
+            if (auto nextRel = relVector[i + 1];
+                currAcq.getInt() == nextAcq.getInt() &&
+                currRel.getInt() == nextRel.getInt()) {
               length++;
               continue;
             }
@@ -257,6 +246,6 @@ struct AIEObjectFifoRegisterProcessPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEObjectFifoRegisterProcessPass() {
+AIE::createAIEObjectFifoRegisterProcessPass() {
   return std::make_unique<AIEObjectFifoRegisterProcessPass>();
 }

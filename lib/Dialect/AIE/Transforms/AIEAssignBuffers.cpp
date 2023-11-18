@@ -12,7 +12,6 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/Twine.h"
@@ -23,7 +22,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-static int64_t assignAddress(AIE::BufferOp op, int64_t lastAddress,
+static int64_t assignAddress(BufferOp op, int64_t lastAddress,
                              OpBuilder &rewriter) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
@@ -39,10 +38,10 @@ static int64_t assignAddress(AIE::BufferOp op, int64_t lastAddress,
 }
 
 struct AIEAssignBufferAddressesPass
-    : public AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+    : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
-    registry.insert<xilinx::AIE::AIEDialect>();
+    registry.insert<AIEDialect>();
   }
   void runOnOperation() override {
     DeviceOp device = getOperation();
@@ -60,11 +59,11 @@ struct AIEAssignBufferAddressesPass
 
     for (auto tile : device.getOps<TileOp>()) {
       const auto &targetModel = getTargetModel(tile);
-      int max_data_memory_size = 0;
+      int maxDataMemorySize = 0;
       if (tile.isMemTile())
-        max_data_memory_size = targetModel.getMemTileSize();
+        maxDataMemorySize = targetModel.getMemTileSize();
       else
-        max_data_memory_size = targetModel.getLocalMemorySize();
+        maxDataMemorySize = targetModel.getLocalMemorySize();
       SmallVector<BufferOp, 4> buffers;
       // Collect all the buffers for this tile.
       for (auto buffer : device.getOps<BufferOp>())
@@ -86,7 +85,7 @@ struct AIEAssignBufferAddressesPass
       }
       for (auto buffer : buffers)
         address = assignAddress(buffer, address, builder);
-      if (address > max_data_memory_size) {
+      if (address > maxDataMemorySize) {
         InFlightDiagnostic error =
             tile.emitOpError("allocated buffers exceeded available memory\n");
         auto &note = error.attachNote() << "MemoryMap:\n";
@@ -111,6 +110,6 @@ struct AIEAssignBufferAddressesPass
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEAssignBufferAddressesPass() {
+AIE::createAIEAssignBufferAddressesPass() {
   return std::make_unique<AIEAssignBufferAddressesPass>();
 }

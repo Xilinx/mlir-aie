@@ -25,8 +25,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-template <typename MyOp>
-struct AIEOpRemoval : public OpConversionPattern<MyOp> {
+template <typename MyOp> struct AIEOpRemoval : OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
 
@@ -120,8 +119,7 @@ std::optional<int> getAvailableDestChannelReverseOrder(
     Port port = {destBundle, i};
     int countFlows = 0;
     for (const auto &[conn, _flowID] : connects) {
-      Port connDest = conn.dst;
-      if (connDest == port)
+      if (Port connDest = conn.dst; connDest == port)
         countFlows++;
     }
     if (countFlows > 0 && countFlows < 32)
@@ -165,9 +163,9 @@ void buildPSRoute(
     bool reverseOrder = false) {
   int xCur = xSrc;
   int yCur = ySrc;
-  WireBundle curBundle;
-  int curChannel;
-  WireBundle lastBundle;
+  WireBundle curBundle = {};
+  int curChannel = 0;
+  WireBundle lastBundle = {};
   Port lastPort = sourcePort;
 
   SmallVector<TileID, 4> congestion;
@@ -175,7 +173,7 @@ void buildPSRoute(
   LLVM_DEBUG(llvm::dbgs() << "Build route ID " << flowID << ": " << xSrc << " "
                           << ySrc << " --> " << xDest << " " << yDest << '\n');
   // traverse horizontally, then vertically
-  while (!((xCur == xDest) && (yCur == yDest))) {
+  while (!(xCur == xDest && yCur == yDest)) {
     LLVM_DEBUG(llvm::dbgs() << "Tile " << xCur << " " << yCur << " ");
 
     TileID curCoord = {xCur, yCur};
@@ -222,11 +220,11 @@ void buildPSRoute(
         continue;
 
       curBundle = move;
-      lastBundle = (move == WireBundle::East)    ? WireBundle::West
-                   : (move == WireBundle::West)  ? WireBundle::East
-                   : (move == WireBundle::North) ? WireBundle::South
-                   : (move == WireBundle::South) ? WireBundle::North
-                                                 : lastBundle;
+      lastBundle = move == WireBundle::East    ? WireBundle::West
+                   : move == WireBundle::West  ? WireBundle::East
+                   : move == WireBundle::North ? WireBundle::South
+                   : move == WireBundle::South ? WireBundle::North
+                                               : lastBundle;
       break;
     }
 
@@ -238,11 +236,10 @@ void buildPSRoute(
                << " " << curChannel << "\n");
 
     Port curPort = {curBundle, curChannel};
-    Connect connect = {lastPort, curPort};
     // If there is no connection with this ID going where we want to go.
-    if (std::find(switchboxes[curCoord].begin(), switchboxes[curCoord].end(),
-                  std::pair<Connect, int>{connect, flowID}) ==
-        switchboxes[curCoord].end())
+    if (Connect connect = {lastPort, curPort};
+        std::find(switchboxes[curCoord].begin(), switchboxes[curCoord].end(),
+                  std::pair{connect, flowID}) == switchboxes[curCoord].end())
       // then add one.
       switchboxes[curCoord].push_back({connect, flowID});
     lastPort = {lastBundle, curChannel};
@@ -267,7 +264,7 @@ SwitchboxOp getOrCreateSwitchbox(OpBuilder &builder, TileOp tile) {
   return builder.create<SwitchboxOp>(builder.getUnknownLoc(), tile);
 }
 struct AIERoutePacketFlowsPass
-    : public AIERoutePacketFlowsBase<AIERoutePacketFlowsPass> {
+    : AIERoutePacketFlowsBase<AIERoutePacketFlowsPass> {
   // Map from tile coordinates to TileOp
   DenseMap<TileID, Operation *> tiles;
   Operation *getOrCreateTile(OpBuilder &builder, int col, int row) {
@@ -327,14 +324,13 @@ struct AIERoutePacketFlowsPass
       Port sourcePort;
 
       for (Operation &Op : b.getOperations()) {
-        if (PacketSourceOp pktSource = dyn_cast<PacketSourceOp>(Op)) {
-          TileOp srcTile =
-              dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
+          auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
           xSrc = srcTile.colIndex();
           ySrc = srcTile.rowIndex();
           sourcePort = pktSource.port();
-        } else if (PacketDestOp pktDest = dyn_cast<PacketDestOp>(Op)) {
-          TileOp destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+          auto destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
           int xDest = destTile.colIndex();
           int yDest = destTile.rowIndex();
           Port destPort = pktDest.port();
@@ -429,14 +425,14 @@ struct AIERoutePacketFlowsPass
 
         // check if same destinations
         // SmallVector<Port, 4> ports(map.second);
-        SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
+        SmallVector ports(masterAMSels[{tileOp, amselValue}]);
         if (ports.size() != packetFlow.second.size())
           continue;
 
         bool matched = true;
         for (auto dest : packetFlow.second) {
-          Port port = dest.second;
-          if (std::find(ports.begin(), ports.end(), port) == ports.end()) {
+          if (Port port = dest.second;
+              std::find(ports.begin(), ports.end(), port) == ports.end()) {
             matched = false;
             break;
           }
@@ -493,7 +489,7 @@ struct AIERoutePacketFlowsPass
       WireBundle bundle = physPort.second.bundle;
       int channel = physPort.second.channel;
       assert(tileOp);
-      TileOp tile = dyn_cast<TileOp>(tileOp);
+      auto tile = dyn_cast<TileOp>(tileOp);
       LLVM_DEBUG(llvm::dbgs()
                  << "master " << tile << " " << stringifyWireBundle(bundle)
                  << " : " << channel << '\n');
@@ -507,7 +503,7 @@ struct AIERoutePacketFlowsPass
     // The flows must originate from the same source port and have different IDs
     // Two flows can be merged if they share the same destinations
     SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
-    SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
+    SmallVector workList(slavePorts);
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
       Port slavePort1 = slave1.first.second;
@@ -556,8 +552,8 @@ struct AIERoutePacketFlowsPass
         int ID = port.second;
         for (int i = 0; i < 5; i++) {
           if (mask[i] == -1)
-            mask[i] = ((ID >> i) & 0x1);
-          else if (mask[i] != ((ID >> i) & 0x1))
+            mask[i] = ID >> i & 0x1;
+          else if (mask[i] != (ID >> i & 0x1))
             mask[i] = 2; // found bit difference --> mark as "don't care"
         }
       }
@@ -578,7 +574,7 @@ struct AIERoutePacketFlowsPass
     LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
     for (auto map : slaveMasks) {
       auto port = map.first.first;
-      TileOp tile = dyn_cast<TileOp>(port.first);
+      auto tile = dyn_cast<TileOp>(port.first);
       WireBundle bundle = port.second.bundle;
       int channel = port.second.channel;
       int ID = map.first.second;
@@ -602,7 +598,7 @@ struct AIERoutePacketFlowsPass
     // Realize the routes in MLIR
     for (auto map : tiles) {
       Operation *tileOp = map.second;
-      TileOp tile = dyn_cast<TileOp>(tileOp);
+      auto tile = dyn_cast<TileOp>(tileOp);
 
       // Create a switchbox for the routes and insert inside it.
       builder.setInsertionPointAfter(tileOp);
@@ -704,8 +700,7 @@ struct AIERoutePacketFlowsPass
     // From BLI to shimDMA: 1) North   2 --> shimDMA 0
     //                      2) North   3 --> shimDMA 1
 
-    for (auto switchbox :
-         llvm::make_early_inc_range(device.getOps<SwitchboxOp>())) {
+    for (auto switchbox : make_early_inc_range(device.getOps<SwitchboxOp>())) {
       auto retVal = switchbox->getOperand(0);
       auto tileOp = retVal.getDefiningOp<TileOp>();
 
@@ -732,7 +727,7 @@ struct AIERoutePacketFlowsPass
       }
 
       for (Operation &Op : b.getOperations()) {
-        if (PacketRulesOp pktrules = dyn_cast<PacketRulesOp>(Op)) {
+        if (auto pktrules = dyn_cast<PacketRulesOp>(Op)) {
 
           // check if there is MM2S DMA in the switchbox of the 0th row
           if (pktrules.getSourceBundle() == WireBundle::DMA) {
@@ -777,7 +772,7 @@ struct AIERoutePacketFlowsPass
           }
         }
 
-        if (MasterSetOp mtset = dyn_cast<MasterSetOp>(Op)) {
+        if (auto mtset = dyn_cast<MasterSetOp>(Op)) {
 
           // check if there is S2MM DMA in the switchbox of the 0th row
           if (mtset.getDestBundle() == WireBundle::DMA) {
@@ -831,7 +826,6 @@ struct AIERoutePacketFlowsPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIERoutePacketFlowsPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIERoutePacketFlowsPass() {
   return std::make_unique<AIERoutePacketFlowsPass>();
 }
