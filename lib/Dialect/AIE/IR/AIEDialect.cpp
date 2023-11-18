@@ -21,6 +21,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
+using namespace xilinx::AIE;
 
 // Add TableGen'erated dialect definitions (including constructor)
 // We implement the initialize() function further below
@@ -33,26 +34,22 @@ struct AIEInlinerInterface : public DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       IRMapping &valueMapping) const final override {
+                       IRMapping &valueMapping) const final {
     return true;
   }
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
-                       IRMapping &) const final override {
+                       IRMapping &) const final {
     return true;
   }
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the inlined region has more than one block.
-  void handleTerminator(Operation *op, Block *newDest) const final override {
-    return;
-  }
+  void handleTerminator(Operation *op, Block *newDest) const final {}
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
   void handleTerminator(Operation *op,
-                        ArrayRef<Value> valuesToRepl) const final override {
-    return;
-  }
+                        ArrayRef<Value> valuesToRepl) const final {}
 };
 
 struct AIEDialectFoldInterface : public DialectFoldInterface {
@@ -63,24 +60,23 @@ struct AIEDialectFoldInterface : public DialectFoldInterface {
   /// materializing constants.
   bool shouldMaterializeInto(Region *region) const final {
     // If this is an AIE::CoreOp region, then insert into it.
-    return isa<xilinx::AIE::CoreOp>(region->getParentOp());
+    return isa<CoreOp>(region->getParentOp());
   }
 };
 
 } // end anonymous namespace
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
-static xilinx::AIE::VC1902TargetModel VC1902model;
-static xilinx::AIE::VE2302TargetModel VE2302model;
-static xilinx::AIE::VE2802TargetModel VE2802model;
-static xilinx::AIE::IPUTargetModel IPUmodel;
+static VC1902TargetModel VC1902model;
+static VE2302TargetModel VE2302model;
+static VE2802TargetModel VE2802model;
+static IPUTargetModel IPUmodel;
 
-const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
-  if (auto t = dyn_cast<xilinx::AIE::AIETarget>(op))
+const AIETargetModel &getTargetModel(Operation *op) {
+  if (auto t = dyn_cast<AIETarget>(op))
     return t.getTargetModel();
-  if (auto t = op->getParentOfType<xilinx::AIE::AIETarget>())
+  if (auto t = op->getParentOfType<AIETarget>())
     return t.getTargetModel();
 
   // For backward compatibility, return a basic device model compatible with
@@ -90,28 +86,26 @@ const xilinx::AIE::AIETargetModel &getTargetModel(Operation *op) {
 
 // Walk the operation hierarchy until we find a containing TileElement.
 // If no parent is a TileElement, then return null.
-static xilinx::AIE::TileElement getParentTileElement(Operation *op) {
+static TileElement getParentTileElement(Operation *op) {
   auto parent = op->getParentOp();
-  while (
-      !llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(parent)) {
-    if (auto element = llvm::dyn_cast<xilinx::AIE::TileElement>(parent))
+  while (!llvm::isa_and_nonnull<DeviceOp, ModuleOp>(parent)) {
+    if (auto element = llvm::dyn_cast<TileElement>(parent))
       return element;
     parent = parent->getParentOp();
   }
-  return llvm::dyn_cast<xilinx::AIE::TileElement>(parent);
+  return llvm::dyn_cast<TileElement>(parent);
 }
 
 struct UsesAreAccessable {
   static LogicalResult verifyTrait(Operation *op) {
-    auto thisElement = cast<xilinx::AIE::TileElement>(op);
+    auto thisElement = cast<TileElement>(op);
     auto thisID = thisElement.getTileID();
     auto users = op->getResult(0).getUsers();
     const auto &targetModel = getTargetModel(op);
     for (auto user : users) {
       // AIE.useLock may be used in a device to set the lock's default value
       // Allow in a toplevel module for backward compatibility
-      if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
-              user->getParentOp()))
+      if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>(user->getParentOp()))
         return success();
       if (auto element = getParentTileElement(user)) {
 
@@ -137,14 +131,14 @@ struct UsesAreAccessable {
 
 namespace detail {
 /// This class represents the internal storage of the AIE `ObjectFifoType`.
-struct AIEObjectFifoTypeStorage : public mlir::TypeStorage {
+struct AIEObjectFifoTypeStorage : public TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
   /// storage.
-  using KeyTy = mlir::Type;
+  using KeyTy = Type;
 
   /// A constructor for the objectFifo type storage instance.
-  AIEObjectFifoTypeStorage(mlir::Type elementType) : elementType(elementType) {}
+  AIEObjectFifoTypeStorage(Type elementType) : elementType(elementType) {}
 
   /// Define the comparison function for the key type with the current storage
   /// instance. This is used when constructing a new instance to ensure that we
@@ -154,34 +148,34 @@ struct AIEObjectFifoTypeStorage : public mlir::TypeStorage {
   /// Define a construction method for creating a new instance of this storage.
   /// This method takes an instance of a storage allocator, and an instance of a
   /// `KeyTy`.
-  static AIEObjectFifoTypeStorage *
-  construct(mlir::TypeStorageAllocator &allocator, const KeyTy &key) {
+  static AIEObjectFifoTypeStorage *construct(TypeStorageAllocator &allocator,
+                                             const KeyTy &key) {
     // Allocate the storage instance and construct it.
     return new (allocator.allocate<AIEObjectFifoTypeStorage>())
         AIEObjectFifoTypeStorage(key);
   }
 
-  mlir::Type elementType;
+  Type elementType;
 };
 } // namespace detail
 
-AIEObjectFifoType AIEObjectFifoType::get(mlir::Type elementType) {
+AIEObjectFifoType AIEObjectFifoType::get(Type elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
   // of this type.
-  mlir::MLIRContext *ctx = elementType.getContext();
+  MLIRContext *ctx = elementType.getContext();
   return Base::get(ctx, elementType);
 }
 
 LogicalResult
 AIEObjectFifoType::verify(function_ref<InFlightDiagnostic()> emitError,
-                          mlir::Type elementType) {
+                          Type elementType) {
   // Memref element type expected.
   if (!elementType.isa<MemRefType>())
     return emitError() << "non memref-type passed to 'ObjectFifoType'";
   return success();
 }
 
-mlir::Type AIEObjectFifoType::getElementType() {
+Type AIEObjectFifoType::getElementType() {
   // 'getImpl' returns a pointer to the internal storage instance.
   return getImpl()->elementType;
 }
@@ -189,14 +183,14 @@ mlir::Type AIEObjectFifoType::getElementType() {
 namespace detail {
 /// This class represents the internal storage of the AIE
 /// `ObjectFifoSubviewType`.
-struct AIEObjectFifoSubviewTypeStorage : public mlir::TypeStorage {
+struct AIEObjectFifoSubviewTypeStorage : public TypeStorage {
   /// The `KeyTy` is a required type that provides an interface for the storage
   /// instance. This type will be used when uniquing an instance of the type
   /// storage.
-  using KeyTy = mlir::Type;
+  using KeyTy = Type;
 
   /// A constructor for the subview type storage instance.
-  AIEObjectFifoSubviewTypeStorage(mlir::Type elementType)
+  AIEObjectFifoSubviewTypeStorage(Type elementType)
       : elementType(elementType) {}
 
   /// Define the comparison function for the key type with the current storage
@@ -208,34 +202,34 @@ struct AIEObjectFifoSubviewTypeStorage : public mlir::TypeStorage {
   /// This method takes an instance of a storage allocator, and an instance of a
   /// `KeyTy`.
   static AIEObjectFifoSubviewTypeStorage *
-  construct(mlir::TypeStorageAllocator &allocator, const KeyTy &key) {
+  construct(TypeStorageAllocator &allocator, const KeyTy &key) {
     // Allocate the storage instance and construct it.
     return new (allocator.allocate<AIEObjectFifoSubviewTypeStorage>())
         AIEObjectFifoSubviewTypeStorage(key);
   }
 
-  mlir::Type elementType;
+  Type elementType;
 };
 } // namespace detail
 
-AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(mlir::Type elementType) {
+AIEObjectFifoSubviewType AIEObjectFifoSubviewType::get(Type elementType) {
   // Call into a helper 'get' method in 'TypeBase' to get a uniqued instance
   // of this type.
-  mlir::MLIRContext *ctx = elementType.getContext();
+  MLIRContext *ctx = elementType.getContext();
   return Base::get(ctx, elementType);
 }
 
 /// This method is used to verify the construction invariants.
 LogicalResult
 AIEObjectFifoSubviewType::verify(function_ref<InFlightDiagnostic()> emitError,
-                                 mlir::Type elementType) {
+                                 Type elementType) {
   // Memref element type expected.
   if (!elementType.isa<MemRefType>())
     return emitError() << "non memref-type passed to 'ObjectFifoSubviewType'";
   return success();
 }
 
-mlir::Type AIEObjectFifoSubviewType::getElementType() {
+Type AIEObjectFifoSubviewType::getElementType() {
   return getImpl()->elementType;
 }
 
@@ -248,14 +242,14 @@ static OptionalParseResult aieTypeParser(MLIRContext *context,
                                          DialectAsmParser &parser,
                                          StringRef name, Type &result) {
   if (name.equals("objectFifo")) {
-    mlir::Type elementType;
+    Type elementType;
     llvm::SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseLess() || parser.parseType(elementType) ||
         parser.parseGreater())
       return failure();
 
     // Check that the type is a MemRef type.
-    if (!elementType.isa<mlir::MemRefType>()) {
+    if (!elementType.isa<MemRefType>()) {
       parser.emitError(typeLoc, "element type for an objectFifo must be "
                                 "a MemRefType, got: ")
           << elementType;
@@ -270,14 +264,14 @@ static OptionalParseResult aieTypeParser(MLIRContext *context,
       return failure();
 
     // Parse the element type of the struct.
-    mlir::Type elementType;
+    Type elementType;
     // Parse the current element type.
     llvm::SMLoc typeLoc = parser.getCurrentLocation();
     if (parser.parseType(elementType))
       return failure();
 
     // Check that the type is a MemRefType.
-    if (!elementType.isa<mlir::MemRefType>()) {
+    if (!elementType.isa<MemRefType>()) {
       parser.emitError(typeLoc, "element type for a subview must be "
                                 "a MemRefType, got: ")
           << elementType;
@@ -312,26 +306,24 @@ static ParseResult parse(Type &result, StringRef name,
 }
 
 /// Parse an instance of a type registered to the AIE dialect.
-mlir::Type AIEDialect::parseType(mlir::DialectAsmParser &parser) const {
+Type AIEDialect::parseType(DialectAsmParser &parser) const {
   StringRef name;
   Type result;
   if (parser.parseKeyword(&name) || parse(result, name, parser))
-    return Type();
+    return {};
   return result;
 }
 
 /// Print an instance of a type registered to the AIE dialect.
-void AIEDialect::printType(mlir::Type type,
-                           mlir::DialectAsmPrinter &printer) const {
+void AIEDialect::printType(Type type, DialectAsmPrinter &printer) const {
   if (type.isa<AIEObjectFifoType>()) {
-    AIEObjectFifoType objectFifoType = type.cast<AIEObjectFifoType>();
+    auto objectFifoType = type.cast<AIEObjectFifoType>();
     printer << "objectFifo<";
     printer << objectFifoType.getElementType();
     printer << '>';
 
   } else if (type.isa<AIEObjectFifoSubviewType>()) {
-    AIEObjectFifoSubviewType subviewType =
-        type.cast<AIEObjectFifoSubviewType>();
+    auto subviewType = type.cast<AIEObjectFifoSubviewType>();
     printer << "objectFifoSubview<";
     printer << subviewType.getElementType();
     printer << '>';
@@ -355,8 +347,7 @@ void AIEDialect::initialize() {
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
 }
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 // Check that the operation only contains terminators in
 // TerminatorOpTypes.
@@ -380,18 +371,17 @@ template <typename... TerminatorOpTypes> struct HasSomeTerminator {
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>
-LogicalResult
-xilinx::AIE::HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
+LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
-  const auto &targetModel = xilinx::AIE::getTargetModel(op);
+  const auto &targetModel = getTargetModel(op);
   int bdMax =
       targetModel.getNumBDs(element.getTileID().col, element.getTileID().row);
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
-    if (!block.template getOps<xilinx::AIE::DMABDOp>().empty()) {
+    if (!block.template getOps<DMABDOp>().empty()) {
       if (bdNum >= bdMax) {
-        auto bd = *(block.template getOps<xilinx::AIE::DMABDOp>().begin());
+        auto bd = *(block.template getOps<DMABDOp>().begin());
         return (op->emitOpError("has more than ") << bdMax << " blocks")
             .attachNote(bd.getLoc())
             .append("no space for this bd: ");
@@ -405,15 +395,14 @@ xilinx::AIE::HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid DMA channels.
 template <typename ConcreteType>
-LogicalResult
-xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
+LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
-  DenseSet<xilinx::AIE::DMAChannel> usedChannels;
+  DenseSet<DMAChannel> usedChannels;
   for (auto &bodyOp : element.getBody().getOps()) {
     // check for duplicate DMA channels within the same MemTileDMAOp
-    if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                                         dmaStart.getChannelIndex()};
+    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
+      DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                            dmaStart.getChannelIndex()};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -426,7 +415,7 @@ xilinx::AIE::HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
 }
 
 // ObjectFifoCreateOp
-LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
+LogicalResult ObjectFifoCreateOp::verify() {
   if (isa<ArrayAttr>(getElemNumber())) {
     size_t numDepths = dyn_cast<ArrayAttr>(getElemNumber()).size();
     if (numDepths != (getConsumerTiles().size() + 1)) // +1 for producer depth
@@ -434,7 +423,7 @@ LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
-  if (getProducerTileOp().isShimTile() && getDimensionsToStream().size() > 0) {
+  if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError("`toStream` data layout transformations are not supported "
                      "on shim tile producers");
   }
@@ -442,44 +431,41 @@ LogicalResult xilinx::AIE::ObjectFifoCreateOp::verify() {
   return success();
 }
 
-xilinx::AIE::TileOp xilinx::AIE::ObjectFifoCreateOp::getProducerTileOp() {
-  return cast<xilinx::AIE::TileOp>(getProducerTile().getDefiningOp());
+TileOp ObjectFifoCreateOp::getProducerTileOp() {
+  return cast<TileOp>(getProducerTile().getDefiningOp());
 }
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
-mlir::ParseResult
-parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
-                            mlir::OpAsmParser::UnresolvedOperand &tile,
-                            DimTupleArrayAttr &dimensions) {
+ParseResult parseObjectFifoProducerTile(OpAsmParser &parser,
+                                        OpAsmParser::UnresolvedOperand &tile,
+                                        DimTupleArrayAttr &dimensions) {
   std::vector<DimTupleAttr> emptyDims = {};
   if (parser.parseOperand(tile))
-    return mlir::failure();
-  if (mlir::succeeded(parser.parseOptionalKeyword("toStream"))) {
+    return failure();
+  if (succeeded(parser.parseOptionalKeyword("toStream"))) {
     if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(
             dimensions)) {
-      return mlir::failure();
+      return failure();
     }
   } else {
     dimensions = DimTupleArrayAttr::get(parser.getContext(),
                                         ArrayRef<DimTupleAttr>(emptyDims));
   }
-  return mlir::success();
+  return success();
 }
 
-void printObjectFifoProducerTile(mlir::OpAsmPrinter &_odsPrinter, Operation *op,
+void printObjectFifoProducerTile(OpAsmPrinter &_odsPrinter, Operation *op,
                                  Value operand, DimTupleArrayAttr dimensions) {
   _odsPrinter << operand;
-  if (dimensions && dimensions.size() > 0) {
+  if (!dimensions.empty()) {
     _odsPrinter << " toStream ";
     _odsPrinter.printStrippedAttrOrType(dimensions);
   }
 }
 
-mlir::ParseResult parseObjectFifoConsumerTiles(
-    mlir::OpAsmParser &parser,
-    SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
+ParseResult parseObjectFifoConsumerTiles(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &tiles,
     DimTupleArrayArrayAttr &dimensions) {
   // parseCommaSeparatedList doesn't handle the missing case for "none",
   // so we handle it custom here.
@@ -487,39 +473,39 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
 
   auto parseOneOperand = [&]() -> ParseResult {
     if (parser.parseOperand(tiles.emplace_back(), true)) {
-      return mlir::failure();
+      return failure();
     }
     // By default, create empty dimensions array for each consumer; this way,
     // we can be certain to have as many entries in the dimensions array as
     // there are customer
     DimTupleArrayAttr dimAttr = DimTupleArrayAttr::get(parser.getContext(), {});
 
-    if (mlir::succeeded(parser.parseOptionalKeyword("fromStream"))) {
+    if (succeeded(parser.parseOptionalKeyword("fromStream"))) {
       // If specified, parse actual data layout transform dimensions
       if (parser.parseCustomAttributeWithFallback<DimTupleArrayAttr>(dimAttr)) {
-        return mlir::failure();
+        return failure();
       }
     }
     tileDims.emplace_back(dimAttr);
-    return mlir::success();
+    return success();
   };
 
-  if (parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::None,
+  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::None,
                                      parseOneOperand, " in operand list"))
-    return mlir::failure();
+    return failure();
 
   dimensions = DimTupleArrayArrayAttr::get(parser.getContext(), tileDims);
-  return mlir::success();
+  return success();
 }
 
-void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &odsPrinter, Operation *op,
+void printObjectFifoConsumerTiles(OpAsmPrinter &odsPrinter, Operation *op,
                                   OperandRange tiles,
                                   DimTupleArrayArrayAttr dimsPerTileAttr) {
   size_t tileIdx = 0;
   for (auto tile : tiles) {
     odsPrinter << tile;
     if (dimsPerTileAttr && dimsPerTileAttr.size() == tiles.size() &&
-        dimsPerTileAttr[tileIdx] && dimsPerTileAttr[tileIdx].size() > 0) {
+        dimsPerTileAttr[tileIdx] && !dimsPerTileAttr[tileIdx].empty()) {
       odsPrinter << " fromStream ";
       odsPrinter.printStrippedAttrOrType(dimsPerTileAttr[tileIdx]);
     }
@@ -530,11 +516,10 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &odsPrinter, Operation *op,
   }
 }
 
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 // ObjectFifoLinkOp
-LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
+LogicalResult ObjectFifoLinkOp::verify() {
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
@@ -546,19 +531,18 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   if (isJoin()) {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    AIEObjectFifoType fifoType =
-        fifoOut.getElemType().cast<AIEObjectFifoType>();
-    MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+    auto fifoType = fifoOut.getElemType().cast<AIEObjectFifoType>();
+    auto elemType = fifoType.getElementType().cast<MemRefType>();
     int64_t outputSize = 1;
     for (auto dim : elemType.getShape())
       outputSize *= dim;
 
     int inputSize = 0;
     for (auto fifoIn : getInputObjectFifos()) {
-      AIEObjectFifoType fifo = fifoIn.getElemType().cast<AIEObjectFifoType>();
-      MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+      auto fifo = fifoIn.getElemType().cast<AIEObjectFifoType>();
+      auto elemType = fifo.getElementType().cast<MemRefType>();
       int64_t nextInputSize = 1;
-      for (auto dim : elemType.getShape())
+      for (int64_t dim : elemType.getShape())
         nextInputSize *= dim;
       inputSize += nextInputSize;
     }
@@ -568,39 +552,39 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
 
   } else if (isDistribute()) {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    if (fifoIn.getDimensionsToStream().size() > 0) {
+    if (!fifoIn.getDimensionsToStream().empty()) {
       return emitOpError("currently does not support objectFifos with "
                          "dimensionsToStream.");
     }
     for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-      if (dims.size() > 0)
+      if (!dims.empty())
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsFromStreamPerConsumer.");
     }
 
-    AIEObjectFifoType fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
-    MemRefType elemType = fifoType.getElementType().cast<MemRefType>();
+    auto fifoType = fifoIn.getElemType().cast<AIEObjectFifoType>();
+    auto elemType = fifoType.getElementType().cast<MemRefType>();
     int64_t inputSize = 1;
     for (auto dim : elemType.getShape())
       inputSize *= dim;
 
     int outputSize = 0;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if ((fifoOut.getDimensionsToStream().size() > 0) &&
+      if ((!fifoOut.getDimensionsToStream().empty()) &&
           (fifoOut.getConsumerTiles().size() > 1)) {
         return emitOpError("currently does not support objectFifos with "
                            "dimensionsToStream and multiple consumers.");
       }
       for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
-        if (dims.size() > 0)
+        if (!dims.empty())
           return emitOpError("currently does not support objectFifos with "
                              "dimensionsFromStreamPerConsumer.");
       }
 
-      AIEObjectFifoType fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
-      MemRefType elemType = fifo.getElementType().cast<MemRefType>();
+      auto fifo = fifoOut.getElemType().cast<AIEObjectFifoType>();
+      auto elemType = fifo.getElementType().cast<MemRefType>();
       int64_t nextOutputSize = 1;
-      for (auto dim : elemType.getShape())
+      for (int64_t dim : elemType.getShape())
         nextOutputSize *= dim;
       outputSize += nextOutputSize;
     }
@@ -612,42 +596,40 @@ LogicalResult xilinx::AIE::ObjectFifoLinkOp::verify() {
   return success();
 }
 
-std::optional<Value> xilinx::AIE::ObjectFifoLinkOp::getOptionalSharedTile() {
+std::optional<Value> ObjectFifoLinkOp::getOptionalSharedTile() {
   if (isJoin()) {
     auto fifoOut = getOutputObjectFifos()[0];
     for (auto fifoIn : getInputObjectFifos())
       if (fifoOut.getProducerTile() != fifoIn.getConsumerTiles()[0])
         return {};
     return {fifoOut.getProducerTile()};
+  }
 
-  } else if (isDistribute()) {
+  if (isDistribute()) {
     auto fifoIn = getInputObjectFifos()[0];
     for (auto fifoOut : getOutputObjectFifos())
       if (fifoIn.getConsumerTiles()[0] != fifoOut.getProducerTile())
         return {};
     return {fifoIn.getConsumerTiles()[0]};
-
-  } else {
-    auto fifoIn = getInputObjectFifos();
-    auto fifoOut = getOutputObjectFifos();
-    if (!fifoIn.empty() && !fifoOut.empty())
-      for (auto consumerIn : fifoIn[0].getConsumerTiles())
-        if (consumerIn == fifoOut[0].getProducerTile())
-          return {fifoOut[0].getProducerTile()};
-    return {};
   }
+
+  auto fifoIn = getInputObjectFifos();
+  auto fifoOut = getOutputObjectFifos();
+  if (!fifoIn.empty() && !fifoOut.empty())
+    for (auto consumerIn : fifoIn[0].getConsumerTiles())
+      if (consumerIn == fifoOut[0].getProducerTile())
+        return {fifoOut[0].getProducerTile()};
   return {};
 }
 
-std::vector<xilinx::AIE::ObjectFifoCreateOp>
-xilinx::AIE::ObjectFifoLinkOp::getInputObjectFifos() {
+std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   std::vector<ObjectFifoCreateOp> inputObjFifos;
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        auto st = mlir::SymbolTable::lookupSymbolIn(parent, name);
+        auto st = SymbolTable::lookupSymbolIn(parent, name);
         if (st && isa<ObjectFifoCreateOp>(st))
           inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
@@ -656,15 +638,14 @@ xilinx::AIE::ObjectFifoLinkOp::getInputObjectFifos() {
   return inputObjFifos;
 }
 
-std::vector<xilinx::AIE::ObjectFifoCreateOp>
-xilinx::AIE::ObjectFifoLinkOp::getOutputObjectFifos() {
+std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   std::vector<ObjectFifoCreateOp> outputObjFifos;
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        auto st = mlir::SymbolTable::lookupSymbolIn(parent, name);
+        auto st = SymbolTable::lookupSymbolIn(parent, name);
         if (st && isa<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
@@ -674,33 +655,31 @@ xilinx::AIE::ObjectFifoLinkOp::getOutputObjectFifos() {
 }
 
 // ObjectFifoRegisterExternalBuffersOp
-LogicalResult xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::verify() {
+LogicalResult ObjectFifoRegisterExternalBuffersOp::verify() {
   if (!getTileOp().isShimTile())
     return emitOpError("tile is not a shim tile");
 
   return success();
 }
 
-xilinx::AIE::TileOp
-xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+TileOp ObjectFifoRegisterExternalBuffersOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
 }
 
-xilinx::AIE::ObjectFifoCreateOp
-xilinx::AIE::ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
+ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
       if (st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
-  return ObjectFifoCreateOp();
+  return {};
 }
 
 // ObjectFifoAcquireOp
-LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
+LogicalResult ObjectFifoAcquireOp::verify() {
   if (acqNumber() < 1)
     return emitOpError("must acquire at least one element");
 
@@ -732,21 +711,20 @@ LogicalResult xilinx::AIE::ObjectFifoAcquireOp::verify() {
   return success();
 }
 
-xilinx::AIE::ObjectFifoCreateOp
-xilinx::AIE::ObjectFifoAcquireOp::getObjectFifo() {
+ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
       if (st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
-  return ObjectFifoCreateOp();
+  return {};
 }
 
 // ObjectFifoReleaseOp
-LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
+LogicalResult ObjectFifoReleaseOp::verify() {
   if (relNumber() < 1)
     return emitOpError("must release at least one element");
 
@@ -778,26 +756,25 @@ LogicalResult xilinx::AIE::ObjectFifoReleaseOp::verify() {
   return success();
 }
 
-xilinx::AIE::ObjectFifoCreateOp
-xilinx::AIE::ObjectFifoReleaseOp::getObjectFifo() {
+ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
       if (st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
-  return ObjectFifoCreateOp();
+  return {};
 }
 
 // ObjectFifoSubviewAccessOp
-LogicalResult xilinx::AIE::ObjectFifoSubviewAccessOp::verify() {
+LogicalResult ObjectFifoSubviewAccessOp::verify() {
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  ObjectFifoAcquireOp acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
   if (getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
@@ -806,7 +783,7 @@ LogicalResult xilinx::AIE::ObjectFifoSubviewAccessOp::verify() {
 }
 
 // ObjectFifoRegisterProcessOp
-LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
+LogicalResult ObjectFifoRegisterProcessOp::verify() {
   if (getProcessLength() < 1)
     return emitOpError("process length must be >= 1");
 
@@ -824,20 +801,19 @@ LogicalResult xilinx::AIE::ObjectFifoRegisterProcessOp::verify() {
   return success();
 }
 
-xilinx::AIE::ObjectFifoCreateOp
-xilinx::AIE::ObjectFifoRegisterProcessOp::getObjectFifo() {
+ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      auto st = mlir::SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+      auto st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
       if (st && isa<ObjectFifoCreateOp>(st))
         return dyn_cast<ObjectFifoCreateOp>(st);
     }
   }
-  return ObjectFifoCreateOp();
+  return {};
 }
 
-const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
+const AIETargetModel &DeviceOp::getTargetModel() {
   switch (getDevice()) {
   case AIEDevice::xcvc1902:
     return VC1902model;
@@ -851,9 +827,9 @@ const xilinx::AIE::AIETargetModel &xilinx::AIE::DeviceOp::getTargetModel() {
   return VC1902model;
 }
 
-LogicalResult xilinx::AIE::DeviceOp::verify() { return success(); }
+LogicalResult DeviceOp::verify() { return success(); }
 
-LogicalResult xilinx::AIE::TileOp::verify() {
+LogicalResult TileOp::verify() {
   const auto &targetModel = getTargetModel(*this);
   int columns = targetModel.columns();
   int rows = targetModel.rows();
@@ -871,7 +847,7 @@ LogicalResult xilinx::AIE::TileOp::verify() {
   auto users = getResult().getUsers();
   bool found = false;
   for (auto user : users) {
-    if (llvm::isa<xilinx::AIE::SwitchboxOp>(*user)) {
+    if (llvm::isa<SwitchboxOp>(*user)) {
       if (found)
         return emitOpError("can only have one switchbox");
       found = true;
@@ -881,9 +857,8 @@ LogicalResult xilinx::AIE::TileOp::verify() {
   return success();
 }
 
-bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &targetModel,
-                              xilinx::AIE::MasterSetOp masterOp,
-                              xilinx::AIE::PacketRulesOp slaveOp) {
+bool isLegalMemtileConnection(const AIETargetModel &targetModel,
+                              MasterSetOp masterOp, PacketRulesOp slaveOp) {
   auto srcBundle = masterOp.destPort().bundle;
   auto srcChan = masterOp.destPort().channel;
   auto dstBundle = slaveOp.sourcePort().bundle;
@@ -892,8 +867,8 @@ bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &targetModel,
                                               dstChan);
 }
 
-bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &targetModel,
-                              xilinx::AIE::ConnectOp connectOp) {
+bool isLegalMemtileConnection(const AIETargetModel &targetModel,
+                              ConnectOp connectOp) {
   auto srcBundle = connectOp.getSourceBundle();
   auto srcChan = connectOp.getSourceChannel();
   auto dstBundle = connectOp.getDestBundle();
@@ -902,10 +877,10 @@ bool isLegalMemtileConnection(const xilinx::AIE::AIETargetModel &targetModel,
                                               dstChan);
 }
 
-LogicalResult xilinx::AIE::SwitchboxOp::verify() {
+LogicalResult SwitchboxOp::verify() {
   Region &body = getConnections();
-  DenseSet<xilinx::AIE::Port> sourceset;
-  DenseSet<xilinx::AIE::Port> destset;
+  DenseSet<Port> sourceset;
+  DenseSet<Port> destset;
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(tile);
   if (body.empty())
@@ -928,16 +903,14 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
       return success();
     };
 
-    if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
-      xilinx::AIE::Port source = {connectOp.getSourceBundle(),
-                                  connectOp.sourceIndex()};
+    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+      Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
       sourceset.insert(source);
 
-      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
-                                connectOp.destIndex()};
+      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest))
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << dest.channel
+               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
                << " as another connect operation";
       destset.insert(dest);
 
@@ -964,21 +937,20 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
             "illegal memtile stream switch connection");
 
       // Trace stream switch connection constraints
-      if (connectOp.getDestBundle() == xilinx::AIE::WireBundle::Trace)
+      if (connectOp.getDestBundle() == WireBundle::Trace)
         return connectOp.emitOpError("Trace port cannot be a destination");
 
-      if (connectOp.getSourceBundle() == xilinx::AIE::WireBundle::Trace &&
+      if (connectOp.getSourceBundle() == WireBundle::Trace &&
           !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
                                           connectOp.getDestBundle(),
                                           connectOp.getDestChannel()))
         return connectOp.emitOpError("illegal Trace destination");
 
-    } else if (auto connectOp = dyn_cast<xilinx::AIE::MasterSetOp>(ops)) {
-      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
-                                connectOp.destIndex()};
+    } else if (auto connectOp = dyn_cast<MasterSetOp>(ops)) {
+      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest))
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << dest.channel
+               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
                << " as another connect or masterset operation";
       destset.insert(dest);
 
@@ -992,38 +964,36 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
 
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
-        auto amsel = dyn_cast<xilinx::AIE::AMSelOp>(val.getDefiningOp());
+        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
         if ((arbiter != -1) && (arbiter != amsel.arbiterIndex()))
           return connectOp.emitOpError(
               "a master port can only be tied to one arbiter");
         arbiter = amsel.arbiterIndex();
       }
-    } else if (auto connectOp = dyn_cast<xilinx::AIE::PacketRulesOp>(ops)) {
-      xilinx::AIE::Port source = {connectOp.getSourceBundle(),
-                                  connectOp.sourceIndex()};
+    } else if (auto connectOp = dyn_cast<PacketRulesOp>(ops)) {
+      Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
       if (sourceset.count(source))
         return connectOp.emitOpError("packet switched source ")
                << stringifyWireBundle(source.bundle) << source.channel
                << " cannot match another connect or masterset operation";
       sourceset.insert(source);
 
-    } else if (auto amselOp = dyn_cast<xilinx::AIE::AMSelOp>(ops)) {
-      std::vector<xilinx::AIE::MasterSetOp> mstrs;
-      std::vector<xilinx::AIE::PacketRulesOp> slvs;
+    } else if (auto amselOp = dyn_cast<AMSelOp>(ops)) {
+      std::vector<MasterSetOp> mstrs;
+      std::vector<PacketRulesOp> slvs;
       for (auto user : amselOp.getResult().getUsers()) {
-        if (auto s = dyn_cast<xilinx::AIE::PacketRuleOp>(user)) {
-          auto pktRules =
-              dyn_cast<xilinx::AIE::PacketRulesOp>(s->getParentOp());
+        if (auto s = dyn_cast<PacketRuleOp>(user)) {
+          auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
           slvs.push_back(pktRules);
-        } else if (auto m = dyn_cast<xilinx::AIE::MasterSetOp>(user))
+        } else if (auto m = dyn_cast<MasterSetOp>(user))
           mstrs.push_back(m);
       }
       for (auto m : mstrs) {
         // Trace stream switch connection constraints
-        if (m.destPort().bundle == xilinx::AIE::WireBundle::Trace)
+        if (m.destPort().bundle == WireBundle::Trace)
           return connectOp.emitOpError("Trace port cannot be a destination");
         for (auto s : slvs) {
-          if (s.sourcePort().bundle == xilinx::AIE::WireBundle::Trace &&
+          if (s.sourcePort().bundle == WireBundle::Trace &&
               !targetModel.isValidTraceMaster(tile.getCol(), tile.getRow(),
                                               m.destPort().bundle,
                                               m.destPort().channel))
@@ -1035,8 +1005,8 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
                 "illegal memtile stream switch connection");
         }
       }
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-      continue;
+    } else if (isa<EndOp>(ops)) {
+      // continue;
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -1045,23 +1015,22 @@ LogicalResult xilinx::AIE::SwitchboxOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
+LogicalResult ShimSwitchboxOp::verify() {
   Region &body = getConnections();
-  DenseSet<xilinx::AIE::Port> destset;
+  DenseSet<Port> destset;
   if (body.empty())
     return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
-    if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
-      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
-                                connectOp.destIndex()};
+    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest))
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << dest.channel
+               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
                << " as another connect operation";
       destset.insert(dest);
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-      continue;
+    } else if (isa<EndOp>(ops)) {
+      // continue;
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -1070,23 +1039,22 @@ LogicalResult xilinx::AIE::ShimSwitchboxOp::verify() {
   return success();
 }
 
-LogicalResult xilinx::AIE::ShimMuxOp::verify() {
+LogicalResult ShimMuxOp::verify() {
   Region &body = getConnections();
-  DenseSet<xilinx::AIE::Port> destset;
+  DenseSet<Port> destset;
   if (body.empty())
     return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
-    if (auto connectOp = dyn_cast<xilinx::AIE::ConnectOp>(ops)) {
-      xilinx::AIE::Port dest = {connectOp.getDestBundle(),
-                                connectOp.destIndex()};
+    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
+      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
       if (destset.count(dest))
         return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << dest.channel
+               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
                << " as another connect operation";
       destset.insert(dest);
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-      continue;
+    } else if (isa<EndOp>(ops)) {
+      // continue;
     } else {
       return ops.emitOpError("cannot be contained in a Switchbox op");
     }
@@ -1094,80 +1062,73 @@ LogicalResult xilinx::AIE::ShimMuxOp::verify() {
   return success();
 }
 
-int xilinx::AIE::ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
+int ShimMuxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumSourceShimMuxConnections(tile.getCol(),
                                                     tile.getRow(), bundle);
 }
 
-int xilinx::AIE::ShimMuxOp::getNumDestConnections(WireBundle bundle) {
+int ShimMuxOp::getNumDestConnections(WireBundle bundle) {
   auto tile = getTileOp();
   const auto &targetModel = getTargetModel(*this);
   return targetModel.getNumDestShimMuxConnections(tile.getCol(), tile.getRow(),
                                                   bundle);
 }
 
-xilinx::AIE::TileOp xilinx::AIE::ShimMuxOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+TileOp ShimMuxOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
+int ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
+int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 // ShimDMAOp
-LogicalResult xilinx::AIE::ShimDMAOp::verify() {
+LogicalResult ShimDMAOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
 
   if (!getTileOp().isShimNOCTile())
     return emitOpError("must be in a ShimTile with a NOC connection");
 
-  if (HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
-                        xilinx::AIE::EndOp>::verifyTrait(*this)
+  if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
 
   return success();
 }
 
-xilinx::AIE::TileOp xilinx::AIE::ShimDMAOp::getTileOp() {
+TileOp ShimDMAOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
+int ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+int ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
-LogicalResult xilinx::AIE::PacketRulesOp::verify() {
+LogicalResult PacketRulesOp::verify() {
   Region &body = getRules();
   if (body.empty())
     return emitOpError("should have non-empty body");
   return success();
 }
 
-LogicalResult xilinx::AIE::PacketFlowOp::verify() {
+LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
   if (body.empty())
     return emitOpError("should have non-empty body");
 
   for (auto &ops : body.front()) {
-    if (auto Op = dyn_cast<xilinx::AIE::PacketSourceOp>(ops)) {
-    } else if (auto Op = dyn_cast<xilinx::AIE::PacketDestOp>(ops)) {
-      continue;
-    } else if (auto endswitchOp = dyn_cast<xilinx::AIE::EndOp>(ops)) {
-      continue;
-    } else {
+    if (!isa<PacketSourceOp, PacketDestOp, EndOp>(ops))
       return ops.emitOpError("cannot be contained in a PacketFlow op");
-    }
   }
 
   return success();
 }
 
 // CoreOp
-LogicalResult xilinx::AIE::CoreOp::verify() {
+LogicalResult CoreOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
   if (getTileOp().isShimTile())
@@ -1177,25 +1138,21 @@ LogicalResult xilinx::AIE::CoreOp::verify() {
   return success();
 }
 
-int xilinx::AIE::CoreOp::colIndex() { return getTileOp().colIndex(); }
+int CoreOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::CoreOp::rowIndex() { return getTileOp().rowIndex(); }
+int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
-xilinx::AIE::TileOp xilinx::AIE::CoreOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
-}
+TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 // BufferOp
-int64_t xilinx::AIE::BufferOp::getAllocationSize() {
-  MemRefType type = getType().cast<MemRefType>();
+int64_t BufferOp::getAllocationSize() {
+  auto type = getType().cast<MemRefType>();
   return type.getNumElements() * type.getElementTypeBitWidth() / 8;
 }
 
-xilinx::AIE::TileOp xilinx::AIE::BufferOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
-}
+TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
-LogicalResult xilinx::AIE::BufferOp::verify() {
+LogicalResult BufferOp::verify() {
   if (UsesAreAccessable::verifyTrait(*this).failed())
     return failure();
   return success();
@@ -1232,22 +1189,21 @@ void xilinx::AIE::collectBuffers(
 }
 
 // MemOp
-LogicalResult xilinx::AIE::MemOp::verify() {
+LogicalResult MemOp::verify() {
   Region &body = getBody();
-  DenseSet<xilinx::AIE::DMAChannel> usedChannels;
+  DenseSet<DMAChannel> usedChannels;
   if (body.empty())
     return emitOpError("should have non-empty body");
 
-  if (HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
-                        xilinx::AIE::EndOp>::verifyTrait(*this)
+  if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
 
   for (auto &bodyOp : body.getOps()) {
     // check for duplicate DMA channels within the same MemOp
-    if (auto dmaStart = dyn_cast<xilinx::AIE::DMAStartOp>(bodyOp)) {
-      xilinx::AIE::DMAChannel dmaChan = {dmaStart.getChannelDir(),
-                                         dmaStart.getChannelIndex()};
+    if (auto dmaStart = dyn_cast<DMAStartOp>(bodyOp)) {
+      DMAChannel dmaChan = {dmaStart.getChannelDir(),
+                            dmaStart.getChannelIndex()};
       if (usedChannels.count(dmaChan))
         return dmaStart.emitOpError()
                << "duplicate DMA channel "
@@ -1265,27 +1221,24 @@ LogicalResult xilinx::AIE::MemOp::verify() {
   return success();
 }
 
-xilinx::AIE::TileOp xilinx::AIE::MemOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
-}
+TileOp MemOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
-int xilinx::AIE::MemOp::colIndex() { return getTileOp().colIndex(); }
+int MemOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::MemOp::rowIndex() { return getTileOp().rowIndex(); }
+int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
 /// function.
-Region *xilinx::AIE::MemOp::getCallableRegion() { return &(getBody()); }
+Region *MemOp::getCallableRegion() { return &(getBody()); }
 
 // MemTileDMAOp
-LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
+LogicalResult MemTileDMAOp::verify() {
   assert(getOperation()->getNumRegions() == 1 &&
          "MemTileDMAOp has zero region!");
   assert(!getBody().empty() && "MemTileDMAOp should have non-empty body");
 
-  if (HasSomeTerminator<xilinx::AIE::DMAStartOp, xilinx::AIE::NextBDOp,
-                        xilinx::AIE::EndOp>::verifyTrait(*this)
+  if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
 
@@ -1320,7 +1273,7 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
           }
         }
         for (auto b : reachable) {
-          for (auto bd : b->getOps<xilinx::AIE::DMABDOp>()) {
+          for (auto bd : b->getOps<DMABDOp>()) {
             auto bufferOp = bd.getBufferOp();
             if (bufferOp.getTileOp().colIndex() != colIndex() ||
                 bufferOp.getTileOp().rowIndex() != rowIndex()) {
@@ -1334,7 +1287,7 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
               return err;
             }
           }
-          for (auto useLock : b->getOps<xilinx::AIE::UseLockOp>()) {
+          for (auto useLock : b->getOps<UseLockOp>()) {
             auto lockOp = useLock.getLockOp();
             if (lockOp.getTileOp().colIndex() != colIndex() ||
                 lockOp.getTileOp().rowIndex() != rowIndex()) {
@@ -1357,12 +1310,12 @@ LogicalResult xilinx::AIE::MemTileDMAOp::verify() {
 }
 
 // DMABDOp
-xilinx::AIE::BufferOp xilinx::AIE::DMABDOp::getBufferOp() {
-  return cast<xilinx::AIE::BufferOp>(getBuffer().getDefiningOp());
+BufferOp DMABDOp::getBufferOp() {
+  return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
-LogicalResult xilinx::AIE::DMABDOp::verify() {
-  if (auto memOp = getOperation()->getParentOfType<xilinx::AIE::MemOp>()) {
+LogicalResult DMABDOp::verify() {
+  if (auto memOp = getOperation()->getParentOfType<MemOp>()) {
     auto bufferOp = getBufferOp();
     if (bufferOp.getTileOp().colIndex() != memOp.colIndex() ||
         bufferOp.getTileOp().rowIndex() != memOp.rowIndex())
@@ -1371,7 +1324,7 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
 
   // The following checks only apply if non-default strides/wraps are defined.
   if (getDimensions()) {
-    mlir::MemRefType buffer = getBuffer().getType();
+    MemRefType buffer = getBuffer().getType();
     // We are not restrictive about the type of the memref used as the input
     // to the DMABD when used with multi-dimensional strides/wraps. Since the
     // BD will use the memref as a base address and copy from it in 32 bit
@@ -1382,9 +1335,9 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
     for (int64_t memrefDim : buffer.getShape())
       memrefSize *= 4 * memrefDim;
 
-    llvm::ArrayRef<xilinx::AIE::DimTupleAttr> dims = *getDimensions();
+    llvm::ArrayRef<DimTupleAttr> dims = *getDimensions();
     size_t maxNDims = 3;
-    if (isa_and_nonnull<xilinx::AIE::MemTileDMAOp>((*this)->getParentOp())) {
+    if (isa_and_nonnull<MemTileDMAOp>((*this)->getParentOp())) {
       maxNDims = 4;
     }
     if (dims.size() > maxNDims) {
@@ -1394,7 +1347,7 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
                               " tile (got "
                            << std::to_string(dims.size()) << " dimensions).";
     }
-    for (xilinx::AIE::DimTupleAttr dim : dims) {
+    for (DimTupleAttr dim : dims) {
       maxIdx += dim.getStepsize() * (dim.getWrap() - 1);
       if (0 == dim.getStepsize()) {
         return emitOpError()
@@ -1424,27 +1377,27 @@ LogicalResult xilinx::AIE::DMABDOp::verify() {
   return success();
 }
 
-xilinx::AIE::TileOp xilinx::AIE::MemTileDMAOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+TileOp MemTileDMAOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
+int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
+int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 /// Returns the region on the current operation that is callable. This may
 /// return nullptr in the case of an external callable object, e.g. an external
 /// function.
-Region *xilinx::AIE::MemTileDMAOp::getCallableRegion() { return &(getBody()); }
+Region *MemTileDMAOp::getCallableRegion() { return &(getBody()); }
 
 // SwitchboxOp
-xilinx::AIE::TileOp xilinx::AIE::SwitchboxOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
+TileOp SwitchboxOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int xilinx::AIE::SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
+int SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
+int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 
 template <typename... ParentOpTypes> struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
@@ -1458,21 +1411,19 @@ template <typename... ParentOpTypes> struct HasSomeParent {
   }
 };
 
-xilinx::AIE::TileOp xilinx::AIE::LockOp::getTileOp() {
-  return cast<xilinx::AIE::TileOp>(getTile().getDefiningOp());
-}
+TileOp LockOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
-int xilinx::AIE::LockOp::colIndex() { return getTileOp().colIndex(); }
+int LockOp::colIndex() { return getTileOp().colIndex(); }
 
-int xilinx::AIE::LockOp::rowIndex() { return getTileOp().rowIndex(); }
+int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
-LogicalResult xilinx::AIE::LockOp::verify() {
+LogicalResult LockOp::verify() {
   auto result = UsesAreAccessable::verifyTrait(*this);
   if (result.failed())
     return result;
 
   if (getLockID().has_value()) {
-    const auto &targetModel = xilinx::AIE::getTargetModel(getTileOp());
+    const auto &targetModel = getTargetModel(getTileOp());
     auto tileOp = getTileOp();
     int numLocks = targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow());
     if (getLockID().value() >= numLocks)
@@ -1487,8 +1438,8 @@ struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
     auto block = op->getBlock();
     int lockID = -1;
-    for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
-      auto lock = dyn_cast<xilinx::AIE::LockOp>(op.getLock().getDefiningOp());
+    for (auto op : block->getOps<UseLockOp>()) {
+      auto lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
       if (lock.getLockID().has_value()) {
         if (lockID != -1 && lockID != lock.getLockIDValue())
           return failure();
@@ -1503,7 +1454,7 @@ struct AcquireReleaseOneStateInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
     auto block = op->getBlock();
     int acqValue = -1, relValue = -1;
-    for (auto op : block->getOps<xilinx::AIE::UseLockOp>()) {
+    for (auto op : block->getOps<UseLockOp>()) {
       if (op.acquire() || op.acquireGE()) {
         if (acqValue != -1 && acqValue != op.getLockValue()) {
           return failure();
@@ -1522,8 +1473,8 @@ struct AcquireReleaseOneStateInDMABlock {
 
 struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
-    if (auto memOp = op->getParentOfType<xilinx::AIE::MemOp>()) {
-      auto useLock = dyn_cast<xilinx::AIE::UseLockOp>(op);
+    if (auto memOp = op->getParentOfType<MemOp>()) {
+      auto useLock = dyn_cast<UseLockOp>(op);
       auto lock = useLock.getLockOp();
       if (lock.getTileOp().colIndex() != memOp.colIndex() ||
           lock.getTileOp().rowIndex() != memOp.rowIndex())
@@ -1533,25 +1484,23 @@ struct AccessesLocalLocks {
   }
 };
 
-LogicalResult xilinx::AIE::UseLockOp::verify() {
+LogicalResult UseLockOp::verify() {
   // AIE.useLock cannot be used at the top level
-  if (llvm::isa_and_nonnull<xilinx::AIE::DeviceOp, mlir::ModuleOp>(
-          (*this)->getParentOp()))
+  if (llvm::isa_and_nonnull<DeviceOp, ModuleOp>((*this)->getParentOp()))
     return (*this)->emitOpError("must be used in a core or memory operation.");
 
   const auto &targetModel = getTargetModel(*this);
-  if (targetModel.getTargetArch() == xilinx::AIE::AIEArch::AIE1 && acquireGE())
+  if (targetModel.getTargetArch() == AIEArch::AIE1 && acquireGE())
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
 
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or ShimDMAOp,
-  if (HasSomeParent<xilinx::AIE::MemOp, xilinx::AIE::MemTileDMAOp,
-                    xilinx::AIE::ShimDMAOp>::verifyTrait(*this)
+  if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
           .succeeded()) {
     if (!(*this)->getBlock())
       return (*this)->emitOpError("is not in a block.");
 
-    if (targetModel.getTargetArch() == xilinx::AIE::AIEArch::AIE1 &&
+    if (targetModel.getTargetArch() == AIEArch::AIE1 &&
         UsesOneLockInDMABlock::verifyTrait(*this).failed())
       return (*this)->emitOpError(
           "used in a DMA block that have multiple locks.");
@@ -1560,14 +1509,13 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
       return (*this)->emitOpError(
           "acquires/releases the lock in a DMA block from/to multiple states.");
 
-    if (HasSomeParent<xilinx::AIE::MemOp>::verifyTrait(*this).succeeded() &&
+    if (HasSomeParent<MemOp>::verifyTrait(*this).succeeded() &&
         AccessesLocalLocks::verifyTrait(*this).failed())
       return (*this)->emitOpError("can only access a lock in the same tile");
     return success();
 
     // Or it can be in a CoreOp, or some FuncOp called from a CoreOp
-  } else if (HasSomeParent<xilinx::AIE::CoreOp, func::FuncOp>::verifyTrait(
-                 *this)
+  } else if (HasSomeParent<CoreOp, func::FuncOp>::verifyTrait(*this)
                  .succeeded()) {
     return success();
 
@@ -1584,8 +1532,7 @@ LogicalResult xilinx::AIE::UseLockOp::verify() {
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
 
-namespace xilinx {
-namespace AIE {
+namespace xilinx::AIE {
 
 int SwitchboxOp::getNumSourceConnections(WireBundle bundle) {
   auto tile = getTileOp();
@@ -1604,31 +1551,33 @@ int SwitchboxOp::getNumDestConnections(WireBundle bundle) {
 int TileOp::getNumSourceConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
+  // Note dest is correct here, since direction is reversed.
+  {
     // Note dest is correct here, since direction is reversed.
     if (targetModel.isShimNOCTile(getCol(), getRow()) ||
         targetModel.isShimPLTile(getCol(), getRow()))
       return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
                                                       bundle);
-    else
-      return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
-                                                        bundle);
-  else
-    return 0;
+    return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
+                                                      bundle);
+  }
+  return 0;
 }
 
 int TileOp::getNumDestConnections(WireBundle bundle) {
   const auto &targetModel = getTargetModel(*this);
   if (bundle == WireBundle::Core || bundle == WireBundle::DMA)
+  // Note source is correct here, since direction is reversed.
+  {
     // Note source is correct here, since direction is reversed.
     if (targetModel.isShimNOCTile(getCol(), getRow()) ||
         targetModel.isShimPLTile(getCol(), getRow()))
       return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
                                                       bundle);
-    else
-      return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
-                                                          bundle);
-  else
-    return 0;
+    return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
+                                                        bundle);
+  }
+  return 0;
 }
 
 bool TileOp::isMemTile() {
@@ -1650,8 +1599,7 @@ bool TileOp::isShimNOCorPLTile() {
   const auto &targetModel = getTargetModel(*this);
   return targetModel.isShimNOCorPLTile(getCol(), getRow());
 }
-} // namespace AIE
-} // namespace xilinx
+} // namespace xilinx::AIE
 
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
