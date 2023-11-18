@@ -8,7 +8,7 @@ from functools import wraps
 
 from ._AIE_enum_gen import *
 from ._AIE_ops_gen import *
-from .._mlir_libs._aieMlir import *
+from .._mlir_libs._aie import *
 from ..dialects import arith
 from ..dialects import memref
 from ..dialects.func import *

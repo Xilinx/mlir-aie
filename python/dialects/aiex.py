@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from ._AIEX_ops_gen import *
-from .._mlir_libs._aieMlir import *
+from .._mlir_libs._aie import *
 from ..ir import *
 from ..dialects import arith
 

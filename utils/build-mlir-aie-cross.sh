@@ -38,6 +38,7 @@ INSTALL_DIR=${4:-"install-aarch64"}
 
 BUILD_DIR=`realpath ${BUILD_DIR}`
 INSTALL_DIR=`realpath ${INSTALL_DIR}`
+LLVM_ENABLE_RTTI=${LLVM_ENABLE_RTTI:OFF}
 
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
@@ -52,8 +53,13 @@ CMAKE_CONFIGS="\
     -DArch=arm64 \
     -DLLVM_DIR=${LLVM_BUILD_DIR}/lib/cmake/llvm \
     -DMLIR_DIR=${LLVM_BUILD_DIR}/lib/cmake/mlir \
+    -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+    -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+    -DCMAKE_C_VISIBILITY_PRESET=hidden \
+    -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
     -Wno-dev"
 
 if [ -x "$(command -v lld)" ]; then

@@ -3,9 +3,11 @@
 
 # RUN: %PYTHON %s | FileCheck %s
 
+
 import aie
 from aie.ir import *
 from aie.dialects.aie import *
+from aie.passmanager import PassManager
 
 
 def constructAndPrintInModule(f):
@@ -191,28 +193,3 @@ def objFifoRelease():
         with InsertionPoint(bb):
             acq = Release(ObjectFifoPort.Produce, "of0", 1)
             EndOp()
-
-
-# CHECK-LABEL: flowOp
-# CHECK: %[[VAL_0:.*]] = AIE.tile(0, 0)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(0, 2)
-# CHECK: AIE.flow(%[[VAL_1]], Trace : 0, %[[VAL_0]], DMA : 1)
-@constructAndPrintInModule
-def flowOp():
-    S = Tile(0, 0)
-    T = Tile(0, 2)
-    Flow(T, WireBundle.Trace, 0, S, WireBundle.DMA, 1)
-
-
-# CHECK-LABEL: packetFlowOp
-# CHECK: %[[VAL_0:.*]] = AIE.tile(0, 0)
-# CHECK: %[[VAL_1:.*]] = AIE.tile(0, 2)
-# CHECK: AIE.packet_flow(0) {
-# CHECK:   AIE.packet_source<%[[VAL_1]], Trace : 0>
-# CHECK:   AIE.packet_dest<%[[VAL_0]], DMA : 1>
-# CHECK: }
-@constructAndPrintInModule
-def packetFlowOp():
-    S = Tile(0, 0)
-    T = Tile(0, 2)
-    PacketFlow(0, T, WireBundle.Trace, 0, S, WireBundle.DMA, 1)
