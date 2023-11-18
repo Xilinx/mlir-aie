@@ -21,122 +21,57 @@ using namespace xilinx::AIE;
 
 namespace py = pybind11;
 
+//    ┌─────┐   ┌─────┐
+//    │ 1,0 ├   ┤ 1,1 │
+//    │     │   │     │
+//    └─────┘   └─────┘
+//
+//    ┌─────┐   ┌─────┐
+//    │ 0,0 │   │ 0,1 │
+//    │     │   │     │
+//    └─────┘   └─────┘
+
 class PythonPathFinder : public Pathfinder {
 public:
-  PythonPathFinder(py::function func) : func(std::move(func)) {}
+  PythonPathFinder(py::function findPathsPythonFunc)
+      : findPathsPythonFunc(std::move(findPathsPythonFunc)) {}
 
-  void initialize(int maxCol, int maxRow,
-                  const AIETargetModel &targetModel) override {
-    for (int col = 0; col <= maxCol; col++) {
-      for (int row = 0; row <= maxRow; row++) {
-        (void)grid.insert({{col, row}, Switchbox{col, row}});
-        Switchbox &thisNode = grid.at({col, row});
-        if (row > 0) { // if not in row 0 add channel to North/South
-          Switchbox &southernNeighbor = grid.at({col, row - 1});
-          if (uint32_t maxCapacity =
-                  targetModel.getNumSourceSwitchboxConnections(
-                      col, row, WireBundle::South)) {
-            edges.emplace_back(southernNeighbor, thisNode, WireBundle::North,
-                               maxCapacity);
-          }
-          if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
-                  col, row, WireBundle::South)) {
-            edges.emplace_back(thisNode, southernNeighbor, WireBundle::South,
-                               maxCapacity);
-          }
-        }
-
-        if (col > 0) { // if not in col 0 add channel to East/West
-          Switchbox &westernNeighbor = grid.at({col - 1, row});
-          if (uint32_t maxCapacity =
-                  targetModel.getNumSourceSwitchboxConnections(
-                      col, row, WireBundle::West)) {
-            edges.emplace_back(westernNeighbor, thisNode, WireBundle::East,
-                               maxCapacity);
-          }
-          if (uint32_t maxCapacity = targetModel.getNumDestSwitchboxConnections(
-                  col, row, WireBundle::West)) {
-            edges.emplace_back(thisNode, westernNeighbor, WireBundle::West,
-                               maxCapacity);
-          }
-        }
-      }
-    }
+  void initialize(int maxCol_, int maxRow_,
+                  const AIETargetModel &targetModel_) override {
+    maxCol = maxCol_;
+    maxRow = maxRow_;
+    targetModel = &targetModel_;
   }
 
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                Port dstPort) override {
-    // check if a flow with this source already exists
-    for (auto &flow : flows) {
-      Switchbox *existingSrc = flow.src.sb;
-      assert(existingSrc && "nullptr flow source");
-      Port existingPort = flow.src.port;
-      if (existingSrc->col == srcCoords.col &&
-          existingSrc->row == srcCoords.row && existingPort == srcPort) {
-        // find the vertex corresponding to the destination
-        auto matchingSb =
-            std::find_if(grid.cbegin(), grid.cend(),
-                         [&](const std::pair<TileID, Switchbox> &item) {
-                           return item.second == dstCoords;
-                         });
-        assert(matchingSb != grid.cend() && "didn't find flow dest");
-        flow.dsts.push_back({&grid.at(matchingSb->first), dstPort});
-        return;
-      }
-    }
-
-    // If no existing flow was found with this source, create a new flow.
-    auto matchingSrcSb =
-        std::find_if(grid.cbegin(), grid.cend(),
-                     [&](const std::pair<TileID, Switchbox> &item) {
-                       return item.second == srcCoords;
-                     });
-    assert(matchingSrcSb != grid.cend() && "didn't find flow source");
-    auto matchingDstSb =
-        std::find_if(grid.cbegin(), grid.cend(),
-                     [&](const std::pair<TileID, Switchbox> &item) {
-                       return item.second == dstCoords;
-                     });
-    assert(matchingDstSb != grid.cend() && "didn't add flow destinations");
-    flows.push_back(
-        {PathEndPoint{&grid.at(matchingSrcSb->first), srcPort},
-         std::vector<PathEndPoint>{{&grid.at(matchingDstSb->first), dstPort}}});
+    flows.emplace_back(PathEndPoint{{srcCoords.col, srcCoords.row}, srcPort},
+                       PathEndPoint{{dstCoords.col, dstCoords.row}, dstPort});
   }
 
   bool addFixedConnection(TileID coords, Port port) override {
-    // find the correct Channel and indicate the fixed direction
-    auto matchingCh =
-        std::find_if(edges.begin(), edges.end(), [&](const Channel &ch) {
-          return ch.src == coords && ch.bundle == port.bundle;
-        });
-    if (matchingCh == edges.end())
-      return false;
+    fixedConnections.emplace_back(coords, port);
+    // TODO(max): not implemented.
+    return false;
+  }
 
-    matchingCh->fixedCapacity.insert(port.channel);
+  bool isLegal() override {
+    // TODO(max): not implemented.
     return true;
   }
 
-  bool isLegal() override {}
-
   std::map<PathEndPoint, SwitchSettings>
   findPaths(const int maxIterations) override {
-    func(grid, edges, flows);
+    return findPathsPythonFunc(maxCol, maxRow, targetModel, flows,
+                               fixedConnections)
+        .cast<std::map<PathEndPoint, SwitchSettings>>();
   }
 
-  Switchbox *getSwitchbox(TileID coords) override {
-    auto matchingItem =
-        std::find_if(grid.cbegin(), grid.cend(),
-                     [&](const std::pair<TileID, Switchbox> &item) {
-                       return item.second == coords;
-                     });
-    assert(matchingItem != grid.cend() && "couldn't find sb");
-    return &grid.at(matchingItem->first);
-  }
-
-  std::map<TileID, Switchbox> grid;
-  std::list<Channel> edges;
-  std::vector<Flow> flows;
-  py::function func;
+  const AIETargetModel *targetModel;
+  int maxCol, maxRow;
+  std::vector<std::tuple<PathEndPoint, PathEndPoint>> flows;
+  std::vector<std::tuple<TileID, Port>> fixedConnections;
+  py::function findPathsPythonFunc;
 };
 
 struct PathfinderFlowsWithPython : public AIEPathfinderPass {
@@ -148,21 +83,26 @@ struct PathfinderFlowsWithPython : public AIEPathfinderPass {
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-createPathfinderFlowsWithPythonPassWithFunc(py::function func) {
-  return std::make_unique<PathfinderFlowsWithPython>(
-      DynamicTileAnalysis(std::make_shared<PythonPathFinder>(std::move(func))));
+createPathfinderFlowsWithPythonPassWithFunc(py::function findPathsPythonFunc) {
+  return std::make_unique<PathfinderFlowsWithPython>(DynamicTileAnalysis(
+      std::make_shared<PythonPathFinder>(std::move(findPathsPythonFunc))));
 }
 
-void registerPathfinderFlowsWithPythonPassWithFunc(const py::function &func) {
-  registerPass(
-      [func]() { return createPathfinderFlowsWithPythonPassWithFunc(func); });
+void registerPathfinderFlowsWithPythonPassWithFunc(
+    const py::function &findPathsPythonFunc) {
+  registerPass([findPathsPythonFunc]() {
+    return createPathfinderFlowsWithPythonPassWithFunc(findPathsPythonFunc);
+  });
 }
 
 PYBIND11_MODULE(_aie_python_passes, m) {
 
   bindTypes(m);
 
-  m.def("register_pathfinder_flows_with_python", [](const py::function &func) {
-    registerPathfinderFlowsWithPythonPassWithFunc(func);
-  });
+  m.def("register_pathfinder_flows_with_python",
+        [](const py::function &findPathsPythonFunc) {
+          registerPathfinderFlowsWithPythonPassWithFunc(findPathsPythonFunc);
+        });
+
+  m.def("get_connecting_bundle", &getConnectingBundle);
 }
