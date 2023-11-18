@@ -23,28 +23,29 @@ namespace py = pybind11;
 
 //    ┌─────┐   ┌─────┐
 //    │ 1,0 ├   ┤ 1,1 │
-//    │     │   │     │
+//    │     │ N │     │
 //    └─────┘   └─────┘
-//
+//       W         E
 //    ┌─────┐   ┌─────┐
-//    │ 0,0 │   │ 0,1 │
+//    │ 0,0 │ S │ 0,1 │
 //    │     │   │     │
 //    └─────┘   └─────┘
 
 class PythonPathFinder : public Pathfinder {
 public:
-  PythonPathFinder(py::function findPathsPythonFunc)
-      : findPathsPythonFunc(std::move(findPathsPythonFunc)) {}
+  explicit PythonPathFinder(py::function findPathsPythonFunc)
+      : targetModel(nullptr), maxCol(0), maxRow(0),
+        findPathsPythonFunc(std::move(findPathsPythonFunc)) {}
 
-  void initialize(int maxCol_, int maxRow_,
+  void initialize(const int maxCol_, const int maxRow_,
                   const AIETargetModel &targetModel_) override {
     maxCol = maxCol_;
     maxRow = maxRow_;
     targetModel = &targetModel_;
   }
 
-  void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-               Port dstPort) override {
+  void addFlow(TileID srcCoords, const Port srcPort, TileID dstCoords,
+               const Port dstPort) override {
     flows.emplace_back(PathEndPoint{{srcCoords.col, srcCoords.row}, srcPort},
                        PathEndPoint{{dstCoords.col, dstCoords.row}, dstPort});
   }
@@ -62,9 +63,10 @@ public:
 
   std::map<PathEndPoint, SwitchSettings>
   findPaths(const int maxIterations) override {
-    return findPathsPythonFunc(maxCol, maxRow, targetModel, flows,
-                               fixedConnections)
-        .cast<std::map<PathEndPoint, SwitchSettings>>();
+    auto routingSolution = findPathsPythonFunc(maxCol, maxRow, targetModel,
+                                               flows, fixedConnections)
+                               .cast<std::map<PathEndPoint, SwitchSettings>>();
+    return routingSolution;
   }
 
   const AIETargetModel *targetModel;
@@ -74,7 +76,7 @@ public:
   py::function findPathsPythonFunc;
 };
 
-struct PathfinderFlowsWithPython : public AIEPathfinderPass {
+struct PathfinderFlowsWithPython : AIEPathfinderPass {
   using AIEPathfinderPass::AIEPathfinderPass;
 
   StringRef getArgument() const final {
@@ -90,7 +92,7 @@ createPathfinderFlowsWithPythonPassWithFunc(py::function findPathsPythonFunc) {
 
 void registerPathfinderFlowsWithPythonPassWithFunc(
     const py::function &findPathsPythonFunc) {
-  registerPass([findPathsPythonFunc]() {
+  registerPass([findPathsPythonFunc] {
     return createPathfinderFlowsWithPythonPassWithFunc(findPathsPythonFunc);
   });
 }

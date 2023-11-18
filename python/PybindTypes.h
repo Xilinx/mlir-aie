@@ -21,10 +21,9 @@ typedef struct Flow {
 
   friend std::ostream &operator<<(std::ostream &os, const Flow &s) {
     os << "Flow(" << s.src << ": {"
-       << llvm::join(llvm::map_range(
-                         llvm::ArrayRef(s.dsts),
+       << join(map_range(llvm::ArrayRef(s.dsts),
                          [](const PathEndPoint &pe) { return to_string(pe); }),
-                     ", ")
+               ", ")
        << "})";
     return os;
   }

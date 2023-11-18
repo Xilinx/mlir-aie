@@ -1,3 +1,27 @@
+from collections import defaultdict, OrderedDict
+from typing import Union, Optional
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+
+from .dialects import arith
+from .dialects import complex
+from .dialects.linalg.opdsl.lang.emitter import (
+    _is_floating_point_type,
+    _is_complex_type,
+)
+from .ir import (
+    DenseElementsAttr,
+    FloatAttr,
+    IndexType,
+    InsertionPoint,
+    Location,
+    RankedTensorType,
+    Type,
+    Value,
+)
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from typing import Optional
@@ -38,7 +62,7 @@ def np_dtype_to_mlir_type(np_dtype):
 
 
 def infer_mlir_type(
-    py_val: Union[int, float, bool, np.ndarray]
+        py_val: Union[int, float, bool, np.ndarray]
 ) -> Union[IntegerType, F32Type, F64Type, RankedTensorType]:
     """Infer MLIR type (`ir.Type`) from supported python values.
 
@@ -65,10 +89,10 @@ def infer_mlir_type(
             raise RuntimeError(f"Nonrepresentable integer {py_val}.")
     elif isinstance(py_val, float):
         if (
-            abs(py_val) == float("inf")
-            or abs(py_val) == 0.0
-            or py_val != py_val  # NaN
-            or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
+                abs(py_val) == float("inf")
+                or abs(py_val) == 0.0
+                or py_val != py_val  # NaN
+                or np.finfo(np.float32).min <= abs(py_val) <= np.finfo(np.float32).max
         ):
             return T.f32()
         else:
@@ -98,10 +122,10 @@ class MLIRContext:
 
 @contextmanager
 def mlir_mod_ctx(
-    src: Optional[str] = None,
-    context: Context = None,
-    location: Location = None,
-    allow_unregistered_dialects=False,
+        src: Optional[str] = None,
+        context: Context = None,
+        location: Location = None,
+        allow_unregistered_dialects=False,
 ) -> MLIRContext:
     if context is None:
         context = Context()
@@ -119,3 +143,335 @@ def mlir_mod_ctx(
         ip = InsertionPoint(module.body)
         stack.enter_context(ip)
         yield MLIRContext(context, module)
+
+
+def build_graph(max_cols, max_rows, target_model):
+    from ._mlir_libs._aie_python_passes import WireBundle
+
+    DG = nx.DiGraph()
+    for c in range(max_cols + 1):
+        for r in range(max_rows + 1):
+            this_switchbox = (c, r)
+            DG.add_node(this_switchbox)
+            if r > 0:
+                southern_neighbor = (c, r - 1)
+                if max_capacity := target_model.get_num_source_switchbox_connections(
+                    c, r, WireBundle.South
+                ):
+                    DG.add_edge(
+                        southern_neighbor,
+                        this_switchbox,
+                        bundle=WireBundle.North,
+                        capacity=max_capacity,
+                    )
+                if max_capacity := target_model.get_num_dest_switchbox_connections(
+                    c, r, WireBundle.South
+                ):
+                    DG.add_edge(
+                        this_switchbox,
+                        southern_neighbor,
+                        bundle=WireBundle.South,
+                        capacity=max_capacity,
+                    )
+            if c > 0:
+                western_neighbor = (c - 1, r)
+                if max_capacity := target_model.get_num_source_switchbox_connections(
+                    c, r, WireBundle.West
+                ):
+                    DG.add_edge(
+                        western_neighbor,
+                        this_switchbox,
+                        bundle=WireBundle.East,
+                        capacity=max_capacity,
+                    )
+                if max_capacity := target_model.get_num_dest_switchbox_connections(
+                    c, r, WireBundle.West
+                ):
+                    DG.add_edge(
+                        this_switchbox,
+                        western_neighbor,
+                        bundle=WireBundle.West,
+                        capacity=max_capacity,
+                    )
+
+    return DG
+
+
+def route_using_cp(DG, flows, min_edges=False, seed=10, num_workers=1):
+    from ortools.sat.python import cp_model
+
+    # Create model object
+    model = cp_model.CpModel()
+    solver = cp_model.CpSolver()
+    # For determinism
+    solver.parameters.random_seed = seed
+    solver.parameters.num_workers = num_workers
+
+    # Create variable for each edge, for each path
+    flow_vars = {}
+    flat_flow_vars = []
+    for flow in flows:
+        flow_var = {(i, j): model.NewIntVar(0, 1, "") for i, j in DG.edges}
+        flow_vars[flow] = flow_var
+        flat_flow_vars.append(flow_var)
+
+    # Add flow-balance constraints at all nodes (besides sources and targets)
+    for (src, tgt), flow_var in zip(flows, flat_flow_vars):
+        src = src.sb.col, src.sb.row
+        tgt = tgt.sb.col, tgt.sb.row
+
+        for n in DG.nodes:
+            if n in {src, tgt}:
+                continue
+
+            # what goes in must come out
+            model.Add(
+                sum([flow_var[e] for e in DG.in_edges(nbunch=n)])
+                == sum([flow_var[e] for e in DG.out_edges(nbunch=n)])
+            )
+
+            # flow must leave src, and must not enter src
+            model.Add(sum([flow_var[src, j] for j in DG.neighbors(src)]) == 1)
+            model.Add(sum([flow_var[i, src] for i in DG.neighbors(src)]) == 0)
+
+            # flow must enter tgt, and must not leave tgt
+            model.Add(sum([flow_var[tgt, j] for j in DG.neighbors(tgt)]) == 0)
+            model.Add(sum([flow_var[i, tgt] for i in DG.neighbors(tgt)]) == 1)
+
+    # Create demand variables
+    total_demand = {
+        (i, j): model.NewIntVar(0, len(flat_flow_vars), "") for i, j in DG.edges
+    }
+    overlapping_demands = {
+        (i, j): model.NewIntVar(0, len(flat_flow_vars), "") for i, j in DG.edges
+    }
+    used_edges = {(i, j): model.NewIntVar(0, 1, "") for i, j in DG.edges}
+
+    # Add demand/flow relationship
+    for i, j, attrs in DG.edges(data=True):
+        model.Add(total_demand[i, j] == sum([f[i, j] for f in flat_flow_vars]))
+        model.Add(total_demand[i, j] <= attrs["capacity"])
+
+        if min_edges:
+            model.AddMaxEquality(used_edges[i, j], [f[i, j] for f in flat_flow_vars])
+        else:
+            overlapping_flows = {}
+            for k, f1 in enumerate(flat_flow_vars):
+                for l, f2 in enumerate(flat_flow_vars[k + 1 :], start=k + 1):
+                    overlapping_flows[k, l] = model.NewIntVar(
+                        0, len(flat_flow_vars), ""
+                    )
+                    model.AddMultiplicationEquality(
+                        overlapping_flows[k, l], [f1[i, j], f2[i, j]]
+                    )
+
+            model.Add(
+                overlapping_demands[i, j]
+                == sum(
+                    [
+                        overlapping_flows[k, l]
+                        for k, f1 in enumerate(flat_flow_vars)
+                        for l, f2 in enumerate(flat_flow_vars[k + 1 :], start=k + 1)
+                    ]
+                )
+            )
+
+    obj = sum([total_demand[i, j] for i, j in DG.edges])
+    if min_edges:
+        obj += sum([used_edges[i, j] for i, j in DG.edges])
+    else:
+        obj += sum([overlapping_demands[i, j] for i, j in DG.edges])
+    model.Minimize(obj)
+
+    status = solver.Solve(model)
+    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+        flow_paths = {}
+        for flow, flow_varss in flow_vars.items():
+            flow_paths[flow] = [
+                (i, j) for i, j in DG.edges if solver.Value(flow_varss[i, j]) > 0.5
+            ]
+
+        return flow_paths
+
+
+def route_using_ilp(DG, flows):
+    import gurobipy as gp
+    from gurobipy import GRB
+
+    # Create model object
+    m = gp.Model()
+
+    # Create variable for each edge, for each path
+    flow_vars = {}
+    flat_flow_vars = []
+    for flow in flows:
+        flow_var = m.addVars(DG.edges, vtype=GRB.BINARY, name="flow")
+        flow_vars[flow] = flow_var
+        flat_flow_vars.append(flow_var)
+
+    # Add flow-balance constraints at all nodes (besides sources and targets)
+    for (src, tgt), flow_var in zip(flows, flat_flow_vars):
+        src = src.sb.col, src.sb.row
+        tgt = tgt.sb.col, tgt.sb.row
+
+        for n in DG.nodes:
+            if n in {src, tgt}:
+                continue
+
+            # what goes in must come out
+            m.addConstr(
+                gp.quicksum(flow_var[e] for e in DG.in_edges(nbunch=n))
+                == gp.quicksum(flow_var[e] for e in DG.out_edges(nbunch=n))
+            )
+
+            # flow must leave src, and must not enter src
+            m.addConstr(gp.quicksum(flow_var[src, j] for j in DG.neighbors(src)) == 1)
+            m.addConstr(gp.quicksum(flow_var[i, src] for i in DG.neighbors(src)) == 0)
+
+            # flow must enter tgt, and must not leave tgt
+            m.addConstr(gp.quicksum(flow_var[tgt, j] for j in DG.neighbors(tgt)) == 0)
+            m.addConstr(gp.quicksum(flow_var[i, tgt] for i in DG.neighbors(tgt)) == 1)
+
+    # Create demand variables
+    total_demand = m.addVars(DG.edges)
+    overlapping_demands = m.addVars(DG.edges)
+
+    # Add demand/flow relationship
+    for i, j, attrs in DG.edges(data=True):
+        m.addConstr(total_demand[i, j] == gp.quicksum(f[i, j] for f in flat_flow_vars))
+        m.addConstr(total_demand[i, j] <= attrs["capacity"])
+        m.addConstr(
+            overlapping_demands[i, j]
+            == gp.quicksum(
+                (f1[i, j] * f2[i, j])
+                for k, f1 in enumerate(flat_flow_vars)
+                for f2 in flat_flow_vars[k + 1 :]
+            )
+        )
+
+    m.setObjective(
+        gp.quicksum(
+            total_demand[i, j] + overlapping_demands[i, j] for i, j in DG.edges
+        ),
+        GRB.MINIMIZE,
+    )
+
+    # Solve
+    m.optimize()
+
+    flow_paths = {}
+    for flow, flow_varss in flow_vars.items():
+        flow_paths[flow] = [(i, j) for i, j in DG.edges if flow_varss[i, j].x > 0.5]
+
+    return flow_paths
+
+
+def rgb2hex(r, g, b, a):
+    return "#{:02x}{:02x}{:02x}".format(
+        int(r * 255), int(g * 255), int(b * 255), int(a * 255)
+    )
+
+
+def plot_paths(DG, src, paths):
+    pos = dict((n, n) for n in DG.nodes())
+    labels = dict(((i, j), f"{i},{j}") for i, j in DG.nodes())
+
+    fig, ax = plt.subplots()
+    nx.draw(
+        DG,
+        with_labels=True,
+        edge_color="white",
+        node_color=["green" if n == src else "gray" for n in DG.nodes],
+        pos=pos,
+        labels=labels,
+        ax=ax,
+    )
+
+    colors = lambda x: mpl.colormaps["prism"](x / len(paths))
+    for j, path in enumerate(paths):
+        nx.draw_networkx_edges(
+            DG, pos=pos, edgelist=path, edge_color=rgb2hex(*colors(j)), width=4, ax=ax
+        )
+
+    plt.show()
+
+
+def plot_src_paths(DG, flow_paths):
+    src_paths = defaultdict(list)
+    for (src, _), path in flow_paths.items():
+        src_paths[src.sb.col, src.sb.row].append(path)
+
+    for src, paths in src_paths.items():
+        plot_paths(DG, src, paths)
+
+
+def get_routing_solution(DG, flow_paths):
+    from ._mlir_libs._aie_python_passes import (
+        SwitchSetting,
+        Switchbox,
+        Port,
+        get_connecting_bundle,
+    )
+
+    # OrderedDict just for debugging aid, i.e., src stays to the far left in
+    # repr and such.
+    routing_solution = defaultdict(OrderedDict)
+    all_switch_settings = {}
+    for flow, path in flow_paths.items():
+        src, tgt = flow
+        switch_settings = routing_solution[src]
+
+        if src.sb not in switch_settings:
+            switch_settings[src.sb] = SwitchSetting(src.port)
+            routing_solution[src] = switch_settings
+        else:
+            assert switch_settings[src.sb].src == src.port
+
+        if src.sb not in all_switch_settings:
+            all_switch_settings[src.sb] = switch_settings[src.sb]
+
+        path_subgraph = DG.edge_subgraph(path)
+        prev = src.sb.col, src.sb.row
+        while curr := path_subgraph.successors(prev):
+            curr = list(curr)
+            if not curr:
+                assert prev == (tgt.sb.col, tgt.sb.row)
+                switch_settings[Switchbox(*prev)].dsts.add(tgt.port)
+                break
+            assert len(curr) == 1, "multiple successors not supported"
+            curr = curr[0]
+            bundle = path_subgraph.get_edge_data(prev, curr)["bundle"]
+
+            # Add the successor Switchbox to the destinations of curr
+            p = Port(bundle, 0)
+            while p in all_switch_settings[Switchbox(*prev)].dsts:
+                p.channel += 1
+            switch_settings[Switchbox(*prev)].dsts.add(p)
+
+            # Add the entrance port for next Switchbox
+            if Switchbox(*curr) not in switch_settings:
+                switch_settings[Switchbox(*curr)] = SwitchSetting(
+                    Port(get_connecting_bundle(bundle), 0)
+                )
+
+            if Switchbox(*curr) not in all_switch_settings:
+                all_switch_settings[Switchbox(*curr)] = switch_settings[
+                    Switchbox(*curr)
+                ]
+
+            prev = curr
+
+    for src, switch_settings in routing_solution.items():
+        assert len(switch_settings) == len(
+            set(
+                [
+                    sb
+                    for ((s, t), fp) in flow_paths.items()
+                    for e in fp
+                    for sb in e
+                    if s == src
+                ]
+            )
+        )
+
+    return routing_solution

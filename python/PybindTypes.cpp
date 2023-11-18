@@ -27,21 +27,22 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
   // so they can't be mutated.
   py::class_<std::set<Port>>(m, "PortSet")
       .def(py::init<>())
-      .def("add", [](std::set<Port> &set, Port p) { set.insert(p); })
-      .def("__str__",
+      .def("add", [](std::set<Port> &set, const Port p) { set.insert(p); })
+      .def("__repr__",
            [](const std::set<Port> &set) {
              std::stringstream ss;
              ss << "{"
-                << llvm::join(llvm::map_range(set,
-                                              [](const Port &port) {
-                                                return to_string(port);
-                                              }),
-                              ", ")
+                << join(llvm::map_range(
+                            set,
+                            [](const Port &port) { return to_string(port); }),
+                        ", ")
                 << "}";
 
              return ss.str();
            })
-      .def("__repr__", [](py::object &set) { return py::str(set); });
+      .def("__contains__", [](const std::set<Port> &self, const Port &p) {
+        return static_cast<bool>(self.count(p));
+      });
 
   py::enum_<WireBundle>(m, "WireBundle", py::arithmetic())
       .value("Core", WireBundle::Core)
@@ -60,10 +61,10 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       .def(py::init<Port &>())
       .def(py::init<WireBundle, int>())
       .def_readonly("bundle", &Port::bundle)
-      .def_readonly("channel", &Port::channel)
+      .def_readwrite("channel", &Port::channel)
       .def(py::hash(py::self))
       .def(py::self == py::self)
-      .def("__str__", [](const Port &port) { return to_string(port); })
+      .def(py::self < py::self)
       .def("__repr__", [](const Port &port) { return to_string(port); });
 
   py::class_<TileID>(m, "TileID")
@@ -73,7 +74,7 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       // Implements __hash__ (magic?)
       .def(py::hash(py::self))
       .def(py::self == py::self)
-      .def("__str__", [](const TileID &tile) { return to_string(tile); })
+      .def(py::self < py::self)
       .def("__repr__", [](const TileID &tile) { return to_string(tile); });
 
   py::class_<Switchbox, TileID>(m, "Switchbox")
@@ -82,7 +83,7 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       // Implements __hash__ (magic?)
       .def(py::hash(py::self))
       .def(py::self == py::self)
-      .def("__str__", [](const Switchbox &sb) { return to_string(sb); })
+      .def(py::self < py::self)
       .def("__repr__", [](const Switchbox &sb) { return to_string(sb); });
 
   py::class_<SwitchSetting>(m, "SwitchSetting")
@@ -90,7 +91,7 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       .def(py::init<Port &>())
       .def_readonly("src", &SwitchSetting::src)
       .def_readwrite("dsts", &SwitchSetting::dsts)
-      .def("__str__", [](const SwitchSetting &sb) { return to_string(sb); })
+      .def(py::self < py::self)
       .def("__repr__", [](const SwitchSetting &sb) { return to_string(sb); });
 
   py::class_<Channel>(m, "Channel")
@@ -99,34 +100,31 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       .def_property_readonly("target",
                              [](const Channel &c) { return c.target; })
       .def_readonly("bundle", &Channel::bundle)
-      .def_readonly("max_capacity", &Channel::maxCapacity)
       .def_readonly("demand", &Channel::demand)
       // Probably don't need these...
-      .def_readonly("used_capacity", &Channel::usedCapacity)
-      .def_readonly("fixed_capacity", &Channel::fixedCapacity)
-      .def_readonly("over_capacity_count", &Channel::overCapacityCount)
-      .def("__str__", [](const Channel &c) { return to_string(c); })
       .def("__repr__", [](const Channel &c) { return to_string(c); });
 
   py::class_<PathEndPoint>(m, "PathEndPoint")
       .def(py::init<PathEndPoint &>())
       .def_readonly("sb", &PathEndPoint::sb)
       .def_readonly("port", &PathEndPoint::port)
+      // Implements __hash__ (magic?)
       .def(py::hash(py::self))
       .def(py::self == py::self)
-      .def("__str__", [](const PathEndPoint &pe) { return to_string(pe); })
+      .def(py::self < py::self)
       .def("__repr__", [](const PathEndPoint &pe) { return to_string(pe); });
 
   py::class_<Flow>(m, "Flow")
       .def(py::init<Flow &>())
       .def_readonly("src", &Flow::src)
       .def_readonly("dsts", &Flow::dsts)
-      .def("__str__", [](const Flow &flow) { return to_string(flow); })
       .def("__repr__", [](const Flow &flow) { return to_string(flow); });
 
   py::class_<AIETargetModel>(m, "AIETargetModel")
       .def("get_num_source_switchbox_connections",
            &AIETargetModel::getNumSourceSwitchboxConnections,
+           // Something about the factor that AIETargetModel is virtual
+           // (and thus always a pointer) necessitates this.
            py::return_value_policy::reference)
       .def("get_num_dest_switchbox_connections",
            &AIETargetModel::getNumDestSwitchboxConnections,
