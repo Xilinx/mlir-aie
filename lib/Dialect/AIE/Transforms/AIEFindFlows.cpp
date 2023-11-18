@@ -11,9 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "aie-find-flows"
@@ -139,7 +137,7 @@ private:
       }
       MaskValue newMaskValue = {maskValue.mask | nextMaskValue.mask,
                                 maskValue.value |
-                                    (nextMaskValue.mask & nextMaskValue.value)};
+                                    nextMaskValue.mask & nextMaskValue.value};
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       // If there is no wire to follow then bail out.
@@ -225,12 +223,12 @@ public:
   }
 };
 
-static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
+static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                           OpBuilder &rewriter) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPointToEnd(Op->getBlock());
 
-  std::vector<WireBundle> bundles = {WireBundle::Core, WireBundle::DMA};
+  std::vector bundles = {WireBundle::Core, WireBundle::DMA};
   for (WireBundle bundle : bundles) {
     LLVM_DEBUG(llvm::dbgs()
                << op << stringifyWireBundle(bundle) << " has "
@@ -250,7 +248,7 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
                                   destOp->getResult(0), destPort.bundle,
                                   destPort.channel);
         } else {
-          PacketFlowOp flowOp =
+          auto flowOp =
               rewriter.create<PacketFlowOp>(Op->getLoc(), maskValue.value);
           PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter,
                                          Op->getLoc());
@@ -268,9 +266,9 @@ static void findFlowsFrom(AIE::TileOp op, ConnectivityAnalysis &analysis,
 }
 
 struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
-    registry.insert<xilinx::AIE::AIEDialect>();
+    registry.insert<AIEDialect>();
   }
   void runOnOperation() override {
 
@@ -285,6 +283,6 @@ struct AIEFindFlowsPass : public AIEFindFlowsBase<AIEFindFlowsPass> {
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>> xilinx::AIE::createAIEFindFlowsPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEFindFlowsPass() {
   return std::make_unique<AIEFindFlowsPass>();
 }

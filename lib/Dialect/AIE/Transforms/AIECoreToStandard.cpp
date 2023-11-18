@@ -30,8 +30,7 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-template <typename MyAIEOp>
-struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {
+template <typename MyAIEOp> struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
   using OpAdaptor = typename MyAIEOp::Adaptor;
   ModuleOp &module;
@@ -49,13 +48,13 @@ struct AIEOpRemoval : public OpConversionPattern<MyAIEOp> {
   }
 };
 
-struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
-  using OpConversionPattern<DebugOp>::OpConversionPattern;
+struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEDebugOpToStdLowering(MLIRContext *context, ModuleOp &m,
                           PatternBenefit benefit = 1)
-      : OpConversionPattern<DebugOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
 
   LogicalResult
   matchAndRewrite(DebugOp op, OpAdaptor adaptor,
@@ -74,13 +73,13 @@ struct AIEDebugOpToStdLowering : public OpConversionPattern<DebugOp> {
   }
 };
 
-struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
-  using OpConversionPattern<PutStreamOp>::OpConversionPattern;
+struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEPutStreamToStdLowering(MLIRContext *context, ModuleOp &m,
                             PatternBenefit benefit = 1)
-      : OpConversionPattern<PutStreamOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
 
   LogicalResult
   matchAndRewrite(PutStreamOp op, OpAdaptor adaptor,
@@ -107,13 +106,13 @@ struct AIEPutStreamToStdLowering : public OpConversionPattern<PutStreamOp> {
   }
 };
 
-struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
-  using OpConversionPattern<GetStreamOp>::OpConversionPattern;
+struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEGetStreamToStdLowering(MLIRContext *context, ModuleOp &m,
                             PatternBenefit benefit = 1)
-      : OpConversionPattern<GetStreamOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
 
   LogicalResult
   matchAndRewrite(GetStreamOp op, OpAdaptor adaptor,
@@ -138,13 +137,13 @@ struct AIEGetStreamToStdLowering : public OpConversionPattern<GetStreamOp> {
   }
 };
 
-struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
-  using OpConversionPattern<PutCascadeOp>::OpConversionPattern;
+struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEPutCascadeToStdLowering(MLIRContext *context, ModuleOp &m,
                              PatternBenefit benefit = 1)
-      : OpConversionPattern<PutCascadeOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
 
   LogicalResult
   matchAndRewrite(PutCascadeOp op, OpAdaptor adaptor,
@@ -163,13 +162,13 @@ struct AIEPutCascadeToStdLowering : public OpConversionPattern<PutCascadeOp> {
   }
 };
 
-struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
-  using OpConversionPattern<GetCascadeOp>::OpConversionPattern;
+struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEGetCascadeToStdLowering(MLIRContext *context, ModuleOp &m,
                              PatternBenefit benefit = 1)
-      : OpConversionPattern<GetCascadeOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
 
   LogicalResult
   matchAndRewrite(GetCascadeOp op, OpAdaptor adaptor,
@@ -185,25 +184,25 @@ struct AIEGetCascadeToStdLowering : public OpConversionPattern<GetCascadeOp> {
   }
 };
 
-struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
-  using OpConversionPattern<UseLockOp>::OpConversionPattern;
+struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &m,
                           PatternBenefit benefit = 1)
-      : OpConversionPattern<UseLockOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     if (!isa<DeviceOp>(useLock->getParentOp())) {
-      auto device = useLock->getParentOfType<xilinx::AIE::DeviceOp>();
+      auto device = useLock->getParentOfType<DeviceOp>();
       if (!device) {
         return module.emitOpError("Device Not found!");
       }
       const auto &targetModel = device.getTargetModel();
 
       // Generate the intrinsic name
-      std::string funcName = "";
+      std::string funcName;
       if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName = "llvm.aie.lock.";
       else
@@ -241,23 +240,23 @@ struct AIEUseLockToStdLowering : public OpConversionPattern<UseLockOp> {
   }
 };
 
-struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
-  using OpConversionPattern<BufferOp>::OpConversionPattern;
+struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m, IRMapping &mapper,
                       PatternBenefit benefit = 1)
-      : OpConversionPattern<BufferOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
-    MemRefType t = buffer.getType().cast<MemRefType>();
+    auto t = buffer.getType().cast<MemRefType>();
     auto symName = buffer.name().getValue();
     rewriter.create<memref::GlobalOp>(
         rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
         buffer.getType(), nullptr, false, nullptr);
 
-    for (auto &use : llvm::make_early_inc_range(buffer.getResult().getUses())) {
+    for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();
       rewriter.setInsertionPoint(user);
       auto allocated = rewriter.create<memref::GetGlobalOp>(
@@ -274,8 +273,8 @@ struct AIEBufferToStandard : public OpConversionPattern<BufferOp> {
   }
 };
 
-struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
-  using OpConversionPattern<CoreOp>::OpConversionPattern;
+struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
   IRMapping &mapper;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers;
@@ -286,9 +285,8 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
       MLIRContext *context, ModuleOp &m, IRMapping &mapper,
       DenseMap<Operation *, SmallVector<BufferOp, 4>> &tileToBuffers,
       PatternBenefit benefit = 1, int tileCol = 1, int tileRow = 1)
-      : OpConversionPattern<CoreOp>(context, benefit), module(m),
-        mapper(mapper), tileToBuffers(tileToBuffers), tileCol(tileCol),
-        tileRow(tileRow) {}
+      : OpConversionPattern(context, benefit), module(m), mapper(mapper),
+        tileToBuffers(tileToBuffers), tileCol(tileCol), tileRow(tileRow) {}
 
   LogicalResult
   matchAndRewrite(CoreOp op, OpAdaptor adaptor,
@@ -299,8 +297,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
     int row = op.rowIndex();
 
     // Only pull code for the indicated function
-    if (((tileRow != row) && (tileRow != -1)) ||
-        ((tileCol != col) && (tileCol != -1))) {
+    if (tileRow != row && tileRow != -1 || tileCol != col && tileCol != -1) {
       rewriter.eraseOp(Op);
       return success();
     }
@@ -321,7 +318,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
     coreFunc.getBody().walk([&](Operation *childOp) {
       rewriter.setInsertionPointAfter(childOp);
 
-      if (EndOp end = dyn_cast<EndOp>(childOp)) {
+      if (isa<EndOp>(childOp)) {
         rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
                                         ValueRange({}));
         rewriter.eraseOp(childOp);
@@ -334,7 +331,7 @@ struct AIECoreToStandardFunc : public OpConversionPattern<CoreOp> {
 };
 
 // Move all the ops with OpTy inside device, to just before the device.
-template <typename OpTy> void outlineOps(AIE::DeviceOp device) {
+template <typename OpTy> void outlineOps(DeviceOp device) {
   SmallVector<OpTy, 16> ops;
   for (const auto &op : device.getOps<OpTy>())
     ops.push_back(op);
@@ -344,13 +341,13 @@ template <typename OpTy> void outlineOps(AIE::DeviceOp device) {
 }
 
 // Lower AIE.event to llvm.aie.event intrinsic
-struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
-  using OpConversionPattern<EventOp>::OpConversionPattern;
+struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
+  using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
 
   AIEEventOpToStdLowering(MLIRContext *context, ModuleOp &m,
                           PatternBenefit benefit = 1)
-      : OpConversionPattern<EventOp>(context, benefit), module(m) {}
+      : OpConversionPattern(context, benefit), module(m) {}
 
   LogicalResult
   matchAndRewrite(EventOp op, OpAdaptor adaptor,
@@ -366,8 +363,7 @@ struct AIEEventOpToStdLowering : public OpConversionPattern<EventOp> {
   }
 };
 
-struct AIECoreToStandardPass
-    : public AIECoreToStandardBase<AIECoreToStandardPass> {
+struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -377,7 +373,7 @@ struct AIECoreToStandardPass
       m.emitOpError("expected AIE.device operation at toplevel");
       signalPassFailure();
     }
-    DeviceOp device = *(m.getOps<DeviceOp>().begin());
+    DeviceOp device = *m.getOps<DeviceOp>().begin();
     const auto &targetModel = device.getTargetModel();
     const char *triple;
     switch (targetModel.getTargetArch()) {
@@ -555,20 +551,18 @@ struct AIECoreToStandardPass
     outlineOps<func::FuncOp>(device);
 
     RewritePatternSet removepatterns(&getContext());
-    removepatterns
-        .add<AIEOpRemoval<AIE::DeviceOp>, AIEOpRemoval<AIE::TileOp>,
-             AIEOpRemoval<AIE::FlowOp>, AIEOpRemoval<AIE::MemOp>,
-             AIEOpRemoval<AIE::ShimDMAOp>, AIEOpRemoval<AIE::ShimMuxOp>,
-             AIEOpRemoval<AIE::SwitchboxOp>, AIEOpRemoval<AIE::LockOp>,
-             AIEOpRemoval<AIE::BufferOp>, AIEOpRemoval<AIE::ExternalBufferOp>,
-             AIEOpRemoval<AIE::ShimDMAAllocationOp>>(m.getContext(), m);
+    removepatterns.add<
+        AIEOpRemoval<DeviceOp>, AIEOpRemoval<TileOp>, AIEOpRemoval<FlowOp>,
+        AIEOpRemoval<MemOp>, AIEOpRemoval<ShimDMAOp>, AIEOpRemoval<ShimMuxOp>,
+        AIEOpRemoval<SwitchboxOp>, AIEOpRemoval<LockOp>, AIEOpRemoval<BufferOp>,
+        AIEOpRemoval<ExternalBufferOp>, AIEOpRemoval<ShimDMAAllocationOp>>(
+        m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<OperationPass<ModuleOp>>
-xilinx::AIE::createAIECoreToStandardPass() {
+std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();
 }
