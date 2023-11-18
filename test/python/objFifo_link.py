@@ -5,6 +5,7 @@
 
 from aie.ir import *
 from aie.dialects.aie import *
+import aie.types as T
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2802) {
@@ -23,18 +24,13 @@ def link_example():
     dev = Device(AIEDevice.xcve2802)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        int_ty = IntegerType.get_signless(32)
-        int_8_ty = IntegerType.get_unsigned(8)
-        memRef_256_ty = MemRefType.get((256,), int_ty)
-        memRef_64_ty = MemRefType.get((64,), int_ty)
-
         S = Tile(0, 2)
         M = Tile(1, 2)
         T0 = Tile(2, 2)
         T1 = Tile(2, 3)
 
-        OrderedObjectBuffer("of0", S, M, 2, memRef_256_ty)
-        OrderedObjectBuffer("of1", M, [T0, T1], 2, memRef_64_ty)
+        OrderedObjectBuffer("of0", S, M, 2, T.memref(256, T.i32))
+        OrderedObjectBuffer("of1", M, [T0, T1], 2, T.memref(64, T.i32))
         Link(["of0"], ["of1"])
 
         OrderedObjectBuffer(
@@ -42,7 +38,7 @@ def link_example():
             M,
             [T0, T1],
             [2, 2, 7],
-            MemRefType.get((256,), int_8_ty),
+            MemRefType.get((256,), T.ui8),
             [(1, 2)],
             [[(1, 2)], [(1, 2)]],
         )

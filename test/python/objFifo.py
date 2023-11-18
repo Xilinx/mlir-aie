@@ -7,6 +7,7 @@ from aie.ir import *
 from aie.dialects.aie import *
 from aie.dialects.func import *
 from aie.dialects.scf import *
+import aie.types as T
 
 # CHECK:  module {
 # CHECK:    AIE.device(xcve2302) {
@@ -29,18 +30,17 @@ def objFifo_example():
     dev = Device(AIEDevice.xcve2302)
     dev_block = Block.create_at_start(dev.bodyRegion)
     with InsertionPoint(dev_block):
-        int_ty = IntegerType.get_signless(32)
-        memRef_ty = MemRefType.get((256,), int_ty)
-
         S = Tile(0, 2)
-        T = Tile(1, 2)
+        tile = Tile(1, 2)
 
-        OrderedObjectBuffer("of0", S, T, 2, memRef_ty)
+        OrderedObjectBuffer("of0", S, tile, 2, T.memref(256, T.i32))
 
-        C = Core(T)
+        C = Core(tile)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
-            elem0 = Acquire(ObjectFifoPort.Consume, "of0", 1, memRef_ty).acquiredElem()
+            elem0 = Acquire(
+               ObjectFifoPort.Consume, "of0", 1, T.memref(256, T.i32)
+            ).acquiredElem()
             Store(10, elem0, 0)
             Release(ObjectFifoPort.Consume, "of0", 1)
             EndOp()
