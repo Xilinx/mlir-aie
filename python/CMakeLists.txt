@@ -172,47 +172,48 @@ if (AIE_ENABLE_PYTHON_PASSES)
 else ()
 
   # Standard Python C extension bindings.
+  declare_mlir_python_extension(AIEPythonExtensions.MLIR
+    MODULE_NAME _aie
+    ADD_TO_PARENT AIEPythonExtensions
+    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
 
-declare_mlir_python_extension(AIEPythonExtensions.MLIR
-  MODULE_NAME _aie
-  ADD_TO_PARENT AIEPythonExtensions
-  ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-  SOURCES
-    AIEMLIRModule.cpp
-  EMBED_CAPI_LINK_LIBS
-    AIECAPI
-  PRIVATE_LINK_LIBS
-    LLVMSupport
-)
+    PARTIAL_SOURCES_INTENDED
+    SOURCES
+      AIEMLIRModule.cpp
+    EMBED_CAPI_LINK_LIBS
+      AIECAPI
+    PRIVATE_LINK_LIBS
+      LLVMSupport
+  )
 
-add_mlir_python_common_capi_library(AIEAggregateCAPI
-  INSTALL_COMPONENT AIEPythonModules
-  INSTALL_DESTINATION python/aie/_mlir_libs
-  OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
-  RELATIVE_INSTALL_ROOT "../../../.."
-  DECLARED_SOURCES
-    MLIRPythonSources
-    MLIRPythonExtension.Core
-    MLIRPythonExtension.RegisterEverything
-    MLIRPythonExtension.ExecutionEngine
-    AIEPythonSources
-    AIEPythonExtensions
-)
+  add_mlir_python_common_capi_library(AIEAggregateCAPI
+    INSTALL_COMPONENT AIEPythonModules
+    INSTALL_DESTINATION python/aie/_mlir_libs
+    OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+    RELATIVE_INSTALL_ROOT "../../../.."
+    DECLARED_SOURCES
+      MLIRPythonSources
+      MLIRPythonExtension.Core
+      MLIRPythonExtension.RegisterEverything
+      MLIRPythonExtension.ExecutionEngine
+      AIEPythonSources
+      AIEPythonExtensions
+  )
 
-add_mlir_python_modules(AIEPythonModules
-  ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
-  INSTALL_PREFIX "python/aie"
-  DECLARED_SOURCES
-    AIEPythonSources
-    MLIRPythonSources
-    MLIRPythonExtension.Core
-    MLIRPythonExtension.RegisterEverything
-    MLIRPythonExtension.ExecutionEngine
-    AIEPythonExtensions
-  COMMON_CAPI_LINK_LIBS
-    AIEAggregateCAPI
-    AIECAPI
-)
+  add_mlir_python_modules(AIEPythonModules
+    ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
+    INSTALL_PREFIX "python/aie"
+    DECLARED_SOURCES
+      AIEPythonSources
+      MLIRPythonSources
+      MLIRPythonExtension.Core
+      MLIRPythonExtension.RegisterEverything
+      MLIRPythonExtension.ExecutionEngine
+      AIEPythonExtensions
+    COMMON_CAPI_LINK_LIBS
+      AIEAggregateCAPI
+      AIECAPI
+  )
 
 endif ()
 
