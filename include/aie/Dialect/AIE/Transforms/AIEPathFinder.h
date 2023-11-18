@@ -34,6 +34,10 @@ typedef struct Switchbox : public TileID {
 
   GENERATE_TO_STRING(Switchbox);
 
+  inline bool operator==(const Switchbox &rhs) const {
+    return (TileID) * this == (TileID)rhs;
+  }
+
 } Switchbox;
 
 typedef struct Channel {
@@ -100,6 +104,8 @@ public:
 // SwitchSetting.first is the incoming signal
 // SwitchSetting.second is the fanout
 typedef struct SwitchSetting {
+  SwitchSetting() = default;
+  SwitchSetting(Port src) : src(src) {}
   Port src;
   std::set<Port> dsts;
 
@@ -129,16 +135,16 @@ typedef struct SwitchSetting {
   }
 } SwitchSetting;
 
-typedef std::map<Switchbox *, SwitchSetting> SwitchSettings;
+typedef std::map<Switchbox, SwitchSetting> SwitchSettings;
 
 // A Flow defines source and destination vertices
 // Only one source, but any number of destinations (fanout)
 typedef struct PathEndPoint {
-  Switchbox *sb;
+  Switchbox sb;
   Port port;
 
   friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
-    os << "PathEndPoint(" << *s.sb << ": " << s.port << ")";
+    os << "PathEndPoint(" << s.sb << ": " << s.port << ")";
     return os;
   }
 
@@ -152,13 +158,11 @@ typedef struct PathEndPoint {
 
   // Needed for the std::maps that store PathEndPoint.
   bool operator<(const PathEndPoint &rhs) const {
-    return sb->col == rhs.sb->col
-               ? (sb->row == rhs.sb->row
-                      ? (port.bundle == rhs.port.bundle
-                             ? port.channel < rhs.port.channel
-                             : port.bundle < rhs.port.bundle)
-                      : sb->row < rhs.sb->row)
-               : sb->col < rhs.sb->col;
+    return std::tie(sb, port) < std::tie(rhs.sb, rhs.port);
+  }
+
+  bool operator==(const PathEndPoint &rhs) const {
+    return std::tie(sb, port) == std::tie(rhs.sb, rhs.port);
   }
 
 } PathEndPoint;
@@ -167,7 +171,7 @@ typedef struct PathEndPoint {
 // Only one source, but any number of destinations (fanout)
 typedef struct PathEndPointNode : public PathEndPoint {
   PathEndPointNode(SwitchboxNode *sb, Port port)
-      : sb(sb), PathEndPoint{sb, port} {}
+      : sb(sb), PathEndPoint{*sb, port} {}
   SwitchboxNode *sb;
 } PathEndPointNode;
 
@@ -204,6 +208,8 @@ public:
   }
   virtual ~Pathfinder() = default;
 };
+
+WireBundle getConnectingBundle(WireBundle dir);
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
 // environment. It passes flows to the Pathfinder as ordered pairs of ints.
@@ -317,5 +323,19 @@ inline raw_ostream &operator<<(llvm::raw_ostream &os,
 }
 
 } // namespace llvm
+
+template <> struct std::hash<xilinx::AIE::Switchbox> {
+  std::size_t operator()(const xilinx::AIE::Switchbox &s) const noexcept {
+    return std::hash<xilinx::AIE::TileID>{}(s);
+  }
+};
+
+template <> struct std::hash<xilinx::AIE::PathEndPoint> {
+  std::size_t operator()(const xilinx::AIE::PathEndPoint &pe) const noexcept {
+    std::size_t h1 = std::hash<xilinx::AIE::Port>{}(pe.port);
+    std::size_t h2 = std::hash<xilinx::AIE::Switchbox>{}(pe.sb);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 #endif

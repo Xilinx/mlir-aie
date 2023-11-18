@@ -349,13 +349,19 @@ template <> struct DenseMapInfo<xilinx::AIE::Port> {
 
 } // namespace llvm
 
-namespace std {
-template <> struct less<xilinx::AIE::Port> {
+template <> struct std::less<xilinx::AIE::Port> {
   bool operator()(const xilinx::AIE::Port &a,
                   const xilinx::AIE::Port &b) const {
     return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
   }
 };
-} // namespace std
+
+template <> struct std::hash<xilinx::AIE::Port> {
+  std::size_t operator()(const xilinx::AIE::Port &p) const noexcept {
+    std::size_t h1 = std::hash<xilinx::AIE::WireBundle>{}(p.bundle);
+    std::size_t h2 = std::hash<int>{}(p.channel);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 #endif

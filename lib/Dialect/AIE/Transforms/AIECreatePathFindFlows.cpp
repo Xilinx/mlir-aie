@@ -86,19 +86,17 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
     // if the flow (aka "net") for this FlowOp hasn't been processed yet,
     // add all switchbox connections to implement the flow
-    Switchbox *srcSB = analyzer.pathfinder->getSwitchbox(srcCoords);
+    Switchbox srcSB = {srcCoords.col, srcCoords.row};
     PathEndPoint srcPoint = {srcSB, srcPort};
     if (!analyzer.processedFlows[srcPoint]) {
       SwitchSettings settings = analyzer.flowSolutions[srcPoint];
       // add connections for all the Switchboxes in SwitchSettings
       for (const auto &[curr, setting] : settings) {
-        SwitchboxOp swOp =
-            analyzer.getSwitchbox(rewriter, curr->col, curr->row);
+        SwitchboxOp swOp = analyzer.getSwitchbox(rewriter, curr.col, curr.row);
         int shimCh = srcChannel;
         // TODO: must reserve N3, N7, S2, S3 for DMA connections
-        if (*curr == *srcSB &&
-            analyzer.getTile(rewriter, srcSB->col, srcSB->row)
-                .isShimNOCTile()) {
+        if (curr == srcSB &&
+            analyzer.getTile(rewriter, srcSB.col, srcSB.row).isShimNOCTile()) {
           // shim DMAs at start of flows
           if (srcBundle == WireBundle::DMA) {
             shimCh = srcChannel == 0
@@ -129,17 +127,16 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
         for (const auto &[bundle, channel] : setting.dsts) {
           // handle special shim connectivity
-          if (*curr == *srcSB &&
-              analyzer.getTile(rewriter, srcSB->col, srcSB->row)
-                  .isShimNOCorPLTile()) {
+          if (curr == srcSB && analyzer.getTile(rewriter, srcSB.col, srcSB.row)
+                                   .isShimNOCorPLTile()) {
             addConnection(rewriter, cast<Interconnect>(swOp.getOperation()),
                           flowOp, WireBundle::South, shimCh, bundle, channel);
-          } else if (analyzer.getTile(rewriter, curr->col, curr->row)
+          } else if (analyzer.getTile(rewriter, curr.col, curr.row)
                          .isShimNOCorPLTile() &&
                      (bundle == WireBundle::DMA || bundle == WireBundle::PLIO ||
                       bundle == WireBundle::NOC)) {
             shimCh = channel;
-            if (analyzer.getTile(rewriter, curr->col, curr->row)
+            if (analyzer.getTile(rewriter, curr.col, curr.row)
                     .isShimNOCTile()) {
               // shim DMAs at end of flows
               if (bundle == WireBundle::DMA) {
@@ -158,7 +155,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                     flowOp, WireBundle::North, shimCh, bundle, channel);
               } else if (channel >=
                          2) { // must be PLIO...only PLIO >= 2 require mux
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
                     flowOp, WireBundle::North, shimCh, bundle, channel);

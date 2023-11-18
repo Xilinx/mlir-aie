@@ -22,7 +22,7 @@ using namespace xilinx::AIE;
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
 
-WireBundle getConnectingBundle(WireBundle dir) {
+WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
   switch (dir) {
   case WireBundle::North:
     return WireBundle::South;
@@ -93,8 +93,8 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // initialize all flows as unprocessed to prep for rewrite
   for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
     processedFlows[pathEndPoint] = false;
-    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb->col
-                            << "," << pathEndPoint.sb->row << "):\t");
+    LLVM_DEBUG(llvm::dbgs() << "Flow starting at (" << pathEndPoint.sb.col
+                            << "," << pathEndPoint.sb.row << "):\t");
     LLVM_DEBUG(llvm::dbgs() << switchSetting);
   }
 
@@ -370,13 +370,13 @@ Pathfinder::findPaths(const int maxIterations) {
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
       // set the input bundle for the source endpoint
-      switchSettings[src].src = flow.src.port;
+      switchSettings[*src].src = flow.src.port;
       processed.insert(src);
       for (const PathEndPointNode &endPoint : flow.dsts) {
         SwitchboxNode *curr = endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
         // set the output bundle for this destination endpoint
-        switchSettings[curr].dsts.insert(endPoint.port);
+        switchSettings[*curr].dsts.insert(endPoint.port);
 
         // trace backwards until a vertex already processed is reached
         while (!processed.count(curr)) {
@@ -394,10 +394,10 @@ Pathfinder::findPaths(const int maxIterations) {
             ch->usedCapacity++;
 
           // add the entrance port for this Switchbox
-          switchSettings[curr].src = {getConnectingBundle(ch->bundle),
-                                      ch->usedCapacity};
+          switchSettings[*curr].src = {getConnectingBundle(ch->bundle),
+                                       ch->usedCapacity};
           // add the current Switchbox to the map of the predecessor
-          switchSettings[preds[curr]].dsts.insert(
+          switchSettings[*preds[curr]].dsts.insert(
               {ch->bundle, ch->usedCapacity});
 
           ch->usedCapacity++;

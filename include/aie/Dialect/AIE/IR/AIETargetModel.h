@@ -39,8 +39,8 @@ typedef struct TileID {
   }
 
   // Imposes a lexical order on TileIDs.
-  bool operator<(const TileID &rhs) const {
-    return col == rhs.col ? row < rhs.row : col < rhs.col;
+  inline bool operator<(const TileID &rhs) const {
+    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
   }
 
   bool operator==(const TileID &rhs) const {
@@ -527,5 +527,13 @@ template <> struct DenseMapInfo<xilinx::AIE::TileID> {
   }
 };
 } // namespace llvm
+
+template <> struct std::hash<xilinx::AIE::TileID> {
+  std::size_t operator()(const xilinx::AIE::TileID &s) const noexcept {
+    std::size_t h1 = std::hash<int>{}(s.col);
+    std::size_t h2 = std::hash<int>{}(s.row);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 #endif
