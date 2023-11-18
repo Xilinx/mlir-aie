@@ -12,7 +12,6 @@
 #define MLIR_AIE_DEVICEMODEL_H
 
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/SmallSet.h"
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
 
@@ -22,23 +21,24 @@ typedef struct TileID {
   int col;
   int row;
 
-  inline bool operator==(const TileID &rhs) const {
+  bool operator==(const TileID &rhs) const {
     return std::tie(col, row) == std::tie(rhs.col, rhs.row);
   }
 
-  inline bool operator!=(const TileID &rhs) const {
+  bool operator!=(const TileID &rhs) const {
     return std::tie(col, row) != std::tie(rhs.col, rhs.row);
   }
 
   // Imposes a lexical order on TileIDs.
-  inline bool operator<(const TileID &rhs) const {
+  bool operator<(const TileID &rhs) const {
     return col == rhs.col ? row < rhs.row : col < rhs.col;
   }
 } TileID;
 
 class AIETargetModel {
 public:
-  AIETargetModel() {}
+  AIETargetModel() = default;
+
   virtual ~AIETargetModel();
 
   /// Return the target architecture.
@@ -74,8 +74,8 @@ public:
 
   /// Return true if the given tile ID is valid.
   virtual bool isValidTile(TileID src) const {
-    return (src.col >= 0) && (src.col < columns()) && (src.row >= 0) &&
-           (src.row < rows());
+    return src.col >= 0 && src.col < columns() && src.row >= 0 &&
+           src.row < rows();
   }
 
   /// Return true if the given port in the given tile is a valid destination for
@@ -98,23 +98,27 @@ public:
 
   /// Return true if src is the internal memory of dst
   bool isInternal(int srcCol, int srcRow, int dstCol, int dstRow) const {
-    return ((srcCol == dstCol) && (srcRow == dstRow));
+    return srcCol == dstCol && srcRow == dstRow;
   }
+
   /// Return true if src is West of dst
   bool isWest(int srcCol, int srcRow, int dstCol, int dstRow) const {
-    return ((srcCol == dstCol + 1) && (srcRow == dstRow));
+    return srcCol == dstCol + 1 && srcRow == dstRow;
   }
+
   /// Return true if src is East of dst
   bool isEast(int srcCol, int srcRow, int dstCol, int dstRow) const {
-    return ((srcCol == dstCol - 1) && (srcRow == dstRow));
+    return srcCol == dstCol - 1 && srcRow == dstRow;
   }
+
   /// Return true if src is North of dst
   bool isNorth(int srcCol, int srcRow, int dstCol, int dstRow) const {
-    return ((srcCol == dstCol) && (srcRow == dstRow - 1));
+    return srcCol == dstCol && srcRow == dstRow - 1;
   }
+
   /// Return true if src is South of dst
   bool isSouth(int srcCol, int srcRow, int dstCol, int dstRow) const {
-    return ((srcCol == dstCol) && (srcRow == dstRow + 1));
+    return srcCol == dstCol && srcRow == dstRow + 1;
   }
 
   /// Return true if src has a memory tile which is West of dst
@@ -183,7 +187,7 @@ public:
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel() {}
+  AIE1TargetModel() = default;
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -206,14 +210,13 @@ public:
                           int memRow) const override;
 
   uint32_t getMemInternalBaseAddress(TileID src) const override {
-    bool IsEvenRow = ((src.row % 2) == 0);
-    if (IsEvenRow)
+    if (src.row % 2 == 0)
       // Internal is West
       return getMemWestBaseAddress();
-    else
-      // Internal is East
-      return getMemEastBaseAddress();
+    // Internal is East
+    return getMemEastBaseAddress();
   }
+
   uint32_t getMemSouthBaseAddress() const override { return 0x00020000; }
   uint32_t getMemWestBaseAddress() const override { return 0x00028000; }
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
@@ -240,7 +243,7 @@ public:
                           int destIndex) const override {
     if (isCoreTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
       return true;
     return false;
   }
@@ -248,7 +251,7 @@ public:
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel() {}
+  AIE2TargetModel() = default;
 
   AIEArch getTargetArch() const override;
 
@@ -270,17 +273,21 @@ public:
   uint32_t getMemInternalBaseAddress(TileID src) const override {
     return getMemEastBaseAddress();
   }
+
   uint32_t getMemSouthBaseAddress() const override { return 0x00040000; }
   uint32_t getMemWestBaseAddress() const override { return 0x00050000; }
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+
   uint32_t getNumLocks(int col, int row) const override {
     return isMemTile(col, row) ? 64 : 16;
   }
+
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
   }
+
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -301,126 +308,139 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel() {}
+  VC1902TargetModel() = default;
 
   int columns() const override { return 50; }
+
   int rows() const override { return 9; /* One Shim row and 8 Core rows. */ }
 
   bool isShimNOCTile(int col, int row) const override {
     return row == 0 && noc_columns.contains(col);
   }
+
   bool isShimPLTile(int col, int row) const override {
     return row == 0 && !noc_columns.contains(col);
   }
+
   bool isShimNOCorPLTile(int col, int row) const override {
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 8> noc_columns = {2, 3, 6, 7, 10, 11};
+  llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel() {}
+  VE2302TargetModel() = default;
 
   int columns() const override { return 17; }
+
   int rows() const override {
     return 4; /* One Shim row, 1 memtile rows, and 2 Core rows. */
   }
 
   bool isCoreTile(int col, int row) const override { return row > 1; }
   bool isMemTile(int col, int row) const override { return row == 1; }
+
   bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && noc_columns.contains(col);
+    return row == 0 && nocColumns.contains(col);
   }
+
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !noc_columns.contains(col);
+    return row == 0 && !nocColumns.contains(col);
   }
+
   bool isShimNOCorPLTile(int col, int row) const override {
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
+
   uint32_t getNumMemTileRows() const override { return 1; }
+
   bool isValidTraceMaster(int col, int row, WireBundle destBundle,
                           int destIndex) const override {
     if (isCoreTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
-             destIndex == 0)
+    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
       return true;
-    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+    if (isMemTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
-             destIndex == 5)
+    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-             destIndex == 0)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+        destIndex == 0)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-             destIndex == 0)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+        destIndex == 0)
       return true;
     return false;
   }
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {2,  3,  6,  7,  14, 15,
-                                                   22, 23, 30, 31, 34, 35};
+  llvm::SmallDenseSet<unsigned, 16> nocColumns = {2,  3,  6,  7,  14, 15,
+                                                  22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel() {}
+  VE2802TargetModel() = default;
 
   int columns() const override { return 38; }
+
   int rows() const override {
     return 11; /* One Shim row, 2 memtile rows, and 8 Core rows. */
   }
 
   bool isCoreTile(int col, int row) const override { return row > 2; }
+
   bool isMemTile(int col, int row) const override {
-    return (row == 1) || (row == 2);
+    return row == 1 || row == 2;
   }
+
   bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && noc_columns.contains(col);
+    return row == 0 && nocColumns.contains(col);
   }
+
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !noc_columns.contains(col);
+    return row == 0 && !nocColumns.contains(col);
   }
+
   bool isShimNOCorPLTile(int col, int row) const override {
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
+
   uint32_t getNumMemTileRows() const override { return 2; }
+
   bool isValidTraceMaster(int col, int row, WireBundle destBundle,
                           int destIndex) const override {
     if (isCoreTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
-             destIndex == 0)
+    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
       return true;
-    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+    if (isMemTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
-             destIndex == 5)
+    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-             destIndex == 0)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+        destIndex == 0)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-             destIndex == 0)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+        destIndex == 0)
       return true;
     return false;
   }
 };
 
 class IPUTargetModel : public AIE2TargetModel {
-  llvm::SmallDenseSet<unsigned, 16> noc_columns = {0, 1, 2, 3};
+  llvm::SmallDenseSet<unsigned, 16> nocColumns = {0, 1, 2, 3};
 
 public:
-  IPUTargetModel() {}
+  IPUTargetModel() = default;
 
   int columns() const override { return 5; }
+
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
   }
@@ -429,34 +449,36 @@ public:
   bool isMemTile(int col, int row) const override { return row == 1; }
 
   bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && noc_columns.contains(col);
+    return row == 0 && nocColumns.contains(col);
   }
+
   bool isShimPLTile(int col, int row) const override {
-    return row == 0 && !noc_columns.contains(col);
+    return row == 0 && !nocColumns.contains(col);
   }
+
   bool isShimNOCorPLTile(int col, int row) const override {
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
+
   uint32_t getNumMemTileRows() const override { return 1; }
+
   bool isValidTraceMaster(int col, int row, WireBundle destBundle,
                           int destIndex) const override {
     if (isCoreTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isCoreTile(col, row) && destBundle == WireBundle::DMA &&
-             destIndex == 0)
+    if (isCoreTile(col, row) && destBundle == WireBundle::DMA && destIndex == 0)
       return true;
-    else if (isMemTile(col, row) && destBundle == WireBundle::South)
+    if (isMemTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isMemTile(col, row) && destBundle == WireBundle::DMA &&
-             destIndex == 5)
+    if (isMemTile(col, row) && destBundle == WireBundle::DMA && destIndex == 5)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::South)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
-             destIndex == 0)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::West &&
+        destIndex == 0)
       return true;
-    else if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
-             destIndex == 0)
+    if (isShimNOCorPLTile(col, row) && destBundle == WireBundle::East &&
+        destIndex == 0)
       return true;
     return false;
   }
@@ -469,11 +491,11 @@ template <> struct DenseMapInfo<xilinx::AIE::TileID> {
   using FirstInfo = DenseMapInfo<int>;
   using SecondInfo = DenseMapInfo<int>;
 
-  static inline xilinx::AIE::TileID getEmptyKey() {
+  static xilinx::AIE::TileID getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static inline xilinx::AIE::TileID getTombstoneKey() {
+  static xilinx::AIE::TileID getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 

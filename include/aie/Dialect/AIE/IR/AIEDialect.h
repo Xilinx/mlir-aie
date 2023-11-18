@@ -21,21 +21,12 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
-
-#include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/Debug.h"
-
-#include <map>
-#include <set>
 
 namespace xilinx {
 namespace AIE {
@@ -43,8 +34,7 @@ namespace AIE {
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>
-struct HasValidBDs
-    : public mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+struct HasValidBDs : mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
   static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
@@ -52,7 +42,7 @@ struct HasValidBDs
 // has valid channels.
 template <typename ConcreteType>
 struct HasValidDMAChannels
-    : public mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
+    : mlir::OpTrait::TraitBase<ConcreteType, HasValidBDs> {
   static mlir::LogicalResult verifyTrait(mlir::Operation *op);
 };
 
@@ -97,15 +87,15 @@ public:
   using Base::Base;
 
   /// Create an instance of a `ObjectFifoType` with the given element type.
-  static AIEObjectFifoType get(mlir::Type elementType);
+  static AIEObjectFifoType get(Type elementType);
 
   /// This method is used to verify the construction invariants.
   static mlir::LogicalResult
   verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::Type elementType);
+         Type elementType);
 
   /// Returns the element type of this ObjectFifoType.
-  mlir::Type getElementType();
+  Type getElementType();
 };
 
 namespace detail {
@@ -121,15 +111,15 @@ public:
   using Base::Base;
 
   /// Create an instance of a `SubviewType` with the given element type.
-  static AIEObjectFifoSubviewType get(mlir::Type elementType);
+  static AIEObjectFifoSubviewType get(Type elementType);
 
   /// This method is used to verify the construction invariants.
   static mlir::LogicalResult
   verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::Type elementType);
+         Type elementType);
 
   /// Returns the element type of this SubviewType.
-  mlir::Type getElementType();
+  Type getElementType();
 };
 
 } // namespace AIE
@@ -153,13 +143,13 @@ typedef struct Port {
   WireBundle bundle;
   int channel;
 
-  inline bool operator==(const Port &rhs) const {
+  bool operator==(const Port &rhs) const {
     return std::tie(bundle, channel) == std::tie(rhs.bundle, rhs.channel);
   }
 
-  inline bool operator!=(const Port &rhs) const { return !(*this == rhs); }
+  bool operator!=(const Port &rhs) const { return !(*this == rhs); }
 
-  inline bool operator<(const Port &rhs) const {
+  bool operator<(const Port &rhs) const {
     return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
   }
 
@@ -169,7 +159,7 @@ typedef struct Connect {
   Port src;
   Port dst;
 
-  inline bool operator==(const Connect &rhs) const {
+  bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
 } Connect;
@@ -178,12 +168,12 @@ typedef struct DMAChannel {
   DMAChannelDir direction;
   int channel;
 
-  inline bool operator==(const DMAChannel &rhs) const {
+  bool operator==(const DMAChannel &rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
 } DMAChannel;
 
-const xilinx::AIE::AIETargetModel &getTargetModel(mlir::Operation *op);
+const AIETargetModel &getTargetModel(mlir::Operation *op);
 
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
@@ -226,16 +216,19 @@ namespace llvm {
 // Functions hash just like pointers.
 template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
   static xilinx::AIE::ObjectFifoAcquireOp getEmptyKey() {
-    auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    auto *pointer = DenseMapInfo<void *>::getEmptyKey();
     return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
   }
+
   static xilinx::AIE::ObjectFifoAcquireOp getTombstoneKey() {
-    auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    auto *pointer = DenseMapInfo<void *>::getTombstoneKey();
     return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
   }
+
   static unsigned getHashValue(xilinx::AIE::ObjectFifoAcquireOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
+
   static bool isEqual(xilinx::AIE::ObjectFifoAcquireOp lhs,
                       xilinx::AIE::ObjectFifoAcquireOp rhs) {
     return lhs == rhs;
@@ -247,16 +240,19 @@ namespace llvm {
 // Functions hash just like pointers.
 template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
   static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
-    auto *pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    auto *pointer = DenseMapInfo<void *>::getEmptyKey();
     return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
   }
+
   static xilinx::AIE::ObjectFifoCreateOp getTombstoneKey() {
-    auto *pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    auto *pointer = DenseMapInfo<void *>::getTombstoneKey();
     return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
   }
+
   static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
+
   static bool isEqual(xilinx::AIE::ObjectFifoCreateOp lhs,
                       xilinx::AIE::ObjectFifoCreateOp rhs) {
     return lhs == rhs;
@@ -266,11 +262,12 @@ template <> struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
 template <> struct DenseMapInfo<xilinx::AIE::DMAChannel> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
   using SecondInfo = DenseMapInfo<int>;
-  static inline xilinx::AIE::DMAChannel getEmptyKey() {
+
+  static xilinx::AIE::DMAChannel getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static inline xilinx::AIE::DMAChannel getTombstoneKey() {
+  static xilinx::AIE::DMAChannel getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 
@@ -288,11 +285,12 @@ template <> struct DenseMapInfo<xilinx::AIE::DMAChannel> {
 template <> struct DenseMapInfo<xilinx::AIE::Port> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
   using SecondInfo = DenseMapInfo<int>;
-  static inline xilinx::AIE::Port getEmptyKey() {
+
+  static xilinx::AIE::Port getEmptyKey() {
     return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
   }
 
-  static inline xilinx::AIE::Port getTombstoneKey() {
+  static xilinx::AIE::Port getTombstoneKey() {
     return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
   }
 

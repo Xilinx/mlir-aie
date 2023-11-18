@@ -19,8 +19,9 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
+
+#include <set>
 
 #define DEBUG_TYPE "aie-assign-lock-ids"
 
@@ -28,12 +29,12 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIEAssignLockIDsPass
-    : public AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
-  void getDependentDialects(::mlir::DialectRegistry &registry) const override {
+struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
-    registry.insert<xilinx::AIE::AIEDialect>();
+    registry.insert<AIEDialect>();
   }
+
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
@@ -88,7 +89,6 @@ struct AIEAssignLockIDsPass
   }
 };
 
-std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEAssignLockIDsPass() {
+std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignLockIDsPass() {
   return std::make_unique<AIEAssignLockIDsPass>();
 }

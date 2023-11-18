@@ -12,9 +12,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
@@ -26,7 +24,7 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 template <typename MyAIEXOp>
-struct AIEXOpRemoval : public OpConversionPattern<MyAIEXOp> {
+struct AIEXOpRemoval : OpConversionPattern<MyAIEXOp> {
   using OpConversionPattern<MyAIEXOp>::OpConversionPattern;
   using OpAdaptor = typename MyAIEXOp::Adaptor;
   ModuleOp &module;
@@ -38,36 +36,31 @@ struct AIEXOpRemoval : public OpConversionPattern<MyAIEXOp> {
   matchAndRewrite(MyAIEXOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = op.getOperation();
-
     rewriter.eraseOp(Op);
     return success();
   }
 };
 
-struct AIEXToStandardPass : public AIEXToStandardBase<AIEXToStandardPass> {
+struct AIEXToStandardPass : AIEXToStandardBase<AIEXToStandardPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
-    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
-
     ConversionTarget target(getContext());
     RewritePatternSet removepatterns(&getContext());
-    removepatterns.add<AIEXOpRemoval<AIEX::IpuDmaMemcpyNdOp>>(m.getContext(),
+    removepatterns.add<AIEXOpRemoval<IpuDmaMemcpyNdOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<IpuShimTilePushQueueOp>>(m.getContext(),
                                                               m);
-    removepatterns.add<AIEXOpRemoval<AIEX::IpuShimTilePushQueueOp>>(
-        m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<AIEX::IpuWriteRTPOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<AIEX::IpuWrite32Op>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<AIEX::IpuSyncOp>>(m.getContext(), m);
-    removepatterns.add<AIEXOpRemoval<AIEX::IpuWriteBdExShimTileOp>>(
-        m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<IpuWriteRTPOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<IpuWrite32Op>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<IpuSyncOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<IpuWriteBdExShimTileOp>>(m.getContext(),
+                                                              m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();
   }
 };
 
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-xilinx::AIEX::createAIEXToStandardPass() {
+std::unique_ptr<OperationPass<ModuleOp>> AIEX::createAIEXToStandardPass() {
   return std::make_unique<AIEXToStandardPass>();
 }
