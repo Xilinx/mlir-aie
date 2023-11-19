@@ -137,6 +137,19 @@ typedef struct PathEndPoint {
   Switchbox *sb;
   Port port;
 
+  friend std::ostream &operator<<(std::ostream &os, const PathEndPoint &s) {
+    os << "PathEndPoint(" << *s.sb << ": " << s.port << ")";
+    return os;
+  }
+
+  GENERATE_TO_STRING(PathEndPoint)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const PathEndPoint &s) {
+    os << to_string(s);
+    return os;
+  }
+
   // Needed for the std::maps that store PathEndPoint.
   bool operator<(const PathEndPoint &rhs) const {
     return sb->col == rhs.sb->col
@@ -158,14 +171,14 @@ typedef struct PathEndPointNode : public PathEndPoint {
   SwitchboxNode *sb;
 } PathEndPointNode;
 
-typedef struct Flow {
+typedef struct FlowNode {
   PathEndPointNode src;
   std::vector<PathEndPointNode> dsts;
-} Flow;
+} FlowNode;
 
 class Pathfinder {
   SwitchboxGraph graph;
-  std::vector<Flow> flows;
+  std::vector<FlowNode> flows;
   bool maxIterReached;
   std::map<TileID, SwitchboxNode> grid;
   // Use a list instead of a vector because nodes have an edge list of raw
@@ -180,8 +193,7 @@ public:
                        Port dstPort);
   virtual bool addFixedConnection(TileID coords, Port port);
   virtual bool isLegal();
-  virtual std::map<PathEndPoint, SwitchSettings>
-  findPaths(int maxIterations);
+  virtual std::map<PathEndPoint, SwitchSettings> findPaths(int maxIterations);
 
   virtual Switchbox *getSwitchbox(TileID coords) {
     auto sb = std::find_if(graph.begin(), graph.end(), [&](SwitchboxNode *sb) {
