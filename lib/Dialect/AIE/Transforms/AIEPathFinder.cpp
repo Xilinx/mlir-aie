@@ -293,7 +293,8 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, SwitchboxNode *src) {
     src = priorityQueue.begin()->second;
     priorityQueue.erase(priorityQueue.begin());
     for (ChannelEdge *e : src->getEdges()) {
-      if (SwitchboxNode *dst = &e->getTargetNode(); demand[src] + e->demand < demand[dst]) {
+      if (SwitchboxNode *dst = &e->getTargetNode();
+          demand[src] + e->demand < demand[dst]) {
         priorityQueue.erase({demand[dst], dst});
 
         demand[dst] = demand[src] + e->demand;
@@ -403,6 +404,7 @@ Pathfinder::findPaths(const int maxIterations) {
           ch->usedCapacity++;
           // if at capacity, bump demand to discourage using this Channel
           if (ch->usedCapacity >= ch->maxCapacity) {
+            LLVM_DEBUG(llvm::dbgs() << "ch over capacity: " << ch << "\n");
             // this means the order matters!
             ch->demand *= DEMAND_COEFF;
           }

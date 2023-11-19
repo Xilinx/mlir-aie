@@ -898,7 +898,7 @@ LogicalResult SwitchboxOp::verify() {
         else
           return ops.emitOpError()
                  << dir << " bundle " << stringifyWireBundle(bundle)
-                 << " not supported";
+                 << " not supported; index: " << index << ", bound: " << bound;
       }
       return success();
     };

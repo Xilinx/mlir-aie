@@ -161,29 +161,31 @@ typedef struct Port {
   }
 
   friend std::ostream &operator<<(std::ostream &os, const Port &port) {
+    os << "(";
     switch (port.bundle) {
-    case xilinx::AIE::WireBundle::Core:
+    case WireBundle::Core:
       os << "Core";
       break;
-    case xilinx::AIE::WireBundle::DMA:
+    case WireBundle::DMA:
       os << "DMA";
       break;
-    case xilinx::AIE::WireBundle::North:
+    case WireBundle::North:
       os << "N";
       break;
-    case xilinx::AIE::WireBundle::East:
+    case WireBundle::East:
       os << "E";
       break;
-    case xilinx::AIE::WireBundle::South:
+    case WireBundle::South:
       os << "S";
       break;
-    case xilinx::AIE::WireBundle::West:
+    case WireBundle::West:
       os << "W";
       break;
     default:
       os << "X";
       break;
     }
+    os << ": " << std::to_string(port.channel) << ")";
     return os;
   }
 
@@ -360,7 +362,7 @@ template <> struct std::hash<xilinx::AIE::Port> {
   std::size_t operator()(const xilinx::AIE::Port &p) const noexcept {
     std::size_t h1 = std::hash<xilinx::AIE::WireBundle>{}(p.bundle);
     std::size_t h2 = std::hash<int>{}(p.channel);
-    return h1 ^ (h2 << 1);
+    return h1 ^ h2 << 1;
   }
 };
 

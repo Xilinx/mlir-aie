@@ -133,6 +133,11 @@ typedef struct SwitchSetting {
     os << to_string(s);
     return os;
   }
+
+  inline bool operator<(const SwitchSetting &rhs) const {
+    return src < rhs.src;
+  }
+
 } SwitchSetting;
 
 typedef std::map<Switchbox, SwitchSetting> SwitchSettings;

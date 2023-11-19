@@ -102,7 +102,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
             shimCh = srcChannel == 0
                          ? 3
                          : 7; // must be either DMA0 -> N3 or DMA1 -> N7
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
             addConnection(rewriter,
                           cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
                           srcBundle, srcChannel, WireBundle::North, shimCh);
@@ -110,7 +110,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                      WireBundle::NOC) { // must be NOC0/NOC1 -> N2/N3 or
                                         // NOC2/NOC3 -> N6/N7
             shimCh = srcChannel >= 2 ? srcChannel + 4 : srcChannel + 2;
-            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+            ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
             addConnection(rewriter,
                           cast<Interconnect>(shimMuxOp.getOperation()), flowOp,
                           srcBundle, srcChannel, WireBundle::North, shimCh);
@@ -118,7 +118,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                      WireBundle::PLIO) { // PLIO at start of flows with mux
             if (srcChannel == 2 || srcChannel == 3 || srcChannel == 6 ||
                 srcChannel == 7) { // Only some PLIO requrie mux
-              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB->col);
+              ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, srcSB.col);
               addConnection(
                   rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
                   flowOp, srcBundle, srcChannel, WireBundle::North, shimCh);
@@ -143,13 +143,13 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                 shimCh = channel == 0
                              ? 2
                              : 3; // must be either N2 -> DMA0 or N3 -> DMA1
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
                     flowOp, WireBundle::North, shimCh, bundle, channel);
               } else if (bundle == WireBundle::NOC) {
                 shimCh = channel + 2; // must be either N2/3/4/5 -> NOC0/1/2/3
-                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr->col);
+                ShimMuxOp shimMuxOp = analyzer.getShimMux(rewriter, curr.col);
                 addConnection(
                     rewriter, cast<Interconnect>(shimMuxOp.getOperation()),
                     flowOp, WireBundle::North, shimCh, bundle, channel);
@@ -185,7 +185,6 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     rewriter.eraseOp(Op);
   }
 };
-
 
 } // namespace
 
@@ -289,7 +288,8 @@ void AIEPathfinderPass::runOnOperation() {
   d.walk([&](ConnectOp connect) {
     if (auto sw = connect->getParentOfType<SwitchboxOp>()) {
       // Constraint: memtile stream switch constraints
-      if (auto tile = sw.getTileOp(); tile.isMemTile() &&
+      if (auto tile = sw.getTileOp();
+          tile.isMemTile() &&
           !targetModel.isLegalMemtileConnection(
               connect.getSourceBundle(), connect.getSourceChannel(),
               connect.getDestBundle(), connect.getDestChannel())) {
