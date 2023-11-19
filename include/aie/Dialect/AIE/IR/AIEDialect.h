@@ -139,6 +139,13 @@ public:
 namespace xilinx {
 namespace AIE {
 
+#define GENERATE_TO_STRING(TYPE_WITH_INSERTION_OP)                             \
+  friend std::string to_string(const TYPE_WITH_INSERTION_OP &s) {              \
+    std::ostringstream ss;                                                     \
+    ss << s;                                                                   \
+    return ss.str();                                                           \
+  }
+
 typedef struct Port {
   WireBundle bundle;
   int channel;
@@ -151,6 +158,43 @@ typedef struct Port {
 
   bool operator<(const Port &rhs) const {
     return std::tie(bundle, channel) < std::tie(rhs.bundle, rhs.channel);
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const Port &port) {
+    os << "(";
+    switch (port.bundle) {
+    case WireBundle::Core:
+      os << "Core";
+      break;
+    case WireBundle::DMA:
+      os << "DMA";
+      break;
+    case WireBundle::North:
+      os << "N";
+      break;
+    case WireBundle::East:
+      os << "E";
+      break;
+    case WireBundle::South:
+      os << "S";
+      break;
+    case WireBundle::West:
+      os << "W";
+      break;
+    default:
+      os << "X";
+      break;
+    }
+    os << ": " << std::to_string(port.channel) << ")";
+    return os;
+  }
+
+  GENERATE_TO_STRING(Port)
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                                       const Port &port) {
+    os << to_string(port);
+    return os;
   }
 
 } Port;
@@ -307,13 +351,19 @@ template <> struct DenseMapInfo<xilinx::AIE::Port> {
 
 } // namespace llvm
 
-namespace std {
-template <> struct less<xilinx::AIE::Port> {
+template <> struct std::less<xilinx::AIE::Port> {
   bool operator()(const xilinx::AIE::Port &a,
                   const xilinx::AIE::Port &b) const {
     return a.bundle == b.bundle ? a.channel < b.channel : a.bundle < b.bundle;
   }
 };
-} // namespace std
+
+template <> struct std::hash<xilinx::AIE::Port> {
+  std::size_t operator()(const xilinx::AIE::Port &p) const noexcept {
+    std::size_t h1 = std::hash<xilinx::AIE::WireBundle>{}(p.bundle);
+    std::size_t h2 = std::hash<int>{}(p.channel);
+    return h1 ^ h2 << 1;
+  }
+};
 
 #endif

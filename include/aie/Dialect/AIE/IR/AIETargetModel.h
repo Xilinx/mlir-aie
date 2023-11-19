@@ -11,28 +11,45 @@
 #ifndef MLIR_AIE_DEVICEMODEL_H
 #define MLIR_AIE_DEVICEMODEL_H
 
+#include "aie/Dialect/AIE/IR/AIEEnums.h"
+
 #include "llvm/ADT/DenseSet.h"
 
-#include "aie/Dialect/AIE/IR/AIEEnums.h"
+#include <iostream>
 
 namespace xilinx::AIE {
 
 typedef struct TileID {
-  int col;
-  int row;
+  // friend definition (will define the function as a non-member function in the
+  // namespace surrounding the class).
+  friend std::ostream &operator<<(std::ostream &os, const TileID &s) {
+    os << "TileID(" << s.col << ", " << s.row << ")";
+    return os;
+  }
+
+  friend std::string to_string(const TileID &s) {
+    std::ostringstream ss;
+    ss << s;
+    return ss.str();
+  }
+
+  friend llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const TileID &s) {
+    os << to_string(s);
+    return os;
+  }
+
+  // Imposes a lexical order on TileIDs.
+  inline bool operator<(const TileID &rhs) const {
+    return std::tie(col, row) < std::tie(rhs.col, rhs.row);
+  }
 
   bool operator==(const TileID &rhs) const {
     return std::tie(col, row) == std::tie(rhs.col, rhs.row);
   }
 
-  bool operator!=(const TileID &rhs) const {
-    return std::tie(col, row) != std::tie(rhs.col, rhs.row);
-  }
+  bool operator!=(const TileID &rhs) const { return !(*this == rhs); }
 
-  // Imposes a lexical order on TileIDs.
-  bool operator<(const TileID &rhs) const {
-    return col == rhs.col ? row < rhs.row : col < rhs.col;
-  }
+  int col, row;
 } TileID;
 
 class AIETargetModel {
@@ -510,5 +527,13 @@ template <> struct DenseMapInfo<xilinx::AIE::TileID> {
   }
 };
 } // namespace llvm
+
+template <> struct std::hash<xilinx::AIE::TileID> {
+  std::size_t operator()(const xilinx::AIE::TileID &s) const noexcept {
+    std::size_t h1 = std::hash<int>{}(s.col);
+    std::size_t h2 = std::hash<int>{}(s.row);
+    return h1 ^ (h2 << 1);
+  }
+};
 
 #endif
