@@ -47,7 +47,7 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     maxRow = std::max(maxRow, tileOp.rowIndex());
   }
 
-  pathfinder = Pathfinder(maxCol, maxRow, device.getTargetModel());
+  pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
 
   // for each flow in the device, add it to pathfinder
   // each source can map to multiple different destinations (fanout)
@@ -64,7 +64,7 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                << " -> (" << dstCoords.col << ", " << dstCoords.row << ")"
                << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                << "\n");
-    pathfinder.addFlow(srcCoords, srcPort, dstCoords, dstPort);
+    pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort);
   }
 
   // add existing connections so Pathfinder knows which resources are
@@ -74,7 +74,7 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
       TileID existingCoord = {switchboxOp.colIndex(), switchboxOp.rowIndex()};
       Port existingPort = {connectOp.getDestBundle(),
                            connectOp.getDestChannel()};
-      if (!pathfinder.addFixedConnection(existingCoord, existingPort))
+      if (!pathfinder->addFixedConnection(existingCoord, existingPort))
         switchboxOp.emitOpError(
             "Couldn't connect tile (" + std::to_string(existingCoord.col) +
             ", " + std::to_string(existingCoord.row) + ") to port (" +
@@ -86,8 +86,8 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  flowSolutions = pathfinder.findPaths(maxIterations);
-  if (!pathfinder.isLegal())
+  flowSolutions = pathfinder->findPaths(maxIterations);
+  if (!pathfinder->isLegal())
     device.emitError("Unable to find a legal routing");
 
   // initialize all flows as unprocessed to prep for rewrite
@@ -174,8 +174,8 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
   }
 }
 
-Pathfinder::Pathfinder(int maxCol, int maxRow,
-                       const AIETargetModel &targetModel) {
+void Pathfinder::initialize(int maxCol, int maxRow,
+                            const AIETargetModel &targetModel) {
   // make grid of switchboxes
   for (int col = 0; col <= maxCol; col++) {
     for (int row = 0; row <= maxRow; row++) {

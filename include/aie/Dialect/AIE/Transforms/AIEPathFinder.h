@@ -175,7 +175,8 @@ class Pathfinder {
 
 public:
   Pathfinder() = default;
-  Pathfinder(int maxCol, int maxRow, const AIETargetModel &targetModel);
+  virtual void initialize(int maxCol, int maxRow,
+                          const AIETargetModel &targetModel);
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort);
   bool addFixedConnection(TileID coords, Port port);
   bool isLegal();
@@ -197,7 +198,7 @@ public:
 class DynamicTileAnalysis {
 public:
   int maxCol, maxRow;
-  Pathfinder pathfinder;
+  std::shared_ptr<Pathfinder> pathfinder;
   std::map<PathEndPoint, SwitchSettings> flowSolutions;
   std::map<PathEndPoint, bool> processedFlows;
 
@@ -208,7 +209,8 @@ public:
 
   const int maxIterations = 1000; // how long until declared unroutable
 
-  DynamicTileAnalysis() = default;
+  DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
+  DynamicTileAnalysis(std::shared_ptr<Pathfinder> p) : pathfinder(p) {}
 
   void runAnalysis(DeviceOp &device);
 
