@@ -1,5 +1,6 @@
+import warnings
 from collections import defaultdict, OrderedDict
-from typing import Union, Optional
+from typing import Union, Optional, List, Tuple, Dict
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -293,6 +294,8 @@ def route_using_cp(DG, flows, min_edges=False, seed=10, num_workers=1):
 
         return flow_paths
 
+    warnings.warn("Couldn't route.")
+
 
 def route_using_ilp(DG, flows):
     import gurobipy as gp
@@ -475,3 +478,41 @@ def get_routing_solution(DG, flow_paths):
         )
 
     return routing_solution
+
+
+# TODO(max): fixed_connections not implemented
+
+
+class Router:
+    max_col: int
+    max_row: int
+    # Don't use actual binding here to prevent a blow up since class bodies are executed
+    # at module load time.
+    target_model: "AIETargetModel"
+    flows: List[Tuple["PathEndPoint", "PathEndPoint"]]
+    fixed_connections: List[Tuple["TileID", "Port"]]
+    routing_solution: Dict["PathEndPoint", "SwitchSettings"]
+
+    def __init__(self):
+        self.flows = []
+        self.fixed_connections = []
+
+    def initialize(self, max_col, max_row, target_model):
+        self.max_col = max_col
+        self.max_row = max_row
+        self.target_model = target_model
+
+    def add_flow(self, src: "PathEndPoint", tgt: "PathEndPoint"):
+        self.flows.append((src, tgt))
+
+    def add_fixed_connection(self, coords: "TileID", port: "Port"):
+        raise NotImplemented("adding fixed connections not implemented yet.")
+
+    def find_paths(self):
+        DG = build_graph(self.max_col, self.max_row, self.target_model)
+        flow_paths = route_using_cp(DG, self.flows)
+        self.routing_solution = get_routing_solution(DG, flow_paths)
+        return self.routing_solution
+
+    def is_legal(self):
+        return True

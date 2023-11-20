@@ -33,47 +33,34 @@ namespace py = pybind11;
 
 class PythonPathFinder : public Pathfinder {
 public:
-  explicit PythonPathFinder(py::function findPathsPythonFunc)
-      : targetModel(nullptr), maxCol(0), maxRow(0),
-        findPathsPythonFunc(std::move(findPathsPythonFunc)) {}
+  explicit PythonPathFinder(py::object router) : router(std::move(router)) {}
 
-  void initialize(const int maxCol_, const int maxRow_,
-                  const AIETargetModel &targetModel_) override {
-    maxCol = maxCol_;
-    maxRow = maxRow_;
-    targetModel = &targetModel_;
+  void initialize(const int maxCol, const int maxRow,
+                  const AIETargetModel &targetModel) override {
+    // Here we're copying a pointer to targetModel, which is a static somewhere.
+    router.attr("initialize")(maxCol, maxRow, &targetModel);
   }
 
   void addFlow(TileID srcCoords, const Port srcPort, TileID dstCoords,
                const Port dstPort) override {
-    flows.emplace_back(PathEndPoint{{srcCoords.col, srcCoords.row}, srcPort},
-                       PathEndPoint{{dstCoords.col, dstCoords.row}, dstPort});
+    router.attr("add_flow")(
+        PathEndPoint{{srcCoords.col, srcCoords.row}, srcPort},
+        PathEndPoint{{dstCoords.col, dstCoords.row}, dstPort});
   }
 
   bool addFixedConnection(TileID coords, Port port) override {
-    fixedConnections.emplace_back(coords, port);
-    // TODO(max): not implemented.
-    return false;
+    return router.attr("add_fixed_connection")(coords, port).cast<bool>();
   }
 
-  bool isLegal() override {
-    // TODO(max): not implemented.
-    return true;
-  }
+  bool isLegal() override { return router.attr("is_legal")().cast<bool>(); }
 
   std::map<PathEndPoint, SwitchSettings>
   findPaths(const int maxIterations) override {
-    auto routingSolution = findPathsPythonFunc(maxCol, maxRow, targetModel,
-                                               flows, fixedConnections)
-                               .cast<std::map<PathEndPoint, SwitchSettings>>();
-    return routingSolution;
+    return router.attr("find_paths")()
+        .cast<std::map<PathEndPoint, SwitchSettings>>();
   }
 
-  const AIETargetModel *targetModel;
-  int maxCol, maxRow;
-  std::vector<std::tuple<PathEndPoint, PathEndPoint>> flows;
-  std::vector<std::tuple<TileID, Port>> fixedConnections;
-  py::function findPathsPythonFunc;
+  py::object router;
 };
 
 struct PathfinderFlowsWithPython : AIEPathfinderPass {
@@ -85,26 +72,23 @@ struct PathfinderFlowsWithPython : AIEPathfinderPass {
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-createPathfinderFlowsWithPythonPassWithFunc(py::function findPathsPythonFunc) {
+createPathfinderFlowsWithPythonPassWithFunc(py::object router) {
   return std::make_unique<PathfinderFlowsWithPython>(DynamicTileAnalysis(
-      std::make_shared<PythonPathFinder>(std::move(findPathsPythonFunc))));
+      std::make_shared<PythonPathFinder>(std::move(router))));
 }
 
-void registerPathfinderFlowsWithPythonPassWithFunc(
-    const py::function &findPathsPythonFunc) {
-  registerPass([findPathsPythonFunc] {
-    return createPathfinderFlowsWithPythonPassWithFunc(findPathsPythonFunc);
-  });
+void registerPathfinderFlowsWithPythonPassWithFunc(const py::object &router) {
+  registerPass(
+      [router] { return createPathfinderFlowsWithPythonPassWithFunc(router); });
 }
 
 PYBIND11_MODULE(_aie_python_passes, m) {
 
   bindTypes(m);
 
-  m.def("register_pathfinder_flows_with_python",
-        [](const py::function &findPathsPythonFunc) {
-          registerPathfinderFlowsWithPythonPassWithFunc(findPathsPythonFunc);
-        });
+  m.def("register_pathfinder_flows_with_python", [](const py::object &router) {
+    registerPathfinderFlowsWithPythonPassWithFunc(router);
+  });
 
   m.def("get_connecting_bundle", &getConnectingBundle);
 }
