@@ -2602,6 +2602,58 @@ struct ComputeSignedIntRightShiftOpPattern
   }
 };
 
+// Convert a `vector.contract` op to an `aievec.matmul` op for AIEml
+struct LowerVectorContractionOpToAIEVecMatMulPattern
+    : public OpConversionPattern<vector::ContractionOp> {
+  using OpConversionPattern<vector::ContractionOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ContractionOp contractOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto acc = adaptor.getAcc();
+
+    auto matmulOp = rewriter.create<aievec::MatMulOp>(
+        contractOp.getLoc(), contractOp.getResult().getType(), lhs, rhs, acc);
+    {
+      // Replace diagnostics handler to silence errors when verifying the
+      // validity of the `aievec.matmul` ops being generated.
+      ScopedDiagnosticHandler diagHandler(
+          contractOp.getContext(), [](Diagnostic &) { return success(); });
+      if (failed(matmulOp.verifyInvariants())) {
+        rewriter.eraseOp(matmulOp);
+        // There is a possibility that, when the linalg op is converted to
+        // contractions, lower precisions operands are cast to the target
+        // precission outside the contraction. For those cases, we check.
+        if (auto lhsExtSIOp = lhs.getDefiningOp<arith::ExtSIOp>()) {
+          lhs = lhsExtSIOp.getIn();
+        } else if (auto lhsExtUIOp = lhs.getDefiningOp<arith::ExtUIOp>()) {
+          lhs = lhsExtUIOp.getIn();
+        } else if (auto lhsExtFOp = lhs.getDefiningOp<arith::ExtFOp>()) {
+          lhs = lhsExtFOp.getIn();
+        }
+        if (auto rhsExtSIOp = rhs.getDefiningOp<arith::ExtSIOp>()) {
+          rhs = rhsExtSIOp.getIn();
+        } else if (auto rhsExtUIOp = rhs.getDefiningOp<arith::ExtUIOp>()) {
+          rhs = rhsExtUIOp.getIn();
+        } else if (auto rhsExtFOp = rhs.getDefiningOp<arith::ExtFOp>()) {
+          rhs = rhsExtFOp.getIn();
+        }
+        matmulOp = rewriter.create<aievec::MatMulOp>(
+            contractOp.getLoc(), contractOp.getResult().getType(), lhs, rhs,
+            acc);
+      }
+      if (failed(matmulOp.verifyInvariants()))
+        return failure();
+    }
+
+    rewriter.replaceOp(contractOp, matmulOp);
+
+    return success();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
@@ -2628,6 +2680,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   patterns.add<LowerVectorTransferReadToAIEUPD>(patterns.getContext(), 128,
                                                 1024, 256, 1024);
   // clang-format off
+  // TODO: Reorder these alphabetically
   patterns.add<
       LowerVectorAddIOpToAIEVecAddElemOp,
       LowerVectorSubIOpToAIEVecSubElemOp,
@@ -2666,7 +2719,8 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       FoldVectorExtractAndBroadcastToAIEBroadcast,
       ConvertBroadcastToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
-      LowerVectorExtractStridedSliceOpAIEMLPattern>(patterns.getContext());
+      LowerVectorExtractStridedSliceOpAIEMLPattern,
+      LowerVectorContractionOpToAIEVecMatMulPattern>(patterns.getContext());
   // clang-format on
 }
 
@@ -3321,6 +3375,8 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
         return false;
       });
+
+  target.addIllegalOp<vector::ContractionOp>();
 }
 
 //===----------------------------------------------------------------------===//
