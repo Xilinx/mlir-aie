@@ -1,4 +1,5 @@
-//===- decodelog.hpp ---------------------------------------000---*- C++ -*-===//
+//===- decodelog.hpp ---------------------------------------000---*- C++
+//-*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,8 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "xrt/xrt_bo.h"
-#include <filesystem>
 #include <boost/tokenizer.hpp>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
