@@ -229,20 +229,24 @@ if (TARGET mlir_rocm_runtime)
   list(APPEND _runtimes mlir_rocm_runtime)
 endif()
 
+set(HAS_MLIR_RUNTIME_LIBRARIES ON PARENT_SCOPE)
 foreach(r ${_runtimes})
+  if(NOT TARGET ${r})
+    set(HAS_MLIR_RUNTIME_LIBRARIES OFF PARENT_SCOPE)
+    break()
+  endif()
   add_custom_command(
     TARGET AIEPythonModules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     $<TARGET_FILE:${r}>
     ${CMAKE_BINARY_DIR}/lib
   )
+  install(IMPORTED_RUNTIME_ARTIFACTS
+    ${r}
+    COMPONENT aie-python
+    LIBRARY DESTINATION "python/aie/_mlir_libs"
+  )
 endforeach()
-
-install(IMPORTED_RUNTIME_ARTIFACTS
-  ${_runtimes}
-  COMPONENT aie-python
-  LIBRARY DESTINATION "python/aie/_mlir_libs"
-)
 
 add_subdirectory(compiler)
 add_dependencies(AIEPythonModules AIECompilerPythonModules)

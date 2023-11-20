@@ -50,6 +50,7 @@ config.enable_board_tests = lit.util.pythonize_bool("@ENABLE_BOARD_TESTS@")
 config.enable_python_tests = lit.util.pythonize_bool("@ENABLE_PYTHON_TESTS@")
 config.python_passes = lit.util.pythonize_bool("@AIE_ENABLE_PYTHON_PASSES@")
 config.has_libxaie = lit.util.pythonize_bool("@LibXAIE_FOUND@")
+config.has_mlir_runtime_libraries = lit.util.pythonize_bool("@HAS_MLIR_RUNTIME_LIBRARIES@")
 
 # pass on vitis settings
 config.vitis_root = "@VITIS_ROOT@"
