@@ -21,7 +21,6 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
 
 #define DEBUG_TYPE "aie-assign-lock-ids"
 
@@ -40,65 +39,66 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     DeviceOp device = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(device.getBody());
 
-    struct TileLocks {
+    // All of the lock ops on a tile, separated into ops which have been
+    // assigned to a lock, and ops which have not.
+    struct TileLockOps {
       DenseSet<int> assigned;
       SmallVector<LockOp> unassigned;
     };
 
-    DenseMap<TileOp, TileLocks> locks;
+    DenseMap<TileOp, TileLockOps> tileToLocks;
 
-    // Separate lock ops into assigned and unassigned ops, and store by tile.
+    // Construct data structure storing locks by tile.
     for (auto lockOp : device.getOps<LockOp>()) {
 
       auto tileOp = lockOp.getTileOp();
       bool isAssigned = lockOp.getLockID().has_value();
 
-      // Append to set of assigned locks.
       if (isAssigned) {
         auto lockID = lockOp.getLockID().value();
-        auto assignedLocksIter = locks.find(tileOp);
-        if (assignedLocksIter == locks.end()) {
-          locks.insert({tileOp, {{lockID}, {}}});
+        auto iter = tileToLocks.find(tileOp);
+        if (iter == tileToLocks.end()) {
+          tileToLocks.insert({tileOp, {{lockID}, /* unassigned = */ {}}});
         } else {
-          if (assignedLocksIter->second.assigned.find(lockID) !=
-              assignedLocksIter->second.assigned.end()) {
+          if (iter->second.assigned.find(lockID) !=
+              iter->second.assigned.end()) {
             auto diag = lockOp->emitOpError("is assigned to the same lock (")
                         << lockID << ") as another op.";
             diag.attachNote(tileOp.getLoc())
                 << "tile has lock ops assigned to same lock.";
             return signalPassFailure();
           }
-          assignedLocksIter->second.assigned.insert(lockID);
+          iter->second.assigned.insert(lockID);
         }
       }
 
-      // Append to set of unassigned locks.
       else {
-        auto unassignedLocksIter = locks.find(tileOp);
-        if (unassignedLocksIter == locks.end()) {
-          locks.insert({tileOp, {{}, {lockOp}}});
+        auto iter = tileToLocks.find(tileOp);
+        if (iter == tileToLocks.end()) {
+          tileToLocks.insert({tileOp, {/* assigned = */ {}, {lockOp}}});
         } else {
-          unassignedLocksIter->second.unassigned.push_back(lockOp);
+          iter->second.unassigned.push_back(lockOp);
         }
       }
     }
 
     // IR mutation: assign locks to all unassigned lock ops.
-    for (auto &&[tileOp, tileLocks] : locks) {
+    for (auto &&[tileOp, locks] : tileToLocks) {
 
       const auto locksPerTile =
           getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
 
       uint32_t nextID = 0;
-      for (auto &&lockOp : tileLocks.unassigned) {
+      for (auto &&lockOp : locks.unassigned) {
         while (nextID < locksPerTile &&
-               (tileLocks.assigned.find(nextID) != tileLocks.assigned.end())) {
+               (locks.assigned.find(nextID) != locks.assigned.end())) {
           ++nextID;
         }
         if (nextID == locksPerTile) {
           auto diag = lockOp->emitOpError("not allocated a lock.");
           diag.attachNote(tileOp.getLoc())
-              << "tile has only " << locksPerTile << " locks available.";
+              << "because tile has only " << locksPerTile
+              << " locks available.";
           return signalPassFailure();
         }
         lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nextID));
