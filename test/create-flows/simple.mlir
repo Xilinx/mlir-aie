@@ -8,10 +8,36 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
-// CHECK: %[[T01:.*]] = AIE.tile(0, 1)
-// CHECK: %[[T12:.*]] = AIE.tile(1, 2)
-// CHECK: AIE.flow(%[[T01]], DMA : 0, %[[T12]], Core : 1)
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
+
+// CHECK-LABEL:   AIE.device(xcvc1902) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(0, 1)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(1, 2)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(0, 2)
+// CHECK:           %[[VAL_3:.*]] = AIE.switchbox(%[[VAL_0]]) {
+// CHECK:             AIE.connect<DMA : 0, North : 0>
+// CHECK:           }
+// CHECK:           %[[VAL_4:.*]] = AIE.switchbox(%[[VAL_2]]) {
+// CHECK:             AIE.connect<South : 0, East : 0>
+// CHECK:           }
+// CHECK:           %[[VAL_5:.*]] = AIE.switchbox(%[[VAL_1]]) {
+// CHECK:             AIE.connect<West : 0, Core : 1>
+// CHECK:           }
+// CHECK:           AIE.packet_flow(16) {
+// CHECK:             AIE.packet_source<%[[VAL_0]], Core : 0>
+// CHECK:             AIE.packet_dest<%[[VAL_1]], Core : 0>
+// CHECK:             AIE.packet_dest<%[[VAL_2]], DMA : 1>
+// CHECK:           }
+// CHECK:           AIE.wire(%[[VAL_0]] : Core, %[[VAL_3]] : Core)
+// CHECK:           AIE.wire(%[[VAL_0]] : DMA, %[[VAL_3]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_2]] : Core, %[[VAL_4]] : Core)
+// CHECK:           AIE.wire(%[[VAL_2]] : DMA, %[[VAL_4]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_3]] : North, %[[VAL_4]] : South)
+// CHECK:           AIE.wire(%[[VAL_4]] : East, %[[VAL_5]] : West)
+// CHECK:           AIE.wire(%[[VAL_1]] : Core, %[[VAL_5]] : Core)
+// CHECK:           AIE.wire(%[[VAL_1]] : DMA, %[[VAL_5]] : DMA)
+// CHECK:         }
+
 
 module {
   AIE.device(xcvc1902) {

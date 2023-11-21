@@ -8,27 +8,45 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-create-pathfinder-flows --aie-find-flows %s | FileCheck %s
+// RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// CHECK: %[[T24:.*]] = AIE.tile(2, 4)
-// CHECK: %[[T23:.*]] = AIE.tile(2, 3)
-// CHECK: %[[T22:.*]] = AIE.tile(2, 2)
-// CHECK: %[[T21:.*]] = AIE.tile(2, 1)
-// CHECK: %[[T20:.*]] = AIE.tile(2, 0)
-// CHECK: AIE.switchbox(%[[T21]]) {
-// CHECK:   AIE.connect<North : 0, DMA : 0>
-// CHECK:   AIE.connect<North : 1, South : 1>
-// CHECK: }
-// CHECK: AIE.switchbox(%[[T22]]) {
-// CHECK:   AIE.connect<DMA : 0, South : 0>
-// CHECK:   AIE.connect<North : 1, South : 1>
-// CHECK: }
-// CHECK: AIE.switchbox(%[[T20]]) {
-// CHECK:   AIE.connect<North : 1, South : 2>
-// CHECK: }
-// CHECK: AIE.switchbox(%[[T23]]) {
-// CHECK:   AIE.connect<DMA : 0, South : 1>
-// CHECK: }
+// CHECK-LABEL:   AIE.device(xcve2802) {
+// CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 4)
+// CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 3)
+// CHECK:           %[[VAL_2:.*]] = AIE.tile(2, 2)
+// CHECK:           %[[VAL_3:.*]] = AIE.tile(2, 1)
+// CHECK:           %[[VAL_4:.*]] = AIE.tile(2, 0)
+// CHECK:           %[[VAL_5:.*]] = AIE.switchbox(%[[VAL_3]]) {
+// CHECK:             AIE.connect<North : 0, DMA : 0>
+// CHECK:             AIE.connect<North : 1, South : 0>
+// CHECK:           }
+// CHECK:           %[[VAL_6:.*]] = AIE.switchbox(%[[VAL_2]]) {
+// CHECK:             AIE.connect<DMA : 0, South : 0>
+// CHECK:             AIE.connect<North : 0, South : 1>
+// CHECK:           }
+// CHECK:           %[[VAL_7:.*]] = AIE.switchbox(%[[VAL_4]]) {
+// CHECK:             AIE.connect<North : 0, South : 2>
+// CHECK:           }
+// CHECK:           %[[VAL_8:.*]] = AIE.shimmux(%[[VAL_4]]) {
+// CHECK:             AIE.connect<North : 2, DMA : 0>
+// CHECK:           }
+// CHECK:           %[[VAL_9:.*]] = AIE.switchbox(%[[VAL_1]]) {
+// CHECK:             AIE.connect<DMA : 0, South : 0>
+// CHECK:           }
+// CHECK:           AIE.wire(%[[VAL_8]] : North, %[[VAL_7]] : South)
+// CHECK:           AIE.wire(%[[VAL_4]] : DMA, %[[VAL_8]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_3]] : Core, %[[VAL_5]] : Core)
+// CHECK:           AIE.wire(%[[VAL_3]] : DMA, %[[VAL_5]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_7]] : North, %[[VAL_5]] : South)
+// CHECK:           AIE.wire(%[[VAL_2]] : Core, %[[VAL_6]] : Core)
+// CHECK:           AIE.wire(%[[VAL_2]] : DMA, %[[VAL_6]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_5]] : North, %[[VAL_6]] : South)
+// CHECK:           AIE.wire(%[[VAL_1]] : Core, %[[VAL_9]] : Core)
+// CHECK:           AIE.wire(%[[VAL_1]] : DMA, %[[VAL_9]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_6]] : North, %[[VAL_9]] : South)
+// CHECK:         }
+
+
 
 module {
     AIE.device(xcve2802) {
