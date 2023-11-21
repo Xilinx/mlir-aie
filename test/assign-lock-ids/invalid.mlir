@@ -1,7 +1,7 @@
 // RUN: aie-opt --aie-assign-lock-ids %s  -split-input-file -verify-diagnostics
 
 AIE.device(xcve2802) {
-  // expected-error @below {{has more lock ops (20) than locks (16)}}
+  // expected-note @below {{tile has only 16 locks available}}
   %tMemTile = AIE.tile(4,4)
   %l0 = AIE.lock(%tMemTile)
   %l1 = AIE.lock(%tMemTile)
@@ -19,6 +19,7 @@ AIE.device(xcve2802) {
   %l13 = AIE.lock(%tMemTile)
   %l14 = AIE.lock(%tMemTile)
   %l15 = AIE.lock(%tMemTile)
+  // expected-error @below {{not allocated a lock}}
   %l16 = AIE.lock(%tMemTile)
   %l17 = AIE.lock(%tMemTile)
   %l18 = AIE.lock(%tMemTile)
