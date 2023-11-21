@@ -2,7 +2,7 @@ import multiprocessing
 import numbers
 import os
 import warnings
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from typing import Union, Optional, List, Tuple, Dict
 
 import matplotlib as mpl
@@ -427,66 +427,47 @@ def get_routing_solution(DG, flow_paths):
         get_connecting_bundle,
     )
 
-    # OrderedDict just for debugging aid, i.e., src stays to the far left in
-    # repr and such.
-    routing_solution = defaultdict(OrderedDict)
-    all_switch_settings = {}
+    routing_solution = {}
+    # I don't know what's going on here but AIECreatePathFindFlows has some assumptions
+    # hard-coded about matching channels on both the source and target port of a connection.
+    # So keep track on a "per-edge" basis and use the same channel for both port.
+    used_channel = defaultdict(lambda: 0)
+    flow_dsts = defaultdict(list)
     for flow, path in flow_paths.items():
         src, tgt = flow
-        switch_settings = routing_solution[src]
+        flow_dsts[src].append((tgt, path))
 
-        if src.sb not in switch_settings:
-            switch_settings[src.sb] = SwitchSetting(src.port)
-            routing_solution[src] = switch_settings
-        else:
-            assert switch_settings[src.sb].src == src.port
+    for src, dsts in flow_dsts.items():
+        switch_settings = defaultdict(SwitchSetting)
+        switch_settings[src.sb].src = src.port
+        processed = {src.sb}
 
-        if src.sb not in all_switch_settings:
-            all_switch_settings[src.sb] = switch_settings[src.sb]
+        # Trace backwards until a vertex already processed is reached
+        for end_point, path in dsts:
+            path_subgraph = DG.edge_subgraph(path)
+            curr_sb = end_point.sb
+            switch_settings[curr_sb].dsts.add(end_point.port)
 
-        path_subgraph = DG.edge_subgraph(path)
-        prev = src.sb.col, src.sb.row
-        while curr := path_subgraph.successors(prev):
-            curr = list(curr)
-            if not curr:
-                assert prev == (tgt.sb.col, tgt.sb.row)
-                switch_settings[Switchbox(*prev)].dsts.add(tgt.port)
-                break
-            assert len(curr) == 1, "multiple successors not supported"
-            curr = curr[0]
-            bundle = path_subgraph.get_edge_data(prev, curr)["bundle"]
+            while curr_sb not in processed:
+                pred = list(path_subgraph.predecessors((curr_sb.col, curr_sb.row)))
+                assert len(pred) == 1
+                pred: Tuple[int, int] = pred[0]
+                edge = pred, (curr_sb.col, curr_sb.row)
+                bundle = path_subgraph.get_edge_data(*edge)["bundle"]
+                pred_sb = Switchbox(*pred)
 
-            # Add the successor Switchbox to the destinations of curr
-            p = Port(bundle, 0)
-            while p in all_switch_settings[Switchbox(*prev)].dsts:
-                p.channel += 1
-            switch_settings[Switchbox(*prev)].dsts.add(p)
-
-            # Add the entrance port for next Switchbox
-            if Switchbox(*curr) not in switch_settings:
-                switch_settings[Switchbox(*curr)] = SwitchSetting(
-                    Port(get_connecting_bundle(bundle), 0)
+                # add the entrance port for this Switchbox
+                switch_settings[curr_sb].src = Port(
+                    get_connecting_bundle(bundle), used_channel[edge]
                 )
+                # add the current Switchbox to the map of the predecessor
+                switch_settings[pred_sb].dsts.add(Port(bundle, used_channel[edge]))
+                used_channel[edge] += 1
 
-            if Switchbox(*curr) not in all_switch_settings:
-                all_switch_settings[Switchbox(*curr)] = switch_settings[
-                    Switchbox(*curr)
-                ]
+                processed.add(curr_sb)
+                curr_sb = pred_sb
 
-            prev = curr
-
-    for src, switch_settings in routing_solution.items():
-        assert len(switch_settings) == len(
-            set(
-                [
-                    sb
-                    for ((s, t), fp) in flow_paths.items()
-                    for e in fp
-                    for sb in e
-                    if s == src
-                ]
-            )
-        )
+        routing_solution[src] = dict(switch_settings)
 
     return routing_solution
 

@@ -89,7 +89,8 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
   py::class_<SwitchSetting>(m, "SwitchSetting")
       .def(py::init<SwitchSetting &>())
       .def(py::init<Port &>())
-      .def_readonly("src", &SwitchSetting::src)
+      .def(py::init<>())
+      .def_readwrite("src", &SwitchSetting::src)
       .def_readwrite("dsts", &SwitchSetting::dsts)
       .def(py::self < py::self)
       .def("__repr__", [](const SwitchSetting &sb) { return to_string(sb); });
@@ -100,8 +101,6 @@ void xilinx::AIE::bindTypes(py::module_ &m) {
       .def_property_readonly("target",
                              [](const Channel &c) { return c.target; })
       .def_readonly("bundle", &Channel::bundle)
-      .def_readonly("demand", &Channel::demand)
-      // Probably don't need these...
       .def("__repr__", [](const Channel &c) { return to_string(c); });
 
   py::class_<PathEndPoint>(m, "PathEndPoint")

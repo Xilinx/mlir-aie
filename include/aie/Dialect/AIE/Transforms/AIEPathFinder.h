@@ -112,6 +112,7 @@ public:
 typedef struct SwitchSetting {
   SwitchSetting() = default;
   SwitchSetting(Port src) : src(src) {}
+  SwitchSetting(Port src, std::set<Port> dsts) : src(src), dsts(std::move(dsts)) {}
   Port src;
   std::set<Port> dsts;
 
