@@ -121,4 +121,4 @@ module @memTileTest {
 // CHECK-COUNT-20: AIE.lock
 // CHECK-NOT: AIE.lock
 
-// -----
+

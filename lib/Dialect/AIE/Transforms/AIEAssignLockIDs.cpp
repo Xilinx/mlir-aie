@@ -52,50 +52,54 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     }
 
     // For each tile, ensure that all its locks have unique and valid IDs.
-    for (auto &&[tileOp, locks] : tileToLockOps) {
+    for (auto &&[tileOp, lockOps] : tileToLockOps) {
 
       const auto locksPerTile =
           getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
 
       // All lock IDs which are assigned to locks before this pass.
-      DenseSet<int> idsPreAssigned;
+      DenseSet<int> assignedLocks;
 
       // All lock ops which do not have IDs before this pass.
-      SmallVector<LockOp> idsNotAssigned;
+      SmallVector<LockOp> unassignedLocks;
 
-      for (auto &&lockOp : locks) {
+      for (auto &&lockOp : lockOps) {
         if (lockOp.getLockID().has_value()) {
           uint32_t lockID = lockOp.getLockID().value();
 
           assert(lockID < locksPerTile &&
                  "This should be checked in the lock op verifier");
 
-          // Duplicate preassigned lock ID:
-          if (idsPreAssigned.find(lockID) != idsPreAssigned.end()) {
-            tileOp->emitOpError("has multiple locks with ID ") << lockID << '.';
+          // Duplicate lock ID:
+          if (assignedLocks.find(lockID) != assignedLocks.end()) {
+            auto diag = lockOp->emitOpError("is assigned to the same lock (")
+                        << lockID << ") as another op.";
+            diag.attachNote(tileOp.getLoc())
+                << "tile has lock ops assigned to same lock.";
             return signalPassFailure();
           }
-          idsPreAssigned.insert(lockID);
+          assignedLocks.insert(lockID);
         } else {
-          idsNotAssigned.push_back(lockOp);
+          unassignedLocks.push_back(lockOp);
         }
       }
 
-      assert(idsPreAssigned.size() + idsNotAssigned.size() == locks.size());
+      assert(assignedLocks.size() + unassignedLocks.size() == lockOps.size());
 
-      uint32_t nxtId = 0;
-      for (auto &&lockOp : idsNotAssigned) {
-        while (nxtId < locksPerTile &&
-               (idsPreAssigned.find(nxtId) != idsPreAssigned.end())) {
-          ++nxtId;
+      uint32_t nextID = 0;
+      for (auto &&lockOp : unassignedLocks) {
+        while (nextID < locksPerTile &&
+               (assignedLocks.find(nextID) != assignedLocks.end())) {
+          ++nextID;
         }
-        if (nxtId == locksPerTile) {
-          tileOp->emitOpError("can have a maximum of ")
-              << locksPerTile << " locks. No more available IDs.";
+        if (nextID == locksPerTile) {
+          auto diag = lockOp->emitOpError("not allocated a lock.");
+          diag.attachNote(tileOp.getLoc())
+              << "tile has only " << locksPerTile << " locks available.";
           return signalPassFailure();
         }
-        lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nxtId));
-        ++nxtId;
+        lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nextID));
+        ++nextID;
       }
     }
   }
