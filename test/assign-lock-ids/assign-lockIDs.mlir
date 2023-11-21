@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-lock-ids %s | FileCheck %s
+// RUN: aie-opt --aie-assign-lock-ids --split-input-file %s | FileCheck %s
 // CHECK:           %[[VAL_0:.*]] = AIE.tile(2, 2)
 // CHECK:           %[[VAL_1:.*]] = AIE.tile(2, 3)
 // CHECK:           %[[VAL_2:.*]] = AIE.tile(3, 3)
@@ -85,3 +85,40 @@ module @test_assign_lockIDs {
   %l60 = AIE.lock(%t60)
  }
 }
+
+// -----
+
+module @memTileTest {
+  AIE.device(xcve2802) {
+
+    // Memory tiles on xcve have 64 locks.
+    %tmemtile = AIE.tile(1,1)
+    %l0 = AIE.lock(%tmemtile, 1)
+    %l1 = AIE.lock(%tmemtile, 0)
+    %l2 = AIE.lock(%tmemtile)
+    %l3 = AIE.lock(%tmemtile)
+    %l4 = AIE.lock(%tmemtile)
+    %l5 = AIE.lock(%tmemtile)
+    %l6 = AIE.lock(%tmemtile)
+    %l7 = AIE.lock(%tmemtile)
+    %l8 = AIE.lock(%tmemtile)
+    %l9 = AIE.lock(%tmemtile)
+    %l10 = AIE.lock(%tmemtile)
+    %l11 = AIE.lock(%tmemtile)
+    %l12 = AIE.lock(%tmemtile)
+    %l13 = AIE.lock(%tmemtile)
+    %l14 = AIE.lock(%tmemtile,33)
+    %l15 = AIE.lock(%tmemtile)
+    %l16 = AIE.lock(%tmemtile)
+    %l17 = AIE.lock(%tmemtile)
+    %l18 = AIE.lock(%tmemtile)
+    %l19 = AIE.lock(%tmemtile,2)
+  }
+}
+
+
+// CHECK-LABEL: memTileTest
+// CHECK-COUNT-20: AIE.lock
+// CHECK-NOT: AIE.lock
+
+// -----

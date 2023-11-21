@@ -20,8 +20,7 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
-
-#include <set>
+#include "llvm/ADT/DenseMap.h"
 
 #define DEBUG_TYPE "aie-assign-lock-ids"
 
@@ -40,50 +39,63 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
     DeviceOp device = getOperation();
     OpBuilder rewriter = OpBuilder::atBlockEnd(device.getBody());
 
-    std::map<Operation *, std::pair<int, std::set<int>>> tileToLastID;
-
-    // The first pass scans for and stores the existing lockIDs. This data is
-    // stored in a map with the lock’s tile operation as the key, while the
-    // value to the key is a pair with the current potential lockID and a set
-    // that stores the currently assigned lockIDs.
-    for (auto lock : device.getOps<LockOp>()) {
-      if (lock.getLockID().has_value()) {
-        Operation *lock_tile = lock.getTile().getDefiningOp();
-        tileToLastID[lock_tile].first = 0;
-        tileToLastID[lock_tile].second.insert(lock.getLockIDValue());
+    // Map from tile to all its locks.
+    DenseMap<TileOp, SmallVector<LockOp>> tileToLockOps;
+    for (auto lockOp : device.getOps<LockOp>()) {
+      auto tileOp = lockOp.getTileOp();
+      auto iter = tileToLockOps.find(tileOp);
+      if (iter == tileToLockOps.end()) {
+        tileToLockOps.insert({tileOp, {lockOp}});
+      } else {
+        iter->second.push_back(lockOp);
       }
     }
 
-    // The second pass scans for locks with no lockIDs and assigns locks.
-    for (auto lock : device.getOps<LockOp>()) {
-      Operation *lock_tile = lock.getTile().getDefiningOp();
-      if (!lock.getLockID().has_value()) {
-        if (tileToLastID.find(lock_tile) == tileToLastID.end()) {
-          // If the tile operation corresponding to the lock does not exist in
-          // the data structure, initialize the lockID with 0 with an empty set.
-          tileToLastID[lock_tile].first = 0;
-        } else if (tileToLastID[lock_tile].first < 15) {
-          // If the tile operation of the lock exists, the potential lockID is
-          // checked with the set containing occupied lockIDs until a lockID
-          // that is free is found.
-          int potential_ID = tileToLastID[lock_tile].first;
-          while (true) {
-            if (tileToLastID[lock_tile].second.find(potential_ID) !=
-                tileToLastID[lock_tile].second.end())
-              potential_ID++;
-            else
-              break;
-          }
-          tileToLastID[lock_tile].first = potential_ID;
-        } else {
-          lock->emitError() << "Exceeded the number of unique LockIDs";
-          return;
-        }
+    // For each tile, ensure that all its locks have unique and valid IDs.
+    for (auto &&[tileOp, locks] : tileToLockOps) {
 
-        // The lockID is assigned and is stored in the set.
-        lock->setAttr("lockID", rewriter.getI32IntegerAttr(
-                                    tileToLastID[lock_tile].first));
-        tileToLastID[lock_tile].second.insert(tileToLastID[lock_tile].first);
+      const auto locksPerTile =
+          getTargetModel(tileOp).getNumLocks(tileOp.getCol(), tileOp.getRow());
+
+      // All lock IDs which are assigned to locks before this pass.
+      DenseSet<int> idsPreAssigned;
+
+      // All lock ops which do not have IDs before this pass.
+      SmallVector<LockOp> idsNotAssigned;
+
+      for (auto &&lockOp : locks) {
+        if (lockOp.getLockID().has_value()) {
+          uint32_t lockID = lockOp.getLockID().value();
+
+          assert(lockID < locksPerTile &&
+                 "This should be checked in the lock op verifier");
+
+          // Duplicate preassigned lock ID:
+          if (idsPreAssigned.find(lockID) != idsPreAssigned.end()) {
+            tileOp->emitOpError("has multiple locks with ID ") << lockID << '.';
+            return signalPassFailure();
+          }
+          idsPreAssigned.insert(lockID);
+        } else {
+          idsNotAssigned.push_back(lockOp);
+        }
+      }
+
+      assert(idsPreAssigned.size() + idsNotAssigned.size() == locks.size());
+
+      uint32_t nxtId = 0;
+      for (auto &&lockOp : idsNotAssigned) {
+        while (nxtId < locksPerTile &&
+               (idsPreAssigned.find(nxtId) != idsPreAssigned.end())) {
+          ++nxtId;
+        }
+        if (nxtId == locksPerTile) {
+          tileOp->emitOpError("can have a maximum of ")
+              << locksPerTile << " locks. No more available IDs.";
+          return signalPassFailure();
+        }
+        lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nxtId));
+        ++nxtId;
       }
     }
   }
