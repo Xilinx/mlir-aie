@@ -150,15 +150,15 @@ def mlir_mod_ctx(
 
 
 def build_graph(max_cols, max_rows, target_model):
-    from ._mlir_libs._aie_python_passes import WireBundle
+    from ._mlir_libs._aie_python_passes import WireBundle, Switchbox
 
     DG = nx.DiGraph()
     for c in range(max_cols + 1):
         for r in range(max_rows + 1):
-            this_switchbox = (c, r)
+            this_switchbox = Switchbox(c, r)
             DG.add_node(this_switchbox)
             if r > 0:
-                southern_neighbor = (c, r - 1)
+                southern_neighbor = Switchbox(c, r - 1)
                 if max_capacity := target_model.get_num_source_switchbox_connections(
                     c, r, WireBundle.South
                 ):
@@ -178,7 +178,7 @@ def build_graph(max_cols, max_rows, target_model):
                         capacity=max_capacity,
                     )
             if c > 0:
-                western_neighbor = (c - 1, r)
+                western_neighbor = Switchbox(c - 1, r)
                 if max_capacity := target_model.get_num_source_switchbox_connections(
                     c, r, WireBundle.West
                 ):
@@ -229,8 +229,7 @@ def route_using_cp(
 
     # Add flow-balance constraints at all nodes (besides sources and targets)
     for (src, tgt), flow_var in zip(flows, flat_flow_vars):
-        src = src.sb.col, src.sb.row
-        tgt = tgt.sb.col, tgt.sb.row
+        src, tgt = src.sb, tgt.sb
 
         for n in DG.nodes:
             if n in {src, tgt}:
@@ -325,9 +324,7 @@ def route_using_ilp(DG, flows):
 
     # Add flow-balance constraints at all nodes (besides sources and targets)
     for (src, tgt), flow_var in zip(flows, flat_flow_vars):
-        src = src.sb.col, src.sb.row
-        tgt = tgt.sb.col, tgt.sb.row
-
+        src, tgt = src.sb, tgt.sb
         for n in DG.nodes:
             if n in {src, tgt}:
                 continue
@@ -387,8 +384,8 @@ def rgb2hex(r, g, b, a):
 
 
 def plot_paths(DG, src, paths):
-    pos = dict((n, n) for n in DG.nodes())
-    labels = dict(((i, j), f"{i},{j}") for i, j in DG.nodes())
+    pos = dict((n, (n.col, n.row)) for n in DG.nodes())
+    labels = dict((n, f"{n.col},{n.row}") for n in DG.nodes())
 
     fig, ax = plt.subplots()
     nx.draw(
@@ -427,16 +424,17 @@ def get_routing_solution(DG, flow_paths):
         get_connecting_bundle,
     )
 
-    routing_solution = {}
-    # I don't know what's going on here but AIECreatePathFindFlows has some assumptions
-    # hard-coded about matching channels on both the source and target port of a connection.
-    # So keep track on a "per-edge" basis and use the same channel for both port.
-    used_channel = defaultdict(lambda: 0)
     flow_dsts = defaultdict(list)
     for flow, path in flow_paths.items():
         src, tgt = flow
         flow_dsts[src].append((tgt, path))
 
+    # I don't know what's going on here but AIECreatePathFindFlows has some assumptions
+    # hard-coded about matching channels on both the source and target port of a connection.
+    # So keep track on a "per-edge" basis and use the same channel for both port.
+    used_channel = defaultdict(lambda: 0)
+
+    routing_solution = {}
     for src, dsts in flow_dsts.items():
         switch_settings = defaultdict(SwitchSetting)
         switch_settings[src.sb].src = src.port
@@ -449,12 +447,11 @@ def get_routing_solution(DG, flow_paths):
             switch_settings[curr_sb].dsts.add(end_point.port)
 
             while curr_sb not in processed:
-                pred = list(path_subgraph.predecessors((curr_sb.col, curr_sb.row)))
-                assert len(pred) == 1
-                pred: Tuple[int, int] = pred[0]
-                edge = pred, (curr_sb.col, curr_sb.row)
+                pred_sb = list(path_subgraph.predecessors(curr_sb))
+                assert len(pred_sb) == 1
+                pred_sb = pred_sb[0]
+                edge = pred_sb, curr_sb
                 bundle = path_subgraph.get_edge_data(*edge)["bundle"]
-                pred_sb = Switchbox(*pred)
 
                 # add the entrance port for this Switchbox
                 switch_settings[curr_sb].src = Port(
