@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
 #include "mlir/Bindings/Python/PybindAdaptors.h"
+#include "mlir/CAPI/Pass.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/Pass/Pass.h"
 
@@ -72,23 +73,53 @@ struct PathfinderFlowsWithPython : AIEPathfinderPass {
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
-createPathfinderFlowsWithPythonPassWithFunc(py::object router) {
+createPathfinderFlowsWithPythonPassWithRouter(py::object router) {
   return std::make_unique<PathfinderFlowsWithPython>(DynamicTileAnalysis(
       std::make_shared<PythonPathFinder>(std::move(router))));
 }
 
-void registerPathfinderFlowsWithPythonPassWithFunc(const py::object &router) {
-  registerPass(
-      [router] { return createPathfinderFlowsWithPythonPassWithFunc(router); });
+MlirPass mlirCreatePathfinderFlowsWithPythonPassWithRouter(py::object router) {
+  return wrap(createPathfinderFlowsWithPythonPassWithRouter(router).release());
+}
+
+void registerPathfinderFlowsWithPythonPassWithRouter(const py::object &router) {
+  registerPass([router] {
+    return createPathfinderFlowsWithPythonPassWithRouter(router);
+  });
+}
+
+#define MLIR_PYTHON_CAPSULE_PASS MAKE_MLIR_PYTHON_QUALNAME("ir.Pass._CAPIPtr")
+
+static inline PyObject *mlirPassToPythonCapsule(MlirPass pass) {
+  return PyCapsule_New(MLIR_PYTHON_GET_WRAPPED_POINTER(pass),
+                       MLIR_PYTHON_CAPSULE_PASS, NULL);
+}
+
+static inline MlirPass mlirPythonCapsuleToPass(PyObject *capsule) {
+  void *ptr = PyCapsule_GetPointer(capsule, MLIR_PYTHON_CAPSULE_PASS);
+  MlirPass pass = {ptr};
+  return pass;
 }
 
 PYBIND11_MODULE(_aie_python_passes, m) {
 
   bindTypes(m);
 
-  m.def("register_pathfinder_flows_with_python", [](const py::object &router) {
-    registerPathfinderFlowsWithPythonPassWithFunc(router);
-  });
+  m.def("create_pathfinder_flows_with_python_pass",
+        [](const py::object &router) {
+          MlirPass pass =
+              mlirCreatePathfinderFlowsWithPythonPassWithRouter(router);
+          py::object capsule =
+              py::reinterpret_steal<py::object>(mlirPassToPythonCapsule(pass));
+          return capsule;
+        });
+
+  m.def("pass_manager_add_owned_pass",
+        [](MlirPassManager passManager, py::handle passHandle) {
+          py::object passCapsule = mlirApiObjectToCapsule(passHandle);
+          MlirPass pass = mlirPythonCapsuleToPass(passCapsule.ptr());
+          mlirPassManagerAddOwnedPass(passManager, pass);
+        });
 
   m.def("get_connecting_bundle", &getConnectingBundle);
 }

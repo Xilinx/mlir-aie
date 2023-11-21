@@ -1,3 +1,6 @@
+import multiprocessing
+import numbers
+import os
 import warnings
 from collections import defaultdict, OrderedDict
 from typing import Union, Optional, List, Tuple, Dict
@@ -198,7 +201,14 @@ def build_graph(max_cols, max_rows, target_model):
     return DG
 
 
-def route_using_cp(DG, flows, min_edges=False, seed=10, num_workers=1):
+def route_using_cp(
+    DG,
+    flows,
+    min_edges=False,
+    seed=10,
+    num_workers=multiprocessing.cpu_count() // 2,
+    max_time_in_seconds=600,
+):
     from ortools.sat.python import cp_model
 
     # Create model object
@@ -207,6 +217,7 @@ def route_using_cp(DG, flows, min_edges=False, seed=10, num_workers=1):
     # For determinism
     solver.parameters.random_seed = seed
     solver.parameters.num_workers = num_workers
+    solver.parameters.max_time_in_seconds = max_time_in_seconds
 
     # Create variable for each edge, for each path
     flow_vars = {}
@@ -480,12 +491,25 @@ def get_routing_solution(DG, flow_paths):
     return routing_solution
 
 
-# TODO(max): fixed_connections not implemented
+def pythonize_bool(value):
+    if value is None:
+        return False
+    if type(value) is bool:
+        return value
+    if isinstance(value, numbers.Number):
+        return value != 0
+    if isinstance(value, str):
+        if value.lower() in ("1", "true", "on", "yes"):
+            return True
+        if value.lower() in ("", "0", "false", "off", "no"):
+            return False
+    raise ValueError('"{}" is not a valid boolean'.format(value))
 
 
 class Router:
     max_col: int
     max_row: int
+    use_gurobi: bool = False
     # Don't use actual binding here to prevent a blow up since class bodies are executed
     # at module load time.
     target_model: "AIETargetModel"
@@ -493,9 +517,12 @@ class Router:
     fixed_connections: List[Tuple["TileID", "Port"]]
     routing_solution: Dict["PathEndPoint", "SwitchSettings"]
 
-    def __init__(self):
+    def __init__(self, use_gurobi=False):
         self.flows = []
         self.fixed_connections = []
+        self.use_gurobi = use_gurobi or pythonize_bool(
+            os.getenv("ROUTER_USE_GUROBI", False)
+        )
 
     def initialize(self, max_col, max_row, target_model):
         self.max_col = max_col
@@ -510,7 +537,11 @@ class Router:
 
     def find_paths(self):
         DG = build_graph(self.max_col, self.max_row, self.target_model)
-        flow_paths = route_using_cp(DG, self.flows)
+        if self.use_gurobi:
+            flow_paths = route_using_ilp(DG, self.flows)
+        else:
+            flow_paths = route_using_cp(DG, self.flows, num_workers=10)
+
         self.routing_solution = get_routing_solution(DG, flow_paths)
         return self.routing_solution
 
