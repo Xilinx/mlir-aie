@@ -54,6 +54,33 @@
 #include <stdlib.h>
 
 extern "C" {
+
+int main(int argc, char *argv[]);
+static inline void _init();
+
+int _main_init(int argc, char **argv) property(envelope);
+
+// clang-format off
+inline assembly void chess_envelope_open() {
+  asm_begin
+  .label __AIE_ARCH_MODEL_VERSION__20010000 global
+    MOVXM sp, #_sp_start_value_DM_stack // init SP
+  asm_end
+}
+// clang-format on
+
+// _main_init needs to be the first defined code symbol in this file, since
+// it needs to be linked at address 0.
+int _main_init(int argc, char **argv) property(envelope) {
+  _init();
+
+  // Statically initialized in atexit.c in libc
+  // atexit(_fini);
+
+  exit(main(argc, argv)); // run program and stop simulation (never returns)
+  return 0;
+}
+
 typedef void (*thunk)();
 extern thunk _ctors_start; // first element
 extern thunk _ctors_end;   // past-the-last element
@@ -74,29 +101,6 @@ void _fini() {
   // destructors in forward order
   for (thunk *t = &_dtors_start; t != chess_copy(&_dtors_end); ++t)
     (*t)();
-}
-
-int main(int argc, char *argv[]);
-
-int _main_init(int argc, char **argv) property(envelope);
-
-// clang-format off
-inline assembly void chess_envelope_open() {
-  asm_begin
-  .label __AIE_ARCH_MODEL_VERSION__20010000 global
-    MOVXM sp, #_sp_start_value_DM_stack // init SP
-  asm_end
-}
-// clang-format on
-
-int _main_init(int argc, char **argv) property(envelope) {
-  _init();
-
-  // Statically initialized in atexit.c in libc
-  // atexit(_fini);
-
-  exit(main(argc, argv)); // run program and stop simulation (never returns)
-  return 0;
 }
 
 void __cxa_finalize(void *) {}
