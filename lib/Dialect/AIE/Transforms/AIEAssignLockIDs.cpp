@@ -97,8 +97,8 @@ struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
         if (nextID == locksPerTile) {
           auto diag = lockOp->emitOpError("not allocated a lock.");
           diag.attachNote(tileOp.getLoc())
-              << "because tile has only " << locksPerTile
-              << " locks available.";
+              << "because only " << locksPerTile
+              << " locks available in this tile.";
           return signalPassFailure();
         }
         lockOp->setAttr("lockID", rewriter.getI32IntegerAttr(nextID));

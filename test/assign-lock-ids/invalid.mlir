@@ -1,7 +1,7 @@
 // RUN: aie-opt --aie-assign-lock-ids %s  -split-input-file -verify-diagnostics
 
 AIE.device(xcve2802) {
-  // expected-note @below {{tile has only 16 locks available}}
+  // expected-note @below {{because only 16 locks available in this tile}}
   %tMemTile = AIE.tile(4,4)
   %l0 = AIE.lock(%tMemTile)
   %l1 = AIE.lock(%tMemTile)
@@ -29,7 +29,7 @@ AIE.device(xcve2802) {
 // -----
 
 AIE.device(xcve2802) {
-  // expected-note @below {{tile has only 16 locks available}}
+  // expected-note @below {{because only 16 locks available in this tile}}
   %tMemTile = AIE.tile(4,4)
   %l0 = AIE.lock(%tMemTile)
   %l1 = AIE.lock(%tMemTile, 1)
