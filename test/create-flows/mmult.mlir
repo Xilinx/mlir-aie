@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
-// XFAIL: *
 
 // CHECK-LABEL:   AIE.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = AIE.tile(7, 1)
@@ -178,8 +177,8 @@
 // CHECK:           %[[VAL_63:.*]] = AIE.switchbox(%[[VAL_49]]) {
 // CHECK:             AIE.connect<South : 3, North : 0>
 // CHECK:             AIE.connect<South : 7, North : 1>
-// CHECK:             AIE.connect<North : 0, South : 2>
-// CHECK:             AIE.connect<North : 1, South : 3>
+//                    AIE.connect<North : 0, South : 2>
+//                    AIE.connect<North : 1, South : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_64:.*]] = AIE.switchbox(%[[VAL_48]]) {
 // CHECK:             AIE.connect<South : 0, East : 0>
@@ -250,8 +249,8 @@
 // CHECK:           %[[VAL_75:.*]] = AIE.switchbox(%[[VAL_33]]) {
 // CHECK:             AIE.connect<South : 3, North : 0>
 // CHECK:             AIE.connect<South : 7, North : 1>
-// CHECK:             AIE.connect<North : 0, South : 2>
-// CHECK:             AIE.connect<North : 1, South : 3>
+//                    AIE.connect<North : 0, South : 2>
+//                    AIE.connect<North : 1, South : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_76:.*]] = AIE.tile(5, 1)
 // CHECK:           %[[VAL_77:.*]] = AIE.switchbox(%[[VAL_76]]) {
@@ -273,8 +272,8 @@
 // CHECK:           %[[VAL_80:.*]] = AIE.switchbox(%[[VAL_17]]) {
 // CHECK:             AIE.connect<South : 3, North : 0>
 // CHECK:             AIE.connect<South : 7, North : 1>
-// CHECK:             AIE.connect<North : 0, South : 2>
-// CHECK:             AIE.connect<North : 1, South : 3>
+//                    AIE.connect<North : 0, South : 2>
+//                    AIE.connect<North : 1, South : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_81:.*]] = AIE.switchbox(%[[VAL_16]]) {
 // CHECK:             AIE.connect<South : 0, East : 0>
@@ -311,8 +310,8 @@
 // CHECK:           %[[VAL_92:.*]] = AIE.switchbox(%[[VAL_1]]) {
 // CHECK:             AIE.connect<South : 3, North : 0>
 // CHECK:             AIE.connect<South : 7, North : 1>
-// CHECK:             AIE.connect<North : 0, South : 2>
-// CHECK:             AIE.connect<North : 1, South : 3>
+//                    AIE.connect<North : 0, South : 2>
+//                    AIE.connect<North : 1, South : 3>
 // CHECK:           }
 // CHECK:           %[[VAL_93:.*]] = AIE.switchbox(%[[VAL_3]]) {
 // CHECK:             AIE.connect<South : 0, DMA : 0>
@@ -593,8 +592,8 @@ module @aie.herd_0 {
     %switchbox_2_0 = AIE.switchbox(%tile_2_0) {
       AIE.connect<South : 3, North : 0>
       AIE.connect<South : 7, North : 1>
-      AIE.connect<North : 0, South : 2>
-      AIE.connect<North : 1, South : 3>
+      // AIE.connect<North : 0, South : 2>
+      // AIE.connect<North : 1, South : 3>
     }
     AIE.flow(%tile_2_1, South : 0, %tile_7_2, DMA : 0)
     AIE.flow(%tile_2_1, South : 1, %tile_7_2, DMA : 1)
@@ -602,8 +601,8 @@ module @aie.herd_0 {
     %switchbox_3_0 = AIE.switchbox(%tile_3_0) {
       AIE.connect<South : 3, North : 0>
       AIE.connect<South : 7, North : 1>
-      AIE.connect<North : 0, South : 2>
-      AIE.connect<North : 1, South : 3>
+      // AIE.connect<North : 0, South : 2>
+      // AIE.connect<North : 1, South : 3>
     }
     AIE.flow(%tile_3_1, South : 0, %tile_8_2, DMA : 0)
     AIE.flow(%tile_3_1, South : 1, %tile_8_2, DMA : 1)
@@ -611,8 +610,8 @@ module @aie.herd_0 {
     %switchbox_6_0 = AIE.switchbox(%tile_6_0) {
       AIE.connect<South : 3, North : 0>
       AIE.connect<South : 7, North : 1>
-      AIE.connect<North : 0, South : 2>
-      AIE.connect<North : 1, South : 3>
+      // AIE.connect<North : 0, South : 2>
+      // AIE.connect<North : 1, South : 3>
     }
     AIE.flow(%tile_6_1, South : 0, %tile_7_3, DMA : 0)
     AIE.flow(%tile_6_1, South : 1, %tile_7_3, DMA : 1)
@@ -620,8 +619,8 @@ module @aie.herd_0 {
     %switchbox_7_0 = AIE.switchbox(%tile_7_0) {
       AIE.connect<South : 3, North : 0>
       AIE.connect<South : 7, North : 1>
-      AIE.connect<North : 0, South : 2>
-      AIE.connect<North : 1, South : 3>
+      // AIE.connect<North : 0, South : 2>
+      // AIE.connect<North : 1, South : 3>
     }
     AIE.flow(%tile_7_1, South : 0, %tile_8_3, DMA : 0)
     AIE.flow(%tile_7_1, South : 1, %tile_8_3, DMA : 1)

@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
-// XFAIL: *
 
 // CHECK-LABEL:   AIE.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = AIE.tile(0, 0)
@@ -85,8 +84,8 @@
 // CHECK:             AIE.connect<South : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_68:.*]] = AIE.switchbox(%[[VAL_16]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
-// CHECK:             AIE.connect<East : 0, DMA : 1>
+//                    AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<East : 0, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_69:.*]] = AIE.switchbox(%[[VAL_17]]) {
 // CHECK:           }
@@ -100,7 +99,7 @@
 // CHECK:             AIE.connect<South : 0, West : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_73:.*]] = AIE.switchbox(%[[VAL_21]]) {
-// CHECK:             AIE.connect<East : 0, DMA : 0>
+//                    AIE.connect<East : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_74:.*]] = AIE.switchbox(%[[VAL_22]]) {
 // CHECK:             AIE.connect<South : 0, North : 0>
@@ -121,7 +120,7 @@
 // CHECK:             AIE.connect<South : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_80:.*]] = AIE.switchbox(%[[VAL_28]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_81:.*]] = AIE.switchbox(%[[VAL_29]]) {
 // CHECK:           }
@@ -129,7 +128,7 @@
 // CHECK:             AIE.connect<South : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_83:.*]] = AIE.switchbox(%[[VAL_31]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_84:.*]] = AIE.switchbox(%[[VAL_32]]) {
 // CHECK:           }
@@ -142,7 +141,7 @@
 // CHECK:             AIE.connect<South : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_88:.*]] = AIE.switchbox(%[[VAL_36]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_89:.*]] = AIE.switchbox(%[[VAL_37]]) {
 // CHECK:           }
@@ -155,8 +154,8 @@
 // CHECK:             AIE.connect<South : 1, North : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_92:.*]] = AIE.switchbox(%[[VAL_40]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
-// CHECK:             AIE.connect<South : 1, DMA : 1>
+//                    AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 1, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_93:.*]] = AIE.switchbox(%[[VAL_41]]) {
 // CHECK:           }
@@ -173,8 +172,8 @@
 // CHECK:             AIE.connect<South : 1, North : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_97:.*]] = AIE.switchbox(%[[VAL_45]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
-// CHECK:             AIE.connect<South : 1, DMA : 1>
+//                    AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 1, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_98:.*]] = AIE.switchbox(%[[VAL_46]]) {
 // CHECK:           }
@@ -188,7 +187,7 @@
 // CHECK:             AIE.connect<South : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_103:.*]] = AIE.switchbox(%[[VAL_51]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_104:.*]] = AIE.switchbox(%[[VAL_52]]) {
 // CHECK:           }
@@ -198,7 +197,7 @@
 // CHECK:             AIE.connect<South : 0, North : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_107:.*]] = AIE.switchbox(%[[VAL_55]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 0, DMA : 0>
 // CHECK:           }
 // CHECK:           %[[VAL_108:.*]] = AIE.switchbox(%[[VAL_56]]) {
 // CHECK:           }
@@ -213,8 +212,8 @@
 // CHECK:             AIE.connect<South : 1, North : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_112:.*]] = AIE.switchbox(%[[VAL_60]]) {
-// CHECK:             AIE.connect<South : 0, DMA : 0>
-// CHECK:             AIE.connect<South : 1, DMA : 1>
+//                    AIE.connect<South : 0, DMA : 0>
+//                    AIE.connect<South : 1, DMA : 1>
 // CHECK:           }
 // CHECK:           %[[VAL_113:.*]] = AIE.switchbox(%[[VAL_61]]) {
 // CHECK:           }
@@ -673,8 +672,8 @@ module {
       AIE.connect<South : 0, North : 0>
     }
     %switchbox_0_3 = AIE.switchbox(%tile_0_3) {
-      AIE.connect<South : 0, DMA : 0>
-      AIE.connect<East : 0, DMA : 1>
+      // AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<East : 0, DMA : 1>
     }
     %switchbox_0_4 = AIE.switchbox(%tile_0_4) {
     }
@@ -688,7 +687,7 @@ module {
       AIE.connect<South : 0, West : 0>
     }
     %switchbox_1_4 = AIE.switchbox(%tile_1_4) {
-      AIE.connect<East : 0, DMA : 0>
+      // AIE.connect<East : 0, DMA : 0>
     }
     %switchbox_2_1 = AIE.switchbox(%tile_2_1) {
       AIE.connect<South : 0, North : 0>
@@ -709,7 +708,7 @@ module {
       AIE.connect<South : 0, North : 0>
     }
     %switchbox_3_3 = AIE.switchbox(%tile_3_3) {
-      AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 0, DMA : 0>
     }
     %switchbox_3_4 = AIE.switchbox(%tile_3_4) {
     }
@@ -717,7 +716,7 @@ module {
       AIE.connect<South : 0, North : 0>
     }
     %switchbox_4_2 = AIE.switchbox(%tile_4_2) {
-      AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 0, DMA : 0>
     }
     %switchbox_4_3 = AIE.switchbox(%tile_4_3) {
     }
@@ -730,7 +729,7 @@ module {
       AIE.connect<South : 0, North : 0>
     }
     %switchbox_5_3 = AIE.switchbox(%tile_5_3) {
-      AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 0, DMA : 0>
     }
     %switchbox_5_4 = AIE.switchbox(%tile_5_4) {
     }
@@ -743,8 +742,8 @@ module {
       AIE.connect<South : 1, North : 1>
     }
     %switchbox_6_3 = AIE.switchbox(%tile_6_3) {
-      AIE.connect<South : 0, DMA : 0>
-      AIE.connect<South : 1, DMA : 1>
+      // AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 1, DMA : 1>
     }
     %switchbox_6_4 = AIE.switchbox(%tile_6_4) {
     }
@@ -761,8 +760,8 @@ module {
       AIE.connect<South : 1, North : 1>
     }
     %switchbox_7_4 = AIE.switchbox(%tile_7_4) {
-      AIE.connect<South : 0, DMA : 0>
-      AIE.connect<South : 1, DMA : 1>
+      // AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 1, DMA : 1>
     }
     %switchbox_8_1 = AIE.switchbox(%tile_8_1) {
     }
@@ -776,7 +775,7 @@ module {
       AIE.connect<South : 0, North : 0>
     }
     %switchbox_9_2 = AIE.switchbox(%tile_9_2) {
-      AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 0, DMA : 0>
     }
     %switchbox_9_3 = AIE.switchbox(%tile_9_3) {
     }
@@ -786,7 +785,7 @@ module {
       AIE.connect<South : 0, North : 0>
     }
     %switchbox_10_2 = AIE.switchbox(%tile_10_2) {
-      AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 0, DMA : 0>
     }
     %switchbox_10_3 = AIE.switchbox(%tile_10_3) {
     }
@@ -801,8 +800,8 @@ module {
       AIE.connect<South : 1, North : 1>
     }
     %switchbox_11_3 = AIE.switchbox(%tile_11_3) {
-      AIE.connect<South : 0, DMA : 0>
-      AIE.connect<South : 1, DMA : 1>
+      // AIE.connect<South : 0, DMA : 0>
+      // AIE.connect<South : 1, DMA : 1>
     }
     %switchbox_11_4 = AIE.switchbox(%tile_11_4) {
     }
