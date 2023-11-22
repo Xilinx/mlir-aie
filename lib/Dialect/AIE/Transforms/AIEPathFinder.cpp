@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
+#include "d_ary_heap.hpp"
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -74,12 +75,14 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
       TileID existingCoord = {switchboxOp.colIndex(), switchboxOp.rowIndex()};
       Port existingPort = {connectOp.getDestBundle(),
                            connectOp.getDestChannel()};
-      if (!pathfinder->addFixedConnection(existingCoord, existingPort))
+      if (!pathfinder->addFixedConnection(existingCoord, existingPort)) {
         switchboxOp.emitOpError(
             "Couldn't connect tile (" + std::to_string(existingCoord.col) +
             ", " + std::to_string(existingCoord.row) + ") to port (" +
             stringifyWireBundle(existingPort.bundle) + ", " +
             std::to_string(existingPort.channel) + ")\n");
+        return;
+      }
     }
   }
 
@@ -174,9 +177,10 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
   // make grid of switchboxes
-  for (int col = 0; col <= maxCol; col++) {
-    for (int row = 0; row <= maxRow; row++) {
-      auto nodeIt = grid.insert({{col, row}, SwitchboxNode{col, row}});
+  int id = 0;
+  for (int row = 0; row <= maxRow; row++) {
+    for (int col = 0; col <= maxCol; col++) {
+      auto nodeIt = grid.insert({{col, row}, SwitchboxNode{col, row, id++}});
       (void)graph.addNode(nodeIt.first->second);
       SwitchboxNode &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
@@ -273,36 +277,53 @@ std::map<SwitchboxNode *, SwitchboxNode *>
 dijkstraShortestPaths(const SwitchboxGraph &graph, SwitchboxNode *src) {
   // Use std::map instead of DenseMap because DenseMap doesn't let you overwrite
   // tombstones.
-  auto demand = std::map<SwitchboxNode *, double>();
+  auto distance = std::map<SwitchboxNode *, double>();
   auto preds = std::map<SwitchboxNode *, SwitchboxNode *>();
+  std::map<SwitchboxNode *, uint64_t> indexInHeap;
+  typedef d_ary_heap_indirect<
+      /*Value=*/SwitchboxNode *, /*Arity=*/4,
+      /*IndexInHeapPropertyMap=*/std::map<SwitchboxNode *, uint64_t>,
+      /*DistanceMap=*/std::map<SwitchboxNode *, double> &,
+      /*Compare=*/std::less<double>>
+      MutableQueue;
+  MutableQueue Q(distance, indexInHeap);
+
   for (SwitchboxNode *sb : graph)
-    demand.emplace(sb, INF);
-  demand[src] = 0.0;
-  auto cmp = [](const std::pair<double, SwitchboxNode *> &p1,
-                const std::pair<double, SwitchboxNode *> &p2) {
-    return std::fabs(p1.first - p2.first) <
-                   std::numeric_limits<double>::epsilon()
-               ? std::less<Switchbox *>()(p1.second, p2.second)
-               : p1.first < p2.first;
-  };
-  std::set<std::pair<double, SwitchboxNode *>, decltype(cmp)> priorityQueue(
-      cmp);
-  priorityQueue.insert({demand[src], src});
+    distance.emplace(sb, INF);
+  distance[src] = 0.0;
 
-  while (!priorityQueue.empty()) {
-    src = priorityQueue.begin()->second;
-    priorityQueue.erase(priorityQueue.begin());
-    for (ChannelEdge *e : src->getEdges()) {
-      if (SwitchboxNode *dst = &e->getTargetNode();
-          demand[src] + e->demand < demand[dst]) {
-        priorityQueue.erase({demand[dst], dst});
+  enum Color { WHITE, GRAY, BLACK };
+  std::map<SwitchboxNode *, Color> colors;
+  for (SwitchboxNode *sb : graph)
+    colors[sb] = WHITE;
 
-        demand[dst] = demand[src] + e->demand;
-        preds[dst] = src;
-
-        priorityQueue.insert({demand[dst], dst});
+  Q.push(src);
+  while (!Q.empty()) {
+    src = Q.top();
+    Q.pop();
+    // TODO: cache this somewhere
+    std::vector<ChannelEdge *> edges(src->getEdges().begin(),
+                                     src->getEdges().end());
+    std::sort(edges.begin(), edges.end(),
+              [](const ChannelEdge *c1, ChannelEdge *c2) {
+                return c1->getTargetNode().id < c2->getTargetNode().id;
+              });
+    for (ChannelEdge *e : edges) {
+      SwitchboxNode *dest = &e->getTargetNode();
+      bool relax = distance[src] + e->demand < distance[dest];
+      if (colors[dest] == WHITE) {
+        if (relax) {
+          distance[dest] = distance[src] + e->demand;
+          preds[dest] = src;
+          colors[dest] = GRAY;
+        }
+        Q.push(dest);
+      } else if (colors[dest] == GRAY && relax) {
+        distance[dest] = distance[src] + e->demand;
+        preds[dest] = src;
       }
     }
+    colors[src] = BLACK;
   }
   return preds;
 }
@@ -328,8 +349,7 @@ Pathfinder::findPaths(const int maxIterations) {
                << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
     for (auto &ch : edges) {
-      if (ch.fixedCapacity.size() >=
-          static_cast<unsigned int>(ch.maxCapacity)) {
+      if (ch.fixedCapacity.size() >= ch.maxCapacity) {
         ch.demand = INF;
       } else {
         double history = 1.0 + OVER_CAPACITY_COEFF * ch.overCapacityCount;
@@ -426,7 +446,7 @@ bool Pathfinder::isLegal() {
   // check if maximum number of iterations has been reached
   if (maxIterReached)
     legal = false;
-  for (auto &e : edges)
+  for (auto &e : edges) {
     if (e.usedCapacity > e.maxCapacity) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Too much capacity on Edge (" << e.getTargetNode().col
@@ -437,6 +457,9 @@ bool Pathfinder::isLegal() {
       LLVM_DEBUG(llvm::dbgs()
                  << "over_capacity_count = " << e.overCapacityCount << "\n");
       legal = false;
+      break;
     }
+  }
+
   return legal;
 }

@@ -75,6 +75,8 @@ using SwitchboxGraphBase = llvm::DirectedGraph<SwitchboxNode, ChannelEdge>;
 
 typedef struct SwitchboxNode : public SwitchboxNodeBase, public Switchbox {
   using Switchbox::Switchbox;
+  SwitchboxNode(int col, int row, int id) : Switchbox{col, row}, id{id} {}
+  int id;
 } SwitchboxNode;
 
 typedef struct ChannelEdge : public ChannelEdgeBase, public Channel {
@@ -264,7 +266,7 @@ namespace std {
 template <> struct less<xilinx::AIE::Switchbox *> {
   bool operator()(const xilinx::AIE::Switchbox *a,
                   const xilinx::AIE::Switchbox *b) const {
-    return a->col == b->col ? a->row < b->row : a->col < b->col;
+    return *a < *b;
   }
 };
 } // namespace std
