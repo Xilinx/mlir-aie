@@ -38,14 +38,13 @@ def color_detect():
 
         line_bytes_ty = MemRefType.get((lineWidthInBytes,), uint8_ty)
         line_ty = MemRefType.get((lineWidth,), uint8_ty)
-        memRef_3x3_ty = MemRefType.get((3,3,), int16_ty)
 
         # AIE Core Function declarations
         rgba2hueLine   = privateFunc("rgba2grayLine", inputs = [line_bytes_ty, line_ty, int32_ty])
         thresholdLine   = privateFunc("thresholdLine", inputs = [line_ty, line_ty, int32_ty, int16_ty, int16_ty, int8_ty])
         bitwiseORLine = privateFunc("bitwiseORLine", inputs = [line_ty, line_ty, line_ty, int32_ty])
         gray2rgbaLine   = privateFunc("gray2rgbaLine", inputs = [line_ty, line_bytes_ty, int32_ty])
-        bitwiseANDLine = privateFunc("bitwiseORLine", inputs = [line_ty, line_ty, line_ty, int32_ty])
+        bitwiseANDLine = privateFunc("bitwiseORLine", inputs = [line_bytes_ty, line_bytes_ty, line_bytes_ty, int32_ty])
     
         # tile declarations
         ShimTile = Tile(0, 0)
@@ -171,14 +170,14 @@ def color_detect():
                 Release(ObjectFifoPort.Consume, "OOB_5to5a", 1)
                 Release(ObjectFifoPort.Produce, "OOB_5to5b", 1)
 
-                # bitwise AND
-                elemInTmpB1 = Acquire(ObjectFifoPort.Consume, "OF_5to5b", 1, line_bytes_ty).acquiredElem()
+                # # bitwise AND
+                elemInTmpB1 = Acquire(ObjectFifoPort.Consume, "OOB_5to5b", 1, line_bytes_ty).acquiredElem()
                 elemInTmpB2 = Acquire(ObjectFifoPort.Consume, "inOOB_L2L1", 1, line_bytes_ty).acquiredElem()
                 elemOut = Acquire(ObjectFifoPort.Produce, "outOOB_L1L2", 1, line_bytes_ty).acquiredElem()
 
                 Call(bitwiseANDLine, [elemInTmpB1, elemInTmpB2, elemOut, lineWidthInBytes])
 
-                Release(ObjectFifoPort.Consume, "OF_5to5b", 1)
+                Release(ObjectFifoPort.Consume, "OOB_5to5b", 1)
                 Release(ObjectFifoPort.Consume, "inOOB_L2L1", 1)
                 Release(ObjectFifoPort.Produce, "outOOB_L1L2", 1)
 
