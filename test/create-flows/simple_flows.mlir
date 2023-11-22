@@ -22,13 +22,12 @@
 // CHECK:             AIE.connect<Core : 0, South : 0>
 // CHECK:             AIE.connect<South : 0, Core : 1>
 // CHECK:           }
-// CHECK:           AIE.wire(%[[VAL_1]] : Core, %[[VAL_2]] : Core)
-// CHECK:           AIE.wire(%[[VAL_1]] : DMA, %[[VAL_2]] : DMA)
-// CHECK:           AIE.wire(%[[VAL_0]] : Core, %[[VAL_3]] : Core)
-// CHECK:           AIE.wire(%[[VAL_0]] : DMA, %[[VAL_3]] : DMA)
-// CHECK:           AIE.wire(%[[VAL_2]] : North, %[[VAL_3]] : South)
+// CHECK:           AIE.wire(%[[VAL_1]] : Core, %[[VAL_4:.*]] : Core)
+// CHECK:           AIE.wire(%[[VAL_1]] : DMA, %[[VAL_4]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_0]] : Core, %[[VAL_5:.*]] : Core)
+// CHECK:           AIE.wire(%[[VAL_0]] : DMA, %[[VAL_5]] : DMA)
+// CHECK:           AIE.wire(%[[VAL_4]] : North, %[[VAL_5]] : South)
 // CHECK:         }
-
 
 module {
   AIE.device(xcvc1902) {
