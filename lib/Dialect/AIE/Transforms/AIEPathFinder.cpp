@@ -38,7 +38,7 @@ WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
   }
 }
 
-void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
+LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
   maxCol = 0;
@@ -72,10 +72,8 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-      if (!pathfinder->addFixedConnection(connectOp)) {
-        switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
-        return;
-      }
+      if (!pathfinder->addFixedConnection(connectOp))
+        return switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
     }
   }
 
@@ -84,7 +82,7 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // check whether the pathfinder algorithm creates a legal routing
   flowSolutions = pathfinder->findPaths(maxIterations);
   if (!pathfinder->isLegal())
-    device.emitError("Unable to find a legal routing");
+    return device.emitError("Unable to find a legal routing");
 
   // initialize all flows as unprocessed to prep for rewrite
   for (const auto &[pathEndPoint, switchSetting] : flowSolutions) {
@@ -120,6 +118,7 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   }
 
   LLVM_DEBUG(llvm::dbgs() << "\t---End DynamicTileAnalysis Constructor---\n");
+  return success();
 }
 
 TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {

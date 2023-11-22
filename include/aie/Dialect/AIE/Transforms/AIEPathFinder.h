@@ -240,7 +240,7 @@ public:
   DynamicTileAnalysis(std::shared_ptr<Pathfinder> p)
       : pathfinder(std::move(p)) {}
 
-  void runAnalysis(DeviceOp &device);
+  mlir::LogicalResult runAnalysis(DeviceOp &device);
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }

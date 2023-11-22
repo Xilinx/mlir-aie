@@ -196,7 +196,8 @@ void AIEPathfinderPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
   DeviceOp d = getOperation();
-  analyzer.runAnalysis(d);
+  if (failed(analyzer.runAnalysis(d)))
+    return signalPassFailure();
   OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
 
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
@@ -211,7 +212,7 @@ void AIEPathfinderPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
-    signalPassFailure();
+    return signalPassFailure();
 
   // Populate wires between switchboxes and tiles.
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
@@ -303,7 +304,8 @@ void AIEPathfinderPass::runOnOperation() {
     builder.setInsertionPoint(connect);
     auto northSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() + 1);
     auto southSw = getSwitchbox(d, swBox.colIndex(), swBox.rowIndex() - 1);
-    attemptFixupMemTileRouting(builder, swBox, northSw, southSw, connect);
+    if (!attemptFixupMemTileRouting(builder, swBox, northSw, southSw, connect))
+      return signalPassFailure();
   }
 }
 
