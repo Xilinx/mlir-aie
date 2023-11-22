@@ -599,229 +599,226 @@
 // CHECK:         }
 
 module {
-	AIE.device(xcvc1902) {
-		%t00 = AIE.tile(0, 0)
-		%t10 = AIE.tile(1, 0)
-		%t20 = AIE.tile(2, 0)
-		%t30 = AIE.tile(3, 0)
-		%t40 = AIE.tile(4, 0)
-		%t50 = AIE.tile(5, 0)
-		%t60 = AIE.tile(6, 0)
-		%t70 = AIE.tile(7, 0)
-		%t80 = AIE.tile(8, 0)
-		%t90 = AIE.tile(9, 0)
-		%t100 = AIE.tile(10, 0)
-		%t110 = AIE.tile(11, 0)
-		%t180 = AIE.tile(18, 0)
-		%t190 = AIE.tile(19, 0)
-
-		%t01 = AIE.tile(0, 1)
-		%t02 = AIE.tile(0, 2)
-		%t03 = AIE.tile(0, 3)
-		%t04 = AIE.tile(0, 4)
-		%t11 = AIE.tile(1, 1)
-		%t12 = AIE.tile(1, 2)
-		%t13 = AIE.tile(1, 3)
-		%t14 = AIE.tile(1, 4)
-		%t21 = AIE.tile(2, 1)
-		%t22 = AIE.tile(2, 2)
-		%t23 = AIE.tile(2, 3)
-		%t24 = AIE.tile(2, 4)
-		%t31 = AIE.tile(3, 1)
-		%t32 = AIE.tile(3, 2)
-		%t33 = AIE.tile(3, 3)
-		%t34 = AIE.tile(3, 4)
-		%t41 = AIE.tile(4, 1)
-		%t42 = AIE.tile(4, 2)
-		%t43 = AIE.tile(4, 3)
-		%t44 = AIE.tile(4, 4)
-		%t51 = AIE.tile(5, 1)
-		%t52 = AIE.tile(5, 2)
-		%t53 = AIE.tile(5, 3)
-		%t54 = AIE.tile(5, 4)
-		%t61 = AIE.tile(6, 1)
-		%t62 = AIE.tile(6, 2)
-		%t63 = AIE.tile(6, 3)
-		%t64 = AIE.tile(6, 4)
-		%t71 = AIE.tile(7, 1)
-		%t72 = AIE.tile(7, 2)
-		%t73 = AIE.tile(7, 3)
-		%t74 = AIE.tile(7, 4)
-		%t81 = AIE.tile(8, 1)
-		%t82 = AIE.tile(8, 2)
-		%t83 = AIE.tile(8, 3)
-		%t84 = AIE.tile(8, 4)
-		%t91 = AIE.tile(9, 1)
-		%t92 = AIE.tile(9, 2)
-		%t93 = AIE.tile(9, 3)
-		%t94 = AIE.tile(9, 4)
-		%t101 = AIE.tile(10, 1)
-		%t102 = AIE.tile(10, 2)
-		%t103 = AIE.tile(10, 3)
-		%t104 = AIE.tile(10, 4)
-		%t111 = AIE.tile(11, 1)
-		%t112 = AIE.tile(11, 2)
-		%t113 = AIE.tile(11, 3)
-		%t114 = AIE.tile(11, 4)
-		%t121 = AIE.tile(12, 1)
-		%t122 = AIE.tile(12, 2)
-		%t123 = AIE.tile(12, 3)
-		%t124 = AIE.tile(12, 4)
-
-		%sb01 = AIE.switchbox(%t01) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb02 = AIE.switchbox(%t02) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb03 = AIE.switchbox(%t03) {
-			AIE.connect<South : 0, DMA : 0>
-			AIE.connect<East : 0, DMA : 1>
-		}
-		%sb04 = AIE.switchbox(%t04) {
-		}
-		%sb11 = AIE.switchbox(%t11) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb12 = AIE.switchbox(%t12) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb13 = AIE.switchbox(%t13) {
-			AIE.connect<South : 0, West : 0>
-		}
-		%sb14 = AIE.switchbox(%t14) {
-			AIE.connect<East : 0, DMA : 0>
-		}
-		%sb21 = AIE.switchbox(%t21) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb22 = AIE.switchbox(%t22) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb23 = AIE.switchbox(%t23) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb24 = AIE.switchbox(%t24) {
-			AIE.connect<South : 0, West : 0>
-		}
-		%sb31 = AIE.switchbox(%t31) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb32 = AIE.switchbox(%t32) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb33 = AIE.switchbox(%t33) {
-			AIE.connect<South : 0, DMA : 0>
-		}
-		%sb34 = AIE.switchbox(%t34) {
-		}
-		%sb41 = AIE.switchbox(%t41) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb42 = AIE.switchbox(%t42) {
-			AIE.connect<South : 0, DMA : 0>
-		}
-		%sb43 = AIE.switchbox(%t43) {
-		}
-		%sb44 = AIE.switchbox(%t44) {
-		}
-		%sb51 = AIE.switchbox(%t51) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb52 = AIE.switchbox(%t52) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb53 = AIE.switchbox(%t53) {
-			AIE.connect<South : 0, DMA : 0>
-		}
-		%sb54 = AIE.switchbox(%t54) {
-		}
-		%sb61 = AIE.switchbox(%t61) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb62 = AIE.switchbox(%t62) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb63 = AIE.switchbox(%t63) {
-			AIE.connect<South : 0, DMA : 0>
-			AIE.connect<South : 1, DMA : 1>
-		}
-		%sb64 = AIE.switchbox(%t64) {
-		}
-		%sb71 = AIE.switchbox(%t71) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb72 = AIE.switchbox(%t72) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb73 = AIE.switchbox(%t73) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb74 = AIE.switchbox(%t74) {
-			AIE.connect<South : 0, DMA : 0>
-			AIE.connect<South : 1, DMA : 1>
-		}
-		%sb81 = AIE.switchbox(%t81) {
-		}
-		%sb82 = AIE.switchbox(%t82) {
-		}
-		%sb83 = AIE.switchbox(%t83) {
-		}
-		%sb84 = AIE.switchbox(%t84) {
-		}
-		%sb91 = AIE.switchbox(%t91) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb92 = AIE.switchbox(%t92) {
-			AIE.connect<South : 0, DMA : 0>
-		}
-		%sb93 = AIE.switchbox(%t93) {
-		}
-		%sb94 = AIE.switchbox(%t94) {
-		}
-		%sb101 = AIE.switchbox(%t101) {
-			AIE.connect<South : 0, North : 0>
-		}
-		%sb102 = AIE.switchbox(%t102) {
-			AIE.connect<South : 0, DMA : 0>
-		}
-		%sb103 = AIE.switchbox(%t103) {
-		}
-		%sb104 = AIE.switchbox(%t104) {
-		}
-		%sb111 = AIE.switchbox(%t111) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb112 = AIE.switchbox(%t112) {
-			AIE.connect<South : 0, North : 0>
-			AIE.connect<South : 1, North : 1>
-		}
-		%sb113 = AIE.switchbox(%t113) {
-			AIE.connect<South : 0, DMA : 0>
-			AIE.connect<South : 1, DMA : 1>
-		}
-		%sb114 = AIE.switchbox(%t114) {
-		}
-
-		AIE.flow(%t20, DMA : 0, %t20, North: 0)
-		AIE.flow(%t20, DMA : 1, %t60, North: 1)
-		AIE.flow(%t30, DMA : 0, %t30, North: 0)
-		AIE.flow(%t30, DMA : 1, %t70, North: 1)
-		AIE.flow(%t60, DMA : 0, %t00, North: 0)
-		AIE.flow(%t60, DMA : 1, %t40, North: 0)
-		AIE.flow(%t70, DMA : 0, %t10, North: 0)
-		AIE.flow(%t70, DMA : 1, %t50, North: 0)
-		AIE.flow(%t100, DMA : 0, %t100, North: 0)
-		AIE.flow(%t110, DMA : 0, %t110, North: 0)
-		AIE.flow(%t180, DMA : 0, %t60, North: 0)
-		AIE.flow(%t180, DMA : 1, %t90, North: 0)
-		AIE.flow(%t190, DMA : 0, %t70, North: 0)
-		AIE.flow(%t190, DMA : 1, %t110, North: 1)
-	}
+  AIE.device(xcvc1902) {
+    %tile_0_0 = AIE.tile(0, 0)
+    %tile_1_0 = AIE.tile(1, 0)
+    %tile_2_0 = AIE.tile(2, 0)
+    %tile_3_0 = AIE.tile(3, 0)
+    %tile_4_0 = AIE.tile(4, 0)
+    %tile_5_0 = AIE.tile(5, 0)
+    %tile_6_0 = AIE.tile(6, 0)
+    %tile_7_0 = AIE.tile(7, 0)
+    %tile_8_0 = AIE.tile(8, 0)
+    %tile_9_0 = AIE.tile(9, 0)
+    %tile_10_0 = AIE.tile(10, 0)
+    %tile_11_0 = AIE.tile(11, 0)
+    %tile_18_0 = AIE.tile(18, 0)
+    %tile_19_0 = AIE.tile(19, 0)
+    %tile_0_1 = AIE.tile(0, 1)
+    %tile_0_2 = AIE.tile(0, 2)
+    %tile_0_3 = AIE.tile(0, 3)
+    %tile_0_4 = AIE.tile(0, 4)
+    %tile_1_1 = AIE.tile(1, 1)
+    %tile_1_2 = AIE.tile(1, 2)
+    %tile_1_3 = AIE.tile(1, 3)
+    %tile_1_4 = AIE.tile(1, 4)
+    %tile_2_1 = AIE.tile(2, 1)
+    %tile_2_2 = AIE.tile(2, 2)
+    %tile_2_3 = AIE.tile(2, 3)
+    %tile_2_4 = AIE.tile(2, 4)
+    %tile_3_1 = AIE.tile(3, 1)
+    %tile_3_2 = AIE.tile(3, 2)
+    %tile_3_3 = AIE.tile(3, 3)
+    %tile_3_4 = AIE.tile(3, 4)
+    %tile_4_1 = AIE.tile(4, 1)
+    %tile_4_2 = AIE.tile(4, 2)
+    %tile_4_3 = AIE.tile(4, 3)
+    %tile_4_4 = AIE.tile(4, 4)
+    %tile_5_1 = AIE.tile(5, 1)
+    %tile_5_2 = AIE.tile(5, 2)
+    %tile_5_3 = AIE.tile(5, 3)
+    %tile_5_4 = AIE.tile(5, 4)
+    %tile_6_1 = AIE.tile(6, 1)
+    %tile_6_2 = AIE.tile(6, 2)
+    %tile_6_3 = AIE.tile(6, 3)
+    %tile_6_4 = AIE.tile(6, 4)
+    %tile_7_1 = AIE.tile(7, 1)
+    %tile_7_2 = AIE.tile(7, 2)
+    %tile_7_3 = AIE.tile(7, 3)
+    %tile_7_4 = AIE.tile(7, 4)
+    %tile_8_1 = AIE.tile(8, 1)
+    %tile_8_2 = AIE.tile(8, 2)
+    %tile_8_3 = AIE.tile(8, 3)
+    %tile_8_4 = AIE.tile(8, 4)
+    %tile_9_1 = AIE.tile(9, 1)
+    %tile_9_2 = AIE.tile(9, 2)
+    %tile_9_3 = AIE.tile(9, 3)
+    %tile_9_4 = AIE.tile(9, 4)
+    %tile_10_1 = AIE.tile(10, 1)
+    %tile_10_2 = AIE.tile(10, 2)
+    %tile_10_3 = AIE.tile(10, 3)
+    %tile_10_4 = AIE.tile(10, 4)
+    %tile_11_1 = AIE.tile(11, 1)
+    %tile_11_2 = AIE.tile(11, 2)
+    %tile_11_3 = AIE.tile(11, 3)
+    %tile_11_4 = AIE.tile(11, 4)
+    %tile_12_1 = AIE.tile(12, 1)
+    %tile_12_2 = AIE.tile(12, 2)
+    %tile_12_3 = AIE.tile(12, 3)
+    %tile_12_4 = AIE.tile(12, 4)
+    %switchbox_0_1 = AIE.switchbox(%tile_0_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_0_2 = AIE.switchbox(%tile_0_2) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_0_3 = AIE.switchbox(%tile_0_3) {
+      AIE.connect<South : 0, DMA : 0>
+      AIE.connect<East : 0, DMA : 1>
+    }
+    %switchbox_0_4 = AIE.switchbox(%tile_0_4) {
+    }
+    %switchbox_1_1 = AIE.switchbox(%tile_1_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_1_2 = AIE.switchbox(%tile_1_2) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_1_3 = AIE.switchbox(%tile_1_3) {
+      AIE.connect<South : 0, West : 0>
+    }
+    %switchbox_1_4 = AIE.switchbox(%tile_1_4) {
+      AIE.connect<East : 0, DMA : 0>
+    }
+    %switchbox_2_1 = AIE.switchbox(%tile_2_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_2_2 = AIE.switchbox(%tile_2_2) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_2_3 = AIE.switchbox(%tile_2_3) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_2_4 = AIE.switchbox(%tile_2_4) {
+      AIE.connect<South : 0, West : 0>
+    }
+    %switchbox_3_1 = AIE.switchbox(%tile_3_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_3_2 = AIE.switchbox(%tile_3_2) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_3_3 = AIE.switchbox(%tile_3_3) {
+      AIE.connect<South : 0, DMA : 0>
+    }
+    %switchbox_3_4 = AIE.switchbox(%tile_3_4) {
+    }
+    %switchbox_4_1 = AIE.switchbox(%tile_4_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_4_2 = AIE.switchbox(%tile_4_2) {
+      AIE.connect<South : 0, DMA : 0>
+    }
+    %switchbox_4_3 = AIE.switchbox(%tile_4_3) {
+    }
+    %switchbox_4_4 = AIE.switchbox(%tile_4_4) {
+    }
+    %switchbox_5_1 = AIE.switchbox(%tile_5_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_5_2 = AIE.switchbox(%tile_5_2) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_5_3 = AIE.switchbox(%tile_5_3) {
+      AIE.connect<South : 0, DMA : 0>
+    }
+    %switchbox_5_4 = AIE.switchbox(%tile_5_4) {
+    }
+    %switchbox_6_1 = AIE.switchbox(%tile_6_1) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_6_2 = AIE.switchbox(%tile_6_2) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_6_3 = AIE.switchbox(%tile_6_3) {
+      AIE.connect<South : 0, DMA : 0>
+      AIE.connect<South : 1, DMA : 1>
+    }
+    %switchbox_6_4 = AIE.switchbox(%tile_6_4) {
+    }
+    %switchbox_7_1 = AIE.switchbox(%tile_7_1) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_7_2 = AIE.switchbox(%tile_7_2) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_7_3 = AIE.switchbox(%tile_7_3) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_7_4 = AIE.switchbox(%tile_7_4) {
+      AIE.connect<South : 0, DMA : 0>
+      AIE.connect<South : 1, DMA : 1>
+    }
+    %switchbox_8_1 = AIE.switchbox(%tile_8_1) {
+    }
+    %switchbox_8_2 = AIE.switchbox(%tile_8_2) {
+    }
+    %switchbox_8_3 = AIE.switchbox(%tile_8_3) {
+    }
+    %switchbox_8_4 = AIE.switchbox(%tile_8_4) {
+    }
+    %switchbox_9_1 = AIE.switchbox(%tile_9_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_9_2 = AIE.switchbox(%tile_9_2) {
+      AIE.connect<South : 0, DMA : 0>
+    }
+    %switchbox_9_3 = AIE.switchbox(%tile_9_3) {
+    }
+    %switchbox_9_4 = AIE.switchbox(%tile_9_4) {
+    }
+    %switchbox_10_1 = AIE.switchbox(%tile_10_1) {
+      AIE.connect<South : 0, North : 0>
+    }
+    %switchbox_10_2 = AIE.switchbox(%tile_10_2) {
+      AIE.connect<South : 0, DMA : 0>
+    }
+    %switchbox_10_3 = AIE.switchbox(%tile_10_3) {
+    }
+    %switchbox_10_4 = AIE.switchbox(%tile_10_4) {
+    }
+    %switchbox_11_1 = AIE.switchbox(%tile_11_1) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_11_2 = AIE.switchbox(%tile_11_2) {
+      AIE.connect<South : 0, North : 0>
+      AIE.connect<South : 1, North : 1>
+    }
+    %switchbox_11_3 = AIE.switchbox(%tile_11_3) {
+      AIE.connect<South : 0, DMA : 0>
+      AIE.connect<South : 1, DMA : 1>
+    }
+    %switchbox_11_4 = AIE.switchbox(%tile_11_4) {
+    }
+    AIE.flow(%tile_2_0, DMA : 0, %tile_2_0, North : 0)
+    AIE.flow(%tile_2_0, DMA : 1, %tile_6_0, North : 1)
+    AIE.flow(%tile_3_0, DMA : 0, %tile_3_0, North : 0)
+    AIE.flow(%tile_3_0, DMA : 1, %tile_7_0, North : 1)
+    AIE.flow(%tile_6_0, DMA : 0, %tile_0_0, North : 0)
+    AIE.flow(%tile_6_0, DMA : 1, %tile_4_0, North : 0)
+    AIE.flow(%tile_7_0, DMA : 0, %tile_1_0, North : 0)
+    AIE.flow(%tile_7_0, DMA : 1, %tile_5_0, North : 0)
+    AIE.flow(%tile_10_0, DMA : 0, %tile_10_0, North : 0)
+    AIE.flow(%tile_11_0, DMA : 0, %tile_11_0, North : 0)
+    AIE.flow(%tile_18_0, DMA : 0, %tile_6_0, North : 0)
+    AIE.flow(%tile_18_0, DMA : 1, %tile_9_0, North : 0)
+    AIE.flow(%tile_19_0, DMA : 0, %tile_7_0, North : 0)
+    AIE.flow(%tile_19_0, DMA : 1, %tile_11_0, North : 1)
+  }
 }
