@@ -72,15 +72,8 @@ void DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // available search all existing SwitchBoxOps for exising connections
   for (SwitchboxOp switchboxOp : device.getOps<SwitchboxOp>()) {
     for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-      TileID existingCoord = {switchboxOp.colIndex(), switchboxOp.rowIndex()};
-      Port existingPort = {connectOp.getDestBundle(),
-                           connectOp.getDestChannel()};
-      if (!pathfinder->addFixedConnection(existingCoord, existingPort)) {
-        switchboxOp.emitOpError(
-            "Couldn't connect tile (" + std::to_string(existingCoord.col) +
-            ", " + std::to_string(existingCoord.row) + ") to port (" +
-            stringifyWireBundle(existingPort.bundle) + ", " +
-            std::to_string(existingPort.channel) + ")\n");
+      if (!pathfinder->addFixedConnection(connectOp)) {
+        switchboxOp.emitOpError() << "Couldn't connect " << connectOp;
         return;
       }
     }
@@ -257,18 +250,38 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm will
 // avoid using these.
-bool Pathfinder::addFixedConnection(TileID coords, Port port) {
+bool Pathfinder::addFixedConnection(ConnectOp connectOp) {
+  auto sb = connectOp->getParentOfType<SwitchboxOp>();
+  // TODO: keep track of capacity?
+  if (sb.getTileOp().isShimNOCTile())
+    return true;
+
+  TileID sbTile = sb.getTileID();
+  WireBundle sourceBundle = connectOp.getSourceBundle();
+  WireBundle destBundle = connectOp.getDestBundle();
+
   // find the correct Channel and indicate the fixed direction
+  // outgoing connection
   auto matchingCh =
       std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
-        return ch.src.col == coords.col && ch.src.row == coords.row &&
-               ch.bundle == port.bundle;
+        return static_cast<TileID>(ch.src) == sbTile && ch.bundle == destBundle;
       });
-  if (matchingCh == edges.end())
-    return false;
+  if (matchingCh != edges.end())
+    return matchingCh->fixedCapacity.insert(connectOp.getDestChannel())
+               .second ||
+           true;
 
-  matchingCh->fixedCapacity.insert(port.channel);
-  return true;
+  // incoming connection
+  matchingCh = std::find_if(edges.begin(), edges.end(), [&](ChannelEdge &ch) {
+    return static_cast<TileID>(ch.target) == sbTile &&
+           ch.bundle == getConnectingBundle(sourceBundle);
+  });
+  if (matchingCh != edges.end())
+    return matchingCh->fixedCapacity.insert(connectOp.getSourceChannel())
+               .second ||
+           true;
+
+  return false;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();

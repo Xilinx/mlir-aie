@@ -202,7 +202,7 @@ public:
                           const AIETargetModel &targetModel);
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort);
-  virtual bool addFixedConnection(TileID coords, Port port);
+  virtual bool addFixedConnection(ConnectOp connectOp);
   virtual bool isLegal();
   virtual std::map<PathEndPoint, SwitchSettings> findPaths(int maxIterations);
 
