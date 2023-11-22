@@ -1,5 +1,10 @@
-# RUN: %PYTHON %s 2>&1 | FileCheck %s
+# Copyright (C) 2023, Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# RUN: %PYTHON %s 2>&1 | FileCheck %s
+# REQUIRES: has_mlir_runtime_libraries
+
+import pathlib
 import gc, sys, os, tempfile
 from aie.ir import *
 from aie.passmanager import *
@@ -54,23 +59,19 @@ def testSharedLibLoad():
         )
 
         if sys.platform == "win32":
-            shared_libs = [
-                "../../bin/mlir_runner_utils.dll",
-                "../../bin/mlir_c_runner_utils.dll",
-            ]
-        elif sys.platform == "darwin":
-            shared_libs = [
-                "../../lib/libmlir_runner_utils.dylib",
-                "../../lib/libmlir_c_runner_utils.dylib",
-            ]
+            lib_dir = "bin"
         else:
-            shared_libs = [
-                "../../lib/libmlir_runner_utils.so",
-                "../../lib/libmlir_c_runner_utils.so",
-            ]
-
+            lib_dir = "lib"
+        mlir_runner_utils = next(
+            pathlib.Path(f"../../{lib_dir}/").glob("*mlir_runner_utils.*")
+        )
+        mlir_c_runner_utils = next(
+            pathlib.Path(f"../../{lib_dir}/").glob("*mlir_c_runner_utils.*")
+        )
         execution_engine = ExecutionEngine(
-            lowerToLLVM(module), opt_level=3, shared_libs=shared_libs
+            lowerToLLVM(module),
+            opt_level=3,
+            shared_libs=[str(mlir_runner_utils), str(mlir_c_runner_utils)],
         )
         execution_engine.invoke("main", arg0_memref_ptr)
         # CHECK: Unranked Memref
@@ -102,18 +103,19 @@ def testNanoTime():
         )
 
         if sys.platform == "win32":
-            shared_libs = [
-                "../../bin/mlir_runner_utils.dll",
-                "../../bin/mlir_c_runner_utils.dll",
-            ]
+            lib_dir = "bin"
         else:
-            shared_libs = [
-                "../../lib/libmlir_runner_utils.so",
-                "../../lib/libmlir_c_runner_utils.so",
-            ]
-
+            lib_dir = "lib"
+        mlir_runner_utils = next(
+            pathlib.Path(f"../../{lib_dir}/").glob("*mlir_runner_utils.*")
+        )
+        mlir_c_runner_utils = next(
+            pathlib.Path(f"../../{lib_dir}/").glob("*mlir_c_runner_utils.*")
+        )
         execution_engine = ExecutionEngine(
-            lowerToLLVM(module), opt_level=3, shared_libs=shared_libs
+            lowerToLLVM(module),
+            opt_level=3,
+            shared_libs=[str(mlir_runner_utils), str(mlir_c_runner_utils)],
         )
         execution_engine.invoke("main")
         # CHECK: Unranked Memref

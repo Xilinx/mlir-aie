@@ -64,6 +64,7 @@ cmake_dependent_option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" 
 cmake_dependent_option(ENABLE_BOARD_TESTS "Enable board tests" ON "CMAKE_HOST_SYSTEM_PROCESSOR MATCHES aarch64" OFF)
 
 # Look for LibXAIE
+set(LibXAIE_FOUND FALSE)
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
     message("Test using xaiengine from LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR=${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR}")
     set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
