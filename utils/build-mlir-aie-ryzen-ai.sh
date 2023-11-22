@@ -35,34 +35,6 @@ mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
 
 ##
-## FIXME: move to CMake and reduce aie-rt differences
-## build phoenix branch of aie-rt 
-##
-
-git clone --branch xlnx_rel_v2023.2 --depth 1 https://github.com/Xilinx/aie-rt.git ${BUILD_DIR}/aie-rt
-
-mkdir -p $INSTALL_DIR/aie-rt/lib
-
-pushd ${BUILD_DIR}/aie-rt/driver/src/
-sed -i '32s/^/\/\//' ./io_backend/ext/xaie_cdo.c
-sed -i '62s/(ColType == 0U) || (ColType == 1U)/(DevInst->StartCol + Loc.Col) == 0U/' ./device/xaie_device_aieml.c
-make -f Makefile.Linux cdo
-success=$?
-popd
-
-if [ ${success} -ne 0 ]
-then
-    rm -rf ${INSTALL_DIR}/*
-    rm -rf ${BUILD_DIR}/*
-    exit 7
-fi
-
-cp -v ${BUILD_DIR}/aie-rt/driver/src/*.so* ${INSTALL_DIR}/aie-rt/lib
-cp -vr ${BUILD_DIR}/aie-rt/driver/include ${INSTALL_DIR}/aie-rt
-
-AIERT_DIR=`realpath ${INSTALL_DIR}/aie-rt`
-
-##
 ## build pynqMLIR-AIE
 ##
 
@@ -81,7 +53,6 @@ CMAKE_CONFIGS="\
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     -DAIE_RUNTIME_TARGETS:STRING="x86_64" \
     -DAIE_RUNTIME_TEST_TARGET=x86_64 \
-    -DLibXAIE_x86_64_DIR=${AIERT_DIR} \
     ../.."
 
 if [ -x "$(command -v lld)" ]; then

@@ -398,7 +398,7 @@ all:
       shutil.copytree(data_path, self.tmpdirname, dirs_exist_ok=True)
 
       runtime_xaiengine_path = os.path.join(install_path, 'runtime_lib',
-                                            opts.host_target.split('-')[0], 'xaiengine')
+                                            opts.host_target.split('-')[0], 'xaiengine', 'cdo')
       xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
       xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
 
@@ -409,7 +409,7 @@ all:
 
       p0 = self.do_call(task, ['clang++',
                                '-fPIC', '-c', '-std=c++17',
-                               '-D__AIEARCH__=20',
+                               *self.aie_target_defines(),
                                '-D__AIESIM__',
                                '-D__CDO__',
                                '-D__PS_INIT_AIE__',
@@ -433,7 +433,7 @@ all:
       await self.do_call(task, ['clang++',
                                 '-L' + xaiengine_lib_path,
                                 '-L' + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
-                                '-lxaiengine','-lcdo_driver',
+                                '-lxaienginecdo','-lcdo_driver',
                                 '-o', os.path.join(self.tmpdirname, 'cdo_main.out'),
                                 os.path.join(self.tmpdirname, 'gen_cdo.o'),
                                 os.path.join(self.tmpdirname, 'cdo_main.o')

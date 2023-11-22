@@ -7,6 +7,7 @@
 cmake_minimum_required(VERSION 3.20.1)
 
 project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
+include("aiert.cmake")
 
 if (${CMAKE_CROSSCOMPILING})
 
@@ -19,48 +20,21 @@ if (${CMAKE_CROSSCOMPILING})
         message(FATAL_ERROR "Unsupported Vitis version: ${Vitis_VERSION_MAJOR}")
     endif()
 
-    message("Building xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.") 
-    file(GLOB libheaders ${aieRTIncludePath}/*.h)
-    file(GLOB libheadersSub ${aieRTIncludePath}/*/*.h)
-
-    # copy header files into build area
-    foreach(file ${libheaders})
-        cmake_path(GET file FILENAME basefile)
-        # message("basefile: ${basefile}")
-        set(dest ${CMAKE_CURRENT_BINARY_DIR}/include/${basefile})
-        add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
-        add_custom_command(OUTPUT ${dest}
-                        COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
-                        DEPENDS ${file})
-    endforeach()
-    foreach(file ${libheadersSub})
-        cmake_path(GET file FILENAME basefile)
-        # message("basefile: ${basefile}")
-        set(dest ${CMAKE_CURRENT_BINARY_DIR}/include/xaiengine/${basefile})
-        add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
-        add_custom_command(OUTPUT ${dest}
-                        COMMAND ${CMAKE_COMMAND} -E copy ${file} ${dest}
-                        DEPENDS ${file})
-    endforeach()
-
-    # Install too
-    install(FILES ${libheaders} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
-    install(FILES ${libheadersSub} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include/xaiengine)
+    message("Building xaiengine for ${AIE_RUNTIME_TARGET} from Vitis at ${VITIS_ROOT}.")
+    add_aiert_headers(xaiengine
+                        ${aieRTIncludePath}
+                        ${CMAKE_CURRENT_BINARY_DIR}/include
+                        ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
 
     add_subdirectory(lib)
 
 else()
 
     message("Copying xaiengine for ${AIE_RUNTIME_TARGET} from ${AIERT_LIBS}.") 
-
-    file(GLOB libheaders ${AIERT_INCLUDE_DIR}/*.h)
-    file(GLOB libheadersSub ${AIERT_INCLUDE_DIR}/*/*.h)
-
-    # copy header files into build area
-    set(dest ${CMAKE_CURRENT_BINARY_DIR}/include)
-    add_custom_target(aie-copy-runtime-headers ALL DEPENDS ${dest})
-    add_custom_command(OUTPUT ${dest}
-                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${AIERT_INCLUDE_DIR} ${dest})
+    add_aiert_headers(xaiengine
+                        ${AIERT_INCLUDE_DIR}
+                        ${CMAKE_CURRENT_BINARY_DIR}/include
+                        ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
 
     # copy library file to build area
     set(libs
@@ -72,8 +46,8 @@ else()
     endforeach()
 
     # install library and headers
-    install(FILES ${libheaders} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
-    install(FILES ${libheadersSub} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include/xaiengine)
     install(FILES ${libs} DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
 
 endif()
+
+add_subdirectory(cdo)
