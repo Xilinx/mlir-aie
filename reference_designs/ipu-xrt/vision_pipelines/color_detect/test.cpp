@@ -34,23 +34,25 @@ namespace po = boost::program_options;
 
 void colorDetect(cv::Mat &inImage, cv::Mat &outImage) {
   cv::Mat imageHSV, imageHue, imageThreshold1u, imageThreshold1ul,
-      imageThreshold2u, imageThreshold2ul, imageThreshold,
-      imageThresholdBGR, outImageReference;
-  
-  cv::resize(inImage,inImage,cv::Size(testImageWidth,testImageHeight));
-  cv::cvtColor(inImage,imageHSV,cv::COLOR_BGR2HSV_FULL);
-  cv::extractChannel(imageHSV,imageHue,0);
+      imageThreshold2u, imageThreshold2ul, imageThreshold, imageThresholdBGR,
+      outImageReference;
 
-  cv::threshold(imageHue, imageThreshold1u,160,0,cv::THRESH_TOZERO_INV);
-  cv::threshold(imageThreshold1u, imageThreshold1ul, 90,255,cv::THRESH_BINARY);
+  cv::resize(inImage, inImage, cv::Size(testImageWidth, testImageHeight));
+  cv::cvtColor(inImage, imageHSV, cv::COLOR_BGR2HSV_FULL);
+  cv::extractChannel(imageHSV, imageHue, 0);
 
-  cv::threshold(imageHue, imageThreshold2u,40,0,cv::THRESH_TOZERO_INV);
-  cv::threshold(imageThreshold2u, imageThreshold2ul, 30,255,cv::THRESH_BINARY);
+  cv::threshold(imageHue, imageThreshold1u, 160, 0, cv::THRESH_TOZERO_INV);
+  cv::threshold(imageThreshold1u, imageThreshold1ul, 90, 255,
+                cv::THRESH_BINARY);
 
-  cv::bitwise_or(imageThreshold1ul,imageThreshold2ul,imageThreshold);
-  cv::cvtColor(imageThreshold,imageThresholdBGR,cv::COLOR_GRAY2BGR);
-    
-  cv::bitwise_and(inImage,imageThresholdBGR,outImage);
+  cv::threshold(imageHue, imageThreshold2u, 40, 0, cv::THRESH_TOZERO_INV);
+  cv::threshold(imageThreshold2u, imageThreshold2ul, 30, 255,
+                cv::THRESH_BINARY);
+
+  cv::bitwise_or(imageThreshold1ul, imageThreshold2ul, imageThreshold);
+  cv::cvtColor(imageThreshold, imageThresholdBGR, cv::COLOR_GRAY2BGR);
+
+  cv::bitwise_and(inImage, imageThresholdBGR, outImage);
 
   return;
 }
