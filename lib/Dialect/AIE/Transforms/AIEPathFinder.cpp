@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
-#include "d_ary_heap.hpp"
+#include "d_ary_heap.h"
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -23,7 +23,7 @@ using namespace xilinx::AIE;
 #define USED_CAPACITY_COEFF 0.02
 #define DEMAND_COEFF 1.1
 
-WireBundle xilinx::AIE::getConnectingBundle(WireBundle dir) {
+WireBundle AIE::getConnectingBundle(WireBundle dir) {
   switch (dir) {
   case WireBundle::North:
     return WireBundle::South;
@@ -80,8 +80,9 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
   // all flows are now populated, call the congestion-aware pathfinder
   // algorithm
   // check whether the pathfinder algorithm creates a legal routing
-  flowSolutions = pathfinder->findPaths(maxIterations);
-  if (!pathfinder->isLegal())
+  if (auto maybeFlowSolutions = pathfinder->findPaths(maxIterations))
+    flowSolutions = maybeFlowSolutions.value();
+  else
     return device.emitError("Unable to find a legal routing");
 
   // initialize all flows as unprocessed to prep for rewrite
@@ -103,16 +104,14 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     coordToTile[{col, row}] = tileOp;
   }
   for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
-    int col, row;
-    col = switchboxOp.colIndex();
-    row = switchboxOp.rowIndex();
+    int col = switchboxOp.colIndex();
+    int row = switchboxOp.rowIndex();
     assert(coordToSwitchbox.count({col, row}) == 0);
     coordToSwitchbox[{col, row}] = switchboxOp;
   }
   for (auto shimmuxOp : device.getOps<ShimMuxOp>()) {
-    int col, row;
-    col = shimmuxOp.colIndex();
-    row = shimmuxOp.rowIndex();
+    int col = shimmuxOp.colIndex();
+    int row = shimmuxOp.rowIndex();
     assert(coordToShimMux.count({col, row}) == 0);
     coordToShimMux[{col, row}] = shimmuxOp;
   }
@@ -172,8 +171,8 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   int id = 0;
   for (int row = 0; row <= maxRow; row++) {
     for (int col = 0; col <= maxCol; col++) {
-      auto nodeIt = grid.insert({{col, row}, SwitchboxNode{col, row, id++}});
-      (void)graph.addNode(nodeIt.first->second);
+      auto [it, _] = grid.insert({{col, row}, SwitchboxNode{col, row, id++}});
+      (void)graph.addNode(it->second);
       SwitchboxNode &thisNode = grid.at({col, row});
       if (row > 0) { // if not in row 0 add channel to North/South
         SwitchboxNode &southernNeighbor = grid.at({col, row - 1});
@@ -215,19 +214,19 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort) {
   // check if a flow with this source already exists
-  for (auto &flow : flows) {
-    SwitchboxNode *existingSrc = flow.src.sb;
+  for (auto &[src, dsts] : flows) {
+    SwitchboxNode *existingSrc = src.sb;
     assert(existingSrc && "nullptr flow source");
-    if (Port existingPort = flow.src.port; existingSrc->col == srcCoords.col &&
-                                           existingSrc->row == srcCoords.row &&
-                                           existingPort == srcPort) {
+    if (Port existingPort = src.port; existingSrc->col == srcCoords.col &&
+                                      existingSrc->row == srcCoords.row &&
+                                      existingPort == srcPort) {
       // find the vertex corresponding to the destination
       auto matchingSb = std::find_if(
           graph.begin(), graph.end(), [&](const SwitchboxNode *sb) {
             return sb->col == dstCoords.col && sb->row == dstCoords.row;
           });
       assert(matchingSb != graph.end() && "didn't find flow dest");
-      flow.dsts.push_back({*matchingSb, dstPort});
+      dsts.emplace_back(*matchingSb, dstPort);
       return;
     }
   }
@@ -296,7 +295,7 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, SwitchboxNode *src) {
       /*Value=*/SwitchboxNode *, /*Arity=*/4,
       /*IndexInHeapPropertyMap=*/std::map<SwitchboxNode *, uint64_t>,
       /*DistanceMap=*/std::map<SwitchboxNode *, double> &,
-      /*Compare=*/std::less<double>>
+      /*Compare=*/std::less<>>
       MutableQueue;
   MutableQueue Q(distance, indexInHeap);
 
@@ -347,7 +346,7 @@ dijkstraShortestPaths(const SwitchboxGraph &graph, SwitchboxNode *src) {
 // and repeat the process until a valid solution is found.
 // Returns a map specifying switchbox settings for all flows.
 // If no legal routing can be found after maxIterations, returns empty vector.
-std::map<PathEndPoint, SwitchSettings>
+std::optional<std::map<PathEndPoint, SwitchSettings>>
 Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "Begin Pathfinder::findPaths\n");
   int iterationCount = 0;
@@ -357,12 +356,34 @@ Pathfinder::findPaths(const int maxIterations) {
   for (auto &ch : edges)
     ch.overCapacityCount = 0;
 
+  // Check that every channel does not exceed max capacity.
+  auto isLegal = [&] {
+    bool legal = true; // assume legal until found otherwise
+    for (auto &e : edges) {
+      if (e.usedCapacity > e.maxCapacity) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Too much capacity on Edge (" << e.getTargetNode().col
+                   << ", " << e.getTargetNode().row << ") . "
+                   << stringifyWireBundle(e.bundle) << "\t: used_capacity = "
+                   << e.usedCapacity << "\t: Demand = " << e.demand << "\n");
+        e.overCapacityCount++;
+        LLVM_DEBUG(llvm::dbgs()
+                   << "over_capacity_count = " << e.overCapacityCount << "\n");
+        legal = false;
+        break;
+      }
+    }
+
+    return legal;
+  };
+
   do {
     LLVM_DEBUG(llvm::dbgs()
                << "Begin findPaths iteration #" << iterationCount << "\n");
     // update demand on all channels
     for (auto &ch : edges) {
-      if (ch.fixedCapacity.size() >= ch.maxCapacity) {
+      if (ch.fixedCapacity.size() >=
+          static_cast<std::set<int>::size_type>(ch.maxCapacity)) {
         ch.demand = INF;
       } else {
         double history = 1.0 + OVER_CAPACITY_COEFF * ch.overCapacityCount;
@@ -371,15 +392,12 @@ Pathfinder::findPaths(const int maxIterations) {
       }
     }
     // if reach maxIterations, throw an error since no routing can be found
-    // TODO: add error throwing mechanism
     if (++iterationCount > maxIterations) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Pathfinder: maxIterations has been exceeded ("
                  << maxIterations
                  << " iterations)...unable to find routing for flows.\n");
-      //  return the invalid solution for debugging purposes
-      maxIterReached = true;
-      return routingSolution;
+      return std::nullopt;
     }
 
     // "rip up" all routes, i.e. set used capacity in each Channel to 0
@@ -389,24 +407,23 @@ Pathfinder::findPaths(const int maxIterations) {
 
     // for each flow, find the shortest path from source to destination
     // update used_capacity for the path between them
-    for (const auto &flow : flows) {
+    for (const auto &[src, dsts] : flows) {
       // Use dijkstra to find path given current demand from the start
       // switchbox; find the shortest paths to each other switchbox. Output is
       // in the predecessor map, which must then be processed to get individual
       // switchbox settings
-      SwitchboxNode *src = flow.src.sb;
-      assert(src && "nonexistent flow source");
+      assert(src.sb && "nonexistent flow source");
       std::set<SwitchboxNode *> processed;
       std::map<SwitchboxNode *, SwitchboxNode *> preds =
-          dijkstraShortestPaths(graph, src);
+          dijkstraShortestPaths(graph, src.sb);
 
       // trace the path of the flow backwards via predecessors
       // increment used_capacity for the associated channels
       SwitchSettings switchSettings;
       // set the input bundle for the source endpoint
-      switchSettings[*src].src = flow.src.port;
-      processed.insert(src);
-      for (const PathEndPointNode &endPoint : flow.dsts) {
+      switchSettings[*src.sb].src = src.port;
+      processed.insert(src.sb);
+      for (const PathEndPointNode &endPoint : dsts) {
         SwitchboxNode *curr = endPoint.sb;
         assert(curr && "endpoint has no source switchbox");
         // set the output bundle for this destination endpoint
@@ -447,32 +464,9 @@ Pathfinder::findPaths(const int maxIterations) {
         }
       }
       // add this flow to the proposed solution
-      routingSolution[flow.src] = switchSettings;
+      routingSolution[src] = switchSettings;
     }
   } while (!isLegal()); // continue iterations until a legal routing is found
+
   return routingSolution;
-}
-
-// Check that every channel does not exceed max capacity.
-bool Pathfinder::isLegal() {
-  bool legal = true; // assume legal until found otherwise
-  // check if maximum number of iterations has been reached
-  if (maxIterReached)
-    legal = false;
-  for (auto &e : edges) {
-    if (e.usedCapacity > e.maxCapacity) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "Too much capacity on Edge (" << e.getTargetNode().col
-                 << ", " << e.getTargetNode().row << ") . "
-                 << stringifyWireBundle(e.bundle) << "\t: used_capacity = "
-                 << e.usedCapacity << "\t: Demand = " << e.demand << "\n");
-      e.overCapacityCount++;
-      LLVM_DEBUG(llvm::dbgs()
-                 << "over_capacity_count = " << e.overCapacityCount << "\n");
-      legal = false;
-      break;
-    }
-  }
-
-  return legal;
 }

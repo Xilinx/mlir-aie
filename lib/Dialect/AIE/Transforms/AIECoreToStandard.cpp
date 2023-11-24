@@ -297,7 +297,8 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     int row = op.rowIndex();
 
     // Only pull code for the indicated function
-    if (tileRow != row && tileRow != -1 || tileCol != col && tileCol != -1) {
+    if ((tileRow != row && tileRow != -1) ||
+        (tileCol != col && tileCol != -1)) {
       rewriter.eraseOp(Op);
       return success();
     }

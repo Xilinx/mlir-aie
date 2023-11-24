@@ -47,7 +47,7 @@ typedef std::pair<Operation *, Port> PhysPort;
 
 std::optional<int>
 getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
-                        Port sourcePort, int flowID, WireBundle destBundle) {
+                        WireBundle destBundle) {
 
   if (connects.empty())
     return {0};
@@ -97,8 +97,7 @@ getAvailableDestChannel(SmallVector<std::pair<Connect, int>, 8> &connects,
 
 // Same function as above, but scanning from the last connect backwards
 std::optional<int> getAvailableDestChannelReverseOrder(
-    SmallVector<std::pair<Connect, int>, 8> &connects, Port sourcePort,
-    int flowID, WireBundle destBundle) {
+    SmallVector<std::pair<Connect, int>, 8> &connects, WireBundle destBundle) {
 
   int numChannels;
 
@@ -128,8 +127,8 @@ std::optional<int> getAvailableDestChannelReverseOrder(
   for (int i = numChannels - 1; i >= 0; i--) {
     Port port = {destBundle, i};
     SmallVector<Port, 8> ports;
-    for (auto connect : connects)
-      ports.push_back(connect.first.dst);
+    for (auto [connect, _] : connects)
+      ports.push_back(connect.dst);
 
     if (std::find(ports.begin(), ports.end(), port) == ports.end())
       return {i};
@@ -200,12 +199,12 @@ void buildPSRoute(
     for (auto move : moves) {
       if (reverseOrder) {
         if (auto maybeDestChannel = getAvailableDestChannelReverseOrder(
-                switchboxes[curCoord], lastPort, flowID, move))
+                switchboxes[curCoord], move))
           curChannel = maybeDestChannel.value();
         else
           continue;
-      } else if (auto maybeDestChannel = getAvailableDestChannel(
-                     switchboxes[curCoord], lastPort, flowID, move))
+      } else if (auto maybeDestChannel =
+                     getAvailableDestChannel(switchboxes[curCoord], move))
         curChannel = maybeDestChannel.value();
       else
         continue;
@@ -424,8 +423,7 @@ struct AIERoutePacketFlowsPass
         amselValue = map.first.second;
 
         // check if same destinations
-        // SmallVector<Port, 4> ports(map.second);
-        SmallVector ports(masterAMSels[{tileOp, amselValue}]);
+        SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
         if (ports.size() != packetFlow.second.size())
           continue;
 
@@ -503,7 +501,7 @@ struct AIERoutePacketFlowsPass
     // The flows must originate from the same source port and have different IDs
     // Two flows can be merged if they share the same destinations
     SmallVector<SmallVector<std::pair<PhysPort, int>, 4>, 4> slaveGroups;
-    SmallVector workList(slavePorts);
+    SmallVector<std::pair<PhysPort, int>, 4> workList(slavePorts);
     while (!workList.empty()) {
       auto slave1 = workList.pop_back_val();
       Port slavePort1 = slave1.first.second;
@@ -511,8 +509,7 @@ struct AIERoutePacketFlowsPass
       bool foundgroup = false;
       for (auto &group : slaveGroups) {
         auto slave2 = group.front();
-        Port slavePort2 = slave2.first.second;
-        if (slavePort1 != slavePort2)
+        if (Port slavePort2 = slave2.first.second; slavePort1 != slavePort2)
           continue;
 
         bool matched = true;
